@@ -10,14 +10,14 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from app.rag.middleware import ToolMiddlewareChain
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
 )
-from app.rag.middleware import ToolMiddlewareChain
 
 logger = logging.getLogger(__name__)
 

@@ -3,10 +3,10 @@ Multi-tenant data models.
 
 Defines tenant and member tables for tenant isolation.
 """
-from datetime import datetime
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Column, String, DateTime, Boolean
+from sqlalchemy import Boolean, Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base

@@ -4,10 +4,12 @@ Document-related database models (multi-tenant support)
 Defines document and document chunk table structures.
 """
 import uuid
-from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from app.core.database import Base
 
 

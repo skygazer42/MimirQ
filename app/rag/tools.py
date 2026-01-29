@@ -1,13 +1,14 @@
 """
 RAG retrieval helpers (tenant aware).
 """
+from contextvars import ContextVar
 from typing import List, Optional
 from uuid import UUID
-from contextvars import ContextVar
+
 from pydantic import BaseModel, Field
 
-from app.rag.retriever import hybrid_retriever
 from app.core.config import settings
+from app.rag.retriever import hybrid_retriever
 
 # Current tenant context, set by rag_agent before tool execution
 current_tenant_id: ContextVar[Optional[UUID]] = ContextVar("tenant_id", default=None)

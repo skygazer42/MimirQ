@@ -5,9 +5,9 @@ Provides commonly used resource validation and error handling functions to elimi
 """
 
 from typing import Any, Type, TypeVar
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-
 
 T = TypeVar("T")
 

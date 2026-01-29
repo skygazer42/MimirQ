@@ -7,30 +7,31 @@ from typing import Iterable, List, Optional, Sequence
 
 from langchain_core.documents import Document
 
+from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.cleaning import (
-    clean_markdown,
     RegexRule,
     build_common_line_signatures,
     build_repeated_line_signatures,
+    clean_markdown,
 )
-from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
-from app.rag.preprocessing.images import strip_images
-from app.rag.preprocessing.pii_anonymizer import anonymize_pii
-from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
 from app.rag.preprocessing.frontmatter import (
     extract_markdown_frontmatter as extract_markdown_frontmatter_fn,
+)
+from app.rag.preprocessing.frontmatter import (
     extract_markdown_title as extract_markdown_title_fn,
 )
+from app.rag.preprocessing.images import strip_images
 from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_fn
 from app.rag.preprocessing.language import detect_language as detect_language_fn
 from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs as drop_duplicate_paragraphs_fn
+from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
 from app.rag.preprocessing.references import trim_references_section as trim_references_section_fn
+from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
+from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.urls import normalize_urls as normalize_urls_fn
-from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
-from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
-
 
 GOVERNANCE_RULESET_VERSION = "1"
 

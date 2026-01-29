@@ -18,9 +18,9 @@ Security / Safety
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import re
+from dataclasses import dataclass
 from typing import Any, Optional
 from uuid import UUID
 
@@ -29,9 +29,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.document import Document as DBDocument
-from app.services.table_tag_service import generate_sql_for_table
 from app.services.table_store_service import run_table_query
-
+from app.services.table_tag_service import generate_sql_for_table
 
 _TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
 _TABLE_INTENT_RE = re.compile(

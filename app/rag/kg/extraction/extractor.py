@@ -11,17 +11,17 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
-from app.rag.kg.models import KgSourceEvent
-from app.rag.preprocessing.normalization import normalize_text
-from app.rag.llm.factory import create_llm_client
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.processor import EventProcessor
 from app.rag.kg.loading.processor import DocumentProcessor
-from app.types.indexing import EventEntityInput, IndexKind, IndexRecord, IndexingOptions
-from app.services.indexer import Indexer
+from app.rag.kg.models import KgSourceEvent
 from app.rag.kg.utils import get_logger
-from app.services.prompt_resolver import resolve_prompt_template
+from app.rag.llm.factory import create_llm_client
+from app.rag.preprocessing.normalization import normalize_text
+from app.services.indexer import Indexer
 from app.services.metrics_logger import log_metrics
+from app.services.prompt_resolver import resolve_prompt_template
+from app.types.indexing import EventEntityInput, IndexingOptions, IndexKind, IndexRecord
 
 logger = get_logger("kg.extract.extractor")
 
@@ -409,7 +409,7 @@ class EventExtractor:
                 try:
                     for batch in _iter_batches(to_embed, embed_batch_size):
                         vectors = await embedder.generate_batch(batch)
-                        for text, vector in zip(batch, vectors):
+                        for text, vector in zip(batch, vectors, strict=False):
                             if vector:
                                 embed_cache[text] = vector
                 except Exception as exc:  # noqa: BLE001
@@ -444,9 +444,9 @@ class EventExtractor:
 
                 refs: Dict[str, object] = {"chunk_index": chunk.chunk_index, "page": chunk.page_number}
                 if getattr(chunk, "start_char", None) is not None:
-                    refs["start_char"] = int(getattr(chunk, "start_char"))
+                    refs["start_char"] = int(chunk.start_char)
                 if getattr(chunk, "end_char", None) is not None:
-                    refs["end_char"] = int(getattr(chunk, "end_char"))
+                    refs["end_char"] = int(chunk.end_char)
                 meta = getattr(chunk, "doc_metadata", None)
                 meta_dict = meta if isinstance(meta, dict) else {}
                 source_val = meta_dict.get("source")

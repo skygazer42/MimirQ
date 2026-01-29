@@ -6,10 +6,11 @@ Defines dataset tables and permission relationships.
 import enum
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Enum, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.dialects.postgresql import JSONB
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
 
 

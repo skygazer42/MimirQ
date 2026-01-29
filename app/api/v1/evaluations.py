@@ -10,27 +10,18 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.models.chat import Conversation
-from app.models.evaluation import (
-    RagasEvaluationItem,
-    RagasEvaluationRun,
-    RagasRegressionCase,
-    RagasRegressionItem,
-    RagasRegressionRun,
-)
 from app.api.schemas.evaluation import (
+    GeneratedQuestion,
     RagasItemSchema,
     RagasRunCreateRequest,
     RagasRunDetail,
     RagasRunList,
     RagasRunSchema,
-    TestGenFromDocsRequest,
     TestGenFromConversationsRequest,
+    TestGenFromDocsRequest,
     TestGenResponse,
-    GeneratedQuestion,
 )
 from app.api.schemas.regression import (
     RagasRegressionCaseCreateRequest,
@@ -42,12 +33,21 @@ from app.api.schemas.regression import (
     RagasRegressionRunList,
     RagasRegressionRunSchema,
 )
-from app.services.dataset_service import DatasetService
+from app.core.database import get_db
+from app.models.chat import Conversation
+from app.models.evaluation import (
+    RagasEvaluationItem,
+    RagasEvaluationRun,
+    RagasRegressionCase,
+    RagasRegressionItem,
+    RagasRegressionRun,
+)
 from app.rag.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
 from app.rag.evaluation.test_generator import (
-    generate_questions_from_documents,
     generate_questions_from_conversations,
+    generate_questions_from_documents,
 )
+from app.services.dataset_service import DatasetService
 
 router = APIRouter()
 

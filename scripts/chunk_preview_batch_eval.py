@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         offsets = _best_effort_offsets(text, chunk_texts)
 
         items: list[ChunkPreviewItem] = []
-        for i, (c, (s, e)) in enumerate(zip(chunks or [], offsets)):
+        for i, (c, (s, e)) in enumerate(zip(chunks or [], offsets, strict=False)):
             content = c.page_content or ""
             tokens_est = num_tokens_from_string(content) if strategy == "langchain_token" else estimate_tokens(content)
             items.append(

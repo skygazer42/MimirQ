@@ -9,9 +9,10 @@ Design goals:
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from dataclasses import dataclass
-import re
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -21,10 +22,18 @@ from fastapi import HTTPException
 from app.api.utils.url_ingest import validate_url_for_ingest
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
+from app.core.optional_deps import optional_import
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.urls import canonicalize_url
 
-
 _DISALLOWED_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "file:")
+logger = get_logger("services.web_crawler")
+
+
+@lru_cache(maxsize=1)
+def _get_lxml_html():  # noqa: ANN201
+    # Imported lazily and cached to avoid repeated warnings during large crawls.
+    return optional_import("lxml.html", feature="web_crawl_link_extraction", pip_name="lxml")
 
 
 def _normalize_url(raw: str) -> str:
@@ -121,20 +130,28 @@ async def _fetch_page_text(
             return text, str(resp.url), content_type
 
 
-def _extract_links_from_html(html_text: str, *, base_url: str) -> List[str]:
-    try:
-        from lxml import html as lxml_html  # noqa: WPS433
-    except Exception:
-        return []
+def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[List[str], Dict[str, Any] | None]:
+    lxml_html = _get_lxml_html()
+    if lxml_html is None:
+        return (
+            [],
+            {
+                "level": "warning",
+                "feature": "web_crawl_link_extraction",
+                "dependency": "lxml",
+                "reason": "dependency_missing",
+                "remediation": "pip install lxml",
+            },
+        )
 
     raw = (html_text or "").strip()
     if not raw:
-        return []
+        return [], None
 
     try:
         doc = lxml_html.fromstring(raw)
     except Exception:
-        return []
+        return [], None
 
     try:
         doc.make_links_absolute(base_url, resolve_base_href=True)
@@ -153,7 +170,7 @@ def _extract_links_from_html(html_text: str, *, base_url: str) -> List[str]:
             continue
         # Defensive join in case make_links_absolute didn't run.
         out.append(_normalize_url(urljoin(base_url, s)))
-    return out
+    return out, None
 
 
 @dataclass(frozen=True)
@@ -224,6 +241,7 @@ async def crawl_site(
     visited: set[str] = set()
     out: List[str] = []
     errors: List[Dict[str, Any]] = []
+    degraded_seen: set[tuple[str, str]] = set()
 
     while q and len(out) < int(max_pages):
         url, depth = q.popleft()
@@ -278,7 +296,22 @@ async def crawl_site(
         if "html" not in (content_type or ""):
             continue
 
-        for link in _extract_links_from_html(text, base_url=final_url):
+        links, degraded = _extract_links_from_html(text, base_url=final_url)
+        if degraded is not None:
+            key = (str(degraded.get("feature") or ""), str(degraded.get("dependency") or ""))
+            if key not in degraded_seen:
+                degraded_seen.add(key)
+                logger.warning(
+                    "Web crawl degraded: feature=%s dependency=%s reason=%s remediation=%s",
+                    str(degraded.get("feature") or "unknown"),
+                    str(degraded.get("dependency") or "unknown"),
+                    str(degraded.get("reason") or "unknown"),
+                    str(degraded.get("remediation") or ""),
+                )
+                if len(errors) < 20:
+                    errors.append({"url": safe_url, **degraded})
+
+        for link in links:
             if not link:
                 continue
             if link in visited:

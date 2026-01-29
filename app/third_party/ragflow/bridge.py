@@ -12,7 +12,7 @@ Available strategies:
 """
 
 from pathlib import Path
-from typing import Callable, List, Literal, Optional, Any
+from typing import Any, Callable, List, Literal, Optional
 
 from app.rag.core.logging import get_logger
 
@@ -49,13 +49,13 @@ def chunk_file(
     strat = strategy.lower()
 
     if strat == "ragflow_naive":
-        from app.rag.chunking.ragflow.chunkers.naive import chunk as rf_chunk
+        from app.third_party.ragflow.chunkers.naive import chunk as rf_chunk
     elif strat == "ragflow_book":
-        from app.rag.chunking.ragflow.chunkers.book import chunk as rf_chunk
+        from app.third_party.ragflow.chunkers.book import chunk as rf_chunk
     elif strat == "ragflow_laws":
-        from app.rag.chunking.ragflow.chunkers.laws import chunk as rf_chunk
+        from app.third_party.ragflow.chunkers.laws import chunk as rf_chunk
     elif strat == "ragflow_email":
-        from app.rag.chunking.ragflow.chunkers.email import chunk as rf_chunk
+        from app.third_party.ragflow.chunkers.email import chunk as rf_chunk
     else:
         raise ValueError(
             f"Unsupported RAGFlow strategy: {strategy}. "

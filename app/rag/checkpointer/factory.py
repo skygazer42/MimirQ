@@ -6,9 +6,12 @@ Provides configuration-based checkpoint saver selection.
 
 import logging
 from typing import Optional
-from app.rag.checkpointer.sqlite import SqliteSaver
-from app.core.config import settings
+
 from langgraph.checkpoint.base import BaseCheckpointSaver
+
+from app.core.config import settings
+from app.rag.checkpointer.sqlite import SqliteSaver
+
 try:  # LangGraph 1.0.x compatibility
     from langgraph.checkpoint.memory import InMemorySaver  # type: ignore
 except Exception:  # pragma: no cover

@@ -644,7 +644,7 @@ class OCR:
             return None, None, time_dict
 
         return zip(self.sorted_boxes(dt_boxes), [
-            ("", 0) for _ in range(len(dt_boxes))])
+            ("", 0) for _ in range(len(dt_boxes))], strict=False)
 
     def recognize(self, ori_im, box, device_id: int | None = None):
         if device_id is None:
@@ -702,7 +702,7 @@ class OCR:
         time_dict['rec'] = elapse
 
         filter_boxes, filter_rec_res = [], []
-        for box, rec_result in zip(dt_boxes, rec_res):
+        for box, rec_result in zip(dt_boxes, rec_res, strict=False):
             text, score = rec_result
             if score >= self.drop_score:
                 filter_boxes.append(box)
@@ -713,4 +713,4 @@ class OCR:
         # for bno in range(len(img_crop_list)):
         #    print(f"{bno}, {rec_res[bno]}")
 
-        return list(zip([a.tolist() for a in filter_boxes], filter_rec_res))
+        return list(zip([a.tolist() for a in filter_boxes], filter_rec_res, strict=False))

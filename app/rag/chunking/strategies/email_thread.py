@@ -13,15 +13,14 @@ overlap when possible.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
 
 _HEADER_KEYWORDS = [
     "from",

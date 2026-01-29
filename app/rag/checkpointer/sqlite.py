@@ -13,12 +13,12 @@ from typing import Any, AsyncIterator, Iterator, Optional, Sequence
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import (
+    WRITES_IDX_MAP,
     BaseCheckpointSaver,
     ChannelVersions,
     Checkpoint,
     CheckpointMetadata,
     CheckpointTuple,
-    WRITES_IDX_MAP,
     get_checkpoint_id,
 )
 

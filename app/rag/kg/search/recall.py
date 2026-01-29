@@ -6,10 +6,10 @@ from typing import Any, Dict, List
 
 from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
+from app.rag.kg.repository import EntityRepository, EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import cosine_similarity
-from app.rag.kg.repository import EntityRepository, EventRepository, get_session
 
 
 @dataclass

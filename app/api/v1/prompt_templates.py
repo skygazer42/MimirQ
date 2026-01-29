@@ -9,13 +9,11 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.sql import func
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 
-from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.models.prompt_template import PromptTemplate
 from app.api.schemas.prompt_template import (
     PromptTemplateCreate,
     PromptTemplateList,
@@ -23,6 +21,8 @@ from app.api.schemas.prompt_template import (
     PromptTemplateOut,
     PromptTemplateUpdate,
 )
+from app.core.database import get_db
+from app.models.prompt_template import PromptTemplate
 from app.services.dataset_service import DatasetService
 
 router = APIRouter(tags=["prompt-templates"])

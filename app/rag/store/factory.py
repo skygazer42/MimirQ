@@ -33,8 +33,11 @@ def get_langgraph_store():
     if backend == "memory":
         try:
             from langgraph.store.memory import InMemoryStore
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("LangGraph store backend 'memory' unavailable: %s", str(exc)[:200])
+        except ImportError as exc:
+            logger.warning(
+                "LangGraph store backend 'memory' unavailable: %s (hint: pip install langgraph)",
+                str(exc)[:200],
+            )
             return None
 
         _store = InMemoryStore()
@@ -43,4 +46,3 @@ def get_langgraph_store():
 
     logger.warning("Unsupported LangGraph store backend '%s' (store disabled)", backend)
     return None
-

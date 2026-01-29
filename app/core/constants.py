@@ -6,7 +6,6 @@ Centralize magic strings and hardcoded values for maintainability.
 
 from typing import FrozenSet
 
-
 # =============================================================================
 # Timeout constants (seconds)
 # =============================================================================

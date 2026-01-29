@@ -13,17 +13,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.models.document import Document as DBDocument
-from app.services.dataset_service import DatasetService
-from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
-from app.services.table_store_service import run_table_query
-from app.services.table_store import parse_table_id, table_store_path
-from app.services.table_tag_service import generate_answer_from_result, generate_sql_for_table, tag_enabled
-from app.services.lotus_bridge import lotus_available, sem_filter as lotus_sem_filter
 from app.api.schemas.table_store import (
     DatasetTablesListResponse,
     LotusSemFilterRequest,
@@ -34,7 +25,16 @@ from app.api.schemas.table_store import (
     TableQueryRequest,
     TableQueryResponse,
 )
-
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.document import Document as DBDocument
+from app.services.dataset_service import DatasetService
+from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
+from app.services.lotus_bridge import lotus_available
+from app.services.lotus_bridge import sem_filter as lotus_sem_filter
+from app.services.table_store import parse_table_id, table_store_path
+from app.services.table_store_service import run_table_query
+from app.services.table_tag_service import generate_answer_from_result, generate_sql_for_table, tag_enabled
 
 router = APIRouter()
 
@@ -393,6 +393,7 @@ def lotus_sem_filter_dataset_table(
     if avail.ok:
         # Load a bounded sample into pandas.
         import sqlite3
+
         import pandas as pd  # type: ignore
 
         max_in_rows = min(

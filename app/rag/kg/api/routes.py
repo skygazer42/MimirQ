@@ -1,15 +1,18 @@
 import asyncio
-from uuid import UUID
 import zlib
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.models.document import Document as DBDocument, DocumentChunk
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
+from app.rag.core.errors import ConfigError
+from app.rag.kg.pipeline import extract_events, kg_search
 from app.rag.kg.schemas import (
     KGDeleteResponse,
     KGEntityDetailResponse,
@@ -24,10 +27,8 @@ from app.rag.kg.schemas import (
     KGSearchResponse,
     KGStatsResponse,
 )
-from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.dataset_service import DatasetService
-from app.rag.kg.pipeline import extract_events, kg_search
-from app.rag.core.errors import ConfigError
+from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 
 router = APIRouter()
 
@@ -108,8 +109,9 @@ async def get_kg_graph(
 
     from collections import Counter
 
-    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
     from sqlalchemy import func
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 
     events = (
         db.query(KgSourceEvent)

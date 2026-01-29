@@ -29,7 +29,8 @@ class _FakeDB:
 @pytest.mark.asyncio
 async def test_documents_parsed_content_returns_available_and_truncates(monkeypatch: pytest.MonkeyPatch):
     from app.api.v1.documents import get_document_parsed_content
-    from app.models.document import Document as DBDocument, DocumentParsedContent
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentParsedContent
     from app.services.dataset_service import DatasetService
 
     tenant_id = UUID(int=1)
@@ -76,7 +77,8 @@ async def test_documents_parsed_content_returns_available_and_truncates(monkeypa
 @pytest.mark.asyncio
 async def test_documents_parsed_content_returns_unavailable_when_missing(monkeypatch: pytest.MonkeyPatch):
     from app.api.v1.documents import get_document_parsed_content
-    from app.models.document import Document as DBDocument, DocumentParsedContent
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentParsedContent
     from app.services.dataset_service import DatasetService
 
     tenant_id = UUID(int=1)

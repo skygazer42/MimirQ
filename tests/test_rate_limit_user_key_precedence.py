@@ -19,9 +19,10 @@ def _make_request(headers: dict[str, str], *, client_ip: str = "127.0.0.1") -> R
 
 
 def test_get_client_key_prefers_jwt_subject_over_x_user_id(monkeypatch):
+    from jose import jwt
+
     import app.api.middleware.rate_limit as rl
     from app.core.config import settings
-    from jose import jwt
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     token = jwt.encode({"sub": "jwt-user"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -38,9 +39,10 @@ def test_get_client_key_prefers_jwt_subject_over_x_user_id(monkeypatch):
 
 
 def test_get_client_key_header_mode_uses_x_user_id(monkeypatch):
+    from jose import jwt
+
     import app.api.middleware.rate_limit as rl
     from app.core.config import settings
-    from jose import jwt
 
     monkeypatch.setattr(settings, "AUTH_MODE", "header", raising=False)
     token = jwt.encode({"sub": "jwt-user"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

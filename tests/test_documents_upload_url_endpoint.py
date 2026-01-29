@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -46,9 +46,9 @@ def _override_get_current_account_id() -> str:
 
 
 def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
-    from app.api.v1.documents import upload_document_from_url
     import app.api.v1.documents as documents_module
     from app.api.utils.url_ingest import DownloadedURL
+    from app.api.v1.documents import upload_document_from_url
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)

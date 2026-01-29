@@ -5,12 +5,12 @@ from typing import Dict, List, Optional, Sequence
 from uuid import UUID
 
 from app.core.config import settings
+from app.models.document import DocumentChunk
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.extractor import EventExtractor
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.searcher import KGSearcher
 from app.rag.kg.utils import get_logger
-from app.models.document import DocumentChunk
 from app.types.indexing import IndexingOptions
 
 logger = get_logger("kg.engine")

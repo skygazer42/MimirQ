@@ -4,9 +4,9 @@ Reciprocal Rank Fusion reranker combining recall score and query similarity.
 from typing import Any, Dict, List
 
 from app.rag.kg.loading.processor import DocumentProcessor
+from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.utils import cosine_similarity, format_events
-from app.rag.kg.repository import EventRepository, get_session
 
 
 class RerankRRFSearcher:

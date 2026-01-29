@@ -7,8 +7,8 @@ from fastapi import HTTPException
 
 
 def test_resolve_allowed_documents_dedupes(monkeypatch: pytest.MonkeyPatch):
-    from app.core import config as config_mod
     import app.rag.kg.api.routes as routes_mod
+    from app.core import config as config_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_API_MAX_DOCUMENT_IDS", 500, raising=False)
 
@@ -33,8 +33,8 @@ def test_resolve_allowed_documents_dedupes(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_resolve_allowed_documents_rejects_too_many(monkeypatch: pytest.MonkeyPatch):
-    from app.core import config as config_mod
     import app.rag.kg.api.routes as routes_mod
+    from app.core import config as config_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_API_MAX_DOCUMENT_IDS", 2, raising=False)
 
@@ -58,10 +58,10 @@ def test_resolve_allowed_documents_rejects_too_many(monkeypatch: pytest.MonkeyPa
 
 @pytest.mark.asyncio
 async def test_search_nodes_no_access_returns_empty(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import search_kg_graph_nodes
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
@@ -102,11 +102,12 @@ async def test_kg_search_tenant_mismatch(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.asyncio
 async def test_kg_search_timeout_returns_504(monkeypatch: pytest.MonkeyPatch):
     import asyncio
+
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import run_kg_search
     from app.rag.kg.schemas import KGSearchRequest
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)

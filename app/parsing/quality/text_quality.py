@@ -10,9 +10,8 @@ It is intentionally cheap and dependency-free.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-
+from dataclasses import dataclass
 
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 

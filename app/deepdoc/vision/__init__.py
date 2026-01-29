@@ -14,13 +14,15 @@
 #  limitations under the License.
 #
 import io
+import os
 import sys
 import threading
-import os
+
 import pdfplumber
-from .recognizer import Recognizer
+
 from .layout_recognizer import LayoutRecognizer4YOLOv10 as LayoutRecognizer
 from .ocr import OCR
+from .recognizer import Recognizer
 from .table_structure_recognizer import TableStructureRecognizer
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
@@ -36,9 +38,10 @@ def traversal_files(base):
 
 
 def init_in_out(args):
-    from PIL import Image
     import os
     import traceback
+
+    from PIL import Image
     images = []
     outputs = []
 

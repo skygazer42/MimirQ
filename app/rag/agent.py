@@ -11,10 +11,10 @@ This module is kept for backwards compatibility; it simply forwards calls to
 
 
 import threading
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 from uuid import UUID
 
-from app.rag.engine import get_rag_engine, RAGEngine
+from app.rag.engine import RAGEngine, get_rag_engine
 
 
 class RAGAgent:

@@ -10,10 +10,9 @@ image tags. Removal is code-fence aware and supports:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Literal
-
 
 ImageRemoveMode = Literal["none", "decorative", "all"]
 

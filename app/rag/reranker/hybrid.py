@@ -103,7 +103,7 @@ class WeightedReranker(DocumentReranker):
 
         # Fuse scores.
         rerank_documents = []
-        for document, query_score, query_vector_score in zip(documents, query_scores, query_vector_scores):
+        for document, query_score, query_vector_score in zip(documents, query_scores, query_vector_scores, strict=False):
             score = (
                 self.weights.vector_setting.vector_weight * query_vector_score
                 + self.weights.keyword_setting.keyword_weight * query_score

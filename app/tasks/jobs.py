@@ -10,22 +10,22 @@ Notes:
 import asyncio
 import contextlib
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
-import uuid
 
+from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models.document import Document as DBDocument
-from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
+from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.models.document import Document as DBDocument
 from app.parsing.processors.processor import document_processor
 from app.rag.core.logging import get_logger
-from app.core.config import settings
+from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
+from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.locks import acquire_lock, get_retry_exc, make_lock_value, release_lock, tenant_acquire, tenant_release
-from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
-from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 
 logger = get_logger("tasks.jobs")
 
@@ -457,8 +457,8 @@ async def extract_kg_job(
     """
     KG extraction job: extract events/entities from completed chunks and index them.
     """
-    from app.models.document import DocumentChunk
     from app.models.dataset import Dataset
+    from app.models.document import DocumentChunk
     from app.rag.kg.pipeline import extract_events
     from app.services.pipeline_config import build_indexing_options, resolve_pipeline_effective
 
@@ -491,9 +491,9 @@ async def extract_kg_job(
             return {"ok": False, "reason": "document_not_found", "tenant_id": tenant_id, "document_id": document_id}
         if (doc.status or "").lower() != "completed":
             # If not completed, retry later (ingest likely still running).
-            Retry = get_retry_exc()
-            if Retry:
-                raise Retry(defer=5)
+            retry_cls = get_retry_exc()
+            if retry_cls:
+                raise retry_cls(defer=5)
             return {"ok": False, "reason": "document_not_completed", "status": doc.status}
 
         pipeline_hash = (doc.doc_metadata or {}).get("pipeline_hash") or "unknown"

@@ -17,11 +17,11 @@ def test_precheck_xlsx_spreadsheet_stats_includes_cols(tmp_path: Path) -> None:
     ws.cell(row=10, column=3, value=1)  # sets max_row=10/max_column=3
     wb.save(p)
 
-    stats = _xlsx_spreadsheet_stats(p)
+    stats, err = _xlsx_spreadsheet_stats(p)
+    assert err is None
     assert isinstance(stats, dict)
     assert stats["row_count"] == 10
     assert stats["col_count"] == 3
     assert stats["sheet_count"] == 1
     assert stats["estimated_rows"] is False
     assert stats["estimated_cols"] is False
-

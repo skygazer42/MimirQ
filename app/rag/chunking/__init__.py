@@ -30,6 +30,7 @@ Usage:
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
 
+
 def ragflow_chunk_file(*args, **kwargs):
     """Backward compatible entrypoint for RAGFlow pipeline (lazy import)."""
     from app.rag.chunking.ragflow.bridge import chunk_file

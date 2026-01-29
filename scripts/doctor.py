@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import locale
 import platform
 import re
 import shutil
 import subprocess
-import locale
 from pathlib import Path
 
 

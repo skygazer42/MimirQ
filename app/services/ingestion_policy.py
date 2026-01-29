@@ -13,21 +13,20 @@ Security hardening:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict
 import json
 import re
+from dataclasses import dataclass
+from typing import Any, Dict
+from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
-from uuid import UUID
 
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.governance_profile import GovernanceProfileOut
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule, IngestionPreprocessStep
+from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPreprocessStep, IngestionRule
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
-from app.services.governance_profiles import get_builtin_governance_profiles, builtin_profile_to_out
-
+from app.services.governance_profiles import builtin_profile_to_out, get_builtin_governance_profiles
 
 RULE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
 MAX_RULES = 60

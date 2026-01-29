@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -35,14 +35,15 @@ from app.api.schemas.document import DocumentDetail, DocumentList
 from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.env import is_production_env
 from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document as DBDocument, DocumentParsedContent
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentParsedContent
 from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
+from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
-from app.rag.core.logging import get_logger
-from app.core.env import is_production_env
 
 logger = get_logger("api.parsing")
 
@@ -143,7 +144,7 @@ def _assert_path_under_tenant_root(*, tenant_id: UUID, path: Path) -> None:
     try:
         path.resolve(strict=False).relative_to(tenant_root)
     except Exception:
-        raise HTTPException(status_code=403, detail="File access denied")
+        raise HTTPException(status_code=403, detail="File access denied") from None
 
 
 def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, document_id: UUID) -> DBDocument:
@@ -309,8 +310,8 @@ async def parse_workspace_document(
             raise HTTPException(status_code=503, detail="Object storage is disabled")
         try:
             ref = parse_minio_uri(raw_path)
-        except ValueError:
-            raise HTTPException(status_code=404, detail="Source file not found")
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Source file not found") from exc
         if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
             raise HTTPException(status_code=403, detail="Source file access denied")
 
@@ -326,8 +327,8 @@ async def parse_workspace_document(
 
         try:
             minio_service.stat_object(object_name=ref.object_name)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Source file not found")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=404, detail="Source file not found") from exc
 
         temp_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
         suffix = f".{(doc.file_type or '').lower()}"
@@ -368,7 +369,7 @@ async def parse_workspace_document(
         doc.current_stage = "failed"
         doc.error_message = str(exc)
         db.commit()
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
         t0 = time.perf_counter()
@@ -446,7 +447,7 @@ async def parse_workspace_document(
         doc.current_stage = "failed"
         doc.error_message = "client_disconnected"
         db.commit()
-        raise HTTPException(status_code=499, detail="Client closed request")
+        raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as exc:
         err_type = (exc.details or {}).get("type")
         msg = (str(exc) or "").strip()
@@ -463,7 +464,7 @@ async def parse_workspace_document(
         status_code = 400 if err_type == "ValueError" else 500
         prefix = "Invalid input" if status_code == 400 else "Failed to parse document"
         detail = prefix if is_production_env() else f"{prefix}: {msg}"
-        raise HTTPException(status_code=status_code, detail=detail)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     except Exception as exc:  # noqa: BLE001
         msg = (str(exc) or "").strip()
         if not msg:
@@ -476,7 +477,7 @@ async def parse_workspace_document(
         doc.error_message = msg
         db.commit()
         detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(status_code=500, detail=detail) from exc
     finally:
         if temp_path is not None:
             with contextlib.suppress(Exception):

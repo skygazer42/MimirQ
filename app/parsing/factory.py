@@ -8,25 +8,24 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from langchain_core.documents import Document
 
-from app.parsing.parsers.text_parser import TextParser, MarkdownParser
-from app.parsing.backends import normalize_parser_backend
 from app.core.config import settings
+from app.parsing.backends import normalize_parser_backend
+from app.parsing.parsers.text_parser import MarkdownParser, TextParser
 from app.rag.core.logging import get_logger
-
 
 logger = get_logger("parsing.factory")
 
 if TYPE_CHECKING:
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
-    from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
-    from app.parsing.parsers.paddle_vl_parser import PaddleVLParser
     from app.parsing.parsers.docling_parser import DoclingParser
-    from app.parsing.parsers.marker_parser import MarkerParser
-    from app.parsing.parsers.olmocr_parser import OlmocrParser
+    from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
+    from app.parsing.parsers.marker_parser import MarkerParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
     from app.parsing.parsers.mineru_parser import MinerUParser
+    from app.parsing.parsers.olmocr_parser import OlmocrParser
+    from app.parsing.parsers.paddle_vl_parser import PaddleVLParser
     from app.parsing.parsers.pandoc_parser import PandocParser
     from app.parsing.parsers.pdf_parser import PDFParser
 

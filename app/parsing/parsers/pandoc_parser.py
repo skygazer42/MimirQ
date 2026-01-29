@@ -12,8 +12,8 @@ This parser is intentionally optional because it relies on external CLIs:
 
 from __future__ import annotations
 
-import subprocess
 import re
+import subprocess
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -23,7 +23,6 @@ from app.core.config import settings
 from app.parsing.utils.cli import resolve_cli_command
 from app.parsing.utils.text import read_text_file
 from app.rag.core.logging import get_logger
-
 
 logger = get_logger("parsing.pandoc")
 

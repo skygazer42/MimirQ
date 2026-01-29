@@ -8,21 +8,21 @@ Both modes support advanced PDF parsing (tables, images, formulas, etc.)
 import asyncio
 import io
 import re
-import time
 import tempfile
+import time
 import uuid
 import zipfile
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 from langchain_core.documents import Document
+
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.core.logging import get_logger
-
 
 logger = get_logger("services.mineru")
 

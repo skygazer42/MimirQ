@@ -7,14 +7,15 @@ Centralized settings management including:
 - RAG pipeline parameters
 - Storage backend config
 """
-from typing import Literal, Optional
 import sys
 import warnings
 from pathlib import Path
+from typing import Literal, Optional
+
+from pydantic import AliasChoices, Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.env import is_production_env
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AliasChoices, Field, model_validator
 
 
 class Settings(BaseSettings):

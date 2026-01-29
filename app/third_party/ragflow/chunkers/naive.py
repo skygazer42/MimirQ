@@ -15,32 +15,63 @@
 #
 
 import logging
-import re
 import os
+import re
 from functools import reduce
 from io import BytesIO
 from timeit import default_timer as timer
+
 from docx import Document
 from docx.image.exceptions import InvalidImageStreamError, UnexpectedEndOfFileError, UnrecognizedImageError
-from docx.opc.pkgreader import _SerializedRelationships, _SerializedRelationship
 from docx.opc.oxml import parse_xml
+from docx.opc.pkgreader import _SerializedRelationship, _SerializedRelationships
 from markdown import markdown
 from PIL import Image
-from app.rag.chunking.ragflow.common.token_utils import num_tokens_from_string
 
-from app.rag.chunking.ragflow.common.constants import LLMType
-from app.rag.chunking.ragflow.stubs.llm_service import LLMBundle
-from app.rag.chunking.ragflow.stubs.file_utils import extract_embed_file, extract_links_from_pdf, extract_links_from_docx, extract_html
-from app.deepdoc.parser import DocxParser, ExcelParser, HtmlParser, JsonParser, MarkdownElementExtractor, MarkdownParser, PdfParser, TxtParser
-from app.deepdoc.parser.figure_parser import VisionFigureParser,vision_figure_parser_docx_wrapper,vision_figure_parser_pdf_wrapper
-from app.deepdoc.parser.pdf_parser import PlainParser, VisionParser
-from app.deepdoc.parser.mineru_parser import MinerUParser
+from app.deepdoc.parser import (
+    DocxParser,
+    ExcelParser,
+    HtmlParser,
+    JsonParser,
+    MarkdownElementExtractor,
+    MarkdownParser,
+    PdfParser,
+    TxtParser,
+)
 from app.deepdoc.parser.docling_parser import DoclingParser
+from app.deepdoc.parser.figure_parser import (
+    VisionFigureParser,
+    vision_figure_parser_docx_wrapper,
+    vision_figure_parser_pdf_wrapper,
+)
+from app.deepdoc.parser.mineru_parser import MinerUParser
+from app.deepdoc.parser.pdf_parser import PlainParser, VisionParser
+from app.third_party.ragflow.common.constants import LLMType
+from app.third_party.ragflow.common.token_utils import num_tokens_from_string
+from app.third_party.ragflow.stubs.file_utils import (
+    extract_embed_file,
+    extract_html,
+    extract_links_from_docx,
+    extract_links_from_pdf,
+)
+from app.third_party.ragflow.stubs.llm_service import LLMBundle
+
 try:
     from app.deepdoc.parser.tcadp_parser import TCADPParser
-except Exception:  # noqa: BLE001
+except ImportError:  # pragma: no cover
     TCADPParser = None
-from app.rag.chunking.ragflow.nlp import concat_img, find_codec, naive_merge, naive_merge_with_images, naive_merge_docx, rag_tokenizer, tokenize_chunks, tokenize_chunks_with_images, tokenize_table, attach_media_context
+from app.third_party.ragflow.nlp import (
+    attach_media_context,
+    concat_img,
+    find_codec,
+    naive_merge,
+    naive_merge_docx,
+    naive_merge_with_images,
+    rag_tokenizer,
+    tokenize_chunks,
+    tokenize_chunks_with_images,
+    tokenize_table,
+)
 
 
 def by_deepdoc(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
@@ -198,6 +229,7 @@ class Docx(DocxParser):
     def __get_nearest_title(self, table_index, filename):
         """Get the hierarchical title structure before the table"""
         import re
+
         from docx.text.paragraph import Paragraph
 
         titles = []
@@ -525,8 +557,9 @@ class Markdown(MarkdownParser):
         return urls
 
     def load_images_from_urls(self, urls, cache=None):
-        import requests
         from pathlib import Path
+
+        import requests
 
         cache = cache or {}
         images = []
@@ -847,9 +880,9 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
 
         try:
             from tika import parser as tika_parser
-        except Exception as e:
-            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing.")
-            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}.")
+        except ImportError as e:
+            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing. (hint: pip install tika)")
+            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}. (hint: pip install tika)")
             return []
 
         binary = BytesIO(binary)

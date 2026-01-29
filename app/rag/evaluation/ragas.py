@@ -12,13 +12,15 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
 import httpx
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
-from app.models.document import DocumentChunk
 from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
 from app.models.evaluation import (
     RagasEvaluationItem,
     RagasEvaluationRun,
@@ -26,11 +28,9 @@ from app.models.evaluation import (
     RagasRegressionItem,
     RagasRegressionRun,
 )
+from app.rag.embedding import create_langchain_embeddings_from_config
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
-from app.rag.embedding import create_langchain_embeddings_from_config
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
@@ -225,10 +225,10 @@ def _resolve_metrics(metric_names: List[str]):
     Returns: list[Metric]
     """
     try:
-        from ragas.metrics import Faithfulness, ResponseRelevancy, LLMContextPrecisionWithoutReference
-    except Exception as exc:  # pragma: no cover
+        from ragas.metrics import Faithfulness, LLMContextPrecisionWithoutReference, ResponseRelevancy
+    except ImportError as exc:  # pragma: no cover
         raise RuntimeError(
-            "RAGAS is not installed. Please run: pip install -r requirements.txt"
+            "RAGAS is not installed. Please run: pip install ragas"
         ) from exc
 
     resolved = []
@@ -394,12 +394,18 @@ def run_conversation_ragas_evaluation(
             from ragas import EvaluationDataset, SingleTurnSample, evaluate
             from ragas.embeddings import LangchainEmbeddingsWrapper
             from ragas.llms import LangchainLLMWrapper
-        except Exception as exc:  # pragma: no cover
+        except ImportError as exc:  # pragma: no cover
             run.status = "failed"
-            run.error_message = f"RAGAS import failed: {exc}"
+            run.error_message = f"RAGAS is not installed: {exc} (hint: pip install ragas)"
             run.finished_at = datetime.utcnow()
             db.commit()
             return
+        except Exception as exc:  # pragma: no cover
+            run.status = "failed"
+            run.error_message = f"RAGAS import failed: {type(exc).__name__}: {exc}"
+            run.finished_at = datetime.utcnow()
+            db.commit()
+            raise
 
         llm, embeddings = _build_llm_and_embeddings()
         ragas_llm = LangchainLLMWrapper(llm)
@@ -602,12 +608,18 @@ def run_regression_ragas_evaluation(
             from ragas import EvaluationDataset, SingleTurnSample, evaluate
             from ragas.embeddings import LangchainEmbeddingsWrapper
             from ragas.llms import LangchainLLMWrapper
-        except Exception as exc:  # pragma: no cover
+        except ImportError as exc:  # pragma: no cover
             run.status = "failed"
-            run.error_message = f"RAGAS import failed: {exc}"
+            run.error_message = f"RAGAS is not installed: {exc} (hint: pip install ragas)"
             run.finished_at = datetime.utcnow()
             db.commit()
             return
+        except Exception as exc:  # pragma: no cover
+            run.status = "failed"
+            run.error_message = f"RAGAS import failed: {type(exc).__name__}: {exc}"
+            run.finished_at = datetime.utcnow()
+            db.commit()
+            raise
 
         llm, embeddings = _build_llm_and_embeddings()
         ragas_llm = LangchainLLMWrapper(llm)

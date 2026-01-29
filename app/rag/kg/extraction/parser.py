@@ -1,8 +1,8 @@
 """
 Utility helpers for parsing entity values from LLM output.
 """
-import unicodedata
 import re
+import unicodedata
 
 
 class EntityValueParser:

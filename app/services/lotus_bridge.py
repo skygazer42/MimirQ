@@ -19,10 +19,10 @@ Note: This is *not* a drop-in replacement for full LOTUS. It is intentionally sc
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Optional
 import json
 import re
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import pandas as pd  # type: ignore
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -138,7 +138,7 @@ def _build_row_payload(
         if max_rows > 0 and i >= int(max_rows):
             break
         rec: dict[str, Any] = {}
-        for k, v in zip(cols, row):
+        for k, v in zip(cols, row, strict=False):
             rec[str(k)] = _jsonify_value(v, max_chars=max_cell_chars)
         rows.append(rec)
     return cols, rows
@@ -254,7 +254,7 @@ def sem_filter(
         return df[mask]
     except Exception:
         # Best-effort fallback: manual filtering.
-        keep_idx = [idx for idx, ok in zip(list(df.index), flags) if ok]
+        keep_idx = [idx for idx, ok in zip(list(df.index), flags, strict=False) if ok]
         return df.loc[keep_idx]
 
 

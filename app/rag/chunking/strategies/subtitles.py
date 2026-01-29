@@ -10,8 +10,8 @@ The chunker keeps whole cues together and uses cue-level overlap.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any, List
 
 from langchain_core.documents import Document

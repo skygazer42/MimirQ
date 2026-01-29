@@ -21,12 +21,16 @@ from typing import Any, Dict, Iterable, cast
 from app.rag.preprocessing.stopwords import STOPWORDS
 
 
-class UnsupportedKeywordProvider(ValueError):
+class UnsupportedKeywordProviderError(ValueError):
     pass
 
 
-class KeywordProviderUnavailable(RuntimeError):
+class KeywordProviderUnavailableError(RuntimeError):
     pass
+
+
+UnsupportedKeywordProvider = UnsupportedKeywordProviderError
+KeywordProviderUnavailable = KeywordProviderUnavailableError
 
 
 _extractor_cache: Dict[str, object] = {}
@@ -70,7 +74,7 @@ def get_keyword_extractor(provider: str | None = None) -> object:
         else:
             extractor = JiebaKeywordTableHandler()
     else:
-        raise UnsupportedKeywordProvider(f"Unsupported keyword provider: {provider}")
+        raise UnsupportedKeywordProviderError(f"Unsupported keyword provider: {provider}")
 
     _extractor_cache[key] = extractor
     return extractor
@@ -86,12 +90,12 @@ def extract_keywords(
     provider_key = (provider or "jieba").lower().strip()
     extractor = get_keyword_extractor(provider_key)
     if not hasattr(extractor, "extract_keywords"):
-        raise KeywordProviderUnavailable(f"Invalid keyword extractor for provider={provider!r}")
+        raise KeywordProviderUnavailableError(f"Invalid keyword extractor for provider={provider!r}")
     try:
         keywords = extractor.extract_keywords(text or "", max_keywords_per_chunk=top_k, **kwargs)
     except Exception as exc:  # pragma: no cover
         if provider_key == "hanlp":
-            raise KeywordProviderUnavailable(str(exc) or "HanLP provider failed") from exc
+            raise KeywordProviderUnavailableError(str(exc) or "HanLP provider failed") from exc
         raise
     return sorted({str(k).strip() for k in (keywords or []) if str(k).strip()})
 

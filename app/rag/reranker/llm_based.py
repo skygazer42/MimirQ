@@ -60,9 +60,9 @@ class LLMReranker(DocumentReranker):
     """LLM reranker (document-level reranking via LLM)."""
 
     def __init__(self) -> None:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.prompts import ChatPromptTemplate
         from langchain_core.output_parsers import StrOutputParser
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_openai import ChatOpenAI
 
         model_name = settings.RERANKER_MODEL or settings.LLM_MODEL_FAST or settings.LLM_MODEL
         http_client, http_async_client = _build_http_clients()

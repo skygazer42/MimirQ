@@ -18,16 +18,26 @@ import logging
 import re
 from io import BytesIO
 
-from app.deepdoc.parser.utils import get_text
-from app.rag.chunking.ragflow.chunkers import naive_chunk as naive
-from app.rag.chunking.ragflow.chunkers.naive import by_plaintext, PARSERS
-from app.rag.chunking.ragflow.nlp import bullets_category, is_english, remove_contents_table, \
-    hierarchical_merge, make_colon_as_title, naive_merge, random_choices, tokenize_table, \
-    tokenize_chunks, attach_media_context
-from app.rag.chunking.ragflow.nlp import rag_tokenizer
-from app.deepdoc.parser import PdfParser, HtmlParser
-from app.deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
 from PIL import Image
+
+from app.deepdoc.parser import HtmlParser, PdfParser
+from app.deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
+from app.deepdoc.parser.utils import get_text
+from app.third_party.ragflow.chunkers import naive_chunk as naive
+from app.third_party.ragflow.chunkers.naive import PARSERS, by_plaintext
+from app.third_party.ragflow.nlp import (
+    attach_media_context,
+    bullets_category,
+    hierarchical_merge,
+    is_english,
+    make_colon_as_title,
+    naive_merge,
+    rag_tokenizer,
+    random_choices,
+    remove_contents_table,
+    tokenize_chunks,
+    tokenize_table,
+)
 
 
 class Pdf(PdfParser):
@@ -148,9 +158,9 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
 
         try:
             from tika import parser as tika_parser
-        except Exception as e:
-            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing.")
-            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}.")
+        except ImportError as e:
+            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing. (hint: pip install tika)")
+            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}. (hint: pip install tika)")
             return []
 
         binary = BytesIO(binary)

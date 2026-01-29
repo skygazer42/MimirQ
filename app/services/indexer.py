@@ -7,34 +7,34 @@ import asyncio
 import hashlib
 import logging
 import time
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import uuid
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from uuid import UUID
 
 from langchain_core.documents import Document as LCDocument
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
+from app.rag.core.metadata import normalize_image_metadata
+from app.rag.embedding.utils import current_embedding_space_hash
+from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+from app.rag.preprocessing.normalization import normalize_text
+from app.rag.retriever import hybrid_retriever
+from app.services.metrics_logger import log_metrics
+from app.storage.vector.factory import get_vector_store
+from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 from app.types.indexing import (
     ChunkInput,
     EventInput,
     IndexBatchResult,
-    IndexKind,
     IndexingOptions,
+    IndexKind,
     IndexRecord,
     PersistChunksResult,
     PersistEventsResult,
 )
-from app.core.config import settings
-from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
-from app.rag.retriever import hybrid_retriever
-from app.storage.vector.factory import get_vector_store
-from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
-from app.rag.core.metadata import normalize_image_metadata
-from app.rag.embedding.utils import current_embedding_space_hash
-from app.rag.preprocessing.normalization import normalize_text
-from app.services.metrics_logger import log_metrics
 
 logger = logging.getLogger("indexer")
 
@@ -962,7 +962,7 @@ class Indexer:
             raise ValueError(f"chunk_ids length {len(chunk_ids)} != chunks length {len(chunks)}")
 
         db_chunks: List[DocumentChunk] = []
-        for idx, (chunk, vector_id, chunk_id) in enumerate(zip(chunks, vector_ids, chunk_ids)):
+        for idx, (chunk, vector_id, chunk_id) in enumerate(zip(chunks, vector_ids, chunk_ids, strict=False)):
             meta = dict(chunk.metadata or {})
             normalize_image_metadata(meta)
             meta.setdefault("tenant_id", str(tenant_id))

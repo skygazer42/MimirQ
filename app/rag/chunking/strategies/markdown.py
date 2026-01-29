@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from langchain_core.documents import Document
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter as LCMarkdownHeaderTextSplitter,
+)
+from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 

@@ -29,14 +29,15 @@ if __package__ in {None, ""}:
             )
         )
     )
+    from app.deepdoc.vision import OCR, LayoutRecognizer, TableStructureRecognizer, init_in_out
     from app.deepdoc.vision.seeit import draw_box
-    from app.deepdoc.vision import LayoutRecognizer, TableStructureRecognizer, OCR, init_in_out
 else:
+    from . import OCR, LayoutRecognizer, TableStructureRecognizer, init_in_out
     from .seeit import draw_box
-    from . import LayoutRecognizer, TableStructureRecognizer, OCR, init_in_out
 
 import argparse
 import re
+
 import numpy as np
 
 

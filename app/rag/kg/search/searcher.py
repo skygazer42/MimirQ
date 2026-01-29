@@ -6,9 +6,9 @@ import time
 from typing import Any, Dict
 
 from app.core.config import settings
-from app.rag.kg.search.config import SearchConfig, ReturnType
-from app.rag.kg.search.recall import RecallSearcher
+from app.rag.kg.search.config import ReturnType, SearchConfig
 from app.rag.kg.search.expand import ExpandSearcher
+from app.rag.kg.search.recall import RecallSearcher
 from app.rag.reranker.kg import get_kg_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.services.metrics_logger import log_metrics

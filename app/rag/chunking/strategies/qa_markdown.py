@@ -12,15 +12,14 @@ The chunker keeps each Q/A pair together and uses pair-level overlap.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any, List, Optional
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
 
 _Q_PREFIX = r"(?:Q(?:uestion)?|问(?:题)?|问题)"
 _A_PREFIX = r"(?:A(?:nswer)?|答(?:案)?|答案)"

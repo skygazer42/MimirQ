@@ -13,9 +13,9 @@ Design notes:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
 import uuid
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -23,7 +23,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk, DocumentParsedContent
+from app.rag.retriever import hybrid_retriever
 from app.services.indexer import Indexer
 from app.storage.vector.factory import get_vector_store
 
@@ -118,9 +120,9 @@ def generate_qa_pairs_with_llm(text: str, *, num_pairs: int) -> List[QAPair]:
     if not _llm_enabled():
         raise RuntimeError("LLM is not configured")
 
-    from langchain_openai import ChatOpenAI  # noqa: WPS433
-    from langchain_core.prompts import PromptTemplate  # noqa: WPS433
     from langchain_core.output_parsers import JsonOutputParser  # noqa: WPS433
+    from langchain_core.prompts import PromptTemplate  # noqa: WPS433
+    from langchain_openai import ChatOpenAI  # noqa: WPS433
 
     prompt_text = """You are an expert knowledge base curator.
 
@@ -265,10 +267,6 @@ def generate_and_index_document_qa(
 
         if qa_ids:
             vector_store = get_vector_store()
-            try:
-                from app.rag.retriever import hybrid_retriever  # noqa: WPS433
-            except Exception:
-                hybrid_retriever = None  # type: ignore[assignment]
 
             for cid in qa_ids:
                 try:
@@ -283,14 +281,13 @@ def generate_and_index_document_qa(
                 except Exception:
                     pass
 
-                if hybrid_retriever is not None:
-                    try:
-                        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
-                            tenant_id=tenant_id,
-                            metadata_filter={"chunk_id": {"$eq": str(cid)}},
-                        )
-                    except Exception:
-                        pass
+                try:
+                    hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+                        tenant_id=tenant_id,
+                        metadata_filter={"chunk_id": {"$eq": str(cid)}},
+                    )
+                except Exception:
+                    pass
 
             db.query(DocumentChunk).filter(
                 DocumentChunk.tenant_id == tenant_id,

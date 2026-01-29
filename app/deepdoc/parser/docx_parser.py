@@ -17,8 +17,10 @@
 import re
 from collections import Counter
 from io import BytesIO
+
 import pandas as pd
 from docx import Document
+
 from ..src.model import rag_tokenizer
 
 

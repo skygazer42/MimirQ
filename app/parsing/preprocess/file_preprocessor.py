@@ -13,15 +13,14 @@ Security:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 import hashlib
 import os
 import re
 import unicodedata
 import uuid
-
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 TEXT_LIKE_EXTS = {
     ".txt",

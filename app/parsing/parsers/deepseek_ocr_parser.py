@@ -25,7 +25,6 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
-
 logger = get_logger("parsing.deepseek_ocr")
 
 
@@ -111,15 +110,15 @@ class DeepSeekOCRParser:
         max_images = max(0, max_images)
 
         # Best-effort: Pillow may be unavailable in minimal installs.
-        try:
-            from io import BytesIO
-            from PIL import Image as PILImage  # type: ignore
+        from io import BytesIO
 
-            pillow_ok = True
-        except Exception:
-            BytesIO = None  # type: ignore
-            PILImage = None  # type: ignore
+        try:
+            from PIL import Image as pil_image  # type: ignore
+        except ImportError:
+            pil_image = None  # type: ignore[assignment]
             pillow_ok = False
+        else:
+            pillow_ok = True
 
         def normalize_ext(ext: str) -> str:
             e = (ext or "").strip().lower()
@@ -177,7 +176,7 @@ class DeepSeekOCRParser:
                 # Best-effort: also create a JPEG variant for non-JPEG formats.
                 if pillow_ok and ext not in {"jpg", "jpeg"}:
                     try:
-                        img_obj = PILImage.open(BytesIO(raw))  # type: ignore[arg-type]
+                        img_obj = pil_image.open(BytesIO(raw))  # type: ignore[arg-type]
                         try:
                             if getattr(img_obj, "mode", None) != "RGB":
                                 img_obj = img_obj.convert("RGB")

@@ -14,19 +14,19 @@
 #  limitations under the License.
 #
 
+import copy
 import logging
 import random
+import re
 from collections import Counter
 
-from app.rag.chunking.ragflow.common.token_utils import num_tokens_from_string
-import re
-import copy
+import chardet
 import roman_numbers as r
-from word2number import w2n
 from cn2an import cn2an
 from PIL import Image
+from word2number import w2n
 
-import chardet
+from app.third_party.ragflow.common.token_utils import num_tokens_from_string
 
 __all__ = ['rag_tokenizer']
 
@@ -307,7 +307,7 @@ def tokenize_chunks(chunks, doc, eng, pdf_parser=None, child_delimiters_pattern=
 def tokenize_chunks_with_images(chunks, doc, eng, images, child_delimiters_pattern=None):
     res = []
     # wrap up as es documents
-    for ii, (ck, image) in enumerate(zip(chunks, images)):
+    for ii, (ck, image) in enumerate(zip(chunks, images, strict=False)):
         if len(ck.strip()) == 0:
             continue
         logging.debug("-- {}".format(ck))
@@ -883,7 +883,7 @@ def naive_merge_with_images(texts, images, chunk_token_num=128, delimiter="\n。
     if has_custom:
         custom_pattern = "|".join(re.escape(t) for t in sorted(set(custom_delimiters), key=len, reverse=True))
         cks, result_images, tk_nums = [], [], []
-        for text, image in zip(texts, images):
+        for text, image in zip(texts, images, strict=False):
             text_str = text[0] if isinstance(text, tuple) else text
             text_pos = text[1] if isinstance(text, tuple) and len(text) > 1 else ""
             split_sec = re.split(r"(%s)" % custom_pattern, text_str)
@@ -901,7 +901,7 @@ def naive_merge_with_images(texts, images, chunk_token_num=128, delimiter="\n。
                 tk_nums.append(num_tokens_from_string(text_seg))
         return cks, result_images
 
-    for text, image in zip(texts, images):
+    for text, image in zip(texts, images, strict=False):
         # if text is tuple, unpack it
         if isinstance(text, tuple):
             text_str = text[0]

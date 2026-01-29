@@ -1,6 +1,6 @@
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Callable, Iterable, Optional, Sequence
 
 from app.rag.preprocessing.normalization import normalize_text

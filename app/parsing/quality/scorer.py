@@ -9,16 +9,14 @@ Scoring dimensions (sample first 3 pages):
 Final score 0-1; higher is cleaner. Low scores prefer OCR/structured flow.
 """
 
+import re
 from pathlib import Path
 from typing import Dict, List, Tuple
-
-import re
 
 import pdfplumber  # type: ignore
 
 from app.parsing.quality.ocr_validator import rapid_ocr_service
 from app.rag.core.logging import get_logger
-
 
 logger = get_logger("parsing.quality.scorer")
 

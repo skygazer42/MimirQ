@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+
 def _default_tenant_uuid() -> str:
     """
     Resolve default tenant UUID for backfilling legacy rows.

@@ -10,7 +10,7 @@ Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.rag.workflows.base import (
     BaseWorkflow,
@@ -172,7 +172,7 @@ class ParallelWorkflow(BaseWorkflow):
                     return_exceptions=True,
                 )
 
-                for task, result in zip(self._tasks, task_results):
+                for task, result in zip(self._tasks, task_results, strict=False):
                     if isinstance(result, Exception):
                         errors.append(f"{task.name}: {str(result)}")
                         logger.error("Task %s failed: %s", task.name, result)

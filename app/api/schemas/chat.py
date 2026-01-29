@@ -1,14 +1,17 @@
 """
 Chat-related Pydantic schemas.
 """
-from pydantic import BaseModel, Field, ConfigDict, field_validator
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 from uuid import UUID
-from app.rag.core.text import normalize_retrieval_mode
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.core.config import settings
+from app.rag.core.text import normalize_retrieval_mode
 
 from .base import OrmModel
+
 
 class Citation(BaseModel):
     """Citation information."""

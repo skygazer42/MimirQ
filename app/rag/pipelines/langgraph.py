@@ -8,42 +8,42 @@ Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decor
 """
 
 
-from dataclasses import dataclass
+import concurrent.futures
+import json
 import logging
+import time
+from dataclasses import dataclass
+from functools import partial
 from typing import Any, Dict, List, Optional, TypedDict
 from uuid import UUID, uuid4
 
-import json
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-import concurrent.futures
-from functools import partial
-import time
-
-from app.rag.core.citations import build_citations_from_docs
-from app.rag.core.conversation import format_history_text
-from app.rag.core.text import (
-    parse_json_from_text,
-    extract_evidence_text,
-    guess_retrieval_mode,
-    normalize_retrieval_mode,
-    should_rewrite_query,
-)
-from app.rag.retriever import hybrid_retriever
-from app.rag.engine import get_rag_engine
-from app.rag.checkpointer.factory import get_checkpointer
-from app.rag.store.factory import get_langgraph_store
-from app.core.config import settings
-from app.core.token_utils import num_tokens_from_string, truncate
-from app.services.prompt_resolver import resolve_prompt_template
+from langgraph.config import get_stream_writer
 
 # LangGraph 1.0+ Functional API imports
 from langgraph.func import entrypoint, task
-from langgraph.config import get_stream_writer
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.runtime import Runtime
-from langgraph.types import RetryPolicy, CachePolicy
+from langgraph.types import CachePolicy, RetryPolicy
+
+from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string, truncate
+from app.rag.checkpointer.factory import get_checkpointer
+from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.conversation import format_history_text
+from app.rag.core.text import (
+    extract_evidence_text,
+    guess_retrieval_mode,
+    normalize_retrieval_mode,
+    parse_json_from_text,
+    should_rewrite_query,
+)
+from app.rag.engine import get_rag_engine
+from app.rag.retriever import hybrid_retriever
+from app.rag.store.factory import get_langgraph_store
+from app.services.prompt_resolver import resolve_prompt_template
 
 logger = logging.getLogger(__name__)
 
@@ -759,7 +759,8 @@ def _generate_node(state: RAGState) -> RAGState:
     pii_on = False
     redact_text = None  # type: ignore[assignment]
     try:
-        from app.rag.middleware.pii import pii_enabled, redact_text as _redact_text
+        from app.rag.middleware.pii import pii_enabled
+        from app.rag.middleware.pii import redact_text as _redact_text
 
         pii_on = bool(pii_enabled())
         redact_text = _redact_text

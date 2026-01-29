@@ -17,8 +17,7 @@ import re
 import socket
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urljoin
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import aiofiles
 import httpx
@@ -26,7 +25,6 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
-
 
 _BLOCKED_HOSTS = {
     "localhost",
@@ -159,9 +157,9 @@ async def validate_url_for_ingest(url: str) -> str:
     if allowed_ports_raw.strip():
         try:
             allowed_ports = _parse_allowed_ports(allowed_ports_raw)
-        except ValueError:
+        except ValueError as exc:
             # Misconfiguration should fail closed (server-side error).
-            raise HTTPException(status_code=500, detail="url ingest port allowlist misconfigured")
+            raise HTTPException(status_code=500, detail="url ingest port allowlist misconfigured") from exc
         if port not in allowed_ports:
             raise HTTPException(status_code=400, detail="url port is not allowed")
 
@@ -189,8 +187,8 @@ async def validate_url_for_ingest(url: str) -> str:
 
     try:
         ips = await asyncio.to_thread(_resolve)
-    except Exception:
-        raise HTTPException(status_code=400, detail="failed to resolve url host")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="failed to resolve url host") from exc
 
     if not ips:
         raise HTTPException(status_code=400, detail="failed to resolve url host")
@@ -198,8 +196,8 @@ async def validate_url_for_ingest(url: str) -> str:
     for ip_str in ips:
         try:
             ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="failed to resolve url host")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="failed to resolve url host") from exc
         if not _is_allowed_ip(ip, allow_private=allow_private):
             raise HTTPException(status_code=400, detail="url host is not allowed")
 

@@ -8,14 +8,14 @@ Provides factory functions and configuration-based workflow selection.
 import logging
 from typing import Any, Dict, Optional
 
+from app.core.config import settings
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode
 from app.rag.workflows.chain import ChainWorkflow
-from app.rag.workflows.routing import RoutingWorkflow
-from app.rag.workflows.parallelization import ParallelWorkflow
-from app.rag.workflows.react import ReActWorkflow
-from app.rag.workflows.planner_worker import PlannerWorkerWorkflow
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
-from app.core.config import settings
+from app.rag.workflows.parallelization import ParallelWorkflow
+from app.rag.workflows.planner_worker import PlannerWorkerWorkflow
+from app.rag.workflows.react import ReActWorkflow
+from app.rag.workflows.routing import RoutingWorkflow
 
 logger = logging.getLogger(__name__)
 
@@ -212,8 +212,9 @@ def create_multi_query_workflow(
     Returns:
         Configured ParallelWorkflow
     """
-    from app.rag.workflows.parallelization import create_multi_query_aggregator
     import asyncio
+
+    from app.rag.workflows.parallelization import create_multi_query_aggregator
 
     async def create_query_task(query_id: int):
         async def task(state: Dict[str, Any]) -> Dict[str, Any]:

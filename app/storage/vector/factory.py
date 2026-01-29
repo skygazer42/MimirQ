@@ -3,18 +3,17 @@ Vector store router: supports multiple backends.
 Milvus is implemented today; other backends are placeholders for extension.
 Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 """
-from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
-from uuid import UUID
 import logging
 import math
 import os
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from uuid import UUID
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
-from app.storage.vector.milvus import milvus_store
-from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.core.filters import match_metadata_filter
-
+from app.rag.embedding import create_langchain_embeddings_from_config
+from app.storage.vector.milvus import milvus_store
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +189,7 @@ class MemoryVectorStore(BaseVectorStore):
     def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
         texts = [d.get("content", "") for d in docs]
         vectors = self.emb.embed_documents(texts)
-        for vec, doc in zip(vectors, docs):
+        for vec, doc in zip(vectors, docs, strict=False):
             meta = dict(doc.get("metadata") or {})
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
@@ -222,7 +221,7 @@ class MemoryVectorStore(BaseVectorStore):
         allowed_tenant = str(tenant_id) if tenant_id else None
 
         def cosine(a: List[float], b: List[float]) -> float:
-            num = sum(x * y for x, y in zip(a, b))
+            num = sum(x * y for x, y in zip(a, b, strict=False))
             denom = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
             return num / denom if denom else 0.0
 

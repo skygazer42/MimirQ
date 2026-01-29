@@ -11,8 +11,8 @@ It is code-fence aware (caller can safely apply to Markdown-like text).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,7 @@ def normalize_markdown_tables(text: str) -> TableNormalizeResult:
             max_cols = max(max_cols, len(cells))
 
         # Normalize rows.
-        for (prefix, cells, is_sep), raw in zip(parsed_rows, block_lines):
+        for (prefix, cells, is_sep), raw in zip(parsed_rows, block_lines, strict=False):
             padded = list(cells) + [""] * max(0, max_cols - len(cells))
             padded = padded[:max_cols] if max_cols > 0 else padded
             if is_sep:

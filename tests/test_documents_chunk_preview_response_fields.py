@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -41,10 +41,10 @@ def _build_client(  # noqa: ANN001
     duplicate_page_content: bool = False,
     start_char_overrides: list[int] | None = None,
 ):
-    from app.api.v1.documents import preview_chunking, preview_chunking_by_sha
-    from app.services.dataset_service import DatasetService
     import app.api.v1.documents as documents_module
+    from app.api.v1.documents import preview_chunking, preview_chunking_by_sha
     from app.rag.chunking.factory import chunker_factory
+    from app.services.dataset_service import DatasetService
 
     monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: None, raising=True)
     monkeypatch.setattr(chunker_factory, "resolve_strategy", lambda s: s, raising=True)
@@ -172,8 +172,9 @@ def test_documents_chunk_preview_separator_ignores_overlap(monkeypatch):  # noqa
 
 def test_documents_chunk_preview_review_signals_optional(monkeypatch):  # noqa: ANN001
     """include_review_signals should gate extra per-chunk signal fields."""
-    from app.rag.chunking.factory import chunker_factory
     from langchain_core.documents import Document
+
+    from app.rag.chunking.factory import chunker_factory
 
     client = _build_client(monkeypatch)
 
@@ -214,8 +215,9 @@ def test_documents_chunk_preview_review_signals_optional(monkeypatch):  # noqa: 
 
 
 def test_documents_chunk_preview_review_signals_parent_child_basis(monkeypatch):  # noqa: ANN001
-    from app.rag.chunking.factory import chunker_factory
     from langchain_core.documents import Document
+
+    from app.rag.chunking.factory import chunker_factory
 
     client = _build_client(monkeypatch)
 

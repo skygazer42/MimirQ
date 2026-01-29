@@ -28,42 +28,50 @@ warnings.filterwarnings(
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 
-from app.core.config import settings
-from app.core.env import is_production_env
-from app.core.logging_config import configure_logging
-from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
-from app.core.sentry import init_sentry
-from app.core.database import Base, SessionLocal, engine
-from app.core.exceptions import register_exception_handlers
-from app.core.migrations import apply_runtime_migrations
-from app.core.health_checks import check_database, check_minio, check_redis, check_vector
-from app.core.utils import parse_csv
-from app.api.v1 import router as api_v1_router
-from app.models.document import DocumentChunk, Document as DBDocument
-from app.core.http_client import close_http_client_pool
-from app.tasks.queue import init_queue, close_queue, is_queue_initialized
-from app.api.middleware.request_id import RequestIDMiddleware
-from app.api.middleware.process_time import ProcessTimeMiddleware
-# Ensure KG models are registered for metadata creation
-import app.rag.kg.models  # noqa: F401
-# Ensure evaluation models are registered for metadata creation
-import app.models.evaluation  # noqa: F401
-# Ensure feedback models are registered for metadata creation
-import app.models.feedback  # noqa: F401
-# Ensure user models are registered for metadata creation
-import app.models.user  # noqa: F401
-# Ensure connector models are registered for metadata creation
-import app.models.connector  # noqa: F401
 # Ensure audit log models are registered for metadata creation
 import app.models.audit_log  # noqa: F401
+
+# Ensure connector models are registered for metadata creation
+import app.models.connector  # noqa: F401
+
 # Ensure conversation summary models are registered for metadata creation
 import app.models.conversation_summary  # noqa: F401
+
+# Ensure evaluation models are registered for metadata creation
+import app.models.evaluation  # noqa: F401
+
+# Ensure feedback models are registered for metadata creation
+import app.models.feedback  # noqa: F401
+
+# Ensure user models are registered for metadata creation
+import app.models.user  # noqa: F401
+
+# Ensure KG models are registered for metadata creation
+import app.rag.kg.models  # noqa: F401
+from app.api.middleware.process_time import ProcessTimeMiddleware
+from app.api.middleware.request_id import RequestIDMiddleware
+from app.api.v1 import router as api_v1_router
+from app.core.config import settings
+from app.core.database import Base, SessionLocal, engine
+from app.core.env import is_production_env
+from app.core.exceptions import register_exception_handlers
+from app.core.health_checks import check_database, check_minio, check_redis, check_vector
+from app.core.http_client import close_http_client_pool
+from app.core.logging_config import configure_logging
+from app.core.migrations import apply_runtime_migrations
+from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
+from app.core.sentry import init_sentry
+from app.core.utils import parse_csv
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
+from app.tasks.queue import close_queue, init_queue, is_queue_initialized
 
 logger = logging.getLogger("mimirq")
 _OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
@@ -342,8 +350,8 @@ if bool(getattr(settings, "GZIP_ENABLED", True)):
 
 # Prometheus metrics (optional).
 if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
-    from app.core.metrics import PrometheusMiddleware
     from app.api.v1.metrics import router as metrics_router
+    from app.core.metrics import PrometheusMiddleware
 
     app.include_router(metrics_router, tags=["Metrics"])
     app.add_middleware(

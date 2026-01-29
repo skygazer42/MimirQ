@@ -5,10 +5,10 @@ from typing import Any, Dict, List
 
 from app.core.config import settings
 from app.models.document import DocumentChunk
-from app.rag.llm.base import BaseLLMClient
-from app.rag.llm.models import LLMMessage, LLMRole
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.utils import get_logger
+from app.rag.llm.base import BaseLLMClient
+from app.rag.llm.models import LLMMessage, LLMRole
 
 logger = get_logger("kg.extract.processor")
 

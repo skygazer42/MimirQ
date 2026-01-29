@@ -22,8 +22,8 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
-from .base_parser import BaseAdvancedParser
 
+from .base_parser import BaseAdvancedParser
 
 # Configuration
 DOCLING_ENABLED = getattr(settings, "DOCLING_ENABLED", False)

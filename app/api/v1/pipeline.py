@@ -4,93 +4,92 @@ Lightweight parsing and hierarchical chunk preview APIs:
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
 
-from pathlib import Path
+import json
+import re
 import shutil
 import uuid
 import zipfile
-from uuid import UUID
 from difflib import SequenceMatcher, unified_diff
-import json
-import re
+from pathlib import Path
+from uuid import UUID
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.schemas.governance_profile import (
+    GovernanceProfileCreate,
+    GovernanceProfileImportResponse,
+    GovernanceProfileListResponse,
+    GovernanceProfileOut,
+    GovernanceProfilePayload,
+    GovernanceProfileSummary,
+    GovernanceProfileUpdate,
+)
 from app.api.schemas.pipeline import (
-    ParsePreviewResponse,
-    IngestionPreviewResponse,
     ChunkPreviewRequest,
     ChunkPreviewResponse,
+    ChunkStrategyInfo,
     CleanPreviewRequest,
     CleanPreviewResponse,
     CleanRulesResponse,
     GovernanceAnalyzeRequest,
     GovernanceAnalyzeResponse,
     GovernanceIssue,
-    RegexRuleModel,
+    IngestionPreviewResponse,
     KeywordExtractRequest,
     KeywordExtractResponse,
     LLMCleanPreviewRequest,
     LLMCleanPreviewResponse,
-    PipelineCapabilitiesResponse,
+    ParsePreviewResponse,
     ParserBackendInfo,
-    ChunkStrategyInfo,
+    PipelineCapabilitiesResponse,
+    RegexRuleModel,
     ZipWithImagesResponse,
 )
-from app.api.schemas.governance_profile import (
-    GovernanceProfileCreate,
-    GovernanceProfileImportResponse,
-    GovernanceProfileListResponse,
-    GovernanceProfileOut,
-    GovernanceProfileSummary,
-    GovernanceProfileUpdate,
-    GovernanceProfilePayload,
-)
+from app.api.utils.upload import save_upload_file
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
+from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
-from app.rag.chunking import hierarchical_chunk_markdown
-from app.rag.chunking import chunker_factory
-from app.parsing.utils.zip_processor import zip_image_processor
 from app.parsing.utils.cli import resolve_cli_command
-from app.api.dependencies.auth import get_current_account_id
-from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
-from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
-from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
-from app.rag.preprocessing.images import strip_images
-from app.rag.preprocessing.pii_anonymizer import anonymize_pii
-from app.rag.preprocessing.secrets import redact_secrets
-from app.rag.preprocessing.tables import normalize_markdown_tables
-from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
-from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter, extract_markdown_title
-from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_preview
-from app.rag.preprocessing.language import detect_language
-from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs
-from app.rag.preprocessing.references import trim_references_section
-from app.rag.preprocessing.urls import normalize_urls
-from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
-from app.rag.preprocessing.diagnostics import analyze_governance
-from app.rag.preprocessing.html_xpath import extract_text_from_html
-from app.services.dataset_service import DatasetService
-from app.services.prompt_resolver import resolve_prompt_template
+from app.parsing.utils.zip_processor import zip_image_processor
+from app.rag.chunking import chunker_factory, hierarchical_chunk_markdown
 from app.rag.core.errors import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
-from app.api.utils.upload import save_upload_file
-from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
-from app.parsing.preprocess.file_preprocessor import preprocess_file
-from app.services.ingestion_policy import match_ingestion_rule, parse_ingestion_policy_from_metadata
-from app.services.pipeline_config import resolve_pipeline_effective
-from app.types.pipeline import PipelineOptions
+from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
+from app.rag.preprocessing.cleaning import RegexRule, build_repeated_line_signatures, clean_markdown
+from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
+from app.rag.preprocessing.diagnostics import analyze_governance
+from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter, extract_markdown_title
+from app.rag.preprocessing.html_xpath import extract_text_from_html
+from app.rag.preprocessing.images import strip_images
+from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_preview
+from app.rag.preprocessing.language import detect_language
+from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs
+from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
+from app.rag.preprocessing.references import trim_references_section
+from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
+from app.rag.preprocessing.secrets import redact_secrets
+from app.rag.preprocessing.tables import normalize_markdown_tables
+from app.rag.preprocessing.urls import normalize_urls
+from app.services.dataset_service import DatasetService
 from app.services.governance_profiles import (
     builtin_profile_to_out,
     get_builtin_governance_profiles,
     validate_and_normalize_payload,
     validate_profile_key,
 )
+from app.services.ingestion_policy import match_ingestion_rule, parse_ingestion_policy_from_metadata
+from app.services.pipeline_config import resolve_pipeline_effective
+from app.services.prompt_resolver import resolve_prompt_template
+from app.types.pipeline import PipelineOptions
 
 router = APIRouter()
 
@@ -756,8 +755,8 @@ async def import_governance_profiles(
 
     try:
         data = json.loads(raw.decode("utf-8"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON file")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON file") from exc
 
     if isinstance(data, dict) and isinstance(data.get("profiles"), list):
         raw_profiles = data.get("profiles") or []
@@ -911,12 +910,12 @@ async def parse_preview(
         )
         return result
     except SubprocessCancelled:
-        raise HTTPException(status_code=499, detail="Client closed request")
+        raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
         err_type = (e.details or {}).get("type")
         if err_type == "ValueError":
-            raise HTTPException(status_code=400, detail=str(e))
-        raise HTTPException(status_code=500, detail="Failed to parse preview")
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to parse preview") from e
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -1106,12 +1105,12 @@ async def ingestion_preview(
             "clean": cleaned,
         }
     except SubprocessCancelled:
-        raise HTTPException(status_code=499, detail="Client closed request")
+        raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
         err_type = (e.details or {}).get("type")
         if err_type == "ValueError":
-            raise HTTPException(status_code=400, detail=str(e))
-        raise HTTPException(status_code=500, detail="Failed to parse preview")
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to parse preview") from e
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -1575,6 +1574,8 @@ async def extract_keywords(
     from app.rag.preprocessing.keyword import (
         KeywordProviderUnavailable,
         UnsupportedKeywordProvider,
+    )
+    from app.rag.preprocessing.keyword import (
         extract_keywords as extract_keywords_fn,
     )
 
@@ -1756,8 +1757,8 @@ async def upload_zip_with_images(
 
     try:
         dataset_uuid = UUID(str(dataset_id))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid dataset_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid dataset_id") from exc
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
     
@@ -1794,12 +1795,12 @@ async def upload_zip_with_images(
         raise HTTPException(
             status_code=400,
             detail=f"Invalid ZIP format/content: {str(e)}",
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"ZIP processing failed: {str(e)}"
-        )
+        ) from e
     finally:
         # Clean up temporary files.
         try:

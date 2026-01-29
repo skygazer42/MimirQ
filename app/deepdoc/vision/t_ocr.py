@@ -28,13 +28,14 @@ if __package__ in {None, ""}:
             )
         )
     )
-    from app.deepdoc.vision.seeit import draw_box
     from app.deepdoc.vision import OCR, init_in_out
+    from app.deepdoc.vision.seeit import draw_box
 else:
-    from .seeit import draw_box
     from . import OCR, init_in_out
+    from .seeit import draw_box
 
 import argparse
+
 import numpy as np
 import trio
 

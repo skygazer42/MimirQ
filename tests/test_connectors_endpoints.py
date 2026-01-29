@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -16,11 +16,11 @@ class _DummyDB:
     def add(self, obj) -> None:  # noqa: ANN001
         # Mimic a few DB-side defaults for unit tests.
         if getattr(obj, "id", None) is None:
-            setattr(obj, "id", uuid.uuid4())
+            obj.id = uuid.uuid4()
         if getattr(obj, "created_at", None) is None:
-            setattr(obj, "created_at", datetime.now(timezone.utc))
+            obj.created_at = datetime.now(timezone.utc)
         if getattr(obj, "documents", None) is None:
-            setattr(obj, "documents", [])
+            obj.documents = []
 
     def commit(self) -> None:
         return None
@@ -81,8 +81,8 @@ def test_connectors_create_run_requires_url_ingest_enabled(monkeypatch):  # noqa
 
 
 def test_connectors_create_run_happy_path(monkeypatch):  # noqa: ANN001
-    from app.api.v1.connectors import create_connector_run
     import app.api.v1.connectors as connectors_module
+    from app.api.v1.connectors import create_connector_run
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
@@ -132,8 +132,8 @@ def test_connectors_create_run_happy_path(monkeypatch):  # noqa: ANN001
 
 
 def test_connectors_create_web_crawl_run_redacts_auth(monkeypatch):  # noqa: ANN001
-    from app.api.v1.connectors import create_connector_run
     import app.api.v1.connectors as connectors_module
+    from app.api.v1.connectors import create_connector_run
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)

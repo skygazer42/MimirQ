@@ -8,7 +8,6 @@ This module provides functions to:
 """
 import asyncio
 
-from app.rag.embedding.utils import logger
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.config import (
     DEFAULT_EMBED_MODELS,
@@ -16,11 +15,12 @@ from app.rag.embedding.config import (
     get_supported_model_ids,
 )
 from app.rag.embedding.providers import (
+    DashScopeEmbedding,
     OllamaEmbedding,
     OpenAICompatibleEmbedding,
     SentenceTransformerEmbedding,
-    DashScopeEmbedding,
 )
+from app.rag.embedding.utils import logger
 
 
 def select_embedding_model(model_id: str) -> BaseEmbeddingModel:

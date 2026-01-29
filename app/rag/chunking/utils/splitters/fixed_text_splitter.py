@@ -5,7 +5,7 @@ Integrated from third_party/dify/splitter/fixed_text_splitter.py
 
 import re
 from collections.abc import Collection, Set
-from typing import Any, Callable, Literal, Union, TypeVar
+from typing import Any, Callable, Literal, TypeVar, Union
 
 from app.rag.chunking.utils.splitters.text_splitter import RecursiveCharacterTextSplitter
 
@@ -84,7 +84,7 @@ class FixedRecursiveCharacterTextSplitter(EnhanceRecursiveCharacterTextSplitter)
 
         final_chunks = []
         chunks_lengths = self._length_function(chunks)
-        for chunk, chunk_length in zip(chunks, chunks_lengths):
+        for chunk, chunk_length in zip(chunks, chunks_lengths, strict=False):
             if chunk_length > self._chunk_size:
                 final_chunks.extend(self.recursive_split_text(chunk))
             else:
@@ -128,7 +128,7 @@ class FixedRecursiveCharacterTextSplitter(EnhanceRecursiveCharacterTextSplitter)
         s_lens = self._length_function(splits)
 
         if separator != "":
-            for s, s_len in zip(splits, s_lens):
+            for s, s_len in zip(splits, s_lens, strict=False):
                 if s_len < self._chunk_size:
                     _good_splits.append(s)
                     _good_splits_lengths.append(s_len)
@@ -153,7 +153,7 @@ class FixedRecursiveCharacterTextSplitter(EnhanceRecursiveCharacterTextSplitter)
             current_length = 0
             overlap_part = ""
             overlap_part_length = 0
-            for s, s_len in zip(splits, s_lens):
+            for s, s_len in zip(splits, s_lens, strict=False):
                 if current_length + s_len <= self._chunk_size - self._chunk_overlap:
                     current_part += s
                     current_length += s_len

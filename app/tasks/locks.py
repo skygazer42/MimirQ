@@ -3,18 +3,20 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 
 logger = get_logger("tasks.locks")
 
 
 def get_retry_exc():  # noqa: ANN201
-    try:
-        from arq import Retry  # type: ignore
-
-        return Retry
-    except Exception:  # noqa: BLE001
-        return None
+    # When task queue is enabled, Retry must exist; failing silently would bypass concurrency limits.
+    mod = require_dependency("arq", feature="task_queue_retry")
+    retry_cls = getattr(mod, "Retry", None)
+    if retry_cls is None:
+        # If arq is installed but doesn't expose Retry, it's likely a version mismatch.
+        raise RuntimeError("arq is installed but Retry is missing (version mismatch?)")
+    return retry_cls
 
 
 async def tenant_acquire(  # noqa: ANN201
@@ -41,9 +43,9 @@ async def tenant_acquire(  # noqa: ANN201
         await redis.expire(key, ttl_sec)
         if int(val) > int(limit):
             await redis.decr(key)
-            Retry = get_retry_exc()
-            if Retry:
-                raise Retry(defer=int(retry_defer_sec))
+            retry_cls = get_retry_exc()
+            if retry_cls:
+                raise retry_cls(defer=int(retry_defer_sec))
             return None
         return key
     except Exception as exc:  # noqa: BLE001
@@ -99,4 +101,3 @@ async def release_lock(redis: Any, *, key: str, value: str) -> None:
 
 def make_lock_value(requested_by: str) -> str:
     return f"{requested_by}:{int(time.time())}"
-

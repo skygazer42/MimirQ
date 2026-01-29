@@ -8,9 +8,11 @@ across prompts/models/retrieval strategies, and persist results for iteration.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from .base import OrmModel
+
 
 class RagasRegressionCaseCreateRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Question (user_input for regression case)")

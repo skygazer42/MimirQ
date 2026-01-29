@@ -1,5 +1,6 @@
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from app.core.config import settings
 from app.parsing.subprocess_runner import SubprocessWorkerError, run_subprocess_worker

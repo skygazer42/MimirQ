@@ -7,10 +7,9 @@ YAML dependencies. Parsing is intentionally limited and safe.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any
-
 
 _FRONTMATTER_START_RE = re.compile(r"^\ufeff?---\s*$")
 _FRONTMATTER_END_RE = re.compile(r"^(---|\.\.\.)\s*$")

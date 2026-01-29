@@ -22,8 +22,8 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.parsing.factory import parser_factory
-from app.parsing.routing import route_pdf_backend
 from app.parsing.processors.parser_service import document_parser_service
+from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger, setup_logging
 
 logger = get_logger("parsing.subprocess_worker")
@@ -80,12 +80,12 @@ def _materialize_images_for_ingest(
         images_dir = artifact_root / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
 
+    from io import BytesIO
+
     try:
-        from io import BytesIO
-        from PIL import Image as PILImage  # type: ignore
-    except Exception:
-        BytesIO = None  # type: ignore
-        PILImage = None  # type: ignore
+        from PIL import Image as pil_image  # type: ignore
+    except ImportError:
+        pil_image = None  # type: ignore[assignment]
 
     for doc in documents:
         meta = dict(getattr(doc, "metadata", None) or {})
@@ -110,12 +110,12 @@ def _materialize_images_for_ingest(
         meta.pop("image", None)
         doc.metadata = meta
 
-        if PILImage is None:
+        if pil_image is None:
             continue
 
         try:
             if isinstance(raw, (bytes, bytearray)):
-                img = PILImage.open(BytesIO(bytes(raw)))  # type: ignore[arg-type]
+                img = pil_image.open(BytesIO(bytes(raw)))  # type: ignore[arg-type]
             else:
                 img = raw
             try:

@@ -1,8 +1,9 @@
 import os
-import uvicorn
 import warnings
 from pathlib import Path
 from typing import Any
+
+import uvicorn
 
 
 def _is_truthy(value: Any, *, default: bool = False) -> bool:

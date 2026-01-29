@@ -9,7 +9,7 @@ Pattern: Classify -> Route -> Handler -> Result
 
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.rag.workflows.base import (
     BaseWorkflow,

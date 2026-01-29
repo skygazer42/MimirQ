@@ -11,9 +11,12 @@ extend-exclude = [
 ]
 
 [lint]
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "I", "B009", "B010", "B011", "B905", "N"]
+ignore = ["N813"]
 fixable = ["ALL"]
 
 [lint.per-file-ignores]
 "app/main.py" = ["E402"]
 "app/deepdoc/parser/pdf_parser.py" = ["E402"]
+"app/deepdoc/**" = ["B", "N"]
+"app/third_party/**" = ["B", "N"]

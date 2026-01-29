@@ -22,7 +22,6 @@ from app.core.config import settings
 from app.parsing.utils.cli import resolve_cli_command
 from app.rag.core.logging import get_logger
 
-
 logger = get_logger("parsing.magicpdf")
 
 

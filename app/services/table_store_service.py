@@ -9,15 +9,15 @@ This module intentionally keeps execution *declarative* and safe:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Optional
-from uuid import UUID
 import datetime as dt
 import json
 import re
 import sqlite3
 import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+from uuid import UUID
 
 import pandas as pd  # type: ignore
 
@@ -28,7 +28,6 @@ from app.services.table_store import (
     sql_table_name_for_sheet,
     table_store_path,
 )
-
 
 _SQL_SELECT_PREFIX_RE = re.compile(r"^\s*(with\b|select\b)", re.IGNORECASE)
 

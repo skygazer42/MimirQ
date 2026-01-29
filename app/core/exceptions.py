@@ -4,6 +4,7 @@ MimirQ API unified exception handling module
 import logging
 import traceback
 from typing import Any, Dict, Optional
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -34,7 +35,7 @@ class ErrorResponse(BaseModel):
     request_id: Optional[str] = None
 
 
-class MimirQException(Exception):
+class MimirQError(Exception):
     """Base exception for MimirQ application."""
 
     def __init__(
@@ -59,7 +60,10 @@ class MimirQException(Exception):
         )
 
 
-class ValidationError(MimirQException):
+MimirQException = MimirQError
+
+
+class ValidationError(MimirQError):
     def __init__(
         self,
         message: str,
@@ -77,7 +81,7 @@ class ValidationError(MimirQException):
         )
 
 
-class NotFoundError(MimirQException):
+class NotFoundError(MimirQError):
     def __init__(self, resource: str, identifier: Optional[str] = None):
         detail: Dict[str, Any] = {"resource": resource}
         if identifier:
@@ -90,7 +94,7 @@ class NotFoundError(MimirQException):
         )
 
 
-class AuthenticationError(MimirQException):
+class AuthenticationError(MimirQError):
     def __init__(self, message: str = "Authentication required"):
         super().__init__(
             message=message,
@@ -99,7 +103,7 @@ class AuthenticationError(MimirQException):
         )
 
 
-class AuthorizationError(MimirQException):
+class AuthorizationError(MimirQError):
     def __init__(self, message: str = "Permission denied", resource: Optional[str] = None):
         detail: Dict[str, Any] = {}
         if resource:
@@ -112,7 +116,7 @@ class AuthorizationError(MimirQException):
         )
 
 
-class RateLimitError(MimirQException):
+class RateLimitError(MimirQError):
     def __init__(self, retry_after: float = 60.0):
         super().__init__(
             message="Too many requests. Please try again later.",
@@ -122,7 +126,7 @@ class RateLimitError(MimirQException):
         )
 
 
-class ServiceUnavailableError(MimirQException):
+class ServiceUnavailableError(MimirQError):
     def __init__(self, service: str, message: Optional[str] = None):
         super().__init__(
             message=message or f"Service '{service}' is temporarily unavailable",
@@ -132,7 +136,7 @@ class ServiceUnavailableError(MimirQException):
         )
 
 
-class LLMError(MimirQException):
+class LLMError(MimirQError):
     def __init__(self, message: str, provider: Optional[str] = None):
         detail: Dict[str, Any] = {}
         if provider:
@@ -145,7 +149,7 @@ class LLMError(MimirQException):
         )
 
 
-class DocumentProcessingError(MimirQException):
+class DocumentProcessingError(MimirQError):
     def __init__(
         self,
         message: str,
@@ -165,7 +169,7 @@ class DocumentProcessingError(MimirQException):
         )
 
 
-class RetrievalError(MimirQException):
+class RetrievalError(MimirQError):
     def __init__(self, message: str, backend: Optional[str] = None):
         detail: Dict[str, Any] = {}
         if backend:
@@ -218,7 +222,7 @@ def get_request_id(request: Request) -> Optional[str]:
     return request.headers.get("X-Request-ID") or getattr(request.state, "request_id", None)
 
 
-async def mimirq_exception_handler(request: Request, exc: MimirQException) -> JSONResponse:
+async def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONResponse:
     request_id = get_request_id(request)
     logger.warning(
         "MimirQ exception: %s - %s (request_id=%s)",
@@ -293,7 +297,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    app.add_exception_handler(MimirQException, mimirq_exception_handler)
+    app.add_exception_handler(MimirQError, mimirq_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

@@ -5,13 +5,13 @@ Adapts app.rag.embedding models to LangChain's Embeddings interface
 for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 """
 
-from typing import List, Optional, Tuple
 import hashlib
 import json
+from typing import List, Optional, Tuple
 
+from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
-from app.core.config import settings
 
 _redis_client = None
 
@@ -131,7 +131,7 @@ class LangChainEmbeddingsAdapter:
                 ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
                 try:
                     pipe = client.pipeline(transaction=False)
-                    for (idx, _t), vec in zip(missing, computed):
+                    for (idx, _t), vec in zip(missing, computed, strict=False):
                         out[idx] = vec
                         try:
                             payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
@@ -263,9 +263,9 @@ def create_langchain_embeddings_from_config(
         LangChainEmbeddingsAdapter instance
     """
     from app.rag.embedding.providers import (
-        SentenceTransformerEmbedding,
-        OpenAICompatibleEmbedding,
         DashScopeEmbedding,
+        OpenAICompatibleEmbedding,
+        SentenceTransformerEmbedding,
     )
 
     provider = provider.lower()

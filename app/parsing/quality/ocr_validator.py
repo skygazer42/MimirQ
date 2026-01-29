@@ -14,7 +14,6 @@ from PIL import Image
 
 from app.rag.core.logging import get_logger
 
-
 logger = get_logger("parsing.quality.ocr")
 
 

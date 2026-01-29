@@ -31,8 +31,8 @@ import numpy as np
 import pdfplumber  # Extract PDF page info, text characters, coordinates, TOC, etc.
 import trio  # Async concurrency (multi-page async OCR).
 import xgboost as xgb  # Paragraph merge prediction model.
-from PIL import Image
 from huggingface_hub import snapshot_download
+from PIL import Image
 from pypdf import PdfReader as pdf2_read
 
 from ..src.model import rag_tokenizer
@@ -1019,13 +1019,13 @@ class RAGFlowPdfParser:
         if separate_tables_figures:
             assert len(positions) + len(figure_positions) == len(res) + len(figure_results)
             if need_position:
-                return list(zip(res, positions)), list(zip(figure_results, figure_positions))
+                return list(zip(res, positions, strict=False)), list(zip(figure_results, figure_positions, strict=False))
             else:
                 return res, figure_results
         else:
             assert len(positions) == len(res)
             if need_position:
-                return list(zip(res, positions))
+                return list(zip(res, positions, strict=False))
             else:
                 return res
 

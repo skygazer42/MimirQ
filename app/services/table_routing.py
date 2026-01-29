@@ -18,11 +18,21 @@ The decision is explainable (route + reason + stats) and safe (bounded reads).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Literal
 import csv
 import io
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Literal
+
+from app.core.optional_deps import optional_import
+from app.rag.core.logging import get_logger
+
+logger = get_logger("services.table_routing")
+
+@lru_cache(maxsize=1)
+def _get_openpyxl():  # noqa: ANN201
+    return optional_import("openpyxl", feature="table_routing_xlsx_shape")
 
 
 Route = Literal["rag", "tag"]
@@ -94,14 +104,13 @@ def _estimate_csv_shape(path: Path, *, sample_bytes: int) -> tuple[int, int, boo
     return max(0, int(rows_est)), max(0, int(cols_est)), bool(estimated_rows)
 
 
-def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int, int, bool]:
+def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int, int, bool, str | None]:
     """
-    Returns (max_rows, max_cols, sheet_count, ok).
+    Returns (max_rows, max_cols, sheet_count, ok, degraded_reason).
     """
-    try:
-        import openpyxl  # type: ignore
-    except Exception:
-        return 0, 0, 0, False
+    openpyxl = _get_openpyxl()
+    if openpyxl is None:
+        return 0, 0, 0, False, "dependency_missing:openpyxl (pip install openpyxl)"
 
     wb = None
     try:
@@ -116,9 +125,9 @@ def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int,
             c = int(getattr(ws, "max_column", 0) or 0)
             max_rows = max(max_rows, r)
             max_cols = max(max_cols, c)
-        return int(max_rows), int(max_cols), int(sheet_count), True
+        return int(max_rows), int(max_cols), int(sheet_count), True, None
     except Exception:
-        return 0, 0, 0, False
+        return 0, 0, 0, False, "shape_read_failed"
     finally:
         try:
             if wb is not None:
@@ -185,7 +194,7 @@ def decide_table_route(
 
     # XLSX
     if ext == ".xlsx":
-        max_rows, max_cols, sheet_count, ok = _estimate_xlsx_shape(file_path)
+        max_rows, max_cols, sheet_count, ok, degraded_reason = _estimate_xlsx_shape(file_path)
         stats.update(
             {
                 "rows": int(max_rows),
@@ -197,6 +206,8 @@ def decide_table_route(
                 "shape_ok": bool(ok),
             }
         )
+        if degraded_reason:
+            stats["degraded_reason"] = str(degraded_reason)
         if ok:
             if st > 0 and sheet_count >= st:
                 stats["trigger"] = "sheets"

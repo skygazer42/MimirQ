@@ -7,8 +7,8 @@ and Milvus vector similarity search capabilities.
 from typing import Iterable, List, Optional
 from uuid import UUID
 
-from sqlalchemy.orm import Session
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent

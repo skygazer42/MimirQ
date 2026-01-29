@@ -4,13 +4,13 @@ Pipeline configuration service.
 Provides parsing, building, and resolution for pipeline configuration.
 """
 
+import re
 from dataclasses import asdict
 from typing import Any, Dict, Optional
-import re
 
+from app.core.config import settings
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
-from app.core.config import settings
 
 
 def _coerce_bool(value: Any) -> Optional[bool]:

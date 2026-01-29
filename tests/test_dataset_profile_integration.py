@@ -1,11 +1,12 @@
 import uuid
 
-from app.models.document import Document as DBDocument, DocumentPermission, DocumentParsedContent
+from app.models.dataset import DatasetPermissionEnum
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentParsedContent, DocumentPermission
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.dataset_profile_service import compute_dataset_profile_summary
 from app.services.dataset_service import DatasetService
-from app.models.dataset import DatasetPermissionEnum
 
 
 def test_dataset_profile_acl_filtering(pg_session):
