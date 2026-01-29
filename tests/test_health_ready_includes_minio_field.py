@@ -4,14 +4,14 @@ from fastapi.testclient import TestClient
 
 
 def test_ready_http_response_includes_minio(monkeypatch) -> None:
-    from app.main import app
     import app.api.v1.health as health_mod
+    from app.main import app
 
     # Force fresh computation (no cache hit).
     monkeypatch.setattr(health_mod, "_ready_cache", {"ts": 0.0, "payload": None, "status": 200, "key": None})
 
     # Avoid touching real infra in unit tests; we only verify the response shape.
-    monkeypatch.setattr(health_mod, "check_database", lambda _SessionLocal: ({"status": "connected"}, True))
+    monkeypatch.setattr(health_mod, "check_database", lambda _session_local: ({"status": "connected"}, True))
     monkeypatch.setattr(
         health_mod,
         "check_vector",
@@ -39,4 +39,3 @@ def test_ready_http_response_includes_minio(monkeypatch) -> None:
 
     payload = resp.json()
     assert payload["minio"]["status"] == "disabled"
-

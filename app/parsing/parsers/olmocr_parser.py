@@ -22,7 +22,6 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
-
 logger = get_logger("parsing.olmocr")
 
 

@@ -3,11 +3,11 @@ Embedding utility functions.
 """
 import hashlib
 import os
-from urllib.parse import urlsplit
 from typing import Optional
+from urllib.parse import urlsplit
 
-from app.rag.core.logging import get_logger
 from app.core.constants import EmbeddingProviders
+from app.rag.core.logging import get_logger
 
 logger = get_logger("rag.embedding")
 

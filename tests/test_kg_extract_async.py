@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 import pytest
 from fastapi import HTTPException, Response
-from uuid import UUID
 
 
 class _FakeDoc:

@@ -7,13 +7,12 @@ These are used across:
 """
 
 
-from typing import List
 from functools import lru_cache
+from typing import List
 
 import jieba
 
 from app.rag.preprocessing.stopwords import STOPWORDS
-
 
 _BM25_TOKENIZE_CACHE_MAX_CHARS = 200
 

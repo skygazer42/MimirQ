@@ -26,12 +26,12 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
-from enum import Enum
 
-from app.rag.core.command import Command, Interrupt, interrupt
 from app.core.config import settings
+from app.rag.core.command import Command, Interrupt, interrupt
 
 logger = logging.getLogger(__name__)
 

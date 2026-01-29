@@ -3,33 +3,34 @@ RAG Conversation Engine
 """
 
 import asyncio
-import threading
-from typing import AsyncGenerator, Dict, Any, List, Optional, Type
-from uuid import UUID
 import json
-from langchain_core.documents import Document
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+import threading
 import time
+from typing import Any, AsyncGenerator, Dict, List, Optional, Type
+from uuid import UUID
+
+from langchain_core.documents import Document
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.token_utils import num_tokens_from_string, truncate
-from app.rag.core.conversation import format_history_text
 from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.conversation import format_history_text
 from app.rag.core.logging import get_logger
 from app.rag.core.text import (
-    parse_json_from_text,
     extract_evidence_text,
     guess_retrieval_mode,
     normalize_retrieval_mode,
+    parse_json_from_text,
     should_rewrite_query,
 )
+from app.rag.kg.pipeline import kg_search
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
-from langchain_openai import ChatOpenAI
 from app.services.prompt_resolver import resolve_prompt_template
-from app.rag.kg.pipeline import kg_search
 
 logger = get_logger("rag.engine")
 
@@ -796,7 +797,7 @@ Requirements:
                         return await _run_one(kind, q, r)
 
                 results = await asyncio.gather(*[_guarded(kind, q, r) for kind, q, r in retrieval_plan])
-                for (kind, docs_i, err, elapsed_i, dbg), (_, q, _) in zip(results, retrieval_plan):
+                for (kind, docs_i, err, elapsed_i, dbg), (_, q, _) in zip(results, retrieval_plan, strict=False):
                     retrieval_per_query.append(
                         {
                             "kind": kind,
@@ -1174,7 +1175,8 @@ Requirements:
             pii_on = False
             redact_text = None  # type: ignore[assignment]
             try:
-                from app.rag.middleware.pii import pii_enabled, redact_text as _redact_text
+                from app.rag.middleware.pii import pii_enabled
+                from app.rag.middleware.pii import redact_text as _redact_text
 
                 pii_on = bool(pii_enabled())
                 redact_text = _redact_text

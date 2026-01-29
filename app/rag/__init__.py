@@ -22,9 +22,9 @@ Note: To avoid circular imports, some submodules need to be imported directly:
 """
 
 from app.rag.embedding import (
+    DEFAULT_EMBED_MODELS,
     select_embedding_model,
     test_embedding_model_status,
-    DEFAULT_EMBED_MODELS,
 )
 
 __all__ = [

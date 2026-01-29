@@ -8,11 +8,11 @@ Unified reranker architecture:
 """
 
 import asyncio
-from abc import ABC, abstractmethod
-from collections import OrderedDict
 import hashlib
 import threading
 import time
+from abc import ABC, abstractmethod
+from collections import OrderedDict
 from typing import Any, Sequence
 
 import aiohttp
@@ -615,17 +615,17 @@ class APIReranker(BaseReranker):
                 else:
                     network_scores = list(network_scores)[: len(missing_docs)]
 
-            for idx, score in zip(missing_indices, network_scores):
+            for idx, score in zip(missing_indices, network_scores, strict=False):
                 scores[idx] = float(score)
                 if cache_enabled:
                     key = self._cache_key(query, documents[idx], max_length=max_length)
                     self._score_cache.set(key, float(score))
 
         final_scores = [float(s if s is not None else 0.0) for s in scores]
-        score_map = {cid: score for cid, score in zip(candidate_ids, final_scores) if cid}
+        score_map = {cid: score for cid, score in zip(candidate_ids, final_scores, strict=False) if cid}
 
         ordered = sorted(
-            zip(candidate_ids, final_scores),
+            zip(candidate_ids, final_scores, strict=False),
             key=lambda x: x[1],
             reverse=True,
         )
@@ -709,7 +709,7 @@ class APIReranker(BaseReranker):
         scores = await self.acompute_score(query, documents)
 
         results = []
-        for candidate, score in zip(candidates, scores):
+        for candidate, score in zip(candidates, scores, strict=False):
             result = dict(candidate)
             result["rerank_score"] = score
             results.append(result)

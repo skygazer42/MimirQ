@@ -5,8 +5,10 @@ Parses user identity from request headers.
 """
 
 import logging
+
 from fastapi import Header, HTTPException
-from jose import jwt, ExpiredSignatureError, JWTError
+from jose import ExpiredSignatureError, JWTError, jwt
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -45,12 +47,12 @@ def get_current_account_id(
             algorithms=[settings.ALGORITHM],
             options={"verify_exp": True}  # Explicitly enable expiration checks.
         )
-    except ExpiredSignatureError:
+    except ExpiredSignatureError as exc:
         logger.warning("Expired token attempted for access")
-        raise HTTPException(status_code=401, detail="Token expired")
-    except JWTError as e:
-        logger.warning("Invalid token: %s", str(e)[:100])
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Token expired") from exc
+    except JWTError as exc:
+        logger.warning("Invalid token: %s", str(exc)[:100])
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
     user_id = payload.get("sub")
     if not user_id:

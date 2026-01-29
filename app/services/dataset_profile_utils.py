@@ -83,7 +83,7 @@ def histogram(values: Iterable[int], bins: List[HistogramBinSpec]) -> List[dict]
                 counts[i] += 1
                 break
     out: List[dict] = []
-    for spec, count in zip(specs, counts):
+    for spec, count in zip(specs, counts, strict=False):
         out.append({"label": spec.label, "min": spec.min, "max": spec.max, "count": int(count)})
     return out
 

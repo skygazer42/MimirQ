@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from uuid import UUID
+
+import pytest
 
 
 @pytest.mark.asyncio

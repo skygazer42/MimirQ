@@ -1,12 +1,13 @@
 from typing import List, Optional, Set, Tuple
 from uuid import UUID
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services.dataset_service import DatasetService
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
-
 
 # Document-level ACL ("security trimming") modes.
 _DOC_ACCESS_DEFAULTS = {"", "inherit"}

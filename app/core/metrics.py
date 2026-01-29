@@ -10,7 +10,6 @@ from typing import Iterable, Optional
 
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
-
 HTTP_REQUESTS_TOTAL = Counter(
     "http_requests_total",
     "Total HTTP requests",

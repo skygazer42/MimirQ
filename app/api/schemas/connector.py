@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.api.schemas.document import DocumentAccessUpdateRequest, DocumentPipelineOptions
 
-
 ConnectorId = Literal["url_batch", "web_crawl"]
 ConnectorRunStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 

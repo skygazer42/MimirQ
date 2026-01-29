@@ -10,6 +10,14 @@ imports:
 - Command objects for workflow control
 """
 
+from app.rag.core.command import (
+    Command,
+    CommandProcessor,
+    Interrupt,
+    NodeReturn,
+    Send,
+    interrupt,
+)
 from app.rag.core.errors import (
     AIError,
     ConfigError,
@@ -22,14 +30,6 @@ from app.rag.core.errors import (
 )
 from app.rag.core.logging import get_logger, setup_logging
 from app.rag.core.text import estimate_tokens
-from app.rag.core.command import (
-    Command,
-    Send,
-    Interrupt,
-    interrupt,
-    CommandProcessor,
-    NodeReturn,
-)
 
 __all__ = [
     "get_logger",

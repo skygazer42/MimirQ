@@ -3,13 +3,13 @@ Unified document parsing entry point:
 - Route by file type (office/html -> auto/Pandoc/MarkItDown; PDF -> score then choose the best backend)
 - Extract Markdown, save images to disk, and return preview
 """
-from pathlib import Path
-from typing import Dict, List, Optional
-from uuid import UUID
 import base64
 import hashlib
 import re
 import uuid
+from pathlib import Path
+from typing import Dict, List, Optional
+from uuid import UUID
 
 from langchain_core.documents import Document
 
@@ -55,15 +55,15 @@ class DocumentParserService:
         saved_images: list[dict] = []
         seen_saved_ids: set[str] = set()
 
-        try:
-            from io import BytesIO
-            from PIL import Image as PILImage  # type: ignore
+        from io import BytesIO
 
-            pillow_ok = True
-        except Exception:
-            BytesIO = None  # type: ignore
-            PILImage = None  # type: ignore
+        try:
+            from PIL import Image as pil_image  # type: ignore
+        except ImportError:
+            pil_image = None  # type: ignore[assignment]
             pillow_ok = False
+        else:
+            pillow_ok = True
 
         from urllib.parse import unquote
 
@@ -173,7 +173,7 @@ class DocumentParserService:
                     if not pillow_ok:
                         continue
                     try:
-                        img = PILImage.open(BytesIO(raw_bytes))  # type: ignore[arg-type]
+                        img = pil_image.open(BytesIO(raw_bytes))  # type: ignore[arg-type]
                         try:
                             if getattr(img, "mode", None) != "RGB":
                                 img = img.convert("RGB")

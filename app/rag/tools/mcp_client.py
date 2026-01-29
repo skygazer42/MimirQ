@@ -474,12 +474,11 @@ class MCPToolRegistry:
         """
         arguments = arguments or {}
 
-        try:
+        chain = None
+        if bool(getattr(settings, "MIDDLEWARE_ENABLED", True)):
             from app.rag.middleware import ToolMiddlewareChain
-        except Exception:  # noqa: BLE001
-            ToolMiddlewareChain = None  # type: ignore
 
-        chain = ToolMiddlewareChain() if ToolMiddlewareChain else None  # type: ignore[operator]
+            chain = ToolMiddlewareChain()
         tool_state: Dict[str, Any] = {
             "tool_name": name,
             "arguments": arguments,

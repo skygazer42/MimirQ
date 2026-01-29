@@ -32,10 +32,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
-
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +202,7 @@ class MultiVectorRetriever(BaseRetriever):
 
         # Add to docstore
         if add_to_docstore:
-            doc_dict = {doc_id: doc for doc_id, doc in zip(ids, documents)}
+            doc_dict = {doc_id: doc for doc_id, doc in zip(ids, documents, strict=False)}
             self.docstore.add(doc_dict)
 
         # Prepare vectors for indexing
@@ -212,13 +211,13 @@ class MultiVectorRetriever(BaseRetriever):
             texts_to_embed = [doc.page_content for doc in documents]
             metadatas = [
                 {**doc.metadata, self.id_key: doc_id, "representation_type": representation_type.value}
-                for doc_id, doc in zip(ids, documents)
+                for doc_id, doc in zip(ids, documents, strict=False)
             ]
         else:
             # Use provided representations
             texts_to_embed = []
             metadatas = []
-            for doc_id, doc, reps in zip(ids, documents, representations):
+            for doc_id, doc, reps in zip(ids, documents, representations, strict=False):
                 for rep in reps:
                     texts_to_embed.append(rep)
                     metadatas.append({
@@ -319,14 +318,14 @@ class MultiVectorRetriever(BaseRetriever):
             raise ValueError("Number of IDs must match number of parent documents")
 
         # Add parents to docstore
-        parent_dict = {pid: doc for pid, doc in zip(parent_ids, parent_documents)}
+        parent_dict = {pid: doc for pid, doc in zip(parent_ids, parent_documents, strict=False)}
         self.docstore.add(parent_dict)
 
         # Add child chunks to vectorstore with parent reference
         texts_to_embed = []
         metadatas = []
 
-        for parent_id, parent_doc, children in zip(parent_ids, parent_documents, child_chunks):
+        for parent_id, parent_doc, children in zip(parent_ids, parent_documents, child_chunks, strict=False):
             for child in children:
                 texts_to_embed.append(child.page_content)
                 metadatas.append({

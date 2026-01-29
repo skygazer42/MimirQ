@@ -3,36 +3,36 @@ Hybrid Retriever: Vector retrieval + BM25 + optional MMR diversity reranking.
 Reference: RAG_Agent example repository. Retrieval modes and reranking strategies are configurable.
 """
 
-from typing import List, Dict, Any, Optional
-from uuid import UUID
+import heapq
 import math
 import re
-from collections import Counter, OrderedDict
-import heapq
-import jieba
-import time
 import threading
+import time
+from collections import Counter, OrderedDict
+from typing import Any, Dict, List, Optional
+from uuid import UUID
 
-from langchain_core.documents import Document
-from langchain_core.callbacks import CallbackManagerForRetrieverRun, AsyncCallbackManagerForRetrieverRun
-from langchain_core.retrievers import BaseRetriever
+import jieba
 from langchain_community.retrievers.bm25 import BM25Retriever
-from pydantic import PrivateAttr, ConfigDict
+from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from pydantic import ConfigDict, PrivateAttr
 from sqlalchemy import tuple_
 from sqlalchemy.orm import Session
 
-from app.storage.vector.factory import get_vector_store
-from app.models.document import DocumentChunk, Document as DBDocument
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
 from app.rag.core.filters import match_metadata_filter
-from app.rag.reranker.factory import get_reranker
-from app.rag.reranker.types import RerankCandidate
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
-
+from app.rag.reranker.factory import get_reranker
+from app.rag.reranker.types import RerankCandidate
+from app.storage.vector.factory import get_vector_store
 
 logger = get_logger("rag.retriever")
 
@@ -750,7 +750,7 @@ class HybridRetriever(BaseRetriever):
         scores = retriever.vectorizer.get_scores(processed_query)  # type: ignore[attr-defined]
 
         results: List[Dict[str, Any]] = []
-        for doc, score in zip(docs, scores):
+        for doc, score in zip(docs, scores, strict=False):
             meta = doc.metadata or {}
             if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
                 continue
@@ -2268,7 +2268,7 @@ class HybridRetriever(BaseRetriever):
         keyword_scores = [cosine(query_vec, v) for v in doc_vecs]
 
         reranked: List[Dict[str, Any]] = []
-        for doc, kw_score in zip(documents, keyword_scores):
+        for doc, kw_score in zip(documents, keyword_scores, strict=False):
             vec_score = doc.get("vector_score", doc.get("score", 0.0))
             final_score = vector_weight * float(vec_score) + keyword_weight * float(kw_score)
             new_doc = dict(doc)

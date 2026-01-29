@@ -11,12 +11,12 @@ from arq.connections import RedisSettings
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.tasks.jobs import (
-    process_document_job,
-    ping_job,
-    extract_kg_job,
-    rebuild_indexes_job,
-    dataset_profile_scan_job,
     dataset_precheck_scan_job,
+    dataset_profile_scan_job,
+    extract_kg_job,
+    ping_job,
+    process_document_job,
+    rebuild_indexes_job,
 )
 
 logger = get_logger("tasks.worker")

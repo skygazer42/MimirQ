@@ -19,10 +19,11 @@ import io
 import json
 import os
 import re
-from collections import Counter
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Optional
 from uuid import UUID
@@ -30,11 +31,18 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.optional_deps import optional_import
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches
-from app.rag.preprocessing.secrets import redact_secrets, find_secret_matches
-from app.services.dataset_profile_utils import FILE_SIZE_BINS, TEXT_LENGTH_BINS, histogram, percentile_from_sorted, safe_int
+from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
+from app.services.dataset_profile_utils import (
+    FILE_SIZE_BINS,
+    TEXT_LENGTH_BINS,
+    histogram,
+    percentile_from_sorted,
+    safe_int,
+)
 
 logger = get_logger("services.dataset_precheck_scan")
 
@@ -370,16 +378,30 @@ def _read_text_sample(path: Path, *, max_bytes: int) -> tuple[str, bool]:
     return text, bool(size > read_bytes)
 
 
-def _pdf_text_sample(path: Path, *, sample_pages: int, max_chars: int = 200_000) -> tuple[str, bool, int, list[int | None]]:
+@lru_cache(maxsize=1)
+def _get_pdfplumber():  # noqa: ANN201
+    return optional_import("pdfplumber", feature="precheck_pdf_text_sample")
+
+
+@lru_cache(maxsize=1)
+def _get_openpyxl():  # noqa: ANN201
+    return optional_import("openpyxl", feature="precheck_xlsx_stats")
+
+
+def _pdf_text_sample(
+    path: Path, *, sample_pages: int, max_chars: int = 200_000
+) -> tuple[str, bool, int, list[int | None], str | None]:
     """
     Extract a best-effort text sample from first N pages of a PDF.
 
     Returns (text, estimated, page_count, per_page_chars) where per_page_chars is
     a list aligned with sampled pages (None means extraction failed for that page).
     """
-    try:
-        import pdfplumber  # type: ignore
+    pdfplumber = _get_pdfplumber()
+    if pdfplumber is None:
+        return "", True, 0, [], "dependency_missing:pdfplumber (pip install pdfplumber)"
 
+    try:
         with pdfplumber.open(str(path)) as pdf:
             page_count = len(pdf.pages)
             n = max(1, min(int(sample_pages or 1), page_count))
@@ -404,9 +426,9 @@ def _pdf_text_sample(path: Path, *, sample_pages: int, max_chars: int = 200_000)
                     break
         text = "\n".join(chunks)
         estimated = bool(page_count > n)
-        return text, estimated, int(page_count), per_page_chars
-    except Exception:
-        return "", True, 0, []
+        return text, estimated, int(page_count), per_page_chars, None
+    except Exception as exc:  # noqa: BLE001
+        return "", True, 0, [], f"parse_failed:{type(exc).__name__}"
 
 
 def _build_pdf_page_breakdown(
@@ -457,17 +479,16 @@ def _sanitize_display_name(rel_path: str) -> str:
     return s[:1024] if len(s) > 1024 else s
 
 
-def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> dict[str, Any] | None:
+def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> tuple[dict[str, Any] | None, str | None]:
     """
     Best-effort spreadsheet stats for .xlsx (read-only).
 
     Note: This is intentionally lightweight and may be approximate for files with
     complex formatting. It should never raise.
     """
-    try:
-        import openpyxl  # type: ignore
-    except Exception:
-        return None
+    openpyxl = _get_openpyxl()
+    if openpyxl is None:
+        return None, "dependency_missing:openpyxl (pip install openpyxl)"
 
     wb = None
     try:
@@ -513,9 +534,9 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> dict[str, Any
             "merged_cell_ratio": round(float(merged_ratio), 6),
             "estimated_rows": False,
             "estimated_cols": False,
-        }
-    except Exception:
-        return None
+        }, None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"parse_failed:{type(exc).__name__}"
     finally:
         try:
             if wb is not None:
@@ -1091,7 +1112,15 @@ def run_dataset_precheck_scan(
                                 rec.text_characters = int(len(sample_text))
                                 rec.estimated_text = False
                     elif ext == ".pdf":
-                        sample_text, estimated_text, page_count, per_page_chars = _pdf_text_sample(path, sample_pages=pdf_sample_pages)
+                        sample_text, estimated_text, page_count, per_page_chars, pdf_err = _pdf_text_sample(
+                            path, sample_pages=pdf_sample_pages
+                        )
+                        if pdf_err:
+                            rec.error_message = str(pdf_err)[:200]
+                            if "parse_failed" not in rec.findings:
+                                rec.findings.append("parse_failed")
+                                finding_counts["parse_failed"] += 1
+                                errors += 1
                         if sample_text:
                             if estimated_text and page_count > 0:
                                 # Scale by pages (rough).
@@ -1121,24 +1150,28 @@ def run_dataset_precheck_scan(
 
                 # PDF scan detection (transparent heuristics on sampled pages).
                 if enable_pdf_quality and ext == ".pdf":
-                    breakdown = rec.pdf_pages if isinstance(rec.pdf_pages, dict) else None
-                    scan_ratio = float(breakdown.get("scan_ratio") or 0.0) if breakdown else 0.0
-                    page_count = int(breakdown.get("page_count") or 0) if breakdown else 0
-
-                    if page_count <= 0:
+                    if "parse_failed" in rec.findings:
+                        # If we couldn't even sample pages/text, do not report misleading "pdf_unknown" heuristics.
                         rec.pdf_scanned = None
-                        rec.findings.append("pdf_unknown")
-                        finding_counts["pdf_unknown"] += 1
-                        pdf_unknown += 1
                     else:
-                        scanned = bool(scan_ratio >= float(pdf_scan_ratio_threshold))
-                        rec.pdf_scanned = scanned
-                        if scanned:
-                            rec.findings.append("pdf_scanned")
-                            finding_counts["pdf_scanned"] += 1
-                            pdf_scanned += 1
+                        breakdown = rec.pdf_pages if isinstance(rec.pdf_pages, dict) else None
+                        scan_ratio = float(breakdown.get("scan_ratio") or 0.0) if breakdown else 0.0
+                        page_count = int(breakdown.get("page_count") or 0) if breakdown else 0
+
+                        if page_count <= 0:
+                            rec.pdf_scanned = None
+                            rec.findings.append("pdf_unknown")
+                            finding_counts["pdf_unknown"] += 1
+                            pdf_unknown += 1
                         else:
-                            pdf_not_scanned += 1
+                            scanned = bool(scan_ratio >= float(pdf_scan_ratio_threshold))
+                            rec.pdf_scanned = scanned
+                            if scanned:
+                                rec.findings.append("pdf_scanned")
+                                finding_counts["pdf_scanned"] += 1
+                                pdf_scanned += 1
+                            else:
+                                pdf_not_scanned += 1
 
                 # Spreadsheet stats (best-effort): large tables are often better served by structured indexing / Text-to-SQL.
                 if ext in {".csv", ".xlsx"}:
@@ -1178,9 +1211,15 @@ def run_dataset_precheck_scan(
                                 "estimated_cols": False,
                             }
                     else:
-                        stats = _xlsx_spreadsheet_stats(path)
+                        stats, xlsx_err = _xlsx_spreadsheet_stats(path)
                         if isinstance(stats, dict) and stats:
                             rec.spreadsheet = stats
+                        elif xlsx_err:
+                            rec.error_message = str(xlsx_err)[:200]
+                            if "parse_failed" not in rec.findings:
+                                rec.findings.append("parse_failed")
+                                finding_counts["parse_failed"] += 1
+                                errors += 1
 
                     if isinstance(rec.spreadsheet, dict):
                         rows = int(rec.spreadsheet.get("row_count") or 0)

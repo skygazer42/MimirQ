@@ -1,7 +1,6 @@
 
 from app.rag.preprocessing.cleaning import RegexRule
 
-
 DEFAULT_MARKDOWN_RULES: list[RegexRule] = [
     # Normalize common "page X" footer artifacts (conservative).
     RegexRule(pattern=r"(?m)^[ \t]*Page[ \t]+\d+[ \t]*$", repl="", flags=0),

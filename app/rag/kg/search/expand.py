@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Set
 
 from app.core.config import settings
+from app.rag.kg.repository import EntityRepository, EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
 from app.rag.kg.search.tracker import Tracker
-from app.rag.kg.repository import EntityRepository, EventRepository, get_session
 
 
 @dataclass

@@ -11,8 +11,11 @@ Supports:
 
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
+
 from app.core.config import settings
+
 from .base_parser import BaseAdvancedParser
+
 
 class TCADPParser(BaseAdvancedParser):
     """
@@ -52,7 +55,7 @@ class TCADPParser(BaseAdvancedParser):
     def _create_parser(self) -> Any:
         try:
             from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
-        except Exception as exc:  # noqa: BLE001
+        except ImportError as exc:
             class _UnavailableTCADPParser:  # local stub
                 def __init__(self, reason: str):
                     self._unavailable_reason = reason
@@ -60,7 +63,9 @@ class TCADPParser(BaseAdvancedParser):
                 def check_installation(self) -> bool:
                     return False
 
-            return _UnavailableTCADPParser(f"TCADP dependency missing: {type(exc).__name__}: {exc}")
+            return _UnavailableTCADPParser(
+                f"TCADP dependency missing: {type(exc).__name__}: {exc} (hint: pip install tencentcloud-sdk-python)"
+            )
 
         return DeepDocTCADPParser(
             secret_id=self.secret_id,

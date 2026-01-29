@@ -14,6 +14,6 @@
 #  limitations under the License.
 #
 
-from .rag_tokenizer import RagTokenizer, tokenize, fine_grained_tokenize
+from .rag_tokenizer import RagTokenizer, fine_grained_tokenize, tokenize
 
 __all__ = ['RagTokenizer', 'tokenize', 'fine_grained_tokenize']

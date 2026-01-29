@@ -3,58 +3,62 @@ Chat API.
 """
 import asyncio
 import contextlib
+import json
 import logging
 import re
-from uuid import UUID
 import uuid
 from datetime import datetime
-import json
-from typing import Optional, List
+from typing import List, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
-from sqlalchemy import func, and_, or_
-from sqlalchemy.orm import Session
-from langchain_core.documents import Document
+from fastapi.responses import StreamingResponse
 from langchain_community.retrievers.bm25 import BM25Retriever
+from langchain_core.documents import Document
+from pydantic import BaseModel
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.models.chat import Conversation, Message
-from app.services.dataset_service import DatasetService
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import (
     ChatRequest,
     ChatResponse,
+    CheckpointDetailResponse,
+    CheckpointListResponse,
     ConversationCreate,
-    ConversationUpdate,
-    ConversationSchema,
     ConversationDetail,
     ConversationList,
-    CheckpointListResponse,
-    CheckpointDetailResponse,
+    ConversationSchema,
+    ConversationUpdate,
 )
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.env import is_production_env
+from app.core.token_utils import num_tokens_from_string
+from app.models.chat import Conversation, Message
+from app.rag.core.text import parse_json_from_text
+from app.rag.engine import get_rag_engine
+from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.services.audit_log_service import audit_log_event, build_chat_audit_details
+from app.services.chat_response_cache import build_chat_cache_key, get_cached_chat_response, set_cached_chat_response
+from app.services.conversation_summary_service import (
+    clear_conversation_summary,
+    get_conversation_summary,
+    update_conversation_summary,
+)
+from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
+from app.services.dataset_service import DatasetService
 from app.services.document_access import (
     filter_allowed_document_ids,
     get_allowed_document_id_sets,
     list_accessible_document_ids,
 )
-from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
-from app.services.chat_response_cache import build_chat_cache_key, get_cached_chat_response, set_cached_chat_response
-from app.services.prompt_defaults import merge_prompt_defaults_with_dataset
-from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
-from app.services.audit_log_service import audit_log_event, build_chat_audit_details
-from app.services.conversation_summary_service import get_conversation_summary, clear_conversation_summary, update_conversation_summary
-from app.rag.engine import get_rag_engine
-from app.rag.core.text import parse_json_from_text
 from app.services.metrics_logger import log_metrics, set_metrics_context
-from app.core.token_utils import num_tokens_from_string
-from app.core.config import settings
-from app.core.env import is_production_env
+from app.services.prompt_defaults import merge_prompt_defaults_with_dataset
 from app.services.quota_service import check_chat_assistant_token_quota
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.dependencies.auth import get_current_account_id
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 
 logger = logging.getLogger(__name__)
 
@@ -781,7 +785,7 @@ async def chat(
 
     except Exception as exc:  # noqa: BLE001
         logger.error("Chat error: %s", str(exc)[:200])
-        raise HTTPException(status_code=500, detail=_format_stream_error_message(exc))
+        raise HTTPException(status_code=500, detail=_format_stream_error_message(exc)) from exc
 
     if conversation_id is None:
         raise HTTPException(status_code=500, detail="Conversation id missing")

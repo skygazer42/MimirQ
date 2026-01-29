@@ -9,14 +9,14 @@ Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> 
 
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from app.core.config import settings
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
 )
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -385,9 +385,9 @@ def create_ragas_evaluator(
         contexts: List[Dict[str, Any]],
     ) -> EvaluationResult:
         try:
-            from ragas.metrics import faithfulness, answer_relevancy
-            from ragas import evaluate
             from datasets import Dataset
+            from ragas import evaluate
+            from ragas.metrics import answer_relevancy, faithfulness
 
             # Prepare data
             context_texts = [ctx.get("content", "") for ctx in contexts]

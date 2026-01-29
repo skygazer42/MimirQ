@@ -9,10 +9,9 @@ This is opt-in because rewriting URLs can be surprising in some domains.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
 
 _PLAIN_URL_RE = re.compile(r"(?P<url>https?://[^\s<>()]+)")
 _MD_LINK_RE = re.compile(r"(\]\()(?P<url>\S+?)(\))")

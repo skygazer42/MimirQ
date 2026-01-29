@@ -8,8 +8,8 @@ from typing import List
 
 from langchain_core.documents import Document
 
-from app.rag.chunking.base import BaseChunker
 from app.core.config import settings
+from app.rag.chunking.base import BaseChunker
 
 
 def _estimate_tokens_from_chars(chars: int, *, min_tokens: int = 0) -> int:

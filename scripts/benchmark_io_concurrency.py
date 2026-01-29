@@ -15,18 +15,18 @@ Usage:
 """
 import argparse
 import asyncio
-import time
-import sys
-from pathlib import Path
-from typing import List, Dict, Any
 import statistics
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, List
 
 # Add project root to Python path.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.factory import select_embedding_model
-from app.core.config import settings
 
 
 class BenchmarkResults:
@@ -173,8 +173,9 @@ async def benchmark_image_upload_concurrent(
     """
     print(f"\n🚀 Testing concurrent image upload (images={num_images}, concurrent={max_concurrent})")
     
-    from app.storage.object.minio import minio_service
     import uuid
+
+    from app.storage.object.minio import minio_service
     
     # Generate test image data (simulate 1KB images).
     test_image_data = b"x" * 1024
@@ -227,8 +228,9 @@ async def benchmark_image_upload_serial(
     """
     print(f"\n🐌 Testing serial image upload (images={num_images})")
     
-    from app.storage.object.minio import minio_service
     import uuid
+
+    from app.storage.object.minio import minio_service
     
     # Generate test image data (simulate 1KB images).
     test_image_data = b"x" * 1024

@@ -4,15 +4,15 @@ Factory for LLM and embedding clients backed by the existing project settings.
 from typing import Any, Dict, Optional
 
 import httpx
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.rag.core.errors import ConfigError
 from app.rag.core.http import httpx_trust_env
+from app.rag.core.logging import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
-from app.rag.core.errors import ConfigError
-from app.rag.core.logging import get_logger
 from app.storage.vector.milvus import milvus_store
 
 logger = get_logger("rag.llm.factory")

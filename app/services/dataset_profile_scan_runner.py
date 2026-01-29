@@ -21,15 +21,14 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
-from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.parsing.quality.scorer import score_pdf_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.rag.core.logging import get_logger
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
-
 
 logger = get_logger("services.dataset_profile_scan")
 

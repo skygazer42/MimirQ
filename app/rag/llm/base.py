@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
 from app.rag.core.logging import get_logger
+from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
 
 logger = get_logger("rag.llm.base")
 

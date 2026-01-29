@@ -4,12 +4,12 @@ Reranker factory functions.
 Provide a unified reranker creation interface.
 """
 
-from typing import Any
 import hashlib
 import threading
+from typing import Any
 
-from app.rag.reranker.base import BaseReranker
 from app.core.config import settings
+from app.rag.reranker.base import BaseReranker
 
 _api_reranker_lock = threading.Lock()
 _api_reranker_cache: dict[str, BaseReranker] = {}

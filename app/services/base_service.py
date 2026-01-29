@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.models.tenant import TenantMember
 
-
 # Generic type variable.
 ModelType = TypeVar("ModelType")
 

@@ -91,7 +91,7 @@ def resolve_prompt_template(
         seed = f"{ab_experiment_key}:{ab_user_key or ''}"
         r = _stable_unit_interval(seed) * total
         acc = 0.0
-        for v, w in zip(variants, weights):
+        for v, w in zip(variants, weights, strict=False):
             acc += w
             if r <= acc:
                 return v

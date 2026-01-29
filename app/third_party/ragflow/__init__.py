@@ -12,15 +12,15 @@ Available chunkers:
 
 Usage:
     # High-level API
-    from app.rag.chunking.ragflow.bridge import chunk_file
+    from app.third_party.ragflow.bridge import chunk_file
     chunks = chunk_file(path, strategy="ragflow_naive")
 
     # Low-level API
-    from app.rag.chunking.ragflow.chunkers import naive_chunk, book_chunk
-    from app.rag.chunking.ragflow.nlp import rag_tokenizer, find_codec
-    from app.rag.chunking.ragflow.common import num_tokens_from_string
+    from app.third_party.ragflow.chunkers import naive_chunk, book_chunk
+    from app.third_party.ragflow.nlp import rag_tokenizer, find_codec
+    from app.third_party.ragflow.common import num_tokens_from_string
 """
-from app.rag.chunking.ragflow.bridge import chunk_file, ChunkStrategy
+from app.third_party.ragflow.bridge import ChunkStrategy, chunk_file
 
 __all__ = [
     "chunk_file",

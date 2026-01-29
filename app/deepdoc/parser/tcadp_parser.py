@@ -33,7 +33,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import requests
-
 from tencentcloud.common import credential
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile

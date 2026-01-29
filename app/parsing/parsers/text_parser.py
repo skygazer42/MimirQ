@@ -3,6 +3,7 @@ Text / Markdown parsers.
 """
 from pathlib import Path
 from typing import List
+
 from langchain_core.documents import Document
 
 from app.parsing.utils.text import read_text_file

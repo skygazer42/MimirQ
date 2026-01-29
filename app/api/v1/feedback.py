@@ -12,22 +12,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.models.chat import Message
-from app.models.chat import Conversation
-from app.models.feedback import MessageFeedback
-from app.models.evaluation import RagasRegressionCase
 from app.api.schemas.feedback import (
     MessageFeedbackCreateRequest,
+    MessageFeedbackEnrichedList,
     MessageFeedbackList,
     MessageFeedbackOut,
-    MessageFeedbackEnrichedList,
 )
 from app.api.schemas.regression import RagasRegressionCaseOut
-from app.services.dataset_service import DatasetService
+from app.core.database import get_db
+from app.models.chat import Conversation, Message
+from app.models.evaluation import RagasRegressionCase
+from app.models.feedback import MessageFeedback
 from app.services.audit_log_service import audit_log_event
+from app.services.dataset_service import DatasetService
 
 router = APIRouter(tags=["Feedback"])
 
@@ -180,10 +179,10 @@ async def list_message_feedback_enriched(
     items = []
     for fb, msg_content, msg_created_at, conv_title in rows:
         # Attach non-persisted attrs for Pydantic serialization.
-        setattr(fb, "conversation_title", conv_title)
+        fb.conversation_title = conv_title
         content = (msg_content or "").strip()
-        setattr(fb, "message_content", content[:4000] if content else None)
-        setattr(fb, "message_created_at", msg_created_at)
+        fb.message_content = content[:4000] if content else None
+        fb.message_created_at = msg_created_at
         items.append(fb)
 
     return {"total": total, "items": items}

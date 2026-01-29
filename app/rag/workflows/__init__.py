@@ -18,12 +18,12 @@ Usage:
 
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode
 from app.rag.workflows.chain import ChainWorkflow
-from app.rag.workflows.routing import RoutingWorkflow
-from app.rag.workflows.parallelization import ParallelWorkflow
-from app.rag.workflows.react import ReActWorkflow
-from app.rag.workflows.planner_worker import PlannerWorkerWorkflow
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
-from app.rag.workflows.factory import get_workflow, create_workflow
+from app.rag.workflows.factory import create_workflow, get_workflow
+from app.rag.workflows.parallelization import ParallelWorkflow
+from app.rag.workflows.planner_worker import PlannerWorkerWorkflow
+from app.rag.workflows.react import ReActWorkflow
+from app.rag.workflows.routing import RoutingWorkflow
 
 __all__ = [
     # Base

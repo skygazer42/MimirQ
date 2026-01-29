@@ -6,7 +6,7 @@ Used for ingest throughput optimizations:
 - Redis: idempotency locks, cache, status (optional)
 """
 
-from app.tasks.queue import enqueue_document_processing, get_queue, init_queue, close_queue
+from app.tasks.queue import close_queue, enqueue_document_processing, get_queue, init_queue
 
 __all__ = [
     "enqueue_document_processing",

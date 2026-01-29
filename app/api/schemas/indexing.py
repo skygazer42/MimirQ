@@ -11,14 +11,13 @@ from app.types.indexing import (  # noqa: F401
     EventEntityInput,
     EventInput,
     IndexBatchResult,
-    IndexKind,
     IndexingOptions,
+    IndexKind,
     IndexRecord,
     IndexScope,
     PersistChunksResult,
     PersistEventsResult,
 )
-
 
 __all__ = [
     "ChunkInput",

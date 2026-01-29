@@ -12,14 +12,16 @@ Features:
 
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Union
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from langchain_core.messages import (
+    AIMessage,
     BaseMessage,
     HumanMessage,
-    AIMessage,
     SystemMessage,
+)
+from langchain_core.messages import (
     trim_messages as lc_trim_messages,
 )
 

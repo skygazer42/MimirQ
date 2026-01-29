@@ -11,8 +11,8 @@ The implementation is intentionally conservative and code-fence aware.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

@@ -26,8 +26,11 @@ class SubprocessWorkerError(RuntimeError):
         self.log_tail = log_tail
 
 
-class SubprocessCancelled(RuntimeError):
+class SubprocessCancelledError(RuntimeError):
     """Raised when we explicitly cancel a running subprocess."""
+
+
+SubprocessCancelled = SubprocessCancelledError
 
 
 def _get_subprocess_workdir(*, tenant_id: UUID) -> Path:
@@ -62,7 +65,7 @@ async def _terminate_process_group(process: Any, *, grace_sec: float = 2.0) -> N
         if isinstance(process, asyncio.subprocess.Process):
             await asyncio.wait_for(process.wait(), timeout=grace_sec)
         else:  # Popen-like
-            await asyncio.to_thread(getattr(process, "wait"), grace_sec)
+            await asyncio.to_thread(process.wait, grace_sec)
         return
     except subprocess.TimeoutExpired:
         pass
@@ -87,7 +90,7 @@ async def _terminate_process_group(process: Any, *, grace_sec: float = 2.0) -> N
         if isinstance(process, asyncio.subprocess.Process):
             await process.wait()
         else:  # Popen-like
-            await asyncio.to_thread(getattr(process, "wait"))
+            await asyncio.to_thread(process.wait)
     except Exception:
         return
 

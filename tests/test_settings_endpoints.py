@@ -34,8 +34,8 @@ def _override_get_current_account_id() -> str:
 
 
 def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: ANN001
-    from app.api.v1.settings import get_settings
     import app.api.v1.settings as settings_module
+    from app.api.v1.settings import get_settings
     from app.core.config import settings
 
     # Bypass dataset membership + role checks.
@@ -87,8 +87,8 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
 
 
 def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN001
-    from app.api.v1.settings import update_settings
     import app.api.v1.settings as settings_module
+    from app.api.v1.settings import update_settings
     from app.core.config import settings
 
     monkeypatch.setattr(settings_module, "_ensure_settings_writable", lambda *args, **kwargs: None, raising=True)
@@ -156,14 +156,14 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "GOVERNANCE_QUARANTINE_ON_DROP=true" in env_text
 
     # Verify runtime apply updated in-memory settings (best-effort).
-    assert int(getattr(settings, "CHUNK_MIN_CHARS")) == 67
-    assert bool(getattr(settings, "BM25_INDEX_ENABLED")) is False
-    assert bool(getattr(settings, "ENABLE_RERANKER")) is True
-    assert bool(getattr(settings, "URL_INGEST_ENABLED")) is True
-    assert int(getattr(settings, "URL_INGEST_MAX_BYTES")) == 1000
-    assert abs(float(getattr(settings, "URL_INGEST_TIMEOUT_SEC")) - 7.5) < 1e-6
-    assert bool(getattr(settings, "GOVERNANCE_ENABLED")) is True
-    assert bool(getattr(settings, "GOVERNANCE_PII_ANONYMIZE")) is True
-    assert bool(getattr(settings, "GOVERNANCE_SECRETS_REDACT")) is True
-    assert bool(getattr(settings, "GOVERNANCE_QUARANTINE_ON_DROP")) is True
+    assert int(settings.CHUNK_MIN_CHARS) == 67
+    assert bool(settings.BM25_INDEX_ENABLED) is False
+    assert bool(settings.ENABLE_RERANKER) is True
+    assert bool(settings.URL_INGEST_ENABLED) is True
+    assert int(settings.URL_INGEST_MAX_BYTES) == 1000
+    assert abs(float(settings.URL_INGEST_TIMEOUT_SEC) - 7.5) < 1e-6
+    assert bool(settings.GOVERNANCE_ENABLED) is True
+    assert bool(settings.GOVERNANCE_PII_ANONYMIZE) is True
+    assert bool(settings.GOVERNANCE_SECRETS_REDACT) is True
+    assert bool(settings.GOVERNANCE_QUARANTINE_ON_DROP) is True
 

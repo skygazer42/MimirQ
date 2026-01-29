@@ -6,8 +6,8 @@ from typing import Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 from app.core.config import settings
-from app.rag.kg.engine import KGEngine
 from app.models.document import DocumentChunk
+from app.rag.kg.engine import KGEngine
 from app.types.indexing import IndexingOptions
 
 _engine = None

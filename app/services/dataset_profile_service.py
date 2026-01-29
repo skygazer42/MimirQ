@@ -10,9 +10,9 @@ Deep scan/backfill is implemented separately (see dataset_profile_scan.py).
 
 from __future__ import annotations
 
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-import time
 from typing import Any, Iterable, List, Tuple
 from uuid import UUID
 
@@ -29,12 +29,19 @@ from app.api.schemas.dataset_profile import (
     DatasetProfileSummary,
 )
 from app.models.dataset import Dataset
+from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
-from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.services.dataset_profile_utils import (
+    FILE_SIZE_BINS,
+    TEXT_LENGTH_BINS,
+    histogram,
+    percentile_from_sorted,
+    safe_bool,
+    safe_float,
+    safe_int,
+)
 from app.services.dataset_service import DatasetService
-from app.services.dataset_profile_utils import FILE_SIZE_BINS, TEXT_LENGTH_BINS, histogram, percentile_from_sorted, safe_bool, safe_float, safe_int
-
 
 # Best-effort in-process cache for profile summaries (read-heavy dashboards).
 # Note: must include account_id due to document-level ACL (security trimming).

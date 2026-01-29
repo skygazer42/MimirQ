@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from app.core.config import settings
 from app.api.schemas.meta import MetaResponse
+from app.core.config import settings
 
 router = APIRouter()
 

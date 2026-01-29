@@ -2,63 +2,62 @@
 Dataset management API.
 Supports dataset creation, query, update, deletion, and permission management.
 """
+import contextlib
 import json
 import re
-import contextlib
 from datetime import datetime, timezone
-
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile, File, Form, HTTPException, Response
-from sqlalchemy.orm import Session
 from uuid import UUID
 
-from app.core.database import get_db
-from app.core.database import SessionLocal
-from app.core.config import settings
-from app.api.dependencies.tenant import get_tenant_id
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
+
 from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.dataset import (
-    DatasetCreate,
-    DatasetUpdate,
-    DatasetOut,
-    DatasetListResponse,
-    DatasetRAGDefaults,
-    DatasetIngestionStats,
+    DatasetCloneRequest,
+    DatasetConfigBundle,
     DatasetConfigExport,
     DatasetConfigImportRequest,
-    DatasetConfigBundle,
-    DatasetCloneRequest,
+    DatasetCreate,
+    DatasetIngestionStats,
+    DatasetListResponse,
+    DatasetOut,
+    DatasetRAGDefaults,
+    DatasetUpdate,
 )
-from app.api.schemas.document import DocumentPipelineOptions
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
 from app.api.schemas.dataset_profile import (
-    DatasetProfileSummary,
     DatasetProfileFindingListResponse,
     DatasetProfileScanRunCreateRequest,
     DatasetProfileScanRunListResponse,
     DatasetProfileScanRunOut,
+    DatasetProfileSummary,
 )
-from app.models.dataset import DatasetPermissionEnum, DatasetPermission
-from app.services.dataset_service import DatasetService, DatasetPermissionService
-from app.models.dataset import Dataset
-from app.models.document import Document as DBDocument, DocumentPermission
-from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.api.schemas.document import DocumentPipelineOptions
+from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
+from app.core.config import settings
+from app.core.database import SessionLocal, get_db
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
-from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
+from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentPermission
+from app.parsing.backends import normalize_parser_backend
+from app.parsing.factory import ParserFactory
+from app.rag.chunking import chunker_factory
+from app.services.audit_log_service import audit_log_event
+from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
+from app.services.dataset_profile_service import compute_dataset_profile_summary, list_finding_documents
+from app.services.dataset_service import DatasetPermissionService, DatasetService
 from app.services.ingestion_policy import (
     export_policy_json,
     parse_ingestion_policy_from_metadata,
     validate_and_normalize_ingestion_policy,
 )
-from app.parsing.backends import normalize_parser_backend
-from app.parsing.factory import ParserFactory
-from app.rag.chunking import chunker_factory
-from app.types.pipeline import PipelineOptions
-from app.tasks.queue import enqueue_dataset_profile_scan
-from app.services.dataset_profile_service import compute_dataset_profile_summary, list_finding_documents
-from app.services.audit_log_service import audit_log_event
-from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
+from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
 from app.services.report_html import render_dataset_profile_html
-from sqlalchemy import func, and_, or_
+from app.tasks.queue import enqueue_dataset_profile_scan
+from app.types.pipeline import PipelineOptions
 
 router = APIRouter()
 
@@ -977,14 +976,14 @@ async def import_dataset_ingestion_policy(
         raise HTTPException(status_code=400, detail="policy file too large (max 256KB)")
     try:
         obj = json.loads(raw.decode("utf-8"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="invalid JSON (expect UTF-8)")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="invalid JSON (expect UTF-8)") from exc
 
     try:
         model = IngestionPolicy(**obj)
         normalized = validate_and_normalize_ingestion_policy(model)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"invalid ingestion policy: {str(exc)[:200]}")
+        raise HTTPException(status_code=400, detail=f"invalid ingestion policy: {str(exc)[:200]}") from exc
 
     meta = dict(getattr(dataset, "dataset_metadata", None) or {})
     if not replace and "ingestion_policy" in meta:

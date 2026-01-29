@@ -9,14 +9,13 @@ Design goals:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
-import re
 
 from app.core.config import settings
-
 
 _TABLE_ID_RE = re.compile(r"^doc:([0-9a-fA-F-]{36}):sheet:(\d+)$")
 

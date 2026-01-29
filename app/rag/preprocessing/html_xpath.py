@@ -27,15 +27,27 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
         return HtmlXPathExtractResult(text="", matched_nodes=0)
 
     try:
-        from lxml import etree, html as lxml_html  # type: ignore
-    except Exception:
+        from lxml import etree  # type: ignore
+        from lxml import html as lxml_html
+    except ImportError:
         # No lxml available: best-effort strip using html_text if present.
         try:
             from html_text import extract_text  # type: ignore
 
-            return HtmlXPathExtractResult(text=extract_text(raw, guess_layout=True) or "", matched_nodes=0)
-        except Exception:
-            return HtmlXPathExtractResult(text=raw, matched_nodes=0, xpath_error="lxml_unavailable")
+            try:
+                return HtmlXPathExtractResult(
+                    text=extract_text(raw, guess_layout=True) or "",
+                    matched_nodes=0,
+                    xpath_error="dependency_missing:lxml",
+                )
+            except Exception:
+                return HtmlXPathExtractResult(text=raw, matched_nodes=0, xpath_error="dependency_missing:lxml")
+        except ImportError:
+            return HtmlXPathExtractResult(
+                text=raw,
+                matched_nodes=0,
+                xpath_error="dependency_missing:lxml (hint: pip install lxml)",
+            )
 
     parser = lxml_html.HTMLParser(recover=True, remove_comments=False)
     try:
@@ -72,11 +84,23 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
         fragments_html = "\n".join([f for f in fragments if (f or "").strip()])
 
     # Convert to plain text.
+    extract_text = None
     try:
-        from html_text import extract_text  # type: ignore
+        from html_text import extract_text as _extract_text  # type: ignore
 
-        text = extract_text(fragments_html or "", guess_layout=True) or ""
-    except Exception:
+        extract_text = _extract_text
+    except ImportError:
+        extract_text = None
+
+    text = ""
+    if extract_text is not None:
+        try:
+            text = extract_text(fragments_html or "", guess_layout=True) or ""
+        except Exception:
+            # Best-effort: fall back to lxml extraction.
+            extract_text = None
+
+    if extract_text is None:
         try:
             # lxml fallback.
             if nodes:
@@ -93,4 +117,3 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
             text = fragments_html or ""
 
     return HtmlXPathExtractResult(text=text, matched_nodes=matched, xpath_error=xpath_error)
-

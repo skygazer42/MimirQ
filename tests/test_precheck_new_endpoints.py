@@ -105,7 +105,10 @@ def test_precheck_samples_endpoint(monkeypatch):  # noqa: ANN001
 
 
 def test_precheck_suggest_and_apply_ingestion_policy_endpoints(monkeypatch):  # noqa: ANN001
-    from app.api.v1.dataset_precheck import apply_dataset_precheck_ingestion_policy_suggestion, get_dataset_precheck_ingestion_policy_suggestion
+    from app.api.v1.dataset_precheck import (
+        apply_dataset_precheck_ingestion_policy_suggestion,
+        get_dataset_precheck_ingestion_policy_suggestion,
+    )
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()

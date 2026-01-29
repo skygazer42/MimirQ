@@ -8,16 +8,15 @@ Used for:
 import asyncio
 import contextlib
 import io
-from dataclasses import dataclass
-from typing import Any, Optional, BinaryIO, Union, List, Dict, Iterator
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, BinaryIO, Dict, Iterator, List, Optional, Union
 from urllib.parse import urlparse
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
-
 
 logger = get_logger("storage.minio")
 

@@ -2,27 +2,28 @@
 API v1 routes.
 """
 from fastapi import APIRouter
+
 from app.api.v1 import (
-    auth,
     audit,
+    auth,
     chat,
-    datasets,
+    connectors,
     dataset_precheck,
     dataset_tables,
+    datasets,
     documents,
+    evaluations,
+    feedback,
     health,
     meta,
     observability,
     parsing,
-    settings,
-    usage,
-    evaluations,
-    prompt_templates,
-    feedback,
     pipeline,
-    connectors,
+    prompt_templates,
     rag,
     ragviz,
+    settings,
+    usage,
 )
 from app.rag.kg.api import routes as kg
 

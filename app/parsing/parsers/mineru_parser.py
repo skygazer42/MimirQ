@@ -13,9 +13,11 @@ Supports:
 import os
 from pathlib import Path
 from typing import Any, Callable, List, Tuple
-from app.deepdoc.parser.mineru_parser import MinerUParser as DeepDocMinerUParser
+
 from app.core.config import settings
+from app.deepdoc.parser.mineru_parser import MinerUParser as DeepDocMinerUParser
 from app.services.mineru_service import mineru_service
+
 from .base_parser import BaseAdvancedParser
 
 

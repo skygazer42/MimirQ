@@ -5,8 +5,8 @@ Provides text cleaning and preprocessing utilities for RAG workflows.
 Merged from app/governance/.
 """
 
-from app.rag.preprocessing.cleaning import clean_markdown, CleaningResult, RegexRule
-from app.rag.preprocessing.normalization import normalize_text, normalize_query
+from app.rag.preprocessing.cleaning import CleaningResult, RegexRule, clean_markdown
+from app.rag.preprocessing.normalization import normalize_query, normalize_text
 from app.rag.preprocessing.processor import GovernanceProcessor, GovernanceStats, governance_processor
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 

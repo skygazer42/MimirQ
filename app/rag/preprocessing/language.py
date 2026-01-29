@@ -8,9 +8,8 @@ This module is intentionally dependency-free and conservative:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-
+from dataclasses import dataclass
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _LATIN_RE = re.compile(r"[A-Za-z]")

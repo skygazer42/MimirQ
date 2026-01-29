@@ -21,13 +21,12 @@ def pg_session():
         pytest.skip("Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)")
 
     # Import models lazily so pure unit tests don't pull DB config eagerly.
-    from app.core.database import Base, SessionLocal, engine  # noqa: WPS433
-
     # Ensure required models are registered for create_all.
     import app.models.dataset  # noqa: F401
+    import app.models.dataset_profile_scan  # noqa: F401
     import app.models.document  # noqa: F401
     import app.models.tenant  # noqa: F401
-    import app.models.dataset_profile_scan  # noqa: F401
+    from app.core.database import Base, SessionLocal, engine  # noqa: WPS433
 
     # Create tables (idempotent).
     Base.metadata.create_all(bind=engine)

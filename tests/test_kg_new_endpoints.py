@@ -51,10 +51,10 @@ class _FakeDB:
 
 @pytest.mark.asyncio
 async def test_get_kg_stats_no_access_returns_zero(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_stats
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
@@ -70,10 +70,10 @@ async def test_get_kg_stats_no_access_returns_zero(monkeypatch: pytest.MonkeyPat
 
 @pytest.mark.asyncio
 async def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_stats
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
@@ -103,11 +103,10 @@ async def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import export_kg_graph
     from app.rag.kg.schemas import KGGraphLink, KGGraphNode, KGGraphResponse
-
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
 
@@ -156,11 +155,10 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import delete_kg_for_document
     from app.services.dataset_service import DatasetService
-
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(config_mod.settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", False, raising=False)
@@ -199,10 +197,10 @@ async def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: py
 
 @pytest.mark.asyncio
 async def test_get_kg_event_detail_no_access_404(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_event_detail
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
@@ -221,10 +219,10 @@ async def test_get_kg_event_detail_no_access_404(monkeypatch: pytest.MonkeyPatch
 
 @pytest.mark.asyncio
 async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_event_detail
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
@@ -271,10 +269,10 @@ async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_entity_detail
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
@@ -308,10 +306,10 @@ async def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.Mo
 
 @pytest.mark.asyncio
 async def test_get_kg_entity_detail_success(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_entity_detail
     from app.services.dataset_service import DatasetService
-    import app.rag.kg.api.routes as routes_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)

@@ -11,8 +11,8 @@ The chunker tries to keep a full entry together and uses entry-level overlap.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any, List
 
 from langchain_core.documents import Document

@@ -73,68 +73,67 @@ from typing import List
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.strategies.ansible_playbook import AnsiblePlaybookChunker, looks_like_ansible_playbook
 from app.rag.chunking.strategies.api_reference import APIReferenceChunker, looks_like_api_reference
+from app.rag.chunking.strategies.asciidoc_sections import AsciiDocSectionsChunker, looks_like_asciidoc
 from app.rag.chunking.strategies.book_structured import BookStructuredChunker, looks_like_book
-from app.rag.chunking.strategies.chat_history import ChatHistoryChunker, looks_like_chat_history
 from app.rag.chunking.strategies.changelog import ChangelogChunker, looks_like_changelog
+from app.rag.chunking.strategies.chat_history import ChatHistoryChunker, looks_like_chat_history
 from app.rag.chunking.strategies.csv_rows import CsvRowsChunker, looks_like_csv_rows
 from app.rag.chunking.strategies.diff_patch import DiffPatchChunker, looks_like_diff_patch
-from app.rag.chunking.strategies.email_thread import EmailThreadChunker, looks_like_email_thread
-from app.rag.chunking.strategies.glossary import GlossaryChunker, looks_like_glossary
-from app.rag.chunking.strategies.json_code import JSONChunker
-from app.rag.chunking.strategies.kv_config import KVConfigChunker, looks_like_kv_config
-from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker, looks_like_laws
-from app.rag.chunking.strategies.log_events import LogEventsChunker, looks_like_log_events
-from app.rag.chunking.strategies.markdown import MarkdownAwareChunker
-from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker, looks_like_markdown_table
-from app.rag.chunking.strategies.meeting_minutes import MeetingMinutesChunker, looks_like_meeting_minutes
-from app.rag.chunking.strategies.outline import OutlineChunker, looks_like_outline
-from app.rag.chunking.strategies.paper import PaperChunker, looks_like_paper
-from app.rag.chunking.strategies.presentation_slides import PresentationSlidesChunker, looks_like_presentation
-from app.rag.chunking.strategies.qa_pairs import QAPairsChunker, looks_like_qa_pairs
-from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker, looks_like_qa_markdown
-from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
-from app.rag.chunking.strategies.resume_structured import ResumeStructuredChunker, looks_like_resume
-from app.rag.chunking.strategies.semantic import SemanticSentenceChunker
-from app.rag.chunking.strategies.sop_steps import SOPStepsChunker, looks_like_sop
-from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunker, looks_like_spreadsheet
-from app.rag.chunking.strategies.subtitles import SubtitlesChunker, looks_like_subtitles
-from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker, looks_like_timeline_events
-from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
-from app.rag.chunking.strategies.html_sections import HTMLSectionsChunker, looks_like_html_sections
-from app.rag.chunking.strategies.rst_sections import RSTSectionsChunker, looks_like_rst_sections
-from app.rag.chunking.strategies.asciidoc_sections import AsciiDocSectionsChunker, looks_like_asciidoc
-from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker, looks_like_latex_sections
-from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker, looks_like_orgmode
-from app.rag.chunking.strategies.mediawiki_sections import MediaWikiSectionsChunker, looks_like_mediawiki
-from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
-from app.rag.chunking.strategies.toml_config import TOMLConfigChunker, looks_like_toml_config
-from app.rag.chunking.strategies.sql_schema import SqlSchemaChunker, looks_like_sql_schema
-from app.rag.chunking.strategies.stacktrace import StackTraceChunker, looks_like_stacktrace
-from app.rag.chunking.strategies.dockerfile import DockerfileChunker, looks_like_dockerfile
-from app.rag.chunking.strategies.makefile import MakefileChunker, looks_like_makefile
-from app.rag.chunking.strategies.nginx_config import NginxConfigChunker, looks_like_nginx_config
-from app.rag.chunking.strategies.jira_ticket import JiraTicketChunker, looks_like_jira_ticket
-from app.rag.chunking.strategies.prd_spec import PRDSpecChunker, looks_like_prd_spec
-from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker, looks_like_git_commit_log
-from app.rag.chunking.strategies.graphql_schema import GraphQLSchemaChunker, looks_like_graphql_schema
-from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker, looks_like_jsonl_records
-from app.rag.chunking.strategies.openapi_spec import OpenAPISpecChunker, looks_like_openapi_spec
-from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker, looks_like_postmortem_report
-from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker, looks_like_proto_schema
-from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker, looks_like_terraform_hcl
-from app.rag.chunking.strategies.xml_feed import XMLFeedChunker, looks_like_xml_feed
 from app.rag.chunking.strategies.docker_compose import DockerComposeChunker, looks_like_docker_compose
+from app.rag.chunking.strategies.dockerfile import DockerfileChunker, looks_like_dockerfile
+from app.rag.chunking.strategies.email_thread import EmailThreadChunker, looks_like_email_thread
+from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker, looks_like_git_commit_log
 from app.rag.chunking.strategies.github_actions import GitHubActionsChunker, looks_like_github_actions_workflow
 from app.rag.chunking.strategies.gitlab_ci import GitLabCIChunker, looks_like_gitlab_ci
-from app.rag.chunking.strategies.ansible_playbook import AnsiblePlaybookChunker, looks_like_ansible_playbook
-from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker, looks_like_markdown_frontmatter
+from app.rag.chunking.strategies.glossary import GlossaryChunker, looks_like_glossary
+from app.rag.chunking.strategies.graphql_schema import GraphQLSchemaChunker, looks_like_graphql_schema
+from app.rag.chunking.strategies.html_sections import HTMLSectionsChunker, looks_like_html_sections
 from app.rag.chunking.strategies.http_trace import HTTPTraceChunker, looks_like_http_trace
+from app.rag.chunking.strategies.jira_ticket import JiraTicketChunker, looks_like_jira_ticket
+from app.rag.chunking.strategies.json_code import JSONChunker
+from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker, looks_like_jsonl_records
 from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker, looks_like_junit_xml
-from app.rag.chunking.strategies.sitemap_xml import SitemapXMLChunker, looks_like_sitemap_xml
+from app.rag.chunking.strategies.kv_config import KVConfigChunker, looks_like_kv_config
+from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker, looks_like_latex_sections
+from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker, looks_like_laws
+from app.rag.chunking.strategies.log_events import LogEventsChunker, looks_like_log_events
+from app.rag.chunking.strategies.makefile import MakefileChunker, looks_like_makefile
+from app.rag.chunking.strategies.markdown import MarkdownAwareChunker
+from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker, looks_like_markdown_frontmatter
+from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker, looks_like_markdown_table
 from app.rag.chunking.strategies.maven_pom import MavenPOMChunker, looks_like_maven_pom
+from app.rag.chunking.strategies.mediawiki_sections import MediaWikiSectionsChunker, looks_like_mediawiki
+from app.rag.chunking.strategies.meeting_minutes import MeetingMinutesChunker, looks_like_meeting_minutes
+from app.rag.chunking.strategies.nginx_config import NginxConfigChunker, looks_like_nginx_config
+from app.rag.chunking.strategies.openapi_spec import OpenAPISpecChunker, looks_like_openapi_spec
+from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker, looks_like_orgmode
+from app.rag.chunking.strategies.outline import OutlineChunker, looks_like_outline
+from app.rag.chunking.strategies.paper import PaperChunker, looks_like_paper
+from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker, looks_like_postmortem_report
+from app.rag.chunking.strategies.prd_spec import PRDSpecChunker, looks_like_prd_spec
+from app.rag.chunking.strategies.presentation_slides import PresentationSlidesChunker, looks_like_presentation
+from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker, looks_like_proto_schema
+from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker, looks_like_qa_markdown
+from app.rag.chunking.strategies.qa_pairs import QAPairsChunker, looks_like_qa_pairs
+from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
+from app.rag.chunking.strategies.resume_structured import ResumeStructuredChunker, looks_like_resume
+from app.rag.chunking.strategies.rst_sections import RSTSectionsChunker, looks_like_rst_sections
+from app.rag.chunking.strategies.semantic import SemanticSentenceChunker
+from app.rag.chunking.strategies.sitemap_xml import SitemapXMLChunker, looks_like_sitemap_xml
+from app.rag.chunking.strategies.sop_steps import SOPStepsChunker, looks_like_sop
+from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunker, looks_like_spreadsheet
+from app.rag.chunking.strategies.sql_schema import SqlSchemaChunker, looks_like_sql_schema
+from app.rag.chunking.strategies.stacktrace import StackTraceChunker, looks_like_stacktrace
+from app.rag.chunking.strategies.subtitles import SubtitlesChunker, looks_like_subtitles
+from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker, looks_like_terraform_hcl
 from app.rag.chunking.strategies.terraform_plan import TerraformPlanChunker, looks_like_terraform_plan
-
+from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker, looks_like_timeline_events
+from app.rag.chunking.strategies.toml_config import TOMLConfigChunker, looks_like_toml_config
+from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
+from app.rag.chunking.strategies.xml_feed import XMLFeedChunker, looks_like_xml_feed
+from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
 
 _MD_HINT_RE = re.compile(
     r"(^\s*#{1,6}\s+)|(\[[^\]]+\]\([^)]+\))|(^\s*```)|(^\s*[-*+]\s+)",

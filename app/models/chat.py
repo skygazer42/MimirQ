@@ -4,8 +4,9 @@ Conversation and message data models (multi-tenant isolation support)
 Defines conversation and message table structures.
 """
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 

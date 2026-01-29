@@ -22,8 +22,8 @@ def _override_get_db():  # noqa: ANN202
 
 
 def test_observability_rag_metrics_summary(monkeypatch, tmp_path):  # noqa: ANN001
-    from app.api.v1.observability import get_rag_metrics_summary
     import app.api.v1.observability as obs_mod
+    from app.api.v1.observability import get_rag_metrics_summary
     from app.core.config import settings
 
     # Bypass role checks.

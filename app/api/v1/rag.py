@@ -19,9 +19,9 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
-from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
 from app.services.dataset_service import DatasetService
+from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 
 router = APIRouter()
@@ -87,8 +87,10 @@ async def retrieve_preview(
             if not exists:
                 raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
 
-    from app.rag.pipelines.langgraph import _retrieve_node  # internal reuse
-    from app.rag.pipelines.langgraph import build_rag_state
+    from app.rag.pipelines.langgraph import (
+        _retrieve_node,  # internal reuse
+        build_rag_state,
+    )
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     effective_rag_config = body.rag_config

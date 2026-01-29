@@ -5,17 +5,16 @@ Provides system health status check interfaces for frontend and developer tools 
 """
 
 
-from datetime import datetime, timezone
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Response
 
+from app.api.schemas.health import HealthResponse, ReadyResponse
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.health_checks import check_database, check_minio, check_redis, check_vector
-from app.api.schemas.health import HealthResponse, ReadyResponse
-
 
 router = APIRouter()
 _READY_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "READY_CACHE_TTL_SEC", 2.0) or 2.0))

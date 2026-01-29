@@ -7,13 +7,13 @@ Provides two usage modes:
 """
 
 import logging
-import threading
 import re
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from app.core.config import settings
-from app.core.constants import MilvusConfig, EmbeddingProviders
+from app.core.constants import EmbeddingProviders, MilvusConfig
 from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 
 logger = logging.getLogger(__name__)

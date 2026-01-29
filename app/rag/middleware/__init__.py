@@ -34,42 +34,42 @@ Usage:
         return wrapper
 """
 
+from app.rag.middleware.agent_logging import AgentExecutionLoggingMiddleware
 from app.rag.middleware.base import (
-    before_model,
-    after_model,
-    wrap_model_call,
-    dynamic_prompt,
-    before_tool_call,
-    after_tool_call,
-    wrap_tool_call,
-    before_agent,
-    after_agent,
-    MiddlewareRegistry,
-    MiddlewareChain,
-    ToolMiddlewareChain,
     AgentMiddlewareChain,
+    MiddlewareChain,
+    MiddlewareRegistry,
+    ToolMiddlewareChain,
+    after_agent,
+    after_model,
+    after_tool_call,
     apply_middlewares,
-)
-from app.rag.middleware.error_handler import (
-    ErrorHandlerMiddleware,
-    RateLimitHandler,
-    TimeoutHandler,
-    FallbackModelHandler,
+    before_agent,
+    before_model,
+    before_tool_call,
+    dynamic_prompt,
+    wrap_model_call,
+    wrap_tool_call,
 )
 from app.rag.middleware.dynamic_model import (
+    ComplexityAnalyzer,
     DynamicModelMiddleware,
     ModelRouter,
-    ComplexityAnalyzer,
 )
 from app.rag.middleware.dynamic_prompt import (
-    DynamicPromptMiddleware,
     ContextInjector,
+    DynamicPromptMiddleware,
     StyleInjector,
     TimeInjector,
 )
+from app.rag.middleware.error_handler import (
+    ErrorHandlerMiddleware,
+    FallbackModelHandler,
+    RateLimitHandler,
+    TimeoutHandler,
+)
 from app.rag.middleware.pii import PIIMiddleware
 from app.rag.middleware.tool_logging import ToolCallLoggingMiddleware
-from app.rag.middleware.agent_logging import AgentExecutionLoggingMiddleware
 
 __all__ = [
     # Decorators

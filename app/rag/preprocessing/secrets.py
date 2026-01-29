@@ -9,10 +9,9 @@ Goals:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Callable, Literal
-
 
 SecretMode = Literal["mask", "token"]
 

@@ -6,12 +6,12 @@ and the WorkflowMode enumeration.
 """
 
 
-from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Any, Dict, List, Optional, TypedDict, Callable, Awaitable
-from dataclasses import dataclass, field
 import asyncio
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
 from functools import wraps
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypedDict
 
 from app.core.config import settings
 
@@ -99,10 +99,7 @@ class BaseWorkflow(ABC):
         if not enabled:
             return
 
-        try:
-            from app.rag.middleware import AgentMiddlewareChain
-        except Exception:  # noqa: BLE001
-            return
+        from app.rag.middleware import AgentMiddlewareChain
 
         chain = AgentMiddlewareChain()
         original_run = self.run

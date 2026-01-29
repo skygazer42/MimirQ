@@ -46,8 +46,8 @@ LangSmithClient = None  # type: ignore
 if LANGSMITH_TRACING_ENABLED:
     try:
         from langsmith import Client as LangSmithClient  # type: ignore
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("LangSmith tracing enabled but 'langsmith' is not available: %s", exc)
+    except ImportError as exc:
+        logger.warning("LangSmith tracing enabled but 'langsmith' is not available: %s (hint: pip install langsmith)", exc)
         LangSmithClient = None  # type: ignore
 
 

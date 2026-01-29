@@ -7,14 +7,14 @@ Provides:
 """
 
 from app.rag.retrievers.multi_vector import (
+    BaseDocStore,
+    DocumentRepresentation,
+    InMemoryDocStore,
     MultiVectorRetriever,
     RepresentationType,
-    DocumentRepresentation,
-    BaseDocStore,
-    InMemoryDocStore,
-    create_summary_retriever,
     create_hypothetical_question_retriever,
     create_parent_child_retriever,
+    create_summary_retriever,
 )
 
 __all__ = [

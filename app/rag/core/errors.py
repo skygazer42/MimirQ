@@ -6,14 +6,14 @@ All exceptions are now centralized in app/core/exceptions.py.
 """
 
 from app.core.exceptions import (
-    ExtractError,
-    SearchError,
     AIError,
     ConfigError,
+    ExtractError,
     LLMError,
     LLMTimeoutError,
     LoadError,
     PromptError,
+    SearchError,
 )
 
 __all__ = [

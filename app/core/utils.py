@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from .constants import ProxyEnvKeys
 
-
 T = TypeVar("T", bound=BaseModel)
 
 

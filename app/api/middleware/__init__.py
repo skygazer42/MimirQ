@@ -6,8 +6,8 @@ Provides API layer middleware functionality:
 """
 
 from app.api.middleware.rate_limit import (
-    RateLimitMiddleware,
     RateLimiter,
+    RateLimitMiddleware,
     rate_limit_dependency,
 )
 

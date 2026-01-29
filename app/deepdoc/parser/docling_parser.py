@@ -25,9 +25,9 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
 import pdfplumber
+from docling.document_converter import DocumentConverter
 from PIL import Image
 
-from docling.document_converter import DocumentConverter
 from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
 
 

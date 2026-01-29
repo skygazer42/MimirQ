@@ -7,11 +7,13 @@ import contextlib
 import random
 import threading
 from typing import Any, Optional
+
 import httpx
+
 from app.core.config import settings
 from app.core.logging_config import get_request_context
-from app.rag.core.logging import get_logger
 from app.rag.core.http import httpx_trust_env
+from app.rag.core.logging import get_logger
 
 logger = get_logger("http_client")
 

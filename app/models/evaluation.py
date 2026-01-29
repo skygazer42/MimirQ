@@ -5,10 +5,12 @@ Defines database models for evaluation tasks, results, and regression tests.
 """
 
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from app.core.database import Base
 
 

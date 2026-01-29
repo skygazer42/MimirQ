@@ -6,7 +6,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from app.rag.embedding.utils import hashstr, get_docker_safe_url, logger
+from app.rag.embedding.utils import get_docker_safe_url, hashstr, logger
 
 
 class BaseEmbeddingModel(ABC):

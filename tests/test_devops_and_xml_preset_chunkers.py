@@ -2,22 +2,22 @@ from langchain_core.documents import Document
 
 from app.rag.chunking.strategies.ansible_playbook import AnsiblePlaybookChunker
 from app.rag.chunking.strategies.docker_compose import DockerComposeChunker
-from app.rag.chunking.strategies.gitlab_ci import GitLabCIChunker
+from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker
 from app.rag.chunking.strategies.github_actions import GitHubActionsChunker
+from app.rag.chunking.strategies.gitlab_ci import GitLabCIChunker
+from app.rag.chunking.strategies.graphql_schema import GraphQLSchemaChunker
 from app.rag.chunking.strategies.http_trace import HTTPTraceChunker
+from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker
 from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker
 from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker
 from app.rag.chunking.strategies.maven_pom import MavenPOMChunker
-from app.rag.chunking.strategies.sitemap_xml import SitemapXMLChunker
-from app.rag.chunking.strategies.terraform_plan import TerraformPlanChunker
-from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker
-from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker
 from app.rag.chunking.strategies.openapi_spec import OpenAPISpecChunker
-from app.rag.chunking.strategies.graphql_schema import GraphQLSchemaChunker
-from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker
-from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker
-from app.rag.chunking.strategies.xml_feed import XMLFeedChunker
 from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker
+from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker
+from app.rag.chunking.strategies.sitemap_xml import SitemapXMLChunker
+from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker
+from app.rag.chunking.strategies.terraform_plan import TerraformPlanChunker
+from app.rag.chunking.strategies.xml_feed import XMLFeedChunker
 
 
 def _assert_offsets(text: str, chunks):

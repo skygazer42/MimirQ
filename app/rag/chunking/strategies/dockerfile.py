@@ -12,8 +12,8 @@ when multiple FROM instructions exist. Offsets are preserved.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any, List, Optional
 
 from langchain_core.documents import Document

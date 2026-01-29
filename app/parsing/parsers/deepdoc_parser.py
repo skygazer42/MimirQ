@@ -1,10 +1,12 @@
-from pathlib import Path
 import re
+from pathlib import Path
 from threading import Lock
 from typing import Any, List
 
 from langchain_core.documents import Document
+
 from app.deepdoc.parser import PdfParser as DeepDocPdfParser
+
 
 class DeepDocParser:
     """Bridge DeepDoc's parser so we can reuse it inside our pipeline."""

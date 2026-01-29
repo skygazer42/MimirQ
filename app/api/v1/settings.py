@@ -3,8 +3,8 @@ Settings API - system configuration management.
 Supports reading and updating .env configuration.
 """
 
-import ipaddress
 import contextlib
+import ipaddress
 import os
 import tempfile
 import threading
@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.config import settings
-from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.core.database import get_db
+from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.services.dataset_service import DatasetService
 
 router = APIRouter()
@@ -864,8 +864,8 @@ async def update_settings(
             if template_id:
                 try:
                     UUID(template_id)
-                except Exception:
-                    raise HTTPException(status_code=400, detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID")
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID") from exc
             env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"] = template_id
             env_vars["KG_EXTRACT_PROMPT_TEMPLATE_KEY"] = _sanitize_env_value(
                 "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key or ""
@@ -1135,8 +1135,8 @@ async def update_settings(
             "message": "Configuration saved. Some settings require backend restart to take effect.",
             "updated_keys": updated_keys
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save configuration: {str(e)}")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to save configuration: {str(e)}") from e
     finally:
         with contextlib.suppress(Exception):
             lock_ctx.__exit__(None, None, None)
@@ -1150,9 +1150,10 @@ async def get_system_status(
 ):
     """Get system status."""
     _ensure_settings_readable(db, tenant_id, account_id)
-    from sqlalchemy import text
-    from app.core.database import SessionLocal
     from pymilvus import connections
+    from sqlalchemy import text
+
+    from app.core.database import SessionLocal
 
     status = {
         "database": {"connected": False, "message": ""},
@@ -1325,9 +1326,9 @@ async def test_llm_connection(
 ):
     """Test LLM connection (no config write)."""
     _ensure_settings_writable(db, tenant_id, account_id)
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import HumanMessage
     import httpx
+    from langchain_core.messages import HumanMessage
+    from langchain_openai import ChatOpenAI
 
     from app.rag.core.http import httpx_trust_env
     from app.rag.core.logging import get_logger

@@ -27,7 +27,6 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
-
 logger = get_logger("parsing.etl4llm")
 
 
@@ -122,7 +121,8 @@ class Etl4LlmParser:
 
         try:
             from PIL import Image as PILImage  # type: ignore
-        except Exception:
+        except ImportError:
+            logger.warning("Pillow is not installed; skipping ETL4LLM image extraction (hint: pip install Pillow)")
             return 0, {}
 
         images_dir.mkdir(parents=True, exist_ok=True)

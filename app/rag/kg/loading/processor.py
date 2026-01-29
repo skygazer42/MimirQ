@@ -3,8 +3,8 @@ Minimal document processor used by KG recall/expand to generate embeddings.
 """
 from typing import List, Optional
 
-from app.rag.llm.factory import get_embedding_client
 from app.rag.kg.utils import AIError, get_logger
+from app.rag.llm.factory import get_embedding_client
 
 logger = get_logger("kg.load.processor")
 

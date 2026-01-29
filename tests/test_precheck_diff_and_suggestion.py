@@ -9,7 +9,10 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.services.dataset_precheck_diff import diff_precheck_summaries
-from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion, build_ingestion_policy_suggestion
+from app.services.dataset_precheck_ingestion_suggestion import (
+    apply_ingestion_policy_suggestion,
+    build_ingestion_policy_suggestion,
+)
 
 
 def test_precheck_diff_basic():

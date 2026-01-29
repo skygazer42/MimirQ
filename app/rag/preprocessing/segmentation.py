@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 
-
 _CODE_FENCE_RE = re.compile(r"^\s*```")
 
 

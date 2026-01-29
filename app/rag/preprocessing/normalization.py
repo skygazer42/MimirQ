@@ -10,7 +10,6 @@ This module provides conservative, semantics-preserving normalization used by:
 
 import re
 
-
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 ZERO_WIDTH_RE = re.compile(
     r"[\u200b\u200c\u200d\u2060\ufeff\u200e\u200f\u202a-\u202e\u2066-\u2069]"

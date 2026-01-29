@@ -1,10 +1,10 @@
 import pytest
-from pydantic import ValidationError
 from langchain_core.documents import Document
+from pydantic import ValidationError
 
 from app.api.schemas.document import DocumentPipelineOptions
-from app.services.pipeline_config import parse_pipeline_from_metadata
 from app.parsing.processors.processor import _merge_small_chunks_by_min_chars
+from app.services.pipeline_config import parse_pipeline_from_metadata
 
 
 def test_document_pipeline_options_validates_chunk_strategy_params_primitives():

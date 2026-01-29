@@ -14,15 +14,15 @@
 #  limitations under the License.
 #
 
+import bisect
 import copy
+import json
 import logging
 import math
 import os
 import re
 import string
 import sys
-import bisect
-import json
 from pathlib import Path
 
 try:
@@ -30,6 +30,7 @@ try:
 except Exception:  # pragma: no cover
     datrie = None
 import nltk
+
 try:
     from hanziconv import HanziConv
 except Exception:  # pragma: no cover

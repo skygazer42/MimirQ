@@ -56,7 +56,8 @@ class ToolCallLoggingMiddleware:
         pii_on = False
         redact_text = None  # type: ignore[assignment]
         try:
-            from app.rag.middleware.pii import pii_enabled, redact_text as _redact_text
+            from app.rag.middleware.pii import pii_enabled
+            from app.rag.middleware.pii import redact_text as _redact_text
 
             pii_on = bool(pii_enabled())
             redact_text = _redact_text

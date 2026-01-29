@@ -9,11 +9,10 @@ Opt-in and conservative: only drops paragraphs repeated >= min_occurrences.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 from app.rag.preprocessing.normalization import normalize_text
-
 
 _CODE_FENCE_RE = re.compile(r"^\s*```", re.MULTILINE)
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+\S", re.MULTILINE)
@@ -89,7 +88,7 @@ def drop_duplicate_paragraphs(
 
     dropped = 0
     kept: list[str] = []
-    for p, sig in zip(paragraphs, signatures):
+    for p, sig in zip(paragraphs, signatures, strict=False):
         if sig is not None and counts.get(sig, 0) >= min_occ:
             dropped += 1
             continue

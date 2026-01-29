@@ -5,11 +5,12 @@ Defines data models for dataset creation, update, and query endpoints.
 from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, field_validator
 
-from app.rag.core.text import normalize_retrieval_mode
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.dataset import DatasetPermissionEnum
+from app.rag.core.text import normalize_retrieval_mode
+
 from .base import OrmModel
 from .document import DocumentPipelineOptions
 from .ingestion_policy import IngestionPolicy

@@ -66,11 +66,11 @@ def _override_get_current_account_id() -> str:
 
 def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     from app.api.v1.dataset_tables import (
+        ask_dataset_table,
         get_dataset_table,
         list_dataset_tables,
         preview_dataset_table,
         query_dataset_table,
-        ask_dataset_table,
     )
     from app.services.dataset_service import DatasetService
 

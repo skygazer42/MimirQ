@@ -1,14 +1,6 @@
 """
 Document processing service - core processing flow.
 """
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-from sqlalchemy.orm import Session
-from langchain_core.documents import Document
-from uuid import UUID
-from io import BytesIO
-from PIL import Image as PILImage
 import asyncio
 import base64
 import datetime as dt
@@ -17,34 +9,44 @@ import re
 import shutil
 import time
 import uuid
+from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from langchain_core.documents import Document
+from PIL import Image as PILImage
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent
 from app.models.dataset import Dataset
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk, DocumentParsedContent
+from app.parsing.preprocess.file_preprocessor import preprocess_file
+from app.parsing.quality.text_quality import score_parsed_text_quality
+from app.parsing.routing import route_pdf_backend
+from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies import SeparatorChunker
-from app.storage.object.minio import minio_service
-from app.types.indexing import IndexKind, IndexRecord
-from app.types.pipeline import PipelineEffective
+from app.rag.core.logging import get_logger
+from app.rag.core.metadata import normalize_image_metadata
+from app.rag.kg.pipeline import extract_events
+from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
+from app.rag.preprocessing.normalization import normalize_text
+from app.rag.preprocessing.processor import GovernanceStats, governance_processor
+from app.rag.preprocessing.rules import build_governance_rules
+from app.rag.preprocessing.simhash import simhash64, simhash64_hex
 from app.services.indexer import Indexer
+from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
 from app.services.pipeline_config import (
     build_indexing_options,
     resolve_pipeline_effective,
 )
-from app.rag.preprocessing.processor import governance_processor, GovernanceStats
-from app.rag.preprocessing.rules import build_governance_rules
-from app.rag.preprocessing.normalization import normalize_text
-from app.rag.preprocessing.simhash import simhash64, simhash64_hex
-from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
-from app.rag.kg.pipeline import extract_events
-from app.parsing.routing import route_pdf_backend
-from app.parsing.quality.text_quality import score_parsed_text_quality
-from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
-from app.parsing.preprocess.file_preprocessor import preprocess_file
-from app.rag.core.logging import get_logger
-from app.rag.core.metadata import normalize_image_metadata
-from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
-
+from app.storage.object.minio import minio_service
+from app.types.indexing import IndexKind, IndexRecord
+from app.types.pipeline import PipelineEffective
 
 logger = get_logger("parsing.document_processor")
 

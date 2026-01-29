@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.rag.kg.repository import _as_uuid_list, EventRepository
+from app.rag.kg.repository import EventRepository, _as_uuid_list
 
 
 def test_as_uuid_list_dedupes_and_drops_invalid():

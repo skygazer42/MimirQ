@@ -8,14 +8,13 @@ This is intentionally conservative:
 
 from __future__ import annotations
 
-from typing import Any
 import re
+from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.core.config import settings
-
 
 _FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 

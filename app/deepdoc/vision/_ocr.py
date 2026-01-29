@@ -5,11 +5,12 @@ import uuid
 # Third-party libraries
 import fitz  # PyMuPDF
 import numpy as np
-from PIL import Image
 from huggingface_hub import hf_hub_download
 from langchain_community.document_loaders import PyPDFLoader
+from PIL import Image
 from rapidocr_onnxruntime import RapidOCR
 from tqdm import tqdm
+
 from ..configs.settings import DATA_PARSER_DATA, MODEL_OCR_PATH
 
 # from argparse import ArgumentParser

@@ -10,8 +10,8 @@ This is opt-in because it can be destructive for certain content.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ def _should_strip_line_numbers(code_lines: list[str]) -> bool:
     if len(nums) <= 2:
         return True
     inc = 0
-    for a, b in zip(nums, nums[1:]):
+    for a, b in zip(nums, nums[1:], strict=False):
         if b == a + 1:
             inc += 1
     return (inc / max(1, len(nums) - 1)) >= 0.5

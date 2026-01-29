@@ -23,20 +23,20 @@ Usage:
     success, message = await model.test_connection()
 """
 
-from app.rag.embedding.base import BaseEmbeddingModel
-from app.rag.embedding.providers import (
-    OpenAICompatibleEmbedding,
-    OllamaEmbedding,
-    SentenceTransformerEmbedding,
-    DashScopeEmbedding,
-)
 from app.rag.embedding.adapter import (
     LangChainEmbeddingsAdapter,
     create_langchain_embeddings,
     create_langchain_embeddings_from_config,
 )
+from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.config import DEFAULT_EMBED_MODELS, EmbedModelInfo
 from app.rag.embedding.factory import select_embedding_model, test_embedding_model_status
-from app.rag.embedding.config import EmbedModelInfo, DEFAULT_EMBED_MODELS
+from app.rag.embedding.providers import (
+    DashScopeEmbedding,
+    OllamaEmbedding,
+    OpenAICompatibleEmbedding,
+    SentenceTransformerEmbedding,
+)
 
 __all__ = [
     # Base

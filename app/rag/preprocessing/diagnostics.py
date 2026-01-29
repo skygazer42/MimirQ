@@ -12,13 +12,12 @@ It must be safe and fast:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any, Dict, List, Literal
 
 from app.rag.preprocessing.cleaning import build_repeated_line_signatures
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
-
 
 _HTML_TAG_RE = re.compile(r"<[^>]{1,200}>")
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")

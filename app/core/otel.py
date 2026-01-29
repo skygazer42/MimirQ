@@ -36,8 +36,11 @@ def init_otel() -> bool:
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("OpenTelemetry enabled but core deps are missing: %s", str(exc)[:200])
+    except ImportError as exc:
+        logger.warning(
+            "OpenTelemetry enabled but core deps are missing: %s (hint: pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc)",
+            str(exc)[:200],
+        )
         return False
 
     service_name = str(getattr(settings, "OTEL_SERVICE_NAME", "mimirq") or "mimirq").strip() or "mimirq"
@@ -69,7 +72,14 @@ def instrument_httpx() -> None:
 
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    except ImportError as exc:
+        logger.warning(
+            "OpenTelemetry httpx instrumentation missing: %s (hint: pip install opentelemetry-instrumentation-httpx)",
+            str(exc)[:200],
+        )
+        return
 
+    try:
         HTTPXClientInstrumentor().instrument()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to instrument httpx for OpenTelemetry: %s", str(exc)[:200])
@@ -82,7 +92,14 @@ def instrument_fastapi(app) -> None:  # type: ignore[no-untyped-def]
 
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    except ImportError as exc:
+        logger.warning(
+            "OpenTelemetry FastAPI instrumentation missing: %s (hint: pip install opentelemetry-instrumentation-fastapi)",
+            str(exc)[:200],
+        )
+        return
 
+    try:
         FastAPIInstrumentor.instrument_app(app)
         _fastapi_instrumented = True
     except Exception as exc:  # noqa: BLE001
@@ -102,4 +119,3 @@ def shutdown_otel() -> None:
             shutdown()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to shutdown OpenTelemetry: %s", str(exc)[:200])
-

@@ -6,10 +6,9 @@ engine / rerankers / embedding clients.
 """
 
 
+import logging
 import os
 from typing import Iterable, Optional
-import logging
-
 
 DEFAULT_PROXY_ENV_KEYS: tuple[str, ...] = (
     "OPENAI_PROXY",

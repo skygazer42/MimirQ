@@ -8,7 +8,6 @@ canonical backend names used internally.
 
 from typing import Optional
 
-
 _BACKEND_ALIASES: dict[str, str] = {
     # PyMuPDF basic parser aliases
     "pymupdf": "basic",

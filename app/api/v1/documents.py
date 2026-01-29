@@ -3,113 +3,113 @@ Document management API.
 """
 import asyncio
 import contextlib
-from collections import Counter
-from dataclasses import asdict
 import hashlib
 import json
+import mimetypes
 import re
 import shutil
-import mimetypes
 import time
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request, Query
-from fastapi import Response
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-from typing import Any, List, Optional, Literal
-from uuid import UUID
-from pathlib import Path
 import uuid
+from collections import Counter
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any, List, Literal, Optional
+from uuid import UUID
 
-from app.core.database import get_db
-from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent, DocumentPermission
-from app.services.audit_log_service import audit_log_event
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from langchain_core.documents import Document
+from pydantic import BaseModel, Field
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session
+
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import (
-    DocumentList,
-    DocumentStats,
-    DocumentDetail,
-    DocumentChunkSchema,
-    DocumentChunkUpdateRequest,
+    BatchTaskStatus,
+    BatchUploadRequest,
+    BatchUploadResponse,
+    ChunkPreviewItem,
+    ChunkPreviewParams,
+    ChunkPreviewQualityGate,
+    ChunkPreviewRecommendationPatch,
+    ChunkPreviewResponse,
+    ChunkPreviewReviewSignals,
+    ChunkPreviewStats,
+    DocumentAccessInfo,
+    DocumentAccessUpdateRequest,
+    DocumentBatchAccessUpdateRequest,
+    DocumentBatchAccessUpdateResponse,
+    DocumentBatchDeleteRequest,
+    DocumentBatchDeleteResponse,
+    DocumentBatchMoveRequest,
+    DocumentBatchMoveResponse,
+    DocumentBatchRetryRequest,
+    DocumentBatchRetryResponse,
+    DocumentBatchUploadResponse,
+    DocumentBatchUserMetadataPatchRequest,
+    DocumentBatchUserMetadataPatchResponse,
     DocumentChunkCreateRequest,
     DocumentChunkList,
     DocumentChunkMatchList,
-    DocumentVersionList,
-    DocumentStatus,
-    DocumentParsePreview,
-    ParsedSegment,
-    ManualDocumentCreate,
-    DocumentPipelineOptions,
-    DocumentAccessInfo,
-    DocumentAccessUpdateRequest,
-    DocumentPipelinePatchRequest,
-    DocumentUserMetadataPatchRequest,
-    DocumentBatchUserMetadataPatchRequest,
-    DocumentBatchUserMetadataPatchResponse,
-    DocumentBatchDeleteRequest,
-    DocumentBatchDeleteResponse,
-    DocumentBatchRetryRequest,
-    DocumentBatchRetryResponse,
-    DocumentBatchMoveRequest,
-    DocumentBatchMoveResponse,
-    DocumentBatchAccessUpdateRequest,
-    DocumentBatchAccessUpdateResponse,
+    DocumentChunkSchema,
+    DocumentChunkUpdateRequest,
+    DocumentDetail,
     DocumentDuplicateList,
+    DocumentList,
     DocumentParsedContentResponse,
-    ChunkPreviewParams,
-    ChunkPreviewItem,
-    ChunkPreviewStats,
-    ChunkPreviewQualityGate,
-    ChunkPreviewRecommendationPatch,
-    ChunkPreviewReviewSignals,
-    ChunkPreviewResponse,
-    BatchUploadRequest,
-    BatchUploadResponse,
-    BatchTaskStatus,
-    DocumentBatchUploadResponse,
+    DocumentParsePreview,
+    DocumentPipelineOptions,
+    DocumentPipelinePatchRequest,
+    DocumentStats,
+    DocumentStatus,
+    DocumentUserMetadataPatchRequest,
+    DocumentVersionList,
+    ManualDocumentCreate,
+    ParsedSegment,
 )
 from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
-from langchain_core.documents import Document
-from app.parsing.processors.processor import document_processor
+from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
+from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.env import is_production_env
+from app.core.token_utils import estimate_tokens, num_tokens_from_string
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk, DocumentParsedContent, DocumentPermission
 from app.parsing.factory import parser_factory
+from app.parsing.processors.processor import document_processor
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies.separator import SeparatorChunker
-from app.types.indexing import IndexKind, IndexRecord
-from app.types.pipeline import PipelineOptions
-from app.services.indexer import Indexer
+from app.rag.core.logging import get_logger
+from app.rag.kg.pipeline import extract_events
+from app.rag.preprocessing.processor import governance_processor
+from app.rag.preprocessing.rules import build_governance_rules
+from app.services.audit_log_service import audit_log_event
+from app.services.dataset_service import EDIT_ROLES, DatasetService
+from app.services.document_permission_service import DocumentPermissionService
 from app.services.document_qa_service import generate_and_index_document_qa
-from app.services.pipeline_config import (
-    build_indexing_options,
-    merge_pipeline_options,
-    build_pipeline_metadata,
-    parse_pipeline_from_metadata,
-    resolve_pipeline_effective,
-)
+from app.services.indexer import Indexer
 from app.services.ingestion_policy import (
     match_ingestion_rule,
     parse_ingestion_policy_from_metadata,
     resolve_governance_profile_ref,
 )
 from app.services.mineru_service import mineru_service
-from app.services.dataset_service import DatasetService, EDIT_ROLES
-from app.services.document_permission_service import DocumentPermissionService
-from app.storage.object.minio import minio_service, is_minio_uri, parse_minio_uri
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
-from app.core.config import settings
-from app.core.env import is_production_env
-from app.core.token_utils import estimate_tokens, num_tokens_from_string
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.dependencies.auth import get_current_account_id
-from app.rag.kg.pipeline import extract_events
-from sqlalchemy import or_, and_, func, select
-from app.rag.core.logging import get_logger
-from app.rag.preprocessing.processor import governance_processor
-from app.rag.preprocessing.rules import build_governance_rules
-from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
-from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
-from app.services.preview_cache import preview_parse_cache, preview_parse_locks, ParseCacheEntry
+from app.services.pipeline_config import (
+    build_indexing_options,
+    build_pipeline_metadata,
+    merge_pipeline_options,
+    parse_pipeline_from_metadata,
+    resolve_pipeline_effective,
+)
+from app.services.preview_cache import ParseCacheEntry, preview_parse_cache, preview_parse_locks
+from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.queue import enqueue_document_processing
-
+from app.types.indexing import IndexKind, IndexRecord
+from app.types.pipeline import PipelineOptions
 
 logger = get_logger("api.documents")
 
@@ -201,9 +201,9 @@ def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -
     if chunker_cls is None:
         return {}
 
-    try:
-        import inspect
+    import inspect
 
+    try:
         sig = inspect.signature(chunker_cls.__init__)
         if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
             return dict(kwargs)
@@ -391,8 +391,8 @@ def _merge_small_chunks_preview(
 def _parse_uuid(value: str) -> UUID:
     try:
         return UUID(str(value))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid tenant id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
 
 def _resolve_account_id_for_asset_request(request: Request) -> Optional[str]:
     """
@@ -421,7 +421,7 @@ def _resolve_account_id_for_asset_request(request: Request) -> Optional[str]:
     try:
         return get_current_account_id(authorization=authorization, x_user_id=None)
     except HTTPException:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise HTTPException(status_code=401, detail="Authentication required") from None
 
 
 def _get_tenant_id_from_request_if_provided(request: Request) -> Optional[UUID]:
@@ -483,10 +483,12 @@ def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUI
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
+    from io import BytesIO
+
     try:
-        from io import BytesIO
         from PIL import Image as PILImage  # type: ignore
-    except Exception:
+    except ImportError:
+        logger.warning("Pillow not available; dropping preview image objects (hint: pip install Pillow)")
         # If pillow is unavailable, just drop the image objects to avoid 500s.
         for doc in documents:
             meta = getattr(doc, "metadata", None) or {}
@@ -582,15 +584,15 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
     supported_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
     digest_cache: dict[str, tuple[str, str]] = {}
-    try:
-        from io import BytesIO
-        from PIL import Image as PILImage  # type: ignore
+    from io import BytesIO
 
-        pillow_ok = True
-    except Exception:
-        BytesIO = None  # type: ignore
-        PILImage = None  # type: ignore
+    try:
+        from PIL import Image as pil_image  # type: ignore
+    except ImportError:
+        pil_image = None  # type: ignore[assignment]
         pillow_ok = False
+    else:
+        pillow_ok = True
 
     from urllib.parse import unquote
 
@@ -704,7 +706,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
                 if not pillow_ok:
                     continue
                 try:
-                    img = PILImage.open(BytesIO(raw_bytes))  # type: ignore[arg-type]
+                    img = pil_image.open(BytesIO(raw_bytes))  # type: ignore[arg-type]
                     try:
                         if getattr(img, "mode", None) != "RGB":
                             img = img.convert("RGB")
@@ -921,7 +923,7 @@ def _parse_pipeline_json(pipeline: Optional[str]) -> Optional[DocumentPipelineOp
     except Exception as exc:  # noqa: BLE001
         msg = (str(exc) or exc.__class__.__name__)[:200]
         detail = "Invalid pipeline JSON" if is_production_env() else f"Invalid pipeline JSON: {msg}"
-        raise HTTPException(status_code=400, detail=detail)
+        raise HTTPException(status_code=400, detail=detail) from exc
 
 
 def _compute_chunk_coverage_metrics(
@@ -949,8 +951,8 @@ def _compute_chunk_coverage_metrics(
     ranges: list[tuple[int, int]] = []
     for c in chunk_items:
         try:
-            s = int(getattr(c, "start_index"))
-            e = int(getattr(c, "end_index"))
+            s = int(c.start_index)
+            e = int(c.end_index)
         except Exception:
             continue
         if e <= s:
@@ -1065,7 +1067,7 @@ def _compute_chunk_preview_review_signals(
     covered_end = 0
     for c in sorted_items:
         try:
-            idx = int(getattr(c, "index"))
+            idx = int(c.index)
         except Exception:
             continue
         try:
@@ -1102,7 +1104,7 @@ def _compute_chunk_preview_review_signals(
     threshold = 40 if unit == "tokens" else 120
     for c in chunk_items or []:
         try:
-            idx = int(getattr(c, "index"))
+            idx = int(c.index)
         except Exception:
             continue
         if unit == "tokens":
@@ -1124,7 +1126,7 @@ def _compute_chunk_preview_review_signals(
     seen: dict[str, int] = {}
     for c in chunk_items or []:
         try:
-            idx = int(getattr(c, "index"))
+            idx = int(c.index)
         except Exception:
             continue
         trimmed = str(getattr(c, "content", "") or "").strip()
@@ -1398,7 +1400,7 @@ def _to_pipeline_options(
         except Exception as exc:  # noqa: BLE001
             msg = (str(exc) or exc.__class__.__name__)[:200]
             detail = "Invalid pipeline options" if is_production_env() else f"Invalid pipeline options: {msg}"
-            raise HTTPException(status_code=400, detail=detail)
+            raise HTTPException(status_code=400, detail=detail) from exc
 
     if pipeline is None:
         return PipelineOptions()
@@ -1515,11 +1517,12 @@ def _rewrite_preview_images_to_minio(
                 continue
 
             # Convert to JPEG (image-url endpoint assumes ".jpg").
+            from io import BytesIO
+
             try:
-                from io import BytesIO
                 from PIL import Image as PILImage  # type: ignore
-            except Exception:
-                logger.warning("Pillow not available; skipping preview image upload to MinIO")
+            except ImportError:
+                logger.warning("Pillow not available; skipping preview image upload to MinIO (hint: pip install Pillow)")
                 continue
 
             img = None
@@ -1794,7 +1797,7 @@ async def _ingest_url_upload_request(
         except Exception as exc:  # noqa: BLE001
             with contextlib.suppress(OSError):
                 temp_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}")
+            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}") from exc
 
     # 4) Resolve ingestion policy (optional) based on the inferred filename/ext.
     safe_name = _sanitize_filename(body.filename or Path(final_path).name)
@@ -1854,7 +1857,7 @@ async def _ingest_url_upload_request(
             try:
                 resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
+                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
             patch_dict.update(dict(resolved.pipeline_patch or {}))
             if resolved.regex_rules:
                 patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
@@ -1882,7 +1885,7 @@ async def _ingest_url_upload_request(
             resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     pipeline_effective = resolve_pipeline_effective(
         dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
@@ -2114,7 +2117,7 @@ async def upload_document(
             try:
                 resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
+                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
             patch_dict.update(dict(resolved.pipeline_patch or {}))
             if resolved.regex_rules:
                 patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
@@ -2143,7 +2146,7 @@ async def upload_document(
             resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     pipeline_effective = resolve_pipeline_effective(
         dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
@@ -2444,7 +2447,7 @@ async def upload_documents_batch(
                             try:
                                 cached = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=ref)
                             except ValueError as exc:
-                                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
+                                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
                             governance_profile_cache[ref] = cached
                         patch_dict.update(dict(getattr(cached, "pipeline_patch", None) or {}))
                         rules = getattr(cached, "regex_rules", None) or []
@@ -3229,7 +3232,7 @@ async def get_document(
         chunks = chunk_query.order_by(DocumentChunk.chunk_index.asc()).all()
         # Expose a non-relationship attribute for Pydantic to serialize without triggering
         # accidental lazy-loading when include_chunks=false.
-        setattr(document, "chunks_loaded", chunks)
+        document.chunks_loaded = chunks
 
     return document
 
@@ -3977,6 +3980,7 @@ async def create_document_chunk(
     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
     """
     from sqlalchemy import func
+
     from app.storage.vector.factory import get_vector_store
 
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -4179,8 +4183,8 @@ async def patch_document_chunk(
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
-    except NotImplementedError:
-        raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level updates")
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level updates") from exc
     except Exception:
         # Best-effort: if delete fails, avoid creating duplicates.
         pass
@@ -4234,8 +4238,9 @@ async def delete_document_chunk(
     Delete a chunk and update its indexes (vector + BM25) best-effort.
     """
     from sqlalchemy import func
-    from app.storage.vector.factory import get_vector_store
+
     from app.rag.retriever import hybrid_retriever
+    from app.storage.vector.factory import get_vector_store
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -4282,8 +4287,8 @@ async def delete_document_chunk(
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
-    except NotImplementedError:
-        raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level deletes")
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level deletes") from exc
     except Exception:
         pass
 
@@ -4592,8 +4597,8 @@ async def download_document(
 
         try:
             ref = parse_minio_uri(raw_path)
-        except ValueError:
-            raise HTTPException(status_code=404, detail="Document file not available")
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Document file not available") from exc
 
         if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
             raise HTTPException(status_code=403, detail="Document file access denied")
@@ -4610,8 +4615,8 @@ async def download_document(
 
         try:
             stat = minio_service.stat_object(object_name=ref.object_name)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Document file not found")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=404, detail="Document file not found") from exc
 
         total_size = int(getattr(stat, "size", 0) or 0)
         if total_size <= 0:
@@ -4659,8 +4664,8 @@ async def download_document(
                 headers["Content-Length"] = str(length)
             except HTTPException:
                 raise
-            except Exception:
-                raise HTTPException(status_code=416, detail="Invalid Range header")
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(status_code=416, detail="Invalid Range header") from exc
         else:
             headers["Content-Length"] = str(total_size)
 
@@ -4691,8 +4696,8 @@ async def download_document(
     tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
     try:
         path.relative_to(tenant_root)
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Document file access denied")
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Document file access denied") from exc
 
     media_type, _encoding = mimetypes.guess_type(path.name)
     if not media_type:
@@ -4800,18 +4805,33 @@ async def cancel_document_processing(
     if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and task_ids:
         try:
             from arq.jobs import Job
+        except ImportError as exc:
+            logger.warning(
+                "TASK_QUEUE_ENABLED=true but arq is missing; cannot abort tasks %s for document %s: %s (hint: pip install arq)",
+                task_ids,
+                document_id,
+                str(exc)[:200],
+            )
+        else:
             from app.tasks.queue import get_queue
 
-            q = await get_queue()
-            if q is not None:
-                queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-                for tid in task_ids:
-                    job = Job(tid, q, _queue_name=queue_name)
-                    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
-                        # Abort signal was enqueued; the worker will pick it up shortly.
-                        await job.abort(timeout=0.2)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to abort tasks %s for document %s: %s", task_ids, document_id, str(exc)[:200])
+            try:
+                q = await get_queue()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to access task queue while aborting tasks %s for document %s: %s",
+                    task_ids,
+                    document_id,
+                    str(exc)[:200],
+                )
+            else:
+                if q is not None:
+                    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+                    for tid in task_ids:
+                        job = Job(tid, q, _queue_name=queue_name)
+                        with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+                            # Abort signal was enqueued; the worker will pick it up shortly.
+                            await job.abort(timeout=0.2)
 
     return {
         "id": document.id,
@@ -4944,8 +4964,8 @@ async def retry_document_processing(
             raise HTTPException(status_code=503, detail="Object storage is disabled")
         try:
             ref = parse_minio_uri(raw_path)
-        except ValueError:
-            raise HTTPException(status_code=404, detail="Document file not found")
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Document file not found") from exc
         if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
             raise HTTPException(status_code=403, detail="Document file access denied")
         dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
@@ -4959,8 +4979,8 @@ async def retry_document_processing(
             raise HTTPException(status_code=403, detail="Document file access denied")
         try:
             minio_service.stat_object(object_name=ref.object_name)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Document file not found")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=404, detail="Document file not found") from exc
         object_name = ref.object_name
     else:
         file_path = Path(raw_path)
@@ -5143,6 +5163,7 @@ async def delete_document(
     if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and task_ids:
         try:
             from arq.jobs import Job
+
             from app.tasks.queue import get_queue
 
             q = await get_queue()
@@ -5494,8 +5515,8 @@ async def get_image(
     # Prevent path traversal: only allow UUID / 32-hex (internal image_id).
     try:
         safe_id = uuid.UUID(image_id).hex
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Image not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Image not found") from exc
 
     images_dir_resolved = images_dir.resolve(strict=False)
 
@@ -5605,8 +5626,8 @@ async def get_image_url(
             _tenant_part, dataset_part, document_part, _chunk_key = img_id.split(":", 3)
             dataset_uuid = UUID(dataset_part)
             document_uuid = UUID(document_part)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Image not found")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=404, detail="Image not found") from exc
 
         document = (
             db.query(DBDocument)
@@ -5628,8 +5649,8 @@ async def get_image_url(
         try:
             dataset_part = img_id.split("-", 1)[0]
             dataset_uuid = UUID(dataset_part)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Image not found")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=404, detail="Image not found") from exc
         if account_id:
             ds = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
             DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -5654,7 +5675,7 @@ async def get_image_url(
         raise HTTPException(
             status_code=404,
             detail=f"Image not found or retrieval failed: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/preview", response_model=DocumentParsePreview)
@@ -5834,12 +5855,12 @@ async def preview_document(
         )
     except SubprocessCancelled:
         # Client disconnected; stop work early.
-        raise HTTPException(status_code=499, detail="Client closed request")
+        raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
         # Map input validation errors to 400 to preserve historical behavior.
         err_type = (e.details or {}).get("type")
         if err_type == "ValueError":
-            raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}")
+            raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}") from e
         logger.error("Subprocess worker failed during preview: %s", str(e)[:200])
         msg = (str(e) or "").strip()
         if not msg:
@@ -5847,12 +5868,12 @@ async def preview_document(
             msg = str(details.get("message") or details.get("type") or e.__class__.__name__).strip()
         msg = msg[:200]
         detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(status_code=500, detail=detail) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}")
+        raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}") from e
     except IOError as e:
         logger.error("File read error during preview: %s", str(e)[:200])
-        raise HTTPException(status_code=500, detail="File read error")
+        raise HTTPException(status_code=500, detail="File read error") from e
     except HTTPException:
         raise
     except Exception as e:
@@ -5862,7 +5883,7 @@ async def preview_document(
             msg = e.__class__.__name__
         msg = msg[:200]
         detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(status_code=500, detail=detail) from e
     finally:
         try:
             if run_dir.exists():
@@ -6091,7 +6112,7 @@ async def create_document_with_manual_chunks(
 
         return db_document
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         db.rollback()
         # Best-effort cleanup for partially indexed vectors / BM25
         with contextlib.suppress(Exception):
@@ -6102,7 +6123,7 @@ async def create_document_with_manual_chunks(
         db_document.error_message = str(e)
         db.commit()
         db.refresh(db_document)
-        raise HTTPException(status_code=500, detail=f"Failed to create document with manual chunks: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create document with manual chunks: {str(e)}") from e
 
 
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse)
@@ -6172,7 +6193,7 @@ async def preview_chunking(
     try:
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Parameter validation.
     min_chunk_size = 50 if resolved_chunk_strategy == "langchain_token" else 100
@@ -6579,10 +6600,10 @@ async def preview_chunking(
                 if resolved_chunk_strategy == "parent_child":
                     with contextlib.suppress(Exception):
                         strategy_params_out = {
-                            "child_ratio": float(getattr(chunker, "child_ratio")),
-                            "min_child_size": int(getattr(chunker, "min_child_size")),
-                            "child_size": int(getattr(chunker, "child_size")),
-                            "child_overlap": int(getattr(chunker, "child_overlap")),
+                            "child_ratio": float(chunker.child_ratio),
+                            "min_child_size": int(chunker.min_child_size),
+                            "child_size": int(chunker.child_size),
+                            "child_overlap": int(chunker.child_overlap),
                         }
             _chunk_started = time.perf_counter()
             chunks = chunker.split_documents(documents)
@@ -6908,11 +6929,11 @@ async def preview_chunking(
         )
 
     except SubprocessCancelled:
-        raise HTTPException(status_code=499, detail="Client closed request")
+        raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
         err_type = (e.details or {}).get("type")
         if err_type == "ValueError":
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         logger.error("Subprocess worker failed during chunk preview: %s", str(e)[:200])
         msg = (str(e) or "").strip()
         if not msg:
@@ -6920,9 +6941,9 @@ async def preview_chunking(
             msg = str(details.get("message") or details.get("type") or e.__class__.__name__).strip()
         msg = msg[:200]
         detail = "Failed to preview chunking" if is_production_env() else f"Failed to preview chunking: {msg}"
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(status_code=500, detail=detail) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -6932,7 +6953,7 @@ async def preview_chunking(
             msg = e.__class__.__name__
         msg = msg[:200]
         detail = "Failed to preview chunking" if is_production_env() else f"Failed to preview chunking: {msg}"
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(status_code=500, detail=detail) from e
     finally:
         try:
             if run_dir.exists():
@@ -7020,7 +7041,7 @@ async def preview_chunking_by_sha(
     try:
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Parameter validation (keep aligned with /chunk-preview).
     min_chunk_size = 50 if resolved_chunk_strategy == "langchain_token" else 100
@@ -7268,10 +7289,10 @@ async def preview_chunking_by_sha(
         if resolved_chunk_strategy == "parent_child":
             with contextlib.suppress(Exception):
                 strategy_params_out = {
-                    "child_ratio": float(getattr(chunker, "child_ratio")),
-                    "min_child_size": int(getattr(chunker, "min_child_size")),
-                    "child_size": int(getattr(chunker, "child_size")),
-                    "child_overlap": int(getattr(chunker, "child_overlap")),
+                    "child_ratio": float(chunker.child_ratio),
+                    "min_child_size": int(chunker.min_child_size),
+                    "child_size": int(chunker.child_size),
+                    "child_overlap": int(chunker.child_overlap),
                 }
 
     _chunk_started = time.perf_counter()
@@ -7620,9 +7641,9 @@ async def apply_batch_upload_urls(
         )
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {str(e)}") from e
 
 
 @router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus)
@@ -7658,4 +7679,4 @@ async def get_batch_task_status(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}") from e

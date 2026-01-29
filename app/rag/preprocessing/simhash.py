@@ -12,7 +12,6 @@ import hashlib
 import re
 from collections import Counter
 
-
 _TOKEN_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]+")
 
 
