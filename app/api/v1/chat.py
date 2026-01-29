@@ -1530,6 +1530,8 @@ async def stream_chat(
                         top_k=effective_rag_config.top_k,
                         score_threshold=effective_rag_config.score_threshold,
                         tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_id=dataset_id_used or scope_dataset_id,
                         structured_output=request.structured_output,
                         retrieval_mode=effective_rag_config.retrieval_mode,
                         alpha=effective_rag_config.alpha,
