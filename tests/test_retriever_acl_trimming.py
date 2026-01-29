@@ -1,0 +1,130 @@
+from __future__ import annotations
+
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.rag.retriever import HybridRetriever
+
+
+class _FakeChunk:
+    def __init__(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        chunk_index: int,
+        content: str,
+        chunk_id: UUID | None = None,
+        doc_metadata: dict | None = None,
+    ) -> None:
+        self.tenant_id = tenant_id
+        self.document_id = document_id
+        self.chunk_index = chunk_index
+        self.content = content
+        self.id = chunk_id or uuid4()
+        self.page_number = None
+        self.start_char = None
+        self.end_char = None
+        self.doc_metadata = doc_metadata or {}
+
+
+class _FakeQuery:
+    def __init__(self, results):  # noqa: ANN001
+        self._results = results
+
+    def filter(self, *_args, **_kwargs):  # noqa: ANN001
+        return self
+
+    def all(self):
+        return list(self._results)
+
+
+class _FakeSession:
+    def __init__(self, *, chunks, doc_rows):  # noqa: ANN001
+        self._chunks = chunks
+        self._doc_rows = doc_rows
+
+    def query(self, *args, **_kwargs):  # noqa: ANN001
+        # `_enrich_results_with_db_metadata` issues:
+        # - query(DocumentChunk) -> model class
+        # - query(DBDocument.id, DBDocument.dataset_id, DBDocument.status, DBDocument.doc_metadata) -> 4 columns
+        if len(args) == 1 and getattr(args[0], "__name__", "") == "DocumentChunk":
+            return _FakeQuery(self._chunks)
+        return _FakeQuery(self._doc_rows)
+
+    def close(self):
+        return None
+
+
+def test_retriever_candidate_acl_trims_disallowed_docs(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid4()
+    doc_allowed = uuid4()
+    doc_denied = uuid4()
+    chunk_allowed = uuid4()
+    chunk_denied = uuid4()
+
+    chunks = [
+        _FakeChunk(
+            tenant_id=tenant_id,
+            document_id=doc_allowed,
+            chunk_index=0,
+            content="allowed",
+            chunk_id=chunk_allowed,
+            doc_metadata={"pipeline_hash": "h"},
+        ),
+        _FakeChunk(
+            tenant_id=tenant_id,
+            document_id=doc_denied,
+            chunk_index=0,
+            content="denied",
+            chunk_id=chunk_denied,
+            doc_metadata={"pipeline_hash": "h"},
+        ),
+    ]
+    # (doc_id, dataset_id, status, doc_metadata)
+    doc_rows = [
+        (doc_allowed, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}),
+        (doc_denied, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}),
+    ]
+
+    monkeypatch.setattr(
+        "app.rag.retriever.SessionLocal",
+        lambda: _FakeSession(chunks=chunks, doc_rows=doc_rows),
+    )
+
+    # Only allow `doc_allowed` for this account.
+    def _fake_allowed_sets(_db, _tenant_id, _account_id, doc_ids, *, check_member=True):  # noqa: ANN001
+        allowed = {doc_allowed}
+        missing = set()
+        return allowed & set(doc_ids), missing
+
+    monkeypatch.setattr(
+        "app.services.document_access.get_allowed_document_id_sets",
+        _fake_allowed_sets,
+        raising=True,
+    )
+
+    retriever = HybridRetriever(tenant_id=tenant_id, account_id="acct")
+    results = [
+        {
+            "chunk_id": str(chunk_allowed),
+            "content": "vector allowed",
+            "metadata": {"document_id": str(doc_allowed), "chunk_index": 0},
+            "score": 0.9,
+        },
+        {
+            "chunk_id": str(chunk_denied),
+            "content": "vector denied",
+            "metadata": {"document_id": str(doc_denied), "chunk_index": 0},
+            "score": 0.8,
+        },
+    ]
+
+    stats: dict = {}
+    out = retriever._enrich_results_with_db_metadata(results, stats=stats)
+    assert len(out) == 1
+    assert str(out[0]["metadata"]["document_id"]) == str(doc_allowed)
+    assert stats["filtered_acl"] == 1
+    assert stats["output_results"] == 1
+
