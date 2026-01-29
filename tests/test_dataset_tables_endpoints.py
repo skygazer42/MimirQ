@@ -18,6 +18,26 @@ class _FakeQuery:
         self._limit = None
 
     def filter(self, *args, **kwargs):  # noqa: ANN001,D401
+        # Minimal SQLAlchemy filter emulation for unit tests (supports == and IN).
+        try:
+            from sqlalchemy.sql.elements import BinaryExpression
+        except Exception:  # pragma: no cover
+            return self
+
+        items = list(self._items)
+        for cond in args:
+            if not isinstance(cond, BinaryExpression):
+                continue
+            key = getattr(getattr(cond, "left", None), "key", None)
+            val = getattr(getattr(cond, "right", None), "value", None)
+            if not key:
+                continue
+            if isinstance(val, (list, tuple, set)):
+                items = [d for d in items if getattr(d, key, None) in val]
+            elif val is not None:
+                items = [d for d in items if getattr(d, key, None) == val]
+
+        self._items = items
         return self
 
     def order_by(self, *args, **kwargs):  # noqa: ANN001,D401
@@ -92,8 +112,8 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
             self.id = doc_id
             self.tenant_id = ds.tenant_id
             self.dataset_id = dataset_id
-            self.filename = "demo.xlsx"
-            self.file_type = "xlsx"
+            self.filename = "demo.docx"
+            self.file_type = "docx"
             self.status = "completed"
             self.updated_at = datetime.now(timezone.utc)
             self.doc_metadata = {
