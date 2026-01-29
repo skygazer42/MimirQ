@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Calendar, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Search, Shield, X } from 'lucide-react'
+import { Calendar, Copy, Database, Eye, FileText, FileType, Hash, Loader2, RefreshCw, Search, Shield, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -22,7 +22,15 @@ import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
-import type { Document, DocumentAccessInfo, DocumentAccessMode, DocumentChunk, DocumentVersionList } from '@/types'
+import type {
+  Document,
+  DocumentAccessInfo,
+  DocumentAccessMode,
+  DocumentChunk,
+  DocumentTimelineItem,
+  DocumentTimelineResponse,
+  DocumentVersionList,
+} from '@/types'
 
 interface DocumentDetailDialogProps {
   document: Document
@@ -84,6 +92,7 @@ function highlightText(text: string, query: string) {
 
 export function DocumentDetailDialog({ document: initialDocument, trigger }: DocumentDetailDialogProps) {
   const [open, setOpen] = useState(false)
+  const [activeView, setActiveView] = useState<'chunks' | 'timeline'>('chunks')
   const [detail, setDetail] = useState<Document | null>(null)
   const [isLoadingDoc, setIsLoadingDoc] = useState(false)
   const [docError, setDocError] = useState<string | null>(null)
@@ -92,6 +101,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const [chunksTotal, setChunksTotal] = useState(0)
   const [isLoadingChunks, setIsLoadingChunks] = useState(false)
   const [chunkError, setChunkError] = useState<string | null>(null)
+
+  const [timeline, setTimeline] = useState<DocumentTimelineResponse | null>(null)
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState(false)
+  const [timelineError, setTimelineError] = useState<string | null>(null)
 
   const [versions, setVersions] = useState<DocumentVersionList | null>(null)
   const [isLoadingVersions, setIsLoadingVersions] = useState(false)
@@ -140,6 +153,20 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       setVersionsError(formatApiError(err, '获取文档版本失败'))
     } finally {
       setIsLoadingVersions(false)
+    }
+  }, [initialDocument.id])
+
+  const loadTimeline = useCallback(async () => {
+    setIsLoadingTimeline(true)
+    setTimelineError(null)
+    try {
+      const data = await documentApi.getTimeline(initialDocument.id, { limit: 200 })
+      setTimeline(data)
+    } catch (err: any) {
+      console.error('Load document timeline error:', err)
+      setTimelineError(formatApiError(err, '获取文档时间线失败'))
+    } finally {
+      setIsLoadingTimeline(false)
     }
   }, [initialDocument.id])
 
@@ -194,17 +221,25 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
 
   useEffect(() => {
     if (!open) return
+    setActiveView('chunks')
     void loadDetail()
     void loadVersions()
   }, [open, loadDetail, loadVersions])
 
   useEffect(() => {
     if (!open) return
+    if (activeView !== 'chunks') return
     const handle = window.setTimeout(() => {
       void reloadChunks()
     }, chunkQuery.trim() ? 250 : 0)
     return () => window.clearTimeout(handle)
-  }, [open, chunkQuery, viewPipelineHash, reloadChunks])
+  }, [open, activeView, chunkQuery, viewPipelineHash, reloadChunks])
+
+  useEffect(() => {
+    if (!open) return
+    if (activeView !== 'timeline') return
+    void loadTimeline()
+  }, [open, activeView, loadTimeline])
 
   const parserBackend =
     (detail?.metadata?.parser_backend as string) || (initialDocument.metadata?.parser_backend as string) || ''
@@ -238,6 +273,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const isSearching = chunkQuery.trim().length > 0
   const canLoadMoreChunks = chunks.length < chunksTotal
   const loadError = docError || chunkError
+  const timelineItems: DocumentTimelineItem[] = timeline?.items || []
+  const timelineTotal = Number(timeline?.total || timelineItems.length)
 
   const copyToClipboard = useCallback(async (text: string) => {
     const content = text || ''
@@ -461,17 +498,48 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
         <main className="min-h-0 p-6">
           <Panel padding="none" className="h-full overflow-hidden rounded-2xl">
             <div className="flex items-center gap-3 border-b border-border/60 bg-background/40 px-4 py-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={chunkQuery}
-                  onChange={(e) => setChunkQuery(e.target.value)}
-                  placeholder="搜索切片内容..."
-                  className="h-10 pl-9"
-                />
+              <div
+                className="inline-flex h-10 items-center rounded-md bg-muted p-1 text-muted-foreground"
+                role="tablist"
+                aria-label="文档详情视图切换"
+              >
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-all",
+                    activeView === "chunks" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
+                  )}
+                  onClick={() => setActiveView("chunks")}
+                >
+                  切片
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-all",
+                    activeView === "timeline" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
+                  )}
+                  onClick={() => setActiveView("timeline")}
+                >
+                  时间线
+                </button>
               </div>
 
-              {versions?.items?.length ? (
+              {activeView === "chunks" ? (
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={chunkQuery}
+                    onChange={(e) => setChunkQuery(e.target.value)}
+                    placeholder="搜索切片内容..."
+                    className="h-10 pl-9"
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 text-sm text-muted-foreground">文档处理时间线（可回溯）</div>
+              )}
+
+              {activeView === "chunks" && versions?.items?.length ? (
                 <Select value={viewPipelineHash} onValueChange={setViewPipelineHash}>
                   <SelectTrigger className="hidden h-10 w-[220px] sm:flex">
                     <SelectValue placeholder="选择版本" />
@@ -488,41 +556,161 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
               ) : null}
 
               <span className="hidden sm:inline-flex rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-xs text-muted-foreground">
-                {chunks.length}/{chunksTotal}
+                {activeView === "chunks"
+                  ? `${chunks.length}/${chunksTotal}`
+                  : `${timelineItems.length}/${timelineTotal}`}
               </span>
-              {chunkQuery ? (
+
+              {activeView === "chunks" ? (
+                chunkQuery ? (
+                  <IconButton
+                    label="清除搜索"
+                    variant="ghost"
+                    className="h-10 w-10 text-muted-foreground hover:text-foreground"
+                    onClick={() => setChunkQuery("")}
+                  >
+                    <X className="h-4 w-4" />
+                  </IconButton>
+                ) : null
+              ) : (
                 <IconButton
-                  label="清除搜索"
+                  label="刷新时间线"
                   variant="ghost"
                   className="h-10 w-10 text-muted-foreground hover:text-foreground"
-                  onClick={() => setChunkQuery('')}
+                  onClick={() => void loadTimeline()}
+                  disabled={isLoadingTimeline}
                 >
-                  <X className="h-4 w-4" />
+                  {isLoadingTimeline ? (
+                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
                 </IconButton>
-              ) : null}
+              )}
             </div>
 
             <div className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4">
-              {(isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0) ? (
+              {activeView === "chunks" ? (
+                (isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0) ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+                    <p className="text-sm">正在加载切片数据...</p>
+                  </div>
+                ) : loadError && chunks.length === 0 ? (
+                  <div className="mx-auto max-w-2xl py-10">
+                    <Alert variant="destructive">
+                      <AlertTitle>加载失败</AlertTitle>
+                      <AlertDescription>{loadError}</AlertDescription>
+                    </Alert>
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          void loadDetail()
+                          void loadVersions()
+                          void reloadChunks()
+                        }}
+                      >
+                        重试
+                      </Button>
+                      <Button variant="secondary" onClick={() => setOpen(false)}>
+                        关闭
+                      </Button>
+                    </div>
+                  </div>
+                ) : chunksTotal === 0 && !isSearching ? (
+                  <EmptyState
+                    icon={FileText}
+                    title="暂无切片数据"
+                    description="该文档暂未生成可用切片，或后端未返回切片内容。"
+                    className="min-h-[320px]"
+                  />
+                ) : chunksTotal === 0 && isSearching ? (
+                  <EmptyState
+                    icon={Search}
+                    title="未找到匹配切片"
+                    description={<span>尝试更换关键词，或清空筛选条件。</span>}
+                    className="min-h-[320px]"
+                  >
+                    <Button variant="outline" onClick={() => setChunkQuery("")}>
+                      清空筛选
+                    </Button>
+                  </EmptyState>
+                ) : (
+                  <div className="space-y-3 pb-6">
+                    {chunkError && chunks.length > 0 ? (
+                      <Alert variant="destructive">
+                        <AlertTitle>加载切片失败</AlertTitle>
+                        <AlertDescription>{chunkError}</AlertDescription>
+                      </Alert>
+                    ) : null}
+
+                    {chunks.map((chunk) => (
+                      <div
+                        key={chunk.id}
+                        className={cn(
+                          "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
+                          "hover:border-primary/25 hover:shadow-soft/30"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono font-medium text-muted-foreground">
+                              #{chunk.chunk_index}
+                            </span>
+                            {typeof chunk.page_number === "number" ? (
+                              <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                P.{chunk.page_number}
+                              </span>
+                            ) : null}
+                            <span className="text-muted-foreground">{(chunk.content || "").length} chars</span>
+                          </div>
+                          <IconButton
+                            label="复制切片内容"
+                            variant="ghost"
+                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                            onClick={() => void copyToClipboard(chunk.content)}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+
+                        <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
+                          {highlightText(chunk.content || "", chunkQuery)}
+                        </div>
+                      </div>
+                    ))}
+
+                    {canLoadMoreChunks ? (
+                      <div className="flex justify-center pt-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => void loadMoreChunks()}
+                          disabled={isLoadingChunks}
+                          className="gap-2"
+                        >
+                          {isLoadingChunks ? (
+                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                          ) : null}
+                          加载更多
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              ) : isLoadingTimeline && timelineItems.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
-                  <p className="text-sm">正在加载切片数据...</p>
+                  <p className="text-sm">正在加载时间线...</p>
                 </div>
-              ) : loadError && chunks.length === 0 ? (
+              ) : (timelineError || docError) && timelineItems.length === 0 ? (
                 <div className="mx-auto max-w-2xl py-10">
                   <Alert variant="destructive">
                     <AlertTitle>加载失败</AlertTitle>
-                    <AlertDescription>{loadError}</AlertDescription>
+                    <AlertDescription>{timelineError || docError}</AlertDescription>
                   </Alert>
                   <div className="mt-4 flex items-center justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        void loadDetail()
-                        void loadVersions()
-                        void reloadChunks()
-                      }}
-                    >
+                    <Button variant="outline" onClick={() => void loadTimeline()}>
                       重试
                     </Button>
                     <Button variant="secondary" onClick={() => setOpen(false)}>
@@ -530,84 +718,108 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     </Button>
                   </div>
                 </div>
-              ) : chunksTotal === 0 && !isSearching ? (
+              ) : timelineItems.length === 0 ? (
                 <EmptyState
-                  icon={FileText}
-                  title="暂无切片数据"
-                  description="该文档暂未生成可用切片，或后端未返回切片内容。"
+                  icon={Calendar}
+                  title="暂无时间线事件"
+                  description="该文档暂未产生可回溯的事件记录（或审计未启用）。"
                   className="min-h-[320px]"
                 />
-              ) : chunksTotal === 0 && isSearching ? (
-                <EmptyState
-                  icon={Search}
-                  title="未找到匹配切片"
-                  description={<span>尝试更换关键词，或清空筛选条件。</span>}
-                  className="min-h-[320px]"
-                >
-                  <Button variant="outline" onClick={() => setChunkQuery('')}>
-                    清空筛选
-                  </Button>
-                </EmptyState>
               ) : (
                 <div className="space-y-3 pb-6">
-                  {chunkError && chunks.length > 0 ? (
+                  {timelineError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>加载切片失败</AlertTitle>
-                      <AlertDescription>{chunkError}</AlertDescription>
+                      <AlertTitle>加载时间线失败</AlertTitle>
+                      <AlertDescription>{timelineError}</AlertDescription>
                     </Alert>
                   ) : null}
 
-                  {chunks.map((chunk) => (
-                    <div
-                      key={chunk.id}
-                      className={cn(
-                        "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
-                        "hover:border-primary/25 hover:shadow-soft/30"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono font-medium text-muted-foreground">
-                            #{chunk.chunk_index}
-                          </span>
-                          {typeof chunk.page_number === 'number' ? (
-                            <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
-                              P.{chunk.page_number}
-                            </span>
-                          ) : null}
-                          <span className="text-muted-foreground">{(chunk.content || '').length} chars</span>
-                        </div>
-                        <IconButton
-                          label="复制切片内容"
-                          variant="ghost"
-                          className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                          onClick={() => void copyToClipboard(chunk.content)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </IconButton>
-                      </div>
-
-                      <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
-                        {highlightText(chunk.content || '', chunkQuery)}
-                      </div>
-                    </div>
-                  ))}
-
-                  {canLoadMoreChunks ? (
-                    <div className="flex justify-center pt-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => void loadMoreChunks()}
-                        disabled={isLoadingChunks}
-                        className="gap-2"
+                  {timelineItems.map((ev) => {
+                    const detailPairs = Object.entries(ev.details || {}).slice(0, 12)
+                    const hasDetails = detailPairs.length > 0
+                    return (
+                      <div
+                        key={ev.id}
+                        className={cn(
+                          "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
+                          "hover:border-primary/25 hover:shadow-soft/30"
+                        )}
                       >
-                        {isLoadingChunks ? (
-                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                                {formatDate(ev.created_at)}
+                              </span>
+                              <span className="truncate font-mono text-xs text-foreground/90">{ev.action}</span>
+                              {ev.source === "synthetic" ? (
+                                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+                                  synthetic
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              {ev.stage ? <span>stage: {ev.stage}</span> : null}
+                              {ev.status ? <span>status: {ev.status}</span> : null}
+                              {typeof ev.progress === "number" ? <span>progress: {ev.progress}%</span> : null}
+                              {ev.request_id ? (
+                                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
+                                  req: {ev.request_id}
+                                </span>
+                              ) : null}
+                              {ev.actor_id ? (
+                                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
+                                  by: {ev.actor_id}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <IconButton
+                            label="复制事件信息"
+                            variant="ghost"
+                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                            onClick={() =>
+                              void copyToClipboard(
+                                JSON.stringify(
+                                  {
+                                    id: ev.id,
+                                    action: ev.action,
+                                    created_at: ev.created_at,
+                                    stage: ev.stage,
+                                    status: ev.status,
+                                    progress: ev.progress,
+                                    request_id: ev.request_id,
+                                    actor_id: ev.actor_id,
+                                    details: ev.details,
+                                  },
+                                  null,
+                                  2
+                                )
+                              )
+                            }
+                          >
+                            <Copy className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+
+                        {hasDetails ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {detailPairs.map(([k, v]) => (
+                              <span
+                                key={`${ev.id}:${k}`}
+                                className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                                title={`${k}: ${String(v)}`}
+                              >
+                                {k}: {String(v)}
+                              </span>
+                            ))}
+                          </div>
                         ) : null}
-                        加载更多
-                      </Button>
-                    </div>
-                  ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
