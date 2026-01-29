@@ -86,6 +86,7 @@ export function ProfileEditorDrawer({
 
   const [patchJson, setPatchJson] = useState('')
   const [patchJsonError, setPatchJsonError] = useState<string | null>(null)
+  const [patchJsonDirty, setPatchJsonDirty] = useState(false)
 
   // Sandbox test state.
   const [testInputFormat, setTestInputFormat] = useState<'markdown' | 'html'>('markdown')
@@ -114,6 +115,7 @@ export function ProfileEditorDrawer({
     setRegexRules([])
     setPatchJson(JSON.stringify(defaultPayload().pipeline_patch, null, 2))
     setPatchJsonError(null)
+    setPatchJsonDirty(false)
     setActiveTab('edit')
     setTestResp(null)
     setTestInput('# Sample\n\nfoo')
@@ -136,6 +138,7 @@ export function ProfileEditorDrawer({
       setRegexRules(p.regex_rules)
       setPatchJson(JSON.stringify(p.pipeline_patch, null, 2))
       setPatchJsonError(null)
+      setPatchJsonDirty(false)
       setActiveTab('edit')
       setTestResp(null)
       return
@@ -159,6 +162,7 @@ export function ProfileEditorDrawer({
         setRegexRules((prof.payload?.regex_rules as any) || [])
         setPatchJson(JSON.stringify(prof.payload?.pipeline_patch || {}, null, 2))
         setPatchJsonError(null)
+        setPatchJsonDirty(false)
         setActiveTab('edit')
         setTestResp(null)
       } catch (err: any) {
@@ -176,11 +180,11 @@ export function ProfileEditorDrawer({
   // Keep JSON view synced for quick-toggle edits.
   useEffect(() => {
     if (!open) return
-    if (!patchJson) return
     // If user has a JSON error, do not overwrite their edits.
     if (patchJsonError) return
+    if (patchJsonDirty) return
     setPatchJson(JSON.stringify(pipelinePatch || {}, null, 2))
-  }, [pipelinePatch, open, patchJsonError])
+  }, [pipelinePatch, open, patchJsonError, patchJsonDirty])
 
   const toggleInputFormat = (fmt: 'markdown' | 'html') => {
     setInputFormats((prev) => {
@@ -195,11 +199,13 @@ export function ProfileEditorDrawer({
   const updatePatchBool = (key: keyof DocumentPipelineOptions, value: boolean) => {
     setPipelinePatch((prev) => ({ ...(prev || {}), [key]: value }))
     setPatchJsonError(null)
+    setPatchJsonDirty(false)
   }
 
   const updatePatchNumber = (key: keyof DocumentPipelineOptions, value: number) => {
     setPipelinePatch((prev) => ({ ...(prev || {}), [key]: value }))
     setPatchJsonError(null)
+    setPatchJsonDirty(false)
   }
 
   const applyPatchJson = () => {
@@ -209,6 +215,7 @@ export function ProfileEditorDrawer({
       return
     }
     setPatchJsonError(null)
+    setPatchJsonDirty(false)
     setPipelinePatch(parsed.value as any)
   }
 
@@ -531,7 +538,11 @@ export function ProfileEditorDrawer({
                         <div className="flex-1">
                           <Select
                             value={String(pipelinePatch?.governance_remove_images || 'none')}
-                            onValueChange={(v) => setPipelinePatch((prev) => ({ ...(prev || {}), governance_remove_images: v }))}
+                            onValueChange={(v) => {
+                              setPipelinePatch((prev) => ({ ...(prev || {}), governance_remove_images: v }))
+                              setPatchJsonDirty(false)
+                              setPatchJsonError(null)
+                            }}
                             disabled={isReadOnly}
                           >
                             <SelectTrigger className="h-9 rounded-xl">
@@ -586,6 +597,7 @@ export function ProfileEditorDrawer({
                         onChange={(e) => {
                           setPatchJson(e.target.value)
                           setPatchJsonError(null)
+                          setPatchJsonDirty(true)
                         }}
                         disabled={isReadOnly}
                         className={cn('font-mono text-[12px] min-h-[220px]', patchJsonError && 'aria-[invalid=true]')}
@@ -752,4 +764,3 @@ export function ProfileEditorDrawer({
     </Dialog>
   )
 }
-
