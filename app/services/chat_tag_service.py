@@ -163,7 +163,8 @@ def build_chat_tag_context_docs(
             DBDocument.tenant_id == tenant_id,
             DBDocument.id.in_(doc_ids),
             DBDocument.status == "completed",
-            DBDocument.file_type.in_(["csv", "xls", "xlsx"]),
+            # DOCX can also have embedded tables imported into the Table Store as a sidecar.
+            DBDocument.file_type.in_(["csv", "xls", "xlsx", "docx"]),
         )
     )
     raw_docs = q.all()
@@ -335,4 +336,3 @@ def build_chat_tag_context_docs(
 
 
 __all__ = ["build_chat_tag_context_docs"]
-

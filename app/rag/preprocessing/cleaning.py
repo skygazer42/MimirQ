@@ -39,7 +39,9 @@ _CODE_FENCE_RE = re.compile(r"^\s*```")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _LIST_RE = re.compile(r"^\s*(?:[-*+]|(?:\d{1,3}[.)]))\s+")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>")
-_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+# Markdown pipe tables can omit leading/trailing pipes (e.g. "a | b").
+# Treat such lines as "structural" to avoid unwrap/noise filters mangling tables.
+_TABLE_ROW_RE = re.compile(r"^\s*\|?\s*[^|]*(\|\s*[^|]*)+\|?\s*$")
 _INDENTED_CODE_RE = re.compile(r"^(?:\t| {4,})\S")
 _SENT_END_RE = re.compile(r"[.!?\u3002\uff01\uff1f\uff1b;:\uff1a]\s*$")
 _TRAILING_PAGE_NUM_RE = re.compile(r"\s+\d{1,4}\s*$")
