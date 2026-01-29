@@ -577,6 +577,14 @@ export interface RegexRuleModel {
   flags?: number
 }
 
+export interface CleanPreviewRuleStat {
+  index: number
+  pattern: string
+  repl?: string
+  flags?: number
+  hits: number
+}
+
 export interface CleanPreviewRequest {
   markdown: string
   rules?: RegexRuleModel[]
@@ -634,6 +642,7 @@ export interface CleanPreviewResponse {
   markdown: string
   applied_rules: number
   changed: boolean
+  rule_stats?: CleanPreviewRuleStat[]
   dropped?: boolean
   drop_reason?: string | null
   pii_hits?: Record<string, number> | null

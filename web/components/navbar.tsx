@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
+  Braces,
   MessageSquare,
   Database,
   Activity,
@@ -61,6 +62,7 @@ const menuSections: Array<{ title: string; items: MenuItem[] }> = [
     items: [
       { icon: FileText, label: '文档解析', href: '/parsing' },
       { icon: ShieldCheck, label: '数据治理', href: '/data-governance' },
+      { icon: Braces, label: '治理配置', href: '/data-governance/profiles' },
       { icon: Scissors, label: '切块预览', href: '/chunk-preview' },
     ],
   },

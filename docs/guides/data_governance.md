@@ -10,6 +10,24 @@ via the frontend “启用自定义管线 / 数据治理清洗” options.
 You can also set global (env-backed) defaults in the frontend Settings page (“数据治理” section).
 These defaults apply when pipeline overrides are not provided.
 
+## Governance Profiles（治理预设 / Scripts）
+
+For teams, it is often easier to manage governance as reusable **Profiles**:
+
+- A profile bundles a `pipeline_patch` (governance_* options) + optional `regex_rules`
+- Profiles are **declarative JSON** (no executable code)
+- Built-in profiles are read-only; custom profiles are tenant-scoped
+
+UI entry:
+
+- `治理配置` → `/data-governance/profiles`
+  - Create/Edit profiles
+  - Sandbox test via `clean-preview` (output + unified diff)
+  - Import/Export profile JSON
+
+Profile schema & server-side safety limits:
+- `docs/data-governance-profiles.md`
+
 ## Upload API Notes
 - For multipart endpoints (e.g. `/api/v1/documents/upload`, `/api/v1/documents/preview`, `/api/v1/documents/chunk-preview`), pipeline overrides are sent as a JSON string form field named `pipeline`.
 - You can cap the payload size via `PIPELINE_FORM_JSON_MAX_CHARS`.

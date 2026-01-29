@@ -99,6 +99,14 @@ class RegexRuleModel(BaseModel):
     flags: int = 0
 
 
+class CleanPreviewRuleStat(BaseModel):
+    index: int = Field(..., ge=0)
+    pattern: str
+    repl: str = ""
+    flags: int = 0
+    hits: int = Field(default=0, ge=0, le=10_000_000)
+
+
 class GovernanceIssue(BaseModel):
     code: str = Field(..., min_length=1, max_length=100)
     severity: Literal["info", "warning", "error"] = "info"
@@ -188,6 +196,7 @@ class CleanPreviewResponse(BaseModel):
     markdown: str
     applied_rules: int
     changed: bool
+    rule_stats: List[CleanPreviewRuleStat] = Field(default_factory=list)
     dropped: bool = False
     drop_reason: Optional[str] = None
     pii_hits: Optional[dict[str, int]] = None
