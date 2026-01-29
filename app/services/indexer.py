@@ -26,6 +26,7 @@ from app.types.indexing import (
 )
 from app.core.config import settings
 from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
@@ -276,6 +277,24 @@ class Indexer:
         commit: bool = True,
         options: Optional[IndexingOptions] = None,
     ) -> PersistChunksResult:
+        dataset_id_str: str | None = None
+        file_type_str: str | None = None
+        try:
+            row = (
+                self._db.query(DBDocument.dataset_id, DBDocument.file_type)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
+                .first()
+            )
+            if row:
+                ds_id, ft = row
+                if ds_id is not None:
+                    dataset_id_str = str(ds_id)
+                if ft is not None:
+                    file_type_str = str(ft)
+        except Exception:
+            dataset_id_str = None
+            file_type_str = None
+
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
@@ -287,7 +306,11 @@ class Indexer:
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
+            if dataset_id_str:
+                meta.setdefault("dataset_id", dataset_id_str)
             meta.setdefault("source", source)
+            if file_type_str and not meta.get("file_type"):
+                meta["file_type"] = file_type_str
             if embedding_prefix_enabled:
                 meta.setdefault("embedding_context_prefix_enabled", True)
             meta = _ensure_chunk_metadata(meta, content=c.content or "", document_id=document_id, chunk_index=idx)
@@ -364,6 +387,24 @@ class Indexer:
         Returns:
             Persistence result.
         """
+        dataset_id_str: str | None = None
+        file_type_str: str | None = None
+        try:
+            row = (
+                self._db.query(DBDocument.dataset_id, DBDocument.file_type)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
+                .first()
+            )
+            if row:
+                ds_id, ft = row
+                if ds_id is not None:
+                    dataset_id_str = str(ds_id)
+                if ft is not None:
+                    file_type_str = str(ft)
+        except Exception:
+            dataset_id_str = None
+            file_type_str = None
+
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
@@ -376,7 +417,11 @@ class Indexer:
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
+            if dataset_id_str:
+                meta.setdefault("dataset_id", dataset_id_str)
             meta.setdefault("source", source)
+            if file_type_str and not meta.get("file_type"):
+                meta["file_type"] = file_type_str
             if embedding_prefix_enabled:
                 meta.setdefault("embedding_context_prefix_enabled", True)
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
