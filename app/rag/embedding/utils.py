@@ -3,9 +3,11 @@ Embedding utility functions.
 """
 import hashlib
 import os
+from urllib.parse import urlsplit
 from typing import Optional
 
 from app.rag.core.logging import get_logger
+from app.core.constants import EmbeddingProviders
 
 logger = get_logger("rag.embedding")
 
@@ -51,3 +53,37 @@ def get_docker_safe_url(base_url: Optional[str]) -> Optional[str]:
         base_url = base_url.replace("http://127.0.0.1", "http://host.docker.internal")
         logger.info(f"Running in docker, using {base_url} as base url")
     return base_url
+
+
+def current_embedding_space_hash(*, length: Optional[int] = 16) -> str:
+    """
+    Return a stable hash for the current embedding "space" (model/provider endpoint).
+
+    Why:
+    - In real deployments, embedding model/provider/base_url can change over time.
+    - Vector similarity across different embedding spaces is meaningless and can silently
+      degrade retrieval quality (or cause confusing relevance).
+
+    Notes:
+    - We intentionally DO NOT include API keys.
+    - We best-effort normalize base_url to reduce accidental cache busting.
+    """
+    # Lazy import to avoid import cycles at module import time.
+    from app.core.config import settings
+
+    provider_raw = (settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower()
+    provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, provider_raw)
+    model = (settings.EMBEDDING_MODEL or "").strip()
+    base_url = (settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "").strip()
+
+    # Normalize base_url: keep scheme/host/path, drop query/fragment.
+    norm_base = ""
+    if base_url:
+        try:
+            u = urlsplit(base_url)
+            norm_base = f"{u.scheme}://{u.netloc}{u.path}".rstrip("/")
+        except Exception:
+            norm_base = base_url.rstrip("/")
+
+    key = f"provider={provider}|model={model}|base_url={norm_base}"
+    return hashstr(key, length=length)

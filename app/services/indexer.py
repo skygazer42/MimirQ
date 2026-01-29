@@ -32,6 +32,7 @@ from app.rag.retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 from app.rag.core.metadata import normalize_image_metadata
+from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.preprocessing.normalization import normalize_text
 from app.services.metrics_logger import log_metrics
 
@@ -279,6 +280,7 @@ class Indexer:
     ) -> PersistChunksResult:
         dataset_id_str: str | None = None
         file_type_str: str | None = None
+        embedding_space = current_embedding_space_hash()
         try:
             row = (
                 self._db.query(DBDocument.dataset_id, DBDocument.file_type)
@@ -306,6 +308,7 @@ class Indexer:
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
+            meta.setdefault("embedding_space_hash", embedding_space)
             if dataset_id_str:
                 meta.setdefault("dataset_id", dataset_id_str)
             meta.setdefault("source", source)
@@ -389,6 +392,7 @@ class Indexer:
         """
         dataset_id_str: str | None = None
         file_type_str: str | None = None
+        embedding_space = current_embedding_space_hash()
         try:
             row = (
                 self._db.query(DBDocument.dataset_id, DBDocument.file_type)
@@ -417,6 +421,7 @@ class Indexer:
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
+            meta.setdefault("embedding_space_hash", embedding_space)
             if dataset_id_str:
                 meta.setdefault("dataset_id", dataset_id_str)
             meta.setdefault("source", source)
