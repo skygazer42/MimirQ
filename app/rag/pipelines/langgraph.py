@@ -485,20 +485,30 @@ def _retrieve_node(state: RAGState) -> RAGState:
                 r = retriever.model_copy(update={"enable_reranker": False})
         retrieval_plan.append((kind, q, r))
 
-    def _invoke_with_timing(kind: str, q: str, r: Any) -> tuple[str, List[Document], str | None, float]:
+    def _invoke_with_timing(
+        kind: str, q: str, r: Any
+    ) -> tuple[str, List[Document], str | None, float, Dict[str, Any] | None]:
         t0 = time.time()
         try:
             docs_i = r.invoke(q)
             docs_i = engine._annotate_docs_with_role(docs_i or [], kind)  # type: ignore[attr-defined]
-            return kind, (docs_i or []), None, time.time() - t0
+            dbg = getattr(r, "_last_debug_metrics", None)
+            dbg = dbg if isinstance(dbg, dict) else None
+            return kind, (docs_i or []), None, time.time() - t0, dbg
         except Exception as exc:  # noqa: BLE001
-            return kind, [], str(exc)[:200], time.time() - t0
+            return kind, [], str(exc)[:200], time.time() - t0, None
 
     if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
         for kind, q, r in retrieval_plan:
-            kind, docs_i, err, elapsed_i = _invoke_with_timing(kind, q, r)
+            kind, docs_i, err, elapsed_i, dbg = _invoke_with_timing(kind, q, r)
             retrieval_per_query.append(
-                {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+                {
+                    "kind": kind,
+                    "query_chars": len(q or ""),
+                    "elapsed_sec": round(elapsed_i, 3),
+                    "ok": err is None,
+                    "retriever_debug": dbg,
+                }
             )
             if err:
                 retrieval_errors.append(f"{kind}:{err[:160]}")
@@ -507,9 +517,15 @@ def _retrieve_node(state: RAGState) -> RAGState:
         with concurrent.futures.ThreadPoolExecutor(max_workers=retrieval_parallelism) as pool:
             futures = [pool.submit(_invoke_with_timing, kind, q, r) for kind, q, r in retrieval_plan]
             for fut in futures:
-                kind, docs_i, err, elapsed_i = fut.result()
+                kind, docs_i, err, elapsed_i, dbg = fut.result()
                 retrieval_per_query.append(
-                    {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+                    {
+                        "kind": kind,
+                        "query_chars": len(q or ""),
+                        "elapsed_sec": round(elapsed_i, 3),
+                        "ok": err is None,
+                        "retriever_debug": dbg,
+                    }
                 )
                 if err:
                     retrieval_errors.append(f"{kind}:{err[:160]}")

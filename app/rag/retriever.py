@@ -80,6 +80,9 @@ class HybridRetriever(BaseRetriever):
     # LRU order for per-tenant BM25 caches (prevents unbounded growth in multi-tenant deployments).
     _bm25_cache_order: "OrderedDict[str, None]" = PrivateAttr(default_factory=OrderedDict)
     _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    # Best-effort debug metrics for the last retrieval call (per retriever instance).
+    # Used by debug endpoints / observability to expose trimming/overfetch behavior.
+    _last_debug_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
 
     def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
         if not docs:
@@ -1057,7 +1060,12 @@ class HybridRetriever(BaseRetriever):
 
     # ---- LangChain Retriever API ----
 
-    def _enrich_results_with_db_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _enrich_results_with_db_metadata(
+        self,
+        results: List[Dict[str, Any]],
+        *,
+        stats: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Vector store may return "trimmed" metadata (e.g., without img_id).
         Use chunk_id / (document_id, chunk_index) to look up DB and fill in key fields:
@@ -1066,6 +1074,19 @@ class HybridRetriever(BaseRetriever):
         """
         if not results:
             return results
+
+        if stats is not None:
+            stats.clear()
+            stats["input_results"] = len(results)
+            stats["filtered_orphaned"] = 0
+            stats["filtered_acl"] = 0
+            stats["filtered_dataset"] = 0
+            stats["filtered_not_ready"] = 0
+            stats["filtered_embedding_space"] = 0
+            stats["filtered_pipeline_version"] = 0
+            stats["filtered_metadata_filter"] = 0
+            stats["output_results"] = 0
+            stats["exception"] = None
 
         db = SessionLocal()
         try:
@@ -1243,18 +1264,26 @@ class HybridRetriever(BaseRetriever):
 
                 # If we know tenant_id, treat unresolved results as stale (e.g. orphan vectors).
                 if ck is None and tenant_filter:
+                    if stats is not None:
+                        stats["filtered_orphaned"] = int(stats.get("filtered_orphaned", 0) or 0) + 1
                     continue
 
                 if ck is not None:
                     # Enforce candidate-level dataset/ACL trimming once we know the resolved document_id.
                     doc_id_str = str(ck.document_id)
                     if allowed_docs_str is not None and doc_id_str not in allowed_docs_str:
+                        if stats is not None:
+                            stats["filtered_acl"] = int(stats.get("filtered_acl", 0) or 0) + 1
                         continue
                     if dataset_filter is not None:
                         want = str(dataset_filter)
                         if doc_dataset_by_id.get(doc_id_str) != want:
+                            if stats is not None:
+                                stats["filtered_dataset"] = int(stats.get("filtered_dataset", 0) or 0) + 1
                             continue
                     if doc_ready_by_id and not doc_ready_by_id.get(doc_id_str, False):
+                        if stats is not None:
+                            stats["filtered_not_ready"] = int(stats.get("filtered_not_ready", 0) or 0) + 1
                         continue
 
                     cid_str = str(ck.id)
@@ -1320,6 +1349,10 @@ class HybridRetriever(BaseRetriever):
                     if meta.get("score") is not None:
                         ck_space = str(meta.get("embedding_space_hash") or "").strip()
                         if ck_space and ck_space != embedding_space:
+                            if stats is not None:
+                                stats["filtered_embedding_space"] = (
+                                    int(stats.get("filtered_embedding_space", 0) or 0) + 1
+                                )
                             continue
 
                     # Candidate-level active pipeline trimming (avoid mixing versions when open-scoped).
@@ -1332,6 +1365,10 @@ class HybridRetriever(BaseRetriever):
                             if ph:
                                 ck_key = f"{ck.document_id}:{ph}"
                         if not ck_key or ck_key != active_key:
+                            if stats is not None:
+                                stats["filtered_pipeline_version"] = (
+                                    int(stats.get("filtered_pipeline_version", 0) or 0) + 1
+                                )
                             continue
 
                 r["metadata"] = meta
@@ -1340,17 +1377,24 @@ class HybridRetriever(BaseRetriever):
             # Apply the full metadata filter *after* DB enrichment.
             if self.metadata_filter and self.metadata_filter_enabled:
                 try:
+                    before = len(resolved)
                     filtered: List[Dict[str, Any]] = []
                     for item in resolved:
                         m = item.get("metadata") or {}
                         if isinstance(m, dict) and self._match_metadata_filter(m, self.metadata_filter):
                             filtered.append(item)
                     resolved = filtered
+                    if stats is not None:
+                        stats["filtered_metadata_filter"] = max(0, before - len(resolved))
                 except Exception:
                     pass
 
+            if stats is not None:
+                stats["output_results"] = len(resolved)
             return resolved
-        except Exception:
+        except Exception as exc:
+            if stats is not None:
+                stats["exception"] = str(exc)[:200]
             return results
         finally:
             try:
@@ -1784,6 +1828,36 @@ class HybridRetriever(BaseRetriever):
                 if cap > 0:
                     search_k = min(search_k, cap)
 
+        debug: Dict[str, Any] = {
+            "requested_k": int(requested_k),
+            "search_k": int(search_k),
+            "overfetch_enabled": bool(search_k > requested_k),
+            "overfetch_multiplier": int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
+            "overfetch_cap_k": int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0),
+            "scope": {
+                "tenant_id": str(self.tenant_id or ""),
+                "account_id_present": bool((self.account_id or "").strip()),
+                "dataset_id": str(self.dataset_id or ""),
+                "document_ids_count": len(self.document_ids or []),
+                "kind": (
+                    "document_ids"
+                    if (self.document_ids or [])
+                    else ("dataset_id" if self.dataset_id is not None else "open")
+                ),
+            },
+        }
+        try:
+            max_doc_ids = int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0)
+            debug["milvus_doc_id_pushdown_skipped"] = bool(
+                settings.VECTOR_BACKEND == "milvus"
+                and max_doc_ids > 0
+                and self.document_ids
+                and len(self.document_ids) > max_doc_ids
+            )
+            debug["milvus_expr_max_doc_ids"] = int(max_doc_ids)
+        except Exception:
+            debug["milvus_doc_id_pushdown_skipped"] = None
+
         results = self._hybrid_search(
             query=query,
             top_k=search_k,
@@ -1799,13 +1873,25 @@ class HybridRetriever(BaseRetriever):
             mmr_fetch_k_multiplier=self.mmr_fetch_k_multiplier,
             metadata_filter=self.metadata_filter,
         )
-        results = self._enrich_results_with_db_metadata(results)
+        debug["hybrid_results"] = len(results or [])
+        enrich1: Dict[str, Any] = {}
+        results = self._enrich_results_with_db_metadata(results, stats=enrich1)
+        debug["enrich_pass1"] = enrich1
+        n_enrich1 = len(results or [])
+
         results = self._expand_results_with_neighbors(results)
+        debug["neighbors_delta"] = len(results or []) - n_enrich1
+
+        n_neighbors = len(results or [])
         results = self._auto_merge_parent_child(results)
+        debug["parent_child_merge_delta"] = len(results or []) - n_neighbors
         # Neighbor expansion / parent-child merges can introduce additional chunks that were
         # not part of the original retrieval result set. Re-apply DB enrichment + ACL/version
         # trimming to guarantee defense-in-depth and avoid leaking stale/non-active pipelines.
-        results = self._enrich_results_with_db_metadata(results)
+        enrich2: Dict[str, Any] = {}
+        results = self._enrich_results_with_db_metadata(results, stats=enrich2)
+        debug["enrich_pass2"] = enrich2
+        debug["final_results"] = len(results or [])
         docs: List[Document] = []
         for r in results:
             meta = dict(r.get("metadata") or {})
@@ -1825,6 +1911,8 @@ class HybridRetriever(BaseRetriever):
             if "rerank_model_used" in r:
                 meta["rerank_model_used"] = r.get("rerank_model_used")
             docs.append(Document(page_content=r.get("content", ""), metadata=meta, id=r.get("chunk_id")))
+        debug["final_docs"] = len(docs)
+        self._last_debug_metrics = debug
         return docs[:requested_k]
 
     async def _aget_relevant_documents(
