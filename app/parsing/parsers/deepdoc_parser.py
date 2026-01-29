@@ -7,6 +7,39 @@ from langchain_core.documents import Document
 
 from app.deepdoc.parser import PdfParser as DeepDocPdfParser
 
+_HEADING_LEVEL_RE = re.compile(r"(\d+)")
+
+
+def _looks_like_heading_style(style_name: str) -> bool:
+    s = (style_name or "").strip()
+    if not s:
+        return False
+    s_lower = s.lower()
+    return s_lower.startswith("heading") or "标题" in s
+
+
+def _heading_level(style_name: str) -> int:
+    m = _HEADING_LEVEL_RE.search((style_name or "").strip())
+    if not m:
+        return 2
+    try:
+        lvl = int(m.group(1))
+    except Exception:
+        return 2
+    return max(1, min(6, lvl))
+
+
+def _looks_like_list_style(style_name: str) -> bool:
+    s = (style_name or "").strip().lower()
+    return "list" in s or "bullet" in s or "列表" in s
+
+
+def _list_marker(style_name: str) -> str:
+    s = (style_name or "").strip().lower()
+    if "number" in s or "编号" in s or "序号" in s:
+        return "1."
+    return "-"
+
 
 class DeepDocParser:
     """Bridge DeepDoc's parser so we can reuse it inside our pipeline."""
@@ -55,10 +88,17 @@ class DeepDocParser:
                 for item in sections:
                     if isinstance(item, tuple):
                         text = str((item[0] if item else "") or "").strip()
+                        style_name = str((item[1] if len(item) > 1 else "") or "")
                     else:
                         text = str(item or "").strip()
+                        style_name = ""
                     if text:
-                        parts.append(text)
+                        if style_name and _looks_like_heading_style(style_name):
+                            parts.append(f"{'#' * _heading_level(style_name)} {text}")
+                        elif style_name and _looks_like_list_style(style_name):
+                            parts.append(f"{_list_marker(style_name)} {text}")
+                        else:
+                            parts.append(text)
             else:
                 text = str(sections or "").strip()
                 if text:
