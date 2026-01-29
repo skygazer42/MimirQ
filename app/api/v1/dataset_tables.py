@@ -1,7 +1,7 @@
 """
 Dataset Tables (TAG) API.
 
-This provides a safe, SQL-first interface for structured documents (CSV/XLS/XLSX)
+This provides a safe, SQL-first interface for structured table assets
 that were ingested into the per-document table store.
 """
 
@@ -132,7 +132,9 @@ def list_dataset_tables(
     )
 
     # Best-effort filter: only docs that *might* have table_store metadata.
-    q = q.filter(DBDocument.file_type.in_(["csv", "xlsx", "xls"]))
+    # - Table-like files: csv/xls/xlsx
+    # - Mixed documents: docx may contain embedded tables imported as a sidecar.
+    q = q.filter(DBDocument.file_type.in_(["csv", "xlsx", "xls", "docx"]))
 
     # Apply doc-level pagination first (table expansion happens after).
     docs = q.offset(int(skip)).limit(int(limit)).all()

@@ -1315,6 +1315,73 @@ class DocumentProcessorService:
                         "chunk_strategy": "none",
                     }
 
+            # Structured Table Store (TAG) sidecar for DOCX: import tables into SQLite, but keep
+            # the normal parsing+chunking pipeline intact.
+            #
+            # Motivation:
+            # - DOCX often mixes narrative text + tables; short-circuiting would hurt RAG.
+            # - Still, having structured tables available improves TAG answers and UI previews.
+            if (
+                bool(getattr(pipeline_effective, "table_store_enabled", False))
+                and db_document.dataset_id is not None
+                and file_path.suffix.lower() == ".docx"
+            ):
+                await raise_if_cancelled(force=True)
+                try:
+                    from app.services.table_store_service import import_docx_tables
+
+                    assets = import_docx_tables(
+                        tenant_id=tenant_id,
+                        dataset_id=db_document.dataset_id,
+                        document_id=document_id,
+                        file_path=file_path,
+                        max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
+                        max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
+                        sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
+                    )
+                    await raise_if_cancelled(force=True)
+
+                    # Persist structured table metadata for listing/preview endpoints.
+                    #
+                    # If no tables were found, remove stale table_store metadata from previous ingests.
+                    try:
+                        next_meta = dict(db_document.doc_metadata or {})
+                        if assets:
+                            now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+                            tables_payload: list[dict[str, Any]] = []
+                            for a in assets or []:
+                                tables_payload.append(
+                                    {
+                                        "table_id": str(getattr(a, "table_id", "")),
+                                        "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
+                                        "sheet_name": getattr(a, "sheet_name", None),
+                                        "row_count": int(getattr(a, "row_count", 0) or 0),
+                                        "col_count": int(getattr(a, "col_count", 0) or 0),
+                                        "truncated": bool(getattr(a, "truncated", False)),
+                                        "columns": list(getattr(a, "columns", None) or []),
+                                        "sample_rows": list(getattr(a, "sample_rows", None) or []),
+                                    }
+                                )
+
+                            next_meta["table_store"] = {
+                                "version": "1",
+                                "source_ext": file_path.suffix.lower(),
+                                "imported_at": now_iso,
+                                "tables": tables_payload,
+                            }
+                        else:
+                            next_meta.pop("table_store", None)
+
+                        if next_meta != (db_document.doc_metadata or {}):
+                            db_document.doc_metadata = next_meta
+                            db.commit()
+                            db.refresh(db_document)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to persist DOCX table_store metadata (ignored): %s", str(exc)[:200])
+                except Exception as exc:  # noqa: BLE001
+                    # Best-effort only: never fail ingestion for sidecar TAG import.
+                    logger.info("DOCX table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
+
             extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
             combined_rules = build_governance_rules(extra_rules) if extra_rules else None
             governance_kwargs = {

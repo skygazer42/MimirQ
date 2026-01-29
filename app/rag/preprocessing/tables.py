@@ -24,7 +24,8 @@ class TableNormalizeResult:
 
 
 _CODE_FENCE_RE = re.compile(r"^\s*```")
-_TABLE_LINE_RE = re.compile(r"^(?P<prefix>[ \t]*)\|.*\|\s*$")
+# Allow rows without leading/trailing pipes (common Markdown style).
+_TABLE_LINE_RE = re.compile(r"^(?P<prefix>[ \t]*)\|?\s*[^|]*(\|\s*[^|]*)+\|?\s*$")
 _SEP_CELL_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
 
 
@@ -141,4 +142,3 @@ __all__ = [
     "TableNormalizeResult",
     "normalize_markdown_tables",
 ]
-

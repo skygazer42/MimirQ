@@ -30,6 +30,9 @@ from app.services.table_store import (
 )
 
 _SQL_SELECT_PREFIX_RE = re.compile(r"^\s*(with\b|select\b)", re.IGNORECASE)
+_WS_RE = re.compile(r"\s+")
+_BOM_RE = re.compile(r"^\ufeff+")
+_NUMERIC_ONLY_RE = re.compile(r"^\s*[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*$")
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,45 @@ def _df_columns(df: "pd.DataFrame") -> list[dict[str, Any]]:
     return cols
 
 
+def _sanitize_column_name(name: Any, *, idx: int, seen: dict[str, int]) -> str:  # noqa: ANN401
+    raw = str(name) if name is not None else ""
+    raw = raw.replace("\r", " ").replace("\n", " ")
+    raw = _BOM_RE.sub("", raw)
+    raw = _WS_RE.sub(" ", raw).strip()
+    if not raw:
+        raw = f"col_{idx + 1}"
+    raw = raw[:200]
+
+    key = raw.casefold()
+    count = seen.get(key, 0) + 1
+    seen[key] = count
+    if count > 1:
+        raw = f"{raw}_{count}"
+    return raw
+
+
+def _sanitize_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
+    """
+    Ensure DataFrame columns are non-empty and unique.
+
+    This prevents SQLite import failures (duplicate/empty column names) and keeps NL->SQL
+    more stable across noisy inputs.
+    """
+    try:
+        cols = list(getattr(df, "columns", []) or [])
+    except Exception:
+        cols = []
+
+    seen: dict[str, int] = {}
+    new_cols = [_sanitize_column_name(c, idx=i, seen=seen) for i, c in enumerate(cols)]
+    try:
+        df.columns = new_cols
+    except Exception:
+        # Best-effort only.
+        pass
+    return df
+
+
 def _connect_rw(path: Path) -> sqlite3.Connection:
     # Ensure parent directory exists; storage path itself is deterministic (not user-controlled).
     try:
@@ -199,6 +241,7 @@ def import_table_document(
 
     if ext == ".csv":
         df, truncated = _read_csv(file_path, max_rows=max_rows, max_cols=max_cols)
+        df = _sanitize_dataframe(df)
         return _write_single_sheet(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -222,11 +265,49 @@ def import_table_document(
     )
 
 
+def _sniff_csv_delimiter(path: Path, *, max_bytes: int = 64_000) -> str | None:
+    """
+    Best-effort delimiter sniffing for CSV files.
+
+    Pandas' default assumes commas; many enterprise exports use tabs/semicolons.
+    """
+    try:
+        buf = path.read_bytes()[: max(1024, int(max_bytes or 0))]
+    except Exception:
+        return None
+
+    # Decode best-effort; delimiter characters are ASCII.
+    sample = buf.decode("utf-8", errors="ignore")
+    if not sample.strip():
+        return None
+
+    # Avoid expensive sniff on huge samples.
+    sample = sample[:32_000]
+    try:
+        import csv
+
+        sniffed = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";", "|"])
+        delim = str(getattr(sniffed, "delimiter", "") or "")
+        return delim if delim in {",", "\t", ";", "|"} else None
+    except Exception:
+        return None
+
+
 def _read_csv(path: Path, *, max_rows: int, max_cols: int) -> tuple["pd.DataFrame", bool]:
-    nrows = max(0, int(max_rows or 0)) or None
-    # pandas will infer delimiter by default; keep it simple for now.
-    df = pd.read_csv(str(path), nrows=nrows, dtype_backend="numpy_nullable", encoding_errors="replace")  # type: ignore[call-arg]
-    truncated = bool(nrows is not None and int(getattr(df, "shape", (0, 0))[0]) >= int(nrows))
+    hard_nrows = max(0, int(max_rows or 0))
+    # Read one extra row so we can accurately set `truncated` without loading the entire file.
+    nrows = (hard_nrows + 1) if hard_nrows > 0 else None
+    kwargs: dict[str, Any] = {"dtype_backend": "numpy_nullable", "encoding_errors": "replace"}
+    delim = _sniff_csv_delimiter(path)
+    if delim:
+        kwargs["sep"] = delim
+        kwargs["engine"] = "python"
+
+    df = pd.read_csv(str(path), nrows=nrows, **kwargs)  # type: ignore[call-arg]
+    truncated = False
+    if hard_nrows > 0 and int(getattr(df, "shape", (0, 0))[0]) > hard_nrows:
+        truncated = True
+        df = df.head(hard_nrows)
     if max_cols and int(max_cols) > 0 and int(getattr(df, "shape", (0, 0))[1]) > int(max_cols):
         df = df.iloc[:, : int(max_cols)]
     return df, truncated
@@ -277,15 +358,21 @@ def _import_excel(
                 )
 
             for idx, name in enumerate(sheet_names):
-                nrows = max(0, int(max_rows or 0)) or None
+                hard_nrows = max(0, int(max_rows or 0))
+                # Read one extra row so we can accurately set `truncated` without loading the entire sheet.
+                nrows = (hard_nrows + 1) if hard_nrows > 0 else None
                 try:
                     df = pd.read_excel(xls, sheet_name=name, nrows=nrows, dtype_backend="numpy_nullable")  # type: ignore[call-arg]
                 except Exception:
                     # Best-effort: skip unreadable sheets.
                     continue
-                truncated = bool(nrows is not None and int(getattr(df, "shape", (0, 0))[0]) >= int(nrows)) or bool(workbook_truncated)
+                truncated = bool(workbook_truncated)
+                if hard_nrows > 0 and int(getattr(df, "shape", (0, 0))[0]) > hard_nrows:
+                    truncated = True
+                    df = df.head(hard_nrows)
                 if max_cols and int(max_cols) > 0 and int(getattr(df, "shape", (0, 0))[1]) > int(max_cols):
                     df = df.iloc[:, : int(max_cols)]
+                df = _sanitize_dataframe(df)
                 assets.extend(
                     _write_single_sheet(
                         tenant_id=tenant_id,
@@ -332,6 +419,7 @@ def _write_single_sheet(
         # Replace the sheet table.
         conn.execute(f'DROP TABLE IF EXISTS "{sql_table}";')
         # Use pandas to write; it will create columns with proper quoting.
+        df = _sanitize_dataframe(df)
         df.to_sql(sql_table, conn, if_exists="replace", index=False)
         conn.commit()
     finally:
@@ -356,6 +444,174 @@ def _write_single_sheet(
         sample_rows=_df_sample_rows(df, sample_rows=sample_rows),
     )
     return [asset]
+
+
+def import_docx_tables(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID,
+    file_path: Path,
+    max_rows: int,
+    max_cols: int,
+    sample_rows: int,
+) -> list[TableAsset]:
+    """
+    Best-effort: extract DOCX tables into the per-document SQLite table store.
+
+    Notes:
+    - This does NOT handle DOCX paragraphs; it only imports tables.
+    - Intended to be used as a sidecar feature (keep RAG chunking untouched).
+    """
+    ext = file_path.suffix.lower()
+    if ext != ".docx":
+        raise ValueError("unsupported docx file type")
+
+    # Reset store to avoid stale tables on re-import (best-effort).
+    out_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if out_path.exists():
+            out_path.unlink()
+    except Exception:
+        # Fallback: drop known tables if unlink fails (e.g. Windows locks).
+        try:
+            conn = _connect_rw(out_path)
+            try:
+                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                for row in cur.fetchall():
+                    name = str(row[0] or "")
+                    if name:
+                        conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    from docx import Document as DocxDocument  # type: ignore
+
+    doc = DocxDocument(str(file_path))
+
+    # Walk blocks in document order so we can infer a reasonable `sheet_name` from nearby
+    # paragraphs (e.g. "Table 1: ..." captions).
+    from docx.oxml.table import CT_Tbl  # type: ignore
+    from docx.oxml.text.paragraph import CT_P  # type: ignore
+    from docx.table import Table  # type: ignore
+    from docx.text.paragraph import Paragraph  # type: ignore
+
+    body = getattr(getattr(doc, "element", None), "body", None)
+    children = list(body.iterchildren()) if body is not None else []
+
+    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    max_rows_i = max(0, int(max_rows or 0))
+    max_cols_i = max(0, int(max_cols or 0))
+
+    # Capture a small lookback window of previous non-empty paragraphs to infer captions.
+    caption_re = re.compile(
+        r"(?i)^\s*(?:table|tab\.?|appendix\s+table|表)\s*[\dIVXLC一二三四五六七八九十]+"
+        r"(?:\s*[:：.\-])?\s*.+$"
+    )
+
+    prev_paras: list[str] = []
+    assets: list[TableAsset] = []
+    table_index = 0
+
+    for child in children:
+        if max_sheets > 0 and table_index >= max_sheets:
+            break
+
+        if isinstance(child, CT_P):
+            p = Paragraph(child, doc)
+            text = _WS_RE.sub(" ", str(getattr(p, "text", "") or "").replace("\r", " ").replace("\n", " ")).strip()
+            if text:
+                prev_paras.append(text)
+                if len(prev_paras) > 3:
+                    prev_paras = prev_paras[-3:]
+            continue
+
+        if not isinstance(child, CT_Tbl):
+            continue
+
+        table = Table(child, doc)
+        # Pick a useful label for UI/tag matching.
+        sheet_name = None
+        for cand in reversed(prev_paras[-2:]):
+            if len(cand) <= 200 and caption_re.match(cand):
+                sheet_name = cand
+                break
+
+        if sheet_name is None:
+            sheet_name = f"Table {int(table_index) + 1}"
+
+        # Extract rectangular rows.
+        raw_rows: list[list[str]] = []
+        truncated = False
+        for row in getattr(table, "rows", []) or []:
+            cells: list[str] = []
+            for cell in getattr(row, "cells", []) or []:
+                cells.append(_WS_RE.sub(" ", str(getattr(cell, "text", "") or "").replace("\r", " ").replace("\n", " ")).strip())
+            if any(cells):
+                raw_rows.append(cells)
+
+            if max_rows_i > 0 and len(raw_rows) >= max_rows_i:
+                truncated = True
+                break
+
+        if not raw_rows:
+            continue
+
+        width = max((len(r) for r in raw_rows), default=0)
+        if max_cols_i > 0:
+            width = min(width, max_cols_i)
+        width = max(1, int(width))
+
+        padded: list[list[str]] = []
+        for r in raw_rows:
+            rr = list(r) + [""] * max(0, width - len(r))
+            padded.append(rr[:width])
+
+        # Header inference: only treat the first row as header when it looks like one.
+        header = padded[0]
+        body = padded[1:] if len(padded) > 1 else []
+        non_empty = [c for c in header if str(c or "").strip()]
+        use_header = False
+        if len(padded) >= 2 and len(non_empty) >= max(1, width // 2):
+            keys = [str(c).strip().casefold() for c in non_empty]
+            unique = len(set(keys)) == len(keys)
+            numeric = sum(1 for c in non_empty if _NUMERIC_ONLY_RE.match(str(c or "")))
+            avg_len = sum(len(str(c)) for c in non_empty) / max(1, len(non_empty))
+            if unique and numeric <= max(1, len(non_empty) // 3) and avg_len <= 40:
+                use_header = True
+
+        if use_header:
+            col_names = header
+            body_rows = body
+        else:
+            col_names = [f"col_{i + 1}" for i in range(width)]
+            body_rows = padded
+
+        df = pd.DataFrame(body_rows, columns=col_names)
+        df = _sanitize_dataframe(df)
+
+        assets.extend(
+            _write_single_sheet(
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                df=df,
+                sheet_index=int(table_index),
+                sheet_name=sheet_name,
+                truncated=bool(truncated),
+                sample_rows=sample_rows,
+            )
+        )
+        table_index += 1
+        # Captions are usually adjacent to a table; avoid reusing old captions for
+        # back-to-back tables with no intervening paragraphs.
+        prev_paras = []
+
+    return assets
 
 
 def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:

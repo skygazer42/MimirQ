@@ -13,6 +13,13 @@ DEFAULT_MARKDOWN_RULES: list[RegexRule] = [
     # Remove excessive horizontal separators from some exporters.
     RegexRule(pattern=r"(?m)^[ \t]*[-=_]{8,}[ \t]*$", repl="", flags=0),
     RegexRule(pattern=r"(?m)^[ \t]*[.\u00b7]{6,}[ \t]*$", repl="", flags=0),
+    # Microsoft Word template / field artifacts (conservative full-line matches).
+    RegexRule(pattern=r"(?mi)^[ \t]*error!\s*reference\s*source\s*not\s*found\.?[ \t]*$", repl="", flags=0),
+    RegexRule(pattern=r"(?mi)^[ \t]*error!\s*bookmark\s*not\s*defined\.?[ \t]*$", repl="", flags=0),
+    RegexRule(pattern=r"(?m)^[ \t]*错误!\s*未找到引用源。?[ \t]*$", repl="", flags=0),
+    RegexRule(pattern=r"(?m)^[ \t]*错误!\s*未定义书签。?[ \t]*$", repl="", flags=0),
+    RegexRule(pattern=r"(?mi)^[ \t]*click\s+here\s+to\s+enter\s+text\.?[ \t]*$", repl="", flags=0),
+    RegexRule(pattern=r"(?m)^[ \t]*(?:单击|点击)此处输入文本。?[ \t]*$", repl="", flags=0),
     # Common footer noise (single-line).
     RegexRule(pattern=r"(?mi)^[ \t]*(confidential|internal use only|for internal use only)[ \t]*$", repl="", flags=0),
     RegexRule(pattern=r"(?mi)^[ \t]*copyright[ \t]*\u00a9?[ \t]*\d{4}.*$", repl="", flags=0),
