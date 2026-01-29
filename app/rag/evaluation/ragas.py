@@ -27,7 +27,7 @@ from app.models.evaluation import (
     RagasRegressionRun,
 )
 from app.services.dataset_service import DatasetService
-from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
+from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.rag.embedding import create_langchain_embeddings_from_config
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -68,8 +68,10 @@ def _extract_contexts(
     *,
     db,
     tenant_id: UUID,
-    allowed_document_ids: List[UUID],
+    account_id: str,
     citations: Any,
+    allowed_document_ids: List[UUID] | None = None,
+    dataset_id: UUID | None = None,
     max_context_chars: int = 4000,
 ) -> List[str]:
     """
@@ -108,12 +110,39 @@ def _extract_contexts(
     )
     chunk_map: Dict[UUID, DocumentChunk] = {c.id: c for c in chunks}
 
+    # Defense-in-depth: only materialize contexts for documents the account can read.
+    allowed_set: set[UUID] | None = None
+    if allowed_document_ids:
+        allowed_set = set(allowed_document_ids)
+    else:
+        candidate_doc_ids = {c.document_id for c in chunks if getattr(c, "document_id", None)}
+        if candidate_doc_ids:
+            allowed_ids, _missing = get_allowed_document_id_sets(
+                db,
+                tenant_id,
+                account_id,
+                list(candidate_doc_ids),
+                check_member=True,
+            )
+            allowed_set = set(allowed_ids)
+        else:
+            allowed_set = set()
+
+    if dataset_id is not None and allowed_set:
+        # Enforce dataset scope when evaluation is dataset-scoped.
+        ds_rows = (
+            db.query(DBDocument.id, DBDocument.dataset_id)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(allowed_set)))
+            .all()
+        )
+        allowed_set = {doc_id for doc_id, ds_id in ds_rows if ds_id is not None and str(ds_id) == str(dataset_id)}
+
     contexts: List[str] = []
     for cid in chunk_ids:
         chunk = chunk_map.get(cid)
         if not chunk:
             continue
-        if allowed_document_ids and chunk.document_id not in set(allowed_document_ids):
+        if allowed_set is not None and chunk.document_id not in allowed_set:
             continue
         content = chunk.content or ""
         if max_context_chars and len(content) > max_context_chars:
@@ -165,39 +194,29 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _resolve_case_document_ids(
+def _resolve_case_scope(
     *,
     db,
     tenant_id: UUID,
     account_id: str,
     case: RagasRegressionCase,
-) -> List[UUID]:
+) -> tuple[List[UUID] | None, UUID | None]:
     """
     Resolve retrieval scope for regression case:
     1) case.document_ids (priority)
-    2) case.dataset_id -> all completed documents in dataset
-    3) fallback: most recent batch of documents accessible to account in tenant (limit=200)
+    2) case.dataset_id -> dataset-scoped retrieval (no document_id enumeration)
+    3) fallback: open-scope retrieval (tenant + ACL trimming)
     """
     raw_doc_ids = _parse_uuid_list(case.document_ids or [])
     if raw_doc_ids:
-        return filter_allowed_document_ids(db, tenant_id, account_id, raw_doc_ids)
+        return filter_allowed_document_ids(db, tenant_id, account_id, raw_doc_ids), None
 
     if case.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, case.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
-        rows = (
-            db.query(DBDocument.id)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == case.dataset_id,
-                DBDocument.status == "completed",
-            )
-            .order_by(DBDocument.updated_at.desc())
-            .all()
-        )
-        return [row[0] for row in rows]
+        return None, case.dataset_id
 
-    return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=200)
+    return None, None
 
 
 def _resolve_metrics(metric_names: List[str]):
@@ -345,6 +364,7 @@ def run_conversation_ragas_evaluation(
             contexts = _extract_contexts(
                 db=db,
                 tenant_id=tenant_id,
+                account_id=account_id,
                 allowed_document_ids=allowed_doc_ids,
                 citations=assistant_msg.citations or [],
             )
@@ -518,7 +538,7 @@ def run_regression_ragas_evaluation(
 
         eval_items: List[Dict[str, Any]] = []
         for case in cases:
-            allowed_doc_ids = _resolve_case_document_ids(
+            scope_doc_ids, scope_dataset_id = _resolve_case_scope(
                 db=db, tenant_id=tenant_id, account_id=account_id, case=case
             )
             from app.rag.graph import run_rag_graph
@@ -526,9 +546,10 @@ def run_regression_ragas_evaluation(
             graph_result = run_rag_graph(
                 question=case.question,
                 history=[],
-                document_ids=allowed_doc_ids,
+                document_ids=scope_doc_ids,
                 tenant_id=tenant_id,
                 account_id=account_id,
+                dataset_id=scope_dataset_id,
                 top_k=int(rag_params.get("top_k", 5)),
                 score_threshold=float(rag_params.get("score_threshold", 0.7)),
                 retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
@@ -553,7 +574,9 @@ def run_regression_ragas_evaluation(
             contexts = _extract_contexts(
                 db=db,
                 tenant_id=tenant_id,
-                allowed_document_ids=allowed_doc_ids,
+                account_id=account_id,
+                allowed_document_ids=scope_doc_ids,
+                dataset_id=scope_dataset_id,
                 citations=citations,
             )
             if skip_empty_contexts and not contexts:
