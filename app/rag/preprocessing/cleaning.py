@@ -1,6 +1,6 @@
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Iterable, Optional, Sequence
 
 from app.rag.preprocessing.normalization import normalize_text
@@ -19,6 +19,8 @@ class CleaningResult:
     markdown: str
     applied_rules: int
     changed: bool
+    # Per-regex-rule substitution counts (aligned with the input `rules` order).
+    rule_hits: list[int] = field(default_factory=list)
 
 
 _TRAILING_SPACES_RE = re.compile(r"[ \t]+\n")
@@ -96,9 +98,11 @@ def clean_markdown(
     )
 
     applied = 0
+    rule_hits: list[int] = []
     if rules:
         for rule in rules:
-            text2 = re.sub(rule.pattern, rule.repl, text, flags=rule.flags)
+            text2, n = re.subn(rule.pattern, rule.repl, text, flags=rule.flags)
+            rule_hits.append(int(n or 0))
             if text2 != text:
                 applied += 1
                 text = text2
@@ -128,7 +132,7 @@ def clean_markdown(
     if collapse_blank_lines:
         text = limit_blank_lines(text, max_blank_lines=max_blank_lines)
 
-    return CleaningResult(markdown=text, applied_rules=applied, changed=(text != original))
+    return CleaningResult(markdown=text, applied_rules=applied, changed=(text != original), rule_hits=rule_hits)
 
 
 def build_common_line_signatures(
