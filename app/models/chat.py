@@ -19,6 +19,9 @@ class Conversation(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), nullable=True)
+    # Optional dataset scope for the conversation. When NULL and document_ids is empty,
+    # the conversation uses "open scope" (retrieve across all accessible docs in tenant).
+    dataset_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
     title = Column(String(500), nullable=True)
 

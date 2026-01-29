@@ -29,6 +29,7 @@ router = APIRouter()
 class RetrievePreviewRequest(BaseModel):
     query: str = Field(min_length=1)
     history: List[HistoryMessage] = Field(default_factory=list)
+    dataset_id: Optional[UUID] = None
     document_ids: List[UUID] = Field(default_factory=list)
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
@@ -117,6 +118,7 @@ async def retrieve_preview(
 class PromptPreviewRequest(BaseModel):
     query: str = Field(min_length=1)
     history: List[HistoryMessage] = Field(default_factory=list)
+    dataset_id: Optional[UUID] = None
     document_ids: List[UUID] = Field(default_factory=list)
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
     structured_output: bool = False
