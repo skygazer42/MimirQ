@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
+from app.services.dataset_service import DatasetService
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 
 router = APIRouter()
@@ -48,15 +49,46 @@ async def retrieve_preview(
     db: Session = Depends(get_db),
 ):
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
-    if body.document_ids:
-        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
-    else:
-        allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
+    DatasetService.ensure_member(db, tenant_id, account_id)
 
-    if not allowed_doc_ids:
-        raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+    scope_dataset_id: UUID | None = None
+    scope_document_ids: list[UUID] = []
+    if body.document_ids:
+        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
+    elif body.dataset_id:
+        # Dataset-scoped retrieval without enumerating all document_ids (scales better).
+        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+        scope_dataset_id = body.dataset_id
+
+    # Optional existence check (keeps behavior consistent with chat).
+    if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+        if scope_document_ids:
+            pass
+        elif scope_dataset_id is not None:
+            from app.models.document import Document as DBDocument
+            from app.services.dataset_profile_service import build_dataset_documents_query
+
+            _ds, q = build_dataset_documents_query(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=scope_dataset_id,
+            )
+            q = q.filter(
+                (DBDocument.status == "completed")
+                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            )
+            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
+            if not exists:
+                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+        else:
+            exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
+            if not exists:
+                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
 
     from app.rag.pipelines.langgraph import _retrieve_node  # internal reuse
+    from app.rag.pipelines.langgraph import build_rag_state
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     effective_rag_config = body.rag_config
@@ -65,7 +97,11 @@ async def retrieve_preview(
     if "rag_config" not in set(getattr(body, "model_fields_set", set()) or set()):
         rag_fields_set = set()
     try:
-        ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=allowed_doc_ids)
+        ds_id = None
+        if scope_dataset_id is not None:
+            ds_id = scope_dataset_id
+        elif scope_document_ids:
+            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
         if ds_id is not None:
             ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
             raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
@@ -77,23 +113,27 @@ async def retrieve_preview(
     except Exception:
         dataset_rag_defaults_applied_fields = []
 
-    state: Dict[str, Any] = {
-        "question": body.query,
-        "history": [m.model_dump() for m in body.history],
-        "document_ids": allowed_doc_ids,
-        "tenant_id": tenant_id,
-        "top_k": effective_rag_config.top_k,
-        "score_threshold": effective_rag_config.score_threshold,
-        "retrieval_mode": effective_rag_config.retrieval_mode,
-        "alpha": effective_rag_config.alpha,
-        "enable_weight_rerank": effective_rag_config.enable_weight_rerank,
-        "vector_weight": effective_rag_config.vector_weight,
-        "keyword_weight": effective_rag_config.keyword_weight,
-        "mmr_lambda": effective_rag_config.mmr_lambda,
-        "enable_reranker": effective_rag_config.enable_reranker,
-        "reranker_provider": effective_rag_config.reranker_provider,
-        "reranker_top_n": effective_rag_config.reranker_top_n,
-    }
+    state = build_rag_state(
+        question=body.query,
+        history=[m.model_dump() for m in body.history],
+        document_ids=scope_document_ids or None,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=scope_dataset_id,
+        top_k=effective_rag_config.top_k,
+        score_threshold=effective_rag_config.score_threshold,
+        retrieval_mode=effective_rag_config.retrieval_mode,
+        alpha=effective_rag_config.alpha,
+        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+        vector_weight=effective_rag_config.vector_weight,
+        keyword_weight=effective_rag_config.keyword_weight,
+        mmr_lambda=effective_rag_config.mmr_lambda,
+        enable_reranker=effective_rag_config.enable_reranker,
+        reranker_provider=effective_rag_config.reranker_provider,
+        reranker_top_n=effective_rag_config.reranker_top_n,
+        ab_user_key=account_id,
+        db=db,
+    )
 
     result = _retrieve_node(state) or {}
     citations = result.get("citations") or []
@@ -149,13 +189,41 @@ async def prompt_preview(
     db: Session = Depends(get_db),
 ):
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
-    if body.document_ids:
-        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
-    else:
-        allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
+    DatasetService.ensure_member(db, tenant_id, account_id)
 
-    if not allowed_doc_ids:
-        raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+    scope_dataset_id: UUID | None = None
+    scope_document_ids: list[UUID] = []
+    if body.document_ids:
+        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
+    elif body.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+        scope_dataset_id = body.dataset_id
+
+    if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+        if scope_document_ids:
+            pass
+        elif scope_dataset_id is not None:
+            from app.models.document import Document as DBDocument
+            from app.services.dataset_profile_service import build_dataset_documents_query
+
+            _ds, q = build_dataset_documents_query(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=scope_dataset_id,
+            )
+            q = q.filter(
+                (DBDocument.status == "completed")
+                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            )
+            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
+            if not exists:
+                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+        else:
+            exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
+            if not exists:
+                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     effective_rag_config = body.rag_config
@@ -164,7 +232,11 @@ async def prompt_preview(
     if "rag_config" not in set(getattr(body, "model_fields_set", set()) or set()):
         rag_fields_set = set()
     try:
-        ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=allowed_doc_ids)
+        ds_id = None
+        if scope_dataset_id is not None:
+            ds_id = scope_dataset_id
+        elif scope_document_ids:
+            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
         if ds_id is not None:
             ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
             raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
@@ -184,8 +256,10 @@ async def prompt_preview(
     state = build_rag_state(
         question=body.query,
         history=[m.model_dump() for m in body.history],
-        document_ids=allowed_doc_ids,
+        document_ids=scope_document_ids or None,
         tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=scope_dataset_id,
         top_k=effective_rag_config.top_k,
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
