@@ -1269,6 +1269,18 @@ async def clean_preview(
         noise_ratio_threshold=body.noise_ratio_threshold,
     )
 
+    rule_hits = list(getattr(result, "rule_hits", None) or [])
+    rule_stats = [
+        {
+            "index": i,
+            "pattern": str(getattr(r, "pattern", "") or ""),
+            "repl": (getattr(r, "repl", "") if isinstance(getattr(r, "repl", ""), str) else ""),
+            "flags": int(getattr(r, "flags", 0) or 0),
+            "hits": int(rule_hits[i] if i < len(rule_hits) else 0),
+        }
+        for i, r in enumerate(rules or [])
+    ]
+
     text = result.markdown
 
     if body.normalize_tables:
@@ -1344,6 +1356,7 @@ async def clean_preview(
                 markdown="",
                 applied_rules=result.applied_rules,
                 changed=True,
+                rule_stats=rule_stats,
                 dropped=True,
                 drop_reason=decision.reason or "outline_only",
                 pii_hits=pii_hits,
@@ -1379,6 +1392,7 @@ async def clean_preview(
                 markdown="",
                 applied_rules=result.applied_rules,
                 changed=True,
+                rule_stats=rule_stats,
                 dropped=True,
                 drop_reason=decision.reason or "low_density",
                 pii_hits=pii_hits,
@@ -1442,6 +1456,7 @@ async def clean_preview(
         markdown=text,
         applied_rules=result.applied_rules,
         changed=bool(text != baseline_text),
+        rule_stats=rule_stats,
         dropped=False,
         drop_reason=None,
         pii_hits=pii_hits,
