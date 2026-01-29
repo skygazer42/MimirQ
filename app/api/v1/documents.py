@@ -20,7 +20,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -68,6 +68,7 @@ from app.api.schemas.document import (
     ManualDocumentCreate,
     ParsedSegment,
 )
+from app.api.schemas.document_timeline import DocumentTimelineItem, DocumentTimelineResponse
 from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
 from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
@@ -76,6 +77,7 @@ from app.core.database import get_db
 from app.core.env import is_production_env
 from app.core.token_utils import estimate_tokens, num_tokens_from_string
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.audit_log import AuditLog
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent, DocumentPermission
 from app.parsing.factory import parser_factory
@@ -121,6 +123,21 @@ router = APIRouter()
 UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
 PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
+
+_TIMELINE_REDACT_KEYS = {
+    "content",
+    "text",
+    "markdown",
+    "html",
+    "raw",
+    "prompt",
+    "question",
+    "answer",
+    "secret",
+    "token",
+    "password",
+    "api_key",
+}
 
 
 def _coerce_bool_preview(value: Any) -> Optional[bool]:
@@ -189,6 +206,49 @@ def _decode_escaped_input_preview(value: str) -> str:
         return json.loads(f"\"{escaped}\"")
     except Exception:
         return raw
+
+
+def _sanitize_timeline_details(details: Any) -> dict[str, Any]:
+    """
+    Best-effort PII-minimal details projection for user-facing timelines.
+
+    Audit logs should already be small, but timeline is displayed broadly; keep it safe by default.
+    """
+    if not isinstance(details, dict):
+        return {}
+
+    out: dict[str, Any] = {}
+    for k, v in details.items():
+        key = str(k or "").strip()
+        if not key:
+            continue
+        lowered = key.lower()
+        if lowered in _TIMELINE_REDACT_KEYS:
+            continue
+
+        # Bound large strings/objects to avoid leaking raw content.
+        if isinstance(v, str):
+            vv = v.strip()
+            if len(vv) > 400:
+                out[key] = vv[:400] + "..."
+            else:
+                out[key] = vv
+            continue
+
+        if v is None or isinstance(v, (int, float, bool)):
+            out[key] = v
+            continue
+
+        try:
+            dumped = json.dumps(v, ensure_ascii=True, default=str)
+            if len(dumped) > 800:
+                out[key] = "<redacted>"
+            else:
+                out[key] = v
+        except Exception:
+            out[key] = "<redacted>"
+
+    return out
 
 
 def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -3235,6 +3295,112 @@ async def get_document(
         document.chunks_loaded = chunks
 
     return document
+
+
+@router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse)
+async def get_document_timeline(
+    document_id: uuid.UUID,
+    limit: int = Query(default=200, ge=1, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """User-facing document timeline (audit logs + synthetic document state events)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Permission check (mirrors get_document).
+    ds: Dataset | None = None
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.resource_type == "document",
+            AuditLog.resource_id == str(document_id),
+        )
+        .order_by(desc(AuditLog.created_at), desc(AuditLog.id))
+        .limit(int(limit or 200))
+        .all()
+    )
+
+    items: list[DocumentTimelineItem] = []
+
+    created_at = getattr(document, "created_at", None)
+    if created_at is not None:
+        items.append(
+            DocumentTimelineItem(
+                id=f"synthetic:created:{document_id}",
+                action="document.created",
+                created_at=created_at,
+                source="synthetic",
+                actor_id=(getattr(document, "owner_id", None) or None),
+                stage=(getattr(document, "current_stage", None) or None),
+                status=(str(getattr(document, "status", "") or "").strip() or None),
+                progress=int(getattr(document, "processing_progress", 0) or 0),
+            )
+        )
+
+    updated_at = getattr(document, "updated_at", None)
+    if updated_at is not None and (created_at is None or updated_at != created_at):
+        items.append(
+            DocumentTimelineItem(
+                id=f"synthetic:status:{document_id}",
+                action="document.status",
+                created_at=updated_at,
+                source="synthetic",
+                stage=(getattr(document, "current_stage", None) or None),
+                status=(str(getattr(document, "status", "") or "").strip() or None),
+                progress=int(getattr(document, "processing_progress", 0) or 0),
+            )
+        )
+
+    for row in audit_rows:
+        raw_details = getattr(row, "details", None)
+        safe_details = _sanitize_timeline_details(raw_details)
+
+        stage = safe_details.get("stage") if isinstance(safe_details.get("stage"), str) else None
+        status = safe_details.get("status") if isinstance(safe_details.get("status"), str) else None
+        progress_val = safe_details.get("progress")
+        progress = int(progress_val) if isinstance(progress_val, (int, float)) else None
+
+        items.append(
+            DocumentTimelineItem(
+                id=str(getattr(row, "id", "") or ""),
+                action=str(getattr(row, "action", "") or ""),
+                created_at=getattr(row, "created_at", None),
+                source="audit",
+                actor_id=(getattr(row, "actor_id", None) or None),
+                request_id=(getattr(row, "request_id", None) or None),
+                stage=stage,
+                status=status,
+                progress=progress,
+                details=safe_details,
+            )
+        )
+
+    def _dt_ts(value: Any) -> float:
+        try:
+            return float(value.timestamp()) if value is not None else 0.0
+        except Exception:
+            return 0.0
+
+    items.sort(key=lambda item: (_dt_ts(item.created_at), str(item.id)), reverse=True)
+    # Keep response bounded even if we add more synthetic items later.
+    items = items[: int(limit or 200)]
+
+    return DocumentTimelineResponse(total=len(items), items=items)
 
 
 @router.get("/{document_id}/access", response_model=DocumentAccessInfo)

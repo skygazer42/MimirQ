@@ -47,6 +47,24 @@ export interface DocumentStatus {
   error_message?: string
 }
 
+export interface DocumentTimelineItem {
+  id: string
+  action: string
+  created_at: string
+  source: 'audit' | 'synthetic'
+  actor_id?: string | null
+  request_id?: string | null
+  stage?: string | null
+  status?: string | null
+  progress?: number | null
+  details?: Record<string, any>
+}
+
+export interface DocumentTimelineResponse {
+  total: number
+  items: DocumentTimelineItem[]
+}
+
 export interface DocumentVersionInfo {
   pipeline_hash: string
   doc_pipeline_key: string

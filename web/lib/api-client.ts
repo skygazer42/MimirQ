@@ -11,6 +11,7 @@ import type {
   DocumentQAGenerateRequest,
   DocumentQAGenerateResponse,
   DocumentStatus,
+  DocumentTimelineResponse,
   DocumentStats,
   DocumentAccessInfo,
   DocumentAccessUpdateRequest,
@@ -376,6 +377,14 @@ export const documentApi = {
     const { data } = await apiClient.get(`/documents/${documentId}`, {
       params,
     })
+    return data
+  },
+
+  /**
+   * 获取文档处理时间线（可回溯：audit logs + 合成状态事件）
+   */
+  async getTimeline(documentId: string, params?: { limit?: number }): Promise<DocumentTimelineResponse> {
+    const { data } = await apiClient.get(`/documents/${documentId}/timeline`, { params })
     return data
   },
 
