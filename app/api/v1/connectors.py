@@ -426,6 +426,10 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         same_host_only = bool(cfg.get("same_host_only", True))
         include_patterns = cfg.get("include_patterns") if isinstance(cfg.get("include_patterns"), list) else []
         exclude_patterns = cfg.get("exclude_patterns") if isinstance(cfg.get("exclude_patterns"), list) else []
+        use_sitemaps = bool(cfg.get("use_sitemaps", False))
+        sitemap_urls = cfg.get("sitemap_urls") if isinstance(cfg.get("sitemap_urls"), list) else []
+        respect_robots = bool(cfg.get("respect_robots", False))
+        dedup_canonical = bool(cfg.get("dedup_canonical", True))
         user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
 
         filename = cfg.get("filename") if isinstance(cfg.get("filename"), str) else None
@@ -449,6 +453,10 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
             same_host_only=same_host_only,
             include_patterns=[str(p or "") for p in include_patterns if str(p or "").strip()],
             exclude_patterns=[str(p or "") for p in exclude_patterns if str(p or "").strip()],
+            use_sitemaps=use_sitemaps,
+            sitemap_urls=[str(u or "") for u in sitemap_urls if str(u or "").strip()],
+            respect_robots=respect_robots,
+            dedup_canonical=dedup_canonical,
             headers=auth_headers,
             user_agent=user_agent,
             timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
