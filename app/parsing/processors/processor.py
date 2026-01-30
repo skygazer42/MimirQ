@@ -1412,9 +1412,11 @@ class DocumentProcessorService:
                 "pii_anonymize": pipeline_effective.governance_pii_anonymize,
                 "pii_mode": pipeline_effective.governance_pii_mode,
                 "pii_mask": pipeline_effective.governance_pii_mask,
+                "pii_max_hits": pipeline_effective.governance_pii_max_hits,
                 "secrets_redact": pipeline_effective.governance_secrets_redact,
                 "secrets_mode": pipeline_effective.governance_secrets_mode,
                 "secrets_mask": pipeline_effective.governance_secrets_mask,
+                "secrets_max_hits": pipeline_effective.governance_secrets_max_hits,
                 "max_blank_lines": pipeline_effective.governance_max_blank_lines,
                 "drop_outline_only": pipeline_effective.governance_drop_outline_only,
                 "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
@@ -1648,10 +1650,13 @@ class DocumentProcessorService:
                     quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
                     reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
+                    hint = "You can disable outline/low-density filters or relax thresholds."
+                    if isinstance(reasons, dict) and any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
+                        hint = "You can adjust PII/Secrets gates (pii_max_hits/secrets_max_hits) or disable them."
                     msg = (
                         ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
                         + (f" ({reason_str})" if reason_str else "")
-                        + ". You can disable outline/low-density filters or relax thresholds."
+                        + f". {hint}"
                     )
                     logger.warning("%s document_id=%s", msg, document_id)
                     status = "quarantined" if quarantined else "failed"
@@ -1667,6 +1672,27 @@ class DocumentProcessorService:
                         total_characters=0,
                         error_message=msg,
                     )
+                    with contextlib.suppress(Exception):
+                        from app.services.audit_log_service import audit_log_event
+
+                        pii_hits = getattr(governance_stats, "pii_hits", None) or {}
+                        secrets_hits = getattr(governance_stats, "secrets_hits", None) or {}
+                        audit_log_event(
+                            db,
+                            tenant_id=tenant_id,
+                            actor_id=(getattr(db_document, "owner_id", None) or None),
+                            action=("document.quarantine" if quarantined else "document.governance_drop"),
+                            resource_type="document",
+                            resource_id=str(document_id),
+                            details={
+                                "reason": reason,
+                                "drop_reasons": reasons,
+                                "pii_hits_total": pii_hits,
+                                "secrets_hits_total": secrets_hits,
+                                "quarantine_on_drop": quarantined,
+                            },
+                        )
+                        db.commit()
                     return {
                         "status": status,
                         "reason": reason,
@@ -1734,10 +1760,13 @@ class DocumentProcessorService:
                     quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
                     reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
+                    hint = "You can disable outline/low-density filters or relax thresholds."
+                    if isinstance(reasons, dict) and any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
+                        hint = "You can adjust PII/Secrets gates (pii_max_hits/secrets_max_hits) or disable them."
                     msg = (
                         ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
                         + (f" ({reason_str})" if reason_str else "")
-                        + ". You can disable outline/low-density filters or relax thresholds."
+                        + f". {hint}"
                     )
                     logger.warning("%s document_id=%s", msg, document_id)
                     status = "quarantined" if quarantined else "failed"
@@ -1753,6 +1782,27 @@ class DocumentProcessorService:
                         total_characters=0,
                         error_message=msg,
                     )
+                    with contextlib.suppress(Exception):
+                        from app.services.audit_log_service import audit_log_event
+
+                        pii_hits = getattr(governance_stats, "pii_hits", None) or {}
+                        secrets_hits = getattr(governance_stats, "secrets_hits", None) or {}
+                        audit_log_event(
+                            db,
+                            tenant_id=tenant_id,
+                            actor_id=(getattr(db_document, "owner_id", None) or None),
+                            action=("document.quarantine" if quarantined else "document.governance_drop"),
+                            resource_type="document",
+                            resource_id=str(document_id),
+                            details={
+                                "reason": reason,
+                                "drop_reasons": reasons,
+                                "pii_hits_total": pii_hits,
+                                "secrets_hits_total": secrets_hits,
+                                "quarantine_on_drop": quarantined,
+                            },
+                        )
+                        db.commit()
                     return {
                         "status": status,
                         "reason": reason,

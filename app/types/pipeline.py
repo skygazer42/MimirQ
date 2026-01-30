@@ -43,9 +43,11 @@ class PipelineOptions:
     governance_pii_anonymize: Optional[bool] = None
     governance_pii_mode: Optional[str] = None
     governance_pii_mask: Optional[str] = None
+    governance_pii_max_hits: Optional[int] = None
     governance_secrets_redact: Optional[bool] = None
     governance_secrets_mode: Optional[str] = None
     governance_secrets_mask: Optional[str] = None
+    governance_secrets_max_hits: Optional[int] = None
     governance_max_blank_lines: Optional[int] = None
     governance_html_xpath: Optional[str] = None
     governance_drop_outline_only: Optional[bool] = None
@@ -122,9 +124,11 @@ class PipelineEffective:
     governance_pii_anonymize: bool
     governance_pii_mode: str
     governance_pii_mask: str
+    governance_pii_max_hits: int
     governance_secrets_redact: bool
     governance_secrets_mode: str
     governance_secrets_mask: str
+    governance_secrets_max_hits: int
     governance_max_blank_lines: int
     governance_html_xpath: str
     governance_drop_outline_only: bool

@@ -58,9 +58,21 @@ class DocumentPipelineOptions(BaseModel):
         description="PII anonymization mode: mask | token",
     )
     governance_pii_mask: Optional[str] = Field(default=None, description="PII replacement string (mask mode)")
+    governance_pii_max_hits: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=1_000_000,
+        description="Max allowed PII matches per document before drop/quarantine (sum across kinds). None disables gate.",
+    )
     governance_secrets_redact: Optional[bool] = Field(default=None, description="Redact common secrets/tokens (API keys, private keys, bearer tokens)")
     governance_secrets_mode: Optional[str] = Field(default=None, description="Secrets redaction mode: mask | token")
     governance_secrets_mask: Optional[str] = Field(default=None, description="Secrets replacement string (mask mode)")
+    governance_secrets_max_hits: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=1_000_000,
+        description="Max allowed secrets matches per document before drop/quarantine (sum across kinds). None disables gate.",
+    )
     governance_max_blank_lines: Optional[int] = Field(default=None, ge=0, le=10, description="Max consecutive blank lines")
     governance_html_xpath: Optional[str] = Field(default=None, description="XPath for HTML extraction (HTML/HTM)")
     governance_drop_outline_only: Optional[bool] = None

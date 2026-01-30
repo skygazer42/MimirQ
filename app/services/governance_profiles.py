@@ -374,6 +374,31 @@ def get_builtin_governance_profiles() -> List[BuiltinGovernanceProfile]:
             ),
         ),
         BuiltinGovernanceProfile(
+            key="builtin:pii_secrets_quarantine",
+            name="PII/Secrets 合规门禁（命中即隔离）",
+            description="适用于企业合规场景：启用 PII/Secrets 掩码，并在命中超过阈值时进入隔离队列以便人工复核。",
+            payload=_p(
+                input_formats=["markdown", "html"],
+                pipeline_patch={
+                    "governance_enabled": True,
+                    "governance_remove_toc_lines": True,
+                    "governance_remove_noise_lines": True,
+                    "governance_unwrap_lines": True,
+                    "governance_remove_common_lines": True,
+                    "governance_pii_anonymize": True,
+                    "governance_pii_mode": "mask",
+                    "governance_pii_mask": "[REDACTED]",
+                    # 0 means "any hit triggers quarantine" (best-effort heuristics).
+                    "governance_pii_max_hits": 0,
+                    "governance_secrets_redact": True,
+                    "governance_secrets_mode": "mask",
+                    "governance_secrets_mask": "[SECRET]",
+                    "governance_secrets_max_hits": 0,
+                    "governance_quarantine_on_drop": True,
+                },
+            ),
+        ),
+        BuiltinGovernanceProfile(
             key="builtin:html_xpath_main",
             name="网页 XPath 定位正文（默认 //main）",
             description="适用于结构稳定的网站：优先用 XPath 抽正文（默认 //main，未命中则回退到可读性提取）。",
