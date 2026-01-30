@@ -20,11 +20,16 @@
 
 ## External Rules (Web Research → Implementation Heuristics)
 
-- Markdown chunking: prefer splitting by heading hierarchy and preserving header context (LangChain MarkdownHeaderTextSplitter). citeturn1search3
-- Markdown structure split (optional): experimental MarkdownSyntax splitter can help preserve code/list structure. citeturn1search4
-- General text chunk defaults (tokens): LlamaIndex SentenceSplitter defaults provide a practical baseline (chunk_size ~1024, overlap ~200). citeturn1search0
-- Semi-structured long docs: Unstructured “by_title” strategy suggests combining title-aware segmentation with char-based thresholds (`max_characters`, `new_after_n_chars`, `combine_text_under_n_chars`). citeturn1search0
-- Hybrid retrieval fusion: use RRF as a stable, explainable rank-fusion method when combining BM25 + vector results. citeturn1search5
+- Markdown chunking: split by heading hierarchy and preserve header context (LangChain `MarkdownHeaderTextSplitter`).  
+  Ref: https://python.langchain.com/docs/how_to/markdown_header_metadata_splitter/
+- Markdown structure split (optional): use a syntax-aware splitter to preserve code/list blocks (LangChain `ExperimentalMarkdownSyntaxTextSplitter`).  
+  Ref: https://python.langchain.com/api_reference/text_splitters/markdown/langchain_text_splitters.markdown.ExperimentalMarkdownSyntaxTextSplitter.html
+- General text chunk defaults (tokens): LlamaIndex `SentenceSplitter` defaults are a practical baseline (`chunk_size=1024`, `chunk_overlap=200`).  
+  Ref: https://docs.llamaindex.ai/en/stable/api_reference/node_parsers/sentence_splitter/
+- Semi-structured long docs: Unstructured chunking supports title-aware strategies and char-based thresholds (`max_characters`, `new_after_n_chars`, `combine_text_under_n_chars`).  
+  Ref: https://unstructured.readthedocs.io/en/latest/core/chunking.html
+- Hybrid retrieval fusion: use Reciprocal Rank Fusion (RRF) as a stable, explainable rank-fusion method when combining BM25 + vector results.  
+  Ref: https://learn.microsoft.com/en-us/azure/search/hybrid-search-ranking
 
 These rules are used to: (1) set safer defaults, (2) improve auto routing, (3) provide UI guidance and exportable reports.
 
@@ -136,4 +141,3 @@ This plan follows the existing roadmap:
 
 ### Task 30: 报告中心 (质量报告 + 合规报告 + pipeline version snapshot)
 **Files:** export endpoints + UI download center
-
