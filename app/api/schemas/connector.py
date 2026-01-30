@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.api.schemas.document import DocumentAccessUpdateRequest, DocumentPipelineOptions
 
-ConnectorId = Literal["url_batch", "web_crawl"]
+# NOTE: keep connector identifiers forward-compatible.
+# The API layer still validates supported connector ids at runtime.
+ConnectorId = str
 ConnectorRunStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 
@@ -205,3 +207,41 @@ class ConnectorRunOut(BaseModel):
 class ConnectorRunListResponse(BaseModel):
     total: int
     items: List[ConnectorRunOut]
+
+
+class ConnectorConfigCreateRequest(BaseModel):
+    connector_id: str
+    dataset_id: UUID
+    name: str = Field(..., max_length=255)
+    enabled: bool = True
+    schedule_cron: Optional[str] = Field(default=None, max_length=64)
+    config: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ConnectorConfigUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=255)
+    enabled: Optional[bool] = None
+    schedule_cron: Optional[str] = Field(default=None, max_length=64)
+    config: Optional[Dict[str, Any]] = None
+    state: Optional[Dict[str, Any]] = None
+
+
+class ConnectorConfigOut(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    dataset_id: UUID
+    connector_id: str
+    name: str
+    enabled: bool
+    schedule_cron: Optional[str] = None
+    config: Dict[str, Any] = Field(default_factory=dict)
+    state: Dict[str, Any] = Field(default_factory=dict)
+    last_run_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConnectorConfigListResponse(BaseModel):
+    total: int
+    items: List[ConnectorConfigOut]

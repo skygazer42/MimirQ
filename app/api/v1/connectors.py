@@ -13,7 +13,7 @@ import contextlib
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 import httpx
 from sqlalchemy.orm import Session, selectinload
 
@@ -21,6 +21,10 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.connector import (
     ConnectorInfo,
+    ConnectorConfigCreateRequest,
+    ConnectorConfigListResponse,
+    ConnectorConfigOut,
+    ConnectorConfigUpdateRequest,
     ConnectorRunCreateRequest,
     ConnectorRunListResponse,
     ConnectorRunOut,
@@ -32,6 +36,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.secrets import decrypt_connector_config_secrets, encrypt_connector_config_secrets, redact_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
+from app.models.connector_config import ConnectorConfig
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentPermissionService
 from app.services.web_crawler import crawl_site
@@ -167,6 +172,69 @@ def _run_out(run: ConnectorRun) -> ConnectorRunOut:
             for d in docs
         ],
     )
+
+
+def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
+    return ConnectorConfigOut(
+        id=cfg.id,
+        tenant_id=cfg.tenant_id,
+        dataset_id=cfg.dataset_id,
+        connector_id=str(cfg.connector_id or ""),
+        name=str(cfg.name or ""),
+        enabled=bool(cfg.enabled),
+        schedule_cron=(str(cfg.schedule_cron).strip() if isinstance(cfg.schedule_cron, str) and cfg.schedule_cron.strip() else None),
+        config=redact_secrets(dict(cfg.config or {})),
+        state=dict(cfg.state or {}),
+        last_run_at=(cfg.last_run_at or None),
+        last_error=(cfg.last_error or None),
+        created_at=cfg.created_at,
+        updated_at=cfg.updated_at,
+    )
+
+
+def _schedule_due(*, schedule: str, now: datetime, last_run_at: datetime | None) -> bool:
+    """
+    Best-effort cron-like evaluator for the scheduled tick hook.
+
+    Supported (minimal) formats:
+      - "@hourly" / "@daily" / "@weekly" / "@monthly"
+      - "*/N * * * *" (every N minutes)
+
+    Unknown formats are treated as not-due.
+    """
+    s = str(schedule or "").strip().lower()
+    if not s:
+        return False
+
+    def _elapsed_sec() -> float:
+        if last_run_at is None:
+            # Never ran -> due.
+            return 10**18
+        try:
+            return (now - last_run_at).total_seconds()
+        except Exception:
+            return 10**18
+
+    if s in {"@hourly"}:
+        return _elapsed_sec() >= 60 * 60
+    if s in {"@daily"}:
+        return _elapsed_sec() >= 60 * 60 * 24
+    if s in {"@weekly"}:
+        return _elapsed_sec() >= 60 * 60 * 24 * 7
+    if s in {"@monthly"}:
+        # Best-effort: treat month as 30 days.
+        return _elapsed_sec() >= 60 * 60 * 24 * 30
+
+    parts = s.split()
+    if len(parts) == 5 and parts[0].startswith("*/"):
+        raw = parts[0][2:]
+        try:
+            n = max(1, int(raw))
+        except Exception:
+            return False
+        return _elapsed_sec() >= 60 * n
+
+    return False
 
 
 @router.get("", response_model=list[ConnectorInfo])
@@ -896,3 +964,278 @@ def cancel_connector_run(
     db.commit()
     db.refresh(run)
     return _run_out(run)
+
+
+@router.get("/configs", response_model=ConnectorConfigListResponse)
+def list_connector_configs(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=200),
+    dataset_id: UUID | None = None,
+    connector_id: str | None = None,
+    enabled: bool | None = None,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    List saved connector configurations.
+
+    Note: configs may contain secrets (even if encrypted); we enforce dataset write permission
+    semantics similar to connector runs to avoid leaking URLs/auth details to readers.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    query = db.query(ConnectorConfig).filter(ConnectorConfig.tenant_id == tenant_id)
+    if dataset_id is not None:
+        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+        query = query.filter(ConnectorConfig.dataset_id == dataset_id)
+    if connector_id:
+        query = query.filter(ConnectorConfig.connector_id == str(connector_id))
+    if enabled is not None:
+        query = query.filter(ConnectorConfig.enabled.is_(bool(enabled)))
+
+    total = int(query.count())
+    items = (
+        query.order_by(ConnectorConfig.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    # If dataset_id isn't provided, filter to writable datasets only.
+    if dataset_id is None:
+        allowed: list[ConnectorConfig] = []
+        for cfg in items:
+            try:
+                ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
+                DatasetService.assert_dataset_writable(db, ds, account_id)
+            except HTTPException:
+                continue
+            allowed.append(cfg)
+        items = allowed
+
+    return {"total": total, "items": [_config_out(c) for c in items]}
+
+
+@router.post("/configs", response_model=ConnectorConfigOut, status_code=201)
+def create_connector_config(
+    payload: ConnectorConfigCreateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Create a saved connector configuration."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    cfg_dict = encrypt_connector_config_secrets(dict(payload.config or {}))
+
+    cfg = ConnectorConfig(
+        tenant_id=tenant_id,
+        dataset_id=payload.dataset_id,
+        connector_id=str(payload.connector_id or "").strip(),
+        name=str(payload.name or "").strip(),
+        enabled=bool(payload.enabled),
+        schedule_cron=(str(payload.schedule_cron).strip() if isinstance(payload.schedule_cron, str) and payload.schedule_cron.strip() else None),
+        config=cfg_dict,
+        state={},
+    )
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+    return _config_out(cfg)
+
+
+@router.put("/configs/{config_id}", response_model=ConnectorConfigOut)
+def update_connector_config(
+    config_id: UUID,
+    payload: ConnectorConfigUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Update a saved connector configuration (best-effort)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+        .first()
+    )
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Connector config not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    if payload.name is not None:
+        cfg.name = str(payload.name or "").strip()  # type: ignore[assignment]
+    if payload.enabled is not None:
+        cfg.enabled = bool(payload.enabled)  # type: ignore[assignment]
+    if payload.schedule_cron is not None:
+        cfg.schedule_cron = (str(payload.schedule_cron).strip() if str(payload.schedule_cron or "").strip() else None)  # type: ignore[assignment]
+    if payload.config is not None:
+        cfg.config = encrypt_connector_config_secrets(dict(payload.config or {}))  # type: ignore[assignment]
+    if payload.state is not None:
+        cfg.state = dict(payload.state or {})  # type: ignore[assignment]
+
+    db.commit()
+    db.refresh(cfg)
+    return _config_out(cfg)
+
+
+@router.delete("/configs/{config_id}", status_code=204)
+def delete_connector_config(
+    config_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Delete a saved connector configuration."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+        .first()
+    )
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Connector config not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    db.delete(cfg)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/configs/{config_id}/run", response_model=ConnectorRunOut, status_code=201)
+async def run_connector_config(
+    config_id: UUID,
+    background_tasks: BackgroundTasks,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Create a connector run from a saved connector configuration."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+        .first()
+    )
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Connector config not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    connector_id = str(cfg.connector_id or "").strip()
+    run_cfg = dict(cfg.config or {})
+
+    run = ConnectorRun(
+        tenant_id=tenant_id,
+        dataset_id=cfg.dataset_id,
+        connector_id=connector_id,
+        requested_by=account_id,
+        status="pending",
+        config=run_cfg,
+        stats={"config_id": str(cfg.id)},
+    )
+    db.add(run)
+    cfg.last_run_at = _now()  # type: ignore[assignment]
+    cfg.last_error = None  # type: ignore[assignment]
+    db.commit()
+    db.refresh(run)
+
+    # Execute asynchronously after response.
+    if connector_id == "url_batch":
+        background_tasks.add_task(_execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "web_crawl":
+        background_tasks.add_task(_execute_web_crawl_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported connector_id")
+
+    return _run_out(run)
+
+
+@router.post("/scheduled/tick")
+async def scheduled_tick(
+    background_tasks: BackgroundTasks,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Evaluate saved connector schedules and enqueue due runs (best-effort).
+
+    This endpoint is intentionally simple and deterministic; it is a "tick hook" for an external scheduler.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    now = _now()
+    rows = (
+        db.query(ConnectorConfig)
+        .filter(
+            ConnectorConfig.tenant_id == tenant_id,
+            ConnectorConfig.enabled.is_(True),
+            ConnectorConfig.schedule_cron.isnot(None),
+        )
+        .order_by(ConnectorConfig.created_at.asc())
+        .limit(200)
+        .all()
+    )
+
+    enqueued = 0
+    skipped = 0
+    for cfg in rows:
+        schedule = str(cfg.schedule_cron or "").strip()
+        if not schedule:
+            skipped += 1
+            continue
+        if not _schedule_due(schedule=schedule, now=now, last_run_at=(cfg.last_run_at or None)):
+            skipped += 1
+            continue
+        # Best-effort permission enforcement: skip datasets the caller can't write.
+        try:
+            ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
+            DatasetService.assert_dataset_writable(db, ds, account_id)
+        except HTTPException:
+            skipped += 1
+            continue
+
+        # Create run and enqueue execution.
+        connector_id = str(cfg.connector_id or "").strip()
+        run = ConnectorRun(
+            tenant_id=tenant_id,
+            dataset_id=cfg.dataset_id,
+            connector_id=connector_id,
+            requested_by=account_id,
+            status="pending",
+            config=dict(cfg.config or {}),
+            stats={"config_id": str(cfg.id), "scheduled": True},
+        )
+        db.add(run)
+        cfg.last_run_at = now  # type: ignore[assignment]
+        cfg.last_error = None  # type: ignore[assignment]
+        db.commit()
+        db.refresh(run)
+
+        if connector_id == "url_batch":
+            background_tasks.add_task(_execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        elif connector_id == "web_crawl":
+            background_tasks.add_task(_execute_web_crawl_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        else:
+            # Unknown connector: mark as failed (best-effort) and continue.
+            run.status = "failed"
+            run.error_message = "unsupported_connector_id"
+            run.finished_at = now
+            cfg.last_error = "unsupported_connector_id"  # type: ignore[assignment]
+            db.commit()
+        enqueued += 1
+
+    return {"enqueued": int(enqueued), "skipped": int(skipped)}
