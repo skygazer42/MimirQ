@@ -123,6 +123,8 @@ router = APIRouter()
 UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
 PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
+# Position tags emitted by some PDF parsers (used for PDF overlay highlighting).
+POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
 _TIMELINE_REDACT_KEYS = {
     "content",
@@ -7016,6 +7018,10 @@ async def preview_chunking(
             and original_text_value is None
             and total_characters > int(original_text_max_chars or 0)
         )
+        original_text_cleaned_value: str | None = None
+        if original_text_value is not None and "@@" in original_text_value and "##" in original_text_value:
+            if POSITION_TAG_RE.search(original_text_value):
+                original_text_cleaned_value = POSITION_TAG_RE.sub("", original_text_value)
         quality_gate, recommendations, recommendation_patches = _compute_chunk_preview_quality(
             stats=stats,
             total_chunks=len(chunks),
@@ -7087,6 +7093,7 @@ async def preview_chunking(
             recommendation_patches=recommendation_patches,
             # Skip original text when too large (highlight offsets require full text).
             original_text=original_text_value,
+            original_text_cleaned=original_text_cleaned_value,
             original_text_included=original_text_value is not None,
             original_text_truncated=original_text_truncated_val,
             original_text_max_chars=int(original_text_max_chars or 0),
@@ -7668,6 +7675,10 @@ async def preview_chunking_by_sha(
         and original_text_value is None
         and total_characters > int(original_text_max_chars or 0)
     )
+    original_text_cleaned_value: str | None = None
+    if original_text_value is not None and "@@" in original_text_value and "##" in original_text_value:
+        if POSITION_TAG_RE.search(original_text_value):
+            original_text_cleaned_value = POSITION_TAG_RE.sub("", original_text_value)
     quality_gate, recommendations, recommendation_patches = _compute_chunk_preview_quality(
         stats=stats,
         total_chunks=len(chunks),
@@ -7733,6 +7744,7 @@ async def preview_chunking_by_sha(
 	        recommendations=recommendations,
 	        recommendation_patches=recommendation_patches,
 	        original_text=original_text_value,
+	        original_text_cleaned=original_text_cleaned_value,
         original_text_included=original_text_value is not None,
         original_text_truncated=original_text_truncated_val,
         original_text_max_chars=int(original_text_max_chars or 0),

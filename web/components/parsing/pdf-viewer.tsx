@@ -17,16 +17,16 @@ type Box = {
 interface PdfViewerProps {
   file?: File | null
   blocks?: ParsingBlock[]
-  activeBlockId?: string | null
-  hoveredBlockId?: string | null
+  activeBlockIds?: string[] | null
+  hoveredBlockIds?: string[] | null
   showAllBoxes?: boolean
 }
 
 export function PdfViewer({
   file,
   blocks = [],
-  activeBlockId,
-  hoveredBlockId,
+  activeBlockIds,
+  hoveredBlockIds,
   showAllBoxes = true,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -228,9 +228,13 @@ export function PdfViewer({
     return map
   }, [blocks])
 
+  const activeSet = useMemo(() => new Set(activeBlockIds || []), [activeBlockIds])
+  const hoveredSet = useMemo(() => new Set(hoveredBlockIds || []), [hoveredBlockIds])
+
   useEffect(() => {
-    if (!activeBlockId) return
-    const block = blocks.find((item) => item.id === activeBlockId)
+    const firstActive = (activeBlockIds || [])[0]
+    if (!firstActive) return
+    const block = blocks.find((item) => item.id === firstActive)
     const pageIndex = block?.positions?.[0]?.pages?.[0]
     if (pageIndex == null) return
     const el = pageRefs.current.get(pageIndex)
@@ -239,7 +243,7 @@ export function PdfViewer({
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
     el?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
-  }, [activeBlockId, blocks])
+  }, [activeBlockIds, blocks])
 
   if (!file) {
     return (
@@ -307,7 +311,7 @@ export function PdfViewer({
 		              ) : null}
               <div className="pointer-events-none absolute inset-0">
                 {pageBoxes.map((box, boxIndex) => {
-                  if (!showAllBoxes && box.blockId !== activeBlockId && box.blockId !== hoveredBlockId) {
+                  if (!showAllBoxes && !activeSet.has(box.blockId) && !hoveredSet.has(box.blockId)) {
                     return null
                   }
                   const { left, right, top, bottom } = box.position
@@ -315,8 +319,8 @@ export function PdfViewer({
                   const y = Math.min(top, bottom) * scale
                   const width = Math.abs(right - left) * scale
                   const height = Math.abs(bottom - top) * scale
-                  const isActive = box.blockId === activeBlockId
-                  const isHovered = box.blockId === hoveredBlockId
+                  const isActive = activeSet.has(box.blockId)
+                  const isHovered = hoveredSet.has(box.blockId)
 	                  const baseColor = isActive ? 'border-warning bg-warning/10' : 'border-primary/60'
 	                  const hoverColor = isHovered ? 'border-primary bg-primary/10' : ''
 	                  return (
