@@ -952,6 +952,26 @@ export interface IngestionPolicyImportResponse {
   rule_count: number
 }
 
+export interface IngestionPolicyVersion {
+  id: string
+  created_at: string
+  created_by?: string | null
+  source?: 'put' | 'import' | 'rollback' | string
+  policy: IngestionPolicy
+  note?: string | null
+  rollback_from_version_id?: string | null
+  rollback_to_version_id?: string | null
+}
+
+export interface IngestionPolicyVersionListResponse {
+  current_version_id?: string | null
+  items: IngestionPolicyVersion[]
+}
+
+export interface IngestionPolicyRollbackRequest {
+  version_id: string
+}
+
 export interface PreprocessStepLog {
   id: string
   applied: boolean
@@ -982,6 +1002,7 @@ export interface IngestionPreviewResponse {
   preprocess: PreprocessSummary
   parse: PipelineParsePreviewResponse
   clean: CleanPreviewResponse
+  explain?: Record<string, any>
 }
 
 // ==================== 数据集相关类型 ====================

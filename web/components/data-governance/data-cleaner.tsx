@@ -27,6 +27,7 @@ import {
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
+import { CleanPreviewRuleStatsPanel } from '@/components/governance-profiles/clean-preview-rule-stats-panel'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 
@@ -396,6 +397,10 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
               ) : (
                 <p className="text-xs text-muted-foreground">暂无明显问题提示。</p>
               )}
+
+              {Array.isArray(lastPreview?.rule_stats) && lastPreview.rule_stats.length ? (
+                <CleanPreviewRuleStatsPanel ruleStats={lastPreview.rule_stats} />
+              ) : null}
 
               {typeof lastPreview?.diff_unified === 'string' && lastPreview.diff_unified.trim() ? (
                 <div className="rounded-lg border border-border/60 bg-background/40 overflow-hidden">

@@ -23,37 +23,6 @@ class ConnectorInfo(BaseModel):
     supports_incremental: bool = False
 
 
-class UrlBatchConnectorConfig(BaseModel):
-    """Config for `url_batch` connector."""
-
-    urls: List[str] = Field(..., min_length=1, max_length=50, description="One URL per entry")
-    filename: Optional[str] = Field(
-        default=None,
-        max_length=500,
-        description="Optional: override filename for display/extension inference (applies to all urls).",
-    )
-    parser_backend: str = Field(default="auto")
-    chunk_strategy: str = Field(default="langchain_recursive")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-
-    @model_validator(mode="after")
-    def _normalize(self) -> "UrlBatchConnectorConfig":
-        # Trim and dedupe URLs.
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in self.urls or []:
-            url = str(raw or "").strip()
-            if not url or url in seen:
-                continue
-            seen.add(url)
-            normalized.append(url)
-            if len(normalized) >= 50:
-                break
-        self.urls = normalized
-        return self
-
-
 class WebCrawlAuthConfig(BaseModel):
     """
     Authentication config for website crawling.
@@ -100,6 +69,41 @@ class WebCrawlAuthConfig(BaseModel):
             self.token = None
             return self
         raise ValueError("invalid auth.type")
+
+
+class UrlBatchConnectorConfig(BaseModel):
+    """Config for `url_batch` connector."""
+
+    urls: List[str] = Field(..., min_length=1, max_length=50, description="One URL per entry")
+    filename: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional: override filename for display/extension inference (applies to all urls).",
+    )
+    # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
+    user_agent: Optional[str] = Field(default=None, max_length=200)
+    auth: Optional[WebCrawlAuthConfig] = None
+
+    parser_backend: str = Field(default="auto")
+    chunk_strategy: str = Field(default="langchain_recursive")
+    pipeline: Optional[DocumentPipelineOptions] = None
+    access: Optional[DocumentAccessUpdateRequest] = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "UrlBatchConnectorConfig":
+        # Trim and dedupe URLs.
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for raw in self.urls or []:
+            url = str(raw or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            normalized.append(url)
+            if len(normalized) >= 50:
+                break
+        self.urls = normalized
+        return self
 
 
 class WebCrawlConnectorConfig(BaseModel):
@@ -175,4 +179,3 @@ class ConnectorRunOut(BaseModel):
 class ConnectorRunListResponse(BaseModel):
     total: int
     items: List[ConnectorRunOut]
-

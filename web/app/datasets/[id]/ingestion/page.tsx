@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Download, FileUp, History, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -23,7 +23,15 @@ import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
-import type { Dataset, DatasetIngestionStats, GovernanceProfileSummary, IngestionPolicy, IngestionRule, IngestionPreviewResponse } from '@/types'
+import type {
+  Dataset,
+  DatasetIngestionStats,
+  GovernanceProfileSummary,
+  IngestionPolicy,
+  IngestionPolicyVersionListResponse,
+  IngestionRule,
+  IngestionPreviewResponse,
+} from '@/types'
 
 const NONE = '__none__'
 
@@ -606,6 +614,10 @@ export default function DatasetIngestionPolicyPage() {
 
   const [editorOpen, setEditorOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versions, setVersions] = useState<IngestionPolicyVersionListResponse | null>(null)
+  const [rollbackingVersionId, setRollbackingVersionId] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [draft, setDraft] = useState<RuleDraft>({
     id: safeIdFromNow(),
@@ -652,6 +664,46 @@ export default function DatasetIngestionPolicyPage() {
       setLoading(false)
     }
   }, [datasetId])
+
+  const loadVersions = useCallback(async () => {
+    if (!datasetId) return
+    setVersionsLoading(true)
+    try {
+      const res = await datasetApi.listIngestionPolicyVersions(datasetId)
+      setVersions(res)
+    } catch (e: any) {
+      console.error('Failed to load ingestion policy versions', e)
+      toast.error(formatApiError(e, '加载版本历史失败'))
+      setVersions(null)
+    } finally {
+      setVersionsLoading(false)
+    }
+  }, [datasetId])
+
+  const openVersions = useCallback(async () => {
+    setVersionsOpen(true)
+    await loadVersions()
+  }, [loadVersions])
+
+  const rollbackPolicy = useCallback(
+    async (versionId: string) => {
+      if (!datasetId) return
+      const id = String(versionId || '').trim()
+      if (!id) return
+      setRollbackingVersionId(id)
+      try {
+        await datasetApi.rollbackIngestionPolicy(datasetId, { version_id: id })
+        toast.success('已回滚入库策略')
+        await Promise.all([load(), loadVersions()])
+      } catch (e: any) {
+        console.error('Failed to rollback ingestion policy', e)
+        toast.error(formatApiError(e, '回滚失败'))
+      } finally {
+        setRollbackingVersionId(null)
+      }
+    },
+    [datasetId, load, loadVersions]
+  )
 
   const loadProfiles = useCallback(async () => {
     try {
@@ -849,20 +901,24 @@ export default function DatasetIngestionPolicyPage() {
                 表格 / TAG
               </Button>
             ) : null}
-            <Button variant="outline" onClick={handleExport} className="gap-2">
-              <Download className="w-4 h-4" />
-              导出脚本
-            </Button>
-            <Button variant="outline" onClick={() => importInputRef.current?.click()} className="gap-2">
-              <FileUp className="w-4 h-4" />
-              导入脚本
-            </Button>
-            <Button onClick={savePolicy} disabled={saving || !policy} className="gap-2">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Save className="w-4 h-4" />}
-              保存
-            </Button>
-          </div>
-        }
+	            <Button variant="outline" onClick={handleExport} className="gap-2">
+	              <Download className="w-4 h-4" />
+	              导出脚本
+	            </Button>
+	            <Button variant="outline" onClick={() => importInputRef.current?.click()} className="gap-2">
+	              <FileUp className="w-4 h-4" />
+	              导入脚本
+	            </Button>
+              <Button variant="outline" onClick={() => void openVersions()} className="gap-2">
+                <History className="w-4 h-4" />
+                版本
+              </Button>
+	            <Button onClick={savePolicy} disabled={saving || !policy} className="gap-2">
+	              {saving ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Save className="w-4 h-4" />}
+	              保存
+	            </Button>
+	          </div>
+	        }
       >
         <div className="space-y-6">
           {ingestionStats ? (
@@ -1268,6 +1324,105 @@ export default function DatasetIngestionPolicyPage() {
 
             <DialogFooter className="mt-2">
               <Button variant="ghost" onClick={() => setTemplatesOpen(false)}>
+                关闭
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
+          <DialogContent className="max-w-3xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="w-4 h-4 text-primary" />
+                入库策略版本历史
+              </DialogTitle>
+              <DialogDescription>
+                每次“保存/导入/回滚”都会生成一个版本（保留最近 {50} 条）。可用来快速回退错误配置。
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-muted-foreground">
+                  current_version_id:{' '}
+                  <span className="font-mono">{versions?.current_version_id ? String(versions.current_version_id) : '—'}</span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-3 text-[11px] gap-2"
+                  onClick={() => void loadVersions()}
+                  disabled={versionsLoading}
+                >
+                  <RefreshCw className={cn('w-4 h-4', versionsLoading && 'animate-spin motion-reduce:animate-none')} />
+                  刷新
+                </Button>
+              </div>
+
+              <div className="max-h-[520px] overflow-auto pr-2 space-y-2">
+                {versionsLoading ? (
+                  <div className="text-sm text-muted-foreground">加载中…</div>
+                ) : (versions?.items || []).length ? (
+                  (versions?.items || []).map((v, idx) => {
+                    const id = String((v as any)?.id || '').trim()
+                    const isCurrent = Boolean(id && versions?.current_version_id && id === versions.current_version_id)
+                    const createdAt = String((v as any)?.created_at || '').trim()
+                    const source = String((v as any)?.source || '').trim() || 'put'
+                    const createdBy = String((v as any)?.created_by || '').trim()
+                    const policyJson = (v as any)?.policy
+                    return (
+                      <div key={id || String(idx)} className="rounded-xl border border-border/60 bg-card p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[12px]">{id || '—'}</span>
+                              {isCurrent ? <Badge variant="soft">current</Badge> : null}
+                              <Badge variant="outline" className="font-mono">
+                                {source}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 text-[11px] text-muted-foreground">
+                              {createdAt ? new Date(createdAt).toLocaleString() : '—'}
+                              {createdBy ? <span className="ml-2 font-mono">by {createdBy}</span> : null}
+                            </div>
+                          </div>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isCurrent ? 'secondary' : 'destructive'}
+                            className="h-8 px-3 text-[11px]"
+                            onClick={() => void rollbackPolicy(id)}
+                            disabled={!id || isCurrent || Boolean(rollbackingVersionId)}
+                          >
+                            {rollbackingVersionId === id ? (
+                              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                            ) : null}
+                            回滚
+                          </Button>
+                        </div>
+
+                        <details className="mt-2">
+                          <summary className="cursor-pointer select-none text-[11px] text-muted-foreground hover:text-foreground">
+                            查看 policy
+                          </summary>
+                          <pre className="mt-2 max-h-[220px] overflow-auto rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] text-muted-foreground">
+                            {JSON.stringify(policyJson ?? null, null, 2)}
+                          </pre>
+                        </details>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="text-sm text-muted-foreground">暂无版本（保存/导入后会自动生成）</div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="mt-2">
+              <Button variant="ghost" onClick={() => setVersionsOpen(false)}>
                 关闭
               </Button>
             </DialogFooter>

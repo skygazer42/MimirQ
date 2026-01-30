@@ -129,6 +129,7 @@ def _compute_parsing_quality_gate(
     *,
     pdf_quality: Optional[Dict[str, Any]],
     min_content_chars: int,
+    is_pdf: bool,
 ) -> ParsingQualityGate:
     reasons: list[str] = []
     grade: str = "pass"
@@ -136,8 +137,9 @@ def _compute_parsing_quality_gate(
     text_quality = score_parsed_text_quality(markdown or "")
     evidence: dict[str, Any] = {
         "text_quality": text_quality.to_dict(),
-        "min_content_chars": int(min_content_chars),
     }
+    if is_pdf:
+        evidence["min_content_chars"] = int(min_content_chars)
     if isinstance(pdf_quality, dict) and pdf_quality:
         evidence["pdf_quality"] = dict(pdf_quality)
 
@@ -145,7 +147,7 @@ def _compute_parsing_quality_gate(
         grade = "fail"
         reasons.append("empty_markdown")
 
-    if int(getattr(text_quality, "content_chars", 0) or 0) < int(min_content_chars or 0):
+    if is_pdf and int(getattr(text_quality, "content_chars", 0) or 0) < int(min_content_chars or 0):
         grade = "fail"
         reasons.append("low_content_chars")
 
@@ -539,7 +541,12 @@ async def parse_workspace_document(
         min_chars = max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120))
         max_retries = max(0, int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1))
 
-        gate = _compute_parsing_quality_gate(markdown, pdf_quality=pdf_quality, min_content_chars=min_chars)
+        gate = _compute_parsing_quality_gate(
+            markdown,
+            pdf_quality=pdf_quality,
+            min_content_chars=min_chars,
+            is_pdf=(file_ext == ".pdf"),
+        )
         initial_backend = resolved_backend
 
         # Best-effort PDF fallback for auto parsing in workspace (interactive; safe bounded retries).
@@ -595,7 +602,12 @@ async def parse_workspace_document(
 
                 alt_backend = str(alt_parsed.get("resolved_backend") or cand_backend)
                 alt_original, alt_markdown = _extract_markdown(alt_parsed if isinstance(alt_parsed, dict) else {})
-                alt_gate = _compute_parsing_quality_gate(alt_markdown, pdf_quality=pdf_quality, min_content_chars=min_chars)
+                alt_gate = _compute_parsing_quality_gate(
+                    alt_markdown,
+                    pdf_quality=pdf_quality,
+                    min_content_chars=min_chars,
+                    is_pdf=True,
+                )
 
                 attempt: dict[str, Any] = {
                     "from": resolved_backend,

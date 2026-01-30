@@ -5,6 +5,7 @@ Supports dataset creation, query, update, deletion, and permission management.
 import contextlib
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -35,7 +36,12 @@ from app.api.schemas.dataset_profile import (
 )
 from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
 from app.api.schemas.document import DocumentPipelineOptions
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
+from app.api.schemas.ingestion_policy import (
+    IngestionPolicy,
+    IngestionPolicyImportResponse,
+    IngestionPolicyRollbackRequest,
+    IngestionPolicyVersionListResponse,
+)
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
@@ -922,6 +928,48 @@ def delete_dataset(
     return None
 
 
+_INGESTION_POLICY_VERSIONS_KEY = "ingestion_policy_versions"
+_INGESTION_POLICY_CURRENT_VERSION_ID_KEY = "ingestion_policy_current_version_id"
+_MAX_INGESTION_POLICY_VERSIONS = 50
+
+
+def _append_ingestion_policy_version(
+    meta: dict,
+    *,
+    policy: IngestionPolicy,
+    account_id: str,
+    source: str,
+    note: str | None = None,
+    rollback_from_version_id: str | None = None,
+    rollback_to_version_id: str | None = None,
+) -> tuple[dict, str]:
+    versions_raw = meta.get(_INGESTION_POLICY_VERSIONS_KEY)
+    versions: list[dict] = [v for v in versions_raw if isinstance(v, dict)] if isinstance(versions_raw, list) else []
+
+    version_id = uuid.uuid4().hex
+    item: dict[str, object] = {
+        "id": version_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": str(account_id or "").strip() or None,
+        "source": str(source or "put"),
+        "policy": policy.model_dump(),
+    }
+    if isinstance(note, str) and note.strip():
+        item["note"] = note.strip()[:200]
+    if rollback_from_version_id:
+        item["rollback_from_version_id"] = str(rollback_from_version_id)
+    if rollback_to_version_id:
+        item["rollback_to_version_id"] = str(rollback_to_version_id)
+
+    versions = [item] + versions
+    if len(versions) > _MAX_INGESTION_POLICY_VERSIONS:
+        versions = versions[:_MAX_INGESTION_POLICY_VERSIONS]
+
+    meta[_INGESTION_POLICY_VERSIONS_KEY] = versions
+    meta[_INGESTION_POLICY_CURRENT_VERSION_ID_KEY] = version_id
+    return meta, version_id
+
+
 @router.get("/{dataset_id}/ingestion-policy", response_model=IngestionPolicy)
 def get_dataset_ingestion_policy(
     dataset_id: UUID,
@@ -934,6 +982,87 @@ def get_dataset_ingestion_policy(
     meta = getattr(dataset, "dataset_metadata", None)
     policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(version="1", rules=[])
     return policy
+
+
+@router.get("/{dataset_id}/ingestion-policy/versions", response_model=IngestionPolicyVersionListResponse)
+def list_dataset_ingestion_policy_versions(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    current_id = meta.get(_INGESTION_POLICY_CURRENT_VERSION_ID_KEY)
+    current_id = str(current_id) if isinstance(current_id, str) and current_id.strip() else None
+
+    items_raw = meta.get(_INGESTION_POLICY_VERSIONS_KEY)
+    items = items_raw if isinstance(items_raw, list) else []
+    # Keep stable order: newest first (we always prepend).
+    return IngestionPolicyVersionListResponse(current_version_id=current_id, items=[it for it in items if isinstance(it, dict)])
+
+
+@router.post("/{dataset_id}/ingestion-policy/rollback", response_model=IngestionPolicy)
+def rollback_dataset_ingestion_policy(
+    dataset_id: UUID,
+    body: IngestionPolicyRollbackRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    items_raw = meta.get(_INGESTION_POLICY_VERSIONS_KEY)
+    items = items_raw if isinstance(items_raw, list) else []
+    target_id = str(body.version_id or "").strip()
+    if not target_id:
+        raise HTTPException(status_code=400, detail="version_id is required")
+
+    target: dict | None = None
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if str(it.get("id") or "").strip() == target_id:
+            target = it
+            break
+    if target is None:
+        raise HTTPException(status_code=404, detail="policy version not found")
+
+    raw_policy = target.get("policy")
+    if not isinstance(raw_policy, dict):
+        raise HTTPException(status_code=400, detail="invalid stored policy version")
+
+    try:
+        model = IngestionPolicy(**raw_policy)
+        normalized = validate_and_normalize_ingestion_policy(model)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"invalid stored ingestion policy: {str(exc)[:200]}") from exc
+
+    # Apply as current policy.
+    if normalized.rules:
+        meta["ingestion_policy"] = normalized.model_dump()
+    else:
+        meta.pop("ingestion_policy", None)
+
+    prev_current = meta.get(_INGESTION_POLICY_CURRENT_VERSION_ID_KEY)
+    prev_current_id = str(prev_current) if isinstance(prev_current, str) and prev_current.strip() else None
+    meta, _new_id = _append_ingestion_policy_version(
+        meta,
+        policy=normalized,
+        account_id=account_id,
+        source="rollback",
+        rollback_from_version_id=prev_current_id,
+        rollback_to_version_id=target_id,
+    )
+
+    dataset.dataset_metadata = meta
+    db.commit()
+    db.refresh(dataset)
+    return normalized
 
 
 @router.put("/{dataset_id}/ingestion-policy", response_model=IngestionPolicy)
@@ -953,6 +1082,7 @@ def put_dataset_ingestion_policy(
         meta["ingestion_policy"] = normalized.model_dump()
     else:
         meta.pop("ingestion_policy", None)
+    meta, _vid = _append_ingestion_policy_version(meta, policy=normalized, account_id=account_id, source="put")
     dataset.dataset_metadata = meta
     db.commit()
     db.refresh(dataset)
@@ -994,6 +1124,7 @@ async def import_dataset_ingestion_policy(
         meta["ingestion_policy"] = normalized.model_dump()
     else:
         meta.pop("ingestion_policy", None)
+    meta, _vid = _append_ingestion_policy_version(meta, policy=normalized, account_id=account_id, source="import")
     dataset.dataset_metadata = meta
     db.commit()
     db.refresh(dataset)

@@ -71,6 +71,8 @@ class IngestionPreviewResponse(BaseModel):
     preprocess: PreprocessSummary
     parse: ParsePreviewResponse
     clean: CleanPreviewResponse
+    # Explain payload for UI export/auditing (best-effort; does not affect ingestion).
+    explain: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkItem(BaseModel):
