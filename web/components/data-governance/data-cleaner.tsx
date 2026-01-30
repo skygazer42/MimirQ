@@ -28,6 +28,7 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 import { CleanPreviewRuleStatsPanel } from '@/components/governance-profiles/clean-preview-rule-stats-panel'
+import { computeCleanPreviewImpact } from '@/lib/clean-preview-impact'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 
@@ -48,6 +49,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
   const [llmEnabled, setLlmEnabled] = useState(false)
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
+  const impact = useMemo(() => computeCleanPreviewImpact(lastPreview), [lastPreview])
 
   // Load prompt templates
   useEffect(() => {
@@ -357,6 +359,53 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
           </button>
           {previewDiff && (
             <div className="p-4 border-t border-border bg-muted max-h-80 overflow-y-auto overscroll-contain no-scrollbar space-y-3">
+              {impact ? (
+                <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Impact Summary</div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>chars</span>
+                      <span className="font-mono text-foreground/90">
+                        {impact.inputChars} → {impact.outputChars} ({impact.deltaChars >= 0 ? '+' : ''}
+                        {impact.deltaChars}
+                        {impact.deltaCharsPct != null ? `, ${Math.round(impact.deltaCharsPct * 100)}%` : ''})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>lines</span>
+                      <span className="font-mono text-foreground/90">
+                        {impact.inputLines} → {impact.outputLines} ({impact.deltaLines >= 0 ? '+' : ''}
+                        {impact.deltaLines})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>diff</span>
+                      <span className="font-mono text-foreground/90">
+                        +{impact.addedLines} / -{impact.removedLines} / ~{impact.changedLines}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>PII / Secrets</span>
+                      <span className="font-mono text-foreground/90">
+                        {impact.piiHitsTotal} / {impact.secretsHitsTotal}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>urls_changed</span>
+                      <span className="font-mono text-foreground/90">{impact.urlsChanged}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>paragraphs_dropped</span>
+                      <span className="font-mono text-foreground/90">{impact.paragraphsDropped}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>references_removed_lines</span>
+                      <span className="font-mono text-foreground/90">{impact.referencesRemovedLines}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {lastPreview?.issues?.length ? (
                 <div className="rounded-lg border border-border/60 bg-background/40 p-3">
                   <div className="text-xs font-medium text-muted-foreground mb-2">检测到的问题（Best-effort）</div>
