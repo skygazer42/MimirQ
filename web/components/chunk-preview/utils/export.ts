@@ -163,6 +163,18 @@ export function chunkPreviewToReviewReport(
   const shortIndices = computeShortIndices(mergedAll.chunks || [], unit)
   const coverage = computeCoverageSignals(mergedAll.chunks || [], { strategy: mergedAll.chunk_strategy })
 
+  const reviewSignals =
+    (mergedAll as any).review_signals ??
+    ({
+      basis: coverage.basis,
+      short_indices: Array.from(shortIndices).sort((a, b) => a - b),
+      duplicate_indices: Array.from(duplicateIndices).sort((a, b) => a - b),
+      gap_indices: Array.from(coverage.gapIndices).sort((a, b) => a - b),
+      overlap_indices: Array.from(coverage.overlapIndices).sort((a, b) => a - b),
+      gap_before_by_index: Object.fromEntries(Array.from(coverage.gapBeforeByIndex.entries()).map(([k, v]) => [String(k), v])),
+      overlap_prev_by_index: Object.fromEntries(Array.from(coverage.overlapPrevByIndex.entries()).map(([k, v]) => [String(k), v])),
+    } as any)
+
   const chunks = (merged.chunks || []).map((c) => {
     const idx = Number(c.index)
     const meta = (c.metadata || {}) as Record<string, any>
@@ -218,6 +230,7 @@ export function chunkPreviewToReviewReport(
       strategy_params: mergedAll.params?.strategy_params || {},
     },
     stats: mergedAll.stats || null,
+    review_signals: reviewSignals,
     quality_gate: (mergedAll as any).quality_gate ?? null,
     recommendations: (mergedAll as any).recommendations ?? [],
     warnings: (mergedAll as any).warnings ?? [],

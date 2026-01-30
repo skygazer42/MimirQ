@@ -22,7 +22,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -41,6 +41,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
 from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
+from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
@@ -62,11 +63,28 @@ class ParsingContentResponse(BaseModel):
     markdown_content: str = Field(default="")
     original_markdown_content: str = Field(default="")
     parse_duration_sec: Optional[float] = Field(default=None)
+    pdf_quality: Optional[Dict[str, Any]] = Field(default=None)
+    quality_gate: Optional["ParsingQualityGate"] = Field(default=None)
 
 
 class ParsingContentUpdateRequest(BaseModel):
     markdown_content: str = Field(default="")
     original_markdown_content: Optional[str] = None
+
+
+class ParsingQualityGate(BaseModel):
+    """
+    Unified parsing quality gate (preview/workspace).
+
+    grade:
+      - pass: looks OK
+      - warn: usable but needs review/tuning
+      - fail: likely broken output; best-effort fallback attempted (PDF auto only)
+    """
+
+    grade: Literal["pass", "warn", "fail"] = "pass"
+    reasons: List[str] = Field(default_factory=list)
+    evidence: Dict[str, Any] = Field(default_factory=dict)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -97,6 +115,123 @@ def _strip_position_tags(markdown: str) -> str:
     if not markdown:
         return ""
     return POSITION_TAG_RE.sub("", markdown)
+
+
+def _grade_max(a: str, b: str) -> str:
+    order = {"pass": 0, "warn": 1, "fail": 2}
+    ra = order.get(str(a), 0)
+    rb = order.get(str(b), 0)
+    return "fail" if max(ra, rb) >= 2 else "warn" if max(ra, rb) >= 1 else "pass"
+
+
+def _compute_parsing_quality_gate(
+    markdown: str,
+    *,
+    pdf_quality: Optional[Dict[str, Any]],
+    min_content_chars: int,
+) -> ParsingQualityGate:
+    reasons: list[str] = []
+    grade: str = "pass"
+
+    text_quality = score_parsed_text_quality(markdown or "")
+    evidence: dict[str, Any] = {
+        "text_quality": text_quality.to_dict(),
+        "min_content_chars": int(min_content_chars),
+    }
+    if isinstance(pdf_quality, dict) and pdf_quality:
+        evidence["pdf_quality"] = dict(pdf_quality)
+
+    if not (markdown or "").strip():
+        grade = "fail"
+        reasons.append("empty_markdown")
+
+    if int(getattr(text_quality, "content_chars", 0) or 0) < int(min_content_chars or 0):
+        grade = "fail"
+        reasons.append("low_content_chars")
+
+    # Heuristic warnings (best-effort).
+    if float(getattr(text_quality, "replacement_ratio", 0.0) or 0.0) >= 0.08:
+        grade = _grade_max(grade, "warn")
+        reasons.append("high_replacement_ratio")
+
+    if float(getattr(text_quality, "density", 0.0) or 0.0) <= 0.12:
+        grade = _grade_max(grade, "warn")
+        reasons.append("low_density")
+
+    if isinstance(pdf_quality, dict) and bool(pdf_quality.get("is_scanned", False)):
+        grade = _grade_max(grade, "warn")
+        reasons.append("pdf_scanned")
+
+    # Dedup (keep order).
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for r in reasons:
+        key = str(r)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(key)
+
+    return ParsingQualityGate(grade=str(grade), reasons=uniq, evidence=evidence)
+
+
+def _build_pdf_fallback_candidates() -> list[str]:
+    """
+    Best-effort fallback order for PDF auto parsing.
+
+    Keep it conservative: we only include backends that appear enabled/configured.
+    """
+    candidates: list[str] = []
+
+    # OCR/structured backends first (scanned/low-quality PDFs).
+    if bool(getattr(settings, "MINERU_ENABLED", False)) and bool(
+        getattr(settings, "MINERU_API_TOKEN", None) or getattr(settings, "MINERU_LOCAL_SERVER_URL", None)
+    ):
+        candidates.append("mineru")
+
+    deepseek_ocr_ok = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
+        (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
+    )
+    if deepseek_ocr_ok:
+        candidates.append("deepseek_ocr")
+
+    etl4llm_ok = bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
+        (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
+    )
+    if etl4llm_ok:
+        candidates.append("etl4llm")
+
+    if bool(getattr(settings, "DEEPDOC_ENABLED", False)):
+        candidates.append("deepdoc")
+
+    if bool(getattr(settings, "DOCLING_ENABLED", False)):
+        candidates.append("docling")
+
+    # MagicPDF is a CLI; require it to be resolvable.
+    try:
+        if bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+            cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+            if resolve_cli_command(cli):
+                candidates.append("magicpdf")
+    except Exception:
+        pass
+
+    if bool(getattr(settings, "MARKITDOWN_ENABLED", False)):
+        candidates.append("markitdown")
+
+    # Always keep a basic fallback.
+    candidates.append("basic")
+
+    # De-dup while preserving order.
+    out: list[str] = []
+    seen: set[str] = set()
+    for c in candidates:
+        key = (c or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
 
 
 def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: str) -> Dataset:
@@ -373,6 +508,17 @@ async def parse_workspace_document(
 
     try:
         t0 = time.perf_counter()
+
+        def _extract_markdown(parsed_obj: dict) -> tuple[str, str]:
+            docs = [
+                str(item.get("page_content") or "")
+                for item in (parsed_obj.get("documents") or [])
+                if isinstance(item, dict)
+            ]
+            original = "\n\n".join(docs).strip()
+            cleaned = _strip_position_tags(original).strip()
+            return original, cleaned
+
         parsed = await run_subprocess_worker(
             tenant_id=tenant_id,
             payload={
@@ -385,16 +531,101 @@ async def parse_workspace_document(
             disconnect_check=request.is_disconnected,
             timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
         )
-        duration_sec = max(0.0, time.perf_counter() - t0)
-        documents = [
-            str(item.get("page_content") or "")
-            for item in (parsed.get("documents") or [])
-            if isinstance(item, dict)
-        ]
         resolved_backend = str(parsed.get("resolved_backend") or resolved_backend)
 
-        original_markdown = "\n\n".join(documents).strip()
-        markdown = _strip_position_tags(original_markdown).strip()
+        pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
+        original_markdown, markdown = _extract_markdown(parsed if isinstance(parsed, dict) else {})
+
+        min_chars = max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120))
+        max_retries = max(0, int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1))
+
+        gate = _compute_parsing_quality_gate(markdown, pdf_quality=pdf_quality, min_content_chars=min_chars)
+        initial_backend = resolved_backend
+
+        # Best-effort PDF fallback for auto parsing in workspace (interactive; safe bounded retries).
+        fallback_attempts: list[dict[str, Any]] = []
+        if file_ext == ".pdf" and requested_backend in {"", "auto"} and gate.grade == "fail" and max_retries > 0:
+            candidates = _build_pdf_fallback_candidates()
+            filtered = [c for c in candidates if c != (resolved_backend or "").strip().lower()]
+            retries_left = int(max_retries)
+
+            for candidate in filtered:
+                if retries_left <= 0:
+                    break
+                retries_left -= 1
+
+                try:
+                    cand_backend = parser_factory.resolve_backend(file_ext, candidate)
+                except Exception as exc:  # noqa: BLE001
+                    fallback_attempts.append(
+                        {
+                            "from": resolved_backend,
+                            "to": candidate,
+                            "accepted": False,
+                            "error": f"invalid_backend:{str(exc)[:120]}",
+                        }
+                    )
+                    continue
+
+                try:
+                    alt_parsed = await run_subprocess_worker(
+                        tenant_id=tenant_id,
+                        payload={
+                            "action": "parse_documents",
+                            "tenant_id": str(tenant_id),
+                            "file_path": str(source_path),
+                            "parser_backend": cand_backend,
+                            "mode": "preview",
+                            # Reuse initial quality scoring if present to avoid extra pdfplumber work.
+                            "pdf_quality": dict(pdf_quality) if isinstance(pdf_quality, dict) else None,
+                        },
+                        disconnect_check=request.is_disconnected,
+                        timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    fallback_attempts.append(
+                        {
+                            "from": resolved_backend,
+                            "to": cand_backend,
+                            "accepted": False,
+                            "error": str(exc)[:200],
+                        }
+                    )
+                    continue
+
+                alt_backend = str(alt_parsed.get("resolved_backend") or cand_backend)
+                alt_original, alt_markdown = _extract_markdown(alt_parsed if isinstance(alt_parsed, dict) else {})
+                alt_gate = _compute_parsing_quality_gate(alt_markdown, pdf_quality=pdf_quality, min_content_chars=min_chars)
+
+                attempt: dict[str, Any] = {
+                    "from": resolved_backend,
+                    "to": alt_backend,
+                    "quality_before": gate.evidence.get("text_quality"),
+                    "quality_after": alt_gate.evidence.get("text_quality"),
+                    "accepted": alt_gate.grade != "fail",
+                }
+                fallback_attempts.append(attempt)
+
+                if alt_gate.grade != "fail":
+                    resolved_backend = alt_backend
+                    original_markdown, markdown = alt_original, alt_markdown
+                    gate = alt_gate
+                    break
+
+        if fallback_attempts:
+            gate = ParsingQualityGate(
+                grade=gate.grade,
+                reasons=list(gate.reasons or []),
+                evidence={
+                    **(gate.evidence or {}),
+                    "fallback_attempts": fallback_attempts,
+                    "fallback_initial_backend": initial_backend,
+                    "fallback_final_backend": resolved_backend,
+                    "fallback_max_retries": int(max_retries),
+                },
+            )
+
+        duration_sec = max(0.0, time.perf_counter() - t0)
 
         # Upsert parsed content.
         existing = (
@@ -426,8 +657,18 @@ async def parse_workspace_document(
         next_meta["workspace"] = "parsing"
         next_meta["parser_backend_requested"] = requested_backend
         next_meta["parser_backend"] = resolved_backend
+        if isinstance(pdf_quality, dict) and pdf_quality:
+            next_meta["pdf_quality"] = dict(pdf_quality)
+        if gate is not None:
+            next_meta["quality_gate"] = gate.model_dump()
         next_meta["parsed_at"] = datetime.now(timezone.utc).isoformat()
         next_meta["parse_duration_sec"] = round(float(duration_sec), 3)
+        if fallback_attempts:
+            next_meta["parse_fallback"] = {
+                "attempts": fallback_attempts,
+                "min_content_chars": int(min_chars),
+                "max_retries": int(max_retries),
+            }
         doc.doc_metadata = next_meta
 
         db.commit()
@@ -439,6 +680,8 @@ async def parse_workspace_document(
             markdown_content=markdown,
             original_markdown_content=original_markdown,
             parse_duration_sec=round(float(duration_sec), 3),
+            pdf_quality=(dict(pdf_quality) if isinstance(pdf_quality, dict) else None),
+            quality_gate=gate,
         )
     except SubprocessCancelled:
         # Client disconnected; stop work early.
@@ -509,12 +752,16 @@ async def get_parsing_content(
         .filter(DocumentParsedContent.document_id == doc.id, DocumentParsedContent.tenant_id == tenant_id)
         .first()
     )
+    pdf_quality = meta.get("pdf_quality") if isinstance(meta, dict) else None
+    quality_gate = meta.get("quality_gate") if isinstance(meta, dict) else None
     return ParsingContentResponse(
         document_id=doc.id,
         parser_backend=str(parser_backend or "auto"),
         markdown_content=(row.markdown_content if row else ""),
         original_markdown_content=(row.original_markdown_content if row else ""),
         parse_duration_sec=duration_sec,
+        pdf_quality=(dict(pdf_quality) if isinstance(pdf_quality, dict) else None),
+        quality_gate=(ParsingQualityGate(**quality_gate) if isinstance(quality_gate, dict) else None),
     )
 
 
