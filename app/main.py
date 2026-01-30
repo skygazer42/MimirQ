@@ -40,6 +40,7 @@ import app.models.audit_log  # noqa: F401
 
 # Ensure connector models are registered for metadata creation
 import app.models.connector  # noqa: F401
+import app.models.connector_config  # noqa: F401
 
 # Ensure conversation summary models are registered for metadata creation
 import app.models.conversation_summary  # noqa: F401
