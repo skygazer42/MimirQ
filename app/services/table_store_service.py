@@ -33,6 +33,7 @@ _SQL_SELECT_PREFIX_RE = re.compile(r"^\s*(with\b|select\b)", re.IGNORECASE)
 _WS_RE = re.compile(r"\s+")
 _BOM_RE = re.compile(r"^\ufeff+")
 _NUMERIC_ONLY_RE = re.compile(r"^\s*[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*$")
+_MD_TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
 
 
 @dataclass(frozen=True)
@@ -610,6 +611,173 @@ def import_docx_tables(
         # Captions are usually adjacent to a table; avoid reusing old captions for
         # back-to-back tables with no intervening paragraphs.
         prev_paras = []
+
+    return assets
+
+
+def _extract_markdown_table_blocks(text: str) -> list[list[str]]:
+    """
+    Best-effort: extract pipe-table blocks from markdown-like text.
+
+    We keep this conservative (line-based) since this is used on parser-emitted table segments,
+    not arbitrary user-provided markdown.
+    """
+    raw = str(text or "")
+    if not raw.strip():
+        return []
+
+    blocks: list[list[str]] = []
+    current: list[str] = []
+
+    for line in raw.splitlines():
+        s = line.strip()
+        looks_like_table = bool(s.startswith("|") and "|" in s)
+        if looks_like_table:
+            current.append(line)
+            continue
+        if current:
+            blocks.append(current)
+            current = []
+
+    if current:
+        blocks.append(current)
+
+    return blocks
+
+
+def _parse_markdown_table(block_lines: list[str]) -> tuple["pd.DataFrame", bool] | None:
+    """
+    Best-effort: parse a GitHub-flavored markdown table into a DataFrame.
+
+    Returns: (df, had_separator_row) or None if it doesn't look like a table.
+    """
+    lines = [str(l or "") for l in (block_lines or []) if str(l or "").strip()]
+    if len(lines) < 2:
+        return None
+
+    def split_row(line: str) -> list[str]:
+        s = line.strip()
+        if s.startswith("|"):
+            s = s[1:]
+        if s.endswith("|"):
+            s = s[:-1]
+        parts = [p.replace(r"\|", "|").strip() for p in s.split("|")]
+        return parts
+
+    header = split_row(lines[0])
+    if not any(c for c in header):
+        return None
+
+    body_start = 1
+    had_sep = False
+    sep = split_row(lines[1]) if len(lines) >= 2 else []
+    if sep and len(sep) == len(header) and all(_MD_TABLE_SEP_CELL_RE.match(c or "") for c in sep):
+        had_sep = True
+        body_start = 2
+
+    rows: list[list[str]] = []
+    for line in lines[body_start:]:
+        row = split_row(line)
+        if not any(c for c in row):
+            continue
+        if len(row) < len(header):
+            row = row + [""] * (len(header) - len(row))
+        if len(row) > len(header):
+            row = row[: len(header)]
+        rows.append(row)
+
+    df = pd.DataFrame(rows, columns=[str(c) for c in header])
+    return df, had_sep
+
+
+def import_markdown_tables(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID,
+    tables: list[dict[str, Any]],
+    max_rows: int,
+    max_cols: int,
+    sample_rows: int,
+) -> list[TableAsset]:
+    """
+    Best-effort: import parsed markdown tables into the per-document Table Store (SQLite).
+
+    Input format:
+      tables: [{"markdown": "...", "sheet_name": "optional label"}, ...]
+    """
+    out_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Reset store to avoid stale tables on re-import (best-effort).
+    try:
+        if out_path.exists():
+            out_path.unlink()
+    except Exception:
+        try:
+            conn = _connect_rw(out_path)
+            try:
+                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                for row in cur.fetchall():
+                    name = str(row[0] or "")
+                    if name:
+                        conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    max_rows_i = max(0, int(max_rows or 0))
+    max_cols_i = max(0, int(max_cols or 0))
+    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+
+    assets: list[TableAsset] = []
+    sheet_index = 0
+
+    for t in (tables or []):
+        if not isinstance(t, dict):
+            continue
+        md = str(t.get("markdown") or "")
+        if not md.strip():
+            continue
+
+        sheet_name = t.get("sheet_name")
+        sheet_name = str(sheet_name) if sheet_name is not None else None
+
+        for block in _extract_markdown_table_blocks(md):
+            parsed = _parse_markdown_table(block)
+            if parsed is None:
+                continue
+            df, _had_sep = parsed
+            df = _sanitize_dataframe(df)
+
+            truncated = False
+            if max_rows_i > 0 and int(getattr(df, "shape", (0, 0))[0]) > max_rows_i:
+                truncated = True
+                df = df.head(max_rows_i)
+            if max_cols_i > 0 and int(getattr(df, "shape", (0, 0))[1]) > max_cols_i:
+                truncated = True
+                df = df.iloc[:, :max_cols_i]
+
+            assets.extend(
+                _write_single_sheet(
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    document_id=document_id,
+                    df=df,
+                    sheet_index=int(sheet_index),
+                    sheet_name=sheet_name,
+                    truncated=truncated,
+                    sample_rows=sample_rows,
+                )
+            )
+            sheet_index += 1
+            if max_sheets > 0 and sheet_index >= max_sheets:
+                break
+
+        if max_sheets > 0 and sheet_index >= max_sheets:
+            break
 
     return assets
 
