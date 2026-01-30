@@ -155,9 +155,15 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
     assert "pdf-default" in rule_ids
     assert "pdf-ocr-first" in rule_ids  # scanned_pdfs>0 -> add OCR-first filename rule
 
-    md_rule = next((r for r in policy.get("rules") or [] if r.get("id") == "markdown-text"), None)
+    md_rule = next((r for r in policy.get("rules") or [] if r.get("id") == "markdown-md"), None)
     assert md_rule is not None
     assert md_rule.get("governance_profile_ref") == "builtin:wiki_longform"
+    assert md_rule.get("chunk_strategy") == "markdown_header"
+
+    txt_rule = next((r for r in policy.get("rules") or [] if r.get("id") == "text-txt"), None)
+    assert txt_rule is not None
+    assert txt_rule.get("governance_profile_ref") == "builtin:wiki_longform"
+    assert txt_rule.get("chunk_strategy") == "semantic_sentence"
 
     table_csv = next((r for r in policy.get("rules") or [] if r.get("id") == "tables-csv-tag"), None)
     assert table_csv is not None

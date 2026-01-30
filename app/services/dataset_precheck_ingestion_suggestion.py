@@ -75,6 +75,7 @@ def _rule(
     filename_regex: str | None = None,
     preprocess_steps: list[str] | None = None,
     parser_backend: str | None = None,
+    chunk_strategy: str | None = None,
     governance_profile_ref: str | None = None,
     pipeline_patch: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -86,7 +87,7 @@ def _rule(
         "match": {"extensions": extensions, "filename_regex": filename_regex},
         "preprocess": {"enabled": bool(steps), "steps": steps},
         "parser_backend": parser_backend,
-        "chunk_strategy": None,
+        "chunk_strategy": chunk_strategy,
         "governance_profile_ref": governance_profile_ref,
         "pipeline_patch": dict(pipeline_patch or {}),
     }
@@ -310,23 +311,41 @@ def build_ingestion_policy_suggestion(
         )
     )
 
-    # Markdown/text.
+    # Markdown (.md) / plain text (.txt).
+    #
+    # Heuristics:
+    # - Markdown: prefer header-aware chunking for better structure/citation.
+    # - Plain text: prefer sentence-boundary chunking for cleaner boundaries (esp. zh/en mixed).
     md_profile = "builtin:wiki_longform" if use_longform else "builtin:kb_default"
     md_patch = _pii_secrets_patch(enable_pii=bool({"md", "txt"} & pii_types), enable_secrets=bool({"md", "txt"} & secrets_types))
+    common_text_preprocess = [
+        "text.reencode_utf8",
+        "text.strip_bom",
+        "text.normalize_newlines",
+        "text.trim_trailing_whitespace",
+        "text.remove_zero_width",
+        "text.remove_control_chars",
+    ]
     rules.append(
         _rule(
-            rid="markdown-text",
-            name="Markdown / 纯文本（保守清洗）",
-            extensions=[".md", ".txt"],
-            preprocess_steps=[
-                "text.reencode_utf8",
-                "text.strip_bom",
-                "text.normalize_newlines",
-                "text.trim_trailing_whitespace",
-                "text.remove_zero_width",
-                "text.remove_control_chars",
-            ],
+            rid="markdown-md",
+            name="Markdown（按标题分块）",
+            extensions=[".md"],
+            preprocess_steps=list(common_text_preprocess),
             parser_backend="auto",
+            chunk_strategy="markdown_header",
+            governance_profile_ref=md_profile,
+            pipeline_patch=md_patch,
+        )
+    )
+    rules.append(
+        _rule(
+            rid="text-txt",
+            name="纯文本（按句子分块）",
+            extensions=[".txt"],
+            preprocess_steps=list(common_text_preprocess),
+            parser_backend="auto",
+            chunk_strategy="semantic_sentence",
             governance_profile_ref=md_profile,
             pipeline_patch=md_patch,
         )
