@@ -306,8 +306,9 @@ class MarkdownAwareChunker(BaseChunker):
             if not text.strip():
                 continue
 
-            # Pre-process to protect code blocks
+            # Pre-process to protect code/list blocks (avoid splitting inside a single item/block).
             protected_text, code_blocks = self._protect_code_blocks(text)
+            protected_text, list_items = self._protect_list_items(protected_text)
 
             # Split the protected text
             raw_chunks = self._splitter.split_text(protected_text)
@@ -315,8 +316,9 @@ class MarkdownAwareChunker(BaseChunker):
             # Restore code blocks and create documents
             search_pos = 0
             for chunk_text in raw_chunks:
-                # Restore code blocks in this chunk
-                restored_text = self._restore_code_blocks(chunk_text, code_blocks)
+                # Restore placeholders in this chunk (list items first, then code blocks).
+                restored_text = self._restore_placeholders(chunk_text, list_items)
+                restored_text = self._restore_placeholders(restored_text, code_blocks)
 
                 # Calculate positions
                 pos = text.find(restored_text, max(0, int(search_pos)))
@@ -379,11 +381,88 @@ class MarkdownAwareChunker(BaseChunker):
 
         return protected, code_blocks
 
-    def _restore_code_blocks(self, text: str, code_blocks: Dict[str, str]) -> str:
-        """Restore code blocks from placeholders."""
-        for placeholder, code in code_blocks.items():
-            text = text.replace(placeholder, code)
-        return text
+    _LIST_ITEM_RE = re.compile(r"^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)")
+
+    def _protect_list_items(self, text: str) -> Tuple[str, Dict[str, str]]:
+        """
+        Replace markdown list *items* with placeholders (best-effort).
+
+        Goal: avoid splitting between a list item's bullet line and its indented continuation lines.
+        This is intentionally conservative and bounded: extremely large items are left as-is so
+        chunking can still make progress under small chunk sizes.
+        """
+        if not self.preserve_lists:
+            return text, {}
+
+        lines = (text or "").splitlines(keepends=True)
+        if not lines:
+            return text, {}
+
+        items: Dict[str, str] = {}
+        out: list[str] = []
+        idx = 0
+        placeholder_idx = 0
+        max_preserve_len = int(max(0, self.chunk_size) * 1.5) if self.chunk_size else 0
+
+        def is_item_start(line: str) -> bool:
+            return bool(self._LIST_ITEM_RE.match(line or ""))
+
+        def is_continuation(line: str) -> bool:
+            if not line:
+                return False
+            if (line.strip() == ""):
+                return True
+            return bool(re.match(r"^\s{2,}\S", line))
+
+        while idx < len(lines):
+            line = lines[idx]
+            if not is_item_start(line):
+                out.append(line)
+                idx += 1
+                continue
+
+            start = idx
+            idx += 1
+
+            # Include indented continuations (and some blank lines) until next list item or a new block.
+            while idx < len(lines):
+                nxt = lines[idx]
+                if is_item_start(nxt):
+                    break
+                if nxt.strip() == "":
+                    # Keep blank line only if the next non-empty line is indented (still part of item).
+                    j = idx + 1
+                    while j < len(lines) and lines[j].strip() == "":
+                        j += 1
+                    if j < len(lines) and is_continuation(lines[j]):
+                        idx += 1
+                        continue
+                    break
+                if is_continuation(nxt):
+                    idx += 1
+                    continue
+                break
+
+            block = "".join(lines[start:idx])
+            if max_preserve_len > 0 and len(block) > max_preserve_len:
+                out.append(block)
+                continue
+
+            placeholder = f"__LIST_ITEM_{placeholder_idx}__"
+            placeholder_idx += 1
+            items[placeholder] = block
+            out.append(placeholder)
+
+        return "".join(out), items
+
+    def _restore_placeholders(self, text: str, mapping: Dict[str, str]) -> str:
+        """Restore placeholders from a mapping (best-effort)."""
+        if not mapping:
+            return text
+        out = text
+        for placeholder, value in mapping.items():
+            out = out.replace(placeholder, value)
+        return out
 
     def _extract_header_context(self, full_text: str, position: int) -> Optional[str]:
         """Extract the most recent header before the given position."""
