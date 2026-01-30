@@ -10,8 +10,10 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
+import { createPositionTagIndexMapper, findPositionTagRanges, stripPositionTags } from '@/lib/parsing-positions'
 import { cn } from '@/lib/utils'
 import { OriginalPreviewMonaco } from './original-preview-monaco'
+import { PdfPreview } from './pdf-preview'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
 
@@ -44,7 +46,7 @@ export function OriginalPreview() {
     isLoading,
     error,
   } = useChunkPreview()
-  const [previewMode, setPreviewMode] = useState<'raw' | 'rendered' | 'editor'>('raw')
+  const [previewMode, setPreviewMode] = useState<'raw' | 'rendered' | 'editor' | 'pdf'>('raw')
   const [forceFullHighlight, setForceFullHighlight] = useState(false)
   const [localOriginalText, setLocalOriginalText] = useState<string | null>(null)
   const [localLoading, setLocalLoading] = useState(false)
@@ -64,8 +66,57 @@ export function OriginalPreview() {
     }
   }, [activeChunkIndex, previewData?.chunks])
 
+  const isPdf = useMemo(() => {
+    const ft = String(previewData?.file_type || '').toLowerCase()
+    if (ft === 'pdf') return true
+    const name = String(currentFile?.name || '').toLowerCase()
+    return name.endsWith('.pdf')
+  }, [currentFile?.name, previewData?.file_type])
+
+  useEffect(() => {
+    if (previewMode === 'pdf' && !isPdf) setPreviewMode('raw')
+  }, [isPdf, previewMode])
+
+  const serverTextInfo = useMemo(() => {
+    const raw = previewData?.original_text
+    const cleanedFromApi = previewData?.original_text_cleaned
+
+    const identity = (n: number) => Math.max(0, Math.trunc(Number(n) || 0))
+
+    if (!raw) {
+      return {
+        displayText: null as string | null,
+        indexMapper: identity,
+        hasPositionTags: false,
+      }
+    }
+
+    if (typeof cleanedFromApi === 'string' && cleanedFromApi.length > 0) {
+      return {
+        displayText: cleanedFromApi,
+        indexMapper: createPositionTagIndexMapper(raw),
+        hasPositionTags: true,
+      }
+    }
+
+    const ranges = findPositionTagRanges(raw)
+    if (ranges.length > 0) {
+      return {
+        displayText: stripPositionTags(raw),
+        indexMapper: createPositionTagIndexMapper(raw, ranges),
+        hasPositionTags: true,
+      }
+    }
+
+    return {
+      displayText: raw,
+      indexMapper: identity,
+      hasPositionTags: false,
+    }
+  }, [previewData?.original_text, previewData?.original_text_cleaned])
+
   const canLoadFromFile = useMemo(() => canReadFileAsText(currentFile), [currentFile])
-  const effectiveOriginalText = previewData?.original_text ?? localOriginalText ?? null
+  const effectiveOriginalText = serverTextInfo.displayText ?? localOriginalText ?? null
   const originalTextSource = previewData?.original_text ? 'server' : localOriginalText ? 'local' : null
 
   useEffect(() => {
@@ -114,8 +165,11 @@ export function OriginalPreview() {
     if (!chunk) return null
 
     const text = effectiveOriginalText
-    const activeStart = Math.max(0, Number(chunk.start_index) || 0)
-    const activeEnd = Math.max(activeStart, Number(chunk.end_index) || activeStart)
+    const mapIndex = serverTextInfo.indexMapper
+    const activeStartRaw = Math.max(0, Number(chunk.start_index) || 0)
+    const activeEndRaw = Math.max(activeStartRaw, Number(chunk.end_index) || activeStartRaw)
+    const activeStart = Math.max(0, mapIndex(activeStartRaw))
+    const activeEnd = Math.max(activeStart, mapIndex(activeEndRaw))
     if (activeStart >= text.length) return null
     const safeActiveEnd = Math.min(activeEnd, text.length)
     if (safeActiveEnd <= activeStart) return null
@@ -127,16 +181,18 @@ export function OriginalPreview() {
     const parentEndRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
     const parentStart = role === 'child' && parentStartRaw != null ? Number(parentStartRaw) : NaN
     const parentEnd = role === 'child' && parentEndRaw != null ? Number(parentEndRaw) : NaN
+    const parentStartMapped = Number.isFinite(parentStart) ? mapIndex(parentStart) : NaN
+    const parentEndMapped = Number.isFinite(parentEnd) ? mapIndex(parentEnd) : NaN
     const hasParent =
       role === 'child' &&
-      Number.isFinite(parentStart) &&
-      Number.isFinite(parentEnd) &&
-      parentEnd > parentStart &&
-      parentStart <= activeStart &&
-      parentEnd >= safeActiveEnd
+      Number.isFinite(parentStartMapped) &&
+      Number.isFinite(parentEndMapped) &&
+      parentEndMapped > parentStartMapped &&
+      parentStartMapped <= activeStart &&
+      parentEndMapped >= safeActiveEnd
 
-    const baseStart = hasParent ? Math.min(activeStart, parentStart) : activeStart
-    const baseEnd = hasParent ? Math.max(safeActiveEnd, parentEnd) : safeActiveEnd
+    const baseStart = hasParent ? Math.min(activeStart, parentStartMapped) : activeStart
+    const baseEnd = hasParent ? Math.max(safeActiveEnd, parentEndMapped) : safeActiveEnd
 
     // Avoid rendering giant before/after strings for large texts: default to a windowed excerpt.
     const EXCERPT_THRESHOLD = 20_000
@@ -151,8 +207,8 @@ export function OriginalPreview() {
         suffixOmitted: false,
         activeStart,
         activeEnd: safeActiveEnd,
-        parentStart: hasParent ? parentStart : null,
-        parentEnd: hasParent ? parentEnd : null,
+        parentStart: hasParent ? parentStartMapped : null,
+        parentEnd: hasParent ? parentEndMapped : null,
       }
     }
 
@@ -166,10 +222,49 @@ export function OriginalPreview() {
       suffixOmitted: excerptEnd < text.length,
       activeStart,
       activeEnd: safeActiveEnd,
-      parentStart: hasParent ? parentStart : null,
-      parentEnd: hasParent ? parentEnd : null,
+      parentStart: hasParent ? parentStartMapped : null,
+      parentEnd: hasParent ? parentEndMapped : null,
     }
-  }, [activeChunkIndex, effectiveOriginalText, forceFullHighlight, previewData?.chunks])
+  }, [activeChunkIndex, effectiveOriginalText, forceFullHighlight, previewData?.chunks, serverTextInfo.indexMapper])
+
+  const displayChunks = useMemo(() => {
+    const chunks = previewData?.chunks || []
+    if (!chunks.length) return chunks
+    if (!serverTextInfo.hasPositionTags) return chunks
+
+    const mapIndex = serverTextInfo.indexMapper
+    return chunks.map((c) => {
+      const startRaw = Number(c.start_index) || 0
+      const endRaw = Math.max(startRaw, Number(c.end_index) || startRaw)
+      const start = Math.max(0, mapIndex(startRaw))
+      const end = Math.max(start, mapIndex(endRaw))
+
+      const meta = (c.metadata ? { ...(c.metadata as any) } : null) as Record<string, any> | null
+      if (meta) {
+        const psRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
+        const peRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
+        const ps = psRaw != null ? mapIndex(Number(psRaw) || 0) : null
+        const pe = peRaw != null ? mapIndex(Number(peRaw) || 0) : null
+        if (ps != null) {
+          meta.parent_start_char = ps
+          meta.parent_start_index = ps
+          meta.parent_start = ps
+        }
+        if (pe != null) {
+          meta.parent_end_char = pe
+          meta.parent_end_index = pe
+          meta.parent_end = pe
+        }
+      }
+
+      return {
+        ...c,
+        start_index: start,
+        end_index: end,
+        metadata: meta || c.metadata,
+      }
+    })
+  }, [previewData?.chunks, serverTextInfo.hasPositionTags, serverTextInfo.indexMapper])
 
   const tocEnabled = useMemo(
     () => extractMarkdownHeadings(effectiveOriginalText || '', { maxDepth: 4 }).length > 0,
@@ -268,6 +363,18 @@ export function OriginalPreview() {
             >
               编辑器
             </Button>
+            {isPdf ? (
+              <Button
+                variant={previewMode === 'pdf' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setPreviewMode('pdf')}
+                disabled={!previewData || !currentFile}
+                title={serverTextInfo.hasPositionTags ? 'PDF 框选高亮（解析器位置标签）' : 'PDF 预览（需要解析器位置标签）'}
+              >
+                PDF
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -275,18 +382,22 @@ export function OriginalPreview() {
       <div
         className={cn(
           'flex-1 overscroll-contain no-scrollbar p-4 scroll-smooth',
-          previewMode === 'editor' ? 'overflow-hidden' : 'overflow-y-auto'
+          previewMode === 'editor' || previewMode === 'pdf' ? 'overflow-hidden' : 'overflow-y-auto'
         )}
       >
         <div
           className={cn(
             'min-h-full rounded-2xl border border-border/60 bg-card p-6 shadow-sm ring-1 ring-border/40',
-            previewMode === 'editor' ? 'h-full' : null
+            previewMode === 'editor' || previewMode === 'pdf' ? 'h-full' : null
           )}
         >
           {previewData ? (
             effectiveOriginalText ? (
-              previewMode === 'rendered' ? (
+              previewMode === 'pdf' ? (
+                <div className="mx-auto w-full max-w-6xl h-full">
+                  <PdfPreview />
+                </div>
+              ) : previewMode === 'rendered' ? (
                 <div className="mx-auto w-full max-w-6xl flex gap-8">
                   <div className="min-w-0 flex-1">
                     <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-primary prose-code:text-primary prose-code:bg-primary/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted">
@@ -308,7 +419,7 @@ export function OriginalPreview() {
                 <div className="mx-auto w-full max-w-6xl h-full">
                   <OriginalPreviewMonaco
                     text={effectiveOriginalText}
-                    chunks={previewData.chunks}
+                    chunks={displayChunks}
                     activeChunkIndex={activeChunkIndex}
                     chunkOverrides={chunkOverrides}
                     onSelectChunkIndex={setSelectedChunkIndex}
