@@ -20,6 +20,8 @@ interface PdfViewerProps {
   activeBlockIds?: string[] | null
   hoveredBlockIds?: string[] | null
   showAllBoxes?: boolean
+  onHoverBlockId?: (blockId: string | null) => void
+  onClickBlockId?: (blockId: string) => void
 }
 
 export function PdfViewer({
@@ -28,6 +30,8 @@ export function PdfViewer({
   activeBlockIds,
   hoveredBlockIds,
   showAllBoxes = true,
+  onHoverBlockId,
+  onClickBlockId,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -231,6 +235,22 @@ export function PdfViewer({
   const activeSet = useMemo(() => new Set(activeBlockIds || []), [activeBlockIds])
   const hoveredSet = useMemo(() => new Set(hoveredBlockIds || []), [hoveredBlockIds])
 
+  const handleHoverBlock = useCallback(
+    (blockId: string | null) => {
+      if (!onHoverBlockId) return
+      onHoverBlockId(blockId)
+    },
+    [onHoverBlockId]
+  )
+
+  const handleClickBlock = useCallback(
+    (blockId: string) => {
+      if (!onClickBlockId) return
+      onClickBlockId(blockId)
+    },
+    [onClickBlockId]
+  )
+
   useEffect(() => {
     const firstActive = (activeBlockIds || [])[0]
     if (!firstActive) return
@@ -324,10 +344,14 @@ export function PdfViewer({
 	                  const baseColor = isActive ? 'border-warning bg-warning/10' : 'border-primary/60'
 	                  const hoverColor = isHovered ? 'border-primary bg-primary/10' : ''
 	                  return (
-	                    <div
+	                    <button
+                        type="button"
 	                      key={`box-${index}-${boxIndex}`}
-	                      className={`absolute rounded border ${baseColor} ${hoverColor}`}
+	                      className={`pointer-events-auto absolute rounded border ${baseColor} ${hoverColor}`}
                       style={{ left: x, top: y, width, height }}
+                        onMouseEnter={() => handleHoverBlock(box.blockId)}
+                        onMouseLeave={() => handleHoverBlock(null)}
+                        onClick={() => handleClickBlock(box.blockId)}
                     />
                   )
                 })}

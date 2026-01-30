@@ -5,11 +5,13 @@
  */
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 
 import { useChunkPreview } from '@/components/chunk-preview/context'
+import { buildBlockIdToBestChunkIndex } from '@/components/chunk-preview/utils/pdf-box-mapping'
 import { PdfViewer } from '@/components/parsing/pdf-viewer'
+import { Button } from '@/components/ui/button'
 import {
   createPositionTagIndexMapper,
   extractBlocksFromMarkdownWithRanges,
@@ -65,7 +67,17 @@ function blockIdsForChunk(params: {
 }
 
 export function PdfPreview() {
-  const { currentFile, previewData, hoveredChunkIndex, selectedChunkIndex, includeOriginalText } = useChunkPreview()
+  const {
+    currentFile,
+    previewData,
+    hoveredChunkIndex,
+    selectedChunkIndex,
+    includeOriginalText,
+    setHoveredChunkIndex,
+    setSelectedChunkIndex,
+  } = useChunkPreview()
+
+  const [showAllBoxes, setShowAllBoxes] = useState(false)
 
   const isPdf = useMemo(() => {
     const ft = String(previewData?.file_type || '').toLowerCase()
@@ -94,6 +106,20 @@ export function PdfPreview() {
   const blockRanges = useMemo(() => computeBlockRanges(blocksWithPositions, mapIndex), [blocksWithPositions, mapIndex])
 
   const previewChunks = previewData?.chunks as any
+  const chunkRanges = useMemo(() => {
+    if (!Array.isArray(previewChunks)) return []
+    return previewChunks.map((chunk: any, index: number) => ({
+      index,
+      start_index: mapIndex(asInt(chunk?.start_index)),
+      end_index: mapIndex(asInt(chunk?.end_index)),
+    }))
+  }, [mapIndex, previewChunks])
+
+  const blockIdToChunkIndex = useMemo(
+    () => buildBlockIdToBestChunkIndex(blockRanges, chunkRanges),
+    [blockRanges, chunkRanges]
+  )
+
   const selectedBlockIds = useMemo(
     () =>
       blockIdsForChunk({
@@ -116,6 +142,28 @@ export function PdfPreview() {
   )
 
   const activeBlockIds = selectedBlockIds.length ? selectedBlockIds : hoveredBlockIds
+
+  const handleHoverBlockId = useCallback(
+    (blockId: string | null) => {
+      if (!blockId) {
+        setHoveredChunkIndex(null)
+        return
+      }
+      const idx = blockIdToChunkIndex.get(blockId)
+      if (typeof idx !== 'number' || !Number.isFinite(idx)) return
+      setHoveredChunkIndex(idx)
+    },
+    [blockIdToChunkIndex, setHoveredChunkIndex]
+  )
+
+  const handleClickBlockId = useCallback(
+    (blockId: string) => {
+      const idx = blockIdToChunkIndex.get(blockId)
+      if (typeof idx !== 'number' || !Number.isFinite(idx)) return
+      setSelectedChunkIndex(idx)
+    },
+    [blockIdToChunkIndex, setSelectedChunkIndex]
+  )
 
   if (!isPdf) {
     return (
@@ -168,13 +216,26 @@ export function PdfPreview() {
   }
 
   return (
-    <div className="h-full">
+    <div className="relative h-full">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 rounded-full bg-background/70 px-3 backdrop-blur"
+          onClick={() => setShowAllBoxes((prev) => !prev)}
+        >
+          {showAllBoxes ? '仅高亮' : '显示全部框'}
+        </Button>
+      </div>
       <PdfViewer
         file={currentFile}
         blocks={blocksWithPositions}
         activeBlockIds={activeBlockIds}
         hoveredBlockIds={hoveredBlockIds}
-        showAllBoxes={false}
+        showAllBoxes={showAllBoxes}
+        onHoverBlockId={handleHoverBlockId}
+        onClickBlockId={handleClickBlockId}
       />
     </div>
   )
