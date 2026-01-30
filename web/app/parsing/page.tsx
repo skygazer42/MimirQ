@@ -85,6 +85,8 @@ interface ParseRun {
   cleanedMarkdown: string
   blocks: ParsingBlock[]
   createdAt: number
+  pdfQuality?: any
+  qualityGate?: any
 }
 
 // 解析后的文件（扩展版）
@@ -112,6 +114,8 @@ interface ParsedFile extends FileQueueItemData {
     imageCount?: number
     blockCount?: number
   }
+  pdfQuality?: any
+  qualityGate?: any
 }
 
 export default function ParsingPage() {
@@ -368,6 +372,8 @@ export default function ParsingPage() {
 
   const activeMarkdown =
     activeRun?.cleanedMarkdown || activeFile?.markdownContent || activeLibraryFile?.markdownContent || ''
+  const activeQualityGate = activeRun?.qualityGate || activeFile?.qualityGate || null
+  const activePdfQuality = activeRun?.pdfQuality || activeFile?.pdfQuality || null
   const activeBlocksWithPositions = useMemo(
     () => (activeRun?.blocks || []).filter((block) => (block.positions || []).length > 0),
     [activeRun?.blocks]
@@ -1216,10 +1222,10 @@ export default function ParsingPage() {
 	      const parsed = extractBlocksFromMarkdown(rawMarkdown)
 	      const markdownContent = (data.markdown_content || parsed.cleanedMarkdown).toString()
 	      const blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
-	      const durationSec = Number.isFinite(Number(data.parse_duration_sec))
-	        ? Number(data.parse_duration_sec)
-	        : fallbackDurationSec
-	      const runId = `${resolvedBackend}-${Date.now()}`
+      const durationSec = Number.isFinite(Number(data.parse_duration_sec))
+        ? Number(data.parse_duration_sec)
+        : fallbackDurationSec
+      const runId = `${resolvedBackend}-${Date.now()}`
       const run = {
         id: runId,
         parserBackend: resolvedBackend,
@@ -1228,6 +1234,8 @@ export default function ParsingPage() {
         cleanedMarkdown: markdownContent,
         blocks,
         createdAt: Date.now(),
+        pdfQuality: (data as any).pdf_quality ?? null,
+        qualityGate: (data as any).quality_gate ?? null,
       }
 
       const stats = {
@@ -1253,6 +1261,8 @@ export default function ParsingPage() {
 	              progress: 100,
 	              duration: durationSec,
 	              stats,
+                pdfQuality: (data as any).pdf_quality ?? null,
+                qualityGate: (data as any).quality_gate ?? null,
 	              runs: [...(f.runs || []), run],
 	              activeRunId: runId,
 	            }
@@ -2058,6 +2068,48 @@ export default function ParsingPage() {
 	                              color="gray"
 	                            />
                           </StatsGrid>
+                          {activeQualityGate ? (
+                            <div className="mt-3 flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border',
+                                    activeQualityGate.grade === 'fail'
+                                      ? 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20'
+                                      : activeQualityGate.grade === 'warn'
+                                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20'
+                                        : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+                                  )}
+                                  title="解析质量门禁（best-effort）"
+                                >
+                                  {String(activeQualityGate.grade || 'pass').toUpperCase()}
+                                </span>
+                                <div className="text-xs text-muted-foreground">
+                                  {(activeQualityGate.reasons || []).length
+                                    ? (activeQualityGate.reasons || []).join(' · ')
+                                    : '无明显风险信号'}
+                                </div>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground font-mono">
+                                {(() => {
+                                  const ev = (activeQualityGate as any)?.evidence || {}
+                                  const tq = ev?.text_quality || {}
+                                  const pieces: string[] = []
+                                  if (activePdfQuality && typeof (activePdfQuality as any)?.score === 'number') {
+                                    pieces.push(`pdf_score=${Number((activePdfQuality as any).score).toFixed(3)}`)
+                                  }
+                                  if (typeof tq?.content_chars === 'number') pieces.push(`content_chars=${tq.content_chars}`)
+                                  if (typeof tq?.density === 'number') pieces.push(`density=${Number(tq.density).toFixed(3)}`)
+                                  if (typeof tq?.replacement_ratio === 'number') pieces.push(`replacement_ratio=${Number(tq.replacement_ratio).toFixed(3)}`)
+                                  const fa = ev?.fallback_attempts
+                                  if (Array.isArray(fa) && fa.length) {
+                                    pieces.push(`fallback=${String(ev?.fallback_initial_backend || '')}→${String(ev?.fallback_final_backend || '')}`)
+                                  }
+                                  return pieces.join(' · ')
+                                })()}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       )}
 

@@ -899,6 +899,19 @@ export interface ParsingContentResponse {
   markdown_content: string
   original_markdown_content: string
   parse_duration_sec?: number | null
+  pdf_quality?: {
+    score: number
+    text_quality_score: number
+    format_consistency_score: number
+    table_quality_score: number
+    is_scanned: boolean
+    page_count: number
+  } | null
+  quality_gate?: {
+    grade: 'pass' | 'warn' | 'fail'
+    reasons: string[]
+    evidence?: Record<string, any>
+  } | null
 }
 
 export interface ParsingContentUpdateRequest {
