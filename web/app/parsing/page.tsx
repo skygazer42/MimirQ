@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  Blocks,
   Upload,
   FileText,
   Loader2,
@@ -34,6 +35,7 @@ import {
   FolderUp,
   Plus,
   Settings2,
+  Layers,
   MoreVertical,
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
@@ -1260,14 +1262,22 @@ export default function ParsingPage() {
         qualityGate: (data as any).quality_gate ?? null,
       }
 
+      const apiStats = data.stats
       const stats = {
         charCount: markdownContent.length,
         lineCount: markdownContent.split('\n').length,
-        tableCount: (markdownContent.match(/\|.*\|/g) || []).length > 0
-          ? (markdownContent.match(/^\|/gm) || []).length / 2
-          : 0,
-        imageCount: (markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
-        blockCount: blocks.length,
+        pageCount: typeof apiStats?.page_count === 'number' ? apiStats.page_count : undefined,
+        tableCount:
+          typeof apiStats?.table_count === 'number'
+            ? apiStats.table_count
+            : (markdownContent.match(/\|.*\|/g) || []).length > 0
+              ? (markdownContent.match(/^\|/gm) || []).length / 2
+              : 0,
+        imageCount:
+          typeof apiStats?.image_count === 'number'
+            ? apiStats.image_count
+            : (markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
+        blockCount: typeof apiStats?.block_count === 'number' ? apiStats.block_count : blocks.length,
       }
 
 	      setFiles((prev) =>
@@ -2090,6 +2100,22 @@ export default function ParsingPage() {
                               label="行数"
                               value={activeFile.stats.lineCount.toLocaleString()}
                               color="cyan"
+                            />
+                            <StatCard
+                              icon={Layers}
+                              label="页数"
+                              value={
+                                typeof activeFile.stats.pageCount === 'number' && activeFile.stats.pageCount > 0
+                                  ? activeFile.stats.pageCount
+                                  : '-'
+                              }
+                              color="sky"
+                            />
+                            <StatCard
+                              icon={Blocks}
+                              label="定位块"
+                              value={Math.floor(activeFile.stats.blockCount || 0)}
+                              color="amber"
                             />
                             <StatCard
                               icon={Table2}

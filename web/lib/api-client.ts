@@ -902,6 +902,12 @@ export interface ParsingContentResponse {
   parser_backend: string
   markdown_content: string
   original_markdown_content: string
+  stats?: {
+    page_count?: number
+    table_count?: number
+    image_count?: number
+    block_count?: number
+  } | null
   parse_duration_sec?: number | null
   pdf_quality?: {
     score: number

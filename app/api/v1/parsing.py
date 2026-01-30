@@ -39,6 +39,7 @@ from app.core.env import is_production_env
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
+from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
@@ -63,6 +64,7 @@ class ParsingContentResponse(BaseModel):
     parser_backend: str = Field(default="auto")
     markdown_content: str = Field(default="")
     original_markdown_content: str = Field(default="")
+    stats: Optional[Dict[str, int]] = Field(default=None)
     parse_duration_sec: Optional[float] = Field(default=None)
     pdf_quality: Optional[Dict[str, Any]] = Field(default=None)
     quality_gate: Optional["ParsingQualityGate"] = Field(default=None)
@@ -538,6 +540,7 @@ async def parse_workspace_document(
         resolved_backend = str(parsed.get("resolved_backend") or resolved_backend)
 
         pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
+        artifact_docs = parsed.get("documents") if isinstance(parsed, dict) else None
         original_markdown, markdown = _extract_markdown(parsed if isinstance(parsed, dict) else {})
 
         captions_added = 0
@@ -630,6 +633,7 @@ async def parse_workspace_document(
 
                 if alt_gate.grade != "fail":
                     resolved_backend = alt_backend
+                    artifact_docs = alt_parsed.get("documents") if isinstance(alt_parsed, dict) else artifact_docs
                     original_markdown, markdown = alt_original, alt_markdown
                     gate = alt_gate
                     break
@@ -648,6 +652,11 @@ async def parse_workspace_document(
             )
 
         duration_sec = max(0.0, time.perf_counter() - t0)
+        artifact_stats = compute_parsing_artifact_stats(
+            documents=artifact_docs,
+            original_markdown=original_markdown,
+            pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+        )
 
         # Upsert parsed content.
         existing = (
@@ -694,6 +703,7 @@ async def parse_workspace_document(
                 "min_content_chars": int(min_chars),
                 "max_retries": int(max_retries),
             }
+        next_meta.update(artifact_stats)
         doc.doc_metadata = next_meta
 
         db.commit()
@@ -704,6 +714,7 @@ async def parse_workspace_document(
             parser_backend=resolved_backend,
             markdown_content=markdown,
             original_markdown_content=original_markdown,
+            stats=artifact_stats,
             parse_duration_sec=round(float(duration_sec), 3),
             pdf_quality=(dict(pdf_quality) if isinstance(pdf_quality, dict) else None),
             quality_gate=gate,
@@ -763,6 +774,7 @@ async def get_parsing_content(
     meta = doc.doc_metadata or {}
     parser_backend = ""
     duration_sec: Optional[float] = None
+    stats: Optional[Dict[str, int]] = None
     if isinstance(meta, dict):
         parser_backend = str(meta.get("parser_backend") or meta.get("parser_backend_requested") or "auto")
         raw_duration = meta.get("parse_duration_sec")
@@ -771,6 +783,12 @@ async def get_parsing_content(
                 duration_sec = float(raw_duration)
         except Exception:
             duration_sec = None
+        stats = {
+            "page_count": int(meta.get("page_count") or 0),
+            "table_count": int(meta.get("table_count") or 0),
+            "image_count": int(meta.get("image_count") or 0),
+            "block_count": int(meta.get("block_count") or 0),
+        }
 
     row = (
         db.query(DocumentParsedContent)
@@ -784,6 +802,7 @@ async def get_parsing_content(
         parser_backend=str(parser_backend or "auto"),
         markdown_content=(row.markdown_content if row else ""),
         original_markdown_content=(row.original_markdown_content if row else ""),
+        stats=stats,
         parse_duration_sec=duration_sec,
         pdf_quality=(dict(pdf_quality) if isinstance(pdf_quality, dict) else None),
         quality_gate=(ParsingQualityGate(**quality_gate) if isinstance(quality_gate, dict) else None),
