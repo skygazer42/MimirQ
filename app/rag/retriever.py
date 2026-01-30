@@ -1162,10 +1162,12 @@ class HybridRetriever(BaseRetriever):
                         DBDocument.dataset_id,
                         DBDocument.status,
                         DBDocument.doc_metadata,
+                        DBDocument.archived_at,
+                        DBDocument.disabled_at,
                     ).filter(DBDocument.id.in_(sorted(doc_ids)))
                     if tenant_filter:
                         dq = dq.filter(DBDocument.tenant_id == tenant_filter)
-                    for doc_id, ds_id, status, doc_meta in dq.all():
+                    for doc_id, ds_id, status, doc_meta, archived_at, disabled_at in dq.all():
                         meta0 = doc_meta if isinstance(doc_meta, dict) else {}
                         user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
                         if user0:
@@ -1179,6 +1181,8 @@ class HybridRetriever(BaseRetriever):
                             if "active_pipeline_ready" in meta0
                             else (str(status or "").lower() == "completed")
                         )
+                        if archived_at is not None or disabled_at is not None:
+                            ready = False
                         doc_ready_by_id[str(doc_id)] = bool(ready)
 
                         active_key = str(meta0.get("active_doc_pipeline_key") or "").strip()
@@ -1281,6 +1285,10 @@ class HybridRetriever(BaseRetriever):
                             if stats is not None:
                                 stats["filtered_dataset"] = int(stats.get("filtered_dataset", 0) or 0) + 1
                             continue
+                    if getattr(ck, "disabled_at", None) is not None:
+                        if stats is not None:
+                            stats["filtered_not_ready"] = int(stats.get("filtered_not_ready", 0) or 0) + 1
+                        continue
                     if doc_ready_by_id and not doc_ready_by_id.get(doc_id_str, False):
                         if stats is not None:
                             stats["filtered_not_ready"] = int(stats.get("filtered_not_ready", 0) or 0) + 1

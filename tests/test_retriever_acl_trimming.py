@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -27,6 +28,7 @@ class _FakeChunk:
         self.start_char = None
         self.end_char = None
         self.doc_metadata = doc_metadata or {}
+        self.disabled_at = None
 
 
 class _FakeQuery:
@@ -84,8 +86,8 @@ def test_retriever_candidate_acl_trims_disallowed_docs(monkeypatch: pytest.Monke
     ]
     # (doc_id, dataset_id, status, doc_metadata)
     doc_rows = [
-        (doc_allowed, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}),
-        (doc_denied, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}),
+        (doc_allowed, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None),
+        (doc_denied, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None),
     ]
 
     monkeypatch.setattr(
@@ -128,3 +130,90 @@ def test_retriever_candidate_acl_trims_disallowed_docs(monkeypatch: pytest.Monke
     assert stats["filtered_acl"] == 1
     assert stats["output_results"] == 1
 
+
+def test_retriever_filters_archived_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid4()
+    document_id = uuid4()
+    chunk_id = uuid4()
+
+    chunks = [
+        _FakeChunk(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            chunk_index=0,
+            content="archived",
+            chunk_id=chunk_id,
+            doc_metadata={"pipeline_hash": "h"},
+        )
+    ]
+    doc_rows = [
+        (
+            document_id,
+            None,
+            "completed",
+            {"active_pipeline_ready": True, "pipeline_hash": "h"},
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            None,
+        )
+    ]
+
+    monkeypatch.setattr(
+        "app.rag.retriever.SessionLocal",
+        lambda: _FakeSession(chunks=chunks, doc_rows=doc_rows),
+    )
+
+    retriever = HybridRetriever(tenant_id=tenant_id)
+    results = [
+        {
+            "chunk_id": str(chunk_id),
+            "content": "VECTOR CONTENT",
+            "metadata": {"document_id": str(document_id), "chunk_index": 0},
+            "score": 0.9,
+        }
+    ]
+
+    stats: dict = {}
+    out = retriever._enrich_results_with_db_metadata(results, stats=stats)
+    assert out == []
+    assert stats["filtered_not_ready"] == 1
+
+
+def test_retriever_filters_disabled_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid4()
+    document_id = uuid4()
+    chunk_id = uuid4()
+
+    disabled_chunk = _FakeChunk(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        chunk_index=0,
+        content="disabled chunk",
+        chunk_id=chunk_id,
+        doc_metadata={"pipeline_hash": "h"},
+    )
+    disabled_chunk.disabled_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+
+    chunks = [disabled_chunk]
+    doc_rows = [
+        (document_id, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None),
+    ]
+
+    monkeypatch.setattr(
+        "app.rag.retriever.SessionLocal",
+        lambda: _FakeSession(chunks=chunks, doc_rows=doc_rows),
+    )
+
+    retriever = HybridRetriever(tenant_id=tenant_id)
+    results = [
+        {
+            "chunk_id": str(chunk_id),
+            "content": "VECTOR CONTENT",
+            "metadata": {"document_id": str(document_id), "chunk_index": 0},
+            "score": 0.9,
+        }
+    ]
+
+    stats: dict = {}
+    out = retriever._enrich_results_with_db_metadata(results, stats=stats)
+    assert out == []
+    assert stats["filtered_not_ready"] == 1

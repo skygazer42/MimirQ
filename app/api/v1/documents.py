@@ -12,6 +12,7 @@ import time
 import uuid
 from collections import Counter
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Literal, Optional
 from uuid import UUID
@@ -42,6 +43,8 @@ from app.api.schemas.document import (
     DocumentBatchAccessUpdateResponse,
     DocumentBatchDeleteRequest,
     DocumentBatchDeleteResponse,
+    DocumentBatchLifecycleRequest,
+    DocumentBatchLifecycleResponse,
     DocumentBatchMoveRequest,
     DocumentBatchMoveResponse,
     DocumentBatchRetryRequest,
@@ -52,6 +55,8 @@ from app.api.schemas.document import (
     DocumentChunkCreateRequest,
     DocumentChunkList,
     DocumentChunkMatchList,
+    DocumentChunkReembedRequest,
+    DocumentChunkReembedResponse,
     DocumentChunkSchema,
     DocumentChunkUpdateRequest,
     DocumentDetail,
@@ -1752,6 +1757,79 @@ def _assert_document_acl_readable(
     raise HTTPException(status_code=403, detail="No document access")
 
 
+def _get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) -> Optional[DBDocument]:
+    return (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+
+
+def _assert_document_writable_for_lifecycle(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+) -> None:
+    ds: Dataset | None = None
+    if getattr(document, "dataset_id", None):
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+    else:
+        member = DatasetService.ensure_member(db, tenant_id, account_id)
+        role = (getattr(member, "role", None) or "").lower()
+        if role not in EDIT_ROLES:
+            raise HTTPException(status_code=403, detail="No permission to manage unassigned documents")
+
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+
+def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> Optional[DBDocument]:
+    return (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+
+
+def _get_chunk_for_chunk_ops(
+    db: Session,
+    tenant_id: UUID,
+    document_id: UUID,
+    chunk_id: UUID,
+) -> Optional[DocumentChunk]:
+    return (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.id == chunk_id,
+        )
+        .first()
+    )
+
+
+def _assert_document_writable_for_chunk_ops(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+) -> None:
+    ds: Dataset | None = None
+    if getattr(document, "dataset_id", None):
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+    else:
+        member = DatasetService.ensure_member(db, tenant_id, account_id)
+        role = (getattr(member, "role", None) or "").lower()
+        if role not in EDIT_ROLES:
+            raise HTTPException(status_code=403, detail="No permission to manage unassigned documents")
+
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+
 class UrlUploadRequest(BaseModel):
     """Upload a document by fetching a remote URL (connector skeleton)."""
 
@@ -2698,6 +2776,7 @@ async def list_documents(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
     status: Optional[str] = None,
+    lifecycle: Literal["active", "archived", "disabled", "all"] = Query(default="active"),
     dataset_id: Optional[UUID] = None,
     file_type: Optional[str] = Query(default=None, max_length=20),
     owner_id: Optional[str] = Query(default=None, max_length=255),
@@ -2796,6 +2875,16 @@ async def list_documents(
         else:
             query = query.filter(DBDocument.status == status)
 
+    # Lifecycle filter.
+    lifecycle0 = str(lifecycle or "active").strip().lower()
+    if lifecycle0 != "all":
+        if lifecycle0 == "archived":
+            query = query.filter(DBDocument.archived_at.isnot(None))
+        elif lifecycle0 == "disabled":
+            query = query.filter(DBDocument.disabled_at.isnot(None))
+        else:
+            query = query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
+
     # File type filter.
     if file_type:
         ft = str(file_type or "").strip().lower()
@@ -2843,6 +2932,7 @@ async def list_documents(
 @router.get("/stats", response_model=DocumentStats)
 async def get_document_stats(
     dataset_id: Optional[UUID] = None,
+    lifecycle: Literal["active", "archived", "disabled", "all"] = Query(default="active"),
     file_type: Optional[str] = Query(default=None, max_length=20),
     owner_id: Optional[str] = Query(default=None, max_length=255),
     q: Optional[str] = Query(default=None, max_length=200),
@@ -2918,6 +3008,15 @@ async def get_document_stats(
             and_(DBDocument.access_mode == "partial_members", DBDocument.id.in_(doc_perm_subq)),
         )
     )
+
+    lifecycle0 = str(lifecycle or "active").strip().lower()
+    if lifecycle0 != "all":
+        if lifecycle0 == "archived":
+            query = query.filter(DBDocument.archived_at.isnot(None))
+        elif lifecycle0 == "disabled":
+            query = query.filter(DBDocument.disabled_at.isnot(None))
+        else:
+            query = query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
 
     if q:
         term = q.strip()
@@ -4499,6 +4598,232 @@ async def delete_document_chunk(
     return Response(status_code=204)
 
 
+@router.post("/{document_id}/chunks/{chunk_id}/disable", response_model=DocumentChunkSchema)
+async def disable_document_chunk(
+    document_id: uuid.UUID,
+    chunk_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Disable a chunk (exclude it from retrieval/indexing)."""
+    from app.rag.retriever import hybrid_retriever
+    from app.storage.vector.factory import get_vector_store
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = _get_document_for_chunk_ops(db, tenant_id, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    _assert_document_writable_for_chunk_ops(db, tenant_id=tenant_id, account_id=account_id, document=document)
+
+    current_status = str(getattr(document, "status", "") or "").lower()
+    if current_status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
+
+    chunk = _get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
+    if not chunk:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+
+    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
+    chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
+    if active_key and chunk_key and chunk_key != active_key:
+        raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
+
+    if getattr(chunk, "disabled_at", None) is None:
+        chunk.disabled_at = datetime.now(timezone.utc)
+    # Prefer setting vector_id to None as a local signal even if delete is best-effort.
+    try:
+        chunk.vector_id = None
+    except Exception:
+        pass
+
+    # Best-effort index removal (vector + BM25).
+    try:
+        get_vector_store().delete_by_document_id_and_filter(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
+        )
+    except Exception:
+        pass
+    with contextlib.suppress(Exception):
+        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+            tenant_id=tenant_id,
+            metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
+        )
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.chunk.disable",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
+    )
+    db.commit()
+    with contextlib.suppress(Exception):
+        db.refresh(chunk)
+
+    return chunk
+
+
+@router.post("/{document_id}/chunks/{chunk_id}/enable", response_model=DocumentChunkSchema)
+async def enable_document_chunk(
+    document_id: uuid.UUID,
+    chunk_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Enable a previously-disabled chunk (requires re-embed to restore vector index)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = _get_document_for_chunk_ops(db, tenant_id, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    _assert_document_writable_for_chunk_ops(db, tenant_id=tenant_id, account_id=account_id, document=document)
+
+    current_status = str(getattr(document, "status", "") or "").lower()
+    if current_status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
+
+    chunk = _get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
+    if not chunk:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+
+    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
+    chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
+    if active_key and chunk_key and chunk_key != active_key:
+        raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
+
+    if getattr(chunk, "disabled_at", None) is not None:
+        chunk.disabled_at = None
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.chunk.enable",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
+    )
+    db.commit()
+    with contextlib.suppress(Exception):
+        db.refresh(chunk)
+
+    return chunk
+
+
+@router.post("/{document_id}/chunks/reembed", response_model=DocumentChunkReembedResponse)
+async def reembed_document_chunks(
+    document_id: uuid.UUID,
+    payload: DocumentChunkReembedRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Re-embed selected chunks (vector + BM25) best-effort."""
+    from app.rag.retriever import hybrid_retriever
+    from app.storage.vector.factory import get_vector_store
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = _get_document_for_chunk_ops(db, tenant_id, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    _assert_document_writable_for_chunk_ops(db, tenant_id=tenant_id, account_id=account_id, document=document)
+
+    current_status = str(getattr(document, "status", "") or "").lower()
+    if current_status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Cannot re-embed chunks for a {current_status} document")
+
+    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
+
+    reembedded = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    vector_store = get_vector_store()
+
+    for cid in payload.chunk_ids:
+        chunk = _get_chunk_for_chunk_ops(db, tenant_id, document_id, cid)
+        if not chunk:
+            not_found.append(cid)
+            continue
+
+        if getattr(chunk, "disabled_at", None) is not None and not bool(payload.include_disabled):
+            conflicts.append(cid)
+            continue
+
+        chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
+        if active_key and chunk_key and chunk_key != active_key:
+            conflicts.append(cid)
+            continue
+
+        meta_for_vector = dict(getattr(chunk, "doc_metadata", None) or {})
+        meta_for_vector.setdefault("tenant_id", str(tenant_id))
+        meta_for_vector.setdefault("document_id", str(document_id))
+        meta_for_vector.setdefault("chunk_id", str(chunk.id))
+        meta_for_vector.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
+
+        # Best-effort: avoid duplicates if backend supports filtered deletes.
+        try:
+            vector_store.delete_by_document_id_and_filter(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
+            )
+        except Exception:
+            pass
+
+        try:
+            ids = list(vector_store.add_documents([{"content": chunk.content, "metadata": meta_for_vector}], document_id, tenant_id))
+            if ids and ids[0]:
+                chunk.vector_id = str(ids[0])
+        except Exception:
+            # Keep best-effort semantics; do not abort the whole batch.
+            conflicts.append(cid)
+            continue
+
+        # Best-effort BM25 upsert (in-memory).
+        try:
+            bm25_meta = dict(meta_for_vector)
+            bm25_meta.setdefault("source", bm25_meta.get("source", str(getattr(document, "filename", "") or "unknown")))
+            bm25_doc = Document(page_content=str(getattr(chunk, "content", "") or ""), id=str(chunk.id), metadata=bm25_meta)
+            hybrid_retriever.upsert_bm25_documents([bm25_doc], tenant_id=tenant_id)
+        except Exception:
+            pass
+
+        reembedded += 1
+
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="document.chunk.reembed",
+            resource_type="document",
+            resource_id=str(document_id),
+            details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
+        )
+
+    if reembedded:
+        db.commit()
+
+    return {
+        "reembedded": reembedded,
+        "not_found": not_found,
+        "denied": denied,
+        "conflicts": conflicts,
+    }
+
+
 @router.post("/{document_id}/qa/generate", response_model=DocumentQAGenerateResponse)
 async def generate_document_qa(
     document_id: uuid.UUID,
@@ -5455,6 +5780,194 @@ async def delete_document(
 
     # 5. Remove chunks from BM25 index (in-memory).
     return None
+
+
+@router.post("/batch/disable", response_model=DocumentBatchLifecycleResponse)
+async def batch_disable_documents(
+    payload: DocumentBatchLifecycleRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Batch disable documents (best-effort)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    updated = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    now = datetime.now(timezone.utc)
+
+    for document_id in payload.document_ids:
+        doc = _get_document_for_lifecycle(db, tenant_id, document_id)
+        if not doc:
+            not_found.append(document_id)
+            continue
+        try:
+            _assert_document_writable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=doc)
+        except HTTPException:
+            denied.append(document_id)
+            continue
+
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            updated += 1
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="document.disable",
+                resource_type="document",
+                resource_id=str(document_id),
+                details={"disabled_at": now.isoformat()},
+            )
+
+    if updated:
+        db.commit()
+
+    return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
+
+
+@router.post("/batch/enable", response_model=DocumentBatchLifecycleResponse)
+async def batch_enable_documents(
+    payload: DocumentBatchLifecycleRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Batch enable documents (best-effort)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    updated = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        doc = _get_document_for_lifecycle(db, tenant_id, document_id)
+        if not doc:
+            not_found.append(document_id)
+            continue
+        try:
+            _assert_document_writable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=doc)
+        except HTTPException:
+            denied.append(document_id)
+            continue
+
+        if getattr(doc, "disabled_at", None) is not None:
+            doc.disabled_at = None
+            updated += 1
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="document.enable",
+                resource_type="document",
+                resource_id=str(document_id),
+                details={"disabled_at": None},
+            )
+
+    if updated:
+        db.commit()
+
+    return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
+
+
+@router.post("/batch/archive", response_model=DocumentBatchLifecycleResponse)
+async def batch_archive_documents(
+    payload: DocumentBatchLifecycleRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Batch archive documents (best-effort)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    updated = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    now = datetime.now(timezone.utc)
+
+    for document_id in payload.document_ids:
+        doc = _get_document_for_lifecycle(db, tenant_id, document_id)
+        if not doc:
+            not_found.append(document_id)
+            continue
+        try:
+            _assert_document_writable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=doc)
+        except HTTPException:
+            denied.append(document_id)
+            continue
+
+        if getattr(doc, "archived_at", None) is None:
+            doc.archived_at = now
+            updated += 1
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="document.archive",
+                resource_type="document",
+                resource_id=str(document_id),
+                details={"archived_at": now.isoformat()},
+            )
+
+    if updated:
+        db.commit()
+
+    return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
+
+
+@router.post("/batch/unarchive", response_model=DocumentBatchLifecycleResponse)
+async def batch_unarchive_documents(
+    payload: DocumentBatchLifecycleRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Batch unarchive documents (best-effort)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    updated = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        doc = _get_document_for_lifecycle(db, tenant_id, document_id)
+        if not doc:
+            not_found.append(document_id)
+            continue
+        try:
+            _assert_document_writable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=doc)
+        except HTTPException:
+            denied.append(document_id)
+            continue
+
+        if getattr(doc, "archived_at", None) is not None:
+            doc.archived_at = None
+            updated += 1
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="document.unarchive",
+                resource_type="document",
+                resource_id=str(document_id),
+                details={"archived_at": None},
+            )
+
+    if updated:
+        db.commit()
+
+    return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
 @router.post("/batch-delete", response_model=DocumentBatchDeleteResponse)

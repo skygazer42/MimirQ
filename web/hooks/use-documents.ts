@@ -15,6 +15,7 @@ export type DocumentListParams = {
   skip?: number
   limit?: number
   status?: string
+  lifecycle?: string
   dataset_id?: string
   q?: string
   order_by?: string
@@ -35,6 +36,19 @@ function matchesDocumentListParams(doc: Document, params: DocumentListParams): b
   const datasetId = String(params.dataset_id || '').trim()
   if (datasetId && String(doc.dataset_id || '') !== datasetId) return false
 
+  const lifecycle = String(params.lifecycle || '').trim().toLowerCase()
+  if (lifecycle && lifecycle !== 'all') {
+    const isArchived = Boolean(doc.archived_at)
+    const isDisabled = Boolean(doc.disabled_at)
+    if (lifecycle === 'active') {
+      if (isArchived || isDisabled) return false
+    } else if (lifecycle === 'archived') {
+      if (!isArchived) return false
+    } else if (lifecycle === 'disabled') {
+      if (!isDisabled) return false
+    }
+  }
+
   const q = String(params.q || '').trim().toLowerCase()
   if (q && !String(doc.filename || '').toLowerCase().includes(q)) return false
 
@@ -47,7 +61,7 @@ export function useDocuments() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pollTimersRef = useRef<Map<string, number>>(new Map())
-  const lastListParamsRef = useRef<DocumentListParams>({ limit: 100 })
+  const lastListParamsRef = useRef<DocumentListParams>({ limit: 100, lifecycle: 'active' })
   const { parserBackend } = useParserBackendPreference()
   const { chunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()

@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Calendar, Copy, Database, Eye, FileText, FileType, Hash, Loader2, RefreshCw, Search, Shield, X } from 'lucide-react'
+import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -115,9 +115,84 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
 
   const [isKgWorking, setIsKgWorking] = useState(false)
   const [chunkQuery, setChunkQuery] = useState('')
+  const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
+  const [editingChunkContent, setEditingChunkContent] = useState<string>('')
+  const [chunkOpWorkingId, setChunkOpWorkingId] = useState<string | null>(null)
   const [accessInfo, setAccessInfo] = useState<DocumentAccessInfo | null>(null)
   const [accessDialogOpen, setAccessDialogOpen] = useState(false)
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
+
+  const canMutateChunks = viewPipelineHash === ACTIVE_PIPELINE_VALUE
+
+  const beginEditChunk = useCallback((chunk: DocumentChunk) => {
+    if (!canMutateChunks) return
+    setEditingChunkId(chunk.id)
+    setEditingChunkContent(String(chunk.content || ''))
+  }, [canMutateChunks])
+
+  const cancelEditChunk = useCallback(() => {
+    setEditingChunkId(null)
+    setEditingChunkContent('')
+  }, [])
+
+  const saveEditChunk = useCallback(async () => {
+    if (!editingChunkId) return
+    if (!canMutateChunks) return
+    const chunkId = editingChunkId
+
+    setChunkOpWorkingId(chunkId)
+    try {
+      const updated = await documentApi.updateChunk(initialDocument.id, chunkId, {
+        content: editingChunkContent,
+      })
+      setChunks((prev) => prev.map((c) => (c.id === chunkId ? updated : c)))
+      setEditingChunkId(null)
+      setEditingChunkContent('')
+      toast.success('已保存切片修改')
+    } catch (err) {
+      console.error('Update chunk failed:', err)
+      toast.error(formatApiError(err, '保存切片失败'))
+    } finally {
+      setChunkOpWorkingId((prev) => (prev === chunkId ? null : prev))
+    }
+  }, [canMutateChunks, editingChunkContent, editingChunkId, initialDocument.id])
+
+  const toggleChunkDisabled = useCallback(
+    async (chunk: DocumentChunk) => {
+      if (!canMutateChunks) return
+      setChunkOpWorkingId(chunk.id)
+      try {
+        const updated = chunk.disabled_at
+          ? await documentApi.enableChunk(initialDocument.id, chunk.id)
+          : await documentApi.disableChunk(initialDocument.id, chunk.id)
+        setChunks((prev) => prev.map((c) => (c.id === chunk.id ? updated : c)))
+        toast.success(chunk.disabled_at ? '已启用切片' : '已禁用切片')
+      } catch (err) {
+        console.error('Toggle chunk disabled failed:', err)
+        toast.error(formatApiError(err, '切片操作失败'))
+      } finally {
+        setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
+      }
+    },
+    [canMutateChunks, initialDocument.id]
+  )
+
+  const reembedChunk = useCallback(
+    async (chunk: DocumentChunk) => {
+      if (!canMutateChunks) return
+      setChunkOpWorkingId(chunk.id)
+      try {
+        const res = await documentApi.reembedChunks(initialDocument.id, { chunk_ids: [chunk.id] })
+        toast.success(`已重新嵌入 ${res.reembedded} 个切片`)
+      } catch (err) {
+        console.error('Re-embed chunk failed:', err)
+        toast.error(formatApiError(err, '重新嵌入失败'))
+      } finally {
+        setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
+      }
+    },
+    [canMutateChunks, initialDocument.id]
+  )
   const [accessMembersText, setAccessMembersText] = useState('')
   const [isSavingAccess, setIsSavingAccess] = useState(false)
 
@@ -650,7 +725,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                         key={chunk.id}
                         className={cn(
                           "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
-                          "hover:border-primary/25 hover:shadow-soft/30"
+                          "hover:border-primary/25 hover:shadow-soft/30",
+                          chunk.disabled_at ? "opacity-70" : null
                         )}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -664,20 +740,91 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                               </span>
                             ) : null}
                             <span className="text-muted-foreground">{(chunk.content || "").length} chars</span>
+                            {chunk.disabled_at ? (
+                              <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                disabled
+                              </span>
+                            ) : null}
                           </div>
-                          <IconButton
-                            label="复制切片内容"
-                            variant="ghost"
-                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                            onClick={() => void copyToClipboard(chunk.content)}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </IconButton>
+                          <div className="flex items-center gap-1">
+                            <IconButton
+                              label={canMutateChunks ? "编辑切片" : "仅当前激活版本可编辑"}
+                              variant="ghost"
+                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                              onClick={() => beginEditChunk(chunk)}
+                              disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </IconButton>
+                            <IconButton
+                              label={chunk.disabled_at ? "启用切片" : "禁用切片"}
+                              variant="ghost"
+                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                              onClick={() => void toggleChunkDisabled(chunk)}
+                              disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                            >
+                              {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                            </IconButton>
+                            <IconButton
+                              label={chunk.disabled_at ? "禁用切片不能 re-embed" : "重新嵌入切片"}
+                              variant="ghost"
+                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                              onClick={() => void reembedChunk(chunk)}
+                              disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </IconButton>
+                            <IconButton
+                              label="复制切片内容"
+                              variant="ghost"
+                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                              onClick={() => void copyToClipboard(chunk.content)}
+                              disabled={chunkOpWorkingId === chunk.id}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </IconButton>
+                          </div>
                         </div>
 
-                        <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
-                          {highlightText(chunk.content || "", chunkQuery)}
-                        </div>
+                        {editingChunkId === chunk.id ? (
+                          <div className="mt-3 space-y-2">
+                            <Textarea
+                              value={editingChunkContent}
+                              onChange={(e) => setEditingChunkContent(e.target.value)}
+                              className="min-h-[140px] font-mono text-xs"
+                              disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={cancelEditChunk}
+                                disabled={chunkOpWorkingId === chunk.id}
+                              >
+                                取消
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void saveEditChunk()}
+                                disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                                className="gap-2"
+                              >
+                                {chunkOpWorkingId === chunk.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                ) : (
+                                  <Save className="h-4 w-4" />
+                                )}
+                                保存
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
+                            {highlightText(chunk.content || "", chunkQuery)}
+                          </div>
+                        )}
                       </div>
                     ))}
 

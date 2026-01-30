@@ -20,6 +20,8 @@ export interface Document {
   total_characters: number
   owner_id?: string | null
   access_mode?: DocumentAccessMode | null
+  archived_at?: string | null
+  disabled_at?: string | null
   created_at: string
   updated_at: string
   current_stage?: string
@@ -185,6 +187,17 @@ export interface DocumentStats {
   total_size: number
 }
 
+export interface DocumentBatchLifecycleRequest {
+  document_ids: string[]
+}
+
+export interface DocumentBatchLifecycleResponse {
+  updated: number
+  not_found: string[]
+  denied: string[]
+  conflicts: string[]
+}
+
 export interface DocumentBatchRetryRequest {
   document_ids: string[]
   force?: boolean
@@ -285,6 +298,9 @@ export interface DocumentChunk {
   start_char?: number
   end_char?: number
   chunk_index: number
+  disabled_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
   metadata?: Record<string, any>
 }
 
@@ -336,6 +352,18 @@ export interface DocumentChunkMatchList {
   total: number
   truncated: boolean
   items: DocumentChunkMatch[]
+}
+
+export interface DocumentChunkReembedRequest {
+  chunk_ids: string[]
+  include_disabled?: boolean
+}
+
+export interface DocumentChunkReembedResponse {
+  reembedded: number
+  not_found: string[]
+  denied: string[]
+  conflicts: string[]
 }
 
 export interface DocumentPipelineOptions {

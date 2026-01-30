@@ -86,6 +86,12 @@ def apply_runtime_migrations(engine) -> None:
             'ALTER TABLE documents ADD COLUMN IF NOT EXISTS owner_id VARCHAR(255);',
             'ALTER TABLE documents ADD COLUMN IF NOT EXISTS access_mode VARCHAR(50);',
 
+            # Document lifecycle flags (enable/disable/archive).
+            'ALTER TABLE documents ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;',
+            'ALTER TABLE documents ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ;',
+            'ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ;',
+            'ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;',
+
             # Datasets: store pipeline/governance defaults in metadata
             "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;",
 
@@ -108,9 +114,17 @@ def apply_runtime_migrations(engine) -> None:
             'ON documents (tenant_id, dataset_id, status);',
             'CREATE INDEX IF NOT EXISTS ix_documents_tenant_status '
             'ON documents (tenant_id, status);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_archived_at '
+            'ON documents (tenant_id, archived_at);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_disabled_at '
+            'ON documents (tenant_id, disabled_at);',
             # Chunk timelines / maintenance jobs (rebuild/cleanup)
             'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_created_at '
             'ON document_chunks (tenant_id, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_updated_at '
+            'ON document_chunks (tenant_id, updated_at);',
+            'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_disabled_at '
+            'ON document_chunks (tenant_id, disabled_at);',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS parent_id UUID;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS ab_experiment_key VARCHAR(100);',

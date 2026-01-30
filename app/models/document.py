@@ -55,6 +55,8 @@ class Document(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    disabled_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relations
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
@@ -107,6 +109,8 @@ class DocumentChunk(Base):
     vector_id = Column(String(255), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    disabled_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relations
     document = relationship("Document", back_populates="chunks")

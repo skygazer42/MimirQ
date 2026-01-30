@@ -7,6 +7,8 @@ import type {
   DocumentChunk,
   DocumentChunkCreateRequest,
   DocumentChunkMatchList,
+  DocumentChunkReembedRequest,
+  DocumentChunkReembedResponse,
   DocumentChunkUpdateRequest,
   DocumentQAGenerateRequest,
   DocumentQAGenerateResponse,
@@ -15,6 +17,7 @@ import type {
   DocumentStats,
   DocumentAccessInfo,
   DocumentAccessUpdateRequest,
+  DocumentBatchLifecycleResponse,
   DocumentBatchRetryRequest,
   DocumentBatchRetryResponse,
   DocumentBatchMoveRequest,
@@ -341,6 +344,7 @@ export const documentApi = {
     skip?: number
     limit?: number
     status?: string
+    lifecycle?: string
     dataset_id?: string
     file_type?: string
     owner_id?: string
@@ -355,7 +359,7 @@ export const documentApi = {
   /**
    * 文档统计（用于知识库仪表盘/卡片）
    */
-  async stats(params?: { dataset_id?: string; file_type?: string; owner_id?: string; q?: string }): Promise<DocumentStats> {
+  async stats(params?: { dataset_id?: string; lifecycle?: string; file_type?: string; owner_id?: string; q?: string }): Promise<DocumentStats> {
     const { data } = await apiClient.get('/documents/stats', { params })
     return data
   },
@@ -473,6 +477,30 @@ export const documentApi = {
   },
 
   /**
+   * 禁用切片（从检索/索引中排除）
+   */
+  async disableChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
+    const { data } = await apiClient.post(`/documents/${documentId}/chunks/${chunkId}/disable`)
+    return data
+  },
+
+  /**
+   * 启用切片（需要 re-embed 才能恢复向量索引）
+   */
+  async enableChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
+    const { data } = await apiClient.post(`/documents/${documentId}/chunks/${chunkId}/enable`)
+    return data
+  },
+
+  /**
+   * 重新嵌入指定切片（向量 + BM25 best-effort）
+   */
+  async reembedChunks(documentId: string, payload: DocumentChunkReembedRequest): Promise<DocumentChunkReembedResponse> {
+    const { data } = await apiClient.post(`/documents/${documentId}/chunks/reembed`, payload)
+    return data
+  },
+
+  /**
    * 下载/预览原始文件（返回 Blob）
    */
   /**
@@ -527,6 +555,38 @@ export const documentApi = {
    */
   async batchDelete(document_ids: string[]): Promise<{ deleted: number; not_found: string[]; denied: string[] }> {
     const { data } = await apiClient.post('/documents/batch-delete', { document_ids })
+    return data
+  },
+
+  /**
+   * 批量禁用文档
+   */
+  async batchDisable(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
+    const { data } = await apiClient.post('/documents/batch/disable', { document_ids })
+    return data
+  },
+
+  /**
+   * 批量启用文档
+   */
+  async batchEnable(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
+    const { data } = await apiClient.post('/documents/batch/enable', { document_ids })
+    return data
+  },
+
+  /**
+   * 批量归档文档
+   */
+  async batchArchive(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
+    const { data } = await apiClient.post('/documents/batch/archive', { document_ids })
+    return data
+  },
+
+  /**
+   * 批量取消归档文档
+   */
+  async batchUnarchive(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
+    const { data } = await apiClient.post('/documents/batch/unarchive', { document_ids })
     return data
   },
 
