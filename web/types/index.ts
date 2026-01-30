@@ -755,6 +755,30 @@ export interface GovernanceAnalyzeResponse {
   suggested_pipeline_patch?: DocumentPipelineOptions
 }
 
+export interface GovernanceCommonLineCandidate {
+  signature: string
+  sample: string
+  docs: number
+  ratio: number
+}
+
+export interface GovernanceCommonLinesLearnRequest {
+  dataset_id: string
+  limit_docs?: number
+  use_original?: boolean
+  min_docs?: number
+  min_ratio?: number
+  max_line_length?: number
+  max_candidates?: number
+}
+
+export interface GovernanceCommonLinesLearnResponse {
+  dataset_id: string
+  total_documents: number
+  used_documents: number
+  candidates: GovernanceCommonLineCandidate[]
+}
+
 export interface GovernanceProfilePayload {
   version: string
   input_formats: Array<'markdown' | 'html'>

@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -34,6 +35,9 @@ from app.api.schemas.pipeline import (
     CleanPreviewRequest,
     CleanPreviewResponse,
     CleanRulesResponse,
+    GovernanceCommonLineCandidate,
+    GovernanceCommonLinesLearnRequest,
+    GovernanceCommonLinesLearnResponse,
     GovernanceAnalyzeRequest,
     GovernanceAnalyzeResponse,
     GovernanceIssue,
@@ -51,6 +55,8 @@ from app.api.schemas.pipeline import (
 from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentParsedContent
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
@@ -63,7 +69,12 @@ from app.rag.core.errors import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
-from app.rag.preprocessing.cleaning import RegexRule, build_repeated_line_signatures, clean_markdown
+from app.rag.preprocessing.cleaning import (
+    RegexRule,
+    build_repeated_line_signatures,
+    clean_markdown,
+    learn_common_line_candidates,
+)
 from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
 from app.rag.preprocessing.diagnostics import analyze_governance
 from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter, extract_markdown_title
@@ -79,6 +90,7 @@ from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.urls import normalize_urls
+from app.services.document_access import get_allowed_document_id_sets
 from app.services.dataset_service import DatasetService
 from app.services.governance_profiles import (
     builtin_profile_to_out,
@@ -95,6 +107,99 @@ router = APIRouter()
 
 _BUILTIN_GOVERNANCE_PROFILES = get_builtin_governance_profiles()
 _BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}
+
+
+def _collect_common_lines_texts(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    limit_docs: int,
+    use_original: bool,
+) -> tuple[int, list[str]]:
+    """
+    Collect a bounded list of parsed markdown texts for common-lines learning.
+
+    Returns (total_with_parsed_content_in_dataset, texts[]).
+    """
+    # Count eligible docs (best-effort; does not enforce document ACL).
+    total = (
+        db.query(func.count(DocumentParsedContent.document_id))
+        .join(
+            DBDocument,
+            and_(
+                DBDocument.id == DocumentParsedContent.document_id,
+                DBDocument.tenant_id == DocumentParsedContent.tenant_id,
+            ),
+        )
+        .filter(
+            DocumentParsedContent.tenant_id == tenant_id,
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+        )
+        .scalar()
+    )
+    total_with_content = int(total or 0)
+
+    # Pull a small batch of latest docs with parsed content, then enforce document ACL.
+    # We over-fetch to avoid ending up with too few after ACL filtering.
+    raw_doc_rows = (
+        db.query(DBDocument.id)
+        .join(
+            DocumentParsedContent,
+            and_(
+                DocumentParsedContent.document_id == DBDocument.id,
+                DocumentParsedContent.tenant_id == tenant_id,
+            ),
+        )
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+        )
+        .order_by(DBDocument.updated_at.desc())
+        .limit(200)
+        .all()
+    )
+    raw_doc_ids = [row[0] for row in raw_doc_rows if row and row[0]]
+
+    allowed_ids, _missing = get_allowed_document_id_sets(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        doc_ids=raw_doc_ids,
+        check_member=False,
+    )
+    allowed_ordered = [doc_id for doc_id in raw_doc_ids if doc_id in allowed_ids][: int(limit_docs or 20)]
+
+    if not allowed_ordered:
+        return total_with_content, []
+
+    rows = (
+        db.query(
+            DocumentParsedContent.document_id,
+            DocumentParsedContent.original_markdown_content,
+            DocumentParsedContent.markdown_content,
+        )
+        .filter(
+            DocumentParsedContent.tenant_id == tenant_id,
+            DocumentParsedContent.document_id.in_(allowed_ordered),
+        )
+        .all()
+    )
+    by_id: dict[UUID, tuple[str, str]] = {}
+    for doc_id, original, cleaned in rows:
+        by_id[doc_id] = (str(original or ""), str(cleaned or ""))
+
+    texts: list[str] = []
+    for doc_id in allowed_ordered:
+        original, cleaned = by_id.get(doc_id, ("", ""))
+        text = original if use_original and original.strip() else cleaned if cleaned.strip() else original
+        if not text.strip():
+            continue
+        texts.append(text)
+
+    return total_with_content, texts
 
 
 def _profile_key_for_row(row: DBGovernanceProfile) -> str:
@@ -1506,6 +1611,64 @@ async def clean_preview(
         diff_truncated=bool(diff_truncated),
         issues=issues_out,
         suggested_pipeline_patch=suggested_patch,
+    )
+
+
+@router.post("/learn-common-lines", response_model=GovernanceCommonLinesLearnResponse)
+async def learn_common_lines(
+    body: GovernanceCommonLinesLearnRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Learn common/repeated header/footer lines across multiple documents in a dataset.
+
+    This endpoint is intended to support "learning mode" in the governance UI:
+    discover candidate lines, then turn them into regex rules and write into a custom profile.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    total, texts = _collect_common_lines_texts(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=body.dataset_id,
+        limit_docs=int(body.limit_docs),
+        use_original=bool(body.use_original),
+    )
+
+    if len(texts) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Not enough documents with persisted parsed content. Enable persist_parsed_content and ingest some documents first.",
+        )
+
+    candidates_raw = learn_common_line_candidates(
+        texts,
+        min_docs=int(body.min_docs),
+        min_ratio=float(body.min_ratio),
+        max_line_length=int(body.max_line_length),
+        max_candidates=int(body.max_candidates),
+    )
+    candidates = [
+        GovernanceCommonLineCandidate(
+            signature=str(it.get("signature") or ""),
+            sample=str(it.get("sample") or "")[:400],
+            docs=int(it.get("docs") or 0),
+            ratio=float(it.get("ratio") or 0.0),
+        )
+        for it in candidates_raw
+        if isinstance(it, dict) and str(it.get("signature") or "").strip()
+    ]
+
+    return GovernanceCommonLinesLearnResponse(
+        dataset_id=body.dataset_id,
+        total_documents=int(total),
+        used_documents=int(len(texts)),
+        candidates=candidates,
     )
 
 

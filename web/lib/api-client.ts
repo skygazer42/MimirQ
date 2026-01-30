@@ -109,6 +109,8 @@ import type {
   PipelineCapabilitiesResponse,
   GovernanceAnalyzeRequest,
   GovernanceAnalyzeResponse,
+  GovernanceCommonLinesLearnRequest,
+  GovernanceCommonLinesLearnResponse,
   GovernanceProfileListResponse,
   GovernanceProfileOut,
   GovernanceProfileCreate,
@@ -990,6 +992,11 @@ export const pipelineApi = {
 
   async governanceAnalyze(params: GovernanceAnalyzeRequest): Promise<GovernanceAnalyzeResponse> {
     const { data } = await apiClient.post('/pipeline/governance-analyze', params)
+    return data
+  },
+
+  async learnCommonLines(params: GovernanceCommonLinesLearnRequest): Promise<GovernanceCommonLinesLearnResponse> {
+    const { data } = await apiClient.post('/pipeline/learn-common-lines', params, { timeout: API_LONG_TIMEOUT_MS })
     return data
   },
 
