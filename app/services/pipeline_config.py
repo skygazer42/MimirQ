@@ -223,9 +223,11 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_pii_anonymize=_coerce_bool(governance.get("pii_anonymize")),
         governance_pii_mode=_coerce_str(governance.get("pii_mode")),
         governance_pii_mask=_coerce_str(governance.get("pii_mask")),
+        governance_pii_max_hits=_coerce_int(governance.get("pii_max_hits")),
         governance_secrets_redact=_coerce_bool(governance.get("secrets_redact")),
         governance_secrets_mode=_coerce_str(governance.get("secrets_mode")),
         governance_secrets_mask=_coerce_str(governance.get("secrets_mask")),
+        governance_secrets_max_hits=_coerce_int(governance.get("secrets_max_hits")),
         governance_max_blank_lines=_coerce_int(governance.get("max_blank_lines")),
         governance_html_xpath=_coerce_str(governance.get("html_xpath")),
         governance_drop_outline_only=_coerce_bool(governance.get("drop_outline_only")),
@@ -377,12 +379,16 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["pii_mode"] = str(options.governance_pii_mode)
     if options.governance_pii_mask is not None:
         governance["pii_mask"] = str(options.governance_pii_mask)
+    if options.governance_pii_max_hits is not None:
+        governance["pii_max_hits"] = int(options.governance_pii_max_hits)
     if options.governance_secrets_redact is not None:
         governance["secrets_redact"] = bool(options.governance_secrets_redact)
     if options.governance_secrets_mode is not None:
         governance["secrets_mode"] = str(options.governance_secrets_mode)
     if options.governance_secrets_mask is not None:
         governance["secrets_mask"] = str(options.governance_secrets_mask)
+    if options.governance_secrets_max_hits is not None:
+        governance["secrets_max_hits"] = int(options.governance_secrets_max_hits)
     if options.governance_max_blank_lines is not None:
         governance["max_blank_lines"] = int(options.governance_max_blank_lines)
     if options.governance_html_xpath is not None:
@@ -602,6 +608,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_pii_mask is None
         else str(options.governance_pii_mask or "[REDACTED]")
     )
+    governance_pii_max_hits = (
+        options.governance_pii_max_hits
+        if options.governance_pii_max_hits is not None
+        else int(getattr(settings, "GOVERNANCE_PII_MAX_HITS", -1) or -1)
+    )
     governance_secrets_redact = (
         getattr(settings, "GOVERNANCE_SECRETS_REDACT", False)
         if options.governance_secrets_redact is None
@@ -616,6 +627,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         getattr(settings, "GOVERNANCE_SECRETS_MASK", "[SECRET]")
         if options.governance_secrets_mask is None
         else str(options.governance_secrets_mask or "[SECRET]")
+    )
+    governance_secrets_max_hits = (
+        options.governance_secrets_max_hits
+        if options.governance_secrets_max_hits is not None
+        else int(getattr(settings, "GOVERNANCE_SECRETS_MAX_HITS", -1) or -1)
     )
     governance_max_blank_lines = (
         options.governance_max_blank_lines
@@ -811,9 +827,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_pii_anonymize=bool(governance_pii_anonymize),
         governance_pii_mode=str(governance_pii_mode or "mask"),
         governance_pii_mask=str(governance_pii_mask or "[REDACTED]"),
+        governance_pii_max_hits=int(governance_pii_max_hits),
         governance_secrets_redact=bool(governance_secrets_redact),
         governance_secrets_mode=str(governance_secrets_mode or "mask"),
         governance_secrets_mask=str(governance_secrets_mask or "[SECRET]"),
+        governance_secrets_max_hits=int(governance_secrets_max_hits),
         governance_max_blank_lines=int(governance_max_blank_lines),
         governance_html_xpath=str(governance_html_xpath or ""),
         governance_drop_outline_only=bool(governance_drop_outline_only),

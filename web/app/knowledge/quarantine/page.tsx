@@ -76,6 +76,8 @@ function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
   if (typeof governance.drop_outline_max_heading_ratio === 'number') out.governance_drop_outline_max_heading_ratio = governance.drop_outline_max_heading_ratio
   if (typeof governance.drop_low_density === 'boolean') out.governance_drop_low_density = governance.drop_low_density
   if (typeof governance.drop_low_density_threshold === 'number') out.governance_drop_low_density_threshold = governance.drop_low_density_threshold
+  if (typeof governance.pii_max_hits === 'number') out.governance_pii_max_hits = governance.pii_max_hits
+  if (typeof governance.secrets_max_hits === 'number') out.governance_secrets_max_hits = governance.secrets_max_hits
   if (typeof governance.quarantine_on_drop === 'boolean') out.governance_quarantine_on_drop = governance.quarantine_on_drop
 
   return out
@@ -89,6 +91,10 @@ function reasonLabel(reason: string): string {
       return '低密度文本'
     case 'empty_document':
       return '空文档'
+    case 'pii_exceeded':
+      return 'PII 超阈值'
+    case 'secrets_exceeded':
+      return 'Secrets 超阈值'
     default:
       return reason
   }

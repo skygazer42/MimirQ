@@ -399,9 +399,11 @@ export interface DocumentPipelineOptions {
   governance_pii_anonymize?: boolean
   governance_pii_mode?: 'mask' | 'token' | string
   governance_pii_mask?: string
+  governance_pii_max_hits?: number
   governance_secrets_redact?: boolean
   governance_secrets_mode?: 'mask' | 'token' | string
   governance_secrets_mask?: string
+  governance_secrets_max_hits?: number
   governance_max_blank_lines?: number
   governance_html_xpath?: string
   governance_drop_outline_only?: boolean

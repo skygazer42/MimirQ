@@ -567,9 +567,13 @@ class Settings(BaseSettings):
     GOVERNANCE_PII_ANONYMIZE: bool = False
     GOVERNANCE_PII_MODE: str = "mask"  # mask | token
     GOVERNANCE_PII_MASK: str = "[REDACTED]"
+    # Compliance gate: if >=0, quarantine/drop a document when total PII hits exceed this threshold (sum across kinds).
+    GOVERNANCE_PII_MAX_HITS: int = -1
     GOVERNANCE_SECRETS_REDACT: bool = False
     GOVERNANCE_SECRETS_MODE: str = "mask"  # mask | token
     GOVERNANCE_SECRETS_MASK: str = "[SECRET]"
+    # Compliance gate: if >=0, quarantine/drop a document when total secrets hits exceed this threshold (sum across kinds).
+    GOVERNANCE_SECRETS_MAX_HITS: int = -1
     GOVERNANCE_MAX_BLANK_LINES: int = 1
     GOVERNANCE_HTML_XPATH: str = ""
     GOVERNANCE_DROP_OUTLINE_ONLY: bool = False

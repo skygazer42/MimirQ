@@ -95,9 +95,11 @@ class GovernanceProcessor:
         pii_anonymize: bool = False,
         pii_mode: str = "mask",
         pii_mask: str = "[REDACTED]",
+        pii_max_hits: int = -1,
         secrets_redact: bool = False,
         secrets_mode: str = "mask",
         secrets_mask: str = "[SECRET]",
+        secrets_max_hits: int = -1,
         max_blank_lines: int = 1,
         drop_outline_only: bool = False,
         drop_outline_min_content_chars: int = 200,
@@ -456,6 +458,46 @@ class GovernanceProcessor:
                 # Best-effort only; never fail ingestion due to metrics.
                 pass
             cleaned.append(Document(page_content=text, metadata=meta, id=getattr(doc, "id", None)))
+
+        # Compliance gates (PII/Secrets): if enabled (>=0), quarantine/drop the entire document when total hits exceed the threshold.
+        #
+        # This is intentionally applied at the aggregate level (across all parsed pages/items) to avoid partially indexing
+        # a sensitive document. The ingestion pipeline can route dropped docs to quarantine via governance_quarantine_on_drop.
+        pii_gate = int(pii_max_hits) if isinstance(pii_max_hits, (int, float)) else -1
+        secrets_gate = int(secrets_max_hits) if isinstance(secrets_max_hits, (int, float)) else -1
+
+        pii_total_hits = sum(int(v or 0) for v in (pii_hits_total or {}).values())
+        secrets_total_hits = sum(int(v or 0) for v in (secrets_hits_total or {}).values())
+
+        gate_reasons: dict[str, int] = {}
+        if pii_gate >= 0 and pii_total_hits > pii_gate:
+            gate_reasons["pii_exceeded"] = int(doc_count)
+        if secrets_gate >= 0 and secrets_total_hits > secrets_gate:
+            gate_reasons["secrets_exceeded"] = int(doc_count)
+
+        if gate_reasons:
+            # Replace dropped doc-level output entirely.
+            merged_reasons = dict(drop_reasons or {})
+            merged_reasons.update(gate_reasons)
+            return [], GovernanceStats(
+                documents=len(documents),
+                changed=0,
+                applied_rules=applied_total,
+                dropped=int(doc_count),
+                drop_reasons=merged_reasons,
+                pii_hits=pii_hits_total,
+                secrets_hits=secrets_hits_total,
+                frontmatter_docs=int(frontmatter_docs),
+                frontmatter_stripped_docs=int(frontmatter_stripped_docs),
+                paragraphs_dropped=int(paragraphs_dropped_total),
+                references_removed_lines=int(references_removed_total),
+                urls_changed=int(urls_changed_total),
+                keywords_docs=int(keywords_docs),
+                keywords_total=int(keywords_total),
+                languages=languages,
+                titles_docs=int(titles_docs),
+                tags_docs=int(tags_docs),
+            )
 
         return cleaned, GovernanceStats(
             documents=len(documents),
