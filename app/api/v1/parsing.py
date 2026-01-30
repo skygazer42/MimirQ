@@ -39,6 +39,7 @@ from app.core.env import is_production_env
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
+from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.quality.text_quality import score_parsed_text_quality
@@ -426,6 +427,7 @@ async def parse_workspace_document(
     document_id: uuid.UUID,
     request: Request,
     parser_backend: Optional[str] = None,
+    image_caption_enabled: bool = Query(default=False),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -537,6 +539,14 @@ async def parse_workspace_document(
 
         pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
         original_markdown, markdown = _extract_markdown(parsed if isinstance(parsed, dict) else {})
+
+        captions_added = 0
+        if bool(image_caption_enabled):
+            # Never fail the parsing request due to optional enrichment.
+            try:
+                markdown, captions_added = add_image_captions(markdown)
+            except Exception:
+                captions_added = 0
 
         min_chars = max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120))
         max_retries = max(0, int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1))
@@ -669,6 +679,9 @@ async def parse_workspace_document(
         next_meta["workspace"] = "parsing"
         next_meta["parser_backend_requested"] = requested_backend
         next_meta["parser_backend"] = resolved_backend
+        next_meta["image_caption_enabled"] = bool(image_caption_enabled)
+        if bool(image_caption_enabled):
+            next_meta["image_captions_added"] = int(captions_added)
         if isinstance(pdf_quality, dict) and pdf_quality:
             next_meta["pdf_quality"] = dict(pdf_quality)
         if gate is not None:

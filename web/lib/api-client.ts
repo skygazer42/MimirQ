@@ -937,14 +937,20 @@ export const parsingApi = {
     return data
   },
 
-  async parse(documentId: string, options?: { parser_backend?: string; signal?: AbortSignal }): Promise<ParsingContentResponse> {
+  async parse(
+    documentId: string,
+    options?: { parser_backend?: string; image_caption_enabled?: boolean; signal?: AbortSignal }
+  ): Promise<ParsingContentResponse> {
+    const params: Record<string, any> = {}
+    if (options?.parser_backend) params.parser_backend = options.parser_backend
+    if (options?.image_caption_enabled) params.image_caption_enabled = true
     const { data } = await apiClient.post(
       `/parsing/documents/${documentId}/parse`,
       null,
       {
         timeout: API_LONG_TIMEOUT_MS,
         signal: options?.signal,
-        params: options?.parser_backend ? { parser_backend: options.parser_backend } : undefined,
+        params: Object.keys(params).length ? params : undefined,
       }
     )
     return data
