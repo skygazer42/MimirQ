@@ -7,7 +7,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { FileText, Settings2 } from 'lucide-react'
+import { Download, FileText, Settings2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -23,6 +23,20 @@ function toShortNote(note: unknown, maxChars: number = 180): string {
   if (!s) return ''
   if (s.length <= maxChars) return s
   return `${s.slice(0, Math.max(0, maxChars - 3))}...`
+}
+
+function downloadJsonObject(obj: unknown, filename: string) {
+  const safe = String(filename || 'export.json')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .slice(0, 128)
+  const blob = new Blob([JSON.stringify(obj ?? {}, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = safe.endsWith('.json') ? safe : `${safe}.json`
+  a.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export function IngestionPreviewDetailsDialog({
@@ -144,7 +158,7 @@ export function IngestionPreviewDetailsDialog({
         </DialogHeader>
 
         <Tabs defaultValue="preprocess" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="preprocess" disabled={!hasPreview}>
               Preprocess
             </TabsTrigger>
@@ -156,6 +170,9 @@ export function IngestionPreviewDetailsDialog({
             </TabsTrigger>
             <TabsTrigger value="issues" disabled={!hasPreview}>
               Issues{issues.length ? ` (${issues.length})` : ''}
+            </TabsTrigger>
+            <TabsTrigger value="explain" disabled={!hasPreview}>
+              Explain
             </TabsTrigger>
           </TabsList>
 
@@ -405,8 +422,8 @@ export function IngestionPreviewDetailsDialog({
             </div>
           </TabsContent>
 
-          <TabsContent value="issues" className="mt-4">
-            <div className="rounded-xl border border-border/60 bg-card p-3">
+	          <TabsContent value="issues" className="mt-4">
+	            <div className="rounded-xl border border-border/60 bg-card p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-medium text-foreground">治理问题（Issues）</div>
                 {preview?.clean?.suggested_pipeline_patch && Object.keys(preview.clean.suggested_pipeline_patch || {}).length ? (
@@ -517,10 +534,57 @@ export function IngestionPreviewDetailsDialog({
               ) : (
                 <div className="mt-3 text-[12px] text-muted-foreground">暂无 issues（治理侧未发现明显问题）</div>
               )}
+	            </div>
+	          </TabsContent>
+
+          <TabsContent value="explain" className="mt-4">
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium text-foreground">Explain（可追溯/可导出）</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-3 text-[11px] gap-2"
+                  onClick={() => {
+                    const exp = preview?.explain
+                    if (!exp) {
+                      toast.error('后端未返回 explain 字段')
+                      return
+                    }
+                    const snap = (exp as any)?.snapshot ?? exp
+                    const rawName = String((snap as any)?.filename || 'ingestion-preview')
+                      .trim()
+                      .replace(/[^a-zA-Z0-9_.-]+/g, '_')
+                      .slice(0, 64)
+                    downloadJsonObject(snap, `${rawName}.ingestion-preview.explain.json`)
+                    toast.success('已导出 explain 快照')
+                  }}
+                  disabled={!preview?.explain}
+                >
+                  <Download className="w-4 h-4" />
+                  导出 JSON
+                </Button>
+              </div>
+
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                包含：命中规则、最终生效配置、pipeline_patch 与（可选）fallback 线索。建议作为入库前审计快照留存。
+              </div>
+
+              <div className="mt-3 rounded-lg border border-border/60 bg-background">
+                <div className="px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border/60">
+                  payload.explain
+                </div>
+                <ScrollArea className="h-[420px]">
+                  <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
+                    {JSON.stringify(preview?.explain ?? null, null, 2)}
+                  </pre>
+                </ScrollArea>
+              </div>
             </div>
           </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
-  )
+	        </Tabs>
+	      </DialogContent>
+	    </Dialog>
+	  )
 }

@@ -1098,11 +1098,36 @@ async def ingestion_preview(
             "chunk_strategy": str(chunk_strategy_choice or ""),
         }
 
+        explain = {
+            "dataset_id": str(dataset_id),
+            "filename": str(getattr(file, "filename", "") or ""),
+            "file_type": str(file_ext or ""),
+            "requested": {
+                "parser_backend": str(base_pb or ""),
+                "chunk_strategy": str(base_cs or ""),
+            },
+            "rule": rule_out,
+            # Best-effort config snapshot (intended for export/audit; avoids embedding large markdown).
+            "snapshot": {
+                "dataset_id": str(dataset_id),
+                "filename": str(getattr(file, "filename", "") or ""),
+                "file_type": str(file_ext or ""),
+                "rule": rule_out,
+                "preprocess": dict(pre_summary),
+                "pipeline_patch": dict(patch_dict),
+                "parser_backend": str(parser_backend_choice or "auto"),
+                "chunk_strategy": str(chunk_strategy_choice or ""),
+                "parse_backend": str(parsed.get("backend") or ""),
+                "pdf_quality": parsed.get("pdf_quality"),
+            },
+        }
+
         return {
             "rule": rule_out,
             "preprocess": pre_summary,
             "parse": parsed,
             "clean": cleaned,
+            "explain": explain,
         }
     except SubprocessCancelled:
         raise HTTPException(status_code=499, detail="Client closed request") from None

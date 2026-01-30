@@ -11,7 +11,8 @@ Security notes:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -69,3 +70,28 @@ class IngestionPolicyImportResponse(BaseModel):
     replaced: bool = False
     rule_count: int = 0
 
+
+class IngestionPolicyVersion(BaseModel):
+    """
+    One version entry for a dataset ingestion policy (stored in dataset metadata).
+
+    Note: This is best-effort "versioning for operators" rather than a full audit log.
+    """
+
+    id: str = Field(..., min_length=1, max_length=100)
+    created_at: datetime
+    created_by: Optional[str] = None
+    source: Literal["put", "import", "rollback"] = "put"
+    policy: IngestionPolicy
+    note: Optional[str] = Field(default=None, max_length=200)
+    rollback_from_version_id: Optional[str] = None
+    rollback_to_version_id: Optional[str] = None
+
+
+class IngestionPolicyVersionListResponse(BaseModel):
+    current_version_id: Optional[str] = None
+    items: List[IngestionPolicyVersion] = Field(default_factory=list)
+
+
+class IngestionPolicyRollbackRequest(BaseModel):
+    version_id: str = Field(..., min_length=1, max_length=100)

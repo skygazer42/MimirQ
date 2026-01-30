@@ -136,11 +136,13 @@ import type {
   LoginRequest,
   RegisterRequest,
   UserProfile,
-  ZipWithImagesResponse,
-  IngestionPolicy,
-  IngestionPolicyImportResponse,
-  IngestionPreviewResponse,
-  RagvizSimilarityCollectionsResponse,
+	  ZipWithImagesResponse,
+	  IngestionPolicy,
+	  IngestionPolicyImportResponse,
+	  IngestionPolicyRollbackRequest,
+	  IngestionPolicyVersionListResponse,
+	  IngestionPreviewResponse,
+	  RagvizSimilarityCollectionsResponse,
   RagvizSimilarityRequest,
   RagvizSimilarityCalculateResponse,
   RagMetricsSummaryResponse,
@@ -1132,6 +1134,16 @@ export const connectorApi = {
     const { data } = await apiClient.post(`/connectors/runs/${runId}/cancel`)
     return data
   },
+
+  async retryFailed(runId: string): Promise<ConnectorRunOut> {
+    const { data } = await apiClient.post(`/connectors/runs/${runId}/retry-failed`)
+    return data
+  },
+
+  async resumeRun(runId: string): Promise<ConnectorRunOut> {
+    const { data } = await apiClient.post(`/connectors/runs/${runId}/resume`)
+    return data
+  },
 }
 
 // ==================== RAG 调试 API ====================
@@ -1224,6 +1236,16 @@ export const datasetApi = {
   async exportIngestionPolicy(datasetId: string): Promise<Blob> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion-policy/export`, { responseType: 'blob' })
     return data as Blob
+  },
+
+  async listIngestionPolicyVersions(datasetId: string): Promise<IngestionPolicyVersionListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion-policy/versions`)
+    return data
+  },
+
+  async rollbackIngestionPolicy(datasetId: string, body: IngestionPolicyRollbackRequest): Promise<IngestionPolicy> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/ingestion-policy/rollback`, body)
+    return data
   },
 
   async exportConfig(datasetId: string): Promise<DatasetConfigExport> {

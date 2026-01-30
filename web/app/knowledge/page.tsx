@@ -22,6 +22,8 @@ import {
   XCircle,
   AlertTriangle,
   Clock,
+  Play,
+  RotateCcw,
   Trash2,
   RefreshCw,
   BarChart3,
@@ -841,6 +843,38 @@ export default function KnowledgePage() {
       }
     },
     [loadConnectorRuns, selectedDatasetId]
+  )
+
+  const handleRetryFailedConnectorRun = useCallback(
+    async (runId: string) => {
+      if (!runId) return
+      if (!confirm('只重试失败项？将创建一个新的导入任务（best-effort）。')) return
+      try {
+        const next = await connectorApi.retryFailed(runId)
+        toast.success(`已创建重试任务：${String(next.id || '').slice(0, 8)}`)
+        void loadConnectorRuns({ datasetId: selectedDatasetId })
+        void loadDocuments()
+      } catch (err: any) {
+        toast.error(formatApiError(err, '重试失败项失败'))
+      }
+    },
+    [loadConnectorRuns, loadDocuments, selectedDatasetId]
+  )
+
+  const handleResumeConnectorRun = useCallback(
+    async (runId: string) => {
+      if (!runId) return
+      if (!confirm('续跑该导入任务？将从上次 cursor 位置创建一个新的导入任务（best-effort）。')) return
+      try {
+        const next = await connectorApi.resumeRun(runId)
+        toast.success(`已创建续跑任务：${String(next.id || '').slice(0, 8)}`)
+        void loadConnectorRuns({ datasetId: selectedDatasetId })
+        void loadDocuments()
+      } catch (err: any) {
+        toast.error(formatApiError(err, '续跑失败'))
+      }
+    },
+    [loadConnectorRuns, loadDocuments, selectedDatasetId]
   )
 
   // 检索测试
@@ -2189,8 +2223,21 @@ export default function KnowledgePage() {
                           const stats = (run.stats || {}) as any
                           const created = Number(stats.created || 0)
                           const failed = Number(stats.failed || 0)
+                          const totalUrls = Number(stats.total_urls || stats.discovered || 0)
+                          const processedUrls = Number(stats.processed_urls || stats.cursor || 0)
+                          const progressPct =
+                            totalUrls > 0
+                              ? Math.max(0, Math.min(100, Math.round((processedUrls / totalUrls) * 100)))
+                              : 0
                           const errors: any[] = Array.isArray(stats.errors) ? stats.errors : []
+                          const errorGroups: any[] = Array.isArray(stats.error_groups) ? stats.error_groups : []
                           const isActive = run.status === 'pending' || run.status === 'running'
+                          const canRetryFailed = !isActive && failed > 0
+                          const canResume =
+                            !isActive &&
+                            String(run.connector_id || '').toLowerCase() === 'url_batch' &&
+                            String(run.status || '').toLowerCase() === 'cancelled' &&
+                            totalUrls > processedUrls
                           return (
                             <div
                               key={run.id}
@@ -2209,8 +2256,40 @@ export default function KnowledgePage() {
                                     created <span className="font-mono">{created}</span> · failed{' '}
                                     <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
                                   </div>
+                                  {totalUrls > 0 ? (
+                                    <div className="mt-2">
+                                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span>progress</span>
+                                        <span className="font-mono">
+                                          {processedUrls}/{totalUrls} ({progressPct}%)
+                                        </span>
+                                      </div>
+                                      <div className="mt-1 h-2 w-full rounded-full bg-muted/60 overflow-hidden">
+                                        <div
+                                          className={cn(
+                                            'h-2 rounded-full transition-all',
+                                            failed > 0 ? 'bg-destructive/70' : 'bg-primary/70'
+                                          )}
+                                          style={{ width: `${progressPct}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : null}
                                   {run.error_message ? (
                                     <div className="mt-2 text-xs text-destructive">{run.error_message}</div>
+                                  ) : null}
+                                  {errorGroups.length > 0 ? (
+                                    <div className="mt-2 text-xs text-muted-foreground">
+                                      <div className="font-medium text-foreground/80">错误聚类：</div>
+                                      <div className="mt-1 space-y-1">
+                                        {errorGroups.slice(0, 3).map((g, idx) => (
+                                          <div key={idx} className="font-mono truncate">
+                                            [{String(g?.code || 'error')}] x{Number(g?.count || 0)} —{' '}
+                                            {String(g?.error || '').slice(0, 140)}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
                                   ) : null}
                                   {errors.length > 0 ? (
                                     <div className="mt-2 text-xs text-muted-foreground">
@@ -2218,7 +2297,9 @@ export default function KnowledgePage() {
                                       <div className="mt-1 space-y-1">
                                         {errors.slice(0, 3).map((e, idx) => (
                                           <div key={idx} className="font-mono truncate">
-                                            {String(e?.url || '').slice(0, 80)} — {String(e?.error || '').slice(0, 120)}
+                                            {String(e?.url || '').slice(0, 80)} —{' '}
+                                            {e?.code ? `[${String(e.code)}] ` : ''}
+                                            {String(e?.error || '').slice(0, 120)}
                                           </div>
                                         ))}
                                       </div>
@@ -2226,12 +2307,38 @@ export default function KnowledgePage() {
                                   ) : null}
                                 </div>
 
-                                {isActive ? (
-                                  <Button variant="outline" className="gap-2" onClick={() => void handleCancelConnectorRun(run.id)}>
-                                    <X className="w-4 h-4" />
-                                    取消
-                                  </Button>
-                                ) : null}
+                                <div className="flex flex-col items-end gap-2">
+                                  {isActive ? (
+                                    <Button
+                                      variant="outline"
+                                      className="gap-2"
+                                      onClick={() => void handleCancelConnectorRun(run.id)}
+                                    >
+                                      <X className="w-4 h-4" />
+                                      取消
+                                    </Button>
+                                  ) : null}
+                                  {canResume ? (
+                                    <Button
+                                      variant="outline"
+                                      className="gap-2"
+                                      onClick={() => void handleResumeConnectorRun(run.id)}
+                                    >
+                                      <Play className="w-4 h-4" />
+                                      续跑
+                                    </Button>
+                                  ) : null}
+                                  {canRetryFailed ? (
+                                    <Button
+                                      variant="outline"
+                                      className="gap-2"
+                                      onClick={() => void handleRetryFailedConnectorRun(run.id)}
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                      只重试失败
+                                    </Button>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           )
