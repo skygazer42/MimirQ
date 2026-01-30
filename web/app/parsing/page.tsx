@@ -76,6 +76,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ParseCompareDialog } from '@/components/parsing/parse-compare-dialog'
+import { Switch } from '@/components/ui/switch'
 
 
 interface ParseRun {
@@ -191,6 +192,21 @@ export default function ParsingPage() {
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
+  const [imageCaptionEnabled, setImageCaptionEnabled] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem('mimirq_parsing_image_caption_enabled')
+    if (stored === 'true') setImageCaptionEnabled(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(
+      'mimirq_parsing_image_caption_enabled',
+      imageCaptionEnabled ? 'true' : 'false'
+    )
+  }, [imageCaptionEnabled])
   const setQueueFileParserBackend = useCallback(
     (params: { fileId: string; filename: string; backend: string }) => {
       const resolved = resolveParserBackendForFilename(params.filename, params.backend)
@@ -1210,7 +1226,11 @@ export default function ParsingPage() {
         folderId: file.folderId,
       })
 
-      const data = await parsingApi.parse(libraryId, { parser_backend: requestedBackend, signal: controller.signal })
+      const data = await parsingApi.parse(libraryId, {
+        parser_backend: requestedBackend,
+        image_caption_enabled: imageCaptionEnabled,
+        signal: controller.signal,
+      })
       if (controller.signal.aborted) return
       if (parseControllersRef.current.get(fileId) !== controller) return
       if (!fileIdSetRef.current.has(fileId)) return
@@ -1317,7 +1337,7 @@ export default function ParsingPage() {
       }
       clearProgressInterval()
     }
-  }, [cancelParse, mapBackendStatusToLibraryStatus, parserBackend, updateParsedFile, upsertParsedFile])
+  }, [cancelParse, imageCaptionEnabled, mapBackendStatusToLibraryStatus, parserBackend, updateParsedFile, upsertParsedFile])
 
   useEffect(() => {
     if (!autoParseFileId) return
@@ -1642,15 +1662,29 @@ export default function ParsingPage() {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent align="end" className="w-80 p-3">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold">默认解析方式</div>
-                            <div className="text-xs text-muted-foreground">新上传默认</div>
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm font-semibold">默认解析方式</div>
+                              <div className="text-xs text-muted-foreground">新上传默认</div>
+                            </div>
+                            <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                            <p className="text-xs text-muted-foreground leading-snug">
+                              选中文件后，也可以在右侧顶部对单个文件单独修改。
+                            </p>
                           </div>
-                          <ParserDropdown value={parserBackend} onChange={setParserBackend} />
-                          <p className="text-xs text-muted-foreground leading-snug">
-                            选中文件后，也可以在右侧顶部对单个文件单独修改。
-                          </p>
+
+                          <div className="h-px bg-border/60" />
+
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold">图片 caption（可选）</div>
+                              <div className="mt-1 text-xs text-muted-foreground leading-snug">
+                                为图片引用行插入可检索文本（不做 OCR；默认关闭）
+                              </div>
+                            </div>
+                            <Switch checked={imageCaptionEnabled} onCheckedChange={setImageCaptionEnabled} />
+                          </div>
                         </div>
                       </PopoverContent>
                     </Popover>
