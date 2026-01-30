@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Activity, ArrowLeft, BarChart3, FileSearch, Loader2, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
+import { Activity, ArrowLeft, BarChart3, Download, FileSearch, Loader2, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
@@ -16,6 +16,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { datasetHealthToMarkdown } from '@/lib/dataset-health-export'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 
 import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
@@ -26,6 +27,21 @@ function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
   if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0]
   return null
+}
+
+function sanitizeFilename(name: string) {
+  const base = (name || '').trim() || 'dataset'
+  return base.replace(/[\\/:*?"<>|]+/g, '_')
+}
+
+function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function sumRecordValues(m: Record<string, any> | undefined | null): number {
@@ -155,6 +171,22 @@ export default function DatasetHealthPage() {
     return out
   }, [health, ingestion?.failed, ingestion?.quarantined, profile?.pdf_scan?.not_scanned, profile?.findings, piiTotal, secretsTotal])
 
+  const exportPayload = useMemo(() => {
+    if (!datasetId || !health) return null
+    return {
+      schema: 'mimirq.dataset_health.v1',
+      exported_at: new Date().toISOString(),
+      dataset: dataset
+        ? {
+            id: (dataset as any).id ?? datasetId,
+            name: (dataset as any).name ?? null,
+          }
+        : { id: datasetId, name: null },
+      health,
+      suggestions,
+    }
+  }, [dataset, datasetId, health, suggestions])
+
   const topFindings: DatasetProfileFindingSummary[] = useMemo(() => {
     return (profile?.findings || [])
       .filter((f) => Number(f.count || 0) > 0)
@@ -197,6 +229,43 @@ export default function DatasetHealthPage() {
             <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={isLoading}>
               <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
               刷新
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              disabled={!exportPayload}
+              onClick={() => {
+                if (!exportPayload) return
+                const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
+                downloadTextFile(`${filenameBase}.health.json`, JSON.stringify(exportPayload, null, 2), 'application/json;charset=utf-8')
+                toast.success('已导出 health.json')
+              }}
+            >
+              <Download className="w-4 h-4" />
+              导出 JSON
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              disabled={!exportPayload}
+              onClick={() => {
+                if (!exportPayload) return
+                const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
+                const md = datasetHealthToMarkdown({
+                  datasetId: datasetId || '',
+                  datasetName: dataset?.name || null,
+                  exportedAt: exportPayload.exported_at,
+                  generatedAt: (health as any)?.generated_at ?? null,
+                  profile: (health as any)?.profile ?? null,
+                  ingestion: (health as any)?.ingestion ?? null,
+                  suggestions,
+                })
+                downloadTextFile(`${filenameBase}.health.md`, md, 'text/markdown;charset=utf-8')
+                toast.success('已导出 health.md')
+              }}
+            >
+              <Download className="w-4 h-4" />
+              导出 MD
             </Button>
           </div>
         }
