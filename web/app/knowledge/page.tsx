@@ -79,6 +79,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 type TabType = 'documents' | 'retrieval' | 'settings'
 type ViewMode = 'grid' | 'list'
 type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
+type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
 type DocSortKey = 'created_at' | 'filename' | 'file_size'
 type DocSortDir = 'asc' | 'desc'
 
@@ -213,11 +214,13 @@ export default function KnowledgePage() {
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
   const [docFilter, setDocFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<DocStatusFilter>('all')
+  const [lifecycleFilter, setLifecycleFilter] = useState<DocLifecycleFilter>('active')
   const [sortKey, setSortKey] = useState<DocSortKey>('created_at')
   const [sortDir, setSortDir] = useState<DocSortDir>('desc')
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   const [batchDeleting, setBatchDeleting] = useState(false)
+  const [batchLifecycleWorking, setBatchLifecycleWorking] = useState(false)
   const DATASET_ALL = '__all__'
   const DATASET_DEFAULT = '__default__'
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -249,6 +252,11 @@ export default function KnowledgePage() {
       setStatusFilter(status)
     }
 
+    const lifecycle = params.get('lifecycle')
+    if (lifecycle === 'active' || lifecycle === 'archived' || lifecycle === 'disabled' || lifecycle === 'all') {
+      setLifecycleFilter(lifecycle)
+    }
+
     const dataset = params.get('dataset')
     if (dataset && dataset.trim()) setDatasetScope(dataset)
 
@@ -267,6 +275,7 @@ export default function KnowledgePage() {
     if (viewMode !== 'grid') params.set('view', viewMode)
     if (docFilter.trim()) params.set('q', docFilter.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (lifecycleFilter !== 'active') params.set('lifecycle', lifecycleFilter)
     if (datasetScope !== DATASET_ALL) params.set('dataset', datasetScope)
     if (sortKey !== 'created_at') params.set('order_by', sortKey)
     if (sortDir !== 'desc') params.set('order_dir', sortDir)
@@ -275,7 +284,7 @@ export default function KnowledgePage() {
     if (lastUrlRef.current === nextUrl) return
     lastUrlRef.current = nextUrl
     router.replace(nextUrl, { scroll: false })
-  }, [activeTab, viewMode, docFilter, statusFilter, datasetScope, sortKey, sortDir, router])
+  }, [activeTab, viewMode, docFilter, statusFilter, lifecycleFilter, datasetScope, sortKey, sortDir, router])
 
   // PageBody is an internal scroll container; on tab switches keep the top anchored.
   useEffect(() => {
@@ -315,6 +324,7 @@ export default function KnowledgePage() {
       loadDocuments({
         limit: 200,
         status: statusFilter !== 'all' ? statusFilter : undefined,
+        lifecycle: lifecycleFilter,
         q: docFilter.trim() || undefined,
         dataset_id: selectedDatasetId,
         order_by: sortKey,
@@ -322,7 +332,7 @@ export default function KnowledgePage() {
       })
     }, 250)
     return () => window.clearTimeout(t)
-  }, [activeTab, statusFilter, docFilter, selectedDatasetId, sortKey, sortDir, loadDocuments])
+  }, [activeTab, statusFilter, lifecycleFilter, docFilter, selectedDatasetId, sortKey, sortDir, loadDocuments])
 
   // Accurate dashboard stats (server aggregated) - avoids "only 200 items loaded" bias.
   useEffect(() => {
@@ -332,7 +342,7 @@ export default function KnowledgePage() {
 
     const t = window.setTimeout(() => {
       documentApi
-        .stats({ q: docFilter.trim() || undefined, dataset_id: selectedDatasetId })
+        .stats({ q: docFilter.trim() || undefined, dataset_id: selectedDatasetId, lifecycle: lifecycleFilter })
         .then((res) => {
           if (seq !== docStatsSeqRef.current) return
           setDocStats(res)
@@ -349,7 +359,7 @@ export default function KnowledgePage() {
     }, 250)
 
     return () => window.clearTimeout(t)
-  }, [activeTab, docFilter, selectedDatasetId])
+  }, [activeTab, docFilter, selectedDatasetId, lifecycleFilter])
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -423,6 +433,55 @@ export default function KnowledgePage() {
       setBatchDeleteOpen(false)
     }
   }, [selectedDocIds, loadDocuments])
+
+  const selectedDocs = useMemo(
+    () => filteredDocuments.filter((d) => selectedSet.has(d.id)),
+    [filteredDocuments, selectedSet]
+  )
+  const anySelectedDisabled = useMemo(() => selectedDocs.some((d) => Boolean(d.disabled_at)), [selectedDocs])
+  const anySelectedEnabled = useMemo(() => selectedDocs.some((d) => !d.disabled_at), [selectedDocs])
+  const anySelectedArchived = useMemo(() => selectedDocs.some((d) => Boolean(d.archived_at)), [selectedDocs])
+  const anySelectedNotArchived = useMemo(() => selectedDocs.some((d) => !d.archived_at), [selectedDocs])
+
+  const runBatchLifecycle = useCallback(
+    async (action: 'disable' | 'enable' | 'archive' | 'unarchive') => {
+      const ids = [...selectedDocIds]
+      if (ids.length === 0) return
+      setBatchLifecycleWorking(true)
+      try {
+        const fn =
+          action === 'disable'
+            ? documentApi.batchDisable
+            : action === 'enable'
+              ? documentApi.batchEnable
+              : action === 'archive'
+                ? documentApi.batchArchive
+                : documentApi.batchUnarchive
+
+        const res = await fn(ids)
+        if (res?.denied?.length || res?.not_found?.length || res?.conflicts?.length) {
+          console.warn('Batch lifecycle partial result:', res)
+        }
+        toast.success(
+          action === 'disable'
+            ? `已禁用 ${res.updated} 份文档`
+            : action === 'enable'
+              ? `已启用 ${res.updated} 份文档`
+              : action === 'archive'
+                ? `已归档 ${res.updated} 份文档`
+                : `已取消归档 ${res.updated} 份文档`
+        )
+        setSelectedDocIds([])
+        await loadDocuments()
+      } catch (err) {
+        console.error('Batch lifecycle failed:', err)
+        toast.error(formatApiError(err, '批量操作失败'))
+      } finally {
+        setBatchLifecycleWorking(false)
+      }
+    },
+    [selectedDocIds, loadDocuments]
+  )
 
   const [urlImportOpen, setUrlImportOpen] = useState(false)
   const [urlImportUrl, setUrlImportUrl] = useState('')
@@ -1583,6 +1642,21 @@ export default function KnowledgePage() {
                         </SelectContent>
                       </Select>
 
+                      <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
+                        <SelectTrigger
+                          className="h-10 w-full sm:w-[180px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm"
+                          aria-label="筛选生命周期"
+                        >
+                          <SelectValue placeholder="生命周期" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">启用中</SelectItem>
+                          <SelectItem value="disabled">已禁用</SelectItem>
+                          <SelectItem value="archived">已归档</SelectItem>
+                          <SelectItem value="all">全部</SelectItem>
+                        </SelectContent>
+                      </Select>
+
                       <Select
                         value={`${sortKey}:${sortDir}`}
                         onValueChange={(value) => {
@@ -1664,11 +1738,51 @@ export default function KnowledgePage() {
                         </Button>
                         <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => void runBatchLifecycle('disable')}
+                          disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}
+                        >
+                          禁用
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => void runBatchLifecycle('enable')}
+                          disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}
+                        >
+                          启用
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => void runBatchLifecycle('archive')}
+                          disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}
+                        >
+                          归档
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => void runBatchLifecycle('unarchive')}
+                          disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}
+                        >
+                          取消归档
+                        </Button>
+                        <Button
+                          type="button"
                           variant="destructive"
                           size="sm"
                           className="rounded-xl"
                           onClick={() => setBatchDeleteOpen(true)}
-                          disabled={batchDeleting}
+                          disabled={batchDeleting || batchLifecycleWorking}
                         >
                           批量删除
                         </Button>
@@ -1714,6 +1828,7 @@ export default function KnowledgePage() {
                           onClick={() => {
                             setDocFilter('')
                             setStatusFilter('all')
+                            setLifecycleFilter('active')
                           }}
                         >
                           清空筛选
@@ -2193,6 +2308,16 @@ function DocumentCard({
             <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
+            {doc.disabled_at ? (
+              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-border/60 bg-muted/60 text-muted-foreground">
+                Disabled
+              </div>
+            ) : null}
+            {!doc.disabled_at && doc.archived_at ? (
+              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-border/60 bg-muted/60 text-muted-foreground">
+                Archived
+              </div>
+            ) : null}
             <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
           </div>
         </div>

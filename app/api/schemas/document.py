@@ -275,6 +275,21 @@ class DocumentBatchUserMetadataPatchResponse(BaseModel):
     denied: List[UUID] = Field(default_factory=list)
 
 
+class DocumentBatchLifecycleRequest(BaseModel):
+    """Batch document lifecycle update (enable/disable/archive/unarchive)."""
+
+    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+
+
+class DocumentBatchLifecycleResponse(BaseModel):
+    """Batch lifecycle update result."""
+
+    updated: int
+    not_found: List[UUID] = Field(default_factory=list)
+    denied: List[UUID] = Field(default_factory=list)
+    conflicts: List[UUID] = Field(default_factory=list)
+
+
 class DocumentBatchDeleteRequest(BaseModel):
     """Batch delete documents."""
 
@@ -367,6 +382,9 @@ class DocumentChunkSchema(OrmModel):
     start_char: Optional[int] = None
     end_char: Optional[int] = None
     chunk_index: int
+    disabled_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("doc_metadata", "metadata"),
@@ -399,6 +417,22 @@ class DocumentChunkCreateRequest(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class DocumentChunkReembedRequest(BaseModel):
+    """Re-embed (re-index) selected chunks for a document."""
+
+    chunk_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    include_disabled: bool = False
+
+
+class DocumentChunkReembedResponse(BaseModel):
+    """Re-embed result."""
+
+    reembedded: int
+    not_found: List[UUID] = Field(default_factory=list)
+    denied: List[UUID] = Field(default_factory=list)
+    conflicts: List[UUID] = Field(default_factory=list)
+
+
 class GovernanceInfo(BaseModel):
     enabled: bool = False
     documents: int = 0
@@ -420,6 +454,8 @@ class DocumentDetail(OrmModel):
     total_characters: int
     owner_id: Optional[str] = None
     access_mode: Optional[DocumentAccessMode] = None
+    archived_at: Optional[datetime] = None
+    disabled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     processed_at: Optional[datetime] = None
