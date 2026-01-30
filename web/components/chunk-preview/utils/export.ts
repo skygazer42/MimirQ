@@ -251,3 +251,110 @@ export function chunkPreviewToReviewReport(
     chunks,
   }
 }
+
+function oneLine(value: unknown) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function fmtPctRatio(value: unknown): string | null {
+  const v = Number(value)
+  if (!Number.isFinite(v)) return null
+  return `${Math.max(0, Math.min(100, Math.round(v * 100)))}%`
+}
+
+function listChunkNumbers(indices: number[] | undefined, options?: { limit?: number }) {
+  const limit = options?.limit ?? 80
+  const list = Array.isArray(indices) ? indices.filter((n) => typeof n === 'number' && Number.isFinite(n)).sort((a, b) => a - b) : []
+  if (!list.length) return '-'
+  const shown = list.slice(0, Math.max(1, limit)).map((n) => `#${Math.trunc(n) + 1}`)
+  const extra = list.length > shown.length ? ` …(+${list.length - shown.length})` : ''
+  return `${shown.join(', ')}${extra}`
+}
+
+export function chunkPreviewToReviewMarkdown(
+  preview: ChunkPreviewResponse,
+  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined,
+  options?: { include_disabled?: boolean }
+) {
+  const report = chunkPreviewToReviewReport(preview, overrides, options) as any
+
+  const lines: string[] = []
+
+  const filename = String(report?.file?.filename || preview.filename || 'document')
+  lines.push(`# ${filename} — Chunk Review`)
+  lines.push('')
+  lines.push(`- schema: ${String(report?.schema || 'mimirq.chunk_review.v1')}`)
+  if (report?.generated_at) lines.push(`- generated_at: ${String(report.generated_at)}`)
+  lines.push('')
+
+  const cfg = (report?.config || {}) as any
+  lines.push('## Config')
+  lines.push(`- parser_backend: ${String(cfg.parser_backend || '')}`)
+  lines.push(`- chunk_strategy: ${String(cfg.chunk_strategy || '')}`)
+  lines.push(`- chunk_size: ${String(cfg.chunk_size ?? '')} (${String(cfg.unit || 'chars')})`)
+  lines.push(`- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${String(cfg.unit || 'chars')})`)
+  lines.push('')
+
+  const stats = (report?.stats || {}) as any
+  lines.push('## Stats')
+  lines.push(`- count: ${String(stats.count ?? '')}`)
+  if (stats.coverage_ratio != null) lines.push(`- coverage_ratio: ${fmtPctRatio(stats.coverage_ratio) ?? String(stats.coverage_ratio)}`)
+  if (stats.overlap_waste_ratio != null) {
+    lines.push(`- overlap_waste_ratio: ${fmtPctRatio(stats.overlap_waste_ratio) ?? String(stats.overlap_waste_ratio)}`)
+  }
+  if (stats.gap_count != null) lines.push(`- gap_count: ${String(stats.gap_count)}`)
+  if (stats.largest_gap != null) lines.push(`- largest_gap: ${String(stats.largest_gap)}`)
+  lines.push('')
+
+  const summary = (report?.summary || {}) as any
+  const issueCounts = (summary.issue_counts || {}) as any
+  lines.push('## Summary')
+  lines.push(`- total_chunks: ${String(summary.total_chunks ?? '')}`)
+  lines.push(`- total_chunks_in_report: ${String(summary.total_chunks_in_report ?? '')}`)
+  lines.push(`- include_disabled: ${String(summary.include_disabled ?? false)}`)
+  lines.push(`- disabled_count: ${String(summary.disabled_count ?? 0)} · edited_count: ${String(summary.edited_count ?? 0)}`)
+  lines.push(
+    `- issue_counts: short=${String(issueCounts.short ?? 0)} duplicate=${String(issueCounts.duplicate ?? 0)} gap=${String(issueCounts.gap ?? 0)} overlap=${String(issueCounts.overlap ?? 0)}`
+  )
+  lines.push('')
+
+  const signals = (report?.review_signals || {}) as any
+  lines.push('## Issue Indices')
+  lines.push(`- short_indices: ${listChunkNumbers(signals.short_indices)}`)
+  lines.push(`- duplicate_indices: ${listChunkNumbers(signals.duplicate_indices)}`)
+  lines.push(`- gap_indices: ${listChunkNumbers(signals.gap_indices)}`)
+  lines.push(`- overlap_indices: ${listChunkNumbers(signals.overlap_indices)}`)
+  lines.push('')
+
+  const recs = Array.isArray(report?.recommendations) ? report.recommendations : []
+  if (recs.length) {
+    lines.push('## Recommendations')
+    for (const r of recs.slice(0, 20)) lines.push(`- ${oneLine(r)}`)
+    if (recs.length > 20) lines.push(`- …(+${recs.length - 20})`)
+    lines.push('')
+  }
+
+  // Keep it compact: include only a small sample of problematic chunks.
+  const chunks = Array.isArray(report?.chunks) ? report.chunks : []
+  const flagged = chunks.filter((c: any) => c?.flags?.short || c?.flags?.duplicate || c?.flags?.gap || c?.flags?.overlap)
+  if (flagged.length) {
+    lines.push('## Samples (first 30 flagged chunks)')
+    for (const c of flagged.slice(0, 30)) {
+      const idx = Number(c.index)
+      const range = `${String(c.start_index ?? '')}-${String(c.end_index ?? '')}`
+      const flags = Object.entries(c.flags || {})
+        .filter(([, v]) => Boolean(v))
+        .map(([k]) => k)
+        .join(',')
+      lines.push(`- #${Number.isFinite(idx) ? idx + 1 : '?'} · range ${range} · flags: ${flags || '-'}`)
+      const previewText = oneLine(c.content_preview || '')
+      if (previewText) lines.push(`  - preview: ${previewText}`)
+    }
+    if (flagged.length > 30) lines.push(`- …(+${flagged.length - 30})`)
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
