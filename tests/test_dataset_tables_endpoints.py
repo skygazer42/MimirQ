@@ -200,3 +200,77 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     res = client.post(f"/api/v1/datasets/{dataset_id}/tables/{table_id}/ask", json={"question": "What is a+b?"})
     assert res.status_code == 200
     assert res.json()["answer"] == "answer"
+
+
+def test_dataset_tables_list_includes_pdf_table_store_docs(monkeypatch):  # noqa: ANN001
+    """
+    Regression: PDF documents can have `doc_metadata.table_store` (parsed tables sidecar) and should be listed.
+    """
+    from app.api.v1.dataset_tables import list_dataset_tables
+    from app.services.dataset_service import DatasetService
+
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Dataset:
+        def __init__(self) -> None:
+            self.id = dataset_id
+            self.tenant_id = uuid.uuid4()
+            self.name = "Demo"
+            self.dataset_metadata = {}
+
+    ds = _Dataset()
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = ds.tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "demo.pdf"
+            self.file_type = "pdf"
+            self.status = "completed"
+            self.updated_at = datetime.now(timezone.utc)
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "source_ext": ".pdf",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "Page 1 Table 1",
+                            "row_count": 2,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "a", "dtype": "int"}, {"name": "b", "dtype": "int"}],
+                            "sample_rows": [{"a": 1, "b": 2}],
+                        }
+                    ],
+                }
+            }
+
+    doc = _Doc()
+
+    # Dataset access: allow.
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+
+    # Doc ACL: allow.
+    import app.api.v1.dataset_tables as mod
+
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db([doc])
+    app.dependency_overrides[get_tenant_id] = lambda: ds.tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+
+    app.get("/api/v1/datasets/{dataset_id}/tables")(list_dataset_tables)
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}/tables")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["table_id"] == table_id

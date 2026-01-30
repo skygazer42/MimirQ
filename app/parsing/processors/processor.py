@@ -1624,6 +1624,16 @@ class DocumentProcessorService:
             else:
                 parsed_documents = None
 
+            # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
+            if parsed_documents and file_path.suffix.lower() == ".pdf":
+                self._import_parsed_markdown_tables_to_store(
+                    db,
+                    db_document=db_document,
+                    tenant_id=tenant_id,
+                    documents=parsed_documents,
+                    pipeline_effective=pipeline_effective,
+                )
+
             # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
             self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
 
@@ -2564,6 +2574,120 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
         # Avoid raising errors to keep the document flow intact.
+
+    def _import_parsed_markdown_tables_to_store(
+        self,
+        db: Session,
+        *,
+        db_document: DBDocument,
+        tenant_id: UUID,
+        documents: List[Document],
+        pipeline_effective: PipelineEffective,
+    ) -> None:
+        """
+        Best-effort: import parser-emitted table segments into the per-document Table Store.
+
+        Why:
+        - Some parsers (e.g. PDF backends) emit tables as separate Documents with metadata markers.
+        - We store those tables as a TAG sidecar so dataset table endpoints + chat TAG can use them.
+        """
+        if not bool(getattr(pipeline_effective, "table_store_enabled", False)):
+            return
+
+        dataset_id = getattr(db_document, "dataset_id", None)
+        document_id = getattr(db_document, "id", None)
+        if dataset_id is None or document_id is None:
+            return
+
+        table_inputs: list[dict[str, Any]] = []
+        table_index = 0
+        for doc in documents or []:
+            meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+            content_type = str(meta.get("content_type") or "").strip().lower()
+            doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+            if content_type != "table" and doc_type != "table":
+                continue
+
+            md = str(doc.page_content or "")
+            if not md.strip():
+                continue
+
+            page = meta.get("page")
+            page_i = 0
+            try:
+                if page is not None:
+                    page_i = int(page)
+            except Exception:
+                page_i = 0
+
+            label = f"Table {table_index + 1}"
+            if page_i > 0:
+                label = f"Page {page_i} Table {table_index + 1}"
+
+            table_inputs.append({"markdown": md, "sheet_name": label})
+            table_index += 1
+            if table_index >= 500:
+                break
+
+        if not table_inputs:
+            return
+
+        try:
+            from app.services.table_store_service import import_markdown_tables
+
+            assets = import_markdown_tables(
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                tables=table_inputs,
+                max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
+                max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
+                sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Parsed table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
+            return
+
+        # Persist structured table metadata for listing/preview endpoints + chat TAG.
+        try:
+            next_meta = dict(db_document.doc_metadata or {})
+            if assets:
+                now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+                tables_payload: list[dict[str, Any]] = []
+                for a in assets or []:
+                    tables_payload.append(
+                        {
+                            "table_id": str(getattr(a, "table_id", "")),
+                            "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
+                            "sheet_name": getattr(a, "sheet_name", None),
+                            "row_count": int(getattr(a, "row_count", 0) or 0),
+                            "col_count": int(getattr(a, "col_count", 0) or 0),
+                            "truncated": bool(getattr(a, "truncated", False)),
+                            "columns": list(getattr(a, "columns", None) or []),
+                            "sample_rows": list(getattr(a, "sample_rows", None) or []),
+                        }
+                    )
+
+                source_ext = getattr(db_document, "file_type", None)
+                source_ext = f".{str(source_ext).lower().lstrip('.')}" if source_ext else None
+                next_meta["table_store"] = {
+                    "version": "1",
+                    "source_ext": source_ext,
+                    "imported_at": now_iso,
+                    "tables": tables_payload,
+                }
+            else:
+                # No tables found - remove stale metadata only for parsed-table sources.
+                existing = next_meta.get("table_store")
+                if isinstance(existing, dict) and str(existing.get("source_ext") or "").lower() in {".pdf"}:
+                    next_meta.pop("table_store", None)
+
+            if next_meta != (db_document.doc_metadata or {}):
+                db_document.doc_metadata = next_meta
+                db.commit()
+                db.refresh(db_document)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Failed to persist parsed table_store metadata (ignored): %s document_id=%s", str(exc)[:200], document_id)
 
     def _cleanup_parser_artifacts(self, artifact_dirs: set[str], *, tenant_id: UUID) -> None:
         if not artifact_dirs:

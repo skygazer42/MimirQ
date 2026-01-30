@@ -20,6 +20,18 @@ MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented G
 
 > 注意：`.xls` 读取依赖运行环境（通常需要 `xlrd`）。若你们不计划支持旧格式，建议先用 LibreOffice/Pandoc 转成 `.xlsx`。
 
+## 来自解析器的表格（PDF 解析 sidecar）
+
+当 `table_store_enabled=true` 时，部分解析器（例如 PDF 的 Docling/DeepDoc 系列）会把表格作为独立的 “table segments” 输出（通常带 `metadata.content_type=table` / `doc_type_kwd=table`）。
+
+MimirQ 会对这些表格做 best-effort：
+
+- 把解析输出中的 **Markdown pipe table** 导入同一个 per-document SQLite Table Store
+- 在文档 `doc_metadata.table_store` 中记录 `table_id/sheet_name/row_count/col_count/columns` 等元数据
+- 因此数据集的「表格 / TAG」页面与 Chat→TAG 都能对 PDF 表格进行预览与查询
+
+> 说明：这是一个 **sidecar** 能力（不改变现有 RAG 主流程）。目前不会默认把 PDF 表格从文本 chunks 中移除；若你希望“大表不入向量库”，可在后续任务中继续做表格路由优化。
+
 ## 表格自动分流（推荐：小表 RAG / 大表 TAG）
 
 在企业真实数据里，表格通常分两类：

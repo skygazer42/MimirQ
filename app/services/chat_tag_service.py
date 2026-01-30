@@ -163,8 +163,9 @@ def build_chat_tag_context_docs(
             DBDocument.tenant_id == tenant_id,
             DBDocument.id.in_(doc_ids),
             DBDocument.status == "completed",
-            # DOCX can also have embedded tables imported into the Table Store as a sidecar.
-            DBDocument.file_type.in_(["csv", "xls", "xlsx", "docx"]),
+            # DOCX can have embedded tables imported into the Table Store as a sidecar.
+            # PDF can also emit parsed tables that we store in the Table Store (sidecar).
+            DBDocument.file_type.in_(["csv", "xls", "xlsx", "docx", "pdf"]),
         )
     )
     raw_docs = q.all()

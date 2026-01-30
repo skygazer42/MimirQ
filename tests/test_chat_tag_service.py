@@ -198,6 +198,74 @@ def test_chat_tag_includes_docx_tables(monkeypatch):  # noqa: ANN001
     assert docs[0].metadata.get("table_id") == table_id
 
 
+def test_chat_tag_includes_pdf_tables(monkeypatch):  # noqa: ANN001
+    """
+    Regression: PDF documents can also have `doc_metadata.table_store` (parsed tables sidecar),
+    and should be eligible for TAG.
+    """
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "report.pdf"
+            self.file_type = "pdf"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "source_ext": ".pdf",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "Page 1 Table 1",
+                            "row_count": 10,
+                            "col_count": 3,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}, {"name": "region", "dtype": "text"}],
+                            "sample_rows": [],
+                        }
+                    ],
+                }
+            }
+
+    # Enable feature flags.
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+
+    # Avoid real LLM + sqlite access.
+    import app.services.chat_tag_service as mod
+
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT "amount" FROM "sheet_0" LIMIT 5', raising=True)
+    monkeypatch.setattr(
+        mod,
+        "run_table_query",
+        lambda **kwargs: {"sql": kwargs.get("sql"), "columns": ["amount"], "rows": [[1], [2]], "truncated": False},
+        raising=True,
+    )
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="统计 amount 的前 5 条",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert len(docs) == 1
+    assert docs[0].metadata.get("table_id") == table_id
+
+
 def test_chat_tag_too_many_doc_ids_is_rejected(monkeypatch):  # noqa: ANN001
     from app.services.chat_tag_service import build_chat_tag_context_docs
 
