@@ -694,6 +694,8 @@ class ChunkPreviewResponse(BaseModel):
     recommendation_patches: List[ChunkPreviewRecommendationPatch] = Field(default_factory=list)
     # Original text for frontend highlighting.
     original_text: Optional[str] = None
+    # If original_text contains PDF position tags (e.g. @@page\tl\tr\tt\tb##), provide a cleaned version for UI display.
+    original_text_cleaned: Optional[str] = None
     # Best-effort metadata for UI (whether original_text was omitted due to size limit).
     original_text_included: bool = False
     original_text_truncated: bool = False

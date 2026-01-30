@@ -2316,8 +2316,8 @@ export default function ParsingPage() {
                                     <PdfViewer
                                       file={activeFile.file}
                                       blocks={activeBlocksWithPositions}
-                                      activeBlockId={activeBlockId}
-                                      hoveredBlockId={hoveredBlockId}
+                                      activeBlockIds={activeBlockId ? [activeBlockId] : []}
+                                      hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
                                     />
                                   </div>
                                 ) : null}

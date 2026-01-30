@@ -580,6 +580,7 @@ export interface ChunkPreviewResponse {
   recommendations?: string[]
   recommendation_patches?: ChunkPreviewRecommendationPatch[]
   original_text?: string
+  original_text_cleaned?: string
   original_text_included?: boolean
   original_text_truncated?: boolean
   original_text_max_chars?: number
