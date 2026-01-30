@@ -27,6 +27,7 @@ from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
+from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies import SeparatorChunker
@@ -628,6 +629,12 @@ class ParsingStage:
             quality = score_parsed_text_quality(joined).to_dict()
             meta = dict(db_document.doc_metadata or {})
             meta["parsed_text_quality"] = quality
+            artifact_stats = compute_parsing_artifact_stats(
+                documents=documents,
+                original_markdown=joined,
+                pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+            )
+            meta.update(artifact_stats)
             db_document.doc_metadata = meta
             db.commit()
             db.refresh(db_document)
