@@ -75,6 +75,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ParseCompareDialog } from '@/components/parsing/parse-compare-dialog'
 
 
 interface ParseRun {
@@ -186,6 +187,7 @@ export default function ParsingPage() {
   const [rightPanelMode, setRightPanelMode] = useState<'blocks' | 'markdown'>('blocks')
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
+  const [compareOpen, setCompareOpen] = useState(false)
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
@@ -1504,6 +1506,17 @@ export default function ParsingPage() {
         bodyClassName="px-0 pb-0 overflow-hidden"
         bodyContainerClassName="flex h-full min-h-0 flex-col"
       >
+        <ParseCompareDialog
+          open={compareOpen}
+          onOpenChange={setCompareOpen}
+          runs={(activeFile?.runs || []) as any}
+          defaultBaseRunId={activeFile?.activeRunId || activeRun?.id || null}
+          onUseRun={(runId) => {
+            handleSelectRun(runId)
+            setCompareOpen(false)
+          }}
+        />
+
         {/* 顶部标题栏 */}
         <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
           <div className="flex items-center gap-4">
@@ -2146,6 +2159,18 @@ export default function ParsingPage() {
                         <div className="flex items-center gap-2">
                           {activeFile.status === 'parsed' && (
                             <>
+                              {activeFile.runs && activeFile.runs.length > 1 ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setCompareOpen(true)}
+                                  disabled={isEditing}
+                                  className="gap-1.5"
+                                >
+                                  <FileStack className="w-4 h-4" />
+                                  对比
+                                </Button>
+                              ) : null}
                               {isEditing ? (
                                 // 编辑模式按钮
                                 <>
