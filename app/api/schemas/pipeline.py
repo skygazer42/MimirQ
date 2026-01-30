@@ -121,6 +121,33 @@ class GovernanceIssue(BaseModel):
     )
 
 
+class GovernanceCommonLineCandidate(BaseModel):
+    signature: str = Field(..., min_length=1, max_length=400)
+    sample: str = Field(default="", max_length=400)
+    docs: int = Field(default=0, ge=0, le=1_000_000)
+    ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class GovernanceCommonLinesLearnRequest(BaseModel):
+    dataset_id: UUID
+    limit_docs: int = Field(default=20, ge=2, le=50)
+    use_original: bool = Field(
+        default=True,
+        description="Prefer DocumentParsedContent.original_markdown_content (pre-governance) when available.",
+    )
+    min_docs: int = Field(default=3, ge=2, le=50)
+    min_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
+    max_line_length: int = Field(default=120, ge=20, le=400)
+    max_candidates: int = Field(default=50, ge=1, le=200)
+
+
+class GovernanceCommonLinesLearnResponse(BaseModel):
+    dataset_id: UUID
+    total_documents: int = 0
+    used_documents: int = 0
+    candidates: List[GovernanceCommonLineCandidate] = Field(default_factory=list)
+
+
 class CleanPreviewRequest(BaseModel):
     markdown: str
     rules: List[RegexRuleModel] = Field(default_factory=list)

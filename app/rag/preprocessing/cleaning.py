@@ -204,6 +204,109 @@ def build_repeated_line_signatures(
     return {k for k, c in counts.items() if c >= max(2, int(min_occurrences))}
 
 
+def _normalize_line_for_display(line: str) -> str:
+    """
+    Normalize a line for user-facing display (keeps original casing).
+
+    Keep this aligned with _normalize_line_signature() so candidates map cleanly to signatures.
+    """
+    text = (line or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text)
+    text = _TRAILING_PAGE_OF_RE.sub("", text)
+    text = _TRAILING_PAGE_WORD_RE.sub("", text)
+    text = _TRAILING_PAGE_NUM_RE.sub("", text)
+    text = _TRAILING_PAGE_CN_OF_RE.sub("", text)
+    text = _TRAILING_PAGE_CN_RE.sub("", text)
+    return text.strip()
+
+
+def learn_common_line_candidates(
+    texts: Sequence[str],
+    *,
+    min_docs: int = 3,
+    min_ratio: float = 0.35,
+    max_line_length: int = 120,
+    max_candidates: int = 50,
+) -> list[dict[str, object]]:
+    """
+    Suggest "common lines" across multiple documents (dataset-level learning mode).
+
+    Returns a list of dicts with keys:
+      - signature: normalized signature (casefolded)
+      - sample: display text (original casing, whitespace collapsed)
+      - docs: doc frequency
+      - ratio: docs / total_docs
+
+    Notes:
+    - This is best-effort and intentionally conservative; it skips code fences and structural lines.
+    - The consumer (UI) can convert `sample` into a regex rule (e.g. (?mi)^\\s*...\\s*$).
+    """
+    if not texts:
+        return []
+
+    doc_count = len(texts)
+    min_docs_eff = max(2, int(min_docs or 0))
+    if doc_count < min_docs_eff:
+        return []
+
+    max_line_length_eff = max(0, int(max_line_length or 0)) or 120
+
+    line_docs: dict[str, int] = {}
+    samples: dict[str, str] = {}
+
+    for text in texts:
+        seen: set[str] = set()
+        in_code = False
+        for raw_line in (text or "").splitlines():
+            if _CODE_FENCE_RE.match(raw_line):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            if _is_structural_line(raw_line):
+                continue
+
+            signature = _normalize_line_signature(raw_line)
+            if not signature:
+                continue
+            if len(signature) > max_line_length_eff:
+                continue
+
+            seen.add(signature)
+            if signature not in samples:
+                samples[signature] = _normalize_line_for_display(raw_line) or signature
+
+        for sig in seen:
+            line_docs[sig] = line_docs.get(sig, 0) + 1
+
+    min_ratio_eff = float(min_ratio or 0.0)
+    min_ratio_eff = max(0.0, min(1.0, min_ratio_eff))
+
+    out: list[dict[str, object]] = []
+    for sig, count in line_docs.items():
+        ratio = float(count) / float(doc_count) if doc_count else 0.0
+        if count < min_docs_eff:
+            continue
+        if ratio < min_ratio_eff:
+            continue
+        out.append(
+            {
+                "signature": sig,
+                "sample": samples.get(sig, sig),
+                "docs": int(count),
+                "ratio": float(ratio),
+            }
+        )
+
+    out.sort(key=lambda it: (int(it.get("docs", 0) or 0), float(it.get("ratio", 0.0) or 0.0)), reverse=True)
+
+    cap = max(1, int(max_candidates or 0)) if int(max_candidates or 0) else 50
+    cap = max(1, min(cap, 200))
+    return out[:cap]
+
+
 def _normalize_line_signature(line: str) -> str:
     text = line.strip()
     if not text:
