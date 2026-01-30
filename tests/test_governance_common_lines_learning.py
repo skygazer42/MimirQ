@@ -33,8 +33,8 @@ def test_learn_common_lines_endpoint_returns_candidates(monkeypatch):  # noqa: A
         lambda **_k: (
             2,
             [
-                "ACME Confidential\\n\\nHello world\\n",
-                "ACME Confidential\\n\\nAnother document\\n",
+                "ACME Confidential\n\nHello world\n",
+                "ACME Confidential\n\nAnother document\n",
             ],
         ),
         raising=True,
@@ -76,4 +76,3 @@ def test_learn_common_lines_endpoint_returns_candidates(monkeypatch):  # noqa: A
     candidates = body.get("candidates") or []
     assert isinstance(candidates, list) and candidates
     assert any("acme confidential" in str(it.get("signature") or "") for it in candidates)
-
