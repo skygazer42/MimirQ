@@ -9,11 +9,14 @@ Design goals:
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
+from urllib.robotparser import RobotFileParser
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
@@ -28,6 +31,235 @@ from app.rag.preprocessing.urls import canonicalize_url
 
 _DISALLOWED_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "file:")
 logger = get_logger("services.web_crawler")
+
+_CANONICAL_LINK_TAG_RE = re.compile(r"(?is)<link\b[^>]*>")
+_CANONICAL_REL_RE = re.compile(r"(?is)\brel\s*=\s*(?:\"([^\"]+)\"|'([^']+)'|([^\s>]+))")
+_CANONICAL_HREF_RE = re.compile(r"(?is)\bhref\s*=\s*(?:\"([^\"]+)\"|'([^']+)'|([^\s>]+))")
+
+
+def _extract_canonical_url(html_text: str, *, base_url: str) -> str | None:
+    """
+    Best-effort extraction of <link rel="canonical" href="..."> from HTML.
+
+    This is intentionally dependency-free and conservative; it may miss edge cases.
+    """
+    raw = (html_text or "").strip()
+    if not raw:
+        return None
+
+    for m in _CANONICAL_LINK_TAG_RE.finditer(raw[:200_000]):  # bound work on huge pages
+        tag = m.group(0) or ""
+        rel_m = _CANONICAL_REL_RE.search(tag)
+        rel_raw = (rel_m.group(1) or rel_m.group(2) or rel_m.group(3) or "") if rel_m else ""
+        rel = str(rel_raw).strip().lower()
+        if not rel:
+            continue
+        # rel can contain multiple tokens, e.g. "canonical nofollow".
+        if "canonical" not in {t for t in re.split(r"\s+", rel) if t}:
+            continue
+        href_m = _CANONICAL_HREF_RE.search(tag)
+        href_raw = (href_m.group(1) or href_m.group(2) or href_m.group(3) or "") if href_m else ""
+        href = str(href_raw).strip()
+        if not href:
+            continue
+        try:
+            return _normalize_url(urljoin(base_url, href))
+        except Exception:
+            return None
+    return None
+
+
+def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list[str]:
+    """
+    Extract "Sitemap:" entries from robots.txt (best-effort).
+    """
+    if not text:
+        return []
+    out: list[str] = []
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if not line.lower().startswith("sitemap:"):
+            continue
+        url = line.split(":", 1)[1].strip()
+        if not url:
+            continue
+        try:
+            out.append(_normalize_url(urljoin(base_url, url)))
+        except Exception:
+            continue
+    # Dedup while preserving order.
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for u in out:
+        if u in seen:
+            continue
+        seen.add(u)
+        deduped.append(u)
+    return deduped
+
+
+def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
+    """
+    Parse sitemap XML, returning (page_urls, sitemap_urls) lists.
+
+    Supports both <urlset> and <sitemapindex>.
+    """
+    raw = (xml_text or "").strip()
+    if not raw:
+        return [], []
+
+    # Avoid huge CPU work on very large sitemaps.
+    raw = raw[:5_000_000]
+
+    try:
+        import xml.etree.ElementTree as ET
+
+        root = ET.fromstring(raw)
+    except Exception:
+        return [], []
+
+    def tag_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+    root_name = tag_name(str(getattr(root, "tag", "") or "")).lower()
+
+    page_urls: list[str] = []
+    sitemap_urls: list[str] = []
+
+    if root_name.endswith("sitemapindex"):
+        for child in list(root):
+            if tag_name(str(getattr(child, "tag", "") or "")).lower() != "sitemap":
+                continue
+            loc_el = None
+            for el in list(child):
+                if tag_name(str(getattr(el, "tag", "") or "")).lower() == "loc":
+                    loc_el = el
+                    break
+            loc = (loc_el.text or "").strip() if loc_el is not None else ""
+            if loc:
+                sitemap_urls.append(loc)
+        return page_urls, sitemap_urls
+
+    if root_name.endswith("urlset"):
+        for child in list(root):
+            if tag_name(str(getattr(child, "tag", "") or "")).lower() != "url":
+                continue
+            loc_el = None
+            for el in list(child):
+                if tag_name(str(getattr(el, "tag", "") or "")).lower() == "loc":
+                    loc_el = el
+                    break
+            loc = (loc_el.text or "").strip() if loc_el is not None else ""
+            if loc:
+                page_urls.append(loc)
+        return page_urls, sitemap_urls
+
+    # Fallback: extract any <loc> to page_urls (best-effort).
+    for el in root.iter():
+        if tag_name(str(getattr(el, "tag", "") or "")).lower() != "loc":
+            continue
+        loc = (el.text or "").strip()
+        if loc:
+            page_urls.append(loc)
+    return page_urls, sitemap_urls
+
+
+class _RobotsCache:
+    """
+    Best-effort robots.txt policy cache keyed by netloc.
+
+    - Fetch failures are treated as "allow all" (cache None).
+    - Uses validate_url_for_ingest per hop to preserve SSRF defenses.
+    """
+
+    def __init__(self) -> None:
+        self._cache: dict[str, RobotFileParser | None] = {}
+        self._raw: dict[str, str] = {}
+
+    def get_raw(self, netloc: str) -> str | None:
+        return self._raw.get(netloc)
+
+    async def _load(
+        self,
+        *,
+        base_url: str,
+        headers: Dict[str, str],
+        timeout_sec: float,
+        follow_redirects: bool,
+    ) -> RobotFileParser | None:
+        try:
+            parsed = urlsplit(base_url)
+        except Exception:
+            return None
+        scheme = parsed.scheme or "https"
+        netloc = (parsed.netloc or "").strip().lower()
+        if not netloc:
+            return None
+
+        if netloc in self._cache:
+            return self._cache[netloc]
+
+        robots_url = urlunsplit((scheme, netloc, "/robots.txt", "", ""))
+        try:
+            safe = await validate_url_for_ingest(robots_url)
+        except Exception:
+            self._cache[netloc] = None
+            return None
+
+        try:
+            text, final_url, content_type = await _fetch_page_text(
+                safe,
+                headers={**headers, "Accept": "text/plain,*/*;q=0.1"},
+                timeout_sec=timeout_sec,
+                max_bytes=250_000,
+                follow_redirects=follow_redirects,
+            )
+        except Exception:
+            self._cache[netloc] = None
+            return None
+
+        if content_type and "text" not in content_type:
+            # robots should be text; treat unexpected content types as allow-all.
+            self._cache[netloc] = None
+            return None
+
+        rp = RobotFileParser()
+        rp.set_url(final_url or robots_url)
+        with contextlib.suppress(Exception):
+            rp.parse((text or "").splitlines())
+
+        self._cache[netloc] = rp
+        self._raw[netloc] = text or ""
+        return rp
+
+    async def can_fetch(
+        self,
+        url: str,
+        *,
+        user_agent: str,
+        headers: Dict[str, str],
+        timeout_sec: float,
+        follow_redirects: bool,
+    ) -> bool:
+        try:
+            parsed = urlsplit(url)
+        except Exception:
+            return True
+        base = urlunsplit((parsed.scheme, parsed.netloc, "/", "", ""))
+
+        rp = await self._load(
+            base_url=base,
+            headers=headers,
+            timeout_sec=timeout_sec,
+            follow_redirects=follow_redirects,
+        )
+        if rp is None:
+            return True
+        with contextlib.suppress(Exception):
+            return bool(rp.can_fetch(user_agent, url))
+        return True
 
 
 @lru_cache(maxsize=1)
@@ -189,6 +421,10 @@ async def crawl_site(
     same_host_only: bool,
     include_patterns: List[str],
     exclude_patterns: List[str],
+    use_sitemaps: bool = False,
+    sitemap_urls: Optional[List[str]] = None,
+    respect_robots: bool = False,
+    dedup_canonical: bool = True,
     headers: Optional[Dict[str, str]] = None,
     user_agent: Optional[str] = None,
     timeout_sec: Optional[float] = None,
@@ -234,12 +470,150 @@ async def crawl_site(
         max_bytes_eff = int(getattr(settings, "MAX_FILE_SIZE", 0) or 50_000_000)
     follow_eff = bool(follow_redirects) if follow_redirects is not None else bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False))
 
+    robots_cache: _RobotsCache | None = _RobotsCache() if respect_robots else None
+
+    # Optional: sitemap-first discovery mode (best-effort).
+    #
+    # We intentionally do NOT fetch every discovered page here; the connector ingestion stage
+    # will fetch each URL anyway. The crawler's job is to produce a bounded URL list.
+    if use_sitemaps:
+        sitemap_seed_urls: list[str] = []
+        raw_sitemap_urls = sitemap_urls if isinstance(sitemap_urls, list) else []
+        for u in raw_sitemap_urls:
+            s = str(u or "").strip()
+            if s:
+                sitemap_seed_urls.append(s)
+
+        # Infer {scheme}://{host}/sitemap.xml for each start URL host as a fallback.
+        for s in seeds:
+            try:
+                parsed = urlsplit(s)
+            except Exception:
+                continue
+            if not parsed.scheme or not parsed.netloc:
+                continue
+            sitemap_seed_urls.append(urlunsplit((parsed.scheme, parsed.netloc, "/sitemap.xml", "", "")))
+
+        # Dedup sitemap urls.
+        sitemap_seen: set[str] = set()
+        sitemap_queue: deque[str] = deque()
+        for u in sitemap_seed_urls:
+            nu = _normalize_url(u)
+            if not nu or nu in sitemap_seen:
+                continue
+            sitemap_seen.add(nu)
+            sitemap_queue.append(nu)
+
+        discovered_pages: list[str] = []
+        sitemap_errors: list[Dict[str, Any]] = []
+
+        # Attempt to pull sitemap URLs from robots.txt (best-effort) to cover common setups.
+        if robots_cache is not None:
+            for s in seeds:
+                try:
+                    parsed = urlsplit(s)
+                except Exception:
+                    continue
+                base = urlunsplit((parsed.scheme, parsed.netloc, "/", "", ""))
+                await robots_cache._load(base_url=base, headers=h, timeout_sec=timeout_eff, follow_redirects=follow_eff)
+                raw_txt = robots_cache.get_raw((parsed.netloc or "").strip().lower()) or ""
+                if raw_txt:
+                    sitemap_from_robots = _extract_sitemap_candidates_from_robots(raw_txt, base_url=base)
+                    for u in sitemap_from_robots:
+                        nu = _normalize_url(u)
+                        if not nu or nu in sitemap_seen:
+                            continue
+                        sitemap_seen.add(nu)
+                        sitemap_queue.append(nu)
+
+        sitemap_hops = 0
+        while sitemap_queue and len(discovered_pages) < int(max_pages):
+            sitemap_hops += 1
+            if sitemap_hops > 40:
+                break
+            sitemap_url = sitemap_queue.popleft()
+            try:
+                safe = await validate_url_for_ingest(sitemap_url)
+            except Exception as exc:
+                if len(sitemap_errors) < 20:
+                    sitemap_errors.append({"url": sitemap_url, "error": str(getattr(exc, "detail", exc))[:200]})
+                continue
+
+            try:
+                xml_text, final_url, _ct = await _fetch_page_text(
+                    safe,
+                    headers={**h, "Accept": "application/xml,text/xml,application/xhtml+xml;q=0.9,*/*;q=0.1"},
+                    timeout_sec=timeout_eff,
+                    max_bytes=max(1_000_000, min(max_bytes_eff, 10_000_000)),
+                    follow_redirects=follow_eff,
+                )
+            except Exception as exc:
+                if len(sitemap_errors) < 20:
+                    sitemap_errors.append({"url": safe, "error": str(exc)[:200]})
+                continue
+
+            base_url = final_url or safe
+            pages, nested = _parse_sitemap_xml(xml_text)
+
+            for raw_page in pages:
+                if len(discovered_pages) >= int(max_pages):
+                    break
+                try:
+                    candidate = _normalize_url(urljoin(base_url, str(raw_page or "").strip()))
+                except Exception:
+                    continue
+                if not candidate:
+                    continue
+                if include_re and not _match_any(candidate, include_re):
+                    continue
+                if exclude_re and _match_any(candidate, exclude_re):
+                    continue
+                if same_host_only and allowed_netlocs:
+                    with contextlib.suppress(Exception):
+                        if urlsplit(candidate).netloc.lower() not in allowed_netlocs:
+                            continue
+                if robots_cache is not None:
+                    allowed = await robots_cache.can_fetch(
+                        candidate,
+                        user_agent=ua,
+                        headers=h,
+                        timeout_sec=timeout_eff,
+                        follow_redirects=follow_eff,
+                    )
+                    if not allowed:
+                        continue
+                discovered_pages.append(candidate)
+
+            for raw_child in nested:
+                child = str(raw_child or "").strip()
+                if not child:
+                    continue
+                try:
+                    child = _normalize_url(urljoin(base_url, child))
+                except Exception:
+                    continue
+                if not child or child in sitemap_seen:
+                    continue
+                sitemap_seen.add(child)
+                sitemap_queue.append(child)
+
+        # If we found any sitemap pages, return early (bounded).
+        if discovered_pages:
+            safe_out: list[str] = []
+            for u in discovered_pages[: int(max_pages)]:
+                try:
+                    safe_out.append(await validate_url_for_ingest(u))
+                except Exception:
+                    continue
+            return WebCrawlResult(urls=safe_out, visited=0, queued=0, errors=sitemap_errors)
+
     q: deque[Tuple[str, int]] = deque()
     for u in seeds:
         q.append((_normalize_url(u), 0))
 
     visited: set[str] = set()
     out: List[str] = []
+    out_keys: set[str] = set()
     errors: List[Dict[str, Any]] = []
     degraded_seen: set[tuple[str, str]] = set()
 
@@ -274,26 +648,51 @@ async def crawl_site(
                 errors.append({"url": url, "error": str(exc)[:200]})
             continue
 
-        out.append(safe_url)
+        # Optional robots.txt gate (best-effort).
+        if robots_cache is not None:
+            allowed = await robots_cache.can_fetch(
+                safe_url,
+                user_agent=ua,
+                headers=h,
+                timeout_sec=timeout_eff,
+                follow_redirects=follow_eff,
+            )
+            if not allowed:
+                continue
+
+        # Fetch when needed: link discovery and/or canonical dedup.
+        text = ""
+        final_url = safe_url
+        content_type = ""
+        should_fetch = bool(depth < int(max_depth)) or bool(dedup_canonical)
+        if should_fetch:
+            try:
+                text, final_url, content_type = await _fetch_page_text(
+                    safe_url,
+                    headers=h,
+                    timeout_sec=timeout_eff,
+                    max_bytes=max_bytes_eff,
+                    follow_redirects=follow_eff,
+                )
+            except Exception as exc:
+                if len(errors) < 20:
+                    errors.append({"url": safe_url, "error": str(exc)[:200]})
+                # Fall back to ingesting the URL even if fetch/link discovery failed.
+
+        canonical_url = None
+        if dedup_canonical and text and "html" in (content_type or ""):
+            canonical_url = _extract_canonical_url(text, base_url=final_url)
+
+        out_url = canonical_url or safe_url
+        out_key = _normalize_url(out_url)
+        if out_key and out_key not in out_keys:
+            out_keys.add(out_key)
+            out.append(out_url)
 
         if depth >= int(max_depth):
             continue
 
-        # Fetch and discover links (HTML only).
-        try:
-            text, final_url, content_type = await _fetch_page_text(
-                safe_url,
-                headers=h,
-                timeout_sec=timeout_eff,
-                max_bytes=max_bytes_eff,
-                follow_redirects=follow_eff,
-            )
-        except Exception as exc:
-            if len(errors) < 20:
-                errors.append({"url": safe_url, "error": str(exc)[:200]})
-            continue
-
-        if "html" not in (content_type or ""):
+        if not text or "html" not in (content_type or ""):
             continue
 
         links, degraded = _extract_links_from_html(text, base_url=final_url)
@@ -325,6 +724,16 @@ async def crawl_site(
                     if urlsplit(link).netloc.lower() not in allowed_netlocs:
                         continue
                 except Exception:
+                    continue
+            if robots_cache is not None:
+                allowed = await robots_cache.can_fetch(
+                    link,
+                    user_agent=ua,
+                    headers=h,
+                    timeout_sec=timeout_eff,
+                    follow_redirects=follow_eff,
+                )
+                if not allowed:
                     continue
             q.append((link, depth + 1))
 

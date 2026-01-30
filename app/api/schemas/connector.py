@@ -115,6 +115,19 @@ class WebCrawlConnectorConfig(BaseModel):
     same_host_only: bool = Field(default=True, description="Only follow links under the same host as start_urls")
     include_patterns: List[str] = Field(default_factory=list, description="Regex patterns; if set, only matched URLs are crawled")
     exclude_patterns: List[str] = Field(default_factory=list, description="Regex patterns to exclude URLs")
+    use_sitemaps: bool = Field(
+        default=False,
+        description="If true, try sitemap.xml (and robots.txt Sitemap hints) before link crawling (best-effort).",
+    )
+    sitemap_urls: List[str] = Field(
+        default_factory=list,
+        description="Optional explicit sitemap URLs (one or more sitemap.xml / sitemapindex.xml).",
+    )
+    respect_robots: bool = Field(default=False, description="If true, respect robots.txt allow/deny rules (best-effort).")
+    dedup_canonical: bool = Field(
+        default=True,
+        description="If true, deduplicate pages by <link rel='canonical'> when crawling HTML (best-effort).",
+    )
     user_agent: Optional[str] = Field(default=None, max_length=200)
     auth: Optional[WebCrawlAuthConfig] = None
 
@@ -139,6 +152,19 @@ class WebCrawlConnectorConfig(BaseModel):
             if len(normalized) >= 5:
                 break
         self.start_urls = normalized
+
+        # Deduplicate sitemap URLs (keep it bounded; sitemap discovery is optional).
+        sitemap_seen: set[str] = set()
+        sitemap_norm: list[str] = []
+        for raw in self.sitemap_urls or []:
+            url = str(raw or "").strip()
+            if not url or url in sitemap_seen:
+                continue
+            sitemap_seen.add(url)
+            sitemap_norm.append(url)
+            if len(sitemap_norm) >= 10:
+                break
+        self.sitemap_urls = sitemap_norm
 
         # Cap regex patterns to reduce ReDoS risk (compiled server-side).
         self.include_patterns = [str(p or "").strip()[:500] for p in (self.include_patterns or []) if str(p or "").strip()][:30]
