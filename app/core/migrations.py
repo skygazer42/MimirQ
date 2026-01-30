@@ -207,6 +207,15 @@ def apply_runtime_migrations(engine) -> None:
             'ON connector_run_documents (tenant_id, run_id);',
             'CREATE INDEX IF NOT EXISTS ix_connector_run_documents_tenant_document '
             'ON connector_run_documents (tenant_id, document_id);',
+            # Saved connector configurations (best-effort; requires connector_configs table).
+            'CREATE INDEX IF NOT EXISTS ix_connector_configs_tenant_created_at '
+            'ON connector_configs (tenant_id, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_connector_configs_tenant_dataset_created_at '
+            'ON connector_configs (tenant_id, dataset_id, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_connector_configs_tenant_connector_created_at '
+            'ON connector_configs (tenant_id, connector_id, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_connector_configs_tenant_enabled_schedule '
+            'ON connector_configs (tenant_id, enabled, schedule_cron);',
 
             # KG (optional): lookups by tenant/doc and join table hot paths
             'CREATE INDEX IF NOT EXISTS ix_kg_source_events_tenant_document '
