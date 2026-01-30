@@ -130,6 +130,10 @@ export interface WebCrawlConnectorConfig {
   same_host_only?: boolean
   include_patterns?: string[]
   exclude_patterns?: string[]
+  use_sitemaps?: boolean
+  sitemap_urls?: string[]
+  respect_robots?: boolean
+  dedup_canonical?: boolean
   user_agent?: string | null
   auth?: WebCrawlAuthConfig | null
 
