@@ -8,7 +8,9 @@ venv/
 env/
 ENV/
 .venv/
+.venv
 .venv*/
+.venv*
 build/
 dist/
 *.egg-info/
@@ -19,8 +21,11 @@ dist/
 
 # Node
 node_modules/
+node_modules
 .next/
+.next
 .next_build/
+.next_build
 out/
 dist/
 .npm
