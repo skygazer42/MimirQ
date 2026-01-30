@@ -508,6 +508,10 @@ export default function KnowledgePage() {
   const [webCrawlSameHostOnly, setWebCrawlSameHostOnly] = useState(true)
   const [webCrawlIncludePatterns, setWebCrawlIncludePatterns] = useState('')
   const [webCrawlExcludePatterns, setWebCrawlExcludePatterns] = useState('')
+  const [webCrawlUseSitemaps, setWebCrawlUseSitemaps] = useState(false)
+  const [webCrawlSitemapUrls, setWebCrawlSitemapUrls] = useState('')
+  const [webCrawlRespectRobots, setWebCrawlRespectRobots] = useState(false)
+  const [webCrawlDedupCanonical, setWebCrawlDedupCanonical] = useState(true)
   const [webCrawlUserAgent, setWebCrawlUserAgent] = useState('')
   const [webCrawlAuthType, setWebCrawlAuthType] = useState<'none' | 'cookie' | 'bearer' | 'basic'>('none')
   const [webCrawlAuthCookie, setWebCrawlAuthCookie] = useState('')
@@ -550,6 +554,23 @@ export default function KnowledgePage() {
       seen.add(p)
       out.push(p)
       if (out.length >= 5) break
+    }
+    return out
+  }, [])
+
+  const parseWebCrawlSitemapUrls = useCallback((raw: string): string[] => {
+    const parts = (raw || '')
+      .split(/[\n,;]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const p of parts) {
+      if (!/^https?:\/\//i.test(p)) continue
+      if (seen.has(p)) continue
+      seen.add(p)
+      out.push(p)
+      if (out.length >= 10) break
     }
     return out
   }, [])
@@ -766,6 +787,10 @@ export default function KnowledgePage() {
           same_host_only: Boolean(webCrawlSameHostOnly),
           include_patterns: parsePatterns(webCrawlIncludePatterns, 30),
           exclude_patterns: parsePatterns(webCrawlExcludePatterns, 60),
+          use_sitemaps: Boolean(webCrawlUseSitemaps),
+          sitemap_urls: parseWebCrawlSitemapUrls(webCrawlSitemapUrls),
+          respect_robots: Boolean(webCrawlRespectRobots),
+          dedup_canonical: Boolean(webCrawlDedupCanonical),
           user_agent: webCrawlUserAgent.trim() ? webCrawlUserAgent.trim() : undefined,
           auth,
           filename: webCrawlFilename.trim() ? webCrawlFilename.trim() : undefined,
@@ -785,6 +810,10 @@ export default function KnowledgePage() {
       setWebCrawlSameHostOnly(true)
       setWebCrawlIncludePatterns('')
       setWebCrawlExcludePatterns('')
+      setWebCrawlUseSitemaps(false)
+      setWebCrawlSitemapUrls('')
+      setWebCrawlRespectRobots(false)
+      setWebCrawlDedupCanonical(true)
       setWebCrawlUserAgent('')
       setWebCrawlAuthType('none')
       setWebCrawlAuthCookie('')
@@ -808,6 +837,7 @@ export default function KnowledgePage() {
     parseAccessMembers,
     parsePatterns,
     parseWebCrawlStartUrls,
+    parseWebCrawlSitemapUrls,
     parserBackend,
     pipelineOptions,
     pipelineOverridesEnabled,
@@ -820,13 +850,17 @@ export default function KnowledgePage() {
     webCrawlAuthType,
     webCrawlAuthUsername,
     webCrawlDatasetId,
+    webCrawlDedupCanonical,
     webCrawlExcludePatterns,
     webCrawlFilename,
     webCrawlIncludePatterns,
     webCrawlMaxDepth,
     webCrawlMaxPages,
+    webCrawlRespectRobots,
     webCrawlSameHostOnly,
+    webCrawlSitemapUrls,
     webCrawlStartUrls,
+    webCrawlUseSitemaps,
     webCrawlUserAgent,
   ])
 
@@ -1305,6 +1339,59 @@ export default function KnowledgePage() {
                           placeholder={'/logout\n\\?print=1'}
                           className="font-mono min-h-[110px]"
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Discovery (optional)</div>
+                        <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+                          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={webCrawlUseSitemaps}
+                              onChange={(e) => setWebCrawlUseSitemaps(e.target.checked)}
+                              className="accent-primary h-4 w-4"
+                            />
+                            Use sitemap.xml / robots Sitemap hints (faster)
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={webCrawlRespectRobots}
+                              onChange={(e) => setWebCrawlRespectRobots(e.target.checked)}
+                              className="accent-primary h-4 w-4"
+                            />
+                            Respect robots.txt (best-effort)
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={webCrawlDedupCanonical}
+                              onChange={(e) => setWebCrawlDedupCanonical(e.target.checked)}
+                              className="accent-primary h-4 w-4"
+                            />
+                            Dedup by canonical link (best-effort)
+                          </label>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Tip: sitemap mode avoids fetching every page just to discover links; the connector still ingests each URL.
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Sitemap URLs (optional, max 10)</div>
+                        <Textarea
+                          value={webCrawlSitemapUrls}
+                          onChange={(e) => setWebCrawlSitemapUrls(e.target.value)}
+                          placeholder={'https://example.com/sitemap.xml\nhttps://example.com/sitemap_index.xml'}
+                          className="font-mono min-h-[110px]"
+                          disabled={!webCrawlUseSitemaps}
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          {webCrawlUseSitemaps
+                            ? `Parsed: ${parseWebCrawlSitemapUrls(webCrawlSitemapUrls).length} urls`
+                            : 'Enable “Use sitemap” to edit; otherwise the crawler will just follow links from seeds.'}
+                        </div>
                       </div>
                     </div>
 

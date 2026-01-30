@@ -15,7 +15,6 @@ from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
