@@ -41,6 +41,9 @@ import {
   Globe,
   Filter,
   X,
+  ChevronDown,
+  ChevronRight,
+  Copy,
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -523,6 +526,20 @@ export default function KnowledgePage() {
   const [webCrawlSubmitting, setWebCrawlSubmitting] = useState(false)
   const [connectorRuns, setConnectorRuns] = useState<ConnectorRunOut[]>([])
   const [connectorRunsLoading, setConnectorRunsLoading] = useState(false)
+  const [expandedConnectorRunId, setExpandedConnectorRunId] = useState<string | null>(null)
+
+  const copyText = useCallback(async (text: string, okMsg: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        toast.error('复制失败：浏览器不支持 Clipboard API')
+        return
+      }
+      await navigator.clipboard.writeText(text)
+      toast.success(okMsg)
+    } catch {
+      toast.error('复制失败')
+    }
+  }, [])
 
   const parseUrlBatchUrls = useCallback((raw: string): string[] => {
     const parts = (raw || '')
@@ -2390,6 +2407,72 @@ export default function KnowledgePage() {
                                           </div>
                                         ))}
                                       </div>
+                                    </div>
+                                  ) : null}
+
+                                  {Array.isArray((run as any).documents) && (run as any).documents.length > 0 ? (
+                                    <div className="mt-3">
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/80"
+                                        onClick={() =>
+                                          setExpandedConnectorRunId((prev) => (prev === run.id ? null : run.id))
+                                        }
+                                      >
+                                        {expandedConnectorRunId === run.id ? (
+                                          <ChevronDown className="h-4 w-4" />
+                                        ) : (
+                                          <ChevronRight className="h-4 w-4" />
+                                        )}
+                                        产物列表（{(run as any).documents.length}）
+                                      </button>
+
+                                      {expandedConnectorRunId === run.id ? (
+                                        <div className="mt-2 rounded-lg border border-border/60 bg-background/40 p-3">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="text-xs font-medium text-foreground/80">Documents</div>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-7 px-2 gap-1.5"
+                                              onClick={() => {
+                                                const ids = (run as any).documents
+                                                  .map((d: any) => String(d?.document_id || '').trim())
+                                                  .filter(Boolean)
+                                                void copyText(ids.join('\n'), '已复制文档 ID 列表')
+                                              }}
+                                            >
+                                              <Copy className="h-3.5 w-3.5" />
+                                              复制 IDs
+                                            </Button>
+                                          </div>
+                                          <div className="mt-2 space-y-1">
+                                            {(run as any).documents.slice(0, 15).map((d: any) => (
+                                              <div key={String(d?.document_id)} className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                  <div className="text-[11px] font-mono text-foreground/90 truncate">
+                                                    {String(d?.document_id || '')}
+                                                  </div>
+                                                  {d?.source_ref ? (
+                                                    <div className="mt-0.5 text-[10px] text-muted-foreground font-mono truncate">
+                                                      {String(d.source_ref)}
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                                <div className="shrink-0 text-[10px] font-mono rounded-full border border-border/60 bg-background px-2 py-0.5">
+                                                  {String(d?.status || 'created')}
+                                                </div>
+                                              </div>
+                                            ))}
+                                            {(run as any).documents.length > 15 ? (
+                                              <div className="text-[10px] text-muted-foreground">
+                                                …(+{(run as any).documents.length - 15})
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   ) : null}
                                 </div>
