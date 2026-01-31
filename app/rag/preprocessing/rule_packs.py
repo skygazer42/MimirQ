@@ -64,6 +64,13 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         RegexRule(pattern=r"(?mi)^\s*created\s+by\b.*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*last\s+updated\b.*$", repl="", flags=0),
     ],
+    "markdown_export_noise": [
+        # Generic "exported/converted by ..." headers and footers.
+        RegexRule(pattern=r"(?mi)^\s*generated\s+by\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*exported\s+from\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*created\s+with\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*last\s+updated\b.*$", repl="", flags=0),
+    ],
 }
 
 
