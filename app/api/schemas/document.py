@@ -324,6 +324,22 @@ class DocumentBatchRetryRequest(BaseModel):
     skip_if_unchanged: bool = False
 
 
+class DocumentBatchReingestRequest(BaseModel):
+    """
+    Batch re-ingest documents (patch pipeline then retry).
+
+    Intended for pipeline version regeneration and index rebuilds:
+    - update `documents.metadata.pipeline` overrides (optional)
+    - trigger `/documents/{id}/retry` with `force` (default true)
+    """
+
+    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    patch: DocumentPipelineOptions = Field(default_factory=DocumentPipelineOptions)
+    replace: bool = False
+    force: bool = True
+    skip_if_unchanged: bool = False
+
+
 class DocumentBatchRetryResponse(BaseModel):
     """Batch retry result."""
 
