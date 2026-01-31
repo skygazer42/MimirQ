@@ -111,10 +111,10 @@ from app.services.ingestion_policy import (
 from app.services.mineru_service import mineru_service
 from app.services.pipeline_config import (
     build_indexing_options,
-    build_pipeline_metadata,
     merge_pipeline_options,
     parse_pipeline_from_metadata,
     resolve_pipeline_effective,
+    upsert_pipeline_metadata,
 )
 from app.services.preview_cache import ParseCacheEntry, preview_parse_cache, preview_parse_locks
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
@@ -2186,8 +2186,6 @@ async def _ingest_url_upload_request(
     if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
         _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
 
-    pipeline_metadata = build_pipeline_metadata(pipeline_options)
-
     # 6) Create document record.
     doc_metadata = {
         "parser_backend": resolved_parser_backend,
@@ -2203,8 +2201,7 @@ async def _ingest_url_upload_request(
         "url_normalized_final": url_normalized_final or None,
         "url_normalized_canonical": url_normalized_canonical,
     }
-    if pipeline_metadata:
-        doc_metadata["pipeline"] = pipeline_metadata
+    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
     if ingestion_meta:
         doc_metadata["ingestion"] = ingestion_meta
 
@@ -2456,7 +2453,6 @@ async def upload_document(
     )
     if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
         _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
-    pipeline_metadata = build_pipeline_metadata(pipeline_options)
 
     # 3. Save file.
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
@@ -2482,8 +2478,7 @@ async def upload_document(
         doc_metadata["source_path"] = source_path
     if isinstance(file_sha256, str) and file_sha256:
         doc_metadata["file_sha256"] = file_sha256
-    if pipeline_metadata:
-        doc_metadata["pipeline"] = pipeline_metadata
+    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
     if ingestion_meta:
         doc_metadata["ingestion"] = ingestion_meta
 
@@ -2898,7 +2893,6 @@ async def upload_documents_batch(
                 )
                 if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
                     _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
-                pipeline_metadata = build_pipeline_metadata(pipeline_options)
                 
                 # Permission check (already done outside semaphore).
                 # Save file.
@@ -2921,8 +2915,7 @@ async def upload_documents_batch(
                     doc_metadata["source_path"] = source_path
                 if isinstance(file_sha256, str) and file_sha256:
                     doc_metadata["file_sha256"] = file_sha256
-                if pipeline_metadata:
-                    doc_metadata["pipeline"] = pipeline_metadata
+                upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
                 if ingestion_meta:
                     doc_metadata["ingestion"] = ingestion_meta
 
@@ -5376,11 +5369,7 @@ async def patch_document_pipeline(
         base[field] = getattr(patch, field)
 
     next_opts = PipelineOptions(**base)
-    pipeline_metadata = build_pipeline_metadata(next_opts)
-    if pipeline_metadata:
-        meta["pipeline"] = pipeline_metadata
-    else:
-        meta.pop("pipeline", None)
+    upsert_pipeline_metadata(meta, options=next_opts)
 
     meta["pipeline_hash"] = _compute_pipeline_hash(meta)
 
@@ -7203,11 +7192,9 @@ async def create_document_with_manual_chunks(
         request_overrides=pipeline_options,
     )
     index_options = build_indexing_options(pipeline_effective)
-    pipeline_metadata = build_pipeline_metadata(pipeline_options)
 
     doc_metadata = dict(request.metadata or {})
-    if pipeline_metadata:
-        doc_metadata["pipeline"] = pipeline_metadata
+    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
     # Manual documents still participate in pipeline versioning (for retrieval scoping and rollback).
     doc_metadata.setdefault("parser_backend", "manual")
     doc_metadata.setdefault("chunk_strategy", "manual")
