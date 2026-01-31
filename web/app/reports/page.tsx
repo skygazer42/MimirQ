@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, BarChart3, Download, FileSearch, FileText, Layers, Loader2, RefreshCw, ShieldAlert } from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,6 +22,8 @@ import { formatApiError } from '@/lib/api-errors'
 import { formatDate, formatFileSize } from '@/lib/utils'
 
 import type { Dataset, DatasetReport } from '@/types'
+
+const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
 
 function sanitizeFilename(name: string) {
   const base = (name || '').trim() || 'dataset'
@@ -140,6 +144,25 @@ export default function ReportsCenterPage() {
   const connectorRuns = report?.connectors || []
   const folderTree = report?.folder_tree || null
   const topFolders = folderTree?.root?.children || []
+  const governance = report?.governance_metrics || null
+
+  const dropReasonsData = useMemo(() => {
+    const m = governance?.drop_reasons_total || {}
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12)
+  }, [governance?.drop_reasons_total])
+
+  const rulePacksData = useMemo(() => {
+    const m = governance?.rule_packs_docs || {}
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12)
+  }, [governance?.rule_packs_docs])
 
   return (
     <AppFrame>
@@ -267,6 +290,79 @@ export default function ReportsCenterPage() {
                 <StatCard icon={Layers} label="Pipeline Versions" value={String(pipelineVersions.length)} color="blue" />
                 <StatCard icon={RefreshCw} label="Connector Runs" value={String(connectorRuns.length)} color="gray" />
               </StatsGrid>
+
+              {governance ? (
+                <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-foreground">治理指标</div>
+                      <div className="text-xs text-muted-foreground">
+                        采样 {governance.used_documents}/{governance.total_documents}
+                        {governance.truncated ? '（已截断）' : ''}
+                      </div>
+                    </div>
+                    <Badge variant={governance.truncated ? 'soft' : 'outline'} className="text-xs">
+                      docs_with_governance: {governance.docs_with_governance}/{governance.used_documents}
+                    </Badge>
+                  </div>
+
+                  <StatsGrid className="md:grid-cols-4">
+                    <StatCard icon={BarChart3} label="规则命中（总）" value={String(governance.rules_applied_total || 0)} color="blue" />
+                    <StatCard icon={RefreshCw} label="变更文档（总）" value={String(governance.changed_documents_total || 0)} color="teal" />
+                    <StatCard icon={ShieldAlert} label="过滤/隔离（总）" value={String(governance.dropped_documents_total || 0)} color="amber" />
+                    <StatCard icon={Layers} label="Rule Packs（doc count）" value={String(Object.keys(governance.rule_packs_docs || {}).length)} color="gray" />
+                  </StatsGrid>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="text-sm font-semibold text-foreground mb-2">Drop Reasons（Top）</div>
+                      {dropReasonsData.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">暂无数据</div>
+                      ) : (
+                        <div className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie data={dropReasonsData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={90}>
+                                {dropReasonsData.map((_, idx) => (
+                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="text-sm font-semibold text-foreground mb-2">Rule Packs（Top）</div>
+                      {rulePacksData.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">暂无数据</div>
+                      ) : (
+                        <div className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={rulePacksData} layout="vertical" margin={{ left: 90, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                              <XAxis type="number" />
+                              <YAxis type="category" dataKey="name" width={80} />
+                              <Tooltip />
+                              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                                {rulePacksData.map((_, idx) => (
+                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/60 bg-card/40 p-4">
+                  <div className="text-sm text-muted-foreground">暂无治理指标（后端未返回 governance_metrics）</div>
+                </div>
+              )}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
