@@ -53,3 +53,12 @@ def test_remove_markdown_boilerplate_removes_strong_footer_lines():
     assert "Hello" in res.text
     assert "World" in res.text
 
+
+def test_remove_markdown_boilerplate_removes_common_nav_cta_lines():
+    md = "Intro\n\n阅读原文\n\nBody\n\nRead more\n\nWorld\n"
+    res = remove_markdown_boilerplate(md)
+    assert "阅读原文" not in res.text
+    assert "Read more" not in res.text
+    assert "Intro" in res.text
+    assert "Body" in res.text
+    assert "World" in res.text
