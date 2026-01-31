@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -28,6 +31,9 @@ from app.api.schemas.connector import (
     ConnectorRunCreateRequest,
     ConnectorRunListResponse,
     ConnectorRunOut,
+    DriveFilesConnectorConfig,
+    GitHubRepoConnectorConfig,
+    MinioBucketConnectorConfig,
     UrlBatchConnectorConfig,
     WebCrawlConnectorConfig,
 )
@@ -318,6 +324,24 @@ def list_connectors() -> list[ConnectorInfo]:
             description="从站点种子 URL 开始抓取链接并批量入库（支持 Cookie/Bearer/Basic 登录态；配置中的密钥会被加密存储并在响应中脱敏）",
             supports_incremental=False,
         ),
+        ConnectorInfo(
+            id="github_repo",
+            name="GitHub Repo 导入",
+            description="从 GitHub 仓库列出文件并通过 raw.githubusercontent.com 拉取入库（可选 Bearer token；用于私有仓库/更高 API 限额）",
+            supports_incremental=False,
+        ),
+        ConnectorInfo(
+            id="drive_files",
+            name="Google Drive 文件导入（链接）",
+            description="从 Google Drive 文件分享链接解析 file_id 并构造直链下载入库（仅文件；不支持文件夹）",
+            supports_incremental=False,
+        ),
+        ConnectorInfo(
+            id="minio_bucket",
+            name="MinIO/S3 Bucket 导入",
+            description="列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；URL_INGEST 需允许访问 MinIO 端点）",
+            supports_incremental=False,
+        ),
     ]
 
 
@@ -525,6 +549,63 @@ def _build_auth_headers(cfg: dict) -> dict[str, str]:
         b64 = base64.b64encode(raw).decode("ascii")
         return {"Authorization": f"Basic {b64}"}
     return {}
+
+
+_DRIVE_FILE_ID_FROM_PATH_RE = re.compile(r"/file/d/([^/]+)")
+
+
+def _extract_drive_file_id(url: str) -> str | None:
+    """
+    Extract Google Drive file id from common share link formats.
+
+    Supported:
+    - https://drive.google.com/file/d/<id>/view
+    - https://drive.google.com/open?id=<id>
+    - https://drive.google.com/uc?id=<id>
+    """
+    raw = str(url or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return None
+
+    host = (parsed.netloc or "").strip().lower()
+    if host not in {"drive.google.com", "docs.google.com"}:
+        return None
+
+    qs = parse_qs(parsed.query or "")
+    if "id" in qs and qs["id"]:
+        fid = str(qs["id"][0] or "").strip()
+        return fid or None
+
+    m = _DRIVE_FILE_ID_FROM_PATH_RE.search(parsed.path or "")
+    if m:
+        fid = str(m.group(1) or "").strip()
+        return fid or None
+    return None
+
+
+def _drive_direct_download_url(file_id: str) -> str:
+    fid = str(file_id or "").strip()
+    if not fid:
+        raise ValueError("drive_file_id_required")
+    # Best-effort; may still require auth/cookie for non-public files.
+    return f"https://drive.google.com/uc?export=download&id={fid}"
+
+
+def _github_raw_url(*, owner: str, repo: str, branch: str, path: str) -> str:
+    """
+    Build a raw.githubusercontent.com URL for a file path.
+    """
+    o = str(owner or "").strip()
+    r = str(repo or "").strip()
+    b = str(branch or "").strip() or "main"
+    p = str(path or "").lstrip("/").strip()
+    if not o or not r or not p:
+        raise ValueError("invalid_github_raw_url_parts")
+    return f"https://raw.githubusercontent.com/{o}/{r}/{quote(b, safe='')}/{quote(p, safe='/')}"  # noqa: E501
 
 
 async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -744,6 +825,552 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         db.close()
 
 
+def _apply_document_access_from_config(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    requested_by: str,
+    doc,  # noqa: ANN001
+    access: dict | None,
+) -> None:
+    """
+    Apply optional document-level ACL overrides for connector-created docs.
+
+    This is best-effort and does not affect pipeline_hash.
+    """
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+    access_members = access.get("partial_member_list") if isinstance(access, dict) else None
+    if not isinstance(access_members, list):
+        access_members = []
+    access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
+
+    doc.access_mode = None if access_mode == "inherit" else access_mode
+    if not (getattr(doc, "owner_id", None) or "").strip():
+        doc.owner_id = requested_by
+
+    if access_mode == "partial_members":
+        DocumentPermissionService.update_partial_member_list(
+            db,
+            tenant_id,
+            document_id=doc.id,
+            owner_id=requested_by,
+            member_ids=access_members,
+        )
+    else:
+        DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
+
+
+async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution for github_repo connector.
+
+    Flow:
+    - List repository files via GitHub API (tree)
+    - Ingest selected files via raw.githubusercontent.com URLs
+    """
+    db = SessionLocal()
+    try:
+        run = (
+            db.query(ConnectorRun)
+            .options(selectinload(ConnectorRun.documents))
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if not run:
+            return
+        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+            return
+
+        run.status = "running"
+        run.started_at = _now()
+        run.error_message = None
+        run.stats = dict(run.stats or {})
+        db.commit()
+        db.refresh(run)
+
+        cfg_raw = dict(run.config or {})
+        cfg = decrypt_connector_config_secrets(cfg_raw)
+
+        repo = str(cfg.get("repo") or "").strip()
+        if "/" not in repo:
+            raise ValueError("invalid repo")
+        owner, repo_name = repo.split("/", 1)
+        owner = owner.strip()
+        repo_name = repo_name.strip()
+        if not owner or not repo_name:
+            raise ValueError("invalid repo")
+
+        branch = str(cfg.get("branch") or "main").strip() or "main"
+        max_files = int(cfg.get("max_files") or 50)
+        include_exts = cfg.get("include_extensions") if isinstance(cfg.get("include_extensions"), list) else []
+        include_exts = [str(e or "").strip().lower() for e in include_exts if str(e or "").strip()]
+        include_exts = [("." + e if not e.startswith(".") else e) for e in include_exts]
+        include_set = set(include_exts) if include_exts else {".md", ".txt"}
+
+        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
+        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
+        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
+        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+
+        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+        auth_headers = _build_auth_headers(cfg)
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": (user_agent or "MimirQ/1.0 (+github_repo)"),
+        }
+        headers.update(auth_headers)
+
+        api_url = f"https://api.github.com/repos/{owner}/{repo_name}/git/trees/{quote(branch, safe='')}?recursive=1"
+        created = 0
+        failed = 0
+        created_doc_ids: list[UUID] = []
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            resp = await client.get(api_url, headers=headers)
+            if resp.status_code >= 400:
+                raise RuntimeError(f"github api failed (status={resp.status_code})")
+            data = resp.json()
+
+        tree = data.get("tree")
+        items = tree if isinstance(tree, list) else []
+        paths: list[str] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            if str(it.get("type") or "") != "blob":
+                continue
+            p = str(it.get("path") or "").strip()
+            if not p:
+                continue
+            ext = Path(p).suffix.lower()
+            if ext and ext not in include_set:
+                continue
+            if ext and ext in include_set:
+                paths.append(p)
+            elif not ext and "" in include_set:
+                paths.append(p)
+            if len(paths) >= max(1, min(max_files, 200)):
+                break
+
+        stats0 = dict(run.stats or {})
+        stats0.update({"total_files": int(len(paths)), "processed_files": 0, "cursor": 0, "created": 0, "failed": 0, "failed_paths": []})
+        run.stats = stats0
+        db.commit()
+
+        for idx, path in enumerate(paths):
+            try:
+                db.refresh(run)
+            except Exception:
+                pass
+            if str(run.status or "").lower() == "cancelled":
+                break
+
+            try:
+                raw_url = _github_raw_url(owner=owner, repo=repo_name, branch=branch, path=path)
+                body = UrlUploadRequest(
+                    url=raw_url,
+                    dataset_id=run.dataset_id,
+                    filename=Path(path).name,
+                    fetch_headers=auth_headers or None,
+                    user_agent=user_agent,
+                    parser_backend=str(parser_backend),
+                    chunk_strategy=str(chunk_strategy),
+                    pipeline=pipeline,  # type: ignore[arg-type]
+                )
+                doc = await _ingest_url_upload_request(
+                    background_tasks=None,
+                    body=body,
+                    tenant_id=tenant_id,
+                    account_id=requested_by,
+                    db=db,
+                )
+
+                _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
+
+                db.add(
+                    ConnectorRunDocument(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        document_id=doc.id,
+                        source_ref=path,
+                        status="created",
+                    )
+                )
+                created += 1
+                created_doc_ids.append(doc.id)
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                stats = dict(run.stats or {})
+                stats = _append_connector_error(stats, url=path, exc=exc)
+                run.stats = stats
+            finally:
+                processed = idx + 1
+                stats = dict(run.stats or {})
+                stats.update(
+                    {
+                        "total_files": int(len(paths)),
+                        "processed_files": int(processed),
+                        "cursor": int(processed),
+                        "created": int(created),
+                        "failed": int(failed),
+                        "document_ids": [str(d) for d in created_doc_ids],
+                    }
+                )
+                run.stats = _finalize_connector_stats(stats)
+                db.commit()
+
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        if str(run.status or "").lower() == "cancelled":
+            if run.finished_at is None:
+                run.finished_at = _now()
+            run.stats = _finalize_connector_stats(dict(run.stats or {}))
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+            return
+
+        stats = dict(run.stats or {})
+        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        run.stats = _finalize_connector_stats(stats)
+        run.finished_at = _now()
+        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
+    except Exception as exc:  # noqa: BLE001
+        with contextlib.suppress(Exception):
+            run = (
+                db.query(ConnectorRun)
+                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+                .first()
+            )
+            if run is not None:
+                run.status = "failed"
+                run.finished_at = _now()
+                run.error_message = str(exc)[:200]
+                db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
+    finally:
+        db.close()
+
+
+async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution for drive_files connector.
+    """
+    db = SessionLocal()
+    try:
+        run = (
+            db.query(ConnectorRun)
+            .options(selectinload(ConnectorRun.documents))
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if not run:
+            return
+        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+            return
+
+        run.status = "running"
+        run.started_at = _now()
+        run.error_message = None
+        run.stats = dict(run.stats or {})
+        db.commit()
+        db.refresh(run)
+
+        cfg_raw = dict(run.config or {})
+        cfg = decrypt_connector_config_secrets(cfg_raw)
+        urls = cfg.get("urls") if isinstance(cfg.get("urls"), list) else []
+        urls = [str(u or "").strip() for u in urls if str(u or "").strip()]
+        filename = cfg.get("filename") if isinstance(cfg.get("filename"), str) else None
+        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
+        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
+        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
+        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+
+        auth_headers = _build_auth_headers(cfg)
+
+        created = 0
+        failed = 0
+        created_doc_ids: list[UUID] = []
+
+        stats0 = dict(run.stats or {})
+        stats0.update({"total_urls": int(len(urls)), "processed_urls": 0, "cursor": 0, "created": 0, "failed": 0, "failed_urls": []})
+        run.stats = stats0
+        db.commit()
+
+        for idx, url in enumerate(urls):
+            try:
+                db.refresh(run)
+            except Exception:
+                pass
+            if str(run.status or "").lower() == "cancelled":
+                break
+
+            try:
+                file_id = _extract_drive_file_id(url)
+                if not file_id:
+                    raise ValueError("unsupported_drive_url")
+                dl_url = _drive_direct_download_url(file_id)
+                body = UrlUploadRequest(
+                    url=dl_url,
+                    dataset_id=run.dataset_id,
+                    filename=filename,
+                    fetch_headers=auth_headers or None,
+                    user_agent=user_agent,
+                    parser_backend=str(parser_backend),
+                    chunk_strategy=str(chunk_strategy),
+                    pipeline=pipeline,  # type: ignore[arg-type]
+                )
+                doc = await _ingest_url_upload_request(
+                    background_tasks=None,
+                    body=body,
+                    tenant_id=tenant_id,
+                    account_id=requested_by,
+                    db=db,
+                )
+                _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
+                db.add(
+                    ConnectorRunDocument(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        document_id=doc.id,
+                        source_ref=url,
+                        status="created",
+                    )
+                )
+                created += 1
+                created_doc_ids.append(doc.id)
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                stats = dict(run.stats or {})
+                stats = _append_connector_error(stats, url=url, exc=exc)
+                run.stats = stats
+            finally:
+                processed = idx + 1
+                stats = dict(run.stats or {})
+                stats.update(
+                    {
+                        "total_urls": int(len(urls)),
+                        "processed_urls": int(processed),
+                        "cursor": int(processed),
+                        "created": int(created),
+                        "failed": int(failed),
+                        "document_ids": [str(d) for d in created_doc_ids],
+                    }
+                )
+                run.stats = _finalize_connector_stats(stats)
+                db.commit()
+
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        if str(run.status or "").lower() == "cancelled":
+            if run.finished_at is None:
+                run.finished_at = _now()
+            run.stats = _finalize_connector_stats(dict(run.stats or {}))
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+            return
+
+        stats = dict(run.stats or {})
+        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        run.stats = _finalize_connector_stats(stats)
+        run.finished_at = _now()
+        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
+    except Exception as exc:  # noqa: BLE001
+        with contextlib.suppress(Exception):
+            run = (
+                db.query(ConnectorRun)
+                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+                .first()
+            )
+            if run is not None:
+                run.status = "failed"
+                run.finished_at = _now()
+                run.error_message = str(exc)[:200]
+                db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
+    finally:
+        db.close()
+
+
+async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution for minio_bucket connector.
+    """
+    db = SessionLocal()
+    try:
+        run = (
+            db.query(ConnectorRun)
+            .options(selectinload(ConnectorRun.documents))
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if not run:
+            return
+        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+            return
+
+        run.status = "running"
+        run.started_at = _now()
+        run.error_message = None
+        run.stats = dict(run.stats or {})
+        db.commit()
+        db.refresh(run)
+
+        cfg_raw = dict(run.config or {})
+        cfg = decrypt_connector_config_secrets(cfg_raw)
+        bucket = cfg.get("bucket") if isinstance(cfg.get("bucket"), str) else None
+        prefix = cfg.get("prefix") if isinstance(cfg.get("prefix"), str) else None
+        max_objects = int(cfg.get("max_objects") or 50)
+        expiry = int(cfg.get("presign_expiry_sec") or 3600)
+        include_exts = cfg.get("include_extensions") if isinstance(cfg.get("include_extensions"), list) else []
+        include_exts = [str(e or "").strip().lower() for e in include_exts if str(e or "").strip()]
+        include_exts = [("." + e if not e.startswith(".") else e) for e in include_exts]
+        include_set = set(include_exts) if include_exts else {".pdf", ".md", ".txt"}
+
+        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
+        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
+        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
+        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+
+        from app.storage.object.minio import minio_service
+
+        client = minio_service._get_client()  # noqa: SLF001
+        bucket_name = str(bucket or getattr(minio_service, "_bucket_name", "") or "").strip()
+        if not bucket_name:
+            raise RuntimeError("minio bucket is required")
+
+        object_names: list[str] = []
+        for obj in client.list_objects(bucket_name=bucket_name, prefix=(prefix or None), recursive=True):
+            name = str(getattr(obj, "object_name", "") or "").strip()
+            if not name:
+                continue
+            ext = Path(name).suffix.lower()
+            if ext and ext not in include_set:
+                continue
+            object_names.append(name)
+            if len(object_names) >= max(1, min(max_objects, 200)):
+                break
+
+        created = 0
+        failed = 0
+        created_doc_ids: list[UUID] = []
+
+        stats0 = dict(run.stats or {})
+        stats0.update({"total_objects": int(len(object_names)), "processed_objects": 0, "cursor": 0, "created": 0, "failed": 0})
+        run.stats = stats0
+        db.commit()
+
+        for idx, object_name in enumerate(object_names):
+            try:
+                db.refresh(run)
+            except Exception:
+                pass
+            if str(run.status or "").lower() == "cancelled":
+                break
+
+            try:
+                url = client.presigned_get_object(bucket_name=bucket_name, object_name=object_name, expires=expiry)
+                body = UrlUploadRequest(
+                    url=url,
+                    dataset_id=run.dataset_id,
+                    filename=Path(object_name).name,
+                    parser_backend=str(parser_backend),
+                    chunk_strategy=str(chunk_strategy),
+                    pipeline=pipeline,  # type: ignore[arg-type]
+                )
+                doc = await _ingest_url_upload_request(
+                    background_tasks=None,
+                    body=body,
+                    tenant_id=tenant_id,
+                    account_id=requested_by,
+                    db=db,
+                )
+                _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
+                db.add(
+                    ConnectorRunDocument(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        document_id=doc.id,
+                        source_ref=object_name,
+                        status="created",
+                    )
+                )
+                created += 1
+                created_doc_ids.append(doc.id)
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                stats = dict(run.stats or {})
+                stats = _append_connector_error(stats, url=object_name, exc=exc)
+                run.stats = stats
+            finally:
+                processed = idx + 1
+                stats = dict(run.stats or {})
+                stats.update(
+                    {
+                        "total_objects": int(len(object_names)),
+                        "processed_objects": int(processed),
+                        "cursor": int(processed),
+                        "created": int(created),
+                        "failed": int(failed),
+                        "document_ids": [str(d) for d in created_doc_ids],
+                    }
+                )
+                run.stats = _finalize_connector_stats(stats)
+                db.commit()
+
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        if str(run.status or "").lower() == "cancelled":
+            if run.finished_at is None:
+                run.finished_at = _now()
+            run.stats = _finalize_connector_stats(dict(run.stats or {}))
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+            return
+
+        stats = dict(run.stats or {})
+        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        run.stats = _finalize_connector_stats(stats)
+        run.finished_at = _now()
+        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
+    except Exception as exc:  # noqa: BLE001
+        with contextlib.suppress(Exception):
+            run = (
+                db.query(ConnectorRun)
+                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+                .first()
+            )
+            if run is not None:
+                run.status = "failed"
+                run.finished_at = _now()
+                run.error_message = str(exc)[:200]
+                db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
+    finally:
+        db.close()
+
+
 @router.post("/runs", response_model=ConnectorRunOut, status_code=201)
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
@@ -770,6 +1397,15 @@ async def create_connector_run(
     elif connector_id == "web_crawl":
         cfg = WebCrawlConnectorConfig.model_validate(payload.config or {})
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+    elif connector_id == "github_repo":
+        cfg = GitHubRepoConnectorConfig.model_validate(payload.config or {})
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+    elif connector_id == "drive_files":
+        cfg = DriveFilesConnectorConfig.model_validate(payload.config or {})
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+    elif connector_id == "minio_bucket":
+        cfg = MinioBucketConnectorConfig.model_validate(payload.config or {})
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
     else:
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
 
@@ -789,8 +1425,16 @@ async def create_connector_run(
     # Execute asynchronously after response.
     if connector_id == "url_batch":
         background_tasks.add_task(_execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    else:
+    elif connector_id == "web_crawl":
         background_tasks.add_task(_execute_web_crawl_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "github_repo":
+        background_tasks.add_task(_execute_github_repo_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "drive_files":
+        background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "minio_bucket":
+        background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported connector_id")
 
     return _run_out(run)
 
@@ -1236,6 +1880,12 @@ async def run_connector_config(
         background_tasks.add_task(_execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "web_crawl":
         background_tasks.add_task(_execute_web_crawl_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "github_repo":
+        background_tasks.add_task(_execute_github_repo_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "drive_files":
+        background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "minio_bucket":
+        background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
 
@@ -1311,6 +1961,12 @@ async def scheduled_tick(
             background_tasks.add_task(_execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         elif connector_id == "web_crawl":
             background_tasks.add_task(_execute_web_crawl_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        elif connector_id == "github_repo":
+            background_tasks.add_task(_execute_github_repo_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        elif connector_id == "drive_files":
+            background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        elif connector_id == "minio_bucket":
+            background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         else:
             # Unknown connector: mark as failed (best-effort) and continue.
             run.status = "failed"

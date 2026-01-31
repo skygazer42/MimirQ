@@ -174,6 +174,131 @@ class WebCrawlConnectorConfig(BaseModel):
         return self
 
 
+class GitHubRepoConnectorConfig(BaseModel):
+    """Config for `github_repo` connector (repository file ingestion via raw.githubusercontent.com)."""
+
+    repo: str = Field(..., max_length=200, description="GitHub repo in owner/repo format")
+    branch: str = Field(default="main", max_length=200, description="Branch or tag name (default: main)")
+    include_extensions: List[str] = Field(
+        default_factory=lambda: [".md", ".txt", ".pdf"],
+        description="File extensions to ingest (case-insensitive).",
+    )
+    max_files: int = Field(default=50, ge=1, le=200)
+    user_agent: Optional[str] = Field(default=None, max_length=200)
+    auth: Optional[WebCrawlAuthConfig] = None  # bearer token for GitHub API (optional)
+
+    # Ingest options for each discovered file URL.
+    parser_backend: str = Field(default="auto")
+    chunk_strategy: str = Field(default="langchain_recursive")
+    pipeline: Optional[DocumentPipelineOptions] = None
+    access: Optional[DocumentAccessUpdateRequest] = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "GitHubRepoConnectorConfig":
+        repo = str(self.repo or "").strip()
+        if "/" not in repo:
+            raise ValueError("repo must be in owner/repo format")
+        owner, name = repo.split("/", 1)
+        owner = owner.strip()
+        name = name.strip()
+        if not owner or not name:
+            raise ValueError("repo must be in owner/repo format")
+        self.repo = f"{owner}/{name}"
+
+        branch = str(self.branch or "").strip() or "main"
+        self.branch = branch
+
+        exts: list[str] = []
+        seen: set[str] = set()
+        for raw in self.include_extensions or []:
+            ext = str(raw or "").strip().lower()
+            if not ext:
+                continue
+            if not ext.startswith("."):
+                ext = "." + ext
+            if len(ext) > 12:
+                continue
+            if ext in seen:
+                continue
+            seen.add(ext)
+            exts.append(ext)
+            if len(exts) >= 20:
+                break
+        if not exts:
+            exts = [".md", ".txt"]
+        self.include_extensions = exts
+        return self
+
+
+class DriveFilesConnectorConfig(BaseModel):
+    """Config for `drive_files` connector (Google Drive share links -> direct download)."""
+
+    urls: List[str] = Field(..., min_length=1, max_length=50, description="Google Drive file share links")
+    filename: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional override filename for display/extension inference (applies to all urls).",
+    )
+    user_agent: Optional[str] = Field(default=None, max_length=200)
+    auth: Optional[WebCrawlAuthConfig] = None
+
+    parser_backend: str = Field(default="auto")
+    chunk_strategy: str = Field(default="langchain_recursive")
+    pipeline: Optional[DocumentPipelineOptions] = None
+    access: Optional[DocumentAccessUpdateRequest] = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "DriveFilesConnectorConfig":
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for raw in self.urls or []:
+            url = str(raw or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            normalized.append(url)
+            if len(normalized) >= 50:
+                break
+        self.urls = normalized
+        return self
+
+
+class MinioBucketConnectorConfig(BaseModel):
+    """Config for `minio_bucket` connector (list objects -> presigned URLs -> ingest)."""
+
+    bucket: Optional[str] = Field(default=None, max_length=63, description="MinIO bucket name (default: settings.MINIO_BUCKET_NAME)")
+    prefix: Optional[str] = Field(default=None, max_length=512)
+    include_extensions: List[str] = Field(default_factory=lambda: [".pdf", ".md", ".txt"])
+    max_objects: int = Field(default=50, ge=1, le=200)
+    presign_expiry_sec: int = Field(default=3600, ge=60, le=7 * 24 * 3600)
+
+    parser_backend: str = Field(default="auto")
+    chunk_strategy: str = Field(default="langchain_recursive")
+    pipeline: Optional[DocumentPipelineOptions] = None
+    access: Optional[DocumentAccessUpdateRequest] = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "MinioBucketConnectorConfig":
+        exts: list[str] = []
+        seen: set[str] = set()
+        for raw in self.include_extensions or []:
+            ext = str(raw or "").strip().lower()
+            if not ext:
+                continue
+            if not ext.startswith("."):
+                ext = "." + ext
+            if ext in seen:
+                continue
+            seen.add(ext)
+            exts.append(ext)
+            if len(exts) >= 20:
+                break
+        if not exts:
+            exts = [".pdf", ".md", ".txt"]
+        self.include_extensions = exts
+        return self
+
+
 class ConnectorRunCreateRequest(BaseModel):
     connector_id: ConnectorId = "url_batch"
     dataset_id: Optional[UUID] = None
