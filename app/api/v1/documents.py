@@ -75,6 +75,7 @@ from app.api.schemas.document import (
     ParsedSegment,
 )
 from app.api.schemas.document_timeline import DocumentTimelineItem, DocumentTimelineResponse
+from app.api.schemas.document_folders import DocumentFolderTreeResponse
 from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
 from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
@@ -99,6 +100,7 @@ from app.rag.preprocessing.rules import build_governance_rules
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_permission_service import DocumentPermissionService
+from app.services.document_folders import build_document_folder_tree
 from app.services.document_qa_service import generate_and_index_document_qa
 from app.services.indexer import Indexer
 from app.services.ingestion_policy import (
@@ -3304,6 +3306,75 @@ def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
     if len(val) > 500:
         val = val[:500]
     return DBDocument.doc_metadata["source_path"].astext.startswith(val)  # type: ignore[attr-defined]
+
+
+@router.get("/folders", response_model=DocumentFolderTreeResponse)
+async def list_document_folders(
+    dataset_id: UUID = Query(...),
+    lifecycle: Literal["active", "archived", "disabled", "all"] = Query(default="active"),
+    max_depth: int = Query(default=20, ge=1, le=50),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Build a folder tree derived from `document.metadata.source_path`.
+
+    Notes:
+    - `source_path` is only present when the client uploads with directory-preserving keys (e.g. folder/sub/file.pdf).
+    - The tree is dataset-scoped for performance and permission clarity.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
+
+    # Document-level ACL filter ("security trimming") - keep consistent with list endpoints.
+    doc_perm_subq = select(DocumentPermission.document_id).where(
+        DocumentPermission.tenant_id == tenant_id,
+        DocumentPermission.account_id == account_id,
+    )
+    owner_dataset_ids_subq = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        Dataset.owner_id == account_id,
+    )
+    query = query.filter(
+        or_(
+            DBDocument.dataset_id.in_(owner_dataset_ids_subq),
+            DBDocument.access_mode.is_(None),
+            DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+            DBDocument.owner_id == account_id,
+            and_(
+                DBDocument.access_mode == "partial_members",
+                DBDocument.id.in_(doc_perm_subq),
+            ),
+        )
+    )
+
+    # Lifecycle filter.
+    lifecycle0 = str(lifecycle or "active").strip().lower()
+    if lifecycle0 != "all":
+        if lifecycle0 == "archived":
+            query = query.filter(DBDocument.archived_at.isnot(None))
+        elif lifecycle0 == "disabled":
+            query = query.filter(DBDocument.disabled_at.isnot(None))
+        else:
+            query = query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
+
+    total = int(query.count() or 0)
+
+    rows = query.with_entities(DBDocument.doc_metadata["source_path"].astext).all()  # type: ignore[attr-defined]
+    source_paths = [r[0] for r in rows if isinstance(r, tuple) and isinstance(r[0], str) and r[0].strip()]
+
+    root = build_document_folder_tree(source_paths, total_documents=total, max_depth=int(max_depth or 20))
+    return DocumentFolderTreeResponse(
+        dataset_id=dataset_id,
+        total_documents=int(total),
+        total_with_source_path=int(len(source_paths)),
+        root=root,
+    )
 
 
 @router.get("/stats", response_model=DocumentStats)
