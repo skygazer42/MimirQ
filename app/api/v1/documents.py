@@ -92,6 +92,7 @@ from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies.separator import SeparatorChunker
 from app.rag.core.logging import get_logger
 from app.rag.kg.pipeline import extract_events
+from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
 from app.services.audit_log_service import audit_log_event
@@ -2015,6 +2016,26 @@ async def _ingest_url_upload_request(
                 temp_path.unlink(missing_ok=True)
             raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}") from exc
 
+    # Best-effort URL canonicalization metadata (for dedup/debug/analytics).
+    url_final = str(getattr(downloaded, "final_url", "") or url).strip() or url
+    url_normalized_requested = normalize_url_for_dedup(url)
+    url_normalized_final = normalize_url_for_dedup(url_final)
+    url_canonical: str | None = None
+    url_normalized_canonical: str | None = None
+
+    if content_type and "html" in content_type:
+        try:
+            with open(final_path, "rb") as f:
+                html_prefix = f.read(200_000).decode("utf-8", "ignore")
+            url_canonical = extract_canonical_url(html_prefix, base_url=url_final)
+            url_normalized_canonical = normalize_url_for_dedup(url_canonical) if url_canonical else None
+        except Exception:
+            url_canonical = None
+            url_normalized_canonical = None
+
+    # Prefer canonical if available; otherwise final URL.
+    url_normalized = url_normalized_canonical or url_normalized_final or url_normalized_requested
+
     # 4) Resolve ingestion policy (optional) based on the inferred filename/ext.
     safe_name = _sanitize_filename(body.filename or Path(final_path).name)
 
@@ -2121,6 +2142,12 @@ async def _ingest_url_upload_request(
         "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
         "source_url": url,
         "url_content_type": content_type or None,
+        "url_final_url": url_final or None,
+        "url_canonical_url": url_canonical,
+        "url_normalized_url": url_normalized or None,
+        "url_normalized_requested": url_normalized_requested or None,
+        "url_normalized_final": url_normalized_final or None,
+        "url_normalized_canonical": url_normalized_canonical,
     }
     if pipeline_metadata:
         doc_metadata["pipeline"] = pipeline_metadata

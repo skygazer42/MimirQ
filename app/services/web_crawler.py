@@ -26,46 +26,10 @@ from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
-from app.rag.preprocessing.urls import canonicalize_url
+from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 
 _DISALLOWED_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "file:")
 logger = get_logger("services.web_crawler")
-
-_CANONICAL_LINK_TAG_RE = re.compile(r"(?is)<link\b[^>]*>")
-_CANONICAL_REL_RE = re.compile(r"(?is)\brel\s*=\s*(?:\"([^\"]+)\"|'([^']+)'|([^\s>]+))")
-_CANONICAL_HREF_RE = re.compile(r"(?is)\bhref\s*=\s*(?:\"([^\"]+)\"|'([^']+)'|([^\s>]+))")
-
-
-def _extract_canonical_url(html_text: str, *, base_url: str) -> str | None:
-    """
-    Best-effort extraction of <link rel="canonical" href="..."> from HTML.
-
-    This is intentionally dependency-free and conservative; it may miss edge cases.
-    """
-    raw = (html_text or "").strip()
-    if not raw:
-        return None
-
-    for m in _CANONICAL_LINK_TAG_RE.finditer(raw[:200_000]):  # bound work on huge pages
-        tag = m.group(0) or ""
-        rel_m = _CANONICAL_REL_RE.search(tag)
-        rel_raw = (rel_m.group(1) or rel_m.group(2) or rel_m.group(3) or "") if rel_m else ""
-        rel = str(rel_raw).strip().lower()
-        if not rel:
-            continue
-        # rel can contain multiple tokens, e.g. "canonical nofollow".
-        if "canonical" not in {t for t in re.split(r"\s+", rel) if t}:
-            continue
-        href_m = _CANONICAL_HREF_RE.search(tag)
-        href_raw = (href_m.group(1) or href_m.group(2) or href_m.group(3) or "") if href_m else ""
-        href = str(href_raw).strip()
-        if not href:
-            continue
-        try:
-            return _normalize_url(urljoin(base_url, href))
-        except Exception:
-            return None
-    return None
 
 
 def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list[str]:
@@ -275,12 +239,7 @@ def _normalize_url(raw: str) -> str:
     - Drop fragment (anchors).
     - Keep query (after tracking stripping).
     """
-    s = canonicalize_url(str(raw or "").strip(), strip_tracking=True)
-    try:
-        parts = urlsplit(s)
-    except Exception:
-        return s
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))  # drop fragment
+    return normalize_url_for_dedup(str(raw or "").strip())
 
 
 def _compile_patterns(patterns: List[str]) -> List[re.Pattern[str]]:
@@ -680,7 +639,7 @@ async def crawl_site(
 
         canonical_url = None
         if dedup_canonical and text and "html" in (content_type or ""):
-            canonical_url = _extract_canonical_url(text, base_url=final_url)
+            canonical_url = extract_canonical_url(text, base_url=final_url)
 
         out_url = canonical_url or safe_url
         out_key = _normalize_url(out_url)
