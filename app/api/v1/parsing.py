@@ -40,6 +40,7 @@ from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
+from app.parsing.diagnostics import build_parse_failure_diagnostics
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
@@ -739,11 +740,34 @@ async def parse_workspace_document(
         doc.processing_progress = 0
         doc.current_stage = "failed"
         doc.error_message = msg
+        diagnostics: dict[str, Any] = {}
+        try:
+            diagnostics = build_parse_failure_diagnostics(
+                file_path=Path(str(source_path)),
+                file_ext=str(file_ext),
+                parser_backend_requested=str(requested_backend),
+                parser_backend_resolved=str(resolved_backend),
+                error_type=str(err_type or ""),
+                error_message=str(msg),
+            )
+        except Exception:
+            diagnostics = {}
+        try:
+            meta0 = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+            next_meta = dict(meta0)
+            if diagnostics:
+                next_meta["parse_diagnostics"] = diagnostics
+            doc.doc_metadata = next_meta
+        except Exception:
+            pass
         db.commit()
         status_code = 400 if err_type == "ValueError" else 500
         prefix = "Invalid input" if status_code == 400 else "Failed to parse document"
-        detail = prefix if is_production_env() else f"{prefix}: {msg}"
-        raise HTTPException(status_code=status_code, detail=detail) from exc
+        detail_msg = prefix if is_production_env() else f"{prefix}: {msg}"
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": detail_msg, "diagnostics": diagnostics},
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         msg = (str(exc) or "").strip()
         if not msg:
@@ -754,9 +778,32 @@ async def parse_workspace_document(
         doc.processing_progress = 0
         doc.current_stage = "failed"
         doc.error_message = msg
+        diagnostics: dict[str, Any] = {}
+        try:
+            diagnostics = build_parse_failure_diagnostics(
+                file_path=Path(str(source_path)),
+                file_ext=str(file_ext),
+                parser_backend_requested=str(requested_backend),
+                parser_backend_resolved=str(resolved_backend),
+                error_type=str(exc.__class__.__name__),
+                error_message=str(msg),
+            )
+        except Exception:
+            diagnostics = {}
+        try:
+            meta0 = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+            next_meta = dict(meta0)
+            if diagnostics:
+                next_meta["parse_diagnostics"] = diagnostics
+            doc.doc_metadata = next_meta
+        except Exception:
+            pass
         db.commit()
-        detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
-        raise HTTPException(status_code=500, detail=detail) from exc
+        detail_msg = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
+        raise HTTPException(
+            status_code=500,
+            detail={"message": detail_msg, "diagnostics": diagnostics},
+        ) from exc
     finally:
         if temp_path is not None:
             with contextlib.suppress(Exception):
