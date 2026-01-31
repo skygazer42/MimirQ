@@ -199,6 +199,49 @@ export interface ConnectorRunListResponse {
   items: ConnectorRunOut[]
 }
 
+export interface ConnectorConfigCreateRequest {
+  connector_id: string
+  dataset_id: string
+  name: string
+  enabled?: boolean
+  schedule_cron?: string | null
+  config?: Record<string, any>
+}
+
+export interface ConnectorConfigUpdateRequest {
+  name?: string | null
+  enabled?: boolean
+  schedule_cron?: string | null
+  config?: Record<string, any> | null
+  state?: Record<string, any> | null
+}
+
+export interface ConnectorConfigOut {
+  id: string
+  tenant_id: string
+  dataset_id: string
+  connector_id: string
+  name: string
+  enabled: boolean
+  schedule_cron?: string | null
+  config: Record<string, any>
+  state: Record<string, any>
+  last_run_at?: string | null
+  last_error?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ConnectorConfigListResponse {
+  total: number
+  items: ConnectorConfigOut[]
+}
+
+export interface ConnectorScheduledTickResponse {
+  enqueued: number
+  skipped: number
+}
+
 export interface DocumentStats {
   total: number
   by_status: Record<string, number>

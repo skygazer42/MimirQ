@@ -36,11 +36,11 @@ from app.api.schemas.pipeline import (
     CleanPreviewRequest,
     CleanPreviewResponse,
     CleanRulesResponse,
+    GovernanceAnalyzeRequest,
+    GovernanceAnalyzeResponse,
     GovernanceCommonLineCandidate,
     GovernanceCommonLinesLearnRequest,
     GovernanceCommonLinesLearnResponse,
-    GovernanceAnalyzeRequest,
-    GovernanceAnalyzeResponse,
     GovernanceIssue,
     IngestionPreviewResponse,
     KeywordExtractRequest,
@@ -93,8 +93,8 @@ from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.urls import normalize_urls
-from app.services.document_access import get_allowed_document_id_sets
 from app.services.dataset_service import DatasetService
+from app.services.document_access import get_allowed_document_id_sets
 from app.services.governance_profiles import (
     builtin_profile_to_out,
     get_builtin_governance_profiles,

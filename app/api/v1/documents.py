@@ -74,8 +74,8 @@ from app.api.schemas.document import (
     ManualDocumentCreate,
     ParsedSegment,
 )
-from app.api.schemas.document_timeline import DocumentTimelineItem, DocumentTimelineResponse
 from app.api.schemas.document_folders import DocumentFolderTreeResponse
+from app.api.schemas.document_timeline import DocumentTimelineItem, DocumentTimelineResponse
 from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
 from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
@@ -83,8 +83,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
 from app.core.token_utils import estimate_tokens, num_tokens_from_string
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.audit_log import AuditLog
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent, DocumentPermission
 from app.parsing.factory import parser_factory
@@ -99,8 +99,8 @@ from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import EDIT_ROLES, DatasetService
-from app.services.document_permission_service import DocumentPermissionService
 from app.services.document_folders import build_document_folder_tree
+from app.services.document_permission_service import DocumentPermissionService
 from app.services.document_qa_service import generate_and_index_document_qa
 from app.services.indexer import Indexer
 from app.services.ingestion_policy import (
@@ -2549,10 +2549,7 @@ async def upload_document(
             if source_path and not meta_any.get("source_path"):
                 meta_any["source_path"] = source_path
             meta_any["file_sha256"] = str(file_sha256).strip().lower()
-            if pipeline_metadata:
-                meta_any["pipeline"] = pipeline_metadata
-            else:
-                meta_any.pop("pipeline", None)
+            upsert_pipeline_metadata(meta_any, options=pipeline_options)
             if ingestion_meta:
                 meta_any["ingestion"] = ingestion_meta
 
@@ -2583,7 +2580,7 @@ async def upload_document(
 
             # Trigger reprocessing as a new pipeline version (best-effort; may no-op if unchanged).
             await retry_document_processing(
-                document_id=getattr(dup_any, "id"),
+                document_id=dup_any.id,
                 background_tasks=background_tasks,
                 force=True,
                 skip_if_unchanged=True,
@@ -2978,10 +2975,7 @@ async def upload_documents_batch(
                         if source_path and not meta_any.get("source_path"):
                             meta_any["source_path"] = source_path
                         meta_any["file_sha256"] = str(file_sha256).strip().lower()
-                        if pipeline_metadata:
-                            meta_any["pipeline"] = pipeline_metadata
-                        else:
-                            meta_any.pop("pipeline", None)
+                        upsert_pipeline_metadata(meta_any, options=pipeline_options)
                         if ingestion_meta:
                             meta_any["ingestion"] = ingestion_meta
 
@@ -2999,7 +2993,7 @@ async def upload_documents_batch(
                         db.refresh(dup_any)
 
                         await retry_document_processing(
-                            document_id=getattr(dup_any, "id"),
+                            document_id=dup_any.id,
                             background_tasks=background_tasks,
                             force=True,
                             skip_if_unchanged=True,

@@ -51,6 +51,14 @@ make up-web
 
 > 如需从源码部署或本地开发，请参考 [开发文档](./docs/quickstart.md)
 
+## 开发自检（CI 一致）
+
+提交前建议运行一键自检（后端 + 前端）：
+
+```bash
+make enterprise-checks
+```
+
 ## 核心功能
 
 **1. 可视化切片预览**

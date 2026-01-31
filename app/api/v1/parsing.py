@@ -43,8 +43,9 @@ from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.diagnostics import build_parse_failure_diagnostics
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.factory import parser_factory
-from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.quality.text_quality import score_parsed_text_quality
+from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
+from app.parsing.utils.cli import resolve_cli_command
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri

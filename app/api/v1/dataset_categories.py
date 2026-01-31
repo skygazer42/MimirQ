@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -105,4 +105,3 @@ def delete_dataset_category(
 ):
     DatasetCategoryService.delete(db, tenant_id=tenant_id, account_id=account_id, category_id=category_id)
     return Response(status_code=204)
-

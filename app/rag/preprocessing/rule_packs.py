@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from app.rag.preprocessing.cleaning import RegexRule
 
-
 # Keep rule packs conservative and line-oriented. Prefer anchored patterns to avoid
 # removing real content in the middle of paragraphs.
 GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {

@@ -87,6 +87,14 @@ make up-web
 - Backend API docs: `http://localhost:8000/docs`
 - Frontend UI: `http://localhost:3000`
 
+## Enterprise Checks (CI-like)
+
+Before pushing, run a local CI-style check (backend + web):
+
+```bash
+make enterprise-checks
+```
+
 ## Python Dependencies (optional)
 
 - Unified deps: `pip install -r requirements.txt`

@@ -15,7 +15,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.schemas.document_folders import DocumentFolderTreeResponse
-from app.api.schemas.report import ComplianceSummary, ConnectorRunSummary, DatasetGovernanceMetricsOut, DatasetReportOut, PipelineVersionSummary
+from app.api.schemas.report import (
+    ComplianceSummary,
+    ConnectorRunSummary,
+    DatasetGovernanceMetricsOut,
+    DatasetReportOut,
+    PipelineVersionSummary,
+)
 from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.document import Document as DBDocument
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
@@ -207,7 +213,7 @@ class ReportService:
         # Governance metrics aggregated from document metadata (best-effort).
         governance_metrics: DatasetGovernanceMetricsOut | None = None
         try:
-            MAX_DOCS = 2000
+            max_docs = 2000
             _dataset, q = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
             if pipeline_hash_norm:
                 active_expr = func.coalesce(
@@ -217,11 +223,11 @@ class ReportService:
                 q = q.filter(active_expr == pipeline_hash_norm)
 
             # Sample the most recently updated docs for responsiveness; report includes a truncation flag.
-            rows = q.with_entities(DBDocument.doc_metadata).order_by(DBDocument.updated_at.desc()).limit(MAX_DOCS + 1).all()
+            rows = q.with_entities(DBDocument.doc_metadata).order_by(DBDocument.updated_at.desc()).limit(max_docs + 1).all()
             metas = [r[0] for r in rows if isinstance(r, tuple) and isinstance(r[0], dict)]
-            truncated = len(metas) > MAX_DOCS
+            truncated = len(metas) > max_docs
             if truncated:
-                metas = metas[:MAX_DOCS]
+                metas = metas[:max_docs]
             governance_metrics = _aggregate_governance_metrics(
                 total_documents=int(getattr(profile, "total_documents", 0) or 0),
                 metadatas=metas,
