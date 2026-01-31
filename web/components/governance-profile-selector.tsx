@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { pipelineApi } from '@/lib/api-client'
-import type { DocumentPipelineOptions, GovernanceProfileOut, GovernanceProfileSummary } from '@/types'
+import type { DocumentPipelineOptions, GovernanceProfileResolvedResponse, GovernanceProfileSummary } from '@/types'
 import { toast } from 'sonner'
 
 type Props = {
@@ -32,7 +32,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
   const [loading, setLoading] = useState(false)
   const [profiles, setProfiles] = useState<GovernanceProfileSummary[]>([])
   const [selectedRef, setSelectedRef] = useState<string>(SELECT_NONE)
-  const [selectedDetail, setSelectedDetail] = useState<GovernanceProfileOut | null>(null)
+  const [selectedResolved, setSelectedResolved] = useState<GovernanceProfileResolvedResponse | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const loadProfiles = useCallback(async () => {
@@ -62,17 +62,17 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     let cancelled = false
     const loadDetail = async () => {
       if (!selectedRef || selectedRef === SELECT_NONE) {
-        setSelectedDetail(null)
+        setSelectedResolved(null)
         return
       }
       try {
-        const res = await pipelineApi.getGovernanceProfile(selectedRef)
+        const res = await pipelineApi.getGovernanceProfileResolved(selectedRef)
         if (cancelled) return
-        setSelectedDetail(res)
+        setSelectedResolved(res)
       } catch (e) {
         if (cancelled) return
         console.error('Failed to load governance profile detail', e)
-        setSelectedDetail(null)
+        setSelectedResolved(null)
       }
     }
     loadDetail()
@@ -82,20 +82,22 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
   }, [selectedRef])
 
   const handleApply = useCallback(() => {
-    const profile = selectedDetail
-    if (!profile) {
+    const resolved = selectedResolved
+    const profile = resolved?.profile
+    const effective = resolved?.effective
+    if (!profile || !effective) {
       toast.error('请先选择一个治理预设')
       return
     }
 
     const patch: Partial<DocumentPipelineOptions> = {
-      ...(profile.payload?.pipeline_patch || {}),
-      governance_regex_rules: Array.isArray(profile.payload?.regex_rules) ? profile.payload.regex_rules : [],
+      ...(effective.pipeline_patch || {}),
+      governance_regex_rules: Array.isArray(effective.regex_rules) ? effective.regex_rules : [],
       governance_enabled: true,
     }
     onApplyPatch(patch)
     toast.success(`已应用预设：${profile.name}`)
-  }, [selectedDetail, onApplyPatch])
+  }, [selectedResolved, onApplyPatch])
 
   const handleImportClick = useCallback(() => {
     fileInputRef.current?.click()
@@ -132,6 +134,12 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
 
   const triggerCls = compact ? 'h-8 text-xs' : 'h-9 text-sm'
 
+  const inheritanceText = useMemo(() => {
+    const chain = selectedResolved?.chain || []
+    if (!chain.length) return ''
+    return chain.map((c) => c.name || c.key).join(' → ')
+  }, [selectedResolved?.chain])
+
   return (
     <div className={cn('space-y-2', className)}>
       <div className="flex items-center gap-2">
@@ -161,12 +169,18 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         </div>
       )}
 
+      {inheritanceText ? (
+        <div className={cn('text-muted-foreground', compact ? 'text-[11px]' : 'text-xs')}>
+          继承链：{inheritanceText}
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-2">
         <Button
           onClick={handleApply}
           size={compact ? 'sm' : 'default'}
           className="gap-2"
-          disabled={!selectedDetail}
+          disabled={!selectedResolved}
         >
           <Sparkles className="w-4 h-4" />
           应用到当前配置
@@ -202,4 +216,3 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     </div>
   )
 }
-
