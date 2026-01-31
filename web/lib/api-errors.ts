@@ -40,7 +40,9 @@ export function extractBackendMessage(data: unknown): string | undefined {
       asNonEmptyString(payload.detail) ||
       // FastAPI default: {"detail":[{...},{...}]}
       (Array.isArray(payload.detail) ? 'Validation error' : undefined) ||
-      (typeof payload.detail === 'object' ? safeJson(payload.detail) : undefined)
+      (typeof payload.detail === 'object'
+        ? asNonEmptyString((payload.detail as any)?.message) || safeJson(payload.detail)
+        : undefined)
     )
   }
 

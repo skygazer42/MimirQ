@@ -93,6 +93,20 @@ interface ParseRun {
   qualityGate?: any
 }
 
+interface ParseFailureDiagnostics {
+  file_type?: string
+  parser_backend_requested?: string
+  parser_backend?: string
+  error_type?: string
+  error_message?: string
+  pdf_sample?: {
+    page_count?: number
+    is_scanned?: boolean
+    samples?: { page: number; text_chars: number; excerpt: string }[]
+  }
+  suggested_backends?: string[]
+}
+
 // 解析后的文件（扩展版）
 interface ParsedFile extends FileQueueItemData {
   file: File
@@ -120,6 +134,7 @@ interface ParsedFile extends FileQueueItemData {
   }
   pdfQuality?: any
   qualityGate?: any
+  parseDiagnostics?: ParseFailureDiagnostics
 }
 
 export default function ParsingPage() {
@@ -1134,7 +1149,7 @@ export default function ParsingPage() {
   }, [moveFileToFolder, moveFolder])
 
   // 解析文件（支持删除中断）
-  const parseFile = useCallback(async (fileId: string) => {
+  const parseFile = useCallback(async (fileId: string, backendOverride?: string) => {
     const file = filesRef.current.find((f) => f.id === fileId) || null
     if (!file) return
 
@@ -1142,7 +1157,10 @@ export default function ParsingPage() {
     const controller = new AbortController()
     parseControllersRef.current.set(fileId, controller)
 
-    const resolvedRequested = resolveParserBackendForFilename(file.file.name, file.parserBackend || parserBackend)
+    const resolvedRequested = resolveParserBackendForFilename(
+      file.file.name,
+      backendOverride || file.parserBackend || parserBackend
+    )
     const requestedBackend = resolvedRequested.backend
     const requestedLabel = getParserLabel(requestedBackend)
 
@@ -1159,6 +1177,7 @@ export default function ParsingPage() {
               parseStartTime: startTime,
               parserBackend: requestedBackend,
               parserLabel: requestedLabel,
+              parseDiagnostics: undefined,
             }
           : f
       )
@@ -1326,6 +1345,11 @@ export default function ParsingPage() {
       if (parseControllersRef.current.get(fileId) !== controller) return
       if (!fileIdSetRef.current.has(fileId)) return
       const errorMessage = formatApiError(err, '文档解析失败')
+      const detail = err?.response?.data?.detail
+      const diagnostics: ParseFailureDiagnostics | undefined =
+        detail && typeof detail === 'object' && !Array.isArray(detail)
+          ? ((detail as any).diagnostics as ParseFailureDiagnostics | undefined)
+          : undefined
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileId
@@ -1334,6 +1358,7 @@ export default function ParsingPage() {
               status: 'error' as FileStatus,
               error: errorMessage,
               progress: 0,
+              parseDiagnostics: diagnostics,
             }
             : f
         )
@@ -2430,6 +2455,62 @@ export default function ParsingPage() {
                               </div>
                               <p className="text-red-700 dark:text-red-400 font-medium mb-2">解析失败</p>
                               <p className="text-muted-foreground dark:text-muted-foreground text-sm">{activeFile.error}</p>
+
+                              {Array.isArray(activeFile.parseDiagnostics?.suggested_backends) &&
+                                activeFile.parseDiagnostics?.suggested_backends?.length ? (
+                                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                                  {activeFile.parseDiagnostics.suggested_backends.slice(0, 6).map((backend) => {
+                                    const resolved = resolveParserBackendForFilename(activeFile.file.name, backend)
+                                    const label = getParserLabel(resolved.backend)
+                                    return (
+                                      <Button
+                                        key={backend}
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2"
+                                        onClick={() => parseFile(activeFile.id, backend)}
+                                      >
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                        用 {label} 重试
+                                      </Button>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+
+                              {activeFile.parseDiagnostics?.pdf_sample ? (
+                                <div className="mt-4 text-left">
+                                  <div className="text-xs text-muted-foreground">
+                                    PDF 采样
+                                    {typeof activeFile.parseDiagnostics.pdf_sample.page_count === 'number'
+                                      ? `（${activeFile.parseDiagnostics.pdf_sample.page_count} 页）`
+                                      : ''}
+                                    {activeFile.parseDiagnostics.pdf_sample.is_scanned ? ' · 可能是扫描件（可选文本很少）' : ''}
+                                  </div>
+                                  {Array.isArray(activeFile.parseDiagnostics.pdf_sample.samples) &&
+                                    activeFile.parseDiagnostics.pdf_sample.samples.length ? (
+                                    <div className="mt-2 max-h-48 overflow-y-auto overscroll-contain space-y-2 rounded-lg border border-border/50 dark:border-border/60 bg-muted/30 dark:bg-background/40 p-2">
+                                      {activeFile.parseDiagnostics.pdf_sample.samples.slice(0, 3).map((s) => (
+                                        <div
+                                          key={s.page}
+                                          className="rounded-md border border-border/40 dark:border-border/60 bg-card/70 dark:bg-background/60 p-2"
+                                        >
+                                          <div className="text-xs text-muted-foreground">
+                                            页 {s.page} · {s.text_chars} 字符
+                                          </div>
+                                          {s.excerpt ? (
+                                            <div className="mt-1 text-xs whitespace-pre-wrap text-foreground/80 dark:text-muted-foreground">
+                                              {s.excerpt}
+                                            </div>
+                                          ) : (
+                                            <div className="mt-1 text-xs italic text-muted-foreground">无可选中文本</div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         )}
