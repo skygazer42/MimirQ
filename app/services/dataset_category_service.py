@@ -16,7 +16,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas.dataset_category import DatasetCategoryNode
-from app.models.dataset_category import DatasetCategory
+from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
 from app.services.dataset_service import DatasetService
 
 _EDIT_ROLES = {"owner", "admin", "editor", "dataset_operator"}
@@ -109,6 +109,29 @@ def build_category_tree_nodes(items: Iterable[Any]) -> list[DatasetCategoryNode]
         sort_and_set_depth(r)
 
     return roots
+
+
+def collect_descendant_ids(*, root_id: UUID, parent_by_id: dict[UUID, UUID | None]) -> set[UUID]:
+    """
+    Expand a category id to include its descendants (including itself).
+
+    Uses a parent mapping to build a children adjacency list.
+    """
+    from collections import defaultdict
+
+    children_by_parent: dict[UUID | None, list[UUID]] = defaultdict(list)
+    for cid, pid in parent_by_id.items():
+        children_by_parent[pid].append(cid)
+
+    out: set[UUID] = set()
+    stack: list[UUID] = [root_id]
+    while stack:
+        cur = stack.pop()
+        if cur in out:
+            continue
+        out.add(cur)
+        stack.extend(children_by_parent.get(cur, []))
+    return out
 
 
 class DatasetCategoryService:
@@ -234,10 +257,90 @@ class DatasetCategoryService:
         db.refresh(row)
         return row
 
+    @staticmethod
+    def list_dataset_category_ids(db: Session, *, tenant_id: UUID, account_id: str, dataset_id: UUID) -> list[UUID]:
+        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+        rows = (
+            db.query(DatasetCategoryMembership.category_id)
+            .filter(
+                DatasetCategoryMembership.tenant_id == tenant_id,
+                DatasetCategoryMembership.dataset_id == dataset_id,
+            )
+            .all()
+        )
+        out: list[UUID] = []
+        seen: set[UUID] = set()
+        for (cid,) in rows:
+            if cid is None:
+                continue
+            if cid in seen:
+                continue
+            seen.add(cid)
+            out.append(cid)
+        out.sort(key=lambda x: str(x))
+        return out
+
+    @staticmethod
+    def set_dataset_categories(
+        db: Session,
+        *,
+        tenant_id: UUID,
+        account_id: str,
+        dataset_id: UUID,
+        category_ids: list[UUID],
+    ) -> list[UUID]:
+        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+        normalized: list[UUID] = []
+        seen: set[UUID] = set()
+        for cid in category_ids or []:
+            try:
+                cid2 = UUID(str(cid))
+            except Exception:
+                continue
+            if cid2 in seen:
+                continue
+            seen.add(cid2)
+            normalized.append(cid2)
+
+        if normalized:
+            rows = (
+                db.query(DatasetCategory.id)
+                .filter(DatasetCategory.tenant_id == tenant_id, DatasetCategory.id.in_(normalized))
+                .all()
+            )
+            found = {r[0] for r in rows}
+            missing = [str(cid) for cid in normalized if cid not in found]
+            if missing:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown category id(s): {', '.join(missing)}")
+
+        # Replace assignment.
+        db.query(DatasetCategoryMembership).filter(
+            DatasetCategoryMembership.tenant_id == tenant_id,
+            DatasetCategoryMembership.dataset_id == dataset_id,
+        ).delete(synchronize_session=False)
+
+        if normalized:
+            db.add_all(
+                [
+                    DatasetCategoryMembership(
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        category_id=cid,
+                    )
+                    for cid in normalized
+                ]
+            )
+        db.commit()
+        return sorted(normalized, key=lambda x: str(x))
+
 
 __all__ = [
     "DatasetCategoryService",
     "build_category_tree_nodes",
+    "collect_descendant_ids",
     "would_create_cycle",
 ]
-

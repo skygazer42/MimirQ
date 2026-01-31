@@ -38,3 +38,15 @@ def test_build_category_tree_nodes_sorts_siblings() -> None:
 
     assert [n.name for n in nodes] == ["B", "A"]  # top-level sorted by sort_order then name
     assert [c.name for c in nodes[0].children] == ["child-1", "child-2"]
+
+
+def test_collect_descendant_ids() -> None:
+    from app.services.dataset_category_service import collect_descendant_ids
+
+    a = uuid.UUID("00000000-0000-0000-0000-0000000000a1")
+    b = uuid.UUID("00000000-0000-0000-0000-0000000000b2")
+    c = uuid.UUID("00000000-0000-0000-0000-0000000000c3")
+
+    parent_by_id = {a: None, b: a, c: b}
+    assert collect_descendant_ids(root_id=a, parent_by_id=parent_by_id) == {a, b, c}
+    assert collect_descendant_ids(root_id=b, parent_by_id=parent_by_id) == {b, c}

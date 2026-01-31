@@ -34,6 +34,7 @@ from app.api.schemas.dataset_profile import (
     DatasetProfileScanRunOut,
     DatasetProfileSummary,
 )
+from app.api.schemas.dataset_category import DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse
 from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import (
@@ -45,6 +46,7 @@ from app.api.schemas.ingestion_policy import (
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
@@ -65,6 +67,7 @@ from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline
 from app.services.report_html import render_dataset_profile_html
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
+from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 
 router = APIRouter()
 
@@ -360,6 +363,8 @@ def create_dataset(
 def list_datasets(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
+    category_id: UUID | None = Query(default=None, description="Optional: filter datasets by category (tree)"),
+    include_descendants: bool = Query(default=True, description="When filtering by category_id, include subtree"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
@@ -367,6 +372,32 @@ def list_datasets(
     DatasetService.ensure_member(db, tenant_id, account_id)
     # list all datasets in tenant
     query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
+    # Optional category filter (best-effort; default includes subtree).
+    if category_id is not None:
+        try:
+            rows = (
+                db.query(DatasetCategory.id, DatasetCategory.parent_id)
+                .filter(DatasetCategory.tenant_id == tenant_id)
+                .all()
+            )
+            parent_by_id = {cid: pid for cid, pid in rows if cid is not None}
+            category_ids = (
+                collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
+                if bool(include_descendants)
+                else {category_id}
+            )
+            ds_ids_subq = (
+                db.query(DatasetCategoryMembership.dataset_id)
+                .filter(
+                    DatasetCategoryMembership.tenant_id == tenant_id,
+                    DatasetCategoryMembership.category_id.in_(list(category_ids)),
+                )
+                .subquery()
+            )
+            query = query.filter(Dataset.id.in_(ds_ids_subq))
+        except Exception:
+            # Keep list endpoint resilient; treat as "no category filter".
+            pass
     total = query.count()
     datasets = query.order_by(Dataset.created_at.desc()).offset(skip).limit(limit).all()
 
@@ -445,6 +476,35 @@ def get_dataset(
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         pipeline=_dataset_pipeline_out(dataset),
     )
+
+
+@router.get("/{dataset_id}/categories", response_model=DatasetCategoryAssignmentResponse)
+def get_dataset_categories(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    category_ids = DatasetCategoryService.list_dataset_category_ids(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+    return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
+
+
+@router.put("/{dataset_id}/categories", response_model=DatasetCategoryAssignmentResponse)
+def set_dataset_categories(
+    dataset_id: UUID,
+    payload: DatasetCategoryAssignmentRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    category_ids = DatasetCategoryService.set_dataset_categories(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        category_ids=payload.category_ids or [],
+    )
+    return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
 
 
 @router.patch("/{dataset_id}", response_model=DatasetOut)

@@ -49,5 +49,13 @@ class DatasetCategoryTreeResponse(BaseModel):
     items: List[DatasetCategoryNode]
 
 
-DatasetCategoryNode.model_rebuild()
+class DatasetCategoryAssignmentRequest(BaseModel):
+    category_ids: List[UUID] = Field(default_factory=list)
 
+
+class DatasetCategoryAssignmentResponse(BaseModel):
+    dataset_id: UUID
+    category_ids: List[UUID] = Field(default_factory=list)
+
+
+DatasetCategoryNode.model_rebuild()
