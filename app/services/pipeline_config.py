@@ -60,6 +60,8 @@ _REGEX_RULES_MAX = 60
 _REGEX_PATTERN_MAX = 600
 _REGEX_REPL_MAX = 2000
 _SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
+_RULE_PACKS_MAX = 20
+_RULE_PACK_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.:\-]{0,63}$")
 
 
 def _sanitize_chunk_strategy_params(value: Any) -> Optional[dict[str, Any]]:
@@ -152,6 +154,41 @@ def _sanitize_regex_rules(value: Any) -> Optional[list[dict]]:
     return out or None
 
 
+def _sanitize_rule_packs(value: Any) -> Optional[list[str]]:
+    """
+    Best-effort validation for user-provided governance rule packs.
+
+    Rule packs are server-defined presets (purely declarative) that expand to regex rules.
+    Security/compatibility:
+    - Keep the payload small and string-only
+    - Normalize to lowercase for stable dedupe
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return None
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        name = item.strip().lower()
+        if not name:
+            continue
+        if not _RULE_PACK_NAME_RE.match(name):
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+        if len(out) >= _RULE_PACKS_MAX:
+            break
+
+    return out or None
+
+
 def _resolve_flag(default: bool, override: Optional[bool]) -> bool:
     return bool(default) and override is not False
 
@@ -204,6 +241,7 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_remove_common_lines=_coerce_bool(governance.get("remove_common_lines")),
         governance_remove_boilerplate=_coerce_bool(governance.get("remove_boilerplate")),
         governance_remove_images=_coerce_str(governance.get("remove_images")),
+        governance_rule_packs=_sanitize_rule_packs(governance.get("rule_packs")),
         governance_regex_rules=_sanitize_regex_rules(governance.get("regex_rules")),
         governance_extract_frontmatter=_coerce_bool(governance.get("extract_frontmatter")),
         governance_strip_frontmatter=_coerce_bool(governance.get("strip_frontmatter")),
@@ -352,6 +390,10 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["remove_boilerplate"] = bool(options.governance_remove_boilerplate)
     if options.governance_remove_images is not None:
         governance["remove_images"] = str(options.governance_remove_images)
+    if options.governance_rule_packs is not None:
+        sanitized = _sanitize_rule_packs(options.governance_rule_packs)
+        if sanitized:
+            governance["rule_packs"] = sanitized
     if options.governance_regex_rules is not None:
         sanitized = _sanitize_regex_rules(options.governance_regex_rules)
         if sanitized:
@@ -521,6 +563,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_remove_images is None
         else str(options.governance_remove_images or "none")
     )
+    governance_rule_packs = _sanitize_rule_packs(options.governance_rule_packs) or []
     governance_regex_rules = _sanitize_regex_rules(options.governance_regex_rules) or []
     governance_extract_frontmatter = (
         getattr(settings, "GOVERNANCE_EXTRACT_FRONTMATTER", False)
@@ -846,6 +889,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_remove_common_lines=governance_remove_common_lines,
         governance_remove_boilerplate=governance_remove_boilerplate,
         governance_remove_images=str(governance_remove_images or "none"),
+        governance_rule_packs=list(governance_rule_packs or []),
         governance_regex_rules=list(governance_regex_rules or []),
         governance_extract_frontmatter=bool(governance_extract_frontmatter),
         governance_strip_frontmatter=bool(governance_strip_frontmatter),
