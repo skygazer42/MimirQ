@@ -56,6 +56,7 @@ import type {
   DatasetListResponse,
   DatasetIngestionStats,
   DatasetHealthResponse,
+  DatasetReport,
   DatasetConfigExport,
   DatasetConfigImportRequest,
   DatasetCloneRequest,
@@ -1478,6 +1479,34 @@ export const datasetApi = {
   async lotusSemFilter(datasetId: string, tableId: string, body: LotusSemFilterRequest): Promise<TableQueryResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`, body, { timeout: API_LONG_TIMEOUT_MS })
     return data
+  },
+}
+
+// ==================== Reports API ====================
+
+export const reportApi = {
+  async getDatasetReport(
+    datasetId: string,
+    params?: { pipeline_hash?: string; connector_runs_limit?: number }
+  ): Promise<DatasetReport> {
+    const { data } = await apiClient.get(`/reports/datasets/${datasetId}`, { params })
+    return data
+  },
+
+  async exportDatasetReportJson(
+    datasetId: string,
+    params?: { pipeline_hash?: string; connector_runs_limit?: number }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/reports/datasets/${datasetId}/export`, { params, responseType: 'blob' })
+    return data as Blob
+  },
+
+  async exportDatasetReportHtml(
+    datasetId: string,
+    params?: { pipeline_hash?: string; connector_runs_limit?: number; redact?: boolean }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/reports/datasets/${datasetId}/export-html`, { params, responseType: 'blob' })
+    return data as Blob
   },
 }
 
