@@ -5258,6 +5258,8 @@ export interface components {
             filename: string;
             /** Error */
             error: string;
+            /** Source Path */
+            source_path?: string | null;
         };
         /**
          * DocumentBatchUploadResponse
@@ -5289,6 +5291,8 @@ export interface components {
             filename: string;
             /** Status */
             status: string;
+            /** Source Path */
+            source_path?: string | null;
         };
         /**
          * DocumentBatchUserMetadataPatchRequest

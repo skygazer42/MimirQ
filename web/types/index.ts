@@ -1566,11 +1566,13 @@ export interface DocumentBatchUploadSuccess {
   document_id: string
   filename: string
   status: string
+  source_path?: string | null
 }
 
 export interface DocumentBatchUploadFailure {
   filename: string
   error: string
+  source_path?: string | null
 }
 
 export interface DocumentBatchUploadResponse {

@@ -948,6 +948,82 @@ def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> 
     return next_user
 
 
+_WINDOWS_DRIVE_LETTER_RE = re.compile(r"^[a-zA-Z]:$")
+_UPLOAD_SOURCE_PATH_MAX_LEN = 500
+
+
+def _normalize_upload_path_parts(filename: str) -> list[str]:
+    """
+    Best-effort normalization for uploaded file "filename" which may include a relative path.
+
+    This is used ONLY for metadata correlation/display (not filesystem writes).
+
+    We intentionally do NOT preserve absolute paths or path traversal semantics.
+    """
+    raw = str(filename or "")
+    if not raw:
+        return []
+    if "\x7f" in raw or any(ord(ch) < 32 for ch in raw):
+        # Match `_sanitize_filename` behavior: reject control characters (header safety).
+        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+
+    cleaned = raw.replace("\\", "/").strip()
+    if not cleaned:
+        return []
+
+    parts = [p.strip() for p in cleaned.split("/") if p.strip() and p.strip() != "."]
+    if parts and _WINDOWS_DRIVE_LETTER_RE.fullmatch(parts[0]):
+        parts = parts[1:]
+    if not parts:
+        return []
+
+    # Collapse ".." with stack semantics (defensive; folder uploads should never send "..").
+    stack: list[str] = []
+    for p in parts:
+        if p == "..":
+            if stack:
+                stack.pop()
+            continue
+        stack.append(p)
+
+    # Drop browser "fakepath" (e.g. C:\fakepath\a.pdf) which is not real structure.
+    if len(stack) == 2 and stack[0].lower() == "fakepath":
+        stack = [stack[1]]
+
+    return stack
+
+
+def _normalize_upload_key(filename: str) -> str:
+    """
+    Normalize an upload correlation key:
+    - Prefer directory-preserving relative paths when available.
+    - Falls back to sanitized basename.
+    """
+    parts = _normalize_upload_path_parts(filename)
+    if not parts:
+        return _sanitize_filename(filename)
+    key = "/".join(parts)
+    if len(key) > _UPLOAD_SOURCE_PATH_MAX_LEN:
+        key = key[:_UPLOAD_SOURCE_PATH_MAX_LEN]
+    return key
+
+
+def _normalize_upload_source_path(filename: str) -> str | None:
+    """
+    Return a normalized relative source path if a directory was provided, else None.
+
+    Examples:
+    - "a.pdf" -> None
+    - "Docs/sub/a.pdf" -> "Docs/sub/a.pdf"
+    - "C:\\fakepath\\a.pdf" -> None
+    """
+    key = _normalize_upload_key(filename)
+    if "/" not in key:
+        return None
+    # Heuristic: ignore "fakepath" style uploads (after normalization it would not contain "/").
+    return key
+
+
 def _sanitize_filename(filename: str) -> str:
     """
     Return a safe filename for storage/display.
@@ -2139,6 +2215,7 @@ async def upload_document(
     event_vector_enabled: Optional[bool] = Form(default=None),
     entity_vector_enabled: Optional[bool] = Form(default=None),
     dataset_id: Optional[UUID] = Form(default=None),
+    user_metadata: Optional[str] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
@@ -2153,8 +2230,11 @@ async def upload_document(
     4. Process document asynchronously (parse, chunk, embed)
     """
 
-    # 0. Sanitize filename safety (some clients may send Windows fake paths).
-    file.filename = _sanitize_filename(file.filename)
+    # 0. Filename + optional directory-preserving upload hint (folder uploads).
+    raw_filename = file.filename
+    upload_key = _normalize_upload_key(raw_filename)
+    source_path = upload_key if "/" in upload_key else None
+    file.filename = _sanitize_filename(raw_filename)
 
     # 1. Validate file type.
     file_ext = Path(file.filename).suffix.lower()
@@ -2191,7 +2271,7 @@ async def upload_document(
     # Dataset ingestion policy (file-level pre-processing + per-type overrides).
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
     policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
-    matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
+    matched_rule = match_ingestion_rule(policy, filename=upload_key or file.filename, file_ext=file_ext)
 
     ingestion_meta: Optional[dict[str, Any]] = None
     # Dataset-level ingestion defaults (parser/chunk strategy). These apply when the request uses
@@ -2317,12 +2397,28 @@ async def upload_document(
         "chunk_strategy": resolved_chunk_strategy,
         "chunk_strategy_requested": (chunk_strategy or "").lower(),
     }
+    if source_path:
+        doc_metadata["source_path"] = source_path
     if isinstance(file_sha256, str) and file_sha256:
         doc_metadata["file_sha256"] = file_sha256
     if pipeline_metadata:
         doc_metadata["pipeline"] = pipeline_metadata
     if ingestion_meta:
         doc_metadata["ingestion"] = ingestion_meta
+
+    # Optional: user metadata (tags/notes/...) attached at upload time.
+    if isinstance(user_metadata, str) and user_metadata.strip():
+        raw = user_metadata.strip()
+        max_len = int(getattr(settings, "USER_METADATA_FORM_JSON_MAX_CHARS", 20_000) or 20_000)
+        if max_len > 0 and len(raw) > max_len:
+            raise HTTPException(status_code=400, detail="user_metadata is too large")
+        try:
+            obj = json.loads(raw)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Invalid user_metadata JSON (expect UTF-8)") from exc
+        if not isinstance(obj, dict):
+            raise HTTPException(status_code=400, detail="user_metadata must be a JSON object")
+        doc_metadata["user"] = _apply_user_metadata_patch(current={}, patch=obj, replace=True)
     pipeline_hash = _compute_pipeline_hash(doc_metadata)
     doc_metadata["pipeline_hash"] = pipeline_hash
     # Versioning: the first processed pipeline is the active one by default.
@@ -2445,6 +2541,7 @@ async def upload_documents_batch(
     event_vector_enabled: Optional[bool] = Form(default=None),
     entity_vector_enabled: Optional[bool] = Form(default=None),
     dataset_id: Optional[UUID] = Form(default=None),
+    user_metadata_map: Optional[str] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -2478,6 +2575,26 @@ async def upload_documents_batch(
     semaphore = asyncio.Semaphore(max_concurrent)
 
     pipeline_parsed = _parse_pipeline_json(pipeline)
+
+    # Optional: per-file user metadata patches keyed by upload path (e.g. "folder/a.pdf" or "a.pdf").
+    user_meta_by_key: dict[str, dict] = {}
+    if isinstance(user_metadata_map, str) and user_metadata_map.strip():
+        raw = user_metadata_map.strip()
+        max_len = int(getattr(settings, "USER_METADATA_MAP_FORM_JSON_MAX_CHARS", 200_000) or 200_000)
+        if max_len > 0 and len(raw) > max_len:
+            raise HTTPException(status_code=400, detail="user_metadata_map is too large")
+        try:
+            obj = json.loads(raw)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Invalid user_metadata_map JSON (expect UTF-8)") from exc
+        if not isinstance(obj, dict):
+            raise HTTPException(status_code=400, detail="user_metadata_map must be a JSON object")
+        for k, v in obj.items():
+            if not isinstance(k, str) or not isinstance(v, dict):
+                continue
+            key = _normalize_upload_key(k)
+            if key:
+                user_meta_by_key[key] = v
 
     # Permission check (done once).
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
@@ -2516,9 +2633,14 @@ async def upload_documents_batch(
     async def process_single_file(file: UploadFile) -> dict:
         """Handle upload for a single file."""
         async with semaphore:
+            source_path: str | None = None
+            upload_key: str | None = None
             try:
-                # Sanitize filename (some clients may send Windows fake paths).
-                file.filename = _sanitize_filename(file.filename)
+                # Filename + optional directory-preserving upload hint (folder uploads).
+                raw_filename = file.filename
+                upload_key = _normalize_upload_key(raw_filename)
+                source_path = upload_key if "/" in upload_key else None
+                file.filename = _sanitize_filename(raw_filename)
                 
                 # Validate file type.
                 file_ext = Path(file.filename).suffix.lower()
@@ -2526,6 +2648,7 @@ async def upload_documents_batch(
                     return {
                         "success": False,
                         "filename": file.filename,
+                        "source_path": source_path,
                         "error": f"Unsupported file type: {file_ext}"
                     }
                 
@@ -2551,7 +2674,7 @@ async def upload_documents_batch(
                 )
 
                 # Ingestion policy overrides (per file).
-                matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
+                matched_rule = match_ingestion_rule(policy, filename=upload_key or file.filename, file_ext=file_ext)
                 ingestion_meta: Optional[dict[str, Any]] = None
                 parser_backend_choice: str = parser_backend_base
                 chunk_strategy_choice: str = chunk_strategy_base
@@ -2641,12 +2764,25 @@ async def upload_documents_batch(
                     "chunk_strategy": resolved_chunk_strategy,
                     "chunk_strategy_requested": (chunk_strategy or "").lower(),
                 }
+                if source_path:
+                    doc_metadata["source_path"] = source_path
                 if isinstance(file_sha256, str) and file_sha256:
                     doc_metadata["file_sha256"] = file_sha256
                 if pipeline_metadata:
                     doc_metadata["pipeline"] = pipeline_metadata
                 if ingestion_meta:
                     doc_metadata["ingestion"] = ingestion_meta
+
+                user_patch = None
+                if isinstance(upload_key, str) and upload_key:
+                    user_patch = user_meta_by_key.get(upload_key)
+                    # Optional fallback: allow mapping by basename for non-folder uploads.
+                    if user_patch is None and "/" in upload_key:
+                        user_patch = user_meta_by_key.get(upload_key.rsplit("/", 1)[-1])
+                if user_patch is None:
+                    user_patch = user_meta_by_key.get(file.filename)
+                if isinstance(user_patch, dict) and user_patch:
+                    doc_metadata["user"] = _apply_user_metadata_patch(current={}, patch=user_patch, replace=True)
                 pipeline_hash = _compute_pipeline_hash(doc_metadata)
                 doc_metadata["pipeline_hash"] = pipeline_hash
                 # Versioning: the first processed pipeline is the active one by default.
@@ -2668,6 +2804,7 @@ async def upload_documents_batch(
                         return {
                             "success": True,
                             "filename": file.filename,
+                            "source_path": source_path,
                             "document_id": str(getattr(dup, "id", "")),
                             "document": dup,
                         }
@@ -2718,6 +2855,7 @@ async def upload_documents_batch(
                 return {
                     "success": True,
                     "filename": file.filename,
+                    "source_path": source_path,
                     "document_id": str(file_id),
                     "document": db_document
                 }
@@ -2727,6 +2865,7 @@ async def upload_documents_batch(
                 return {
                     "success": False,
                     "filename": file.filename,
+                    "source_path": source_path,
                     "error": str(e)
                 }
     
@@ -2741,6 +2880,7 @@ async def upload_documents_batch(
             processed_results.append({
                 "success": False,
                 "filename": "unknown",
+                "source_path": None,
                 "error": str(result)
             })
         else:
@@ -2757,6 +2897,7 @@ async def upload_documents_batch(
             {
                 "document_id": r["document_id"],
                 "filename": r["filename"],
+                "source_path": r.get("source_path"),
                 "status": r["document"].status
             }
             for r in successful
@@ -2764,6 +2905,7 @@ async def upload_documents_batch(
         "failed": [
             {
                 "filename": r["filename"],
+                "source_path": r.get("source_path"),
                 "error": r.get("error", "Unknown error")
             }
             for r in failed

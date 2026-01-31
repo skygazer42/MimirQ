@@ -269,15 +269,25 @@ export const documentApi = {
    */
   async upload(
     file: File,
-    options: { parser_backend?: string; chunk_strategy?: string; dataset_id?: string; pipeline?: DocumentPipelineOptions } = {}
+    options: {
+      parser_backend?: string
+      chunk_strategy?: string
+      dataset_id?: string
+      pipeline?: DocumentPipelineOptions
+      user_metadata?: Record<string, any>
+    } = {}
   ): Promise<Document> {
     const resolvedParser = resolveParserBackendForFilename(file.name, options.parser_backend)
     const formData = new FormData()
-    formData.append('file', file)
+    const uploadName = (file as any).webkitRelativePath || file.name
+    formData.append('file', file, uploadName)
     formData.append('parser_backend', resolvedParser.backend || 'auto')
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
+    }
+    if (options.user_metadata) {
+      formData.append('user_metadata', JSON.stringify(options.user_metadata))
     }
     appendPipelineOptionsToFormData(formData, options.pipeline)
 
@@ -320,12 +330,14 @@ export const documentApi = {
       dataset_id?: string
       pipeline?: DocumentPipelineOptions
       max_concurrent?: number
+      user_metadata_map?: Record<string, Record<string, any>>
     } = {}
   ): Promise<DocumentBatchUploadResponse> {
     const resolvedParser = resolveParserBackendForFiles(files, options.parser_backend)
     const formData = new FormData()
     for (const file of files) {
-      formData.append('files', file)
+      const uploadName = (file as any).webkitRelativePath || file.name
+      formData.append('files', file, uploadName)
     }
     formData.append('parser_backend', resolvedParser.backend || 'auto')
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
@@ -334,6 +346,9 @@ export const documentApi = {
     }
     if (typeof options.max_concurrent === 'number') {
       formData.append('max_concurrent', String(options.max_concurrent))
+    }
+    if (options.user_metadata_map) {
+      formData.append('user_metadata_map', JSON.stringify(options.user_metadata_map))
     }
     appendPipelineOptionsToFormData(formData, options.pipeline)
 

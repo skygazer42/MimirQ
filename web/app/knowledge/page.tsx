@@ -211,7 +211,7 @@ export default function KnowledgePage() {
   const lastUrlRef = useRef<string | null>(null)
   const didInitFromUrlRef = useRef(false)
 
-  const { documents, total, isLoading, uploadDocument, uploadDocumentFromUrl, deleteDocument, loadDocuments } = useDocuments()
+  const { documents, total, isLoading, uploadDocuments, uploadDocumentFromUrl, deleteDocument, loadDocuments } = useDocuments()
   const [activeTab, setActiveTab] = useState<TabType>('documents')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const { parserBackend, setParserBackend } = useParserBackendPreference()
@@ -652,15 +652,18 @@ export default function KnowledgePage() {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    for (const file of Array.from(files)) {
-      try {
-        await uploadDocument(file)
-      } catch (error) {
-        console.error('Upload failed:', error)
+    try {
+      const res = await uploadDocuments(Array.from(files), { maxRetries: 1, maxConcurrent: 5 })
+      if (res.failed_count > 0) {
+        toast.warning(`已上传 ${res.successful_count}/${res.total} 个文件，失败 ${res.failed_count} 个（可重试）`)
+      } else {
+        toast.success(`已上传 ${res.successful_count} 个文件`)
       }
+    } catch (err: any) {
+      toast.error(formatApiError(err, '上传失败'))
     }
     e.target.value = ''
-  }, [uploadDocument])
+  }, [uploadDocuments])
 
   const handleUrlImport = useCallback(async () => {
     const url = urlImportUrl.trim()

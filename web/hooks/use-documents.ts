@@ -10,6 +10,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
+import type { DocumentBatchUploadFailure, DocumentBatchUploadResponse, DocumentBatchUploadSuccess } from '@/types'
 
 export type DocumentListParams = {
   skip?: number
@@ -158,9 +159,11 @@ export function useDocuments() {
       setError(null)
 
       try {
+        const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
         const newDoc = await documentApi.upload(file, {
           parser_backend: parserBackend,
           chunk_strategy: chunkStrategy,
+          dataset_id: datasetId || undefined,
           pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
         })
         const params = lastListParamsRef.current
@@ -182,6 +185,98 @@ export function useDocuments() {
       }
     },
     [parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions, pollDocumentStatus]
+  )
+
+  /**
+   * 批量上传（支持 folder upload 的相对路径保留 + 自动重试失败项）
+   */
+  const uploadDocuments = useCallback(
+    async (
+      files: File[],
+      options: { maxRetries?: number; maxConcurrent?: number } = {}
+    ): Promise<DocumentBatchUploadResponse> => {
+      setIsLoading(true)
+      setError(null)
+
+      const maxRetries = Math.max(0, Math.min(3, Number(options.maxRetries ?? 1)))
+      const maxConcurrent = Math.max(1, Math.min(10, Number(options.maxConcurrent ?? 5)))
+      const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
+
+      const originalFiles = Array.from(files || []).filter(Boolean)
+      const total = originalFiles.length
+      if (total === 0) {
+        return { total: 0, successful_count: 0, failed_count: 0, successful: [], failed: [] }
+      }
+
+      const keyOf = (f: File) => String((f as any).webkitRelativePath || f.name || '').trim()
+      const fileByKey = new Map<string, File>()
+      for (const f of originalFiles) {
+        const k = keyOf(f)
+        if (k) fileByKey.set(k, f)
+      }
+
+      const successes: DocumentBatchUploadSuccess[] = []
+      let failures: DocumentBatchUploadFailure[] = []
+
+      let remaining = originalFiles
+      let attempt = 0
+
+      try {
+        while (remaining.length > 0 && attempt <= maxRetries) {
+          const nextRemaining: File[] = []
+          const roundFailures: DocumentBatchUploadFailure[] = []
+
+          // Server caps at 50 files per request.
+          for (let i = 0; i < remaining.length; i += 50) {
+            const batch = remaining.slice(i, i + 50)
+            const res = await documentApi.uploadBatch(batch, {
+              parser_backend: parserBackend,
+              chunk_strategy: chunkStrategy,
+              dataset_id: datasetId || undefined,
+              pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+              max_concurrent: maxConcurrent,
+            })
+
+            successes.push(...(res.successful || []))
+            const failed = res.failed || []
+            roundFailures.push(...failed)
+
+            // Prepare retry list (best-effort mapping by source_path or filename).
+            for (const item of failed) {
+              const key = String(item.source_path || item.filename || '').trim()
+              const f = key ? fileByKey.get(key) : undefined
+              if (f) nextRemaining.push(f)
+            }
+          }
+
+          failures = roundFailures
+          if (nextRemaining.length === 0) break
+          attempt += 1
+          remaining = nextRemaining
+        }
+
+        // Refresh list once and then start polling new docs (ensures doc ids are present in state).
+        await loadDocuments()
+        for (const s of successes) {
+          if (s?.document_id) pollDocumentStatus(String(s.document_id))
+        }
+
+        return {
+          total,
+          successful_count: successes.length,
+          failed_count: failures.length,
+          successful: successes,
+          failed: failures,
+        }
+      } catch (err: any) {
+        setError(formatApiError(err, 'Failed to upload documents'))
+        console.error('Batch upload error:', err)
+        throw err
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [chunkStrategy, loadDocuments, parserBackend, pipelineOptions, pipelineOverridesEnabled, pollDocumentStatus]
   )
 
   /**
@@ -291,6 +386,7 @@ export function useDocuments() {
     loadDocuments,
     refreshDocuments: loadDocuments,
     uploadDocument,
+    uploadDocuments,
     uploadDocumentFromUrl,
     cancelDocument,
     deleteDocument,
