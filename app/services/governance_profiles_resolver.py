@@ -20,7 +20,12 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.schemas.governance_profile import GovernanceProfileOut, GovernanceProfilePayload, GovernanceProfileSummary, RegexRuleModel
+from app.api.schemas.governance_profile import (
+    GovernanceProfileOut,
+    GovernanceProfilePayload,
+    GovernanceProfileSummary,
+    RegexRuleModel,
+)
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
 from app.services.governance_profiles import builtin_profile_to_out, get_builtin_governance_profiles
 

@@ -27,6 +27,8 @@ from app.api.schemas.dataset import (
     DatasetRAGDefaults,
     DatasetUpdate,
 )
+from app.api.schemas.dataset_category import DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse
+from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
 from app.api.schemas.dataset_profile import (
     DatasetProfileFindingListResponse,
     DatasetProfileScanRunCreateRequest,
@@ -34,8 +36,6 @@ from app.api.schemas.dataset_profile import (
     DatasetProfileScanRunOut,
     DatasetProfileSummary,
 )
-from app.api.schemas.dataset_category import DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse
-from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import (
     IngestionPolicy,
@@ -55,6 +55,7 @@ from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
 from app.services.audit_log_service import audit_log_event
+from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.dataset_profile_service import compute_dataset_profile_summary, list_finding_documents
 from app.services.dataset_service import DatasetPermissionService, DatasetService
@@ -67,7 +68,6 @@ from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pi
 from app.services.report_html import render_dataset_profile_html
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
-from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 
 router = APIRouter()
 

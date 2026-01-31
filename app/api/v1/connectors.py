@@ -13,21 +13,22 @@ import contextlib
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.connector import (
-    ConnectorInfo,
     ConnectorConfigCreateRequest,
     ConnectorConfigListResponse,
     ConnectorConfigOut,
     ConnectorConfigUpdateRequest,
+    ConnectorInfo,
     ConnectorRunCreateRequest,
     ConnectorRunListResponse,
     ConnectorRunOut,

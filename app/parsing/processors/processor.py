@@ -3,6 +3,7 @@ Document processing service - core processing flow.
 """
 import asyncio
 import base64
+import contextlib
 import datetime as dt
 import hashlib
 import re
@@ -24,10 +25,10 @@ from app.core.database import SessionLocal
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
+from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
-from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies import SeparatorChunker

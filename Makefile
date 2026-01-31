@@ -1,8 +1,17 @@
-.PHONY: help init up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean doctor
+.PHONY: help init up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
 
+# Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
+VENV_PY := .venv/bin/python
+ifeq ($(wildcard $(VENV_PY)),$(VENV_PY))
+PY := $(VENV_PY)
+endif
 ifeq ($(OS),Windows_NT)
 PY := python
+VENV_PY := .venv/Scripts/python.exe
+ifeq ($(wildcard $(VENV_PY)),$(VENV_PY))
+PY := $(VENV_PY)
+endif
 endif
 
 # `PYTHONPYCACHEPREFIX=... cmd` is POSIX-only; keep `make verify` working on Windows.
@@ -62,6 +71,7 @@ help:
 	@echo "  make db-upgrade - run Alembic migrations"
 	@echo "  make db-revision - create Alembic revision (m=msg)"
 	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
+	@echo "  make enterprise-checks - verify + backend/web tests (CI-like)"
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make clean     - remove local caches"
 	@echo "  make doctor    - quick env sanity checks"
@@ -207,6 +217,11 @@ verify:
 	cd web && pnpm run ui-check
 	cd web && pnpm run typecheck
 	$(COMPILEALL_VERIFY)
+
+enterprise-checks:
+	@$(MAKE) verify
+	@$(MAKE) test
+	cd web && pnpm run test
 
 verify-docker:
 	@$(MAKE) api-check

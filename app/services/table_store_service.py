@@ -651,7 +651,7 @@ def _parse_markdown_table(block_lines: list[str]) -> tuple["pd.DataFrame", bool]
 
     Returns: (df, had_separator_row) or None if it doesn't look like a table.
     """
-    lines = [str(l or "") for l in (block_lines or []) if str(l or "").strip()]
+    lines = [str(line or "") for line in (block_lines or []) if str(line or "").strip()]
     if len(lines) < 2:
         return None
 

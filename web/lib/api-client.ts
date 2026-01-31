@@ -29,6 +29,11 @@ import type {
   DocumentDuplicateList,
   DocumentVersionList,
   ConnectorInfo,
+  ConnectorConfigCreateRequest,
+  ConnectorConfigListResponse,
+  ConnectorConfigOut,
+  ConnectorConfigUpdateRequest,
+  ConnectorScheduledTickResponse,
   ConnectorRunCreateRequest,
   ConnectorRunListResponse,
   ConnectorRunOut,
@@ -1183,6 +1188,41 @@ export const pipelineApi = {
 export const connectorApi = {
   async listConnectors(): Promise<ConnectorInfo[]> {
     const { data } = await apiClient.get('/connectors')
+    return data
+  },
+
+  async listConfigs(params?: {
+    skip?: number
+    limit?: number
+    dataset_id?: string
+    connector_id?: string
+    enabled?: boolean
+  }): Promise<ConnectorConfigListResponse> {
+    const { data } = await apiClient.get('/connectors/configs', { params })
+    return data
+  },
+
+  async createConfig(payload: ConnectorConfigCreateRequest): Promise<ConnectorConfigOut> {
+    const { data } = await apiClient.post('/connectors/configs', payload)
+    return data
+  },
+
+  async updateConfig(configId: string, payload: ConnectorConfigUpdateRequest): Promise<ConnectorConfigOut> {
+    const { data } = await apiClient.put(`/connectors/configs/${configId}`, payload)
+    return data
+  },
+
+  async deleteConfig(configId: string): Promise<void> {
+    await apiClient.delete(`/connectors/configs/${configId}`)
+  },
+
+  async runConfig(configId: string): Promise<ConnectorRunOut> {
+    const { data } = await apiClient.post(`/connectors/configs/${configId}/run`)
+    return data
+  },
+
+  async scheduledTick(): Promise<ConnectorScheduledTickResponse> {
+    const { data } = await apiClient.post('/connectors/scheduled/tick')
     return data
   },
 
