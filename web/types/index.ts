@@ -1199,6 +1199,18 @@ export interface DatasetReportConnectorRun {
   stats: Record<string, any>
 }
 
+export interface DatasetGovernanceMetrics {
+  total_documents: number
+  used_documents: number
+  truncated: boolean
+  docs_with_governance: number
+  rules_applied_total: number
+  changed_documents_total: number
+  dropped_documents_total: number
+  drop_reasons_total: Record<string, number>
+  rule_packs_docs: Record<string, number>
+}
+
 export interface DatasetReport {
   dataset_id: string
   dataset_name?: string | null
@@ -1210,6 +1222,7 @@ export interface DatasetReport {
   connectors: DatasetReportConnectorRun[]
   dataset_metadata: Record<string, any>
   folder_tree?: DocumentFolderTreeResponse | null
+  governance_metrics?: DatasetGovernanceMetrics | null
 }
 
 export interface DatasetConfigBundle {
