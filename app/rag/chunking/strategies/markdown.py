@@ -348,6 +348,7 @@ class MarkdownAwareChunker(BaseChunker):
                 header_context = self._extract_header_context(text, pos)
                 if header_context:
                     chunk_metadata["header_context"] = header_context
+                    chunk_metadata.setdefault("header_path", header_context)
 
                 all_chunks.append(Document(
                     page_content=restored_text,
@@ -470,12 +471,23 @@ class MarkdownAwareChunker(BaseChunker):
         return out
 
     def _extract_header_context(self, full_text: str, position: int) -> Optional[str]:
-        """Extract the most recent header before the given position."""
-        text_before = full_text[:position]
-        lines = text_before.split('\n')
+        """Extract the most recent header at-or-before the given position."""
+        if not full_text:
+            return None
 
-        for line in reversed(lines):
-            if line.strip().startswith('#'):
+        pos = max(0, min(int(position or 0), len(full_text)))
+        line_start = full_text.rfind("\n", 0, pos) + 1
+        line_end = full_text.find("\n", line_start)
+        if line_end < 0:
+            line_end = len(full_text)
+        current_line = full_text[line_start:line_end].strip()
+        if current_line.startswith("#"):
+            return current_line
+
+        # Fallback: scan prior lines.
+        text_before = full_text[:line_start]
+        for line in reversed(text_before.split("\n")):
+            if line.strip().startswith("#"):
                 return line.strip()
 
         return None

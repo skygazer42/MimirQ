@@ -196,6 +196,7 @@ class OutlineChunker(BaseChunker):
                         meta["outline_path"] = header_path
                     if header_path_str:
                         meta["outline_path_str"] = header_path_str
+                        meta.setdefault("header_path", header_path_str)
 
                     out.append(Document(page_content=sd.page_content, metadata=meta))
 
