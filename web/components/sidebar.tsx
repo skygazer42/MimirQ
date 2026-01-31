@@ -35,7 +35,7 @@ import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
 export function Sidebar() {
-  const { documents, isLoading, uploadDocument, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
+  const { documents, isLoading, uploadDocuments, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -56,12 +56,10 @@ export function Sidebar() {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    for (const file of Array.from(files)) {
-      try {
-        await uploadDocument(file)
-      } catch (error) {
-        console.error('Upload failed:', error)
-      }
+    try {
+      await uploadDocuments(Array.from(files), { maxRetries: 1, maxConcurrent: 5 })
+    } catch (error) {
+      console.error('Upload failed:', error)
     }
     e.target.value = ''
   }

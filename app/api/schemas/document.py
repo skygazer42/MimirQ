@@ -792,12 +792,16 @@ class DocumentBatchUploadSuccess(BaseModel):
     document_id: UUID
     filename: str
     status: str
+    # Optional directory-preserving upload key (e.g. folder/sub/file.pdf). Used by the UI to
+    # correlate results when multiple files share the same basename.
+    source_path: str | None = None
 
 
 class DocumentBatchUploadFailure(BaseModel):
     """Single file result for failed batch upload."""
     filename: str
     error: str
+    source_path: str | None = None
 
 
 class DocumentBatchUploadResponse(BaseModel):
