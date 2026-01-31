@@ -32,6 +32,7 @@ type Props = {
   open: boolean
   mode: Mode
   profileRef?: string | null
+  seedCreate?: GovernanceProfileCreate | null
   onOpenChange: (open: boolean) => void
   onSaved?: (profile: GovernanceProfileOut) => void
   onCreated?: (profile: GovernanceProfileOut) => void
@@ -66,6 +67,7 @@ export function ProfileEditorDrawer({
   open,
   mode,
   profileRef,
+  seedCreate,
   onOpenChange,
   onSaved,
   onCreated,
@@ -129,11 +131,12 @@ export function ProfileEditorDrawer({
     if (!open) return
 
     if (isCreate) {
-      const p = defaultPayload()
+      const seeded = seedCreate
+      const p = (seeded?.payload as any) || defaultPayload()
       setLoadedProfile(null)
-      setName('')
-      setKey('')
-      setDescription('')
+      setName(seeded ? String(seeded.name || '') : '')
+      setKey(seeded && typeof seeded.key === 'string' ? String(seeded.key || '') : '')
+      setDescription(seeded ? String(seeded.description || '') : '')
       setInputFormats(p.input_formats)
       setPipelinePatch(p.pipeline_patch)
       setRegexRules(p.regex_rules)
@@ -176,7 +179,7 @@ export function ProfileEditorDrawer({
     return () => {
       cancelled = true
     }
-  }, [open, isCreate, profileRef])
+  }, [open, isCreate, profileRef, seedCreate])
 
   // Keep JSON view synced for quick-toggle edits.
   useEffect(() => {

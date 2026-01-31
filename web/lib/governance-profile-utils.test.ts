@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import type { GovernanceProfilePayload } from '@/types'
+import type { GovernanceProfileOut, GovernanceProfilePayload } from '@/types'
 
-import { buildCleanPreviewRequestFromGovernanceProfile } from './governance-profile-utils'
+import { buildCleanPreviewRequestFromGovernanceProfile, buildGovernanceProfileCreateFromExisting } from './governance-profile-utils'
 
 describe('buildCleanPreviewRequestFromGovernanceProfile', () => {
   it('maps governance pipeline_patch + regex_rules into clean-preview request', () => {
@@ -35,3 +35,29 @@ describe('buildCleanPreviewRequestFromGovernanceProfile', () => {
   })
 })
 
+describe('buildGovernanceProfileCreateFromExisting', () => {
+  it('creates a create payload that can be saved as a custom profile', () => {
+    const profile: GovernanceProfileOut = {
+      id: null,
+      key: 'builtin:kb_default',
+      name: 'KB Default',
+      description: 'desc',
+      is_system: true,
+      payload: {
+        version: '1',
+        input_formats: ['markdown'],
+        pipeline_patch: { governance_enabled: true },
+        regex_rules: [],
+      },
+      created_at: null,
+      updated_at: null,
+    }
+
+    const create = buildGovernanceProfileCreateFromExisting(profile)
+
+    expect(create.name).toBe('KB Default (copy)')
+    expect(create.description).toBe('desc')
+    expect(create.key).toBeUndefined()
+    expect(create.payload).toEqual(profile.payload)
+  })
+})
