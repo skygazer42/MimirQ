@@ -57,6 +57,13 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         # Chinese (common PDF exports).
         RegexRule(pattern=r"(?m)^\s*(?:机密|保密|内部资料|内部使用|仅供内部使用)\s*$", repl="", flags=0),
     ],
+    "confluence_jira_noise": [
+        # Confluence export noise (best-effort, line-oriented).
+        RegexRule(pattern=r"(?mi)^\s*powered\s+by\s+atlassian\s+confluence\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*view\s+in\s+confluence\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*created\s+by\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*last\s+updated\b.*$", repl="", flags=0),
+    ],
 }
 
 
