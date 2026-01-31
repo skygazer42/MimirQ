@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { BarChart3, FileSearch, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, Table2, Trash2 } from 'lucide-react'
@@ -24,6 +24,7 @@ import type { Dataset, PermissionEnum, DocumentPipelineOptions } from '@/types'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
+import { DatasetCategoryTree } from '@/components/dataset-categories/category-tree'
 
 type DatasetFormState = {
   name: string
@@ -59,6 +60,7 @@ export default function DatasetsPage() {
   const [items, setItems] = useState<Dataset[]>([])
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -84,10 +86,15 @@ export default function DatasetsPage() {
     })
   }
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true)
     try {
-      const res = await datasetApi.list({ skip: 0, limit: 200 })
+      const res = await datasetApi.list({
+        skip: 0,
+        limit: 200,
+        category_id: selectedCategoryId || undefined,
+        include_descendants: true,
+      })
       setItems(res.items || [])
       setTotal(Number(res.total || 0))
     } catch (e: any) {
@@ -96,12 +103,11 @@ export default function DatasetsPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [selectedCategoryId])
 
   useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void load()
+  }, [load])
 
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
 
@@ -248,7 +254,12 @@ export default function DatasetsPage() {
           </div>
         }
       >
-        <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+          <Panel variant="muted" padding="lg" className="rounded-3xl h-fit">
+            <DatasetCategoryTree selectedId={selectedCategoryId} onSelect={(id) => setSelectedCategoryId(id)} />
+          </Panel>
+
+          <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
             <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dataset Registry</div>
 	              {isLoading && (
@@ -368,6 +379,7 @@ export default function DatasetsPage() {
               </div>
             )}
           </div>
+        </div>
       </PageScaffold>
 
         <Dialog open={editOpen} onOpenChange={(open) => {

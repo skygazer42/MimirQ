@@ -1092,6 +1092,56 @@ export interface DatasetListResponse {
   items: Dataset[]
 }
 
+export interface DatasetCategoryNode {
+  id: string
+  name: string
+  parent_id?: string | null
+  sort_order: number
+  depth: number
+  datasets: number
+  children: DatasetCategoryNode[]
+}
+
+export interface DatasetCategoryTreeResponse {
+  total: number
+  items: DatasetCategoryNode[]
+}
+
+export interface DatasetCategoryCreate {
+  name: string
+  parent_id?: string | null
+  sort_order?: number | null
+}
+
+export interface DatasetCategoryUpdate {
+  name?: string | null
+  sort_order?: number | null
+}
+
+export interface DatasetCategoryMoveRequest {
+  parent_id?: string | null
+  sort_order?: number | null
+}
+
+export interface DatasetCategoryOut {
+  id: string
+  tenant_id: string
+  name: string
+  parent_id?: string | null
+  sort_order: number
+  created_at: string
+  updated_at?: string | null
+}
+
+export interface DatasetCategoryAssignmentRequest {
+  category_ids: string[]
+}
+
+export interface DatasetCategoryAssignmentResponse {
+  dataset_id: string
+  category_ids: string[]
+}
+
 export interface DatasetIngestionStats {
   dataset_id: string
   total_documents: number

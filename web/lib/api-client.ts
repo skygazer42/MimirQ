@@ -55,6 +55,13 @@ import type {
   DatasetCreate,
   DatasetUpdate,
   DatasetListResponse,
+  DatasetCategoryTreeResponse,
+  DatasetCategoryCreate,
+  DatasetCategoryUpdate,
+  DatasetCategoryMoveRequest,
+  DatasetCategoryOut,
+  DatasetCategoryAssignmentRequest,
+  DatasetCategoryAssignmentResponse,
   DatasetIngestionStats,
   DatasetHealthResponse,
   DatasetReport,
@@ -1235,6 +1242,8 @@ export const datasetApi = {
   async list(params?: {
     skip?: number
     limit?: number
+    category_id?: string
+    include_descendants?: boolean
   }): Promise<DatasetListResponse> {
     const { data } = await apiClient.get('/datasets/', { params })
     return data
@@ -1263,6 +1272,16 @@ export const datasetApi = {
    */
   async update(datasetId: string, params: DatasetUpdate): Promise<Dataset> {
     const { data } = await apiClient.patch(`/datasets/${datasetId}`, params)
+    return data
+  },
+
+  async getCategories(datasetId: string): Promise<DatasetCategoryAssignmentResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/categories`)
+    return data
+  },
+
+  async setCategories(datasetId: string, payload: DatasetCategoryAssignmentRequest): Promise<DatasetCategoryAssignmentResponse> {
+    const { data } = await apiClient.put(`/datasets/${datasetId}/categories`, payload)
     return data
   },
 
@@ -1493,6 +1512,34 @@ export const datasetApi = {
   async lotusSemFilter(datasetId: string, tableId: string, body: LotusSemFilterRequest): Promise<TableQueryResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`, body, { timeout: API_LONG_TIMEOUT_MS })
     return data
+  },
+}
+
+// ==================== 数据集分类（目录树） API ====================
+
+export const datasetCategoryApi = {
+  async listTree(): Promise<DatasetCategoryTreeResponse> {
+    const { data } = await apiClient.get('/dataset-categories/')
+    return data
+  },
+
+  async create(payload: DatasetCategoryCreate): Promise<DatasetCategoryOut> {
+    const { data } = await apiClient.post('/dataset-categories/', payload)
+    return data
+  },
+
+  async update(categoryId: string, payload: DatasetCategoryUpdate): Promise<DatasetCategoryOut> {
+    const { data } = await apiClient.patch(`/dataset-categories/${categoryId}`, payload)
+    return data
+  },
+
+  async move(categoryId: string, payload: DatasetCategoryMoveRequest): Promise<DatasetCategoryOut> {
+    const { data } = await apiClient.post(`/dataset-categories/${categoryId}/move`, payload)
+    return data
+  },
+
+  async delete(categoryId: string): Promise<void> {
+    await apiClient.delete(`/dataset-categories/${categoryId}`)
   },
 }
 
