@@ -327,6 +327,9 @@ class Settings(BaseSettings):
     AUTH_MODE: Literal["jwt", "header"] = "header"
 
     SECRET_KEY: str = "your-secret-key-change-in-production"
+    # Optional previous keys for decrypting already-encrypted secrets (comma-separated).
+    # This enables key rotation for connector configs without breaking existing entries.
+    SECRET_KEY_FALLBACKS: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8

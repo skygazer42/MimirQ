@@ -24,12 +24,36 @@ from app.core.config import settings
 _PREFIX = "enc:v1:"
 
 
-def _fernet() -> Fernet:
-    # Derive a stable 32-byte key from SECRET_KEY.
-    raw = (settings.SECRET_KEY or "").encode("utf-8", "ignore")
+def _fernet_for_secret_key(secret_key: str) -> Fernet:
+    # Derive a stable 32-byte key from a SECRET_KEY string.
+    raw = (secret_key or "").encode("utf-8", "ignore")
     digest = hashlib.sha256(raw).digest()
     key = base64.urlsafe_b64encode(digest)
     return Fernet(key)
+
+
+def _fernet() -> Fernet:
+    return _fernet_for_secret_key(settings.SECRET_KEY or "")
+
+
+def _fallback_fernets() -> list[Fernet]:
+    """
+    Optional fallback keys for decrypting secrets encrypted with previous SECRET_KEY values.
+    """
+    raw = str(getattr(settings, "SECRET_KEY_FALLBACKS", "") or "").strip()
+    if not raw:
+        return []
+    current = str(settings.SECRET_KEY or "").strip()
+    out: list[Fernet] = []
+    for item in raw.split(","):
+        key = str(item or "").strip()
+        if not key or key == current:
+            continue
+        out.append(_fernet_for_secret_key(key))
+        # Keep bounded to avoid pathological configs.
+        if len(out) >= 5:
+            break
+    return out
 
 
 def is_encrypted(value: str | None) -> bool:
@@ -57,10 +81,13 @@ def decrypt_secret(value: str | None) -> str | None:
     if not is_encrypted(raw):
         return raw
     token = raw[len(_PREFIX) :]
-    try:
-        return _fernet().decrypt(token.encode("utf-8", "ignore")).decode("utf-8", "ignore")
-    except InvalidToken as exc:
-        raise ValueError("invalid_encrypted_secret") from exc
+    # Try current key first, then fallbacks.
+    for f in [_fernet(), *_fallback_fernets()]:
+        try:
+            return f.decrypt(token.encode("utf-8", "ignore")).decode("utf-8", "ignore")
+        except InvalidToken:
+            continue
+    raise ValueError("invalid_encrypted_secret")
 
 
 def redact_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -136,4 +163,3 @@ __all__ = [
     "is_encrypted",
     "redact_secrets",
 ]
-

@@ -199,6 +199,8 @@ def _schedule_due(*, schedule: str, now: datetime, last_run_at: datetime | None)
     Supported (minimal) formats:
       - "@hourly" / "@daily" / "@weekly" / "@monthly"
       - "*/N * * * *" (every N minutes)
+      - "0 */N * * *" (every N hours, at minute 0)
+      - "0 0 */N * *" (every N days, at 00:00)
 
     Unknown formats are treated as not-due.
     """
@@ -226,15 +228,78 @@ def _schedule_due(*, schedule: str, now: datetime, last_run_at: datetime | None)
         return _elapsed_sec() >= 60 * 60 * 24 * 30
 
     parts = s.split()
-    if len(parts) == 5 and parts[0].startswith("*/"):
-        raw = parts[0][2:]
-        try:
-            n = max(1, int(raw))
-        except Exception:
-            return False
-        return _elapsed_sec() >= 60 * n
+    if len(parts) == 5:
+        minute, hour, day, month, dow = parts
+
+        # Every N minutes.
+        if minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and dow == "*":
+            raw = minute[2:]
+            try:
+                n = max(1, int(raw))
+            except Exception:
+                return False
+            return _elapsed_sec() >= 60 * n
+
+        # Every N hours (at minute 0).
+        if minute == "0" and hour.startswith("*/") and day == "*" and month == "*" and dow == "*":
+            raw = hour[2:]
+            try:
+                n = max(1, int(raw))
+            except Exception:
+                return False
+            return _elapsed_sec() >= 60 * 60 * n
+
+        # Every N days (at 00:00).
+        if minute == "0" and hour == "0" and day.startswith("*/") and month == "*" and dow == "*":
+            raw = day[2:]
+            try:
+                n = max(1, int(raw))
+            except Exception:
+                return False
+            return _elapsed_sec() >= 60 * 60 * 24 * n
 
     return False
+
+
+def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
+    """
+    Best-effort: persist connector run outcomes back to the originating connector config.
+
+    - last_error reflects the latest run outcome
+    - state can store incremental cursors (connector-specific)
+    """
+    stats = dict(getattr(run, "stats", None) or {})
+    raw_cfg_id = stats.get("config_id")
+    cfg_id_str = str(raw_cfg_id or "").strip() if isinstance(raw_cfg_id, (str, UUID)) else ""
+    if not cfg_id_str:
+        return
+    try:
+        cfg_uuid = UUID(cfg_id_str)
+    except Exception:
+        return
+
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == cfg_uuid, ConnectorConfig.tenant_id == run.tenant_id)
+        .first()
+    )
+    if cfg is None:
+        return
+
+    status = str(getattr(run, "status", "") or "").lower()
+    cfg.last_error = None if status == "completed" else (str(getattr(run, "error_message", "") or status)[:200] or status)  # type: ignore[assignment]
+    cfg.last_run_at = (getattr(run, "started_at", None) or getattr(run, "finished_at", None) or _now())  # type: ignore[assignment]
+
+    connector_id = str(getattr(run, "connector_id", "") or "").strip()
+    if connector_id == "url_batch":
+        state = dict(getattr(cfg, "state", None) or {})
+        with contextlib.suppress(Exception):
+            state["cursor"] = int(stats.get("cursor", 0) or 0)
+            state["total_urls"] = int(stats.get("total_urls", 0) or 0)
+            state["last_run_id"] = str(run.id)
+        cfg.state = state  # type: ignore[assignment]
+
+    db.commit()
 
 
 @router.get("", response_model=list[ConnectorInfo])
@@ -245,7 +310,7 @@ def list_connectors() -> list[ConnectorInfo]:
             id="url_batch",
             name="URL 批量导入",
             description="从多个 http(s) URL 拉取内容并入库（支持 URL_INGEST_* 安全开关）",
-            supports_incremental=False,
+            supports_incremental=True,
         ),
         ConnectorInfo(
             id="web_crawl",
@@ -408,6 +473,8 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 run.finished_at = _now()
             run.stats = _finalize_connector_stats(dict(run.stats or {}))
             db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
             return
 
         stats = dict(run.stats or {})
@@ -416,6 +483,8 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
         db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
     except Exception as exc:  # noqa: BLE001
         with contextlib.suppress(Exception):
             run = (
@@ -428,6 +497,8 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 run.finished_at = _now()
                 run.error_message = str(exc)[:200]
                 db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
     finally:
         db.close()
 
@@ -643,6 +714,8 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 run.finished_at = _now()
             run.stats = _finalize_connector_stats(dict(run.stats or {}))
             db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
             return
 
         stats = dict(run.stats or {})
@@ -651,6 +724,8 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
         db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
     except Exception as exc:  # noqa: BLE001
         with contextlib.suppress(Exception):
             run = (
@@ -663,6 +738,8 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 run.finished_at = _now()
                 run.error_message = str(exc)[:200]
                 db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
     finally:
         db.close()
 
@@ -1136,6 +1213,8 @@ async def run_connector_config(
 
     connector_id = str(cfg.connector_id or "").strip()
     run_cfg = dict(cfg.config or {})
+    # Attach connector config state for incremental connectors (best-effort; executor may ignore).
+    run_cfg["_state"] = dict(cfg.state or {})
 
     run = ConnectorRun(
         tenant_id=tenant_id,
@@ -1210,13 +1289,16 @@ async def scheduled_tick(
 
         # Create run and enqueue execution.
         connector_id = str(cfg.connector_id or "").strip()
+        run_cfg = dict(cfg.config or {})
+        run_cfg["_state"] = dict(cfg.state or {})
+
         run = ConnectorRun(
             tenant_id=tenant_id,
             dataset_id=cfg.dataset_id,
             connector_id=connector_id,
             requested_by=account_id,
             status="pending",
-            config=dict(cfg.config or {}),
+            config=run_cfg,
             stats={"config_id": str(cfg.id), "scheduled": True},
         )
         db.add(run)
