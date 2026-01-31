@@ -138,16 +138,60 @@ class SemanticSentenceChunker(BaseChunker):
         units: list[SemanticSentenceChunker._Unit] = []
         cursor = 0
 
+        def merge_numeric_dot_runs(local_units: list[SemanticSentenceChunker._Unit]) -> list[SemanticSentenceChunker._Unit]:
+            """
+            Merge units that were split at a '.' inside numeric runs (e.g. 3.14, v1.2.3).
+
+            Without this, small chunk sizes can split a decimal across chunk boundaries:
+            "3." and "14 ..." which harms retrieval.
+            """
+            if not local_units:
+                return local_units
+
+            merged: list[SemanticSentenceChunker._Unit] = []
+            i = 0
+            while i < len(local_units):
+                cur = local_units[i]
+                if (
+                    merged
+                    and merged[-1].kind == "text"
+                    and cur.kind == "text"
+                ):
+                    prev = merged[-1]
+                    try:
+                        if (
+                            prev.end < len(raw)
+                            and raw[prev.end - 1 : prev.end] == "."
+                            and prev.end - 2 >= 0
+                            and raw[prev.end - 2].isdigit()
+                            and raw[prev.end].isdigit()
+                        ):
+                            # Merge prev + cur into a single unit covering the raw substring.
+                            start = prev.start
+                            end = cur.end
+                            merged[-1] = self._Unit(text=raw[start:end], start=start, end=end, kind="text")
+                            i += 1
+                            continue
+                    except Exception:
+                        pass
+
+                merged.append(cur)
+                i += 1
+
+            return merged
+
         def add_text_units(seg_start: int, seg_end: int) -> None:
             seg = raw[seg_start:seg_end]
             if not seg:
                 return
+            local: list[SemanticSentenceChunker._Unit] = []
             for m in self.SENTENCE_PATTERN.finditer(seg):
                 s = seg_start + int(m.start())
                 e = seg_start + int(m.end())
                 if e <= s:
                     continue
-                units.append(self._Unit(text=raw[s:e], start=s, end=e, kind="text"))
+                local.append(self._Unit(text=raw[s:e], start=s, end=e, kind="text"))
+            units.extend(merge_numeric_dot_runs(local))
 
         for s, e, kind in spans:
             if e <= s:
