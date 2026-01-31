@@ -3135,6 +3135,7 @@ async def list_documents(
     file_type: Optional[str] = Query(default=None, max_length=20),
     owner_id: Optional[str] = Query(default=None, max_length=255),
     q: Optional[str] = Query(default=None, max_length=200),
+    source_path_prefix: Optional[str] = Query(default=None, max_length=500),
     order_by: Literal["created_at", "filename", "file_size"] = Query(default="created_at"),
     order_dir: Literal["asc", "desc"] = Query(default="desc"),
     tenant_id: UUID = Depends(get_tenant_id),
@@ -3257,6 +3258,11 @@ async def list_documents(
         if term:
             query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
 
+    # Optional folder prefix filter (for directory-preserving uploads).
+    sp_expr = _source_path_prefix_expr(source_path_prefix)
+    if sp_expr is not None:
+        query = query.filter(sp_expr)
+
     # Total count.
     total = query.count()
 
@@ -3281,6 +3287,23 @@ async def list_documents(
         "total": total,
         "items": documents
     }
+
+
+def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
+    """
+    Build a SQLAlchemy filter expression for document.metadata.source_path prefix matching.
+
+    Notes:
+    - The source_path is optional and stored in JSONB metadata as a directory-preserving upload key.
+    - Returns None when prefix is empty, so callers can keep query logic simple.
+    """
+    val = str(prefix or "").strip()
+    if not val:
+        return None
+    # Align with upload metadata cap to avoid pathological query strings.
+    if len(val) > 500:
+        val = val[:500]
+    return DBDocument.doc_metadata["source_path"].astext.startswith(val)  # type: ignore[attr-defined]
 
 
 @router.get("/stats", response_model=DocumentStats)
