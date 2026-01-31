@@ -25,6 +25,7 @@ from app.api.schemas.governance_profile import (
     GovernanceProfileListResponse,
     GovernanceProfileOut,
     GovernanceProfilePayload,
+    GovernanceProfileResolvedResponse,
     GovernanceProfileSummary,
     GovernanceProfileUpdate,
 )
@@ -99,6 +100,7 @@ from app.services.governance_profiles import (
     validate_and_normalize_payload,
     validate_profile_key,
 )
+from app.services.governance_profiles_resolver import resolve_governance_profile_ref_effective
 from app.services.ingestion_policy import match_ingestion_rule, parse_ingestion_policy_from_metadata
 from app.services.pipeline_config import resolve_pipeline_effective
 from app.services.prompt_resolver import resolve_prompt_template
@@ -760,6 +762,25 @@ async def get_governance_profile(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     return _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+
+
+@router.get("/governance-profiles/{profile_ref}/resolved", response_model=GovernanceProfileResolvedResponse)
+async def get_governance_profile_resolved(
+    profile_ref: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    try:
+        resolved = resolve_governance_profile_ref_effective(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+    except ValueError as exc:
+        msg = str(exc) or "invalid profile_ref"
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+
+    return GovernanceProfileResolvedResponse(profile=resolved.profile, chain=resolved.chain, effective=resolved.effective)
 
 
 @router.patch("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
