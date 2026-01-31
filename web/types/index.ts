@@ -94,6 +94,21 @@ export interface DocumentAccessUpdateRequest {
   partial_member_list?: string[] | null
 }
 
+export interface DocumentFolderNode {
+  name: string
+  path: string
+  depth: number
+  documents: number
+  children: DocumentFolderNode[]
+}
+
+export interface DocumentFolderTreeResponse {
+  dataset_id: string
+  total_documents: number
+  total_with_source_path: number
+  root: DocumentFolderNode
+}
+
 // ==================== Connectors ====================
 
 export type ConnectorId = 'url_batch' | 'web_crawl'
