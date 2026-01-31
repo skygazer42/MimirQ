@@ -18,6 +18,7 @@ import type {
   DocumentAccessInfo,
   DocumentAccessUpdateRequest,
   DocumentBatchLifecycleResponse,
+  DocumentBatchReingestRequest,
   DocumentBatchRetryRequest,
   DocumentBatchRetryResponse,
   DocumentBatchMoveRequest,
@@ -614,6 +615,14 @@ export const documentApi = {
    */
   async batchRetry(payload: DocumentBatchRetryRequest): Promise<DocumentBatchRetryResponse> {
     const { data } = await apiClient.post('/documents/batch/retry', payload)
+    return data
+  },
+
+  /**
+   * 批量重新入库（可选：先 patch pipeline，然后 force retry）
+   */
+  async batchReingest(payload: DocumentBatchReingestRequest): Promise<DocumentBatchRetryResponse> {
+    const { data } = await apiClient.post('/documents/batch/reingest', payload)
     return data
   },
 

@@ -226,6 +226,7 @@ export default function KnowledgePage() {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [batchLifecycleWorking, setBatchLifecycleWorking] = useState(false)
+  const [batchReingestWorking, setBatchReingestWorking] = useState(false)
   const DATASET_ALL = '__all__'
   const DATASET_DEFAULT = '__default__'
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -487,6 +488,40 @@ export default function KnowledgePage() {
     },
     [selectedDocIds, loadDocuments]
   )
+
+  const runBatchReingest = useCallback(async () => {
+    const ids = [...selectedDocIds]
+    if (ids.length === 0) return
+
+    // Keep this conservative to avoid accidental mass re-embedding.
+    if (ids.length > 50) {
+      toast.error('一次最多重新入库 50 份文档')
+      return
+    }
+
+    setBatchReingestWorking(true)
+    try {
+      const res = await documentApi.batchReingest({
+        document_ids: ids,
+        ...(pipelineOverridesEnabled ? { patch: pipelineOptions, replace: true } : {}),
+        force: true,
+        skip_if_unchanged: false,
+      })
+
+      if (res?.denied?.length || res?.not_found?.length || res?.conflicts?.length) {
+        console.warn('Batch reingest partial result:', res)
+      }
+
+      toast.success(`已触发重新入库 ${res.queued} 份文档`)
+      setSelectedDocIds([])
+      await loadDocuments()
+    } catch (err) {
+      console.error('Batch reingest failed:', err)
+      toast.error(formatApiError(err, '批量重新入库失败'))
+    } finally {
+      setBatchReingestWorking(false)
+    }
+  }, [loadDocuments, pipelineOptions, pipelineOverridesEnabled, selectedDocIds])
 
   const [urlImportOpen, setUrlImportOpen] = useState(false)
   const [urlImportUrl, setUrlImportUrl] = useState('')
@@ -1876,6 +1911,16 @@ export default function KnowledgePage() {
                           onClick={() => setSelectedDocIds([])}
                         >
                           清除选择
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => void runBatchReingest()}
+                          disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}
+                        >
+                          {batchReingestWorking ? '重新入库中…' : '重新入库'}
                         </Button>
                         <Button
                           type="button"

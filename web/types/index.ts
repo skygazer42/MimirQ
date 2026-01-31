@@ -208,6 +208,14 @@ export interface DocumentBatchRetryRequest {
   skip_if_unchanged?: boolean
 }
 
+export interface DocumentBatchReingestRequest {
+  document_ids: string[]
+  patch?: DocumentPipelineOptions
+  replace?: boolean
+  force?: boolean
+  skip_if_unchanged?: boolean
+}
+
 export interface DocumentBatchRetryResponse {
   queued: number
   skipped: number

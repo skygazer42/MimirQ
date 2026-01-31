@@ -47,6 +47,7 @@ from app.api.schemas.document import (
     DocumentBatchLifecycleResponse,
     DocumentBatchMoveRequest,
     DocumentBatchMoveResponse,
+    DocumentBatchReingestRequest,
     DocumentBatchRetryRequest,
     DocumentBatchRetryResponse,
     DocumentBatchUploadResponse,
@@ -6378,6 +6379,92 @@ async def batch_retry_documents(
     conflicts: list[UUID] = []
 
     for document_id in payload.document_ids:
+        try:
+            out = await retry_document_processing(
+                document_id=document_id,
+                background_tasks=background_tasks,
+                force=bool(payload.force),
+                skip_if_unchanged=bool(payload.skip_if_unchanged),
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+            )
+            status = str((out or {}).get("status") or "").lower()
+            if bool(payload.force) and bool(payload.skip_if_unchanged) and status == "completed":
+                skipped += 1
+            else:
+                queued += 1
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                not_found.append(document_id)
+                continue
+            if exc.status_code in (401, 403):
+                denied.append(document_id)
+                continue
+            if exc.status_code in (409, 413, 429, 503):
+                conflicts.append(document_id)
+                continue
+            raise
+
+    return {
+        "queued": queued,
+        "skipped": skipped,
+        "not_found": not_found,
+        "denied": denied,
+        "conflicts": conflicts,
+    }
+
+
+@router.post("/batch/reingest", response_model=DocumentBatchRetryResponse)
+async def batch_reingest_documents(
+    payload: DocumentBatchReingestRequest,
+    background_tasks: BackgroundTasks,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
+
+    Notes:
+    - This is best-effort per id: failures are returned in `not_found/denied/conflicts`.
+    - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    queued = 0
+    skipped = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    patch_req = DocumentPipelinePatchRequest(patch=payload.patch, replace=bool(payload.replace))
+    has_patch = bool(getattr(payload.patch, "model_fields_set", set()))
+
+    for document_id in payload.document_ids:
+        # 1) Patch pipeline overrides (optional).
+        if bool(payload.replace) or has_patch:
+            try:
+                await patch_document_pipeline(
+                    document_id=document_id,
+                    payload=patch_req,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    db=db,
+                )
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    not_found.append(document_id)
+                    continue
+                if exc.status_code in (401, 403):
+                    denied.append(document_id)
+                    continue
+                if exc.status_code in (409, 413, 429, 503):
+                    conflicts.append(document_id)
+                    continue
+                raise
+
+        # 2) Force retry/reprocess (creates a new pipeline version when pipeline_hash changes).
         try:
             out = await retry_document_processing(
                 document_id=document_id,
