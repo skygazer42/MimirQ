@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Download, FileText, Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, BarChart3, Download, FileSearch, FileText, Layers, Loader2, RefreshCw, ShieldAlert } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -148,17 +148,14 @@ export default function ReportsCenterPage() {
         iconColor="text-primary"
       >
         <div className="space-y-6">
-          <Panel
-            title="参数"
-            description="选择数据集与可选 pipeline_hash，点击“刷新预览”或直接导出。"
-            actions={
+          <Panel padding="lg" className="space-y-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-foreground">参数</div>
+                <div className="text-xs text-muted-foreground">选择数据集与可选 pipeline_hash，点击“刷新预览”或直接导出。</div>
+              </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => void loadDatasets()}
-                  disabled={isLoadingDatasets}
-                  aria-label="刷新数据集列表"
-                >
+                <Button variant="secondary" onClick={() => void loadDatasets()} disabled={isLoadingDatasets} aria-label="刷新数据集列表">
                   {isLoadingDatasets ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
                   <span className="ml-2">刷新数据集</span>
                 </Button>
@@ -167,8 +164,7 @@ export default function ReportsCenterPage() {
                   <span className="ml-2">刷新预览</span>
                 </Button>
               </div>
-            }
-          >
+            </div>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="dataset-select">数据集</Label>
@@ -254,17 +250,20 @@ export default function ReportsCenterPage() {
               description={isLoadingReport ? '正在拉取报告数据...' : '点击“刷新预览”生成报告。'}
             />
           ) : (
-            <Panel
-              title="预览"
-              description={`dataset: ${selectedDataset?.name || report.dataset_name || datasetId} · generated_at: ${formatDate(report.generated_at)}`}
-            >
+            <Panel padding="lg" className="space-y-4">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-foreground">预览</div>
+                <div className="text-xs text-muted-foreground">
+                  dataset: {selectedDataset?.name || report.dataset_name || datasetId} · generated_at: {formatDate(report.generated_at)}
+                </div>
+              </div>
               <StatsGrid className="mb-4">
-                <StatCard title="文档总数" value={String(totalDocs)} />
-                <StatCard title="总大小" value={formatFileSize(Number(totalBytes || 0))} />
-                <StatCard title="隔离（Quarantine）" value={String(quarantined)} />
-                <StatCard title="失败（Failed）" value={String(failed)} />
-                <StatCard title="Pipeline Versions" value={String(pipelineVersions.length)} />
-                <StatCard title="Connector Runs" value={String(connectorRuns.length)} />
+                <StatCard icon={FileSearch} label="文档总数" value={String(totalDocs)} color="cyan" />
+                <StatCard icon={BarChart3} label="总大小" value={formatFileSize(Number(totalBytes || 0))} color="teal" />
+                <StatCard icon={ShieldAlert} label="隔离（Quarantine）" value={String(quarantined)} color="amber" />
+                <StatCard icon={AlertTriangle} label="失败（Failed）" value={String(failed)} color="rose" />
+                <StatCard icon={Layers} label="Pipeline Versions" value={String(pipelineVersions.length)} color="blue" />
+                <StatCard icon={RefreshCw} label="Connector Runs" value={String(connectorRuns.length)} color="gray" />
               </StatsGrid>
 
               <div className="grid gap-4 md:grid-cols-2">
