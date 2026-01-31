@@ -25,8 +25,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.governance_profile import GovernanceProfileOut
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPreprocessStep, IngestionRule
-from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
-from app.services.governance_profiles import builtin_profile_to_out, get_builtin_governance_profiles
+from app.services.governance_profiles_resolver import resolve_governance_profile_ref_effective
 
 RULE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
 MAX_RULES = 60
@@ -298,55 +297,11 @@ def resolve_governance_profile_ref(
 
     Returns normalized patch data suitable for merging into PipelineOptions.
     """
-    ref = str(profile_ref or "").strip()
-    if not ref:
-        raise ValueError("profile_ref is required")
-
-    builtins = get_builtin_governance_profiles()
-    builtin_by_key = {p.key: p for p in builtins}
-    if ref in builtin_by_key:
-        profile_out = builtin_profile_to_out(builtin_by_key[ref])
-        payload = profile_out.payload
-        patch = payload.pipeline_patch or {}
-        rules = [r.model_dump() for r in (payload.regex_rules or [])]
-        return ResolvedGovernanceProfilePatch(profile=profile_out, pipeline_patch=dict(patch), regex_rules=rules)
-
-    # Allow UUID lookup.
-    try:
-        ref_uuid = UUID(ref)
-    except Exception:
-        ref_uuid = None
-
-    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
-    row = None
-    if ref_uuid is not None:
-        row = q.filter(DBGovernanceProfile.id == ref_uuid).first()
-    if row is None:
-        row = q.filter(DBGovernanceProfile.key == ref).first()
-    if row is None:
-        raise ValueError("governance profile not found")
-
-    payload_raw = getattr(row, "payload", None)
-    if not isinstance(payload_raw, dict):
-        payload_raw = {}
-    try:
-        profile_out = GovernanceProfileOut(
-            id=row.id,
-            key=(str(getattr(row, "key", "") or "").strip() or f"custom:{str(row.id)}"),
-            name=str(getattr(row, "name", "") or ""),
-            description=getattr(row, "description", None),
-            is_system=bool(getattr(row, "is_system", False)),
-            payload=payload_raw,  # pydantic will validate nested payload
-            created_at=getattr(row, "created_at", None),
-            updated_at=getattr(row, "updated_at", None),
-        )
-    except ValidationError as exc:
-        raise ValueError("invalid governance profile payload in DB") from exc
-
-    payload = profile_out.payload
+    resolved = resolve_governance_profile_ref_effective(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+    payload = resolved.effective
     patch = payload.pipeline_patch or {}
     rules = [r.model_dump() for r in (payload.regex_rules or [])]
-    return ResolvedGovernanceProfilePatch(profile=profile_out, pipeline_patch=dict(patch), regex_rules=rules)
+    return ResolvedGovernanceProfilePatch(profile=resolved.profile, pipeline_patch=dict(patch), regex_rules=rules)
 
 
 def export_policy_json(policy: IngestionPolicy) -> bytes:
