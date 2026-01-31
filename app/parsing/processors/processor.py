@@ -928,7 +928,21 @@ class ChunkAssetStage:
         document_id: UUID,
         resolved_backend: str,
         resolved_chunk_strategy: str,
+        image_caption_enabled: bool = False,
+        image_ocr_enabled: bool = False,
+        image_ocr_max_chars: int = 2000,
+        image_ocr_max_images: int = 20,
     ) -> ChunkAssetResult:
+        from app.parsing.enrich.image_understanding import (
+            append_image_understanding_text,
+            derive_image_caption,
+            load_image_for_ocr,
+            ocr_image,
+        )
+
+        max_images = max(0, int(image_ocr_max_images or 0))
+        ocr_remaining: int | None = (max_images if max_images > 0 else None)
+
         img_ids: List[str] = []
         for idx, chunk in enumerate(chunks):
             meta = dict(chunk.metadata or {})
@@ -938,6 +952,44 @@ class ChunkAssetStage:
             meta["parser_backend"] = resolved_backend
             meta["chunk_strategy"] = resolved_chunk_strategy
             meta.setdefault("chunk_key", f"{str(document_id)}:{idx}")
+
+            # Image understanding (best-effort): keep it off by default; never fail ingest.
+            caption = ""
+            ocr_text = ""
+            doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+            if doc_type == "image":
+                if bool(image_caption_enabled):
+                    try:
+                        caption = derive_image_caption(chunk.page_content or "", meta)
+                        if caption:
+                            meta["image_caption"] = caption
+                    except Exception:
+                        caption = ""
+                if bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0):
+                    img, should_close = load_image_for_ocr(meta, tenant_id=str(tenant_id))
+                    try:
+                        if img is not None:
+                            ocr_text = ocr_image(img, max_chars=int(image_ocr_max_chars))
+                            if ocr_remaining is not None:
+                                ocr_remaining -= 1
+                    except Exception:
+                        ocr_text = ""
+                    finally:
+                        if should_close and img is not None:
+                            try:
+                                img.close()
+                            except Exception:
+                                pass
+                    if ocr_text:
+                        meta["image_ocr_text"] = ocr_text
+                        meta["image_ocr_chars"] = len(ocr_text)
+
+                if caption or ocr_text:
+                    chunk.page_content = append_image_understanding_text(
+                        chunk.page_content or "",
+                        caption=caption,
+                        ocr_text=ocr_text,
+                    )
 
             content_norm = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
             meta.setdefault("content_len", len(content_norm.strip()))
@@ -2154,6 +2206,10 @@ class DocumentProcessorService:
                     document_id=document_id,
                     resolved_backend=resolved_backend,
                     resolved_chunk_strategy=resolved_chunk_strategy,
+                    image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
+                    image_ocr_enabled=bool(getattr(pipeline_effective, "image_ocr_enabled", False)),
+                    image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
+                    image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
                 )
             chunks = chunk_asset.chunks
             # Ensure stable traceability metadata exists on each chunk (used by citations/filtering).

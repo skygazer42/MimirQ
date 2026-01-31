@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import base64
+import re
+from io import BytesIO
+from pathlib import Path
+from typing import Any, Optional, Tuple
+
+from PIL import Image as PILImage
+
+from app.core.config import settings
+
+_GENERIC_IMAGE_TEXT_RE = re.compile(r"^(image|figure|photo|picture|diagram|chart)\b", re.IGNORECASE)
+_PAGE_ONLY_RE = re.compile(r"^page\s+\d+\s*$", re.IGNORECASE)
+
+
+def _clean_single_line(s: str, *, max_chars: int) -> str:
+    s0 = re.sub(r"\s+", " ", str(s or "")).strip()
+    if not s0:
+        return ""
+    if max_chars > 0 and len(s0) > max_chars:
+        s0 = s0[: max_chars - 3].rstrip() + "..."
+    return s0
+
+
+def derive_image_caption(text: str, meta: dict[str, Any], *, max_chars: int = 200) -> str:
+    """
+    Derive a short, human-friendly caption for an image chunk.
+
+    Conservative heuristics:
+    - Prefer existing chunk text if it's not a generic placeholder.
+    - Fallback to "Page {n} image" when page info exists.
+    """
+    raw = (text or "").strip()
+    if raw and not _PAGE_ONLY_RE.match(raw) and not _GENERIC_IMAGE_TEXT_RE.match(raw):
+        return _clean_single_line(raw, max_chars=max_chars)
+
+    page = meta.get("page") or meta.get("page_number")
+    try:
+        page_i = int(page)
+    except Exception:
+        page_i = 0
+    if page_i > 0:
+        return f"Page {page_i} image"
+
+    return "Image"
+
+
+def _b64_to_bytes(s: str) -> bytes:
+    s0 = (s or "").strip()
+    if not s0:
+        return b""
+    if s0.startswith("data:"):
+        parts = s0.split(",", 1)
+        if len(parts) == 2:
+            s0 = parts[1]
+    return base64.b64decode(s0)
+
+
+def _safe_read_image_path(raw_path: str, *, tenant_id: str) -> bytes:
+    """
+    Best-effort safe file read for parser-emitted image paths.
+
+    Only allows reading paths under {UPLOAD_DIR}/{tenant_id}.
+    """
+    if not raw_path:
+        return b""
+    upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+    tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+    candidate = Path(str(raw_path).strip()).resolve(strict=False)
+    candidate.relative_to(tenant_root)
+    if not candidate.exists() or not candidate.is_file():
+        return b""
+    return candidate.read_bytes()
+
+
+def load_image_for_ocr(meta: dict[str, Any], *, tenant_id: str) -> Tuple[Optional[PILImage.Image], bool]:
+    """
+    Load a PIL image from chunk metadata for OCR (best-effort).
+
+    Returns:
+        (image, should_close)
+    """
+    if not isinstance(meta, dict):
+        return None, False
+    if str(meta.get("doc_type_kwd") or "").lower() != "image":
+        return None, False
+
+    val = meta.get("image")
+    if isinstance(val, PILImage.Image):
+        return val, False
+    if isinstance(val, (bytes, bytearray)):
+        try:
+            img = PILImage.open(BytesIO(bytes(val)))
+            return img, True
+        except Exception:
+            return None, False
+    if isinstance(val, str) and val.strip():
+        try:
+            img = PILImage.open(BytesIO(_b64_to_bytes(val)))
+            return img, True
+        except Exception:
+            return None, False
+
+    raw_path = meta.get("image_path")
+    if isinstance(raw_path, str) and raw_path.strip():
+        try:
+            binary = _safe_read_image_path(raw_path, tenant_id=tenant_id)
+            if binary:
+                img = PILImage.open(BytesIO(binary))
+                return img, True
+        except Exception:
+            return None, False
+
+    for key in ("image_base64", "img_base64", "img", "image_data"):
+        s = meta.get(key)
+        if isinstance(s, str) and s.strip():
+            try:
+                img = PILImage.open(BytesIO(_b64_to_bytes(s)))
+                return img, True
+            except Exception:
+                return None, False
+
+    return None, False
+
+
+def ocr_image(image: PILImage.Image, *, max_chars: int = 2000) -> str:
+    """
+    Run OCR on a PIL image (best-effort) and return text.
+
+    Notes:
+    - Uses the same RapidOCR wrapper as PDF quality validation (lazy init).
+    - Returns "" on any failure.
+    """
+    max_chars_i = max(0, int(max_chars or 0))
+    if max_chars_i == 0:
+        return ""
+
+    try:
+        from app.parsing.quality.ocr_validator import rapid_ocr_service
+
+        text = rapid_ocr_service.ocr_image(image)
+    except Exception:
+        return ""
+
+    text0 = (text or "").strip()
+    if not text0:
+        return ""
+    if len(text0) > max_chars_i:
+        text0 = text0[: max_chars_i - 3].rstrip() + "..."
+    return text0
+
+
+def append_image_understanding_text(
+    text: str,
+    *,
+    caption: str = "",
+    ocr_text: str = "",
+) -> str:
+    """
+    Append caption/OCR text into chunk content so it becomes retrievable.
+    """
+    base = (text or "").rstrip()
+    blocks: list[str] = []
+    if base:
+        blocks.append(base)
+
+    caption0 = (caption or "").strip()
+    if caption0 and "image caption:" not in base.lower():
+        blocks.append(f"Image caption: {caption0}")
+
+    ocr0 = (ocr_text or "").strip()
+    if ocr0 and "image ocr:" not in base.lower():
+        blocks.append(f"Image OCR:\n{ocr0}")
+
+    return "\n\n".join(blocks).strip() + ("\n" if (text or "").endswith("\n") else "")
+
+
+__all__ = [
+    "append_image_understanding_text",
+    "derive_image_caption",
+    "load_image_for_ocr",
+    "ocr_image",
+]
+
