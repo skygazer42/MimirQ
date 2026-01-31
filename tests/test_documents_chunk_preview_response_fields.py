@@ -320,6 +320,49 @@ def test_documents_chunk_preview_parse_cache_hit(monkeypatch):  # noqa: ANN001
     assert body2.get("parse_duration_ms") == 0
 
 
+def test_documents_chunk_preview_parse_cache_version_busts_cache(monkeypatch):  # noqa: ANN001
+    from app.core.config import settings
+    from app.services.preview_cache import preview_parse_cache
+
+    preview_parse_cache.clear()
+
+    fixed_tenant_id = uuid.uuid4()
+    client = _build_client(monkeypatch)
+    client.app.dependency_overrides[get_tenant_id] = lambda: fixed_tenant_id
+
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 600, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 32, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 2_000_000, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1", raising=False)
+
+    payload = b"hello world"
+    warm = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert warm.status_code == 200
+    assert warm.json().get("parse_cache_hit") is False
+
+    hit = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert hit.status_code == 200
+    assert hit.json().get("parse_cache_hit") is True
+
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v2", raising=False)
+    bust = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert bust.status_code == 200
+    assert bust.json().get("parse_cache_hit") is False
+
+
 def test_documents_chunk_preview_by_sha_cache_miss(monkeypatch):  # noqa: ANN001
     from app.core.config import settings
     from app.services.preview_cache import preview_parse_cache
