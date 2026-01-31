@@ -126,6 +126,7 @@ import type {
   GovernanceProfileCreate,
   GovernanceProfileUpdate,
   GovernanceProfileImportResponse,
+  GovernanceProfileResolvedResponse,
   PipelineChunkPreviewRequest,
   PipelineChunkPreviewResponse,
   PipelineParsePreviewResponse,
@@ -1069,6 +1070,11 @@ export const pipelineApi = {
 
   async getGovernanceProfile(profileRef: string): Promise<GovernanceProfileOut> {
     const { data } = await apiClient.get(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}`)
+    return data
+  },
+
+  async getGovernanceProfileResolved(profileRef: string): Promise<GovernanceProfileResolvedResponse> {
+    const { data } = await apiClient.get(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}/resolved`)
     return data
   },
 

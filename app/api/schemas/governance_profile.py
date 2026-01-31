@@ -88,3 +88,17 @@ class GovernanceProfileImportResponse(BaseModel):
     created: int = 0
     updated: int = 0
     items: List[GovernanceProfileSummary] = Field(default_factory=list)
+
+
+class GovernanceProfileResolvedResponse(BaseModel):
+    """
+    Governance profile resolution output (raw + effective) for UI preview.
+
+    - profile: the selected profile (may include `payload.extends`)
+    - chain: inheritance chain from root -> selected profile
+    - effective: resolved payload to apply (merged pipeline_patch, concatenated regex_rules)
+    """
+
+    profile: GovernanceProfileOut
+    chain: List[GovernanceProfileSummary] = Field(default_factory=list)
+    effective: GovernanceProfilePayload

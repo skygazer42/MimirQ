@@ -810,6 +810,7 @@ export interface GovernanceCommonLinesLearnResponse {
 
 export interface GovernanceProfilePayload {
   version: string
+  extends?: string | null
   input_formats: Array<'markdown' | 'html'>
   pipeline_patch: DocumentPipelineOptions
   regex_rules: RegexRuleModel[]
@@ -851,6 +852,12 @@ export interface GovernanceProfileImportResponse {
   created: number
   updated: number
   items: GovernanceProfileSummary[]
+}
+
+export interface GovernanceProfileResolvedResponse {
+  profile: GovernanceProfileOut
+  chain: GovernanceProfileSummary[]
+  effective: GovernanceProfilePayload
 }
 
 export interface LLMCleanPreviewRequest {
