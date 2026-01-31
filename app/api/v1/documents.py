@@ -905,6 +905,57 @@ def _find_duplicate_document(
         return None
 
 
+def _find_duplicate_document_by_sha(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    file_sha256: str | None,
+) -> DBDocument | None:
+    """
+    Find an existing document with the same file_sha256 within a dataset (any pipeline_hash).
+
+    Used for "cross-version" upload dedup: when the same file is uploaded again with different
+    pipeline options, we can reuse the existing document_id and create a new pipeline version.
+    """
+    if dataset_id is None:
+        return None
+
+    sha = str(file_sha256 or "").strip().lower()
+    if not sha:
+        return None
+
+    try:
+        return (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.doc_metadata["file_sha256"].astext == sha,  # type: ignore[attr-defined]
+            )
+            .order_by(DBDocument.created_at.desc())
+            .first()
+        )
+    except Exception:
+        # Best-effort fallback for non-Postgres backends: scan a bounded window.
+        rows = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+            )
+            .order_by(DBDocument.created_at.desc())
+            .limit(2000)
+            .all()
+        )
+        for doc in rows:
+            meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+            sha0 = str(meta.get("file_sha256") or "").strip().lower()
+            if sha0 == sha:
+                return doc
+        return None
+
+
 def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
     if replace:
         next_user = dict(patch or {})
@@ -2473,6 +2524,78 @@ async def upload_document(
                 file_path.unlink(missing_ok=True)
             return dup
 
+        # Cross-version dedup: same file_sha256 exists in dataset but under a different pipeline_hash.
+        #
+        # Instead of creating a new document_id, reuse the existing document and create a new pipeline version
+        # by patching its pipeline metadata and triggering a retry (preserving the active version until success).
+        dup_any = _find_duplicate_document_by_sha(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=getattr(dataset, "id", None),
+            file_sha256=file_sha256,
+        )
+        if dup_any is not None:
+            status0 = str(getattr(dup_any, "status", "") or "").lower()
+            if status0 in {"pending", "processing"}:
+                raise HTTPException(status_code=409, detail="Duplicate document is currently processing")
+
+            # Remove the just-uploaded file to save disk.
+            with contextlib.suppress(OSError):
+                file_path.unlink(missing_ok=True)
+
+            meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
+            meta_any["parser_backend"] = resolved_parser_backend
+            meta_any["parser_backend_requested"] = (parser_backend or "").lower()
+            meta_any["chunk_strategy"] = resolved_chunk_strategy
+            meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
+            if source_path and not meta_any.get("source_path"):
+                meta_any["source_path"] = source_path
+            meta_any["file_sha256"] = str(file_sha256).strip().lower()
+            if pipeline_metadata:
+                meta_any["pipeline"] = pipeline_metadata
+            else:
+                meta_any.pop("pipeline", None)
+            if ingestion_meta:
+                meta_any["ingestion"] = ingestion_meta
+
+            # Optional: attach/merge user metadata on the reused document.
+            if isinstance(user_metadata, str) and user_metadata.strip():
+                raw = user_metadata.strip()
+                max_len = int(getattr(settings, "USER_METADATA_FORM_JSON_MAX_CHARS", 20_000) or 20_000)
+                if max_len > 0 and len(raw) > max_len:
+                    raise HTTPException(status_code=400, detail="user_metadata is too large")
+                try:
+                    obj = json.loads(raw)
+                except Exception as exc:  # noqa: BLE001
+                    raise HTTPException(status_code=400, detail="Invalid user_metadata JSON (expect UTF-8)") from exc
+                if not isinstance(obj, dict):
+                    raise HTTPException(status_code=400, detail="user_metadata must be a JSON object")
+                current_user = meta_any.get("user") if isinstance(meta_any.get("user"), dict) else {}
+                meta_any["user"] = _apply_user_metadata_patch(current=current_user, patch=obj, replace=False)
+
+            # Preserve active version fields when missing (backward compatible for legacy docs).
+            if "active_pipeline_hash" not in meta_any:
+                meta_any["active_pipeline_hash"] = str(meta_any.get("pipeline_hash") or "").strip() or None
+            if "active_pipeline_ready" not in meta_any:
+                meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+
+            dup_any.doc_metadata = meta_any
+            db.commit()
+            db.refresh(dup_any)
+
+            # Trigger reprocessing as a new pipeline version (best-effort; may no-op if unchanged).
+            await retry_document_processing(
+                document_id=getattr(dup_any, "id"),
+                background_tasks=background_tasks,
+                force=True,
+                skip_if_unchanged=True,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+            )
+            db.refresh(dup_any)
+            return dup_any
+
     db_document = DBDocument(
         id=file_id,
         tenant_id=tenant_id,
@@ -2834,6 +2957,67 @@ async def upload_documents_batch(
                             "source_path": source_path,
                             "document_id": str(getattr(dup, "id", "")),
                             "document": dup,
+                        }
+
+                    # Cross-version dedup: reuse existing document_id for the same file_sha256 by creating a new version.
+                    dup_any = _find_duplicate_document_by_sha(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+                        file_sha256=file_sha256,
+                    )
+                    if dup_any is not None:
+                        status0 = str(getattr(dup_any, "status", "") or "").lower()
+                        if status0 in {"pending", "processing"}:
+                            raise HTTPException(status_code=409, detail="Duplicate document is currently processing")
+
+                        with contextlib.suppress(OSError):
+                            file_path.unlink(missing_ok=True)
+
+                        meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
+                        meta_any["parser_backend"] = resolved_parser_backend
+                        meta_any["parser_backend_requested"] = (parser_backend or "").lower()
+                        meta_any["chunk_strategy"] = resolved_chunk_strategy
+                        meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
+                        if source_path and not meta_any.get("source_path"):
+                            meta_any["source_path"] = source_path
+                        meta_any["file_sha256"] = str(file_sha256).strip().lower()
+                        if pipeline_metadata:
+                            meta_any["pipeline"] = pipeline_metadata
+                        else:
+                            meta_any.pop("pipeline", None)
+                        if ingestion_meta:
+                            meta_any["ingestion"] = ingestion_meta
+
+                        if isinstance(user_patch, dict) and user_patch:
+                            current_user = meta_any.get("user") if isinstance(meta_any.get("user"), dict) else {}
+                            meta_any["user"] = _apply_user_metadata_patch(current=current_user, patch=user_patch, replace=False)
+
+                        if "active_pipeline_hash" not in meta_any:
+                            meta_any["active_pipeline_hash"] = str(meta_any.get("pipeline_hash") or "").strip() or None
+                        if "active_pipeline_ready" not in meta_any:
+                            meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+
+                        dup_any.doc_metadata = meta_any
+                        db.commit()
+                        db.refresh(dup_any)
+
+                        await retry_document_processing(
+                            document_id=getattr(dup_any, "id"),
+                            background_tasks=background_tasks,
+                            force=True,
+                            skip_if_unchanged=True,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            db=db,
+                        )
+                        db.refresh(dup_any)
+                        return {
+                            "success": True,
+                            "filename": file.filename,
+                            "source_path": source_path,
+                            "document_id": str(getattr(dup_any, "id", "")),
+                            "document": dup_any,
                         }
                 
                 db_document = DBDocument(
