@@ -52,6 +52,17 @@ from app.types.pipeline import PipelineEffective
 logger = get_logger("parsing.document_processor")
 
 
+def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
+    """
+    Build the explicit regex-rule list for GovernanceProcessor when rule packs or custom regex rules are enabled.
+
+    When no extra rules are enabled, return None so GovernanceProcessor can reuse its internal defaults.
+    """
+    extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
+    rule_packs = list(getattr(pipeline_effective, "governance_rule_packs", None) or [])
+    return build_governance_rules(extra_rules, rule_packs=rule_packs) if (extra_rules or rule_packs) else None
+
+
 class DocumentCancelledError(Exception):
     pass
 
@@ -1442,8 +1453,7 @@ class DocumentProcessorService:
                     # Best-effort only: never fail ingestion for sidecar TAG import.
                     logger.info("DOCX table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
 
-            extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
-            combined_rules = build_governance_rules(extra_rules) if extra_rules else None
+            combined_rules = _build_combined_governance_rules(pipeline_effective)
             governance_kwargs = {
                 **({"rules": combined_rules} if combined_rules else {}),
                 "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
@@ -1716,7 +1726,13 @@ class DocumentProcessorService:
                     and not chunks
                     and int(getattr(governance_stats, "dropped", 0) or 0) > 0
                 ):
-                    self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+                    self._record_governance_metadata(
+                        db,
+                        tenant_id,
+                        document_id,
+                        governance_stats,
+                        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+                    )
                     quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
                     reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
@@ -1826,7 +1842,13 @@ class DocumentProcessorService:
                     and not parsed_documents
                     and int(getattr(governance_stats, "dropped", 0) or 0) > 0
                 ):
-                    self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+                    self._record_governance_metadata(
+                        db,
+                        tenant_id,
+                        document_id,
+                        governance_stats,
+                        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+                    )
                     quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
                     reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
@@ -2156,7 +2178,13 @@ class DocumentProcessorService:
                 )
 
             if governance_stats is not None:
-                self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+                self._record_governance_metadata(
+                    db,
+                    tenant_id,
+                    document_id,
+                    governance_stats,
+                    rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+                )
 
             await raise_if_cancelled()
 
@@ -2881,6 +2909,7 @@ class DocumentProcessorService:
         tenant_id: UUID,
         document_id: UUID,
         stats: GovernanceStats,
+        rule_packs: list[str] | None = None,
     ) -> None:
         """Persist governance stats on the document metadata."""
         db_doc = db.query(DBDocument).filter(
@@ -2907,6 +2936,22 @@ class DocumentProcessorService:
         secrets_hits = getattr(stats, "secrets_hits", None)
         if isinstance(secrets_hits, dict) and secrets_hits:
             metadata["governance_secrets_hits"] = {str(k): int(v) for k, v in secrets_hits.items()}
+
+        if rule_packs:
+            cleaned: list[str] = []
+            seen: set[str] = set()
+            for raw in rule_packs:
+                if not isinstance(raw, str):
+                    continue
+                key = raw.strip().lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                cleaned.append(key[:64])
+                if len(cleaned) >= 20:
+                    break
+            if cleaned:
+                metadata["governance_rule_packs"] = cleaned
 
         db_doc.doc_metadata = metadata
         db.commit()
