@@ -32,7 +32,7 @@ from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerE
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies import SeparatorChunker
 from app.rag.core.logging import get_logger
-from app.rag.core.metadata import normalize_image_metadata
+from app.rag.core.metadata import normalize_image_metadata, normalize_section_metadata
 from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
 from app.rag.preprocessing.normalization import normalize_text
@@ -952,6 +952,7 @@ class ChunkAssetStage:
             meta["parser_backend"] = resolved_backend
             meta["chunk_strategy"] = resolved_chunk_strategy
             meta.setdefault("chunk_key", f"{str(document_id)}:{idx}")
+            normalize_section_metadata(meta)
 
             # Image understanding (best-effort): keep it off by default; never fail ingest.
             caption = ""
