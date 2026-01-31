@@ -91,6 +91,9 @@ _BOILERPLATE_LINE_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Share/subscribe prompts commonly found in scraped articles.
     re.compile(r"(?m)^\s*(?:\u5173\u6ce8\u516c\u4f17\u53f7|\u626b\u7801\u5173\u6ce8|\u70b9\u51fb\u5173\u6ce8|\u5fae\u4fe1\u516c\u4f17\u53f7).*$"),
     re.compile(r"(?mi)^\s*(?:subscribe|follow us|share this)\b.*$"),
+    # Common navigation / CTA noise (line-oriented).
+    re.compile(r"(?mi)^\s*(?:read\s+more|continue\s+reading)\s*$"),
+    re.compile(r"(?m)^\s*(?:\u9605\u8bfb\u539f\u6587|\u9605\u8bfb\u5168\u6587|\u9605\u9605\u5168\u6587|\u67e5\u770b\u539f\u6587)\s*$"),
 )
 
 
@@ -160,4 +163,3 @@ def remove_markdown_boilerplate(text: str) -> BoilerplateRemovalResult:
         removed_lines=removed_lines,
         changed=(cleaned != original),
     )
-
