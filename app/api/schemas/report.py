@@ -36,6 +36,22 @@ class ConnectorRunSummary(BaseModel):
     stats: Dict[str, Any] = Field(default_factory=dict)
 
 
+class DatasetGovernanceMetricsOut(BaseModel):
+    """Best-effort governance metrics aggregated from per-document metadata."""
+
+    total_documents: int = 0
+    used_documents: int = 0
+    truncated: bool = False
+
+    docs_with_governance: int = 0
+    rules_applied_total: int = 0
+    changed_documents_total: int = 0
+    dropped_documents_total: int = 0
+
+    drop_reasons_total: Dict[str, int] = Field(default_factory=dict)
+    rule_packs_docs: Dict[str, int] = Field(default_factory=dict)
+
+
 class DatasetReportOut(BaseModel):
     dataset_id: UUID
     dataset_name: Optional[str] = None
@@ -52,3 +68,6 @@ class DatasetReportOut(BaseModel):
 
     # Optional: dataset folder tree derived from document.metadata.source_path (best-effort).
     folder_tree: Optional[DocumentFolderTreeResponse] = None
+
+    # Optional: governance metrics derived from document.metadata.governance_* (best-effort).
+    governance_metrics: Optional[DatasetGovernanceMetricsOut] = None
