@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.api.schemas.dataset_profile import DatasetProfileSummary
+from app.api.schemas.document_folders import DocumentFolderTreeResponse
 
 
 class PipelineVersionSummary(BaseModel):
@@ -49,3 +50,5 @@ class DatasetReportOut(BaseModel):
     # A snapshot of dataset-level config (best-effort), useful for sharing.
     dataset_metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    # Optional: dataset folder tree derived from document.metadata.source_path (best-effort).
+    folder_tree: Optional[DocumentFolderTreeResponse] = None

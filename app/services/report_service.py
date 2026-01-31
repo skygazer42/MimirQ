@@ -14,11 +14,13 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.schemas.document_folders import DocumentFolderTreeResponse
 from app.api.schemas.report import ComplianceSummary, ConnectorRunSummary, DatasetReportOut, PipelineVersionSummary
 from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.document import Document as DBDocument
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
 from app.services.dataset_service import DatasetService
+from app.services.document_folders import build_document_folder_tree
 
 
 class ReportService:
@@ -107,6 +109,30 @@ class ReportService:
         except Exception:
             connectors = []
 
+        # Folder tree derived from document.metadata.source_path (best-effort).
+        folder_tree: DocumentFolderTreeResponse | None = None
+        try:
+            _dataset, q = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+            if pipeline_hash_norm:
+                active_expr = func.coalesce(
+                    DBDocument.doc_metadata["active_pipeline_hash"].as_string(),
+                    DBDocument.doc_metadata["pipeline_hash"].as_string(),
+                )
+                q = q.filter(active_expr == pipeline_hash_norm)
+
+            rows = q.with_entities(DBDocument.doc_metadata["source_path"].astext).all()  # type: ignore[attr-defined]
+            source_paths = [r[0] for r in rows if isinstance(r, tuple) and isinstance(r[0], str) and r[0].strip()]
+            total_docs = int(getattr(profile, "total_documents", 0) or 0)
+            root = build_document_folder_tree(source_paths, total_documents=total_docs, max_depth=20)
+            folder_tree = DocumentFolderTreeResponse(
+                dataset_id=dataset_id,
+                total_documents=total_docs,
+                total_with_source_path=int(len(source_paths)),
+                root=root,
+            )
+        except Exception:
+            folder_tree = None
+
         return DatasetReportOut(
             dataset_id=dataset_id,
             dataset_name=str(getattr(dataset, "name", "") or "") or None,
@@ -117,5 +143,5 @@ class ReportService:
             pipeline_versions=pipeline_versions,
             connectors=connectors,
             dataset_metadata=dict(getattr(dataset, "dataset_metadata", None) or {}),
+            folder_tree=folder_tree,
         )
-

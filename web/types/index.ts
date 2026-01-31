@@ -1152,6 +1152,7 @@ export interface DatasetReport {
   pipeline_versions: DatasetReportPipelineVersion[]
   connectors: DatasetReportConnectorRun[]
   dataset_metadata: Record<string, any>
+  folder_tree?: DocumentFolderTreeResponse | null
 }
 
 export interface DatasetConfigBundle {
