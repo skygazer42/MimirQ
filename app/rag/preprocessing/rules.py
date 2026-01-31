@@ -1,5 +1,6 @@
 
 from app.rag.preprocessing.cleaning import RegexRule
+from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
 
 DEFAULT_MARKDOWN_RULES: list[RegexRule] = [
     # Normalize common "page X" footer artifacts (conservative).
@@ -43,8 +44,20 @@ def build_governance_rules(
       to reuse its internal defaults.
     """
     out = list(DEFAULT_MARKDOWN_RULES)
-    # rule_packs are expanded in a later task; keep the parameter now to avoid API churn.
-    _ = rule_packs
+
+    # Expand optional rule packs (best-effort; unknown packs are ignored).
+    if rule_packs:
+        seen: set[str] = set()
+        for raw in rule_packs:
+            if not isinstance(raw, str):
+                continue
+            key = raw.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            pack = GOVERNANCE_RULE_PACKS.get(key)
+            if pack:
+                out.extend(list(pack))
     for item in (extra_rules or []):
         if not isinstance(item, dict):
             continue
