@@ -33,6 +33,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
 
     import app.api.v1.reports as reports_module
     from app.api.schemas.dataset_profile import DatasetProfileSummary
+    from app.api.schemas.document_folders import DocumentFolderNode, DocumentFolderTreeResponse
     from app.api.schemas.report import ComplianceSummary, DatasetReportOut
 
     dummy_profile = DatasetProfileSummary(
@@ -40,6 +41,12 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
         generated_at="2026-01-01T00:00:00Z",
         total_documents=3,
         by_status={"completed": 2, "failed": 1},
+    )
+    dummy_folders = DocumentFolderTreeResponse(
+        dataset_id=dataset_id,
+        total_documents=3,
+        total_with_source_path=2,
+        root=DocumentFolderNode(name="", path="", depth=0, documents=3, children=[]),
     )
     dummy_report = DatasetReportOut(
         dataset_id=dataset_id,
@@ -51,6 +58,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
         pipeline_versions=[],
         connectors=[],
         dataset_metadata={},
+        folder_tree=dummy_folders,
     )
     monkeypatch.setattr(
         reports_module.ReportService,
@@ -74,6 +82,8 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
     assert "profile" in body
     assert "compliance" in body
     assert "connectors" in body
+    assert "folder_tree" in body
+    assert body["folder_tree"]["total_documents"] == 3
 
 
 def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001

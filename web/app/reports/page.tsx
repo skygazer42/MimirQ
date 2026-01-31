@@ -138,6 +138,8 @@ export default function ReportsCenterPage() {
   const failed = report?.compliance?.failed_documents || 0
   const pipelineVersions = report?.pipeline_versions || []
   const connectorRuns = report?.connectors || []
+  const folderTree = report?.folder_tree || null
+  const topFolders = folderTree?.root?.children || []
 
   return (
     <AppFrame>
@@ -267,6 +269,35 @@ export default function ReportsCenterPage() {
               </StatsGrid>
 
               <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-border/60 bg-card/40 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">目录分布（Top）</div>
+                      {folderTree ? (
+                        <div className="text-xs text-muted-foreground">
+                          with source_path: {folderTree.total_with_source_path}/{folderTree.total_documents}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  {!folderTree ? (
+                    <div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>
+                  ) : topFolders.length === 0 ? (
+                    <div className="mt-3 text-sm text-muted-foreground">暂无目录（未上传带路径的文件）</div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {topFolders.slice(0, 10).map((f) => (
+                        <div key={f.path} className="flex items-center justify-between gap-3">
+                          <span className="font-mono text-xs text-foreground truncate" title={f.path}>
+                            {f.path}
+                          </span>
+                          <span className="font-mono text-xs text-muted-foreground">{f.documents}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
                   <div className="text-sm font-semibold text-foreground mb-3">Pipeline 版本分布（Top）</div>
                   {pipelineVersions.length === 0 ? (
