@@ -47,6 +47,16 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         # Breadcrumb-like headers ("Home / ...", "Home > ...", "Home » ...").
         RegexRule(pattern=r"(?mi)^\s*home\s*(?:/|>|»|\|)\s*\S.+$", repl="", flags=0),
     ],
+    "pdf_watermark": [
+        # Watermark-like full-line stamps (keep conservative).
+        RegexRule(pattern=r"(?mi)^\s*draft\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*(?:company\s+)?confidential\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*strictly\s+confidential\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*internal\s+only\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*for\s+internal\s+use\s+only\s*$", repl="", flags=0),
+        # Chinese (common PDF exports).
+        RegexRule(pattern=r"(?m)^\s*(?:机密|保密|内部资料|内部使用|仅供内部使用)\s*$", repl="", flags=0),
+    ],
 }
 
 
