@@ -80,7 +80,8 @@ class MarkdownHeaderChunker(BaseChunker):
         self._fallback_splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
-            separators=["\n\n", "\n", ". ", " ", ""],
+            separators=["\n\n", "\n", "。", "！", "？", "；", ". ", "! ", "? ", "; ", " ", ""],
+            keep_separator="end",
         )
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
@@ -284,6 +285,10 @@ class MarkdownAwareChunker(BaseChunker):
         separators.extend([
             "\n\n",  # Paragraph break
             "\n",    # Line break
+            "。",    # CN sentence end
+            "！",
+            "？",
+            "；",
             ". ",    # Sentence
             " ",     # Word
             "",      # Character
