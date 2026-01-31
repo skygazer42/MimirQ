@@ -5293,6 +5293,21 @@ async def patch_document_pipeline(
     document.doc_metadata = meta
     db.commit()
     db.refresh(document)
+    # Best-effort audit log (do not include patch values; keys only).
+    try:
+        fields = sorted(list(getattr(patch, "model_fields_set", set())))
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="document.pipeline.patch",
+            resource_type="document",
+            resource_id=str(document_id),
+            details={"replace": bool(payload.replace), "fields": fields[:50]},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
     return document
 
 
@@ -5330,6 +5345,29 @@ async def patch_document_user_metadata(
     document.doc_metadata = meta
     db.commit()
     db.refresh(document)
+    # Best-effort audit log (do not include patch values; keys only).
+    try:
+        keys = sorted([str(k) for k in patch.keys()]) if isinstance(patch, dict) else []
+        details: dict[str, Any] = {"replace": bool(payload.replace), "keys": keys[:50]}
+        # Common quarantine workflow markers (helpful for ops, safe to log).
+        if "quarantine_action" in patch:
+            val = patch.get("quarantine_action")
+            if isinstance(val, str) and val.strip():
+                details["quarantine_action"] = val.strip()[:200]
+        if "quarantine_reviewed" in patch:
+            details["quarantine_reviewed"] = bool(patch.get("quarantine_reviewed"))
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="document.metadata.user.patch",
+            resource_type="document",
+            resource_id=str(document_id),
+            details=details,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
     return document
 
 
