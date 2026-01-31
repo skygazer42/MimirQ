@@ -368,6 +368,7 @@ export const documentApi = {
     status?: string
     lifecycle?: string
     dataset_id?: string
+    source_path_prefix?: string
     file_type?: string
     owner_id?: string
     q?: string

@@ -18,6 +18,7 @@ export type DocumentListParams = {
   status?: string
   lifecycle?: string
   dataset_id?: string
+  source_path_prefix?: string
   q?: string
   order_by?: string
   order_dir?: string
@@ -36,6 +37,12 @@ function matchesDocumentListParams(doc: Document, params: DocumentListParams): b
 
   const datasetId = String(params.dataset_id || '').trim()
   if (datasetId && String(doc.dataset_id || '') !== datasetId) return false
+
+  const sourcePathPrefix = String(params.source_path_prefix || '').trim()
+  if (sourcePathPrefix) {
+    const sourcePath = String((doc.metadata as any)?.source_path || '').trim()
+    if (!sourcePath || !sourcePath.startsWith(sourcePathPrefix)) return false
+  }
 
   const lifecycle = String(params.lifecycle || '').trim().toLowerCase()
   if (lifecycle && lifecycle !== 'all') {
