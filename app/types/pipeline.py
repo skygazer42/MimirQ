@@ -91,6 +91,11 @@ class PipelineOptions:
     table_store_auto_col_threshold: Optional[int] = None
     table_store_auto_sheet_threshold: Optional[int] = None
     table_store_auto_file_bytes_threshold: Optional[int] = None
+    # Image understanding (caption/OCR). Conservative by default.
+    image_caption_enabled: Optional[bool] = None
+    image_ocr_enabled: Optional[bool] = None
+    image_ocr_max_chars: Optional[int] = None
+    image_ocr_max_images: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +173,10 @@ class PipelineEffective:
     table_store_auto_col_threshold: int
     table_store_auto_sheet_threshold: int
     table_store_auto_file_bytes_threshold: int
+    image_caption_enabled: bool
+    image_ocr_enabled: bool
+    image_ocr_max_chars: int
+    image_ocr_max_images: int
 
 
 __all__ = [

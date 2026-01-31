@@ -226,6 +226,12 @@ class Settings(BaseSettings):
     # Static asset caching for upload-served images (GET /api/v1/documents/image/{id}).
     # 0 disables caching headers.
     ASSET_CACHE_MAX_AGE_SEC: int = 3600
+    # Image understanding (caption/OCR) for image chunks during ingest.
+    # Conservative defaults: disabled unless explicitly enabled via pipeline metadata.
+    IMAGE_CAPTION_ENABLED: bool = False
+    IMAGE_OCR_ENABLED: bool = False
+    IMAGE_OCR_MAX_CHARS: int = 2000
+    IMAGE_OCR_MAX_IMAGES: int = 20
     # Keep this aligned with parser_factory supported non-PDF formats.
     ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl"
 

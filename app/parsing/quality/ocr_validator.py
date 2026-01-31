@@ -89,6 +89,11 @@ class RapidOCRService:
             logger.warning("RapidOCR PDF processing failed: %s", e)
             return "", 0
 
+    def ocr_image(self, image: Image.Image) -> str:
+        """Run OCR on a single PIL image (best-effort)."""
+        self._load_model()
+        return self._ocr_image(image)
+
     def _ocr_image(self, image: Image.Image) -> str:
         """Run OCR on a single image."""
         if self._ocr is None:

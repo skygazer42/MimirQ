@@ -186,6 +186,9 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
     tables = pipeline.get("tables")
     if not isinstance(tables, dict):
         tables = {}
+    images = pipeline.get("images")
+    if not isinstance(images, dict):
+        images = {}
     governance = pipeline.get("governance")
     if not isinstance(governance, dict):
         governance = {}
@@ -267,6 +270,10 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         table_store_auto_col_threshold=_coerce_int(tables.get("auto_col_threshold")),
         table_store_auto_sheet_threshold=_coerce_int(tables.get("auto_sheet_threshold")),
         table_store_auto_file_bytes_threshold=_coerce_int(tables.get("auto_file_bytes_threshold")),
+        image_caption_enabled=_coerce_bool(images.get("caption_enabled")),
+        image_ocr_enabled=_coerce_bool(images.get("ocr_enabled")),
+        image_ocr_max_chars=_coerce_int(images.get("ocr_max_chars")),
+        image_ocr_max_images=_coerce_int(images.get("ocr_max_images")),
     )
 
 
@@ -319,6 +326,18 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         tables["auto_file_bytes_threshold"] = int(options.table_store_auto_file_bytes_threshold)
     if tables:
         pipeline["tables"] = tables
+
+    images: Dict[str, Any] = {}
+    if options.image_caption_enabled is not None:
+        images["caption_enabled"] = bool(options.image_caption_enabled)
+    if options.image_ocr_enabled is not None:
+        images["ocr_enabled"] = bool(options.image_ocr_enabled)
+    if options.image_ocr_max_chars is not None:
+        images["ocr_max_chars"] = int(options.image_ocr_max_chars)
+    if options.image_ocr_max_images is not None:
+        images["ocr_max_images"] = int(options.image_ocr_max_images)
+    if images:
+        pipeline["images"] = images
 
     governance: Dict[str, Any] = {}
     if options.governance_remove_toc_lines is not None:
@@ -796,6 +815,28 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.table_store_auto_file_bytes_threshold is not None
         else int(getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000)
     )
+    image_caption_enabled = (
+        getattr(settings, "IMAGE_CAPTION_ENABLED", False)
+        if options.image_caption_enabled is None
+        else bool(options.image_caption_enabled)
+    )
+    image_ocr_enabled = (
+        getattr(settings, "IMAGE_OCR_ENABLED", False)
+        if options.image_ocr_enabled is None
+        else bool(options.image_ocr_enabled)
+    )
+    image_ocr_max_chars = (
+        options.image_ocr_max_chars
+        if options.image_ocr_max_chars is not None
+        else int(getattr(settings, "IMAGE_OCR_MAX_CHARS", 2000) or 2000)
+    )
+    image_ocr_max_images = (
+        options.image_ocr_max_images
+        if options.image_ocr_max_images is not None
+        else int(getattr(settings, "IMAGE_OCR_MAX_IMAGES", 20) or 20)
+    )
+    image_ocr_max_chars = max(0, int(image_ocr_max_chars))
+    image_ocr_max_images = max(0, int(image_ocr_max_images))
 
     return PipelineEffective(
         governance_enabled=governance_enabled,
@@ -871,6 +912,10 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         table_store_auto_col_threshold=int(table_store_auto_col_threshold),
         table_store_auto_sheet_threshold=int(table_store_auto_sheet_threshold),
         table_store_auto_file_bytes_threshold=int(table_store_auto_file_bytes_threshold),
+        image_caption_enabled=bool(image_caption_enabled),
+        image_ocr_enabled=bool(image_ocr_enabled),
+        image_ocr_max_chars=int(image_ocr_max_chars),
+        image_ocr_max_images=int(image_ocr_max_images),
     )
 
 
