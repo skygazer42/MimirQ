@@ -107,6 +107,8 @@ class CleanPreviewRuleStat(BaseModel):
     repl: str = ""
     flags: int = 0
     hits: int = Field(default=0, ge=0, le=10_000_000)
+    source: Optional[str] = Field(default=None, description="Rule source: default | pack | custom", max_length=32)
+    pack: Optional[str] = Field(default=None, description="When source=pack, the pack key", max_length=64)
 
 
 class GovernanceIssue(BaseModel):

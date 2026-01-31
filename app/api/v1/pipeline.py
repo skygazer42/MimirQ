@@ -1391,10 +1391,15 @@ async def clean_preview(
             )
         return out, dict(patch or {})
 
-    custom_rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in (body.rules or [])]
-    base_rules = list(DEFAULT_MARKDOWN_RULES) if body.use_default_rules else []
+    # Build rules with lightweight attribution so the UI can show which pack/default/custom produced a hit.
+    rules: list[RegexRule] = []
+    rule_meta: list[dict] = []
 
-    pack_rules: list[RegexRule] = []
+    base_rules = list(DEFAULT_MARKDOWN_RULES) if body.use_default_rules else []
+    for r in base_rules:
+        rules.append(r)
+        rule_meta.append({"source": "default", "pack": None})
+
     if getattr(body, "rule_packs", None):
         seen: set[str] = set()
         for raw in (body.rule_packs or []):
@@ -1405,10 +1410,16 @@ async def clean_preview(
                 continue
             seen.add(key)
             pack = GOVERNANCE_RULE_PACKS.get(key)
-            if pack:
-                pack_rules.extend(list(pack))
+            if not pack:
+                continue
+            for r in list(pack):
+                rules.append(r)
+                rule_meta.append({"source": "pack", "pack": key})
 
-    rules = base_rules + pack_rules + custom_rules
+    custom_rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in (body.rules or [])]
+    for r in custom_rules:
+        rules.append(r)
+        rule_meta.append({"source": "custom", "pack": None})
     common_lines = (
         build_repeated_line_signatures(
             baseline_text,
@@ -1437,16 +1448,20 @@ async def clean_preview(
     )
 
     rule_hits = list(getattr(result, "rule_hits", None) or [])
-    rule_stats = [
-        {
-            "index": i,
-            "pattern": str(getattr(r, "pattern", "") or ""),
-            "repl": (getattr(r, "repl", "") if isinstance(getattr(r, "repl", ""), str) else ""),
-            "flags": int(getattr(r, "flags", 0) or 0),
-            "hits": int(rule_hits[i] if i < len(rule_hits) else 0),
-        }
-        for i, r in enumerate(rules or [])
-    ]
+    rule_stats = []
+    for i, r in enumerate(rules or []):
+        meta = rule_meta[i] if i < len(rule_meta) and isinstance(rule_meta[i], dict) else {}
+        rule_stats.append(
+            {
+                "index": i,
+                "pattern": str(getattr(r, "pattern", "") or ""),
+                "repl": (getattr(r, "repl", "") if isinstance(getattr(r, "repl", ""), str) else ""),
+                "flags": int(getattr(r, "flags", 0) or 0),
+                "hits": int(rule_hits[i] if i < len(rule_hits) else 0),
+                "source": str(meta.get("source") or "") or None,
+                "pack": str(meta.get("pack") or "") or None,
+            }
+        )
 
     text = result.markdown
 
