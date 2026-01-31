@@ -51,6 +51,9 @@ import app.models.evaluation  # noqa: F401
 # Ensure feedback models are registered for metadata creation
 import app.models.feedback  # noqa: F401
 
+# Ensure dataset category models are registered for metadata creation
+import app.models.dataset_category  # noqa: F401
+
 # Ensure user models are registered for metadata creation
 import app.models.user  # noqa: F401
 
