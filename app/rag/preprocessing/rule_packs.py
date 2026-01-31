@@ -26,6 +26,17 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         RegexRule(pattern=r"(?mi)^\s*(?:reject|decline)\s+cookies?\s*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*manage\s+(?:cookies?|preferences?)\s*$", repl="", flags=0),
     ],
+    "email_disclaimer": [
+        # Confidentiality / intended recipient.
+        RegexRule(pattern=r"(?mi)^\s*this\s+(?:e-?mail|email|message)\b.*\bintended\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*(?:and\s+)?may\s+contain\s+(?:confidential|privileged)\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*if\s+you\s+are\s+not\s+(?:the\s+)?intended\s+recipient\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*please\s+(?:notify|contact)\s+the\s+sender\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*(?:delete|destroy)\s+(?:this\s+)?e-?mail\b.*$", repl="", flags=0),
+        # Disclaimer about opinions / security.
+        RegexRule(pattern=r"(?mi)^\s*any\s+views?\s+or\s+opinions?\s+(?:presented|expressed)\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*e-?mail\s+transmission\s+cannot\s+be\s+guaranteed\b.*$", repl="", flags=0),
+    ],
 }
 
 
