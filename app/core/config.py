@@ -215,6 +215,8 @@ class Settings(BaseSettings):
     PREVIEW_PARSE_CACHE_TTL_SEC: int = 600
     PREVIEW_PARSE_CACHE_MAX_ENTRIES: int = 32
     PREVIEW_PARSE_CACHE_MAX_DOC_CHARS: int = 2_000_000
+    # Manual cache-bust key for preview parse cache (include parser changes, model changes, etc.).
+    PREVIEW_PARSE_CACHE_VERSION: str = "v1"
     # ZIP extraction safety limits (for Markdown+images archives).
     ZIP_MAX_FILES: int = 2000
     ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: int = 500_000_000

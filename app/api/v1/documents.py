@@ -7122,6 +7122,7 @@ async def preview_chunking(
             cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
             cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
             cache_max_doc_chars = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 0) or 0)
+            cache_version = str(getattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1") or "v1").strip() or "v1"
 
             cache_key: str | None = None
             if (
@@ -7134,7 +7135,7 @@ async def preview_chunking(
                 cache_key = (
                     # Scope to tenant + account to avoid cross-user cache leakage in multi-user tenants.
                     f"parse:{str(tenant_id)}:{str(account_id)}:{str(file_sha256)}:{str(file_ext)}:"
-                    f"{str(parser_backend or '').strip().lower()}"
+                    f"{str(parser_backend or '').strip().lower()}:{cache_version}"
                 )
                 cached, age_ms = preview_parse_cache.get(cache_key, ttl_sec=cache_ttl_sec)
                 if cached is not None:
@@ -7763,12 +7764,13 @@ async def preview_chunking_by_sha(
     cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
     cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
     cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
+    cache_version = str(getattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1") or "v1").strip() or "v1"
     if not (cache_enabled and bool(use_parse_cache) and cache_ttl_sec > 0 and cache_max_entries > 0):
         raise HTTPException(status_code=400, detail="parse cache disabled; please upload the file")
 
     cache_key = (
         f"parse:{str(tenant_id)}:{str(account_id)}:{sha}:{str(file_ext)}:"
-        f"{str(parser_backend or '').strip().lower()}"
+        f"{str(parser_backend or '').strip().lower()}:{cache_version}"
     )
 
     cached, age_ms = preview_parse_cache.get(cache_key, ttl_sec=cache_ttl_sec)
