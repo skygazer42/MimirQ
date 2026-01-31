@@ -56,6 +56,7 @@ from app.api.schemas.pipeline import (
 from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.optional_deps import check_dependency
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
@@ -321,15 +322,6 @@ def _unified_diff_text(before: str, after: str, *, max_lines: int) -> tuple[str 
         return "\n".join(diff_lines), True
     return "\n".join(diff_lines), False
 
-def _check_python_import(module_name: str, *, attr: str | None = None) -> tuple[bool, str | None]:
-    try:
-        mod = __import__(module_name, fromlist=[attr] if attr else [])
-        if attr:
-            getattr(mod, attr)
-        return True, None
-    except (ImportError, AttributeError) as exc:
-        return False, str(exc)[:200] or "import failed"
-
 
 @router.get("/capabilities", response_model=PipelineCapabilitiesResponse)
 async def get_pipeline_capabilities(
@@ -387,7 +379,7 @@ async def get_pipeline_capabilities(
                 available = False
                 notes = "Set MARKITDOWN_ENABLED=true."
             else:
-                ok, err = _check_python_import("markitdown", attr="MarkItDown")
+                ok, err = check_dependency("markitdown", attr="MarkItDown")
                 available = ok
                 if not ok:
                     notes = f"markitdown not installed: {err}"
@@ -396,7 +388,7 @@ async def get_pipeline_capabilities(
                 available = False
                 notes = "Set DOCLING_ENABLED=true."
             else:
-                ok, err = _check_python_import("docling.document_converter", attr="DocumentConverter")
+                ok, err = check_dependency("docling.document_converter", attr="DocumentConverter")
                 available = ok
                 if not ok:
                     notes = f"docling not installed: {err}"
@@ -632,7 +624,7 @@ async def get_pipeline_capabilities(
                 available = False
                 notes = "Set LLAMA_INDEX_ENABLED=true."
             else:
-                ok, err = _check_python_import("llama_index.core")
+                ok, err = check_dependency("llama_index.core")
                 available = ok
                 if not ok:
                     notes = f"llama-index-core not installed: {err}"

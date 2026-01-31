@@ -70,3 +70,19 @@ def require_dependency(
         raise RuntimeError(
             f"Missing dependency '{module}' required for feature '{feature}'. Install via: {remediation}"
         ) from exc
+
+
+def check_dependency(module: str, *, attr: str | None = None) -> tuple[bool, str | None]:
+    """
+    Check whether an optional dependency is importable (quiet; no logging).
+
+    Useful for capability/introspection endpoints where missing deps are expected
+    and should not spam logs.
+    """
+    try:
+        mod = importlib.import_module(module)
+        if attr:
+            getattr(mod, attr)
+        return True, None
+    except (ImportError, AttributeError) as exc:
+        return False, str(exc)[:200] or "import failed"
