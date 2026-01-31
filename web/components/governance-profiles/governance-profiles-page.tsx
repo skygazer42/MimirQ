@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Plus, RefreshCw, ShieldCheck, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, Plus, RefreshCw, ShieldCheck, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -11,8 +11,9 @@ import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { pipelineApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
-import type { GovernanceProfileListResponse, GovernanceProfileSummary } from '@/types'
+import type { GovernanceProfileCreate, GovernanceProfileListResponse, GovernanceProfileSummary } from '@/types'
 import { ProfileEditorDrawer } from '@/components/governance-profiles/profile-editor-drawer'
+import { buildGovernanceProfileCreateFromExisting } from '@/lib/governance-profile-utils'
 
 export function GovernanceProfilesPage() {
   const [loading, setLoading] = useState(false)
@@ -22,6 +23,7 @@ export function GovernanceProfilesPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | 'view'>('create')
   const [editorProfileRef, setEditorProfileRef] = useState<string | null>(null)
+  const [editorSeedCreate, setEditorSeedCreate] = useState<GovernanceProfileCreate | null>(null)
   const [importing, setImporting] = useState(false)
   const [importOverwrite, setImportOverwrite] = useState(false)
   const importInputRef = useRef<HTMLInputElement | null>(null)
@@ -96,7 +98,11 @@ export function GovernanceProfilesPage() {
         open={editorOpen}
         mode={editorMode}
         profileRef={editorProfileRef}
-        onOpenChange={setEditorOpen}
+        seedCreate={editorSeedCreate}
+        onOpenChange={(next) => {
+          setEditorOpen(next)
+          if (!next) setEditorSeedCreate(null)
+        }}
         onSaved={() => void load()}
         onCreated={() => void load()}
       />
@@ -137,6 +143,7 @@ export function GovernanceProfilesPage() {
               onClick={() => {
                 setEditorMode('create')
                 setEditorProfileRef(null)
+                setEditorSeedCreate(null)
                 setEditorOpen(true)
               }}
             >
@@ -226,11 +233,35 @@ export function GovernanceProfilesPage() {
                         setEditorMode(p.is_system ? 'view' : 'edit')
                         // IMPORTANT: custom profiles should use `id` (UUID) as ref; `key` may be "custom:<uuid>".
                         const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
+                        setEditorSeedCreate(null)
                         setEditorProfileRef(ref)
                         setEditorOpen(true)
                       }}
                     >
                       {p.is_system ? '查看' : '编辑'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-xl"
+                      onClick={() =>
+                        void (async () => {
+                          const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
+                          if (!ref) return
+                          try {
+                            const prof = await pipelineApi.getGovernanceProfile(ref)
+                            setEditorMode('create')
+                            setEditorProfileRef(null)
+                            setEditorSeedCreate(buildGovernanceProfileCreateFromExisting(prof))
+                            setEditorOpen(true)
+                          } catch (err: any) {
+                            toast.error(err?.response?.data?.detail || err?.message || '复制失败')
+                          }
+                        })()
+                      }
+                    >
+                      <Copy className="w-4 h-4" />
                     </Button>
                     <Button
                       type="button"
