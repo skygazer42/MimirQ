@@ -205,6 +205,8 @@ def get_builtin_governance_profiles() -> List[BuiltinGovernanceProfile]:
                     "governance_remove_common_lines": False,
                     "governance_remove_boilerplate": True,
                     "governance_remove_images": "decorative",
+                    # Optional rule packs (default off globally; enabled here explicitly).
+                    "governance_rule_packs": ["web_navigation", "web_cookie_banners"],
                     "governance_normalize_urls": True,
                     "governance_normalize_urls_strip_tracking": True,
                     "governance_drop_duplicate_paragraphs": True,
@@ -212,11 +214,7 @@ def get_builtin_governance_profiles() -> List[BuiltinGovernanceProfile]:
                     "governance_drop_duplicate_paragraphs_min_chars": 40,
                     "governance_drop_duplicate_paragraphs_max_chars": 1200,
                 },
-                regex_rules=[
-                    # Common scraped/converted artifacts (keep conservative).
-                    {"pattern": r"(?mi)^\\s*(?:skip to content|back to top)\\s*$", "repl": "", "flags": 0},
-                    {"pattern": r"(?mi)^\\s*(?:cookie policy|accept cookies)\\b.*$", "repl": "", "flags": 0},
-                ],
+                regex_rules=[],
             ),
         ),
         BuiltinGovernanceProfile(
