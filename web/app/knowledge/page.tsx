@@ -40,6 +40,7 @@ import {
   Zap,
   Globe,
   Filter,
+  Folder,
   X,
   ChevronDown,
   ChevronRight,
@@ -54,6 +55,7 @@ import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Dialog,
   DialogContent,
@@ -70,6 +72,7 @@ import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
+import { toSourcePathPrefix } from '@/lib/document-folders'
 import type { Citation, ConnectorRunOut, Dataset, Document, DocumentAccessMode, DocumentStats } from '@/types'
 import { connectorApi, datasetApi, documentApi, ragApi } from '@/lib/api-client'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -78,6 +81,7 @@ import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
+import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 // Tab 类型
@@ -231,6 +235,8 @@ export default function KnowledgePage() {
   const DATASET_DEFAULT = '__default__'
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetScope, setDatasetScope] = useState<string>(DATASET_ALL)
+  const [folderPath, setFolderPath] = useState<string | null>(null)
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false)
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const selectedDatasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
   const [docStats, setDocStats] = useState<DocumentStats | null>(null)
@@ -266,6 +272,9 @@ export default function KnowledgePage() {
     const dataset = params.get('dataset')
     if (dataset && dataset.trim()) setDatasetScope(dataset)
 
+    const folder = params.get('folder')
+    if (folder && folder.trim() && dataset && dataset.trim() && dataset !== DATASET_ALL) setFolderPath(folder.trim())
+
     const orderBy = params.get('order_by')
     if (orderBy === 'created_at' || orderBy === 'filename' || orderBy === 'file_size') setSortKey(orderBy)
 
@@ -283,6 +292,7 @@ export default function KnowledgePage() {
     if (statusFilter !== 'all') params.set('status', statusFilter)
     if (lifecycleFilter !== 'active') params.set('lifecycle', lifecycleFilter)
     if (datasetScope !== DATASET_ALL) params.set('dataset', datasetScope)
+    if (datasetScope !== DATASET_ALL && folderPath) params.set('folder', folderPath)
     if (sortKey !== 'created_at') params.set('order_by', sortKey)
     if (sortDir !== 'desc') params.set('order_dir', sortDir)
     const qs = params.toString()
@@ -290,7 +300,7 @@ export default function KnowledgePage() {
     if (lastUrlRef.current === nextUrl) return
     lastUrlRef.current = nextUrl
     router.replace(nextUrl, { scroll: false })
-  }, [activeTab, viewMode, docFilter, statusFilter, lifecycleFilter, datasetScope, sortKey, sortDir, router])
+  }, [activeTab, viewMode, docFilter, statusFilter, lifecycleFilter, datasetScope, folderPath, sortKey, sortDir, router])
 
   // PageBody is an internal scroll container; on tab switches keep the top anchored.
   useEffect(() => {
@@ -333,12 +343,13 @@ export default function KnowledgePage() {
         lifecycle: lifecycleFilter,
         q: docFilter.trim() || undefined,
         dataset_id: selectedDatasetId,
+        source_path_prefix: selectedDatasetId ? toSourcePathPrefix(folderPath) : undefined,
         order_by: sortKey,
         order_dir: sortDir,
       })
     }, 250)
     return () => window.clearTimeout(t)
-  }, [activeTab, statusFilter, lifecycleFilter, docFilter, selectedDatasetId, sortKey, sortDir, loadDocuments])
+  }, [activeTab, statusFilter, lifecycleFilter, docFilter, selectedDatasetId, folderPath, sortKey, sortDir, loadDocuments])
 
   // Accurate dashboard stats (server aggregated) - avoids "only 200 items loaded" bias.
   useEffect(() => {
@@ -1800,7 +1811,14 @@ export default function KnowledgePage() {
                         ) : null}
                       </div>
 
-                      <Select value={datasetScope} onValueChange={setDatasetScope}>
+                      <Select
+                        value={datasetScope}
+                        onValueChange={(v) => {
+                          setDatasetScope(v)
+                          setFolderPath(null)
+                          setFolderPickerOpen(false)
+                        }}
+                      >
                         <SelectTrigger
                           className="h-10 w-full sm:w-[220px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm"
                           disabled={datasetsLoading}
@@ -1817,6 +1835,42 @@ export default function KnowledgePage() {
                           ))}
                         </SelectContent>
                       </Select>
+
+                      {datasetScope !== DATASET_ALL ? (
+                        <Popover open={folderPickerOpen} onOpenChange={setFolderPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-10 w-full sm:w-[220px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm justify-between"
+                              aria-label="按目录筛选"
+                            >
+                              <span className="min-w-0 flex items-center gap-2">
+                                <Folder className="h-4 w-4 text-muted-foreground" />
+                                <span className="truncate" title={folderPath || '全部目录'}>
+                                  {folderPath ? folderPath.split('/').slice(-1)[0] : '全部目录'}
+                                </span>
+                              </span>
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="start" className="w-[380px] p-3">
+                            {selectedDatasetId ? (
+                              <DatasetFolderTree
+                                datasetId={selectedDatasetId}
+                                lifecycle={lifecycleFilter}
+                                selectedPath={folderPath}
+                                onSelect={(path) => {
+                                  setFolderPath(path)
+                                  setFolderPickerOpen(false)
+                                }}
+                              />
+                            ) : (
+                              <div className="text-xs text-muted-foreground">请选择数据集</div>
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                      ) : null}
 
                       <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
                         <SelectTrigger
