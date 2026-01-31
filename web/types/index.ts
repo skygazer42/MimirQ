@@ -1105,6 +1105,40 @@ export interface DatasetHealthResponse {
   ingestion: DatasetHealthIngestionSummary
 }
 
+export interface DatasetReportCompliance {
+  pii_hits_total: Record<string, number>
+  secrets_hits_total: Record<string, number>
+  quarantined_documents: number
+  failed_documents: number
+}
+
+export interface DatasetReportPipelineVersion {
+  pipeline_hash: string
+  documents: number
+}
+
+export interface DatasetReportConnectorRun {
+  id: string
+  connector_id: string
+  status: string
+  created_at: string
+  finished_at?: string | null
+  error_message?: string | null
+  stats: Record<string, any>
+}
+
+export interface DatasetReport {
+  dataset_id: string
+  dataset_name?: string | null
+  pipeline_hash?: string | null
+  generated_at: string
+  profile: DatasetProfileSummary
+  compliance: DatasetReportCompliance
+  pipeline_versions: DatasetReportPipelineVersion[]
+  connectors: DatasetReportConnectorRun[]
+  dataset_metadata: Record<string, any>
+}
+
 export interface DatasetConfigBundle {
   default_parser_backend?: string | null
   default_chunk_strategy?: string | null

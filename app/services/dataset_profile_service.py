@@ -373,6 +373,7 @@ def compute_dataset_profile_summary(
     tenant_id: UUID,
     account_id: str,
     dataset_id: UUID,
+    pipeline_hash: str | None = None,
     density_threshold: float = 0.12,
     image_threshold: int = 8,
 ) -> DatasetProfileSummary:
@@ -384,6 +385,15 @@ def compute_dataset_profile_summary(
     - Heavy re-parsing / hashing is done in deep scan jobs.
     """
     _dataset, query = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+
+    # Optional pipeline version filter: use active_pipeline_hash when present (fallback to pipeline_hash).
+    pipeline_hash_norm = str(pipeline_hash or "").strip() or None
+    if pipeline_hash_norm:
+        active_expr = func.coalesce(
+            DBDocument.doc_metadata["active_pipeline_hash"].as_string(),
+            DBDocument.doc_metadata["pipeline_hash"].as_string(),
+        )
+        query = query.filter(active_expr == pipeline_hash_norm)
 
     # Best-effort short TTL cache: key includes ACL-scoped max(updated_at) so it invalidates on changes.
     cache_key = None
@@ -399,6 +409,7 @@ def compute_dataset_profile_summary(
             str(tenant_id),
             str(account_id),
             str(dataset_id),
+            str(pipeline_hash_norm or ""),
             float(density_threshold),
             int(image_threshold),
             latest_doc_key,

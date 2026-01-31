@@ -245,6 +245,163 @@ def render_dataset_profile_html(
     return html
 
 
+def render_dataset_report_html(
+    *,
+    title: str,
+    dataset_name: str | None,
+    dataset_id: str | None,
+    generated_at: datetime | str | None,
+    report: dict,
+    redact: bool = False,
+) -> str:
+    """
+    Render a dataset report bundle as a single-file HTML.
+
+    This intentionally stays simple (offline-friendly) and includes the raw JSON
+    payload for auditing/sharing.
+    """
+    import json
+
+    name = "[REDACTED]" if redact else (dataset_name or "")
+    dsid = "[REDACTED]" if redact else (dataset_id or "")
+    ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
+
+    profile = report.get("profile") if isinstance(report, dict) else None
+    prof = profile if isinstance(profile, dict) else {}
+
+    total_docs = int(prof.get("total_documents") or 0)
+    total_bytes = int(prof.get("total_size_bytes") or 0)
+
+    by_status = _as_items(prof.get("by_status"), top=12)
+    by_type = _as_items(prof.get("by_file_type"), top=12)
+
+    comp = report.get("compliance") if isinstance(report, dict) else None
+    compd = comp if isinstance(comp, dict) else {}
+    quarantined = int(compd.get("quarantined_documents") or 0)
+    failed = int(compd.get("failed_documents") or 0)
+
+    versions = report.get("pipeline_versions") if isinstance(report, dict) else None
+    version_items: list[tuple[str, int]] = []
+    if isinstance(versions, list):
+        for v in versions:
+            if not isinstance(v, dict):
+                continue
+            ph = str(v.get("pipeline_hash") or "").strip() or "unknown"
+            try:
+                cnt = int(v.get("documents") or 0)
+            except Exception:
+                cnt = 0
+            if cnt <= 0:
+                continue
+            version_items.append((ph, cnt))
+
+    connectors = report.get("connectors") if isinstance(report, dict) else None
+    conn_rows: list[str] = []
+    if isinstance(connectors, list):
+        for r in connectors[:30]:
+            if not isinstance(r, dict):
+                continue
+            conn_rows.append(
+                "<tr>"
+                f"<td class=\"k\">{escape(str(r.get('connector_id') or ''))}</td>"
+                f"<td class=\"v\">{escape(str(r.get('status') or ''))}</td>"
+                f"<td class=\"v\">{escape(str(r.get('created_at') or ''))}</td>"
+                "</tr>"
+            )
+
+    raw_json = json.dumps(report, ensure_ascii=False, indent=2)
+
+    html = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{escape(title)}</title>
+  <style>
+    :root {{
+      --bg: #0b1020;
+      --card: rgba(255,255,255,.06);
+      --muted: rgba(255,255,255,.65);
+      --text: rgba(255,255,255,.92);
+      --border: rgba(255,255,255,.10);
+      --accent: #38bdf8;
+      --accent2: #22c55e;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }}
+    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(56,189,248,.16), transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
+    .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
+    .title {{ font-size: 22px; font-weight: 800; letter-spacing: .2px; }}
+    .sub {{ margin-top: 6px; color: var(--muted); font-size: 13px; }}
+    .grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }}
+    .card {{ border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 12px; }}
+    .kpi-label {{ color: var(--muted); font-size: 12px; }}
+    .kpi-value {{ font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }}
+    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }}
+    .section h2 {{ margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }}
+    .two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
+    .empty {{ color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }}
+    table.bars {{ width: 100%; border-collapse: collapse; }}
+    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
+    table.bars td {{ padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }}
+    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); width: 160px; }}
+    .bar-bg {{ height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }}
+    .bar-fill {{ height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }}
+    pre {{ white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.22); padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; font-family: var(--mono); font-size: 12px; color: var(--text); }}
+    .footer {{ margin-top: 18px; color: var(--muted); font-size: 12px; }}
+    @media (max-width: 980px) {{ .grid {{ grid-template-columns: repeat(2, 1fr); }} .two {{ grid-template-columns: 1fr; }} }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">{escape(title)}</div>
+    <div class="sub">dataset: <span style="font-family:var(--mono)">{escape(name)}</span> · id: <span style="font-family:var(--mono)">{escape(dsid)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
+
+    <div class="grid">
+      <div class="card"><div class="kpi-label">文档总数</div><div class="kpi-value">{_fmt_int(total_docs)}</div></div>
+      <div class="card"><div class="kpi-label">总大小</div><div class="kpi-value">{escape(_fmt_bytes(total_bytes))}</div></div>
+      <div class="card"><div class="kpi-label">隔离（Quarantine）</div><div class="kpi-value">{_fmt_int(quarantined)}</div></div>
+      <div class="card"><div class="kpi-label">失败（Failed）</div><div class="kpi-value">{_fmt_int(failed)}</div></div>
+      <div class="card"><div class="kpi-label">Pipeline Filter</div><div class="kpi-value">{escape(str(report.get("pipeline_hash") or "all"))}</div></div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>状态分布</h2>
+        {_render_bar_table(by_status, total=max(1, total_docs))}
+      </div>
+      <div>
+        <h2>格式分布（Top）</h2>
+        {_render_bar_table(by_type, total=max(1, total_docs))}
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Pipeline 版本分布</h2>
+      {_render_bar_table(version_items, total=max(1, total_docs))}
+    </div>
+
+    <div class="section">
+      <h2>最近 Connector Runs</h2>
+      {('<table class="bars"><thead><tr><th>connector_id</th><th>status</th><th>created_at</th></tr></thead><tbody>' + ''.join(conn_rows) + '</tbody></table>') if conn_rows else '<div class="empty">暂无数据</div>'}
+    </div>
+
+    <div class="section">
+      <h2>Raw JSON（用于审计/分享）</h2>
+      <pre>{escape(raw_json)}</pre>
+    </div>
+
+    <div class="footer">
+      <div>说明：报告聚合现有画像/治理/入库指标，以可分享的 HTML + JSON 输出为目标。</div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+    return html
+
+
 def render_precheck_html(
     *,
     title: str,
