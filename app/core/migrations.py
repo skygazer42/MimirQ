@@ -151,6 +151,19 @@ def apply_runtime_migrations(engine) -> None:
             'ON datasets (tenant_id, updated_at);',
             'CREATE INDEX IF NOT EXISTS ix_dataset_permissions_tenant_account_id '
             'ON dataset_permissions (tenant_id, account_id);',
+
+            # =========================
+            # Dataset categories (tree) + memberships
+            # =========================
+            'CREATE INDEX IF NOT EXISTS ix_dataset_categories_tenant_parent_sort '
+            'ON dataset_categories (tenant_id, parent_id, sort_order, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_dataset_categories_tenant_name '
+            'ON dataset_categories (tenant_id, name);',
+            'CREATE INDEX IF NOT EXISTS ix_dataset_category_memberships_tenant_dataset_id '
+            'ON dataset_category_memberships (tenant_id, dataset_id);',
+            'CREATE INDEX IF NOT EXISTS ix_dataset_category_memberships_tenant_category_id '
+            'ON dataset_category_memberships (tenant_id, category_id);',
+
             # Document ACL allowlist checks
             'CREATE INDEX IF NOT EXISTS ix_document_permissions_tenant_account_id '
             'ON document_permissions (tenant_id, account_id);',
