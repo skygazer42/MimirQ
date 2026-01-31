@@ -17,11 +17,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
-import { datasetApi, reportApi } from '@/lib/api-client'
+import { datasetApi, datasetCategoryApi, reportApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { formatDate, formatFileSize } from '@/lib/utils'
 
-import type { Dataset, DatasetReport } from '@/types'
+import type { Dataset, DatasetCategoryNode, DatasetReport } from '@/types'
 
 const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
 
@@ -52,6 +52,10 @@ export default function ReportsCenterPage() {
   const [isExportingHtml, setIsExportingHtml] = useState(false)
 
   const [report, setReport] = useState<DatasetReport | null>(null)
+  const [folderQuery, setFolderQuery] = useState<string>('')
+  const [categoryQuery, setCategoryQuery] = useState<string>('')
+  const [categoryTree, setCategoryTree] = useState<DatasetCategoryNode[]>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false)
 
   const selectedDataset = useMemo(() => datasets.find((d) => d.id === datasetId) || null, [datasets, datasetId])
 
@@ -88,9 +92,27 @@ export default function ReportsCenterPage() {
     }
   }, [connectorRunsLimit, datasetId, pipelineHash])
 
+  const loadCategories = useCallback(async () => {
+    setIsLoadingCategories(true)
+    try {
+      const res = await datasetCategoryApi.listTree()
+      setCategoryTree(res.items || [])
+    } catch (e: any) {
+      console.error('Failed to load dataset categories', e)
+      toast.error(formatApiError(e, '加载分类失败'))
+      setCategoryTree([])
+    } finally {
+      setIsLoadingCategories(false)
+    }
+  }, [])
+
   useEffect(() => {
     void loadDatasets()
   }, [loadDatasets])
+
+  useEffect(() => {
+    void loadCategories()
+  }, [loadCategories])
 
   useEffect(() => {
     void loadReport()
@@ -143,8 +165,61 @@ export default function ReportsCenterPage() {
   const pipelineVersions = report?.pipeline_versions || []
   const connectorRuns = report?.connectors || []
   const folderTree = report?.folder_tree || null
-  const topFolders = folderTree?.root?.children || []
   const governance = report?.governance_metrics || null
+
+  const flatFolders = useMemo(() => {
+    const root = folderTree?.root
+    if (!root) return [] as Array<{ path: string; documents: number; depth: number }>
+
+    const out: Array<{ path: string; documents: number; depth: number }> = []
+    const walk = (node: any) => {
+      for (const child of (node.children || []) as any[]) {
+        out.push({
+          path: String(child.path || ''),
+          documents: Number(child.documents || 0),
+          depth: Number(child.depth || 0),
+        })
+        walk(child)
+      }
+    }
+    walk(root)
+    return out
+  }, [folderTree])
+
+  const folderBarData = useMemo(() => {
+    const q = folderQuery.trim().toLowerCase()
+    const filtered = q ? flatFolders.filter((f) => f.path.toLowerCase().includes(q)) : flatFolders
+    return filtered
+      .slice()
+      .sort((a, b) => b.documents - a.documents)
+      .slice(0, 12)
+      .map((f) => ({ name: f.path || '/', value: Number(f.documents || 0) }))
+  }, [flatFolders, folderQuery])
+
+  const flatCategories = useMemo(() => {
+    const out: Array<{ id: string; name: string; depth: number; datasets: number }> = []
+    const walk = (node: DatasetCategoryNode) => {
+      out.push({
+        id: String(node.id),
+        name: String(node.name || ''),
+        depth: Number(node.depth || 0),
+        datasets: Number(node.datasets || 0),
+      })
+      for (const child of node.children || []) walk(child)
+    }
+    for (const n of categoryTree || []) walk(n)
+    return out
+  }, [categoryTree])
+
+  const categoryBarData = useMemo(() => {
+    const q = categoryQuery.trim().toLowerCase()
+    const filtered = q ? flatCategories.filter((c) => c.name.toLowerCase().includes(q)) : flatCategories
+    return filtered
+      .slice()
+      .sort((a, b) => b.datasets - a.datasets)
+      .slice(0, 12)
+      .map((c) => ({ name: c.name || c.id, value: Number(c.datasets || 0), depth: c.depth }))
+  }, [categoryQuery, flatCategories])
 
   const dropReasonsData = useMemo(() => {
     const m = governance?.drop_reasons_total || {}
@@ -366,7 +441,7 @@ export default function ReportsCenterPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
                       <div className="text-sm font-semibold text-foreground">目录分布（Top）</div>
                       {folderTree ? (
@@ -375,21 +450,45 @@ export default function ReportsCenterPage() {
                         </div>
                       ) : null}
                     </div>
+                    <Input
+                      value={folderQuery}
+                      onChange={(e) => setFolderQuery(e.target.value)}
+                      placeholder="搜索目录…"
+                      className="h-8 w-56 text-xs"
+                      disabled={!folderTree}
+                    />
                   </div>
+
                   {!folderTree ? (
                     <div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>
-                  ) : topFolders.length === 0 ? (
+                  ) : flatFolders.length === 0 ? (
                     <div className="mt-3 text-sm text-muted-foreground">暂无目录（未上传带路径的文件）</div>
+                  ) : folderBarData.length === 0 ? (
+                    <div className="mt-3 text-sm text-muted-foreground">无匹配结果</div>
                   ) : (
-                    <div className="mt-3 space-y-2">
-                      {topFolders.slice(0, 10).map((f) => (
-                        <div key={f.path} className="flex items-center justify-between gap-3">
-                          <span className="font-mono text-xs text-foreground truncate" title={f.path}>
-                            {f.path}
-                          </span>
-                          <span className="font-mono text-xs text-muted-foreground">{f.documents}</span>
-                        </div>
-                      ))}
+                    <div className="mt-3 space-y-3">
+                      <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={folderBarData} layout="vertical" margin={{ left: 80, right: 16 }}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                            <XAxis type="number" />
+                            <YAxis type="category" dataKey="name" width={80} />
+                            <Tooltip />
+                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div className="space-y-2">
+                        {folderBarData.slice(0, 10).map((f) => (
+                          <div key={f.name} className="flex items-center justify-between gap-3">
+                            <span className="font-mono text-xs text-foreground truncate" title={f.name}>
+                              {f.name}
+                            </span>
+                            <span className="font-mono text-xs text-muted-foreground">{f.value}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -408,6 +507,69 @@ export default function ReportsCenterPage() {
                           <span className="font-mono text-xs text-muted-foreground">{v.documents}</span>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border/60 bg-card/40 p-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">分类分布（Top）</div>
+                      <div className="text-xs text-muted-foreground">按分类统计「数据集数量」</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={categoryQuery}
+                        onChange={(e) => setCategoryQuery(e.target.value)}
+                        placeholder="搜索分类…"
+                        className="h-8 w-44 text-xs"
+                        disabled={isLoadingCategories}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-muted-foreground"
+                        onClick={() => void loadCategories()}
+                        disabled={isLoadingCategories}
+                        aria-label="刷新分类"
+                      >
+                        {isLoadingCategories ? (
+                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {isLoadingCategories ? (
+                    <div className="mt-3 text-sm text-muted-foreground">加载中…</div>
+                  ) : categoryBarData.length === 0 ? (
+                    <div className="mt-3 text-sm text-muted-foreground">暂无数据</div>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={categoryBarData} layout="vertical" margin={{ left: 80, right: 16 }}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                            <XAxis type="number" />
+                            <YAxis type="category" dataKey="name" width={80} />
+                            <Tooltip />
+                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[1]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div className="space-y-2">
+                        {categoryBarData.slice(0, 10).map((c) => (
+                          <div key={String(c.name)} className="flex items-center justify-between gap-3">
+                            <span className="font-mono text-xs text-foreground truncate" title={String(c.name)}>
+                              {String(c.name)}
+                            </span>
+                            <span className="font-mono text-xs text-muted-foreground">{String(c.value)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
