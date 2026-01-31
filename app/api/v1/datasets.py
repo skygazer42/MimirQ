@@ -63,7 +63,7 @@ from app.services.ingestion_policy import (
     parse_ingestion_policy_from_metadata,
     validate_and_normalize_ingestion_policy,
 )
-from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
+from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
 from app.services.report_html import render_dataset_profile_html
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
@@ -259,12 +259,7 @@ def create_dataset(
     # 1) Pipeline defaults (governance/indexing).
     if payload.pipeline is not None:
         options = PipelineOptions(**payload.pipeline.model_dump(exclude_none=True))
-        pipeline_meta = build_pipeline_metadata(options)
-        if pipeline_meta:
-            meta["pipeline"] = pipeline_meta
-        else:
-            meta.pop("pipeline", None)
-        changed = True
+        changed = upsert_pipeline_metadata(meta, options=options) or changed
 
     # 2) Ingestion defaults (parser/chunk strategy).
     if payload.default_parser_backend is not None:
@@ -534,12 +529,7 @@ def update_dataset(
 
     if payload.pipeline is not None:
         options = PipelineOptions(**payload.pipeline.model_dump(exclude_none=True))
-        pipeline_meta = build_pipeline_metadata(options)
-        if pipeline_meta:
-            meta["pipeline"] = pipeline_meta
-        else:
-            meta.pop("pipeline", None)
-        changed = True
+        changed = upsert_pipeline_metadata(meta, options=options) or changed
 
     if payload.default_parser_backend is not None:
         raw = str(payload.default_parser_backend or "").strip()
@@ -709,14 +699,10 @@ def import_dataset_config(
     if replace or cfg.pipeline is not None:
         if cfg.pipeline is not None:
             options = PipelineOptions(**cfg.pipeline.model_dump(exclude_none=True))
-            pipeline_meta = build_pipeline_metadata(options)
-            if pipeline_meta:
-                meta["pipeline"] = pipeline_meta
-            else:
-                meta.pop("pipeline", None)
+            changed = upsert_pipeline_metadata(meta, options=options) or changed
         else:
             meta.pop("pipeline", None)
-        changed = True
+            changed = True
 
     # Ingestion defaults
     if replace or cfg.default_parser_backend is not None:

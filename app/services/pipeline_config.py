@@ -506,6 +506,22 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
     return pipeline or None
 
 
+def upsert_pipeline_metadata(meta: Dict[str, Any], *, options: PipelineOptions | None) -> bool:
+    """
+    Upsert `meta["pipeline"]` from PipelineOptions (or remove it when empty).
+
+    Returns True when a change was applied to the dict.
+    """
+    if options is None:
+        return False
+    pipeline_meta = build_pipeline_metadata(options)
+    if pipeline_meta:
+        meta["pipeline"] = pipeline_meta
+    else:
+        meta.pop("pipeline", None)
+    return True
+
+
 def resolve_pipeline_effective(
     *,
     dataset_metadata: Optional[Dict[str, Any]] = None,
