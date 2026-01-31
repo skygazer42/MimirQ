@@ -86,6 +86,7 @@ from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
 from app.rag.preprocessing.references import trim_references_section
+from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.tables import normalize_markdown_tables
@@ -1371,7 +1372,22 @@ async def clean_preview(
 
     custom_rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in (body.rules or [])]
     base_rules = list(DEFAULT_MARKDOWN_RULES) if body.use_default_rules else []
-    rules = base_rules + custom_rules
+
+    pack_rules: list[RegexRule] = []
+    if getattr(body, "rule_packs", None):
+        seen: set[str] = set()
+        for raw in (body.rule_packs or []):
+            if not isinstance(raw, str):
+                continue
+            key = raw.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            pack = GOVERNANCE_RULE_PACKS.get(key)
+            if pack:
+                pack_rules.extend(list(pack))
+
+    rules = base_rules + pack_rules + custom_rules
     common_lines = (
         build_repeated_line_signatures(
             baseline_text,

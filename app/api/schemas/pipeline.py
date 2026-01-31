@@ -151,6 +151,11 @@ class GovernanceCommonLinesLearnResponse(BaseModel):
 class CleanPreviewRequest(BaseModel):
     markdown: str
     rules: List[RegexRuleModel] = Field(default_factory=list)
+    rule_packs: List[str] = Field(
+        default_factory=list,
+        description="Optional named governance rule packs (server-defined presets). Default off.",
+        max_length=20,
+    )
     use_default_rules: bool = True
     # When enabled, return a unified diff (text) between input and output (best-effort, may be truncated).
     include_diff: bool = False
