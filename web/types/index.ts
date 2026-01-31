@@ -659,11 +659,14 @@ export interface CleanPreviewRuleStat {
   repl?: string
   flags?: number
   hits: number
+  source?: string | null
+  pack?: string | null
 }
 
 export interface CleanPreviewRequest {
   markdown: string
   rules?: RegexRuleModel[]
+  rule_packs?: string[]
   use_default_rules?: boolean
   include_diff?: boolean
   diff_max_lines?: number

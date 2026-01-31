@@ -77,5 +77,7 @@ def test_pipeline_clean_preview_supports_rule_packs(monkeypatch):  # noqa: ANN00
 
     rule_stats = body.get("rule_stats") or []
     assert isinstance(rule_stats, list)
-    assert any(int(r.get("hits", 0) or 0) > 0 for r in rule_stats)
-
+    hit_rules = [r for r in rule_stats if int(r.get("hits", 0) or 0) > 0]
+    assert hit_rules
+    assert all(r.get("source") == "pack" for r in hit_rules)
+    assert any(r.get("pack") == "web_cookie_banners" for r in hit_rules)
