@@ -239,6 +239,44 @@ export default function ReportsCenterPage() {
       .slice(0, 12)
   }, [governance?.rule_packs_docs])
 
+  const handleExportChartsJson = useCallback(() => {
+    if (!datasetId || !report) return
+    const safe = sanitizeFilename(selectedDataset?.name || report.dataset_name || 'dataset')
+    const suffix = pipelineHash.trim() ? `.${pipelineHash.trim().slice(0, 8)}` : ''
+    const payload = {
+      schema: 'mimirq.report_charts.v1',
+      exported_at: new Date().toISOString(),
+      dataset: { id: datasetId, name: selectedDataset?.name || report.dataset_name || null },
+      pipeline_hash: report.pipeline_hash || null,
+      governance: {
+        metrics: report.governance_metrics || null,
+        drop_reasons_top: dropReasonsData,
+        rule_packs_top: rulePacksData,
+      },
+      folders: {
+        query: folderQuery,
+        top: folderBarData,
+      },
+      categories: {
+        query: categoryQuery,
+        top: categoryBarData,
+      },
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+    downloadBlob(blob, `${safe}.charts${suffix}.json`)
+  }, [
+    categoryBarData,
+    categoryQuery,
+    datasetId,
+    dropReasonsData,
+    folderBarData,
+    folderQuery,
+    pipelineHash,
+    report,
+    rulePacksData,
+    selectedDataset?.name,
+  ])
+
   return (
     <AppFrame>
       <PageScaffold
@@ -329,6 +367,15 @@ export default function ReportsCenterPage() {
                 >
                   {isExportingJson ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Download className="h-4 w-4" />}
                   <span className="ml-2">导出 JSON</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleExportChartsJson}
+                  disabled={!datasetId || !report}
+                  aria-label="导出 Charts JSON"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="ml-2">导出 Charts</span>
                 </Button>
                 <Button
                   onClick={() => void handleExportHtml()}
