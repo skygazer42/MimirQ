@@ -30,6 +30,11 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         description="Image removal mode: none | decorative | all",
     )
+    governance_rule_packs: Optional[List[str]] = Field(
+        default=None,
+        description="Optional named governance rule packs (server-defined presets). Default off.",
+        max_length=20,
+    )
     governance_regex_rules: Optional[List[GovernanceRegexRule]] = Field(
         default=None,
         description="Additional regex cleanup rules (stored in metadata.pipeline.governance.regex_rules).",

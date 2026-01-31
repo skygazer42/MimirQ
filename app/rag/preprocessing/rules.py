@@ -28,16 +28,23 @@ DEFAULT_MARKDOWN_RULES: list[RegexRule] = [
 ]
 
 
-def build_governance_rules(extra_rules: list[dict] | None = None) -> list[RegexRule]:
+def build_governance_rules(
+    extra_rules: list[dict] | None = None,
+    *,
+    rule_packs: list[str] | None = None,
+) -> list[RegexRule]:
     """
-    Combine default governance rules with extra user-provided rules (best-effort).
+    Combine default governance rules with optional rule packs and extra user-provided rules (best-effort).
 
     Notes:
+    - rule_packs are server-defined presets (declarative) and should be sanitized earlier.
     - extra_rules should be sanitized earlier (pipeline_config / profile validation).
     - Caller may skip passing rules when extra_rules is empty, allowing the processor
       to reuse its internal defaults.
     """
     out = list(DEFAULT_MARKDOWN_RULES)
+    # rule_packs are expanded in a later task; keep the parameter now to avoid API churn.
+    _ = rule_packs
     for item in (extra_rules or []):
         if not isinstance(item, dict):
             continue
