@@ -14,6 +14,7 @@ import type {
   DocumentQAGenerateResponse,
   DocumentStatus,
   DocumentTimelineResponse,
+  DocumentFolderTreeResponse,
   DocumentStats,
   DocumentAccessInfo,
   DocumentAccessUpdateRequest,
@@ -374,6 +375,18 @@ export const documentApi = {
     order_dir?: 'asc' | 'desc' | string
   }): Promise<{ total: number; items: Document[] }> {
     const { data } = await apiClient.get('/documents/', { params })
+    return data
+  },
+
+  /**
+   * 获取文档目录树（按 document.metadata.source_path 聚合）
+   */
+  async folders(params: {
+    dataset_id: string
+    lifecycle?: 'active' | 'archived' | 'disabled' | 'all' | string
+    max_depth?: number
+  }): Promise<DocumentFolderTreeResponse> {
+    const { data } = await apiClient.get('/documents/folders', { params })
     return data
   },
 
