@@ -25,6 +25,7 @@ import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { DatasetCategoryTree } from '@/components/dataset-categories/category-tree'
+import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/category-multi-select'
 
 type DatasetFormState = {
   name: string
@@ -396,6 +397,7 @@ export default function DatasetsPage() {
             </DialogHeader>
 
             <DatasetForm form={form} setForm={setForm} />
+            {editing?.id ? <DatasetCategoryMultiSelect datasetId={editing.id} /> : null}
 
             <DialogFooter className="mt-4">
               <Button
