@@ -30,6 +30,11 @@ class GovernanceProfilePayload(BaseModel):
     """
 
     version: str = Field(default="1", description="Payload schema version")
+    extends: Optional[str] = Field(
+        default=None,
+        max_length=120,
+        description="Optional parent profile ref (builtin:<key> | UUID | tenant-scoped key).",
+    )
     input_formats: List[Literal["markdown", "html"]] = Field(
         default_factory=lambda: ["markdown"],
         description="Recommended input format(s) for preview tools",

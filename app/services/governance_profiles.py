@@ -124,6 +124,16 @@ def _normalize_regex_rules(raw: object) -> list[dict]:
 
 
 def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> GovernanceProfilePayload:
+    extends = None
+    raw_extends = getattr(payload, "extends", None)
+    if raw_extends is not None:
+        ref = str(raw_extends or "").strip()
+        if ref:
+            # Keep it safe for logs/storage/JSON; existence is resolved later.
+            if "\x7f" in ref or any(ord(ch) < 32 for ch in ref):
+                raise ValueError("payload.extends contains control characters")
+            extends = ref[:120]
+
     cleaned_formats: list[str] = []
     for fmt in (payload.input_formats or []):
         v = str(fmt or "").strip().lower()
@@ -137,6 +147,7 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
 
     return GovernanceProfilePayload(
         version="1",
+        extends=extends,
         input_formats=cleaned_formats,  # type: ignore[arg-type]
         pipeline_patch=cleaned_patch,
         regex_rules=[RegexRuleModel(**r) for r in cleaned_rules],
