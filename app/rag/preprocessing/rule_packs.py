@@ -37,6 +37,16 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         RegexRule(pattern=r"(?mi)^\s*any\s+views?\s+or\s+opinions?\s+(?:presented|expressed)\b.*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*e-?mail\s+transmission\s+cannot\s+be\s+guaranteed\b.*$", repl="", flags=0),
     ],
+    "web_navigation": [
+        # Common navigation prompts.
+        RegexRule(pattern=r"(?mi)^\s*(?:skip|jump)\s+to\s+content\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*back\s+to\s+top\s*$", repl="", flags=0),
+        # Share blocks / buttons (line-oriented).
+        RegexRule(pattern=r"(?mi)^\s*share\s+this\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*share\s+on\s+(?:twitter|x|facebook|linkedin)\b.*$", repl="", flags=0),
+        # Breadcrumb-like headers ("Home / ...", "Home > ...", "Home » ...").
+        RegexRule(pattern=r"(?mi)^\s*home\s*(?:/|>|»|\|)\s*\S.+$", repl="", flags=0),
+    ],
 }
 
 
