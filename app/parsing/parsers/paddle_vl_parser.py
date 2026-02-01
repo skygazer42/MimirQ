@@ -22,6 +22,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
 from app.parsing.utils.zip_processor import ZipImageProcessor
 from app.rag.core.logging import get_logger
 
@@ -283,11 +284,31 @@ class PaddleVLParser:
             "image_count": image_counter - 1,
         }
 
-    def _handle_zip_response(self, *, resp: requests.Response, artifact_root: Path) -> Tuple[str, Optional[str]]:
+    def _handle_zip_response(
+        self,
+        *,
+        resp: requests.Response,
+        artifact_root: Path,
+        dataset_id: Optional[str],
+        document_id: Optional[str],
+        tenant_id: Optional[str],
+    ) -> Tuple[str, Optional[str]]:
         artifact_root.mkdir(parents=True, exist_ok=True)
 
         zip_path = artifact_root / "paddlevl_output.zip"
         zip_path.write_bytes(resp.content or b"")
+
+        # When object storage is enabled and we have stable identifiers, upload images to MinIO and
+        # rewrite markdown refs to signed/public URLs (ZipImageProcessor handles both md + <img> tags).
+        if settings.MINIO_ENABLED and dataset_id and document_id:
+            out = ZipImageProcessor.process_zip_with_images(
+                zip_path=zip_path,
+                dataset_id=str(dataset_id),
+                document_id=str(document_id),
+                tenant_id=tenant_id,
+            )
+            markdown_text = str(out.get("markdown") or "")
+            return markdown_text, None
 
         extract_root = artifact_root / "output"
         extract_root.mkdir(parents=True, exist_ok=True)
@@ -295,22 +316,20 @@ class PaddleVLParser:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             ZipImageProcessor._safe_extract(zip_ref, extract_root)
 
-        output_root = self._pick_output_root(extract_root)
+        # Normalize extracted artifacts into a stable layout under extract_root:
+        # - result.md at root
+        # - images/ at root (optional)
         try:
-            self._normalize_local_files(output_root)
+            normalized = normalize_extracted_artifacts(extract_root)
         except Exception as exc:
-            logger.warning("[paddle_vl] normalize failed: %s", str(exc)[:200])
+            logger.warning("[paddle_vl] artifact normalize failed: %s", str(exc)[:200])
+            normalized = {"markdown_file": None}
 
-        md_path = output_root / self.STANDARD_MARKDOWN_NAME
-        if md_path.exists():
-            return md_path.read_text(encoding="utf-8", errors="ignore"), str(output_root)
+        md_path = normalized.get("markdown_file")
+        if isinstance(md_path, Path) and md_path.exists():
+            return md_path.read_text(encoding="utf-8", errors="ignore"), str(extract_root)
 
-        md_files = list(output_root.rglob("*.md"))
-        if md_files:
-            picked = ZipImageProcessor._choose_markdown_file(md_files)
-            return picked.read_text(encoding="utf-8", errors="ignore"), str(picked.parent)
-
-        return "", str(output_root)
+        return "", str(extract_root)
 
     def parse(
         self,
@@ -337,7 +356,13 @@ class PaddleVLParser:
         asset_base_dir: Optional[str] = None
 
         if self._looks_like_zip(resp):
-            markdown_text, asset_base_dir = self._handle_zip_response(resp=resp, artifact_root=artifact_root)
+            markdown_text, asset_base_dir = self._handle_zip_response(
+                resp=resp,
+                artifact_root=artifact_root,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                tenant_id=tenant_id,
+            )
         else:
             ctype = str(resp.headers.get("content-type") or "").lower()
             if "application/json" in ctype:
@@ -366,4 +391,3 @@ class PaddleVLParser:
             metadata["dataset_id"] = str(dataset_id)
 
         return [Document(page_content=markdown_text, metadata=metadata)]
-
