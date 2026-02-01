@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, model_validator
 
 from .base import OrmModel
 
@@ -521,10 +521,7 @@ class DocumentDetail(OrmModel):
             self.governance = GovernanceInfo()
 
         # Best-effort: attach pipeline provenance for UI/debug; never fail the response.
-        try:
-            self.pipeline = DocumentPipelineProvenance.from_metadata(meta)
-        except Exception:
-            self.pipeline = DocumentPipelineProvenance()
+        self.pipeline = DocumentPipelineProvenance.from_metadata(meta)
         return self
 
 
@@ -604,10 +601,10 @@ class DocumentPipelineProvenance(BaseModel):
 
         try:
             from app.core.pipeline_versions import get_active_pipeline_hash
-
-            active_hash = get_active_pipeline_hash(m)
-        except Exception:
+        except ImportError:
             active_hash = str(m.get("active_pipeline_hash") or m.get("pipeline_hash") or "").strip() or None
+        else:
+            active_hash = get_active_pipeline_hash(m)
 
         pipeline_hash = str(m.get("pipeline_hash") or "").strip() or None
 
@@ -619,7 +616,7 @@ class DocumentPipelineProvenance(BaseModel):
         effective_raw = m.get("pipeline_effective") if isinstance(m.get("pipeline_effective"), dict) else {}
         try:
             effective = PipelineEffectiveSnapshot.model_validate(effective_raw)
-        except Exception:
+        except (TypeError, ValueError, ValidationError):
             effective = PipelineEffectiveSnapshot()
 
         rule_packs: list[str] = []
@@ -647,7 +644,7 @@ class DocumentPipelineProvenance(BaseModel):
 
         try:
             analytics = DocumentAnalyticsSchema.model_validate(analytics_payload)
-        except Exception:
+        except (TypeError, ValueError, ValidationError):
             analytics = DocumentAnalyticsSchema()
 
         text_quality = m.get("parsed_text_quality")

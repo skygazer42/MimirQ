@@ -11,7 +11,6 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
-
 DEFAULT_MAX_RULES = 60
 DEFAULT_MAX_PATTERN_LEN = 600
 DEFAULT_MAX_REPL_LEN = 2000
@@ -121,7 +120,7 @@ def validate_regex_rules(
 
         try:
             flags = int(flags_raw or 0)
-        except Exception:
+        except (TypeError, ValueError):
             violations.append(RegexRuleViolation(index=idx, field="flags", code="invalid", message="flags must be int"))
             continue
 
@@ -158,4 +157,3 @@ __all__ = [
     "RegexRulesValidationError",
     "validate_regex_rules",
 ]
-

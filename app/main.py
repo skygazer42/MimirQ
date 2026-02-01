@@ -38,6 +38,9 @@ from fastapi.middleware.cors import CORSMiddleware
 # Ensure audit log models are registered for metadata creation
 import app.models.audit_log  # noqa: F401
 
+# Ensure chunk preset models are registered for metadata creation
+import app.models.chunk_preset  # noqa: F401
+
 # Ensure connector models are registered for metadata creation
 import app.models.connector  # noqa: F401
 import app.models.connector_config  # noqa: F401
@@ -56,9 +59,6 @@ import app.models.feedback  # noqa: F401
 
 # Ensure user models are registered for metadata creation
 import app.models.user  # noqa: F401
-
-# Ensure chunk preset models are registered for metadata creation
-import app.models.chunk_preset  # noqa: F401
 
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401

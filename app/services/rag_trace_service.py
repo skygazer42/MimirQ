@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, Optional
 
 from app.core.config import settings
 from app.rag.trace_schema import (
@@ -357,4 +357,3 @@ def list_rag_traces(
         returned=len(items),
         items=items,
     )
-

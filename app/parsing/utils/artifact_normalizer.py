@@ -18,7 +18,6 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
-
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
 

@@ -2,8 +2,8 @@
 Database models package
 """
 from app.models.chat import Conversation, Message
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.chunk_preset import ChunkPreset
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document, DocumentChunk
 from app.models.evaluation import RagasEvaluationItem, RagasEvaluationRun
 from app.models.governance_profile import GovernanceProfile
