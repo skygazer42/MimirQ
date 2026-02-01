@@ -85,6 +85,10 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     assert governance.get("secrets_redact") is True
     assert governance.get("quarantine_on_drop") is True
 
+    paddlevl = body.get("paddle_vl") or {}
+    assert paddlevl.get("pipeline_version") == "v1.5"
+    assert paddlevl.get("mode") == "doc_parser"
+
 
 def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN001
     import app.api.v1.settings as settings_module
@@ -129,6 +133,12 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
             "secrets_redact": True,
             "quarantine_on_drop": True,
         },
+        "paddle_vl": {
+            "api_url": "http://paddlevl.local/convert",
+            "timeout_sec": 123,
+            "pipeline_version": "v1.5",
+            "mode": "doc_parser",
+        },
     }
     res = client.put("/api/v1/settings", json=payload)
     assert res.status_code == 200, res.text
@@ -141,6 +151,10 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "ENABLE_RERANKER" in updated
     assert "URL_INGEST_ENABLED" in updated
     assert "GOVERNANCE_ENABLED" in updated
+    assert "PADDLE_VL_API_URL" in updated
+    assert "PADDLE_VL_TIMEOUT_SEC" in updated
+    assert "PADDLE_VL_PIPELINE_VERSION" in updated
+    assert "PADDLE_VL_MODE" in updated
 
     # Verify env file is written.
     env_text = (tmp_path / "test.env").read_text(encoding="utf-8")
@@ -154,6 +168,10 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "GOVERNANCE_PII_ANONYMIZE=true" in env_text
     assert "GOVERNANCE_SECRETS_REDACT=true" in env_text
     assert "GOVERNANCE_QUARANTINE_ON_DROP=true" in env_text
+    assert "PADDLE_VL_API_URL=http://paddlevl.local/convert" in env_text
+    assert "PADDLE_VL_TIMEOUT_SEC=123" in env_text
+    assert "PADDLE_VL_PIPELINE_VERSION=v1.5" in env_text
+    assert "PADDLE_VL_MODE=doc_parser" in env_text
 
     # Verify runtime apply updated in-memory settings (best-effort).
     assert int(settings.CHUNK_MIN_CHARS) == 67
@@ -166,6 +184,10 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert bool(settings.GOVERNANCE_PII_ANONYMIZE) is True
     assert bool(settings.GOVERNANCE_SECRETS_REDACT) is True
     assert bool(settings.GOVERNANCE_QUARANTINE_ON_DROP) is True
+    assert str(settings.PADDLE_VL_API_URL) == "http://paddlevl.local/convert"
+    assert int(settings.PADDLE_VL_TIMEOUT_SEC) == 123
+    assert str(getattr(settings, "PADDLE_VL_PIPELINE_VERSION", "")) == "v1.5"
+    assert str(getattr(settings, "PADDLE_VL_MODE", "")) == "doc_parser"
 
 
 def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
