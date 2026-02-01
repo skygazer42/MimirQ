@@ -29,9 +29,9 @@ export function ModelProviderCard({ provider, onConfigure }: ModelProviderCardPr
       {/* 头部：Logo 和状态 */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="h-12 w-12 shrink-0 rounded-xl border border-border bg-muted/50 flex items-center justify-center transition-transform duration-300 motion-reduce:transition-none group-hover:motion-safe:scale-105">
-          <ProviderIcon providerId={provider.id} className="w-8 h-8 object-contain" />
-        </div>
+          <div className="h-11 w-11 shrink-0 rounded-xl border border-border bg-muted/50 flex items-center justify-center transition-transform duration-200 motion-reduce:transition-none group-hover:motion-safe:scale-105">
+            <ProviderIcon providerId={provider.id} className="w-8 h-8 object-contain" />
+          </div>
 
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-foreground truncate">
