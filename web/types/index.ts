@@ -590,6 +590,29 @@ export interface ManualChunk {
 
 // ==================== 切块预览相关类型 ====================
 
+export interface ChunkPreset {
+  id: string
+  name: string
+  description?: string | null
+  payload: Record<string, any>
+}
+
+export interface ChunkPresetCreateRequest {
+  name: string
+  description?: string | null
+  payload: Record<string, any>
+}
+
+export interface ChunkPresetUpdateRequest {
+  name: string
+  description?: string | null
+  payload: Record<string, any>
+}
+
+export interface ChunkPresetListResponse {
+  items: ChunkPreset[]
+}
+
 export interface ChunkPreviewParams {
   chunk_size: number
   chunk_overlap: number
