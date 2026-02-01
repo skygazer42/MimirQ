@@ -53,7 +53,7 @@ import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn } from '@/lib/utils'
 import { kgApi } from '@/lib/api-client'
-import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse } from '@/types'
+import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse, RagTrace, RagTraceListResponse } from '@/types'
 
 export default function GraphPage() {
   const router = useRouter()
@@ -105,9 +105,11 @@ export default function GraphPage() {
   const [isExplainMode, setIsExplainMode] = useState(false)
   const [explainSteps, setExplainSteps] = useState<{node: string, reason: string}[]>([])
   const [currentStepIndex, setCurrentStepIndex] = useState(-1)
+  const [traceReplay, setTraceReplay] = useState<RagTrace | null>(null)
 
   const graphRef = useRef<GraphViewerRef>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const traceFileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
   const linksWithIds = useMemo(() => {
@@ -201,6 +203,7 @@ export default function GraphPage() {
       })
       setGraphData(data)
       setDataSource(source)
+      setTraceReplay(null)
       setKgNodeDetail(null)
       setFileName(source === 'mock' ? '示例数据' : 'Knowledge Base (Live)')
 
@@ -240,6 +243,7 @@ export default function GraphPage() {
         const parsedData = parseGraphML(content)
         setGraphData(parsedData)
         setDataSource('file')
+        setTraceReplay(null)
         setKgStats(null)
         setKgNodeDetail(null)
         setIsDetailOpen(false)
@@ -260,6 +264,130 @@ export default function GraphPage() {
 
   const triggerFileUpload = () => {
     fileInputRef.current?.click()
+  }
+
+  const _extractTraceFromPayload = (payload: any): RagTrace | null => {
+    if (!payload) return null
+    if (Array.isArray(payload)) {
+      const first = payload[0]
+      return first && typeof first === 'object' ? (first as RagTrace) : null
+    }
+    if (typeof payload !== 'object') return null
+
+    // API response: { enabled, items: [...] }
+    if (Array.isArray((payload as RagTraceListResponse).items)) {
+      const first = (payload as RagTraceListResponse).items?.[0]
+      return first && typeof first === 'object' ? (first as RagTrace) : null
+    }
+
+    // Single item.
+    if (typeof (payload as any).ts_ms === 'number' && Array.isArray((payload as any).steps)) {
+      return payload as RagTrace
+    }
+
+    return null
+  }
+
+  const _buildGraphFromTrace = (trace: RagTrace): { graph: GraphData; steps: { node: string; reason: string }[] } => {
+    const rootId = `rag-trace:${trace.request_id || trace.ts_ms}`
+    const nodes: GraphData['nodes'] = []
+    const links: GraphData['links'] = []
+
+    const hasRerank = Boolean(trace?.rerank?.enabled || trace?.rerank?.elapsed_sec != null)
+
+    const idRetrieve = `${rootId}:retrieve`
+    const idRerank = `${rootId}:rerank`
+    const idCitations = `${rootId}:citations`
+
+    nodes.push({ id: rootId, label: 'RAG Trace', kind: 'trace', val: 2.5, color: '#0ea5e9' })
+    nodes.push({ id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2.0, color: '#2563eb' })
+    if (hasRerank) nodes.push({ id: idRerank, label: 'Rerank', kind: 'step', val: 2.0, color: '#14b8a6' })
+    nodes.push({ id: idCitations, label: 'Citations', kind: 'step', val: 2.0, color: '#f97316' })
+
+    links.push({ source: rootId, target: idRetrieve, label: 'start' })
+    if (hasRerank) {
+      links.push({ source: idRetrieve, target: idRerank, label: 'rerank' })
+      links.push({ source: idRerank, target: idCitations, label: 'cite' })
+    } else {
+      links.push({ source: idRetrieve, target: idCitations, label: 'cite' })
+    }
+
+    const citations = (trace.citations || []).slice(0, 20)
+    const citationNodeIds: string[] = []
+    citations.forEach((c, idx) => {
+      const doc = String(c.document_id || '').slice(0, 8) || 'doc'
+      const page = c.page_number != null ? `p${c.page_number}` : ''
+      const score = (c.rerank_score ?? c.retrieval_score ?? c.relevance_score)
+      const scoreTxt = score == null ? '' : ` score=${Number(score).toFixed(3)}`
+      const id = `${rootId}:c${idx}`
+      citationNodeIds.push(id)
+      nodes.push({
+        id,
+        label: `#${idx + 1} ${doc}${page ? ` · ${page}` : ''}${scoreTxt}`,
+        kind: 'citation',
+        val: 1.2,
+        color: '#64748b',
+        meta: c,
+      })
+    })
+
+    if (citationNodeIds.length) {
+      links.push({ source: idCitations, target: citationNodeIds[0], label: 'topk' })
+      for (let i = 1; i < citationNodeIds.length; i++) {
+        links.push({ source: citationNodeIds[i - 1], target: citationNodeIds[i], label: 'next' })
+      }
+    }
+
+    const steps: { node: string; reason: string }[] = []
+    steps.push({ node: idRetrieve, reason: `mode=${trace?.retrieval?.mode || '—'} · elapsed=${trace?.retrieval?.elapsed_sec ?? '—'}s` })
+    if (hasRerank) {
+      steps.push({ node: idRerank, reason: `provider=${trace?.rerank?.provider || '—'} · elapsed=${trace?.rerank?.elapsed_sec ?? '—'}s` })
+    }
+    steps.push({ node: idCitations, reason: `count=${trace.citations_count}` })
+    citationNodeIds.forEach((id) => steps.push({ node: id, reason: 'retrieved citation' }))
+
+    return { graph: { nodes, links }, steps }
+  }
+
+  const handleTraceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsLoading(true)
+    setFileName(file.name)
+    try {
+      const text = await file.text()
+      const payload = JSON.parse(text)
+      const trace = _extractTraceFromPayload(payload)
+      if (!trace) {
+        throw new Error('Invalid trace JSON')
+      }
+
+      const built = _buildGraphFromTrace(trace)
+      setTraceReplay(trace)
+      setGraphData(built.graph)
+      setDataSource('file')
+      setKgStats(null)
+      setKgNodeDetail(null)
+      setIsDetailOpen(false)
+      setSelectedNode(null)
+      resetPathMode()
+      resetConnectMode()
+      resetExplainMode()
+      setViewMode('2d')
+      toast.success('Trace 已导入（可点击右下角 Play 回放）')
+    } catch (error) {
+      console.error('Failed to import trace JSON:', error)
+      setTraceReplay(null)
+      toast.error('导入 Trace 失败：请检查 JSON 格式或粘贴/导出内容是否完整')
+    } finally {
+      setIsLoading(false)
+      e.target.value = ''
+    }
+  }
+
+  const triggerTraceUpload = () => {
+    traceFileInputRef.current?.click()
   }
 
   const handleExpandNode = useCallback(async () => {
@@ -386,10 +514,50 @@ export default function GraphPage() {
 
   // --- Explainability Logic ---
   const startExplainMode = () => {
+    // Trace replay mode: when user imported a RAG trace JSON, prefer replaying the
+    // real retrieve/rerank/citations path instead of a random walk.
+    if (traceReplay) {
+      const built = _buildGraphFromTrace(traceReplay)
+
+      // Ensure 2D so highlight/focus works consistently.
+      if (viewMode === '3d') {
+        setViewMode('2d')
+      }
+
+      // If the current graph isn't a trace graph, swap it in (best-effort).
+      const prefix = `rag-trace:${traceReplay.request_id || traceReplay.ts_ms}`
+      const isTraceGraph = graphData.nodes.some((n) => String(n.id || '').startsWith(prefix))
+      if (!isTraceGraph) {
+        setGraphData(built.graph)
+        setDataSource('file')
+        setKgStats(null)
+        setKgNodeDetail(null)
+        setFileName(`${prefix}.json`)
+      }
+
+      setHighlightedNodeIds(new Set())
+      setHighlightedLinkIds(new Set())
+      setCurrentStepIndex(-1)
+      setExplainSteps(built.steps)
+      setIsExplainMode(true)
+      setIsDetailOpen(false)
+      setSelectedNode(null)
+
+      // Let the graph render once before running animation/focus.
+      window.requestAnimationFrame(() => {
+        void animateTrace(built.steps, built.graph)
+      })
+      return
+    }
+
     if (graphData.nodes.length < 3) {
       toast.warning('图谱节点过少，无法演示推理路径')
       return
     }
+
+    setHighlightedNodeIds(new Set())
+    setHighlightedLinkIds(new Set())
+    setCurrentStepIndex(-1)
 
     const trace = []
     const visited = new Set()
@@ -428,7 +596,8 @@ export default function GraphPage() {
     animateTrace(steps)
   }
 
-  const animateTrace = async (steps: {node: string}[]) => {
+  const animateTrace = async (steps: {node: string}[], graphOverride?: GraphData) => {
+    const g = graphOverride || graphData
     for (let i = 0; i < steps.length; i++) {
         setCurrentStepIndex(i)
         const step = steps[i]
@@ -442,14 +611,17 @@ export default function GraphPage() {
         if (i > 0) {
             const prevNode = steps[i-1].node
             const currNode = step.node
-            const link = graphData.links.find(l => {
+            const link = g.links.find(l => {
                 const s = (l.source as any).id || l.source
                 const t = (l.target as any).id || l.target
                 return (s === prevNode && t === currNode) || (s === currNode && t === prevNode)
             })
             if (link) {
-                // @ts-ignore
-                const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+                const rawId = (link as any).id
+                const idx = (g.links as any[]).indexOf(link as any)
+                const linkId =
+                  rawId ||
+                  ((link as any).index !== undefined ? `link-${(link as any).index}` : (idx >= 0 ? `link-${idx}` : null))
                 if (linkId) {
                     setHighlightedLinkIds(prev => new Set([...Array.from(prev), linkId]))
                 }
@@ -773,6 +945,24 @@ export default function GraphPage() {
 	               <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin motion-reduce:animate-none")} />
 	              {isLoading ? '加载中...' : '刷新'}
 	            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={triggerTraceUpload}
+              className="text-muted-foreground hover:text-teal-600 dark:hover:text-teal-300 hover:bg-teal-500/10 dark:hover:bg-teal-500/20"
+              title="导入 RAG trace JSON（回放检索路径）"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Trace
+            </Button>
+            <input
+              ref={traceFileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleTraceFileUpload}
+            />
 
             <Button 
               size="sm" 
