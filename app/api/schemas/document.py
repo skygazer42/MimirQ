@@ -670,6 +670,20 @@ class ChunkPreviewItem(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ChunkPreviewHistogramBin(BaseModel):
+    """
+    Lightweight histogram bin for chunk length distribution.
+
+    Note: Uses `min/max` instead of `from/to` to keep the payload stable and
+    self-describing across units (chars/tokens).
+    """
+
+    label: str
+    min: Optional[int] = None
+    max: Optional[int] = None
+    count: int = 0
+
+
 class ChunkPreviewStats(BaseModel):
     """Lightweight aggregate stats for UI (computed on returned chunks)."""
 
@@ -692,6 +706,7 @@ class ChunkPreviewStats(BaseModel):
     overlap_waste_ratio: float = 0.0
     gap_count: int = 0
     largest_gap: int = 0
+    histogram: List[ChunkPreviewHistogramBin] = Field(default_factory=list)
 
 
 class ChunkPreviewQualityGate(BaseModel):
