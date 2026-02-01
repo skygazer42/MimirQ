@@ -57,6 +57,9 @@ import app.models.feedback  # noqa: F401
 # Ensure user models are registered for metadata creation
 import app.models.user  # noqa: F401
 
+# Ensure chunk preset models are registered for metadata creation
+import app.models.chunk_preset  # noqa: F401
+
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
 from app.api.middleware.process_time import ProcessTimeMiddleware
