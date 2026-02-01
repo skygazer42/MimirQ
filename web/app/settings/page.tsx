@@ -1041,7 +1041,7 @@ export default function SettingsPage() {
                     return (
                       <div key={category} className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-shadow duration-300">
                         <div className="flex items-start gap-4 mb-6">
-                          <div className="p-2 bg-muted rounded-lg">
+                          <div className="h-11 w-11 shrink-0 rounded-xl border border-border bg-muted/50 flex items-center justify-center">
                             <InfoIcon className="h-5 w-5 text-muted-foreground" />
                           </div>
                           <div>

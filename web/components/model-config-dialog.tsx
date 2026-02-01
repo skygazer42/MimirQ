@@ -157,8 +157,8 @@ export function ModelConfigDialog({
       <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-2xl">
         {/* 头部 */}
         <div className="bg-muted/40 border-b border-border p-6 flex items-start gap-4">
-          <div className="w-14 h-14 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
-            <ProviderIcon providerId={provider.id} className="w-9 h-9 object-contain" />
+          <div className="h-11 w-11 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
+            <ProviderIcon providerId={provider.id} className="w-8 h-8 object-contain" />
           </div>
           <div>
             <DialogTitle className="text-xl font-semibold text-foreground mb-1">
