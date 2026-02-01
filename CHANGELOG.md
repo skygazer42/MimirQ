@@ -12,6 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Repo docs: `CONTRIBUTING.md`, `SECURITY.md`, and `LICENSE`.
 - Parsing: fallback DOCX parser now emits chunk-friendly structured Markdown (headings/lists/pipe tables).
 - Table store (TAG): best-effort DOCX embedded table import into per-document SQLite store (sidecar; RAG chunking preserved).
+- Parsing (PaddleOCR-VL): external `doc_parser` service integration (v1.5) with `/convert` ZIP artifacts and best-effort `/health` metadata probing.
+- Parsing: ZIP artifact normalizer (md/json/images) to stabilize external parser outputs.
+- Chunk Preview: richer metrics (stats + histogram), AB diff summary, reusable presets (API + UI), and new `markdown_outline` chunk strategy.
+- Ingestion analytics: unified `DocumentAnalytics` schema + parsing analytics panel (raw vs cleaned) for explainability.
+- Governance: rule packs catalog + API/UI integration, stronger server-side regex safety validation, and ingestion-policy export from governance profiles.
+- RAG observability: stable trace schema + history trace panel + graph replay for “retrieve → rerank → citations”.
+- UI: provider icons migrated to LobeHub colored SVGs (settings + cards unified), and parsing preview JSON bbox overlay.
+- Demo: reproducible ingestion-flow scripts (`scripts/demo_ingestion_flow.ps1` and `scripts/demo_ingestion_flow.sh`).
 
 ### Changed
 
