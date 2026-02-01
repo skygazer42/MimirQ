@@ -543,6 +543,14 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     group: 'langchain',
   },
   {
+    value: 'markdown_outline',
+    label: 'Markdown Outline Split',
+    description: 'Split by markdown heading hierarchy and preserve outline_path/header_path.',
+    icon: 'hierarchical',
+    badge: 'Markdown',
+    group: 'langchain',
+  },
+  {
     value: 'markdown_aware',
     label: 'Markdown 感知切分',
     description: '针对 Markdown 结构优化（标题/列表/代码块）并保留字符位置。',
