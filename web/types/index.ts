@@ -608,6 +608,13 @@ export interface ChunkPreviewItem {
   metadata?: Record<string, any>
 }
 
+export interface ChunkPreviewHistogramBin {
+  label: string
+  min?: number | null
+  max?: number | null
+  count: number
+}
+
 export interface ChunkPreviewStats {
   unit?: 'chars' | 'tokens'
   count?: number
@@ -627,11 +634,20 @@ export interface ChunkPreviewStats {
   overlap_waste_ratio?: number
   gap_count?: number
   largest_gap?: number
+  histogram?: ChunkPreviewHistogramBin[]
+}
+
+export interface ChunkPreviewQualityReason {
+  code: string
+  severity?: 'info' | 'warning' | 'error'
+  message: string
+  meta?: Record<string, any>
 }
 
 export interface ChunkPreviewQualityGate {
   grade?: 'pass' | 'warn' | 'fail'
   reasons?: string[]
+  reason_items?: ChunkPreviewQualityReason[]
 }
 
 export interface ChunkPreviewRecommendationPatch {

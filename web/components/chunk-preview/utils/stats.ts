@@ -13,6 +13,7 @@ export type ChunkLengthStats = {
   median: number
   p10: number
   p90: number
+  p95: number
   shortCount: number
   duplicateCount: number
   histogram: ChunkLengthHistogramBin[]
@@ -85,6 +86,7 @@ export function computeChunkLengthStats(
   const median = percentile(sorted, 50)
   const p10 = percentile(sorted, 10)
   const p90 = percentile(sorted, 90)
+  const p95 = percentile(sorted, 95)
 
   // Histogram bins based on [0, max]
   const stepBase = Math.max(50, Math.ceil(max / histogramBins / 50) * 50)
@@ -109,9 +111,9 @@ export function computeChunkLengthStats(
     median,
     p10,
     p90,
+    p95,
     shortCount,
     duplicateCount,
     histogram: bins,
   }
 }
-

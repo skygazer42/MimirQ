@@ -35,6 +35,15 @@ import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import type { Dataset, IngestionPreviewResponse } from '@/types'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts'
 
 function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)))
@@ -130,6 +139,37 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
       histogramBins: 8,
     })
   }, [previewData?.chunks, isTokenStrategy])
+
+  const histogramData = useMemo(() => {
+    const serverBins = previewData?.stats?.histogram as any
+    if (Array.isArray(serverBins) && serverBins.length) {
+      return serverBins.map((b: any) => ({
+        label: String(b?.label ?? ''),
+        min: typeof b?.min === 'number' ? Math.trunc(b.min) : null,
+        max: typeof b?.max === 'number' ? Math.trunc(b.max) : null,
+        count: Math.max(0, Math.trunc(Number(b?.count ?? 0) || 0)),
+      }))
+    }
+
+    const local = chunkStats?.histogram
+    if (local?.length) {
+      return local.map((b) => ({
+        label: `${b.from}-${b.to}`,
+        min: b.from,
+        max: b.to,
+        count: b.count,
+      }))
+    }
+
+    return []
+  }, [previewData?.stats?.histogram, chunkStats?.histogram])
+
+  const histogramMax = useMemo(() => {
+    const last = histogramData[histogramData.length - 1] as any
+    if (!last) return chunkStats?.max ?? 0
+    if (typeof last?.max === 'number' && Number.isFinite(last.max)) return Math.trunc(last.max)
+    return chunkStats?.max ?? 0
+  }, [histogramData, chunkStats?.max])
 
   const overlapGuidance = useMemo(() => {
     if (!chunkSize || chunkSize <= 0) return null
@@ -1211,7 +1251,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   {isTokenStrategy ? '平均 TOKENS' : '平均长度'}
                 </div>
                 <div className="text-xl font-bold text-foreground mt-1">
-                  {chunkStats?.avg ?? '-'}
+                  {previewData?.stats?.avg ?? chunkStats?.avg ?? '-'}
                   {isTokenStrategy ? (
                     <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
                   ) : null}
@@ -1219,25 +1259,35 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-                  {isTokenStrategy ? '中位数 TOKENS' : '中位数'}
+                  {isTokenStrategy ? 'P95 TOKENS' : 'P95'}
                 </div>
                 <div className="text-xl font-bold text-foreground mt-1">
-                  {chunkStats?.median ?? '-'}
+                  {chunkStats?.p95 ?? chunkStats?.p90 ?? previewData?.stats?.p90 ?? '-'}
                   {isTokenStrategy ? (
                     <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
                   ) : null}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-                  {isTokenStrategy ? 'P90 TOKENS' : 'P90'}
-                </div>
+              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="coverage_ratio">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">覆盖率</div>
                 <div className="text-xl font-bold text-foreground mt-1">
-                  {chunkStats?.p90 ?? '-'}
-                  {isTokenStrategy ? (
-                    <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
-                  ) : null}
+                  {coverageSignals?.coveragePct != null ? `${coverageSignals.coveragePct}%` : '-'}
                 </div>
+              </div>
+              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="overlap_waste_ratio">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">重叠浪费</div>
+                <div className="text-xl font-bold text-foreground mt-1">
+                  {coverageSignals?.overlapWastePct != null ? `${coverageSignals.overlapWastePct}%` : '-'}
+                </div>
+              </div>
+              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="gap_count / largest_gap">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Gaps</div>
+                <div className="text-xl font-bold text-foreground mt-1">
+                  {coverageSignals?.gapCount != null ? String(coverageSignals.gapCount) : '-'}
+                </div>
+                {coverageSignals?.largestGap != null ? (
+                  <div className="mt-1 text-[10px] text-muted-foreground font-mono">largest {coverageSignals.largestGap}</div>
+                ) : null}
               </div>
             </div>
 
@@ -1279,23 +1329,33 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                     {isTokenStrategy ? 'TOKENS 分布' : '长度分布'}
                   </div>
-                  <div className="mt-2 flex items-end gap-1 h-12">
-                    {chunkStats.histogram.map((bin) => {
-                      const ratio = chunkStats.count ? bin.count / chunkStats.count : 0
-                      const h = Math.max(6, Math.round(ratio * 48))
-                      return (
-                        <div
-                          key={`${bin.from}-${bin.to}`}
-                          className="flex-1 rounded-sm bg-primary/20 hover:bg-primary/30 transition-colors"
-                          style={{ height: `${h}px` }}
-                          title={`${bin.from}-${bin.to} ${statsUnitLabel}: ${bin.count}`}
-                        />
-                      )
-                    })}
-                  </div>
+                  {histogramData.length ? (
+                    <div className="mt-2 h-[120px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={histogramData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.35} />
+                          <XAxis dataKey="label" hide />
+                          <YAxis hide />
+                          <Tooltip
+                            formatter={(value: any) => [value, 'count']}
+                            labelFormatter={(_label: any, payload: any) => {
+                              const p = payload?.[0]?.payload as any
+                              const min = typeof p?.min === 'number' ? p.min : null
+                              const max = typeof p?.max === 'number' ? p.max : null
+                              if (min != null && max != null) return `${min}-${max} ${statsUnitLabel}`
+                              return String(_label ?? '')
+                            }}
+                          />
+                          <Bar dataKey="count" fill="hsl(var(--primary))" fillOpacity={0.25} radius={[2, 2, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[11px] text-muted-foreground">No histogram data</div>
+                  )}
                   <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
                     <span>0</span>
-                    <span>{chunkStats.max}</span>
+                    <span>{histogramMax || chunkStats.max}</span>
                   </div>
                 </div>
                 {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
