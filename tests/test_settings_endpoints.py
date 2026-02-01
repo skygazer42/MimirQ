@@ -191,8 +191,6 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
 
 
 def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
-    import asyncio
-
     import app.api.v1.settings as settings_module
     from app.api.v1.settings import get_system_status
     from app.core.config import settings
@@ -221,20 +219,25 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *args, **kwargs: None, raising=True)
 
     # Mock the external /health probe.
-    monkeypatch.setattr(
-        settings_module,
-        "_probe_http_json",
-        lambda *_args, **_kwargs: ({"ok": True, "pipeline_version": "v1.5", "mode": "doc_parser"}, None),
-        raising=False,
-    )
+    class _Resp:
+        status_code = 200
 
-    body = asyncio.run(
-        get_system_status(
-            tenant_id=_override_get_tenant_id(),
-            account_id=_override_get_current_account_id(),
-            db=_DummyDB(),
-        )
-    )
+        @staticmethod
+        def json():  # noqa: ANN001
+            return {"ok": True, "pipeline_version": "v1.5", "mode": "doc_parser"}
+
+    monkeypatch.setattr(settings_module, "_probe_http_json", lambda *_args, **_kwargs: (_Resp.json(), None), raising=False)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.get("/api/v1/settings/status")(get_system_status)
+    client = TestClient(app)
+
+    res = client.get("/api/v1/settings/status")
+    assert res.status_code == 200, res.text
+    body = res.json()
 
     parsers = body.get("parsers") or {}
     paddle = parsers.get("paddle_vl") or {}
