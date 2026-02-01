@@ -1,29 +1,65 @@
-# PaddleOCR-VL（外部服务）解析器集成
+# PaddleOCR-VL (外部服务) 集成指南
 
-MimirQ 支持将 **PaddleOCR-VL** 作为可选 PDF OCR/版面解析后端，通过 **独立服务** 输出 Markdown（建议返回 ZIP：Markdown + JSON + images）。这种方式避免把 `paddlepaddle/paddleocr` 等重依赖塞进 MimirQ 主后端镜像。
+MimirQ 支持把 **PaddleOCR-VL** 作为可选的 PDF OCR/版面解析后端，通过 **独立服务** 输出 Markdown（建议返回 ZIP：markdown + images + json）。
+这样可以避免把 `paddlepaddle/paddleocr` 这类重依赖塞进 MimirQ 主后端镜像。
 
-## 启用方式
+## 1) 启动 PaddleOCR-VL 服务（本仓库自带 Docker 服务）
 
-1. 启动 PaddleOCR-VL 服务（独立容器/独立机器均可），并确认其提供一个“上传 PDF → 返回 Markdown/ZIP”的 HTTP 接口（示例：`/convert`）。
-   - 使用本项目 Docker Compose：`make up-paddlevl`（等价于 `docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile paddlevl up -d --build`）
+本仓库 `docker/paddlevl` 封装了 PaddleOCR 的 `doc_parser`（默认 `v1.5`）并暴露两个接口：
 
-2. 配置后端环境变量（`.env` 或 `docker/.env`）：
+- `GET /health`：返回 `{ ok, mode, pipeline_version, device }`
+- `POST /convert`：上传 PDF（multipart/form-data，字段名 `file`），返回 `application/zip`
+  - 额外表单字段（可选）：`pipeline_version`、`device`
+
+启动方式（推荐）：
+
+```bash
+make up-paddlevl
+# 等价：
+# docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile paddlevl up -d --build
+```
+
+服务侧可配置环境变量（见 `docker/docker-compose.parsers.yml`）：
+
+```bash
+PADDLEOCR_PIPELINE_VERSION=v1.5
+PADDLEOCR_DEVICE=cpu
+```
+
+备注：
+- 当前 `docker/paddlevl` 默认安装的是 CPU 版 `paddlepaddle==3.2.1`。如需 GPU，请自行替换为对应的 `paddlepaddle-gpu` 轮子/基础镜像，并把 `PADDLEOCR_DEVICE` 设为 `gpu`。
+
+## 2) 配置 MimirQ 后端
+
+在 MimirQ 后端环境变量（`.env`）中启用：
 
 ```bash
 PADDLE_VL_ENABLED=true
-# 填 PaddleOCR-VL 服务的“转换接口完整 URL”（以你的服务为准，常见是 /convert）
 PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
 PADDLE_VL_TIMEOUT_SEC=600
 ```
 
-3. 重启后端服务。
+## 3) 使用方式
 
-## 使用方式
+- 解析预览：在「解析工作台」选择 `paddle_vl`（也兼容 `paddle-vl` / `paddleocr-vl` / `paddleocrvl`）。
+- 入库解析：上传/导入文档时指定 `parser_backend=paddle_vl`，或在系统设置中把默认解析器切换为 `paddle_vl`（并确保已启用与配置 URL）。
 
-- 解析预览：在解析工作台选择解析器为 `paddle_vl`（也兼容 `paddle-vl` / `paddleocr-vl` / `paddleocrvl`）。
-- 入库解析：上传文档时指定 `parser_backend=paddle_vl`，或在系统设置中将默认解析器切换为 `paddle_vl`（并确保已启用）。
+## 4) 产物、图片与清理策略
 
-## 产物与清理
+当 PaddleOCR-VL 服务返回 ZIP 时：
 
-- 若服务返回 ZIP，后端会把产物解压到上传文件同级目录：`.paddlevl/<document_id>/output/...`，并对 PaddleOCR-VL 的输出做标准化（统一 `images/`、合并 `result.json`、重写图片引用等）。
-- 默认会在预览/入库流程结束后 best-effort 清理 `.paddlevl` 目录；如需保留排查问题，可临时设置 `MAGIC_PDF_KEEP_ARTIFACTS=true`（全局开关）。
+- MimirQ 会把 ZIP 解压到 `.paddlevl/<run_id>/output/`，并将其 **归一化** 为稳定结构：
+  - `result.md`
+  - `images/`（可选）
+- 当 `MINIO_ENABLED=true` 且存在 `dataset_id/document_id` 时，MimirQ 会上传 ZIP 内的图片到 MinIO，并把 Markdown 内的图片引用改写为可访问的 URL。
+- 当 `MINIO_ENABLED=false` 时，为避免产物清理后出现死链，MimirQ 会在入库文本中移除 `![](...)` 和 `<img ...>` 引用（保留纯文本）。
+
+清理策略：
+- 默认会在流程结束后 best-effort 清理 `.paddlevl` 等解析器产物目录。
+- 若需要保留产物用于排障，可临时开启 `MAGIC_PDF_KEEP_ARTIFACTS=true`（全局调试开关，会影响多个解析器）。
+
+## 5) 排障建议
+
+- `系统 → 设置 → 连接状态（/api/v1/settings/status）` 可以看到 `paddle_vl` 的可用性与 `/health` 探测结果（包含 pipeline_version）。
+- 确认 `PADDLE_VL_API_URL` 可从后端容器访问（Docker 内一般用 service 名 `http://mimirq-paddlevl:9030/convert`）。
+
