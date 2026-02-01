@@ -40,6 +40,7 @@ from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
 from app.rag.core.text import parse_json_from_text
 from app.rag.engine import get_rag_engine
+from app.rag.trace_schema import RagTraceListResponse
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.services.audit_log_service import audit_log_event, build_chat_audit_details
 from app.services.chat_response_cache import build_chat_cache_key, get_cached_chat_response, set_cached_chat_response
@@ -59,6 +60,7 @@ from app.services.metrics_logger import log_metrics, set_metrics_context
 from app.services.prompt_defaults import merge_prompt_defaults_with_dataset
 from app.services.quota_service import check_chat_assistant_token_quota
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+from app.services.rag_trace_service import list_rag_traces
 
 logger = logging.getLogger(__name__)
 
@@ -2204,6 +2206,41 @@ async def get_conversation_messages(
         "has_more": has_more,
         "messages": messages,
     }
+
+
+@router.get("/conversations/{conversation_id}/rag-traces", response_model=RagTraceListResponse)
+async def get_conversation_rag_traces(
+    conversation_id: UUID,
+    limit: int = Query(default=20, ge=1, le=200),
+    window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
+    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    List recent RAG traces for a conversation (PII-safe) so the UI can visualize
+    retrieve/rerank/citations steps.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    return list_rag_traces(
+        tenant_id=str(tenant_id),
+        conversation_id=str(conversation_id),
+        limit=limit,
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
 
 
 class ConversationSummaryResponse(BaseModel):
