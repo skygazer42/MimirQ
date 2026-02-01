@@ -99,6 +99,7 @@ from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
+from app.types.document_analytics import compute_document_analytics
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_folders import build_document_folder_tree
@@ -7102,6 +7103,7 @@ async def preview_document(
             if isinstance(item, dict)
         ]
         resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
+        pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
         for doc in documents:
             artifact_dir = (doc.metadata or {}).get("artifact_dir")
             if isinstance(artifact_dir, str) and artifact_dir.strip():
@@ -7138,6 +7140,16 @@ async def preview_document(
             document_metadata={},
             request_overrides=pipeline_options,
         )
+
+        raw_markdown = "\n\n".join([(d.page_content or "") for d in documents])
+        raw_analytics = compute_document_analytics(
+            markdown=raw_markdown,
+            documents=documents,
+            pdf_quality=pdf_quality,
+            detect_language=bool(pipeline_effective.governance_detect_language),
+            language_min_chars=int(pipeline_effective.governance_language_min_chars or 0),
+        ).to_dict()
+
         if pipeline_effective.governance_enabled:
             extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
             combined_rules = build_governance_rules(extra_rules) if extra_rules else None
@@ -7189,6 +7201,15 @@ async def preview_document(
                 **governance_kwargs,
             )
 
+        cleaned_markdown = "\n\n".join([(d.page_content or "") for d in documents])
+        cleaned_analytics = compute_document_analytics(
+            markdown=cleaned_markdown,
+            documents=documents,
+            pdf_quality=pdf_quality,
+            detect_language=bool(pipeline_effective.governance_detect_language),
+            language_min_chars=int(pipeline_effective.governance_language_min_chars or 0),
+        ).to_dict()
+
         segments: List[ParsedSegment] = []
         for idx, doc in enumerate(documents):
             segments.append(ParsedSegment(
@@ -7203,7 +7224,8 @@ async def preview_document(
             file_type=file_ext.lstrip('.'),
             file_size=file_size,
             segments=segments,
-            parser_backend=resolved_backend
+            parser_backend=resolved_backend,
+            analytics={"raw": raw_analytics, "cleaned": cleaned_analytics},
         )
     except SubprocessCancelled:
         # Client disconnected; stop work early.

@@ -528,6 +528,29 @@ class ParsedSegment(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class DocumentAnalyticsSchema(BaseModel):
+    """Lightweight document analytics for UI panels (preview/ingestion)."""
+
+    char_count: int = 0
+    line_count: int = 0
+    heading_count: int = 0
+    page_count: int = 0
+    table_count: int = 0
+    image_count: int = 0
+    block_count: int = 0
+    language: Optional[str] = None
+    language_confidence: Optional[float] = None
+    cjk_chars: Optional[int] = None
+    latin_chars: Optional[int] = None
+
+
+class DocumentAnalyticsBundle(BaseModel):
+    """Raw vs cleaned analytics (for governance diff/preview)."""
+
+    raw: DocumentAnalyticsSchema = Field(default_factory=DocumentAnalyticsSchema)
+    cleaned: DocumentAnalyticsSchema = Field(default_factory=DocumentAnalyticsSchema)
+
+
 class DocumentParsePreview(BaseModel):
     """Document parse preview result."""
     filename: str
@@ -535,6 +558,7 @@ class DocumentParsePreview(BaseModel):
     file_size: int
     segments: List[ParsedSegment]
     parser_backend: str
+    analytics: DocumentAnalyticsBundle = Field(default_factory=DocumentAnalyticsBundle)
 
 
 class DocumentParsedContentResponse(BaseModel):
