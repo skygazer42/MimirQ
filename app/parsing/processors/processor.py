@@ -47,6 +47,7 @@ from app.services.pipeline_config import (
     resolve_pipeline_effective,
 )
 from app.storage.object.minio import minio_service
+from app.types.document_analytics import compute_document_analytics
 from app.types.indexing import IndexKind, IndexRecord
 from app.types.pipeline import PipelineEffective
 
@@ -647,6 +648,17 @@ class ParsingStage:
                 pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
             )
             meta.update(artifact_stats)
+            # Lightweight "document portrait" for UI (best-effort, safe to ignore).
+            try:
+                meta["document_analytics_raw"] = compute_document_analytics(
+                    markdown=joined,
+                    documents=documents,
+                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                    detect_language=bool(getattr(settings, "GOVERNANCE_DETECT_LANGUAGE", False)),
+                    language_min_chars=int(getattr(settings, "GOVERNANCE_LANGUAGE_MIN_CHARS", 40) or 40),
+                ).to_dict()
+            except Exception:
+                pass
             db_document.doc_metadata = meta
             db.commit()
             db.refresh(db_document)
