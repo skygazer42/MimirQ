@@ -157,3 +157,16 @@ curl -X POST "http://localhost:8000/api/v1/documents/chunk-preview?chunk_size=10
   -F "separator_preset=paragraph" \
   -F "keep_separator=true"
 ```
+
+## 新增指标/图表（2026-02）
+
+### Sidebar Stats（统计面板）
+- Histogram：chunk 长度分布（`stats.histogram`，默认 8 bins）
+- Stats cards：`count/avg/p10/p90` + `coverage_ratio` + `overlap_waste_ratio` + `gap_count` + `largest_gap`
+- 单位：由 `stats.unit` 控制（`chars` / `tokens`）。当使用 token 口径时，前端会尽量使用 `tokens_est`/本地估算口径保持一致。
+
+### A/B 对比（Compare）
+- 同一文件至少跑 2 次 Preview 后，可在对比弹窗中查看：
+  - `Δchunk_count`、`Δavg`、`Δp95`（前端基于 chunks 计算；若缺失会回退展示 `p90`）
+  - `Δcoverage_ratio` / `Δoverlap_waste_ratio` / `Δgap_count`
+  - 内容重合度（multiset overlap）以及 added/removed 示例（用于快速定位“切坏了/切漏了/重复了”）
