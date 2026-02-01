@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
+import { settingsApi } from '@/lib/api-client'
 
 // 图标映射
 const ICON_MAP = {
@@ -59,6 +60,7 @@ interface ParserDropdownProps {
 
 export function ParserDropdown({ value, onChange, className, filename, compact = false }: ParserDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [paddleVlVersionBadge, setPaddleVlVersionBadge] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
 
@@ -85,6 +87,34 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
   const selectedOption = getParserOption(value)
   const SelectedIcon = ICON_MAP[selectedOption.icon]
   const selectedColor = COLOR_MAP[selectedOption.icon]
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPaddleVlHealth() {
+      try {
+        const status: any = await settingsApi.getStatus()
+        const health = status?.parsers?.paddle_vl?.health
+        const pv = typeof health?.pipeline_version === 'string' ? health.pipeline_version : (typeof health?.version === 'string' ? health.version : '')
+        if (!cancelled) {
+          setPaddleVlVersionBadge(pv ? `PaddleOCR-VL ${pv}` : null)
+        }
+      } catch {
+        if (!cancelled) setPaddleVlVersionBadge(null)
+      }
+    }
+
+    // Only show version badge when the backend considers PaddleOCR-VL available.
+    if (parserBackendAvailable('paddle_vl')) {
+      loadPaddleVlHealth()
+    } else {
+      setPaddleVlVersionBadge(null)
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [parserBackendAvailable])
 
   // 点击外部关闭
   useEffect(() => {
@@ -125,6 +155,11 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                 {selectedOption.badge}
               </span>
             )}
+            {selectedOption.value === 'paddle_vl' && paddleVlVersionBadge ? (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 rounded">
+                {paddleVlVersionBadge}
+              </span>
+            ) : null}
           </div>
           {!compact && (
             <p className="text-xs text-muted-foreground truncate">{selectedOption.description}</p>
@@ -232,6 +267,18 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                           {option.badge}
                         </span>
                       )}
+                      {option.value === 'paddle_vl' && availability === true && paddleVlVersionBadge ? (
+                        <span
+                          className={cn(
+                            'text-[10px] font-medium px-1.5 py-0.5 rounded',
+                            isSelected
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          )}
+                        >
+                          {paddleVlVersionBadge}
+                        </span>
+                      ) : null}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">{option.description}</p>
                   </div>
