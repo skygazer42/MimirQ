@@ -16,14 +16,12 @@ from pydantic import ValidationError
 
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.governance_profile import GovernanceProfileOut, GovernanceProfilePayload, RegexRuleModel
+from app.core.regex_safety import DEFAULT_ALLOWED_FLAG_BITS, RegexRulesValidationError, validate_regex_rules
 
 PROFILE_KEY_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
 MAX_PROFILE_RULES = 60
 MAX_PROFILE_RULE_PATTERN = 600
 MAX_PROFILE_RULE_REPL = 2000
-
-_ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE | re.MULTILINE | re.DOTALL)
-_SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
 
 
 def validate_profile_key(key: str | None) -> str | None:
@@ -61,66 +59,14 @@ def _normalize_pipeline_patch(raw: object) -> dict:
     return validated.model_dump(exclude_none=True)
 
 
-def _validate_rule_flags(flags: int) -> int:
-    f = int(flags or 0)
-    if f < 0:
-        raise ValueError("regex rule flags must be >= 0")
-    if f & ~_ALLOWED_RE_FLAG_BITS:
-        raise ValueError("regex rule flags contain unsupported bits")
-    return f
-
-
-def _is_suspicious_regex(pattern: str) -> bool:
-    """
-    Best-effort ReDoS guard.
-
-    We reject the most common catastrophic-backtracking shape: nested quantifiers like:
-      (.*)+, (.+)+, ([a-z]+)*
-    This is not a complete detector, but greatly reduces accidental footguns.
-    """
-    if _SUSPICIOUS_NESTED_QUANTIFIER_RE.search(pattern):
-        return True
-    return False
-
-
 def _normalize_regex_rules(raw: object) -> list[dict]:
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        raise ValueError("payload.regex_rules must be a list")
-    if len(raw) > MAX_PROFILE_RULES:
-        raise ValueError(f"payload.regex_rules too many rules (max={MAX_PROFILE_RULES})")
-
-    normalized: list[dict] = []
-    for idx, item in enumerate(raw):
-        if isinstance(item, RegexRuleModel):
-            model = item
-        elif isinstance(item, dict):
-            try:
-                model = RegexRuleModel(**item)
-            except ValidationError as exc:
-                raise ValueError(f"invalid regex rule at index={idx}") from exc
-        else:
-            raise ValueError(f"invalid regex rule at index={idx}")
-
-        pat = str(model.pattern or "")
-        if len(pat) > MAX_PROFILE_RULE_PATTERN:
-            raise ValueError(f"regex rule pattern too long at index={idx}")
-        if _is_suspicious_regex(pat):
-            raise ValueError(f"regex rule pattern looks unsafe at index={idx}")
-
-        repl = str(model.repl or "")
-        if len(repl) > MAX_PROFILE_RULE_REPL:
-            raise ValueError(f"regex rule repl too long at index={idx}")
-
-        flags = _validate_rule_flags(int(model.flags or 0))
-        try:
-            re.compile(pat, flags=flags)
-        except re.error as exc:
-            raise ValueError(f"regex compile failed at index={idx}: {str(exc)[:120]}") from exc
-
-        normalized.append({"pattern": pat, "repl": repl, "flags": flags})
-    return normalized
+    return validate_regex_rules(
+        raw,
+        max_rules=MAX_PROFILE_RULES,
+        max_pattern_len=MAX_PROFILE_RULE_PATTERN,
+        max_repl_len=MAX_PROFILE_RULE_REPL,
+        allowed_flag_bits=DEFAULT_ALLOWED_FLAG_BITS,
+    )
 
 
 def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> GovernanceProfilePayload:
