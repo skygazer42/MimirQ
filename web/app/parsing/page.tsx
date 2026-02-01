@@ -16,6 +16,7 @@ import {
   Sparkles,
   FileStack,
   Clock,
+  Heading1,
   Table2,
   Image,
   ChevronRight,
@@ -127,6 +128,7 @@ interface ParsedFile extends FileQueueItemData {
   stats?: {
     charCount: number
     lineCount: number
+    headingCount: number
     pageCount?: number
     tableCount?: number
     imageCount?: number
@@ -135,6 +137,12 @@ interface ParsedFile extends FileQueueItemData {
   pdfQuality?: any
   qualityGate?: any
   parseDiagnostics?: ParseFailureDiagnostics
+}
+
+function countMarkdownHeadings(markdown: string) {
+  const md = String(markdown || '').trim()
+  if (!md) return 0
+  return (md.match(/^#{1,6}\s+\S+/gm) || []).length
 }
 
 export default function ParsingPage() {
@@ -561,6 +569,7 @@ export default function ParsingPage() {
             stats = {
               charCount: markdownContent.length,
               lineCount: markdownContent.split('\n').length,
+              headingCount: countMarkdownHeadings(markdownContent),
               tableCount: (markdownContent.match(/\|.*\|/g) || []).length > 0
                 ? (markdownContent.match(/^\|/gm) || []).length / 2
                 : 0,
@@ -1285,6 +1294,7 @@ export default function ParsingPage() {
       const stats = {
         charCount: markdownContent.length,
         lineCount: markdownContent.split('\n').length,
+        headingCount: countMarkdownHeadings(markdownContent),
         pageCount: typeof apiStats?.page_count === 'number' ? apiStats.page_count : undefined,
         tableCount:
           typeof apiStats?.table_count === 'number'
@@ -1476,6 +1486,7 @@ export default function ParsingPage() {
               ...f.stats,
               charCount: editedContent.length,
               lineCount: editedContent.split('\n').length,
+              headingCount: countMarkdownHeadings(editedContent),
               blockCount: 0,
             }
             : undefined,
@@ -2125,6 +2136,12 @@ export default function ParsingPage() {
                               label="行数"
                               value={activeFile.stats.lineCount.toLocaleString()}
                               color="cyan"
+                            />
+                            <StatCard
+                              icon={Heading1}
+                              label="Headings"
+                              value={(activeFile.stats.headingCount || 0).toLocaleString()}
+                              color="teal"
                             />
                             <StatCard
                               icon={Layers}
