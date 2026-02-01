@@ -167,3 +167,55 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert bool(settings.GOVERNANCE_SECRETS_REDACT) is True
     assert bool(settings.GOVERNANCE_QUARANTINE_ON_DROP) is True
 
+
+def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
+    import asyncio
+
+    import app.api.v1.settings as settings_module
+    from app.api.v1.settings import get_system_status
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *args, **kwargs: None, raising=True)
+
+    # Enable paddle_vl and provide a convert endpoint.
+    monkeypatch.setattr(settings, "PADDLE_VL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PADDLE_VL_API_URL", "http://paddlevl.local/convert", raising=False)
+
+    # Avoid real DB/Milvus connectivity in unit tests.
+    import app.core.database as db_module
+
+    class _DummySession:  # noqa: D401
+        def execute(self, *_args, **_kwargs):  # noqa: ANN001
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(db_module, "SessionLocal", lambda: _DummySession(), raising=True)
+
+    import pymilvus
+
+    monkeypatch.setattr(pymilvus.connections, "connect", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *args, **kwargs: None, raising=True)
+
+    # Mock the external /health probe.
+    monkeypatch.setattr(
+        settings_module,
+        "_probe_http_json",
+        lambda *_args, **_kwargs: ({"ok": True, "pipeline_version": "v1.5", "mode": "doc_parser"}, None),
+        raising=False,
+    )
+
+    body = asyncio.run(
+        get_system_status(
+            tenant_id=_override_get_tenant_id(),
+            account_id=_override_get_current_account_id(),
+            db=_DummyDB(),
+        )
+    )
+
+    parsers = body.get("parsers") or {}
+    paddle = parsers.get("paddle_vl") or {}
+    assert paddle.get("enabled") is True
+    assert paddle.get("available") is True
+    assert (paddle.get("health") or {}).get("pipeline_version") == "v1.5"

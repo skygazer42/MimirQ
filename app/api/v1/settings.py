@@ -4,6 +4,7 @@ Supports reading and updating .env configuration.
 """
 
 import contextlib
+import importlib.util
 import ipaddress
 import os
 import tempfile
@@ -11,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -72,6 +73,64 @@ def _sanitize_env_value(key: str, value: Any) -> str:
     if len(text) > 10_000:
         raise HTTPException(status_code=400, detail=f"Value too long for {key}")
     return text.strip()
+
+
+def _convert_service_url_to_health_url(api_url: str) -> str:
+    """
+    Best-effort mapping for external parser services:
+    - .../convert -> .../health
+    - otherwise: join path with /health
+    """
+    raw = (api_url or "").strip()
+    if not raw:
+        return ""
+
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return ""
+
+    path = (parsed.path or "").strip()
+    if path.endswith("/convert"):
+        path = path[: -len("/convert")] + "/health"
+    else:
+        base = path.rstrip("/")
+        path = f"{base}/health" if base else "/health"
+
+    return urlunparse(parsed._replace(path=path, params="", query="", fragment=""))
+
+
+def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[str, Any] | None, str | None]:
+    """
+    Best-effort GET+JSON probe with short timeout.
+
+    Returns (data, error). `data` is only returned when the payload is a JSON object.
+    """
+    url = (url or "").strip()
+    if not url:
+        return None, "empty url"
+
+    try:
+        import requests
+    except Exception as exc:  # noqa: BLE001
+        return None, f"requests_missing: {str(exc)[:120]}"
+
+    try:
+        resp = requests.get(url, timeout=float(timeout_sec or 0.6))
+    except Exception as exc:  # noqa: BLE001
+        return None, f"request_failed: {str(exc)[:160]}"
+
+    if int(getattr(resp, "status_code", 0) or 0) != 200:
+        return None, f"bad_status: {int(getattr(resp, 'status_code', 0) or 0)}"
+
+    try:
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return None, f"invalid_json: {str(exc)[:120]}"
+
+    if not isinstance(data, dict):
+        return None, "invalid_payload"
+    return data, None
 
 
 def _ensure_settings_readable(db: Session, tenant_id: UUID, account_id: str) -> None:
@@ -1162,11 +1221,14 @@ async def get_system_status(
         "embedding": {"configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY), "model": settings.EMBEDDING_MODEL},
     }
     def _check_import(module: str) -> tuple[bool, str]:
+        # Avoid heavy imports with side-effects in a status endpoint.
         try:
-            __import__(module)
-            return True, "ok"
-        except Exception as exc:
+            spec = importlib.util.find_spec(module)
+        except Exception as exc:  # noqa: BLE001
             return False, str(exc)[:120]
+        if spec is None:
+            return False, "not installed"
+        return True, "ok"
 
     from app.parsing.utils.cli import resolve_cli_command
 
@@ -1231,12 +1293,28 @@ async def get_system_status(
     }
 
     paddlevl_enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
-    paddlevl_url = bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip())
-    parsers["paddle_vl"] = {
+    paddlevl_api_url = (getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()
+    paddlevl_url = bool(paddlevl_api_url)
+    paddlevl_entry: dict[str, object] = {
         "enabled": paddlevl_enabled,
         "available": bool(paddlevl_enabled and paddlevl_url),
         "message": "configured" if (paddlevl_enabled and paddlevl_url) else ("disabled" if not paddlevl_enabled else "missing api_url"),
     }
+    if paddlevl_enabled and paddlevl_url:
+        health_url = _convert_service_url_to_health_url(paddlevl_api_url)
+        data, err = _probe_http_json(health_url, timeout_sec=0.6)
+        if data is not None:
+            paddlevl_entry["health"] = data
+            pv = data.get("pipeline_version") or data.get("version")
+            mode = data.get("mode")
+            parts = [p for p in [pv, mode] if isinstance(p, str) and p.strip()]
+            if parts:
+                paddlevl_entry["message"] = f"configured ({', '.join(parts[:2])})"
+        else:
+            paddlevl_entry["health"] = {"ok": False, "error": err}
+            paddlevl_entry["message"] = "configured (health_unreachable)"
+
+    parsers["paddle_vl"] = paddlevl_entry
 
     ok, msg = _check_import("docling")
     parsers["docling"] = {
