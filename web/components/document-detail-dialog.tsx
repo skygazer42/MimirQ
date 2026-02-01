@@ -90,6 +90,21 @@ function highlightText(text: string, query: string) {
   return nodes
 }
 
+function TraceRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const display = value?.trim?.() ? value : '-'
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span
+        className={cn("min-w-0 truncate text-foreground", mono ? "font-mono" : null)}
+        title={display}
+      >
+        {display}
+      </span>
+    </div>
+  )
+}
+
 export function DocumentDetailDialog({ document: initialDocument, trigger }: DocumentDetailDialogProps) {
   const [open, setOpen] = useState(false)
   const [activeView, setActiveView] = useState<'chunks' | 'timeline'>('chunks')
@@ -329,6 +344,27 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const canRunKg = displayDoc.status === 'completed' && !isKgWorking
   const effectiveAccessMode: DocumentAccessMode =
     accessInfo?.mode || (displayDoc.access_mode as DocumentAccessMode | null) || 'inherit'
+
+  const docMeta = (displayDoc.metadata || {}) as any
+  const pipeline = (displayDoc as any)?.pipeline || null
+  const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {}) as any
+  const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {}) as any
+  const governanceRulePacks: string[] = Array.isArray(pipeline?.governance_rule_packs)
+    ? pipeline.governance_rule_packs
+    : Array.isArray(docMeta.governance_rule_packs)
+      ? docMeta.governance_rule_packs
+      : []
+
+  const activePipelineHash =
+    String(
+      pipeline?.active_pipeline_hash ||
+        versions?.active_pipeline_hash ||
+        docMeta.active_pipeline_hash ||
+        docMeta.pipeline_hash ||
+        ''
+    ).trim() || ''
+  const lastPipelineHash = String(pipeline?.pipeline_hash || docMeta.pipeline_hash || '').trim() || ''
+  const viewingPipelineHash = viewPipelineHash === ACTIVE_PIPELINE_VALUE ? activePipelineHash : viewPipelineHash
 
   const accessModeLabel = useMemo(() => {
     switch (effectiveAccessMode) {
@@ -570,8 +606,101 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
         </header>
 
         {/* Body */}
-        <main className="min-h-0 p-6">
-          <Panel padding="none" className="h-full overflow-hidden rounded-2xl">
+        <main className="min-h-0 p-6 flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Panel className="rounded-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-primary/10 text-primary">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">Parse</div>
+                    <div className="text-xs text-muted-foreground truncate">{parserLabel || parserBackend || '-'}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <TraceRow label="parser_backend" value={String(pipeline?.parser_backend || parserBackend || '-')} mono />
+                <TraceRow
+                  label="requested"
+                  value={String(pipeline?.parser_backend_requested || docMeta?.parser_backend_requested || '-')}
+                  mono
+                />
+                <TraceRow label="char_count" value={String(analyticsRaw?.char_count ?? '-')} mono />
+                <TraceRow label="page_count" value={String(analyticsRaw?.page_count ?? '-')} mono />
+                <TraceRow label="table_count" value={String(analyticsRaw?.table_count ?? '-')} mono />
+                <TraceRow label="image_count" value={String(analyticsRaw?.image_count ?? '-')} mono />
+              </div>
+            </Panel>
+
+            <Panel className="rounded-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-success/10 text-success">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">Governance</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {displayDoc.governance?.enabled ? 'enabled' : 'disabled'}
+                    </div>
+                  </div>
+                </div>
+                {governanceRulePacks.length ? (
+                  <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground">
+                    {governanceRulePacks.length} packs
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <TraceRow label="rules_applied" value={String(displayDoc.governance?.rules_applied ?? '-')} mono />
+                <TraceRow label="changed_docs" value={String(displayDoc.governance?.changed_documents ?? '-')} mono />
+                <TraceRow label="dropped_docs" value={String(displayDoc.governance?.dropped_documents ?? '-')} mono />
+                <TraceRow
+                  label="rule_packs"
+                  value={governanceRulePacks.length ? governanceRulePacks.slice(0, 4).join(', ') : '-'}
+                />
+              </div>
+            </Panel>
+
+            <Panel className="rounded-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-info/10 text-info">
+                    <Hash className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">Chunking</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {chunkStrategyLabel || chunkStrategy || '-'}
+                    </div>
+                  </div>
+                </div>
+                {viewingPipelineHash ? (
+                  <IconButton
+                    label="Copy pipeline_hash"
+                    variant="ghost"
+                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                    onClick={() => void copyToClipboard(String(viewingPipelineHash || ''))}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </IconButton>
+                ) : null}
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <TraceRow label="viewing_pipeline_hash" value={String(viewingPipelineHash || '-')} mono />
+                <TraceRow label="active_pipeline_hash" value={String(activePipelineHash || '-')} mono />
+                <TraceRow label="last_pipeline_hash" value={String(lastPipelineHash || '-')} mono />
+                <TraceRow label="chunk_size" value={String(pipelineEffective?.chunk_size ?? '-')} mono />
+                <TraceRow label="chunk_overlap" value={String(pipelineEffective?.chunk_overlap ?? '-')} mono />
+                <TraceRow label="vector_enabled" value={pipelineEffective?.chunk_vector_enabled ? 'true' : 'false'} mono />
+                <TraceRow label="bm25_enabled" value={pipelineEffective?.bm25_index_enabled ? 'true' : 'false'} mono />
+              </div>
+            </Panel>
+          </div>
+
+          <Panel padding="none" className="flex-1 min-h-0 overflow-hidden rounded-2xl">
             <div className="flex items-center gap-3 border-b border-border/60 bg-background/40 px-4 py-3">
               <div
                 className="inline-flex h-10 items-center rounded-md bg-muted p-1 text-muted-foreground"
