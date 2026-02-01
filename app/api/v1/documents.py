@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import math
 import mimetypes
 import re
 import shutil
@@ -1211,6 +1212,60 @@ def _compute_chunk_coverage_metrics(
         "gap_count": int(gap_count),
         "largest_gap": int(largest_gap),
     }
+
+
+def _compute_chunk_length_histogram(
+    lengths: list[int],
+    *,
+    unit: Literal["chars", "tokens"],
+    target_bins: int = 8,
+) -> list[dict[str, object]]:
+    """
+    Compute a coarse histogram for chunk length distribution.
+
+    Returned bins use the schema:
+      {label: "min-max", min: int, max: int, count: int}
+
+    Notes:
+    - Bin bounds are best-effort; the UI should treat them as descriptive, not strict.
+    - We keep bin widths "round" to keep charts readable.
+    """
+    values: list[int] = []
+    for x in (lengths or []):
+        try:
+            n = int(x)
+        except Exception:
+            continue
+        values.append(max(0, n))
+    if not values:
+        return []
+
+    max_val = max(values)
+    bins = max(3, min(12, int(target_bins or 8)))
+    base = 25 if unit == "tokens" else 50
+
+    # Choose a rounded step size so we end up with ~bins buckets.
+    if max_val <= 0:
+        step = base
+    else:
+        step = int(math.ceil((max_val / bins) / base) * base)
+        step = max(base, step) if step > 0 else base
+
+    bin_count = max(1, int(math.ceil((max_val + 1) / step))) if step > 0 else 1
+    out: list[dict[str, object]] = []
+    for i in range(bin_count):
+        lo = int(i * step)
+        hi = int((i + 1) * step)
+        out.append({"label": f"{lo}-{hi}", "min": lo, "max": hi, "count": 0})
+
+    for v in values:
+        idx = int(v // step) if step > 0 else 0
+        if idx < 0:
+            idx = 0
+        if idx >= len(out):
+            idx = len(out) - 1
+        out[idx]["count"] = int(out[idx].get("count") or 0) + 1
+    return out
 
 
 def _compute_chunk_preview_review_signals(
@@ -8056,6 +8111,7 @@ async def preview_chunking(
                 return int(sorted_lengths[pos] or 0)
 
             coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+            histogram = _compute_chunk_length_histogram(sorted_lengths, unit=unit, target_bins=8)
             stats = ChunkPreviewStats(
                 unit=unit,
                 count=len(sorted_lengths),
@@ -8069,6 +8125,7 @@ async def preview_chunking(
                 total_tokens_est=int(total_tokens_est),
                 short_count=int(short_count),
                 duplicate_count=int(duplicate_count),
+                histogram=histogram,
                 **coverage,
             )
         else:
@@ -8714,6 +8771,7 @@ async def preview_chunking_by_sha(
             return int(sorted_lengths[pos] or 0)
 
         coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+        histogram = _compute_chunk_length_histogram(sorted_lengths, unit=unit, target_bins=8)
         stats = ChunkPreviewStats(
             unit=unit,
             count=len(sorted_lengths),
@@ -8727,6 +8785,7 @@ async def preview_chunking_by_sha(
             total_tokens_est=int(total_tokens_est),
             short_count=int(short_count),
             duplicate_count=int(duplicate_count),
+            histogram=histogram,
             **coverage,
         )
     else:
