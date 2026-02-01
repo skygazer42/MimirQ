@@ -16,6 +16,7 @@ from app.api.v1 import (
     documents,
     evaluations,
     feedback,
+    governance,
     health,
     meta,
     observability,
@@ -45,6 +46,7 @@ router.include_router(dataset_tables.router, prefix="/datasets", tags=["Dataset 
 router.include_router(dataset_categories.router, prefix="/dataset-categories", tags=["Dataset Categories"])
 router.include_router(kg.router, prefix="/kg", tags=["Knowledge Graph (KG)"])
 router.include_router(settings.router, prefix="/settings", tags=["Settings"])
+router.include_router(governance.router, prefix="/governance", tags=["Governance"])
 router.include_router(evaluations.router, prefix="/evaluations", tags=["Evaluations"])
 router.include_router(prompt_templates.router, prefix="/prompt-templates", tags=["Prompt Templates"])
 router.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
