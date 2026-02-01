@@ -8,11 +8,9 @@ import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { ParsingBlock, ParsingPosition } from '@/lib/parsing-positions'
 import { Button } from '@/components/ui/button'
+import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
 
-type Box = {
-  blockId: string
-  position: ParsingPosition
-}
+type Box = BboxOverlayItem
 
 interface PdfViewerProps {
   file?: File | null
@@ -221,14 +219,14 @@ export function PdfViewer({
     const map = new Map<number, Box[]>()
     for (const block of blocks) {
       for (const position of block.positions || []) {
-        const pages = position.pages?.length ? position.pages : [0]
-        for (const pageIndex of pages) {
-          const list = map.get(pageIndex) || []
-          list.push({ blockId: block.id, position })
-          map.set(pageIndex, list)
+          const pages = position.pages?.length ? position.pages : [0]
+          for (const pageIndex of pages) {
+            const list = map.get(pageIndex) || []
+            list.push({ id: block.id, position })
+            map.set(pageIndex, list)
+          }
         }
       }
-    }
     return map
   }, [blocks])
 
@@ -328,34 +326,16 @@ export function PdfViewer({
 		                  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 		                  渲染中...
 		                </div>
-		              ) : null}
-              <div className="pointer-events-none absolute inset-0">
-                {pageBoxes.map((box, boxIndex) => {
-                  if (!showAllBoxes && !activeSet.has(box.blockId) && !hoveredSet.has(box.blockId)) {
-                    return null
-                  }
-                  const { left, right, top, bottom } = box.position
-                  const x = Math.min(left, right) * scale
-                  const y = Math.min(top, bottom) * scale
-                  const width = Math.abs(right - left) * scale
-                  const height = Math.abs(bottom - top) * scale
-                  const isActive = activeSet.has(box.blockId)
-                  const isHovered = hoveredSet.has(box.blockId)
-	                  const baseColor = isActive ? 'border-warning bg-warning/10' : 'border-primary/60'
-	                  const hoverColor = isHovered ? 'border-primary bg-primary/10' : ''
-	                  return (
-	                    <button
-                        type="button"
-	                      key={`box-${index}-${boxIndex}`}
-	                      className={`pointer-events-auto absolute rounded border ${baseColor} ${hoverColor}`}
-                      style={{ left: x, top: y, width, height }}
-                        onMouseEnter={() => handleHoverBlock(box.blockId)}
-                        onMouseLeave={() => handleHoverBlock(null)}
-                        onClick={() => handleClickBlock(box.blockId)}
-                    />
-                  )
-                })}
-              </div>
+              ) : null}
+              <BboxOverlay
+                items={pageBoxes}
+                scale={scale}
+                showAll={showAllBoxes}
+                activeIds={activeSet}
+                hoveredIds={hoveredSet}
+                onHoverId={handleHoverBlock}
+                onClickId={handleClickBlock}
+              />
             </div>
           )
         })}
