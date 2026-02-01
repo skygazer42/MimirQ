@@ -55,6 +55,10 @@ import type {
   ManualChunk,
   DocumentPipelineOptions,
   ChunkPreviewResponse,
+  ChunkPreset,
+  ChunkPresetCreateRequest,
+  ChunkPresetUpdateRequest,
+  ChunkPresetListResponse,
   DocumentBatchUploadResponse,
   Dataset,
   DatasetCreate,
@@ -1180,6 +1184,29 @@ export const pipelineApi = {
     if (params.diff_max_lines != null) formData.append('diff_max_lines', String(params.diff_max_lines))
     const { data } = await apiClient.post('/pipeline/ingestion-preview', formData, { timeout: API_LONG_TIMEOUT_MS })
     return data
+  },
+}
+
+// ==================== Chunk Presets (Chunk Preview) API ====================
+
+export const chunkPresetApi = {
+  async list(params?: { q?: string; limit?: number }): Promise<ChunkPresetListResponse> {
+    const { data } = await apiClient.get('/chunk-presets', { params })
+    return data
+  },
+
+  async create(payload: ChunkPresetCreateRequest): Promise<ChunkPreset> {
+    const { data } = await apiClient.post('/chunk-presets', payload)
+    return data
+  },
+
+  async update(presetId: string, payload: ChunkPresetUpdateRequest): Promise<ChunkPreset> {
+    const { data } = await apiClient.put(`/chunk-presets/${encodeURIComponent(presetId)}`, payload)
+    return data
+  },
+
+  async delete(presetId: string): Promise<void> {
+    await apiClient.delete(`/chunk-presets/${encodeURIComponent(presetId)}`)
   },
 }
 

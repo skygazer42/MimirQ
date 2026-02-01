@@ -34,6 +34,7 @@ import { computeChunkLengthStats } from '@/components/chunk-preview/utils/stats'
 import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
+import { ChunkPresetPanel } from '@/components/chunk-preview/components/chunk-preset-panel'
 import type { Dataset, IngestionPreviewResponse } from '@/types'
 import {
   ResponsiveContainer,
@@ -787,6 +788,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
 	          </div>
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">解析器</label>
+            <ChunkPresetPanel className="mb-3" />
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
             {parserAvailable === false && (
               <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
