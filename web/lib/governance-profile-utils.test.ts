@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import type { GovernanceProfileOut, GovernanceProfilePayload } from '@/types'
 
-import { buildCleanPreviewRequestFromGovernanceProfile, buildGovernanceProfileCreateFromExisting } from './governance-profile-utils'
+import {
+  buildCleanPreviewRequestFromGovernanceProfile,
+  buildGovernanceProfileCreateFromExisting,
+  buildIngestionPolicyExportFilename,
+} from './governance-profile-utils'
 
 describe('buildCleanPreviewRequestFromGovernanceProfile', () => {
   it('maps governance pipeline_patch + regex_rules into clean-preview request', () => {
@@ -59,5 +63,12 @@ describe('buildGovernanceProfileCreateFromExisting', () => {
     expect(create.description).toBe('desc')
     expect(create.key).toBeUndefined()
     expect(create.payload).toEqual(profile.payload)
+  })
+})
+
+describe('buildIngestionPolicyExportFilename', () => {
+  it('sanitizes profile keys into a stable ingestion_policy export filename', () => {
+    expect(buildIngestionPolicyExportFilename('builtin:html_web')).toBe('builtin_html_web.ingestion_policy.json')
+    expect(buildIngestionPolicyExportFilename('team:pdf/text')).toBe('team_pdf_text.ingestion_policy.json')
   })
 })

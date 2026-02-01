@@ -1120,6 +1120,16 @@ export const pipelineApi = {
     return data as Blob
   },
 
+  async exportGovernanceProfileIngestionPolicy(profileRef: string): Promise<Blob> {
+    const { data } = await apiClient.get(
+      `/pipeline/governance-profiles/${encodeURIComponent(profileRef)}/export-ingestion-policy`,
+      {
+        responseType: 'blob',
+      }
+    )
+    return data as Blob
+  },
+
   async parsePreview(
     file: File,
     parserBackend = 'auto',

@@ -25,6 +25,12 @@ function normalizeRegexRules(rules: unknown): RegexRuleModel[] {
   return out
 }
 
+export function buildIngestionPolicyExportFilename(profileKey: string): string {
+  const raw = String(profileKey || '').trim()
+  const safe = (raw || 'profile').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64) || 'profile'
+  return `${safe}.ingestion_policy.json`
+}
+
 /**
  * Map a GovernanceProfile payload to the `pipeline/clean-preview` request shape.
  *

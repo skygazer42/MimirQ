@@ -13,7 +13,7 @@ import { pipelineApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { GovernanceProfileCreate, GovernanceProfileListResponse, GovernanceProfileSummary } from '@/types'
 import { ProfileEditorDrawer } from '@/components/governance-profiles/profile-editor-drawer'
-import { buildGovernanceProfileCreateFromExisting } from '@/lib/governance-profile-utils'
+import { buildGovernanceProfileCreateFromExisting, buildIngestionPolicyExportFilename } from '@/lib/governance-profile-utils'
 
 export function GovernanceProfilesPage() {
   const [loading, setLoading] = useState(false)
@@ -74,6 +74,24 @@ export function GovernanceProfilesPage() {
       toast.success('已导出')
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || err?.message || '导出失败')
+    }
+  }
+
+  const exportAsIngestionPolicy = async (p: GovernanceProfileSummary) => {
+    const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
+    if (!ref) return
+    try {
+      const blob = await pipelineApi.exportGovernanceProfileIngestionPolicy(ref)
+      const filename = buildIngestionPolicyExportFilename(p.key || 'profile')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast.success('已导出 ingestion policy')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.message || '导出 ingestion policy 失败')
     }
   }
 
@@ -245,6 +263,7 @@ export function GovernanceProfilesPage() {
                       size="sm"
                       variant="outline"
                       className="rounded-xl"
+                      aria-label="复制 Profile"
                       onClick={() =>
                         void (async () => {
                           const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
@@ -268,6 +287,7 @@ export function GovernanceProfilesPage() {
                       size="sm"
                       variant="outline"
                       className="rounded-xl"
+                      aria-label="导出 Profile JSON"
                       onClick={() => void exportOne(p)}
                     >
                       <Download className="w-4 h-4" />
@@ -277,7 +297,18 @@ export function GovernanceProfilesPage() {
                       size="sm"
                       variant="outline"
                       className="rounded-xl"
+                      aria-label="导出为 ingestion policy"
+                      onClick={() => void exportAsIngestionPolicy(p)}
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-xl"
                       disabled={p.is_system}
+                      aria-label="删除 Profile"
                       onClick={() => void deleteOne(p)}
                     >
                       <Trash2 className="w-4 h-4" />
