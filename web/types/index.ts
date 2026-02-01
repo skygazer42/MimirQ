@@ -444,6 +444,7 @@ export interface DocumentPipelineOptions {
   governance_remove_common_lines?: boolean
   governance_remove_boilerplate?: boolean
   governance_remove_images?: 'none' | 'decorative' | 'all' | string
+  governance_rule_packs?: string[]
   governance_regex_rules?: RegexRuleModel[]
   governance_extract_frontmatter?: boolean
   governance_strip_frontmatter?: boolean
@@ -867,6 +868,10 @@ export interface GovernanceAnalyzeResponse {
   input_lines?: number
   issues?: GovernanceIssue[]
   suggested_pipeline_patch?: DocumentPipelineOptions
+}
+
+export interface GovernanceRulePackListResponse {
+  items: string[]
 }
 
 export interface GovernanceCommonLineCandidate {

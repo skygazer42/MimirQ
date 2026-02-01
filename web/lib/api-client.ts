@@ -128,6 +128,7 @@ import type {
   PipelineCapabilitiesResponse,
   GovernanceAnalyzeRequest,
   GovernanceAnalyzeResponse,
+  GovernanceRulePackListResponse,
   GovernanceCommonLinesLearnRequest,
   GovernanceCommonLinesLearnResponse,
   GovernanceProfileListResponse,
@@ -1183,6 +1184,15 @@ export const pipelineApi = {
     if (params.chunk_strategy) formData.append('chunk_strategy', params.chunk_strategy)
     if (params.diff_max_lines != null) formData.append('diff_max_lines', String(params.diff_max_lines))
     const { data } = await apiClient.post('/pipeline/ingestion-preview', formData, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
+}
+
+// ==================== Governance API ====================
+
+export const governanceApi = {
+  async listRulePacks(): Promise<GovernanceRulePackListResponse> {
+    const { data } = await apiClient.get('/governance/rule-packs')
     return data
   },
 }
