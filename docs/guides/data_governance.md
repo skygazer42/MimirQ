@@ -14,7 +14,7 @@ These defaults apply when pipeline overrides are not provided.
 
 For teams, it is often easier to manage governance as reusable **Profiles**:
 
-- A profile bundles a `pipeline_patch` (governance_* options) + optional `regex_rules`
+- A profile bundles a `pipeline_patch` (governance_* options + optional `governance_rule_packs`) + optional `regex_rules`
 - Profiles are **declarative JSON** (no executable code)
 - Built-in profiles are read-only; custom profiles are tenant-scoped
 
@@ -27,6 +27,39 @@ UI entry:
 
 Profile schema & server-side safety limits:
 - `docs/data-governance-profiles.md`
+
+## Governance Rule Packs (Regex Presets)
+
+Rule packs are optional, named governance presets that expand into additional **regex cleaning rules**.
+
+Key properties:
+- Default OFF (no effect unless explicitly enabled)
+- Conservative (line-oriented / anchored patterns; best-effort)
+- Explainable (use Clean Preview to see rule hit stats & unified diff)
+
+Enable packs via:
+- Profile: `payload.pipeline_patch.governance_rule_packs`
+- API pipeline options: `governance_rule_packs`
+
+Available packs (see details in `docs/governance-rule-packs.md`):
+- `confluence_jira_noise`
+- `email_disclaimer`
+- `markdown_export_noise`
+- `notion_export_noise`
+- `pdf_header_footer_cn`
+- `pdf_watermark`
+- `web_cookie_banners`
+- `web_navigation`
+- `wechat_mp_noise`
+
+## Custom Regex Rules (`regex_rules`)
+
+Profiles can also attach custom regex rules (`pattern` / `repl` / `flags`), which are applied after default rules and selected rule packs.
+
+Notes:
+- UI does best-effort local validation (compile) and shows constraints.
+- Server enforces safety limits (pattern length / count / allowed flags) to reduce ReDoS risk.
+- Clean Preview returns `rule_stats` with lightweight attribution (`source=default|pack|custom`) to help you understand what got removed.
 
 ## Upload API Notes
 - For multipart endpoints (e.g. `/api/v1/documents/upload`, `/api/v1/documents/preview`, `/api/v1/documents/chunk-preview`), pipeline overrides are sent as a JSON string form field named `pipeline`.
