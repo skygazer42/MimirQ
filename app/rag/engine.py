@@ -1112,6 +1112,7 @@ Requirements:
                     "history_tokens": num_tokens_from_string(history_text or ""),
                     "context_chars": len(context or ""),
                     "context_tokens": num_tokens_from_string(context or ""),
+                    "citations_count": len(citations),
                     "context_evidence": {
                         "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                         "max_sentences_per_chunk": int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0),
@@ -1141,6 +1142,8 @@ Requirements:
                         "mode": mode_used,
                         "requested_mode": mode_req,
                         "auto_routed": bool(mode_auto),
+                        "top_k": int(top_k) if top_k is not None else None,
+                        "elapsed_sec": round(retrieval_elapsed, 3),
                         "alpha": alpha_val,
                         "enable_weight_rerank": weight_rerank,
                         "vector_weight": vec_w,
