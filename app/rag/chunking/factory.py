@@ -52,6 +52,7 @@ from app.rag.chunking.strategies import (
     MarkdownFrontmatterChunker,
     # New splitters
     MarkdownHeaderChunker,
+    MarkdownOutlineChunker,
     MarkdownTableChunker,
     MavenPOMChunker,
     MediaWikiSectionsChunker,
@@ -188,6 +189,7 @@ class ChunkerFactory:
         "parent_child": ParentChildChunker,
         # New splitters
         "markdown_header": MarkdownHeaderChunker,
+        "markdown_outline": MarkdownOutlineChunker,
         "markdown_aware": MarkdownAwareChunker,
         "markdown": MarkdownHeaderChunker,  # Alias
         "json": JSONChunker,

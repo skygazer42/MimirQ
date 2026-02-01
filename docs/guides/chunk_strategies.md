@@ -7,6 +7,8 @@
 - **通用文档（Markdown/说明文/博客/制度）**：`auto` 或 `langchain_recursive`
   - `chunk_size`：600-1500（chars）
   - `chunk_overlap`：10-25%
+- **结构化 Markdown（标题层级清晰）**：`markdown_outline` 或 `markdown_header`
+  - 目标：优先按标题边界切分，并保留 `header_path` / `outline_path`
 - **FAQ / Q&A**：`qa_pairs` 或 `qa_markdown`
   - 目标：保证每组问答不被拆散
 - **合同/法律/制度条款**：`laws_structured`
