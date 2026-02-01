@@ -29,6 +29,7 @@ from app.api.schemas.governance_profile import (
     GovernanceProfileSummary,
     GovernanceProfileUpdate,
 )
+from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
 from app.api.schemas.pipeline import (
     ChunkPreviewRequest,
     ChunkPreviewResponse,
@@ -103,7 +104,7 @@ from app.services.governance_profiles import (
     validate_profile_key,
 )
 from app.services.governance_profiles_resolver import resolve_governance_profile_ref_effective
-from app.services.ingestion_policy import match_ingestion_rule, parse_ingestion_policy_from_metadata
+from app.services.ingestion_policy import export_policy_json, match_ingestion_rule, parse_ingestion_policy_from_metadata
 from app.services.pipeline_config import resolve_pipeline_effective
 from app.services.prompt_resolver import resolve_prompt_template
 from app.types.pipeline import PipelineOptions
@@ -986,6 +987,46 @@ async def export_governance_profile(
     safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(profile.key or "profile"))[:64]
     filename = f"{safe_key}.governance-profile.json"
     content = json.dumps(export_obj, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+    )
+
+
+@router.get("/governance-profiles/{profile_ref}/export-ingestion-policy")
+async def export_governance_profile_ingestion_policy(
+    profile_ref: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export a minimal, importable dataset ingestion policy that references the given governance profile.
+
+    This "closes the loop" for operators: build custom governance profiles in the UI, then export
+    an ingestion_policy JSON snippet to be imported into a dataset.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    profile = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+
+    # Best-effort safe filename + rule id.
+    safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(profile.key or "profile"))[:64] or "profile"
+    filename = f"{safe_key}.ingestion_policy.json"
+
+    # Match all files by default; operators can refine extensions/filename_regex after import.
+    rule = IngestionRule(
+        id=f"gov:{safe_key}"[:100],
+        name=f"Governance: {str(profile.name or '').strip() or safe_key}"[:200],
+        enabled=True,
+        match={"extensions": []},
+        preprocess={"enabled": False, "steps": []},
+        governance_profile_ref=str(profile.key or "").strip() or None,
+        pipeline_patch={},
+    )
+
+    policy = IngestionPolicy(version="1", rules=[rule])
+    content = export_policy_json(policy)
     return Response(
         content=content,
         media_type="application/json",
