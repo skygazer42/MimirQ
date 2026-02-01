@@ -49,6 +49,9 @@ services:
       - "9030:9030"
     environment:
       TZ: Asia/Shanghai
+      # Service-side options (PaddleOCR doc_parser / PaddleOCR-VL pipeline).
+      PADDLEOCR_PIPELINE_VERSION: ${PADDLEOCR_PIPELINE_VERSION:-v1.5}
+      PADDLEOCR_DEVICE: ${PADDLEOCR_DEVICE:-cpu}
     volumes:
       - paddlevl_cache:/root/.paddleocr
     healthcheck:

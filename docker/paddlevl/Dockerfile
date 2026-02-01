@@ -11,6 +11,7 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
+      libgomp1 \
       libgl1 \
       libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
@@ -23,4 +24,3 @@ COPY server.py ./server.py
 EXPOSE 9030
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "9030"]
-
