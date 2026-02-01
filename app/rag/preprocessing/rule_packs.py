@@ -63,6 +63,26 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         RegexRule(pattern=r"(?mi)^\s*created\s+by\b.*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*last\s+updated\b.*$", repl="", flags=0),
     ],
+    "wechat_mp_noise": [
+        # WeChat official account (公众号) export / copy-paste call-to-action lines.
+        RegexRule(pattern=r"(?m)^\s*\u9605\u8bfb\u539f\u6587\s*$", repl="", flags=0),  # 阅读原文
+        RegexRule(pattern=r"(?m)^\s*\u70b9\u51fb\u4e0a\u65b9.*(?:\u5173\u6ce8|\u8ba2\u9605).*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*\u957f\u6309.*\u8bc6\u522b.*\u4e8c\u7ef4\u7801.*(?:\u5173\u6ce8|\u6dfb\u52a0).*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:\u626b\u4e00\u626b|\u626b\u63cf).*\u4e8c\u7ef4\u7801.*(?:\u5173\u6ce8|\u6dfb\u52a0).*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:\u5728\u770b|\u70b9\u8d5e|\u8f6c\u53d1|\u5206\u4eab(?:\u5230)?\u670b\u53cb\u5708)\s*$", repl="", flags=0),
+    ],
+    "pdf_header_footer_cn": [
+        # Chinese page number footers (conservative full-line matches).
+        RegexRule(pattern=r"(?m)^[ \t]*\u7b2c[ \t]*\d+[ \t]*\u9875[ \t]*(?:/|\u5171)[ \t]*\d+[ \t]*\u9875[ \t]*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^[ \t]*\u7b2c[ \t]*\d+[ \t]*\u9875[ \t]*\u5171[ \t]*\d+[ \t]*\u9875[ \t]*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^[ \t]*\u7b2c[ \t]*\d+[ \t]*/[ \t]*\d+[ \t]*\u9875[ \t]*$", repl="", flags=0),
+    ],
+    "notion_export_noise": [
+        # Notion markdown export noise (best-effort, line-oriented).
+        RegexRule(pattern=r"(?mi)^\s*exported\s+from\s+notion\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*created\s+time\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*last\s+edited\s+time\b.*$", repl="", flags=0),
+    ],
     "markdown_export_noise": [
         # Generic "exported/converted by ..." headers and footers.
         RegexRule(pattern=r"(?mi)^\s*generated\s+by\b.*$", repl="", flags=0),
