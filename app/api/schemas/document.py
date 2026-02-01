@@ -709,11 +709,21 @@ class ChunkPreviewStats(BaseModel):
     histogram: List[ChunkPreviewHistogramBin] = Field(default_factory=list)
 
 
+class ChunkPreviewQualityReason(BaseModel):
+    """Structured quality gate reason (stable code + human-readable message)."""
+
+    code: str = Field(..., min_length=1, max_length=80)
+    severity: Literal["info", "warning", "error"] = "warning"
+    message: str = Field(..., min_length=1, max_length=200)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ChunkPreviewQualityGate(BaseModel):
     """Best-effort quality gate for enterprise tuning (heuristics)."""
 
     grade: Literal["pass", "warn", "fail"] = "pass"
     reasons: List[str] = Field(default_factory=list)
+    reason_items: List[ChunkPreviewQualityReason] = Field(default_factory=list)
 
 
 class ChunkPreviewRecommendationPatch(BaseModel):
