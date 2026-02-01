@@ -13,11 +13,13 @@ import {
   BarChart3,
   History,
   X,
-  Plus
+  Plus,
+  Route
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
+import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
@@ -63,6 +65,7 @@ function HistoryPageContent() {
   const [isLoadingOlder, setIsLoadingOlder] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [isTraceOpen, setIsTraceOpen] = useState(false)
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -321,6 +324,15 @@ function HistoryPageContent() {
                       RAGAS 评测
                     </Button>
                     <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsTraceOpen(true)}
+                      className="gap-2 rounded-xl hover:bg-muted/50"
+                    >
+                      <Route className="h-3.5 w-3.5" />
+                      RAG Trace
+                    </Button>
+                    <Button
                       size="sm"
                       onClick={handleContinueChat}
                       className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -383,6 +395,12 @@ function HistoryPageContent() {
             )}
           </div>
         </div>
+        <RagTraceDialog
+          open={isTraceOpen}
+          onOpenChange={setIsTraceOpen}
+          conversationId={selectedConversation?.id || null}
+          title={selectedConversation?.title || null}
+        />
       </PageScaffold>
     </AppFrame>
   )
