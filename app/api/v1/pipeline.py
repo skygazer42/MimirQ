@@ -57,6 +57,7 @@ from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.optional_deps import check_dependency
+from app.core.regex_safety import RegexRulesValidationError, validate_regex_rules
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
@@ -728,6 +729,8 @@ async def create_governance_profile(
 
     try:
         payload = validate_and_normalize_payload(body.payload)
+    except RegexRulesValidationError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -813,6 +816,8 @@ async def update_governance_profile(
     if body.payload is not None:
         try:
             payload = validate_and_normalize_payload(body.payload)
+        except RegexRulesValidationError as exc:
+            raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         row.payload = payload.model_dump()
@@ -917,6 +922,8 @@ async def import_governance_profiles(
         try:
             payload = GovernanceProfilePayload(**payload_raw)
             payload = validate_and_normalize_payload(payload)
+        except RegexRulesValidationError as exc:
+            raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid payload: {str(exc)[:200]}") from exc
 
@@ -1408,7 +1415,12 @@ async def clean_preview(
                 rules.append(r)
                 rule_meta.append({"source": "pack", "pack": key})
 
-    custom_rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in (body.rules or [])]
+    try:
+        custom_rules_norm = validate_regex_rules(body.rules)
+    except RegexRulesValidationError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
+
+    custom_rules = [RegexRule(pattern=r["pattern"], repl=r["repl"], flags=r["flags"]) for r in (custom_rules_norm or [])]
     for r in custom_rules:
         rules.append(r)
         rule_meta.append({"source": "custom", "pack": None})
