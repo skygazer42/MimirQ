@@ -47,10 +47,10 @@ class ChunkPresetListResponse(BaseModel):
 
 def _row_to_response(row: Any) -> ChunkPresetResponse:
     return ChunkPresetResponse(
-        id=str(getattr(row, "id")),
-        name=str(getattr(row, "name", "") or ""),
-        description=getattr(row, "description", None),
-        payload=dict(getattr(row, "payload", None) or {}),
+        id=str(row.id),
+        name=str(row.name or ""),
+        description=row.description,
+        payload=dict(row.payload or {}),
     )
 
 
@@ -192,4 +192,3 @@ def delete_chunk_preset(
     if not ok:
         raise HTTPException(status_code=404, detail="Chunk preset not found")
     return Response(status_code=204)
-

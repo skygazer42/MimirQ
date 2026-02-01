@@ -40,8 +40,8 @@ from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
 from app.rag.core.text import parse_json_from_text
 from app.rag.engine import get_rag_engine
-from app.rag.trace_schema import RagTraceListResponse
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.trace_schema import RagTraceListResponse
 from app.services.audit_log_service import audit_log_event, build_chat_audit_details
 from app.services.chat_response_cache import build_chat_cache_key, get_cached_chat_response, set_cached_chat_response
 from app.services.conversation_summary_service import (

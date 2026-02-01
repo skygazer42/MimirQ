@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.governance_profile import GovernanceProfileOut, GovernanceProfilePayload, RegexRuleModel
-from app.core.regex_safety import DEFAULT_ALLOWED_FLAG_BITS, RegexRulesValidationError, validate_regex_rules
+from app.core.regex_safety import DEFAULT_ALLOWED_FLAG_BITS, validate_regex_rules
 
 PROFILE_KEY_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
 MAX_PROFILE_RULES = 60

@@ -99,7 +99,6 @@ from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.types.document_analytics import compute_document_analytics
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_folders import build_document_folder_tree
@@ -122,6 +121,7 @@ from app.services.pipeline_config import (
 from app.services.preview_cache import ParseCacheEntry, preview_parse_cache, preview_parse_locks
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.queue import enqueue_document_processing
+from app.types.document_analytics import compute_document_analytics
 from app.types.indexing import IndexKind, IndexRecord
 from app.types.pipeline import PipelineOptions
 

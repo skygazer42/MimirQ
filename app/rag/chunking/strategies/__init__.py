@@ -114,8 +114,8 @@ from app.rag.chunking.strategies.markdown import (
     MarkdownAwareChunker,
     MarkdownHeaderChunker,
 )
-from app.rag.chunking.strategies.markdown_outline import MarkdownOutlineChunker
 from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker
+from app.rag.chunking.strategies.markdown_outline import MarkdownOutlineChunker
 from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker
 from app.rag.chunking.strategies.maven_pom import MavenPOMChunker
 from app.rag.chunking.strategies.mediawiki_sections import MediaWikiSectionsChunker
