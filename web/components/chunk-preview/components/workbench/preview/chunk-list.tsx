@@ -688,7 +688,7 @@ export function ChunkList() {
               </SelectContent>
             </Select>
           ) : null}
-          {!isHierarchyView && sectionOptions.list.length > 0 ? (
+          {!isHierarchyView && (sectionOptions.list.length > 0 || sectionOptions.hasNone) ? (
             <Select
               value={groupMode}
               onValueChange={(value) => {
