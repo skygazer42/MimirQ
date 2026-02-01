@@ -1381,6 +1381,100 @@ export interface ConversationDetail {
   messages: Message[]
 }
 
+// ==================== RAG Trace (Visualization) ====================
+
+export interface RagTraceStep {
+  key: string
+  label: string
+  elapsed_sec?: number | null
+  meta?: Record<string, any>
+}
+
+export interface RagTraceCitation {
+  document_id?: string | null
+  chunk_id?: string | null
+  chunk_index?: number | null
+  page_number?: number | null
+  start_char?: number | null
+  end_char?: number | null
+
+  doc_pipeline_key?: string | null
+  pipeline_hash?: string | null
+
+  relevance_score?: number | null
+  vector_score?: number | null
+  bm25_score?: number | null
+  keyword_score?: number | null
+  rerank_score?: number | null
+  retrieval_score?: number | null
+
+  reranker_provider?: string | null
+  rerank_elapsed_sec?: number | null
+  rerank_model_used?: string | null
+
+  retrieval_mode?: string | null
+  vector_backend?: string | null
+  retrieval_elapsed_sec?: number | null
+  hit_type?: string | null
+
+  has_image?: boolean
+}
+
+export interface RagTraceRetrievalQuery {
+  kind?: string | null
+  query_chars?: number | null
+  elapsed_sec?: number | null
+  ok?: boolean | null
+}
+
+export interface RagTraceRetrieval {
+  mode?: string | null
+  requested_mode?: string | null
+  auto_routed?: boolean | null
+
+  top_k?: number | null
+  query_parallelism?: number | null
+  query_count?: number | null
+
+  per_query?: RagTraceRetrievalQuery[]
+  errors?: string[]
+
+  enable_reranker?: boolean | null
+  reranker_provider?: string | null
+  reranker_top_n?: number | null
+
+  elapsed_sec?: number | null
+}
+
+export interface RagTraceRerank {
+  enabled: boolean
+  provider?: string | null
+  top_n?: number | null
+  elapsed_sec?: number | null
+  model_used?: string | null
+}
+
+export interface RagTrace {
+  schema_version: number
+  ts_ms: number
+  request_id?: string | null
+  conversation_id?: string | null
+  retrieval: RagTraceRetrieval
+  rerank: RagTraceRerank
+  citations: RagTraceCitation[]
+  citations_count: number
+  steps: RagTraceStep[]
+}
+
+export interface RagTraceListResponse {
+  enabled: boolean
+  path: string
+  window_minutes: number
+  truncated: boolean
+  returned: number
+  items: RagTrace[]
+}
+
 export interface StreamEvent {
   type: 'citations' | 'token' | 'done' | 'error' | 'route' | 'rewrite' | 'graph' | 'event'
   data: any

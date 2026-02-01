@@ -169,6 +169,7 @@ import type {
   RagvizSimilarityRequest,
   RagvizSimilarityCalculateResponse,
   RagMetricsSummaryResponse,
+  RagTraceListResponse,
 } from '@/types'
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
@@ -1711,6 +1712,17 @@ export const chatApi = {
    */
   async deleteConversation(conversationId: string): Promise<void> {
     await apiClient.delete(`/chat/conversations/${conversationId}`)
+  },
+
+  /**
+   * Get conversation RAG traces (for visualization: retrieve -> rerank -> citations).
+   */
+  async getRagTraces(
+    conversationId: string,
+    params?: { limit?: number; window_minutes?: number; max_bytes?: number }
+  ): Promise<RagTraceListResponse> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/rag-traces`, { params })
+    return data
   },
 
   /**
