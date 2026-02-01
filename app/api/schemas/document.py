@@ -499,6 +499,8 @@ class DocumentDetail(OrmModel):
         validation_alias=AliasChoices("doc_metadata", "metadata"),
     )
     governance: GovernanceInfo = Field(default_factory=GovernanceInfo)
+    # Stable, UI-facing pipeline provenance snapshot (extracted from metadata).
+    pipeline: Optional["DocumentPipelineProvenance"] = None
     # Avoid accidental lazy-loading on list endpoints: only include chunks when
     # the API handler explicitly sets `chunks_loaded` on the ORM instance.
     chunks: Optional[List[DocumentChunkSchema]] = Field(default=None, validation_alias="chunks_loaded")
@@ -517,6 +519,12 @@ class DocumentDetail(OrmModel):
             )
         except (TypeError, ValueError):
             self.governance = GovernanceInfo()
+
+        # Best-effort: attach pipeline provenance for UI/debug; never fail the response.
+        try:
+            self.pipeline = DocumentPipelineProvenance.from_metadata(meta)
+        except Exception:
+            self.pipeline = DocumentPipelineProvenance()
         return self
 
 
@@ -549,6 +557,119 @@ class DocumentAnalyticsBundle(BaseModel):
 
     raw: DocumentAnalyticsSchema = Field(default_factory=DocumentAnalyticsSchema)
     cleaned: DocumentAnalyticsSchema = Field(default_factory=DocumentAnalyticsSchema)
+
+
+class PipelineEffectiveSnapshot(BaseModel):
+    """Effective pipeline settings persisted on documents (best-effort)."""
+
+    governance_enabled: bool = False
+    governance_remove_toc_lines: bool = False
+    governance_remove_noise_lines: bool = False
+    governance_unwrap_lines: bool = False
+    governance_remove_common_lines: bool = False
+    governance_unwrap_max_line_length: int = 0
+    governance_noise_min_chars: int = 0
+    governance_noise_ratio_threshold: float = 0.0
+    governance_common_lines_min_docs: int = 0
+    governance_common_lines_min_ratio: float = 0.0
+    chunk_size: int = 0
+    chunk_overlap: int = 0
+    chunk_merge_small_min_chars: int = 0
+    chunk_strategy_params: Dict[str, Any] = Field(default_factory=dict)
+    chunk_vector_enabled: bool = False
+    bm25_index_enabled: bool = False
+    kg_enabled: bool = False
+    event_vector_enabled: bool = False
+    entity_vector_enabled: bool = False
+
+
+class DocumentPipelineProvenance(BaseModel):
+    """Stable, UI-facing pipeline provenance snapshot for a document."""
+
+    active_pipeline_hash: Optional[str] = None
+    pipeline_hash: Optional[str] = None
+    parser_backend: Optional[str] = None
+    parser_backend_requested: Optional[str] = None
+    chunk_strategy: Optional[str] = None
+    chunk_strategy_requested: Optional[str] = None
+    governance_enabled: bool = False
+    governance_rule_packs: List[str] = Field(default_factory=list)
+    pipeline_effective: PipelineEffectiveSnapshot = Field(default_factory=PipelineEffectiveSnapshot)
+    analytics_raw: DocumentAnalyticsSchema = Field(default_factory=DocumentAnalyticsSchema)
+    parsed_text_quality: Dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_metadata(cls, meta: Dict[str, Any] | None) -> "DocumentPipelineProvenance":
+        m = meta if isinstance(meta, dict) else {}
+
+        try:
+            from app.core.pipeline_versions import get_active_pipeline_hash
+
+            active_hash = get_active_pipeline_hash(m)
+        except Exception:
+            active_hash = str(m.get("active_pipeline_hash") or m.get("pipeline_hash") or "").strip() or None
+
+        pipeline_hash = str(m.get("pipeline_hash") or "").strip() or None
+
+        parser_backend = str(m.get("parser_backend") or "").strip() or None
+        parser_backend_requested = str(m.get("parser_backend_requested") or "").strip() or None
+        chunk_strategy = str(m.get("chunk_strategy") or "").strip() or None
+        chunk_strategy_requested = str(m.get("chunk_strategy_requested") or "").strip() or None
+
+        effective_raw = m.get("pipeline_effective") if isinstance(m.get("pipeline_effective"), dict) else {}
+        try:
+            effective = PipelineEffectiveSnapshot.model_validate(effective_raw)
+        except Exception:
+            effective = PipelineEffectiveSnapshot()
+
+        rule_packs: list[str] = []
+        raw_rule_packs = m.get("governance_rule_packs")
+        if isinstance(raw_rule_packs, list):
+            for item in raw_rule_packs:
+                if not isinstance(item, str):
+                    continue
+                val = item.strip()
+                if not val:
+                    continue
+                rule_packs.append(val[:64])
+                if len(rule_packs) >= 20:
+                    break
+
+        analytics_payload: dict[str, Any] = {}
+        raw_analytics = m.get("document_analytics_raw")
+        if isinstance(raw_analytics, dict):
+            analytics_payload = raw_analytics
+        else:
+            # Fallback: best-effort from artifact stats keys stored at top-level.
+            for key in ("page_count", "table_count", "image_count", "block_count"):
+                if key in m:
+                    analytics_payload[key] = m.get(key)
+
+        try:
+            analytics = DocumentAnalyticsSchema.model_validate(analytics_payload)
+        except Exception:
+            analytics = DocumentAnalyticsSchema()
+
+        text_quality = m.get("parsed_text_quality")
+        text_quality_dict: dict[str, Any] = {}
+        if isinstance(text_quality, dict):
+            text_quality_dict = {str(k): v for k, v in text_quality.items() if k is not None}
+
+        governance_enabled = bool(m.get("governance_enabled") or getattr(effective, "governance_enabled", False))
+
+        return cls(
+            active_pipeline_hash=active_hash,
+            pipeline_hash=pipeline_hash,
+            parser_backend=parser_backend,
+            parser_backend_requested=parser_backend_requested,
+            chunk_strategy=chunk_strategy,
+            chunk_strategy_requested=chunk_strategy_requested,
+            governance_enabled=governance_enabled,
+            governance_rule_packs=rule_packs,
+            pipeline_effective=effective,
+            analytics_raw=analytics,
+            parsed_text_quality=text_quality_dict,
+        )
 
 
 class DocumentParsePreview(BaseModel):
@@ -881,3 +1002,7 @@ class DocumentBatchUploadResponse(BaseModel):
     failed_count: int
     successful: List[DocumentBatchUploadSuccess] = Field(default_factory=list)
     failed: List[DocumentBatchUploadFailure] = Field(default_factory=list)
+
+
+# Resolve forward references (DocumentDetail.pipeline -> DocumentPipelineProvenance).
+DocumentDetail.model_rebuild()
