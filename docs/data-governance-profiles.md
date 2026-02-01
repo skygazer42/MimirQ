@@ -6,6 +6,7 @@ MimirQ 支持用“治理预设（Profiles）”来统一管理数据治理策�
 
 - 批量套用一组 PipelineOptions（`pipeline_patch`）
 - 附加一组 Regex 清洗规则（`regex_rules`）
+- 可选启用内置规则包（rule packs）：`pipeline_patch.governance_rule_packs`
 
 重要：Profile **不会**、也 **不允许** 上传/执行任意 Python/JS 代码（避免 RCE 风险）。
 
@@ -25,6 +26,7 @@ MimirQ 支持用“治理预设（Profiles）”来统一管理数据治理策�
     "input_formats": ["markdown"],
     "pipeline_patch": {
       "governance_enabled": true,
+      "governance_rule_packs": ["pdf_watermark", "pdf_header_footer_cn"],
       "governance_unwrap_lines": true,
       "governance_remove_common_lines": true,
       "governance_normalize_tables": true
@@ -61,6 +63,7 @@ MimirQ 支持用“治理预设（Profiles）”来统一管理数据治理策�
 - `version`：schema 版本（当前为 `"1"`）
 - `input_formats`：建议的预览输入格式（`markdown` / `html`）
 - `pipeline_patch`：将被合并到 PipelineOptions（前端/后端都支持）
+- `pipeline_patch.governance_rule_packs`：可选，启用内置 rule packs（见 `docs/governance-rule-packs.md`）
 - `regex_rules`：附加的清洗规则（与默认规则叠加）
 
 ### regex_rules
@@ -121,4 +124,3 @@ MimirQ 支持用“治理预设（Profiles）”来统一管理数据治理策�
 - 导入脚本（JSON）
 - 导出脚本（JSON）
 - 一键应用到当前配置（会覆盖对应字段）
-
