@@ -40,6 +40,7 @@ import type { ChunkPreviewItem } from '@/types'
 import { computeCoverageSignals, computeRoleIndices, fnv1a32, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
 import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
+import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
 
 const QUERY_DEBOUNCE_MS = 150
 type SortMode = 'index' | 'length_desc' | 'length_asc'
@@ -105,6 +106,8 @@ export function ChunkList() {
   const [sectionFilter, setSectionFilter] = useState<string>(SECTION_ALL_VALUE)
   const [retrieveOpen, setRetrieveOpen] = useState(false)
   const [retrieveQuery, setRetrieveQuery] = useState('')
+  const [rerankEnabled, setRerankEnabled] = useState(false)
+  const [rerankAlphaPct, setRerankAlphaPct] = useState(65)
   const [minLen, setMinLen] = useState<number>(0)
   const [maxLen, setMaxLen] = useState<number>(0)
   const [onlyShort, setOnlyShort] = useState(false)
@@ -137,6 +140,8 @@ export function ChunkList() {
     setGroupMode('none')
     setRetrieveOpen(false)
     setRetrieveQuery('')
+    setRerankEnabled(false)
+    setRerankAlphaPct(65)
     setCollapsedGroups({})
     setMinLen(0)
     setMaxLen(0)
@@ -231,6 +236,11 @@ export function ChunkList() {
     if (!q) return []
     return searchChunkIndex(retrievalIndex, q, { limit: 10 })
   }, [retrieveOpen, retrieveQuery, retrievalIndex])
+
+  const retrievalDisplayResults: Array<ChunkSearchResult | RerankedChunkSearchResult> = useMemo(() => {
+    if (!rerankEnabled) return retrievalResults
+    return rerankChunkSearchResults(retrievalResults, retrieveQuery, effectiveChunks, { alpha: rerankAlphaPct / 100 })
+  }, [rerankEnabled, retrievalResults, retrieveQuery, effectiveChunks, rerankAlphaPct])
 
   const duplicateIndices = useMemo(() => {
     const dups = new Set<number>()
@@ -997,7 +1007,7 @@ export function ChunkList() {
             title="Retrieve (ranked local search)"
           >
             <Search className="h-3.5 w-3.5 mr-1" />
-            Retrieve{retrieveQuery.trim() ? ` ${retrievalResults.length}` : ''}
+            Retrieve{retrieveQuery.trim() ? ` ${retrievalDisplayResults.length}` : ''}
           </Button>
           {matchesLabel ? <span className="text-[10px] text-muted-foreground font-mono">{matchesLabel}</span> : null}
           <div className="hidden lg:flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -1013,7 +1023,7 @@ export function ChunkList() {
 
       {retrieveOpen ? (
         <div className="border-b border-border/60 bg-card px-4 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Search className="w-4 h-4 text-muted-foreground" />
             <Input
               value={retrieveQuery}
@@ -1036,14 +1046,40 @@ export function ChunkList() {
                 Clear
               </Button>
             ) : null}
+            <Button
+              type="button"
+              variant={rerankEnabled ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 px-2 text-[11px]"
+              onClick={() => setRerankEnabled((v) => !v)}
+              title="Rerank (local sim; best-effort)"
+            >
+              Rerank
+            </Button>
+            {rerankEnabled ? (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground font-mono" title="alpha (retrieval weight)">
+                  {rerankAlphaPct}%
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={rerankAlphaPct}
+                  onChange={(e) => setRerankAlphaPct(Number(e.target.value) || 0)}
+                  aria-label="Rerank alpha (retrieval weight)"
+                  className="w-28 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+            ) : null}
           </div>
 
           {retrieveQuery.trim() ? (
             <div className="mt-2 space-y-2">
-              {retrievalResults.length > 0 ? (
-                retrievalResults.map((r) => (
+              {retrievalDisplayResults.length > 0 ? (
+                retrievalDisplayResults.map((r) => (
                   <button
-                    key={`${r.index}-${r.score}`}
+                    key={r.index}
                     type="button"
                     className="w-full text-left rounded-xl border border-border/60 bg-background hover:bg-muted px-3 py-2 transition-colors focus-ring"
                     onClick={() => setSelectedChunkIndex(r.index)}
@@ -1066,7 +1102,16 @@ export function ChunkList() {
                       ) : (
                         <span className="min-w-0 flex-1" />
                       )}
-                      <span className="text-[10px] text-muted-foreground font-mono">{r.score.toFixed(2)}</span>
+                      {'combined_score' in r ? (
+                        <span
+                          className="text-[10px] text-muted-foreground font-mono"
+                          title={`retrieve=${r.retrieval_score.toFixed(2)} · rerank=${Math.round(r.rerank_score * 100)}% · combined=${r.combined_score.toFixed(2)}`}
+                        >
+                          C {r.combined_score.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground font-mono">R {r.score.toFixed(2)}</span>
+                      )}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">{r.snippet}</div>
                   </button>
@@ -1077,7 +1122,7 @@ export function ChunkList() {
             </div>
           ) : (
             <div className="mt-2 text-[11px] text-muted-foreground">
-              Type a query to simulate retrieval ranking (local MiniSearch; best-effort).
+              Type a query to simulate retrieval ranking (local MiniSearch). Enable Rerank to simulate a reranker pass (best-effort).
             </div>
           )}
         </div>
