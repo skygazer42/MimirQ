@@ -9,6 +9,7 @@ import { Grid3X3 } from 'lucide-react'
 
 const providers = [
   { id: 'openai', name: 'OpenAI', color: '#10A37F' },
+  { id: 'openai-embedding', name: 'OpenAI Embedding', color: '#10A37F' },
   { id: 'anthropic', name: 'Anthropic', color: '#CC785C' },
   { id: 'deepseek', name: 'DeepSeek', color: '#0066FF' },
   { id: 'zhipu', name: '智谱 AI', color: '#9333EA' },
@@ -21,7 +22,10 @@ const providers = [
   { id: 'siliconflow', name: 'SiliconFlow', color: '#7C3AED' },
   { id: 'openrouter', name: 'OpenRouter', color: '#6366F1' },
   { id: 'together', name: 'Together AI', color: '#0EA5E9' },
-  { id: 'local', name: '本地 Embedding', color: '#10B981' },
+  { id: 'cohere-reranker', name: 'Cohere Reranker', color: '#0EA5E9' },
+  { id: 'jina-reranker', name: 'Jina Reranker', color: '#8B5CF6' },
+  { id: 'local-embedding', name: '本地 Embedding', color: '#10B981' },
+  { id: 'local-reranker', name: '本地 Reranker', color: '#F97316' },
 ]
 
 export default function LogosPreviewPage() {
@@ -179,8 +183,9 @@ export default function LogosPreviewPage() {
               使用说明
             </h3>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• 所有 Logo 使用 SVG 格式,支持任意缩放</li>
-              <li>• 图标路径: <code className="bg-muted px-1 rounded">/public/logos/</code></li>
+              <li>• ProviderIcon 优先使用 LobeHub SVG：<code className="bg-muted px-1 rounded">/public/logos/lobehub/</code></li>
+              <li>• 旧资源兜底：<code className="bg-muted px-1 rounded">/public/logos/</code>（PNG/SVG）</li>
+              <li>• 同步脚本：<code className="bg-muted px-1 rounded">node web/scripts/sync-lobehub-icons.mjs</code></li>
               <li>• 组件: <code className="bg-muted px-1 rounded">&lt;ProviderIcon providerId=&quot;openai&quot; /&gt;</code></li>
               <li>• 建议尺寸: 24px (小)、32px (中)、48px (大)</li>
               <li>• 如需替换,访问 <code className="bg-muted px-1 rounded">/public/logos/README.md</code> 查看指南</li>
