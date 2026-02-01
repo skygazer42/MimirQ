@@ -311,6 +311,9 @@ class Settings(BaseSettings):
     # Full endpoint URL, e.g. http://localhost:9030/convert (depends on your PaddleOCR-VL service).
     PADDLE_VL_API_URL: str = ""
     PADDLE_VL_TIMEOUT_SEC: int = 600
+    # Display/audit only: expected service pipeline version/mode (not used by the backend parser directly).
+    PADDLE_VL_PIPELINE_VERSION: str = "v1.5"
+    PADDLE_VL_MODE: str = "doc_parser"
 
     # olmOCR (PDF -> Markdown external service; optional)
     OLMOCR_ENABLED: bool = False

@@ -337,6 +337,9 @@ class PaddleVLConfig(BaseModel):
     """PaddleOCR-VL external PDF->Markdown service config."""
     api_url: str = ""
     timeout_sec: int = 600
+    # Display/audit only: expected service pipeline version/mode (not used by the backend parser directly).
+    pipeline_version: str = "v1.5"
+    mode: str = "doc_parser"
 
 
 class SystemSettings(BaseModel):
@@ -592,6 +595,10 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.PADDLE_VL_API_URL = env_vars["PADDLE_VL_API_URL"]
     if "PADDLE_VL_TIMEOUT_SEC" in updated_keys and "PADDLE_VL_TIMEOUT_SEC" in env_vars:
         settings.PADDLE_VL_TIMEOUT_SEC = _parse_int(env_vars["PADDLE_VL_TIMEOUT_SEC"], default=settings.PADDLE_VL_TIMEOUT_SEC)
+    if "PADDLE_VL_PIPELINE_VERSION" in updated_keys and "PADDLE_VL_PIPELINE_VERSION" in env_vars:
+        settings.PADDLE_VL_PIPELINE_VERSION = env_vars["PADDLE_VL_PIPELINE_VERSION"]
+    if "PADDLE_VL_MODE" in updated_keys and "PADDLE_VL_MODE" in env_vars:
+        settings.PADDLE_VL_MODE = env_vars["PADDLE_VL_MODE"]
 
     # MagicPDF
     if "MAGIC_PDF_CLI" in updated_keys and "MAGIC_PDF_CLI" in env_vars:
@@ -836,6 +843,8 @@ async def get_settings(
         paddle_vl=PaddleVLConfig(
             api_url=str(getattr(settings, "PADDLE_VL_API_URL", "") or ""),
             timeout_sec=int(getattr(settings, "PADDLE_VL_TIMEOUT_SEC", 600) or 600),
+            pipeline_version=str(getattr(settings, "PADDLE_VL_PIPELINE_VERSION", "v1.5") or "v1.5"),
+            mode=str(getattr(settings, "PADDLE_VL_MODE", "doc_parser") or "doc_parser"),
         ),
         magicpdf=MagicPDFConfig(
             cli=getattr(settings, "MAGIC_PDF_CLI", "magic-pdf") or "magic-pdf",
@@ -1106,7 +1115,15 @@ async def update_settings(
             pv = request.paddle_vl
             env_vars["PADDLE_VL_API_URL"] = _sanitize_env_value("PADDLE_VL_API_URL", pv.api_url or "")
             env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(int(pv.timeout_sec or 0))
-            updated_keys.extend(["PADDLE_VL_API_URL", "PADDLE_VL_TIMEOUT_SEC"])
+            pipeline_version = (pv.pipeline_version or "v1.5").strip() or "v1.5"
+            env_vars["PADDLE_VL_PIPELINE_VERSION"] = _sanitize_env_value("PADDLE_VL_PIPELINE_VERSION", pipeline_version)
+
+            mode = (pv.mode or "doc_parser").strip().lower() or "doc_parser"
+            if mode not in {"doc_parser"}:
+                mode = "doc_parser"
+            env_vars["PADDLE_VL_MODE"] = _sanitize_env_value("PADDLE_VL_MODE", mode)
+
+            updated_keys.extend(["PADDLE_VL_API_URL", "PADDLE_VL_TIMEOUT_SEC", "PADDLE_VL_PIPELINE_VERSION", "PADDLE_VL_MODE"])
 
         if request.magicpdf:
             mp = request.magicpdf
