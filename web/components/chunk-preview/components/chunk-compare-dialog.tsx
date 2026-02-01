@@ -39,9 +39,31 @@ function formatDelta(n: number) {
   return n > 0 ? `+${n}` : String(n)
 }
 
+function formatPct(ratio: number | null) {
+  if (ratio == null || !Number.isFinite(ratio)) return '-'
+  return `${Math.round(ratio * 100)}%`
+}
+
+function formatDeltaPct(deltaRatio: number | null) {
+  if (deltaRatio == null || !Number.isFinite(deltaRatio) || deltaRatio === 0) return '0%'
+  const v = Math.round(deltaRatio * 100)
+  return v > 0 ? `+${v}%` : `${v}%`
+}
+
 function safeNum(value: any): number | null {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
+}
+
+function clampInt(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.trunc(value)))
+}
+
+function percentile(sorted: number[], p: number) {
+  if (sorted.length === 0) return 0
+  const pp = Math.min(100, Math.max(0, p))
+  const idx = Math.floor((pp / 100) * (sorted.length - 1))
+  return sorted[clampInt(idx, 0, sorted.length - 1)] ?? 0
 }
 
 function buildMultiset(chunks: Array<{ index: number; content?: string }>) {
@@ -101,12 +123,37 @@ export function ChunkCompareDialog(props: {
     const aStats = a.stats || {}
     const bStats = b.stats || {}
 
+    const unit = (b.params?.unit || a.params?.unit || 'chars') as string
+
     const aAvg = safeNum(aStats.avg)
     const bAvg = safeNum(bStats.avg)
     const aP10 = safeNum(aStats.p10)
     const bP10 = safeNum(bStats.p10)
     const aP90 = safeNum(aStats.p90)
     const bP90 = safeNum(bStats.p90)
+
+    const aCoverage = safeNum(aStats.coverage_ratio)
+    const bCoverage = safeNum(bStats.coverage_ratio)
+    const aWaste = safeNum(aStats.overlap_waste_ratio)
+    const bWaste = safeNum(bStats.overlap_waste_ratio)
+    const aGapCount = safeNum(aStats.gap_count)
+    const bGapCount = safeNum(bStats.gap_count)
+
+    const computePctl = (preview: ChunkPreviewResponse, pct: number) => {
+      const lengths = (preview.chunks || []).map((c) => {
+        const len = Number(c?.length || 0) || 0
+        const tokensFallback = Math.max(0, Math.trunc(len / 4))
+        if (unit === 'tokens') {
+          return typeof c?.tokens_est === 'number' ? Math.max(0, Math.trunc(c.tokens_est)) : tokensFallback
+        }
+        return Math.max(0, Math.trunc(len))
+      })
+      const sorted = [...lengths].sort((x, y) => x - y)
+      return percentile(sorted, pct)
+    }
+
+    const aP95 = computePctl(a, 95)
+    const bP95 = computePctl(b, 95)
 
     const aSet = buildMultiset(a.chunks || [])
     const bSet = buildMultiset(b.chunks || [])
@@ -143,7 +190,7 @@ export function ChunkCompareDialog(props: {
     const overlap = total > 0 ? common / total : 0
 
     return {
-      unit: (b.params?.unit || a.params?.unit || 'chars') as string,
+      unit,
       aCount: Number(a.total_chunks || 0),
       bCount: Number(b.total_chunks || 0),
       deltaCount: Number(b.total_chunks || 0) - Number(a.total_chunks || 0),
@@ -153,6 +200,17 @@ export function ChunkCompareDialog(props: {
       bP10,
       aP90,
       bP90,
+      aP95,
+      bP95,
+      aCoverage,
+      bCoverage,
+      deltaCoverage: aCoverage == null || bCoverage == null ? null : bCoverage - aCoverage,
+      aWaste,
+      bWaste,
+      deltaWaste: aWaste == null || bWaste == null ? null : bWaste - aWaste,
+      aGapCount,
+      bGapCount,
+      deltaGapCount: aGapCount == null || bGapCount == null ? null : bGapCount - aGapCount,
       added,
       removed,
       overlap,
@@ -212,7 +270,7 @@ export function ChunkCompareDialog(props: {
               </div>
 
               {baseline && diff ? (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                   <div className="bg-card border border-border/60 rounded-xl p-4">
                     <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Chunks</div>
                     <div className="mt-2 flex items-end justify-between">
@@ -240,9 +298,9 @@ export function ChunkCompareDialog(props: {
                         <span className="ml-1 text-muted-foreground">({formatDelta((diff.bAvg ?? 0) - (diff.aAvg ?? 0))})</span>
                       </div>
                       <div className="text-muted-foreground">
-                        P90<br />
-                        <span className="font-mono text-foreground/90">{diff.bP90 ?? '-'}</span>
-                        <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP90 ?? 0) - (diff.aP90 ?? 0))})</span>
+                        P95<br />
+                        <span className="font-mono text-foreground/90">{diff.bP95 ?? '-'}</span>
+                        <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP95 ?? 0) - (diff.aP95 ?? 0))})</span>
                       </div>
                     </div>
                   </div>
@@ -257,6 +315,30 @@ export function ChunkCompareDialog(props: {
                     </div>
                     <div className="mt-2 text-[11px] text-muted-foreground">
                       以 trimmed chunk 内容哈希做 multiset 匹配；不考虑顺序和微小改动。
+                    </div>
+                  </div>
+
+                  <div className="bg-card border border-border/60 rounded-xl p-4">
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">覆盖/重叠/质量</div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                      <div className="text-muted-foreground">
+                        coverage<br />
+                        <span className="font-mono text-foreground/90">{formatPct(diff.bCoverage)}</span>
+                        <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaCoverage)})</span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        waste<br />
+                        <span className="font-mono text-foreground/90">{formatPct(diff.bWaste)}</span>
+                        <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaWaste)})</span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        gaps<br />
+                        <span className="font-mono text-foreground/90">{diff.bGapCount ?? '-'}</span>
+                        <span className="ml-1 text-muted-foreground">({formatDelta((diff.bGapCount ?? 0) - (diff.aGapCount ?? 0))})</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[11px] text-muted-foreground">
+                      quality A: {baseline.quality_gate?.grade ?? '-'} · B: {current.quality_gate?.grade ?? '-'}
                     </div>
                   </div>
                 </div>
@@ -281,4 +363,3 @@ export function ChunkCompareDialog(props: {
     </Dialog>
   )
 }
-
