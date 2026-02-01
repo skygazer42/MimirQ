@@ -13,7 +13,7 @@ import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { pipelineApi } from '@/lib/api-client'
+import { governanceApi, pipelineApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type {
   CleanPreviewResponse,
@@ -63,6 +63,51 @@ function safeParseJson<T>(text: string): { ok: true; value: T } | { ok: false; e
   }
 }
 
+function pythonReFlagsToJs(flags: number): string {
+  // Best-effort mapping (Python re flags int -> JS flags).
+  // Python: IGNORECASE=2, MULTILINE=8, DOTALL=16
+  let out = ''
+  const n = Number(flags || 0)
+  if (n & 2) out += 'i'
+  if (n & 8) out += 'm'
+  if (n & 16) out += 's'
+  return out
+}
+
+function stripLeadingInlineFlags(pattern: string): { pattern: string; inlineJsFlags: string } {
+  const raw = String(pattern || '')
+  const match = raw.match(/^\(\?([A-Za-z]+)\)/)
+  if (!match) return { pattern: raw, inlineJsFlags: '' }
+  const flags = match[1] || ''
+  let js = ''
+  for (const ch of flags) {
+    if (ch === 'i' && !js.includes('i')) js += 'i'
+    if (ch === 'm' && !js.includes('m')) js += 'm'
+    if (ch === 's' && !js.includes('s')) js += 's'
+  }
+  return { pattern: raw.slice(match[0].length), inlineJsFlags: js }
+}
+
+function validateRegexRuleBestEffort(pattern: string, flags: number): string | null {
+  const raw = String(pattern || '').trim()
+  if (!raw) return 'pattern required'
+
+  // Try to make common Python patterns "compile-checkable" in JS.
+  const stripped = stripLeadingInlineFlags(raw)
+  const jsFlags = Array.from(new Set((pythonReFlagsToJs(flags) + stripped.inlineJsFlags).split(''))).join('')
+  const jsPattern = stripped.pattern
+    .replace(/\\A/g, '^')
+    .replace(/\\Z/g, '$')
+
+  try {
+    // eslint-disable-next-line no-new
+    new RegExp(jsPattern, jsFlags)
+    return null
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err || 'Invalid regex')
+  }
+}
+
 export function ProfileEditorDrawer({
   open,
   mode,
@@ -86,6 +131,8 @@ export function ProfileEditorDrawer({
   const [inputFormats, setInputFormats] = useState<Array<'markdown' | 'html'>>(['markdown'])
   const [pipelinePatch, setPipelinePatch] = useState<DocumentPipelineOptions>({})
   const [regexRules, setRegexRules] = useState<RegexRuleModel[]>([])
+  const [availableRulePacks, setAvailableRulePacks] = useState<string[]>([])
+  const [loadingRulePacks, setLoadingRulePacks] = useState(false)
 
   const [patchJson, setPatchJson] = useState('')
   const [patchJsonError, setPatchJsonError] = useState<string | null>(null)
@@ -106,6 +153,11 @@ export function ProfileEditorDrawer({
       regex_rules: regexRules || [],
     }),
     [inputFormats, pipelinePatch, regexRules]
+  )
+
+  const selectedRulePacks = useMemo(
+    () => (Array.isArray(pipelinePatch?.governance_rule_packs) ? pipelinePatch.governance_rule_packs : []),
+    [pipelinePatch]
   )
 
   const resetDraft = useCallback(() => {
@@ -181,6 +233,28 @@ export function ProfileEditorDrawer({
     }
   }, [open, isCreate, profileRef, seedCreate])
 
+  // Load available rule packs for multi-select UI (best-effort).
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoadingRulePacks(true)
+    void (async () => {
+      try {
+        const resp = await governanceApi.listRulePacks()
+        if (cancelled) return
+        setAvailableRulePacks(Array.isArray((resp as any)?.items) ? (resp as any).items : [])
+      } catch (err) {
+        console.warn('Load governance rule packs failed:', err)
+        if (!cancelled) setAvailableRulePacks([])
+      } finally {
+        if (!cancelled) setLoadingRulePacks(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
   // Keep JSON view synced for quick-toggle edits.
   useEffect(() => {
     if (!open) return
@@ -208,6 +282,20 @@ export function ProfileEditorDrawer({
 
   const updatePatchNumber = (key: keyof DocumentPipelineOptions, value: number) => {
     setPipelinePatch((prev) => ({ ...(prev || {}), [key]: value }))
+    setPatchJsonError(null)
+    setPatchJsonDirty(false)
+  }
+
+  const toggleRulePack = (pack: string) => {
+    const key = String(pack || '').trim()
+    if (!key) return
+    setPipelinePatch((prev) => {
+      const current = Array.isArray(prev?.governance_rule_packs) ? prev.governance_rule_packs : []
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return { ...(prev || {}), governance_rule_packs: Array.from(next).sort() }
+    })
     setPatchJsonError(null)
     setPatchJsonDirty(false)
   }
@@ -576,6 +664,46 @@ export function ProfileEditorDrawer({
                   <Panel padding="lg" className="rounded-2xl">
                     <div className="flex items-start justify-between gap-3">
                       <div>
+                        <div className="font-semibold text-foreground">Rule packs</div>
+                        <div className="text-[12px] text-muted-foreground mt-1">
+                          Optional server-defined presets (expanded into regex rules). Use these for common sources like PDFs / web imports.
+                        </div>
+                      </div>
+                      {loadingRulePacks ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                          Loading...
+                        </div>
+                      ) : (
+                        <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground">
+                          {selectedRulePacks.length} selected
+                        </span>
+                      )}
+                    </div>
+
+                    {availableRulePacks.length ? (
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {availableRulePacks.map((pack) => (
+                          <label key={pack} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={selectedRulePacks.includes(pack)}
+                              onCheckedChange={() => toggleRulePack(pack)}
+                              disabled={isReadOnly}
+                            />
+                            <span className="font-mono text-xs">{pack}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-3 text-sm text-muted-foreground">
+                        {loadingRulePacks ? 'Loading rule packs...' : 'No rule packs available'}
+                      </div>
+                    )}
+                  </Panel>
+
+                  <Panel padding="lg" className="rounded-2xl">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
                         <div className="font-semibold text-foreground flex items-center gap-2">
                           <Braces className="w-4 h-4 text-muted-foreground" />
                           Advanced JSON (pipeline_patch)
@@ -646,6 +774,10 @@ export function ProfileEditorDrawer({
                                   disabled={isReadOnly}
                                   placeholder="(?mi)^..."
                                 />
+                                {(() => {
+                                  const err = validateRegexRuleBestEffort(r.pattern || '', Number(r.flags ?? 0))
+                                  return err ? <div className="text-[11px] text-destructive">{err}</div> : null
+                                })()}
                               </div>
                               <div className="space-y-1">
                                 <Label className="text-[12px] text-muted-foreground">flags</Label>

@@ -50,6 +50,7 @@ export function buildCleanPreviewRequestFromGovernanceProfile(
   return {
     markdown: String(markdown ?? ''),
     rules,
+    rule_packs: Array.isArray(patch?.governance_rule_packs) && patch.governance_rule_packs.length ? patch.governance_rule_packs : undefined,
     use_default_rules: options.useDefaultRules ?? true,
     include_diff: Boolean(options.includeDiff),
     diff_max_lines: typeof options.diffMaxLines === 'number' ? options.diffMaxLines : 2000,
