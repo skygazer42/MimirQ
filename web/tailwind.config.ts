@@ -98,7 +98,6 @@ const config = {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'hero-glow': 'conic-gradient(from 180deg at 50% 50%, hsl(var(--primary) / 0.1) 0deg, transparent 180deg, hsl(var(--primary) / 0.1) 360deg)',
       },
       keyframes: {
         "accordion-down": {
