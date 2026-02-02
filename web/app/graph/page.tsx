@@ -1082,14 +1082,14 @@ export default function GraphPage() {
           <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-3">
              {/* Main Zoom Controls */}
              <div className="flex flex-col gap-1 bg-card/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/30 border border-border/50">
-	               <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="放大" aria-label="放大">
+	               <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl" title="放大" aria-label="放大">
 	                  <ZoomIn className="w-5 h-5" />
 	                </Button>
-	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomOut()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="缩小" aria-label="缩小">
+	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomOut()} className="rounded-xl" title="缩小" aria-label="缩小">
 	                  <ZoomOut className="w-5 h-5" />
 	                </Button>
                 <div className="h-px bg-muted mx-2 my-0.5"></div>
-	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomToFit()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="适应屏幕" aria-label="适应屏幕">
+	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomToFit()} className="rounded-xl" title="适应屏幕" aria-label="适应屏幕">
 	                  <Maximize className="w-5 h-5" />
 	                </Button>
              </div>
@@ -1101,8 +1101,8 @@ export default function GraphPage() {
 	                   size="icon" 
 	                   onClick={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
                    className={cn(
-                     "rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-colors", 
-                     viewMode === '3d' && "bg-violet-100 text-violet-600 ring-2 ring-violet-500/20"
+                     "rounded-xl",
+                     viewMode === '3d' && "bg-primary/10 text-primary ring-2 ring-primary/20"
 	                   )}
 	                   title={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
 	                   aria-label={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
@@ -1114,8 +1114,8 @@ export default function GraphPage() {
 	                   size="icon" 
 	                   onClick={startExplainMode}
                    className={cn(
-                     "rounded-xl hover:bg-teal-500/10 dark:hover:bg-teal-500/20 hover:text-teal-600 dark:hover:text-teal-300 transition-colors", 
-                     isExplainMode && "bg-teal-500/20 dark:bg-teal-500/30 text-teal-600 dark:text-teal-300 ring-2 ring-teal-500/20"
+                     "rounded-xl",
+                     isExplainMode && "bg-primary/10 text-primary ring-2 ring-primary/20"
 	                   )}
 	                   title="推理演示 (Explain)"
 	                   aria-label="推理演示"
@@ -1126,7 +1126,7 @@ export default function GraphPage() {
 	                   variant="ghost" 
 	                   size="icon" 
 	                   onClick={cycleLayoutMode}
-	                   className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" 
+	                   className="rounded-xl"
 	                   title={`切换布局: ${getLayoutLabel()}`}
 	                   aria-label={`切换布局：${getLayoutLabel()}`}
 	                >
@@ -1138,8 +1138,8 @@ export default function GraphPage() {
 	                   size="icon" 
 	                   onClick={togglePathMode}
                    className={cn(
-                     "rounded-xl hover:bg-amber-50 hover:text-amber-600 transition-colors", 
-                     isPathMode && "bg-amber-100 text-amber-600 ring-2 ring-amber-500/20"
+                     "rounded-xl",
+                     isPathMode && "bg-primary/10 text-primary ring-2 ring-primary/20"
 	                   )}
 	                   title="路径发现 (Shortest Path)"
 	                   aria-label="路径发现"
@@ -1150,7 +1150,7 @@ export default function GraphPage() {
 	                  variant="ghost" 
 	                  size="icon" 
 	                  onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
-	                  className={cn("rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300", showEdgeLabels && "bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300")} 
+	                  className={cn("rounded-xl", showEdgeLabels && "bg-primary/10 text-primary ring-2 ring-primary/20")} 
 	                  title="显示/隐藏连线标签"
 	                  aria-label="显示或隐藏连线标签"
 	                >
