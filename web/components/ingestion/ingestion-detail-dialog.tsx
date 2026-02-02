@@ -189,16 +189,28 @@ export function IngestionDetailDialog({
                       <div key={s.key} className="flex flex-col items-center gap-3 group">
                         <div
                           className={cn(
-                            'h-10 w-10 rounded-full border-2 flex items-center justify-center transition-all duration-300',
-                            isDone && 'bg-emerald-50 border-emerald-500 text-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.2)]',
-                            isActive && !isFailed && 'bg-sky-50 border-sky-500 text-sky-600 shadow-[0_0_10px_rgba(14,165,233,0.3)] scale-110',
-                            isFailed && (doc.status === 'quarantined' ? 'bg-amber-50 border-amber-500 text-amber-700 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : 'bg-red-50 border-red-500 text-red-600 shadow-[0_0_10px_rgba(239,68,68,0.3)]'),
-                            !isDone && !isActive && 'bg-slate-50 border-slate-200 text-slate-300'
+                            'flex size-10 items-center justify-center rounded-full border-2 text-sm font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none',
+                            isDone && 'border-success/40 bg-success/10 text-success',
+                            isActive && !isFailed && 'border-primary/40 bg-primary/10 text-primary',
+                            isFailed &&
+                              (doc.status === 'quarantined'
+                                ? 'border-warning/40 bg-warning/10 text-warning'
+                                : 'border-destructive/40 bg-destructive/10 text-destructive'),
+                            !isDone && !isActive && 'border-border/70 bg-muted/40 text-muted-foreground'
                           )}
                         >
-                          {Icon ? <Icon className={cn('h-5 w-5', isDone && 'text-emerald-600')} /> : <span className="text-xs font-bold">{idx + 1}</span>}
+                          {Icon ? (
+                            <Icon className="size-5" aria-hidden="true" />
+                          ) : (
+                            <span>{idx + 1}</span>
+                          )}
                         </div>
-                        <div className={cn('text-[11px] font-bold uppercase ', isActive ? 'text-slate-900' : 'text-slate-400')}>
+                        <div
+                          className={cn(
+                            'text-[11px] font-semibold',
+                            isActive || isDone ? 'text-foreground' : 'text-muted-foreground'
+                          )}
+                        >
                           {s.label}
                         </div>
                       </div>
@@ -208,10 +220,14 @@ export function IngestionDetailDialog({
 
                 {(doc.status === 'processing' || doc.status === 'pending') && (
                   <div className="mt-8">
-                    <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <div
-                        className="h-full bg-sky-500 transition-all duration-500 shadow-[0_0_10px_rgba(14,165,233,0.5)]"
-                        style={{ width: `${Math.max(0, Math.min(100, doc.processing_progress || 0))}%` }}
+                        className="h-full origin-left bg-primary transition-transform duration-200 motion-reduce:transition-none"
+                        style={{
+                          transform: `scaleX(${
+                            Math.max(0, Math.min(100, doc.processing_progress || 0)) / 100
+                          })`,
+                        }}
                       />
                     </div>
                   </div>
