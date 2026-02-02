@@ -226,7 +226,7 @@ export default function DatasetsPage() {
               }}
             >
               <DialogTrigger asChild>
-                <Button className="gap-2 rounded-lg shadow-glow border border-primary/20">
+                <Button className="gap-2 rounded-lg shadow-sm border border-primary/20">
                   <Plus className="w-4 h-4" />
                   新建数据集
                 </Button>
