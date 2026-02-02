@@ -1,6 +1,5 @@
 "use client"
 
-import { motion } from "framer-motion"
 import { FileText, ScanLine, Scissors, Database, CheckCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -19,7 +18,10 @@ const STAGES = [
 
 export function PipelineVisualizer({ progress, stage, className }: PipelineVisualizerProps) {
   // Calculate active stage index based on progress
-  const activeIndex = STAGES.findIndex(s => progress < s.threshold) === -1 ? STAGES.length - 1 : STAGES.findIndex(s => progress < s.threshold)
+  const clamped = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0
+  const nextIndex = STAGES.findIndex((s) => clamped < s.threshold)
+  const activeIndex = nextIndex === -1 ? STAGES.length - 1 : nextIndex
+  const progressScale = clamped / 100
   
   return (
     <div className={cn("w-full py-4 select-none", className)}>
@@ -28,40 +30,36 @@ export function PipelineVisualizer({ progress, stage, className }: PipelineVisua
         <div className="absolute left-0 right-0 top-1/2 h-1 bg-secondary rounded-full -z-10" />
         
         {/* Progress Line (transform-only; avoids animating layout width) */}
-        <motion.div 
-            className="absolute left-0 right-0 top-1/2 h-1 bg-primary rounded-full -z-10 origin-left"
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: Math.max(0, Math.min(1, progress / 100)) }}
-            transition={{ type: "spring", stiffness: 50, damping: 20 }}
+        <div
+          aria-hidden="true"
+          className="absolute left-0 right-0 top-1/2 h-1 bg-primary rounded-full -z-10 origin-left transition-transform duration-200 ease-out motion-reduce:transition-none"
+          style={{ transform: `scaleX(${progressScale})` }}
         />
 
         {/* Nodes */}
         {STAGES.map((s, idx) => {
             const Icon = s.icon
             const isActive = idx <= activeIndex
-            const isCompleted = idx < activeIndex || progress >= 100
+            const isCompleted = idx < activeIndex || clamped >= 100
 
             return (
                 <div key={s.id} className="relative flex flex-col items-center gap-2">
-                    <motion.div
-                        initial={false}
-                        animate={{
-                            scale: isActive ? 1.1 : 1,
-                            backgroundColor: isCompleted ? "var(--primary)" : isActive ? "var(--background)" : "var(--secondary)",
-                            borderColor: isCompleted || isActive ? "var(--primary)" : "transparent"
-                        }}
-                        className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center border-2 shadow-sm z-10 transition-colors duration-300",
-                            isCompleted ? "bg-primary text-primary-foreground border-primary" : 
-                            isActive ? "bg-background text-primary border-primary ring-4 ring-primary/10" : 
-                            "bg-secondary text-muted-foreground border-transparent"
-                        )}
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center border-2 shadow-sm z-10 transition-transform transition-colors duration-200 ease-out motion-reduce:transition-none",
+                        isActive && "scale-110",
+                        isCompleted
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : isActive
+                          ? "bg-background text-primary border-primary ring-4 ring-primary/10"
+                          : "bg-secondary text-muted-foreground border-transparent"
+                      )}
                     >
-                        {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}
-                    </motion.div>
+                      {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}
+                    </div>
                     
                     <span className={cn(
-                        "absolute top-10 text-[10px] font-medium whitespace-nowrap transition-colors duration-300",
+                        "absolute top-10 text-[10px] font-medium whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none",
                         isActive ? "text-primary" : "text-muted-foreground"
                     )}>
                         {s.label}
