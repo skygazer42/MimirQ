@@ -165,7 +165,7 @@ export default function FeedbackTriagePage() {
 	              <div
 	                key={idx}
 	                className={cn(
-	                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1",
+	                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-sm hover:shadow-md transition-shadow duration-200 motion-reduce:transition-none",
 	                  stat.border
 	                )}
 	              >
@@ -232,8 +232,7 @@ export default function FeedbackTriagePage() {
 	                  }}
 	                  aria-label={`查看反馈详情：${item.reason || '用户未填写原因'}`}
 		                  className={cn(
-		                    'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden cursor-pointer focus-ring motion-reduce:transition-none',
-		                    'bg-card border-border hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
+		                    'group w-full text-left rounded-xl border border-border bg-card shadow-sm hover:shadow-md hover:border-primary/20 transition-shadow duration-200 relative overflow-hidden cursor-pointer focus-ring motion-reduce:transition-none'
 		                  )}
 		                >
                   <div
