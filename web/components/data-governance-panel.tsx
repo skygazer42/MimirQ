@@ -984,9 +984,9 @@ export function DataGovernancePanel() {
             {/* 目录切换 & 搜索 */}
             <div className="p-3 border-b border-border space-y-3">
               <Select value={activeFolderId || ROOT_FOLDER_ID} onValueChange={setActiveFolderId}>
-                <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:ring-sky-500/50 focus:bg-card transition-all">
+                <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:bg-card focus-ring transition-colors duration-200 motion-reduce:transition-none">
                   <div className="flex items-center gap-2 truncate">
-                    <FolderTree className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300" />
+                    <FolderTree className="w-3.5 h-3.5 text-primary" />
                     <SelectValue placeholder="切换目录" />
                   </div>
                 </SelectTrigger>
@@ -1005,7 +1005,7 @@ export function DataGovernancePanel() {
                 <input
                   type="text"
                   placeholder="搜索当前目录文件..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-muted border border-border rounded-lg text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:ring-1 focus:ring-sky-500/50 focus:border-sky-500/50 transition-all"
+                  className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
                 />
               </div>
             </div>
