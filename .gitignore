@@ -46,6 +46,10 @@ package-lock.json
 *.swo
 *~
 
+# AI agent tooling (local-only; do not commit skill caches)
+.codex/
+.gemini/
+
 # OS
 .DS_Store
 Thumbs.db
