@@ -62,9 +62,9 @@ export function FloatingMenu() {
 
   if (!visible) return null
 
-  return (
+    return (
     <div 
-        className="fixed z-[60] flex gap-1 p-1 bg-popover/90 text-popover-foreground backdrop-blur-md rounded-lg shadow-strong border border-border/60 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
+        className="fixed z-60 flex gap-1 p-1 bg-popover/90 text-popover-foreground backdrop-blur-md rounded-lg shadow-strong border border-border/60 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
         style={{ top: position.top, left: position.left, transform: "translateX(-50%)" }}
     >
       <Button variant="ghost" size="sm" className="h-8 text-xs text-foreground hover:bg-accent/40" onClick={() => handleAction("explain")}>

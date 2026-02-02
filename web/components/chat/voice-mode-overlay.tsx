@@ -131,7 +131,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	                initial={reduceMotion ? false : { opacity: 0 }}
 	                animate={{ opacity: 1 }}
 	                exit={reduceMotion ? undefined : { opacity: 0 }}
-	                className="fixed inset-0 z-[100] bg-background text-foreground flex flex-col items-center justify-center"
+	                className="fixed inset-0 z-100 bg-background text-foreground flex flex-col items-center justify-center"
 	            >
 	                <canvas ref={canvasRef} className="absolute inset-0" aria-hidden="true" />
 
