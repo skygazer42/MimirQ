@@ -209,8 +209,6 @@ function EvaluationsPageContent() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
-      <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
-
       <PageScaffold
         title="RAGAS 评测"
         description="基于对话记录与引用上下文，评估 RAG 链路质量"

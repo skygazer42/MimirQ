@@ -1048,9 +1048,6 @@ export default function KnowledgePage() {
 
   return (
     <AppFrame>
-        {/* 背景装饰 */}
-        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
-
         <PageScaffold
           title="知识库管理"
           icon={Database}
@@ -2189,16 +2186,14 @@ export default function KnowledgePage() {
             </div>
           )}
 
-	          {/* 检索测试 */}
-	          {activeTab === 'retrieval' && (
-	            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
-              <Panel padding="none" className="rounded-2xl p-8 text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-primary/60 to-primary/20" />
-                
-                <div className="mb-8">
-                  <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-soft">
-                    <Sparkles className="w-8 h-8" />
-                  </div>
+		          {/* 检索测试 */}
+		          {activeTab === 'retrieval' && (
+		            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
+	              <Panel padding="none" className="rounded-2xl p-8 text-center relative overflow-hidden">
+	                <div className="mb-8">
+	                  <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-soft">
+	                    <Sparkles className="w-8 h-8" />
+	                  </div>
                   <h3 className="text-xl font-bold text-foreground">语义检索测试</h3>
                   <p className="text-muted-foreground mt-2">
                     输入您的问题，模拟 RAG 系统的检索召回过程
