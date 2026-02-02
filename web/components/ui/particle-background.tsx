@@ -19,6 +19,8 @@ export function ParticleBackground({ className, interactive = true }: ParticleBa
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
+  const [color, setColor] = useState(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"))
+  const [linkColor, setLinkColor] = useState(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"))
   
   const particlesInit = useCallback(async (engine: Engine) => {
     await loadSlim(engine)
@@ -51,9 +53,11 @@ export function ParticleBackground({ className, interactive = true }: ParticleBa
   }, [])
 
   // Token-driven colors (re-evaluated when theme flips).
-  // NOTE: the `resolvedTheme` dependency is only used to re-run after theme changes.
-  const color = useMemo(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"), [resolvedTheme])
-  const linkColor = useMemo(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"), [resolvedTheme])
+  useEffect(() => {
+    // When theme changes, CSS variables update, so we can re-read them.
+    setColor(getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"))
+    setLinkColor(getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"))
+  }, [resolvedTheme])
 
   const options = useMemo(
     () =>
