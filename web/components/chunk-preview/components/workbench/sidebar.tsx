@@ -1199,7 +1199,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             <Button
               onClick={() => runPreview()}
               disabled={isLoading}
-              className="h-11 rounded-xl shadow-glow border border-primary/20"
+              className="h-11 rounded-xl shadow-sm border border-primary/20"
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
