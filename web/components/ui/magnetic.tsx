@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useRef } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion"
 
 interface MagneticProps {
@@ -11,6 +11,7 @@ interface MagneticProps {
 export function Magnetic({ children, strength = 0.5 }: MagneticProps) {
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
+  const [isFinePointer, setIsFinePointer] = useState(false)
   
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -20,7 +21,27 @@ export function Magnetic({ children, strength = 0.5 }: MagneticProps) {
   const springX = useSpring(x, springConfig)
   const springY = useSpring(y, springConfig)
 
+  const enabled = !shouldReduceMotion && isFinePointer
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const mq = window.matchMedia("(pointer: fine)")
+    const update = () => setIsFinePointer(mq.matches)
+    update()
+
+    try {
+      mq.addEventListener("change", update)
+      return () => mq.removeEventListener("change", update)
+    } catch {
+      // Safari < 14
+      mq.addListener(update)
+      return () => mq.removeListener(update)
+    }
+  }, [])
+
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (!enabled) return
     if (!ref.current) return
     
     const { clientX, clientY } = e
@@ -40,12 +61,16 @@ export function Magnetic({ children, strength = 0.5 }: MagneticProps) {
     y.set(0)
   }
 
+  if (!enabled) {
+    return <div className="inline-block">{children}</div>
+  }
+
   return (
     <motion.div
       ref={ref}
-      onMouseMove={shouldReduceMotion ? undefined : handleMouseMove}
-      onMouseLeave={shouldReduceMotion ? undefined : handleMouseLeave}
-      style={shouldReduceMotion ? undefined : { x: springX, y: springY }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ x: springX, y: springY }}
       className="inline-block"
     >
       {children}
