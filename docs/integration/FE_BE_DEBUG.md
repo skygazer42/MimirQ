@@ -27,6 +27,9 @@
 快速健康检查：
 - `GET http://localhost:8000/api/v1/health`
 
+也可以用一键 ping（更适合排查“前端连不上后端”这类问题）：
+- `make api-ping`（可用 `BACKEND_BASE_URL=...` 覆盖默认 `http://localhost:8000`）
+
 如果 `health/ready` 返回 `503`：
 - 看 `database/vector/redis/minio` 的 `status` 字段
 - Docker：`make logs` 或 `docker compose -f docker/docker-compose.yml logs -f mimirq-api`
