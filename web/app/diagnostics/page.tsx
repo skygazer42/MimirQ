@@ -1,6 +1,7 @@
 'use client'
 
 import { Activity, Copy, RefreshCcw } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,21 +21,38 @@ function prettyJson(value: unknown): string {
 }
 
 async function copyToClipboard(text: string): Promise<void> {
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
+  const content = text || ''
+
+  // Prefer async clipboard API when available; fall back to execCommand when blocked.
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content)
+      toast.success('已复制到剪贴板')
+      return
+    }
+  } catch {
+    // fall through to legacy fallback
   }
 
-  // Fallback for older browsers.
-  const el = document.createElement('textarea')
-  el.value = text
-  el.setAttribute('readonly', 'true')
-  el.style.position = 'absolute'
-  el.style.left = '-9999px'
-  document.body.appendChild(el)
-  el.select()
-  document.execCommand('copy')
-  document.body.removeChild(el)
+  try {
+    const el = document.createElement('textarea')
+    el.value = content
+    el.setAttribute('readonly', 'true')
+    el.style.position = 'fixed'
+    el.style.left = '0'
+    el.style.top = '0'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.focus()
+    el.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(el)
+    if (!ok) throw new Error('copy failed')
+    toast.success('已复制到剪贴板')
+  } catch (err) {
+    console.error('Copy failed:', err)
+    toast.error('复制失败')
+  }
 }
 
 export default function DiagnosticsPage() {
