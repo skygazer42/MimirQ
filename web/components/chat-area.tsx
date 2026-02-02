@@ -462,7 +462,7 @@ export function ChatArea({
         </div>
       )}
 
-      <div className="px-4 pb-6 pt-2 z-10">
+      <div className="px-4 pt-2 z-10 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
         <div className="max-w-3xl mx-auto space-y-4">
 
           <div className="flex items-center justify-between px-2 animate-fade-in opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
@@ -677,17 +677,17 @@ export function ChatArea({
 	            "shadow-2xl shadow-primary/5 hover:shadow-primary/10",
 	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
 	          )}>
-            <textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+	            <textarea
+	              ref={textareaRef}
+	              value={inputValue}
+	              onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
-              placeholder="问点什么... (Shift + Enter 换行)"
-              autoFocus
-              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium tracking-wide"
-              rows={1}
-            />
+	              placeholder="问点什么... (Shift + Enter 换行)"
+	              autoFocus
+	              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium"
+	              rows={1}
+	            />
 
             <div className="absolute right-2 bottom-2 flex items-center gap-2">
 	              <Magnetic strength={0.4}>
