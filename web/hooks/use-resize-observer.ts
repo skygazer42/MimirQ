@@ -6,51 +6,48 @@ export function useResizeObserver(ref: RefObject<HTMLElement>) {
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
-    if (!ref.current) return
-
     const observeTarget = ref.current
-    let animationFrameId: number
-    let retryCount = 0
-    const maxRetries = 20 // Retry for ~2 seconds (assuming ~100ms interval)
+    if (!observeTarget) return
 
-    const updateDimensions = () => {
-      if (!observeTarget) return
-      
-      const rect = observeTarget.getBoundingClientRect()
-      
-      // Only update if dimensions have actually changed and are valid
-      if (rect.width > 0 && rect.height > 0) {
-        setDimensions(prev => {
-           if (prev.width === rect.width && prev.height === rect.height) return prev
-           return { width: rect.width, height: rect.height }
-        })
-      } else if (retryCount < maxRetries) {
-         // If dimensions are 0, retry in next frame
-         retryCount++
-         animationFrameId = requestAnimationFrame(() => setTimeout(updateDimensions, 100))
-      }
+    let rafId: number | null = null
+    let pending: { width: number; height: number } | null = null
+
+    const commit = (width: number, height: number) => {
+      if (width <= 0 || height <= 0) return
+      setDimensions((prev) =>
+        prev.width === width && prev.height === height ? prev : { width, height }
+      )
     }
 
-    // Initial check
-    updateDimensions()
+    const scheduleCommit = (width: number, height: number) => {
+      pending = { width, height }
+      if (rafId != null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        if (!pending) return
+        commit(pending.width, pending.height)
+        pending = null
+      })
+    }
+
+    // Initial measure (if still 0, ResizeObserver will update later).
+    const rect = observeTarget.getBoundingClientRect()
+    commit(rect.width, rect.height)
 
     const resizeObserver = new ResizeObserver((entries) => {
-      entries.forEach((entry) => {
-        const { width, height } = entry.contentRect
-        if (width > 0 && height > 0) {
-          setDimensions(prev => {
-             if (prev.width === width && prev.height === height) return prev
-             return { width, height }
-          })
-        }
-      })
+      const entry = entries[entries.length - 1]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      scheduleCommit(width, height)
     })
 
     resizeObserver.observe(observeTarget)
 
     return () => {
-      resizeObserver.unobserve(observeTarget)
-      if (animationFrameId) cancelAnimationFrame(animationFrameId)
+      resizeObserver.disconnect()
+      if (rafId != null) cancelAnimationFrame(rafId)
+      rafId = null
+      pending = null
     }
   }, [ref])
 
