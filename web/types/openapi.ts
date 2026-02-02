@@ -222,6 +222,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Folders
+         * @description Build a folder tree derived from `document.metadata.source_path`.
+         *
+         *     Notes:
+         *     - `source_path` is only present when the client uploads with directory-preserving keys (e.g. folder/sub/file.pdf).
+         *     - The tree is dataset-scoped for performance and permission clarity.
+         */
+        get: operations["list_document_folders_api_v1_documents_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/stats": {
         parameters: {
             query?: never;
@@ -238,6 +262,32 @@ export interface paths {
          *     - Supports lightweight filename search via `q`.
          */
         get: operations["get_document_stats_api_v1_documents_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Duplicates
+         * @description Find duplicate documents by `documents.metadata.file_sha256` within a dataset.
+         *
+         *     Notes:
+         *     - Requires dataset read permission.
+         *     - Applies document-level ACL filtering for non-owners ("security trimming").
+         *     - Uses Postgres grouping when available to avoid loading all documents into memory.
+         *     - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
+         */
+        get: operations["list_document_duplicates_api_v1_documents_duplicates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -265,6 +315,26 @@ export interface paths {
          * @description Delete document.
          */
         delete: operations["delete_document_api_v1_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Timeline
+         * @description User-facing document timeline (audit logs + synthetic document state events).
+         */
+        get: operations["get_document_timeline_api_v1_documents__document_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -318,6 +388,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Versions
+         * @description List document pipeline versions (keyed by pipeline_hash).
+         *
+         *     Notes:
+         *     - Versions are inferred from persisted chunks (doc_metadata.doc_pipeline_key).
+         *     - This is best-effort and primarily intended for ops/debug/rollback.
+         */
+        get: operations["list_document_versions_api_v1_documents__document_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/versions/{pipeline_hash}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Document Version
+         * @description Activate (rollback to) a specific pipeline_hash version for retrieval/citations.
+         *
+         *     This does not re-run parsing/indexing; it only switches the active version *if* chunks exist.
+         */
+        post: operations["activate_document_version_api_v1_documents__document_id__versions__pipeline_hash__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/versions/{pipeline_hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document Version
+         * @description Delete a non-active document pipeline version (best-effort cleanup).
+         *
+         *     Notes:
+         *     - This deletes DB chunks for the requested pipeline_hash and best-effort removes
+         *       vectors/BM25 index entries for that version.
+         *     - The currently-active version cannot be deleted (use activate to switch first).
+         *     - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
+         */
+        delete: operations["delete_document_version_api_v1_documents__document_id__versions__pipeline_hash__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/chunks": {
         parameters: {
             query?: never;
@@ -333,7 +475,13 @@ export interface paths {
          */
         get: operations["list_document_chunks_api_v1_documents__document_id__chunks_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Document Chunk
+         * @description Create a new chunk for a document (appends to the active pipeline version).
+         *
+         *     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
+         */
+        post: operations["create_document_chunk_api_v1_documents__document_id__chunks_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -382,6 +530,96 @@ export interface paths {
         get: operations["get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get"];
         put?: never;
         post?: never;
+        /**
+         * Delete Document Chunk
+         * @description Delete a chunk and update its indexes (vector + BM25) best-effort.
+         */
+        delete: operations["delete_document_chunk_api_v1_documents__document_id__chunks__chunk_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document Chunk
+         * @description Patch a chunk and update its indexes (vector + BM25) best-effort.
+         */
+        patch: operations["patch_document_chunk_api_v1_documents__document_id__chunks__chunk_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/{chunk_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable Document Chunk
+         * @description Disable a chunk (exclude it from retrieval/indexing).
+         */
+        post: operations["disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/{chunk_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable Document Chunk
+         * @description Enable a previously-disabled chunk (requires re-embed to restore vector index).
+         */
+        post: operations["enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/reembed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reembed Document Chunks
+         * @description Re-embed selected chunks (vector + BM25) best-effort.
+         */
+        post: operations["reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/qa/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Document Qa
+         * @description Generate (or extract) FAQ-style Q&A pairs for a document and index them as extra chunks.
+         *
+         *     Generated chunks are tagged with `file_type=qa` in chunk metadata.
+         */
+        post: operations["generate_document_qa_api_v1_documents__document_id__qa_generate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -541,6 +779,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/batch/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Disable Documents
+         * @description Batch disable documents (best-effort).
+         */
+        post: operations["batch_disable_documents_api_v1_documents_batch_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Enable Documents
+         * @description Batch enable documents (best-effort).
+         */
+        post: operations["batch_enable_documents_api_v1_documents_batch_enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Archive Documents
+         * @description Batch archive documents (best-effort).
+         */
+        post: operations["batch_archive_documents_api_v1_documents_batch_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Unarchive Documents
+         * @description Batch unarchive documents (best-effort).
+         */
+        post: operations["batch_unarchive_documents_api_v1_documents_batch_unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/batch-delete": {
         parameters: {
             query?: never;
@@ -555,6 +873,95 @@ export interface paths {
          * @description Batch delete documents (best-effort per id).
          */
         post: operations["batch_delete_documents_api_v1_documents_batch_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Retry Documents
+         * @description Batch retry/reprocess documents (best-effort per id).
+         */
+        post: operations["batch_retry_documents_api_v1_documents_batch_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/reingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Reingest Documents
+         * @description Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
+         *
+         *     Notes:
+         *     - This is best-effort per id: failures are returned in `not_found/denied/conflicts`.
+         *     - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
+         */
+        post: operations["batch_reingest_documents_api_v1_documents_batch_reingest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Update Document Access
+         * @description Batch update document ACL (best-effort per id).
+         */
+        post: operations["batch_update_document_access_api_v1_documents_batch_access_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Move Documents
+         * @description Batch move documents between datasets (best-effort).
+         *
+         *     Notes:
+         *     - Disallows moving MinIO-backed documents or documents with MinIO image assets (`metadata.img_ids`)
+         *       because dataset_id is part of the object/key namespace.
+         *     - Disallows moving documents that are pending/processing.
+         */
+        post: operations["batch_move_documents_api_v1_documents_batch_move_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -869,6 +1276,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chunk-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chunk Presets */
+        get: operations["list_chunk_presets_api_v1_chunk_presets_get"];
+        put?: never;
+        /** Create Chunk Preset */
+        post: operations["create_chunk_preset_api_v1_chunk_presets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chunk-presets/{preset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Chunk Preset */
+        put: operations["update_chunk_preset_api_v1_chunk_presets__preset_id__put"];
+        post?: never;
+        /** Delete Chunk Preset */
+        delete: operations["delete_chunk_preset_api_v1_chunk_presets__preset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat": {
         parameters: {
             query?: never;
@@ -936,6 +1379,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Conversation
+         * @description Delete a conversation.
+         */
+        delete: operations["delete_conversation_api_v1_chat_conversations__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Conversation
+         * @description Update conversation metadata (currently: title).
+         */
+        patch: operations["update_conversation_api_v1_chat_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Conversation
+         * @description Export a conversation as a downloadable file.
+         *
+         *     - fmt=markdown (default): text/markdown
+         *     - fmt=json: application/json
+         */
+        get: operations["export_conversation_api_v1_chat_conversations__conversation_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -950,6 +1440,62 @@ export interface paths {
         get: operations["get_conversation_messages_api_v1_chat_conversations__conversation_id__messages_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/rag-traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation Rag Traces
+         * @description List recent RAG traces for a conversation (PII-safe) so the UI can visualize
+         *     retrieve/rerank/citations steps.
+         */
+        get: operations["get_conversation_rag_traces_api_v1_chat_conversations__conversation_id__rag_traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Conversation Summary Endpoint */
+        get: operations["get_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_get"];
+        put?: never;
+        post?: never;
+        /** Delete Conversation Summary Endpoint */
+        delete: operations["delete_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/summary/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Conversation Summary Endpoint */
+        post: operations["update_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_update_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1000,21 +1546,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/chat/conversations/{conversation_id}": {
+    "/api/v1/datasets/{dataset_id}/ingestion/stats": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Dataset Ingestion Stats
+         * @description Lightweight dataset ingestion stats (documents/chunks/chars/status breakdown).
+         *
+         *     Notes:
+         *     - Enforces dataset read permission.
+         *     - Applies document-level ACL filtering for non-owners ("security trimming").
+         */
+        get: operations["get_dataset_ingestion_stats_api_v1_datasets__dataset_id__ingestion_stats_get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Conversation
-         * @description Delete a conversation.
-         */
-        delete: operations["delete_conversation_api_v1_chat_conversations__conversation_id__delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1057,6 +1607,88 @@ export interface paths {
         patch: operations["update_dataset_api_v1_datasets__dataset_id__patch"];
         trace?: never;
     };
+    "/api/v1/datasets/{dataset_id}/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Categories */
+        get: operations["get_dataset_categories_api_v1_datasets__dataset_id__categories_get"];
+        /** Set Dataset Categories */
+        put: operations["set_dataset_categories_api_v1_datasets__dataset_id__categories_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/config/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Dataset Config
+         * @description Export a portable dataset config bundle (JSON).
+         */
+        get: operations["export_dataset_config_api_v1_datasets__dataset_id__config_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/config/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Dataset Config
+         * @description Import a dataset config bundle.
+         *
+         *     Semantics:
+         *     - replace=false (default): apply only non-null fields in the bundle (no clearing).
+         *     - replace=true: overwrite/clear supported config keys based on bundle content.
+         */
+        post: operations["import_dataset_config_api_v1_datasets__dataset_id__config_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clone Dataset
+         * @description Clone an existing dataset (config + optional permission/members).
+         */
+        post: operations["clone_dataset_api_v1_datasets__dataset_id__clone_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/{dataset_id}/ingestion-policy": {
         parameters: {
             query?: never;
@@ -1069,6 +1701,40 @@ export interface paths {
         /** Put Dataset Ingestion Policy */
         put: operations["put_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/ingestion-policy/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Ingestion Policy Versions */
+        get: operations["list_dataset_ingestion_policy_versions_api_v1_datasets__dataset_id__ingestion_policy_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/ingestion-policy/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Dataset Ingestion Policy */
+        post: operations["rollback_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_rollback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1118,6 +1784,28 @@ export interface paths {
         };
         /** Get Dataset Profile Summary */
         get: operations["get_dataset_profile_summary_api_v1_datasets__dataset_id__profile_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dataset Health
+         * @description Dataset health dashboard v1.
+         *
+         *     Keep it light: reuse existing profile summary and derive ingestion signals from it.
+         */
+        get: operations["get_dataset_health_api_v1_datasets__dataset_id__health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1541,6 +2229,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dataset-categories/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Categories */
+        get: operations["list_dataset_categories_api_v1_dataset_categories__get"];
+        put?: never;
+        /** Create Dataset Category */
+        post: operations["create_dataset_category_api_v1_dataset_categories__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dataset-categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Dataset Category */
+        delete: operations["delete_dataset_category_api_v1_dataset_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Dataset Category */
+        patch: operations["update_dataset_category_api_v1_dataset_categories__category_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/dataset-categories/{category_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move Dataset Category */
+        post: operations["move_dataset_category_api_v1_dataset_categories__category_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/kg/graph": {
         parameters: {
             query?: never;
@@ -1812,6 +2553,23 @@ export interface paths {
          * @description Test LLM connection (no config write).
          */
         post: operations["test_llm_connection_api_v1_settings_llm_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/governance/rule-packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rule Packs */
+        get: operations["list_rule_packs_api_v1_governance_rule_packs_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2222,6 +2980,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feedback/messages/{feedback_id}/to-regression-case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Regression Case From Feedback
+         * @description Convert a feedback entry into a RAGAS regression case.
+         *
+         *     Heuristics:
+         *     - Question is inferred from the latest user message before the rated assistant message.
+         *     - dataset_id is read from assistant message metadata when available.
+         *     - document_ids scope is inherited from the conversation when requested.
+         */
+        post: operations["create_regression_case_from_feedback_api_v1_feedback_messages__feedback_id__to_regression_case_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/capabilities": {
         parameters: {
             query?: never;
@@ -2288,6 +3071,23 @@ export interface paths {
         patch: operations["update_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__patch"];
         trace?: never;
     };
+    "/api/v1/pipeline/governance-profiles/{profile_ref}/resolved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Governance Profile Resolved */
+        get: operations["get_governance_profile_resolved_api_v1_pipeline_governance_profiles__profile_ref__resolved_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/governance-profiles/import": {
         parameters: {
             query?: never;
@@ -2321,6 +3121,29 @@ export interface paths {
         };
         /** Export Governance Profile */
         get: operations["export_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/governance-profiles/{profile_ref}/export-ingestion-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Governance Profile Ingestion Policy
+         * @description Export a minimal, importable dataset ingestion policy that references the given governance profile.
+         *
+         *     This "closes the loop" for operators: build custom governance profiles in the UI, then export
+         *     an ingestion_policy JSON snippet to be imported into a dataset.
+         */
+        get: operations["export_governance_profile_ingestion_policy_api_v1_pipeline_governance_profiles__profile_ref__export_ingestion_policy_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2407,6 +3230,29 @@ export interface paths {
          * @description Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
          */
         post: operations["clean_preview_api_v1_pipeline_clean_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/learn-common-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Learn Common Lines
+         * @description Learn common/repeated header/footer lines across multiple documents in a dataset.
+         *
+         *     This endpoint is intended to support "learning mode" in the governance UI:
+         *     discover candidate lines, then turn them into regex rules and write into a custom profile.
+         */
+        post: operations["learn_common_lines_api_v1_pipeline_learn_common_lines_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2610,6 +3456,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connectors/runs/{run_id}/retry-failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Failed Connector Run
+         * @description Create a new connector run that retries only the failed URLs (best-effort).
+         */
+        post: operations["retry_failed_connector_run_api_v1_connectors_runs__run_id__retry_failed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/runs/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Connector Run
+         * @description Create a new connector run that resumes from where the previous run stopped (best-effort).
+         */
+        post: operations["resume_connector_run_api_v1_connectors_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/connectors/runs/{run_id}/cancel": {
         parameters: {
             query?: never;
@@ -2624,6 +3510,99 @@ export interface paths {
          * @description Cancel a running connector run (best-effort).
          */
         post: operations["cancel_connector_run_api_v1_connectors_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connector Configs
+         * @description List saved connector configurations.
+         *
+         *     Note: configs may contain secrets (even if encrypted); we enforce dataset write permission
+         *     semantics similar to connector runs to avoid leaking URLs/auth details to readers.
+         */
+        get: operations["list_connector_configs_api_v1_connectors_configs_get"];
+        put?: never;
+        /**
+         * Create Connector Config
+         * @description Create a saved connector configuration.
+         */
+        post: operations["create_connector_config_api_v1_connectors_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Connector Config
+         * @description Update a saved connector configuration (best-effort).
+         */
+        put: operations["update_connector_config_api_v1_connectors_configs__config_id__put"];
+        post?: never;
+        /**
+         * Delete Connector Config
+         * @description Delete a saved connector configuration.
+         */
+        delete: operations["delete_connector_config_api_v1_connectors_configs__config_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/configs/{config_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Connector Config
+         * @description Create a connector run from a saved connector configuration.
+         */
+        post: operations["run_connector_config_api_v1_connectors_configs__config_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/scheduled/tick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scheduled Tick
+         * @description Evaluate saved connector schedules and enqueue due runs (best-effort).
+         *
+         *     This endpoint is intentionally simple and deterministic; it is a "tick hook" for an external scheduler.
+         */
+        post: operations["scheduled_tick_api_v1_connectors_scheduled_tick_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2704,6 +3683,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/datasets/{dataset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Report */
+        get: operations["get_dataset_report_api_v1_reports_datasets__dataset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/datasets/{dataset_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Report Json */
+        get: operations["export_dataset_report_json_api_v1_reports_datasets__dataset_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/datasets/{dataset_id}/export-html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Report Html */
+        get: operations["export_dataset_report_html_api_v1_reports_datasets__dataset_id__export_html_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/rag-metrics/summary": {
         parameters: {
             query?: never;
@@ -2713,6 +3743,69 @@ export interface paths {
         };
         /** Get Rag Metrics Summary */
         get: operations["get_rag_metrics_summary_api_v1_observability_rag_metrics_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Audit Logs */
+        get: operations["list_audit_logs_api_v1_audit_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/usage/chat/tokens/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chat Token Quota Status
+         * @description Return the current rolling assistant-token quota status for this tenant.
+         *
+         *     Intended for admin dashboards and operational visibility.
+         */
+        get: operations["get_chat_token_quota_status_api_v1_usage_chat_tokens_quota_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/usage/chat/tokens/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chat Token Usage Summary
+         * @description Summarize assistant token usage grouped by dataset_id (when available).
+         *
+         *     Notes:
+         *     - dataset_id is stored in Message.message_metadata by chat endpoints when request scope maps to a single dataset.
+         *     - For multi-dataset chats (or legacy rows), dataset_id may be null.
+         */
+        get: operations["get_chat_token_usage_summary_api_v1_usage_chat_tokens_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2765,6 +3858,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AuditLogListResponse */
+        AuditLogListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["AuditLogOut"][];
+        };
+        /** AuditLogOut */
+        AuditLogOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Actor Id */
+            actor_id?: string | null;
+            /** Action */
+            action: string;
+            /** Resource Type */
+            resource_type?: string | null;
+            /** Resource Id */
+            resource_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
+            /** Ip */
+            ip?: string | null;
+            /** User Agent */
+            user_agent?: string | null;
+            /**
+             * Details
+             * @default {}
+             */
+            details: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** AuthResponse */
         AuthResponse: {
             user: components["schemas"]["UserPublic"];
@@ -3117,6 +4256,8 @@ export interface components {
             entity_vector_enabled?: boolean | null;
             /** Dataset Id */
             dataset_id?: string | null;
+            /** User Metadata */
+            user_metadata?: string | null;
         };
         /** Body_upload_documents_batch_api_v1_documents_upload_batch_post */
         Body_upload_documents_batch_api_v1_documents_upload_batch_post: {
@@ -3170,6 +4311,8 @@ export interface components {
             entity_vector_enabled?: boolean | null;
             /** Dataset Id */
             dataset_id?: string | null;
+            /** User Metadata Map */
+            user_metadata_map?: string | null;
             /**
              * Max Concurrent
              * @default 5
@@ -3207,6 +4350,53 @@ export interface components {
             sha?: string | null;
             /** Time */
             time?: string | null;
+        };
+        /**
+         * CacheConfig
+         * @description Performance / cache config.
+         */
+        CacheConfig: {
+            /**
+             * Upload Dedup Enabled
+             * @default false
+             */
+            upload_dedup_enabled: boolean;
+            /**
+             * Chat Response Cache Enabled
+             * @default false
+             */
+            chat_response_cache_enabled: boolean;
+            /**
+             * Chat Response Cache Ttl Sec
+             * @default 300
+             */
+            chat_response_cache_ttl_sec: number;
+            /**
+             * Chat Response Cache Max Value Bytes
+             * @default 200000
+             */
+            chat_response_cache_max_value_bytes: number;
+            /**
+             * Chat Response Cache Require Empty History
+             * @default true
+             */
+            chat_response_cache_require_empty_history: boolean;
+        };
+        /**
+         * ChatConfig
+         * @description Chat streaming/runtime config.
+         */
+        ChatConfig: {
+            /**
+             * Stream Heartbeat Sec
+             * @default 10
+             */
+            stream_heartbeat_sec: number;
+            /**
+             * Stream Cancel On Disconnect
+             * @default true
+             */
+            stream_cancel_on_disconnect: boolean;
         };
         /**
          * ChatRAGConfig
@@ -3276,6 +4466,8 @@ export interface components {
             message: string;
             /** History */
             history?: components["schemas"]["HistoryMessage"][];
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Document Ids */
             document_ids?: string[];
             /**
@@ -3295,6 +4487,11 @@ export interface components {
              * @default false
              */
             enable_long_term_memory: boolean;
+            /**
+             * Enable Summary Memory
+             * @default false
+             */
+            enable_summary_memory: boolean;
             /** Prompt Template Id */
             prompt_template_id?: string | null;
             /** Prompt Template Key */
@@ -3349,6 +4546,61 @@ export interface components {
             structured: boolean;
             /** Structured Data */
             structured_data?: unknown;
+        };
+        /** ChatTokenQuotaStatus */
+        ChatTokenQuotaStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Mode */
+            mode: string;
+            /** Limit */
+            limit: number;
+            /** Used */
+            used: number;
+            /** Remaining */
+            remaining: number;
+            /** Exceeded */
+            exceeded: boolean;
+            /** Window Hours */
+            window_hours: number;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+        };
+        /** ChatTokenUsageRow */
+        ChatTokenUsageRow: {
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Assistant Messages */
+            assistant_messages: number;
+            /** Assistant Tokens */
+            assistant_tokens: number;
+        };
+        /** ChatTokenUsageSummary */
+        ChatTokenUsageSummary: {
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /** Total Assistant Messages */
+            total_assistant_messages: number;
+            /** Total Assistant Tokens */
+            total_assistant_tokens: number;
+            /** By Dataset */
+            by_dataset: components["schemas"]["ChatTokenUsageRow"][];
         };
         /** CheckpointDetailResponse */
         CheckpointDetailResponse: {
@@ -3422,6 +4674,66 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /** ChunkPresetCreateRequest */
+        ChunkPresetCreateRequest: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ChunkPresetListResponse */
+        ChunkPresetListResponse: {
+            /** Items */
+            items?: components["schemas"]["ChunkPresetResponse"][];
+        };
+        /** ChunkPresetResponse */
+        ChunkPresetResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ChunkPresetUpdateRequest */
+        ChunkPresetUpdateRequest: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ChunkPreviewHistogramBin
+         * @description Lightweight histogram bin for chunk length distribution.
+         *
+         *     Note: Uses `min/max` instead of `from/to` to keep the payload stable and
+         *     self-describing across units (chars/tokens).
+         */
+        ChunkPreviewHistogramBin: {
+            /** Label */
+            label: string;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
         /**
          * ChunkPreviewItem
          * @description Chunk preview item.
@@ -3490,6 +4802,28 @@ export interface components {
             grade: "pass" | "warn" | "fail";
             /** Reasons */
             reasons?: string[];
+            /** Reason Items */
+            reason_items?: components["schemas"]["ChunkPreviewQualityReason"][];
+        };
+        /**
+         * ChunkPreviewQualityReason
+         * @description Structured quality gate reason (stable code + human-readable message).
+         */
+        ChunkPreviewQualityReason: {
+            /** Code */
+            code: string;
+            /**
+             * Severity
+             * @default warning
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+            /** Message */
+            message: string;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChunkPreviewRecommendationPatch
@@ -3648,6 +4982,8 @@ export interface components {
              * @default 0
              */
             largest_gap: number;
+            /** Histogram */
+            histogram?: components["schemas"]["ChunkPreviewHistogramBin"][];
         };
         /** ChunkStrategyInfo */
         ChunkStrategyInfo: {
@@ -3681,6 +5017,12 @@ export interface components {
             matched_terms?: string[] | null;
             /** Page Number */
             page_number?: number | null;
+            /** Chunk Index */
+            chunk_index?: number | null;
+            /** Start Char */
+            start_char?: number | null;
+            /** End Char */
+            end_char?: number | null;
             /** Header Path */
             header_path?: string | null;
             /** Chunk Strategy */
@@ -3691,6 +5033,10 @@ export interface components {
             retrieval_role?: string | null;
             /** Neighbor Of */
             neighbor_of?: string | null;
+            /** Doc Pipeline Key */
+            doc_pipeline_key?: string | null;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
             /**
              * Relevance Score
              * @default 0
@@ -3743,6 +5089,11 @@ export interface components {
             markdown: string;
             /** Rules */
             rules?: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
+            /**
+             * Rule Packs
+             * @description Optional named governance rule packs (server-defined presets). Default off.
+             */
+            rule_packs?: string[];
             /**
              * Use Default Rules
              * @default true
@@ -3993,6 +5344,8 @@ export interface components {
             applied_rules: number;
             /** Changed */
             changed: boolean;
+            /** Rule Stats */
+            rule_stats?: components["schemas"]["CleanPreviewRuleStat"][];
             /**
              * Dropped
              * @default false
@@ -4086,18 +5439,166 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** CleanPreviewRuleStat */
+        CleanPreviewRuleStat: {
+            /** Index */
+            index: number;
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
+            /**
+             * Hits
+             * @default 0
+             */
+            hits: number;
+            /**
+             * Source
+             * @description Rule source: default | pack | custom
+             */
+            source?: string | null;
+            /**
+             * Pack
+             * @description When source=pack, the pack key
+             */
+            pack?: string | null;
+        };
         /** CleanRulesResponse */
         CleanRulesResponse: {
             /** Rules */
             rules: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
         };
-        /** ConnectorInfo */
-        ConnectorInfo: {
+        /**
+         * ComplianceSummary
+         * @description Lightweight compliance signals derived from governance/profile stats.
+         */
+        ComplianceSummary: {
+            /** Pii Hits Total */
+            pii_hits_total?: {
+                [key: string]: number;
+            };
+            /** Secrets Hits Total */
+            secrets_hits_total?: {
+                [key: string]: number;
+            };
+            /**
+             * Quarantined Documents
+             * @default 0
+             */
+            quarantined_documents: number;
+            /**
+             * Failed Documents
+             * @default 0
+             */
+            failed_documents: number;
+        };
+        /** ConnectorConfigCreateRequest */
+        ConnectorConfigCreateRequest: {
+            /** Connector Id */
+            connector_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Schedule Cron */
+            schedule_cron?: string | null;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ConnectorConfigListResponse */
+        ConnectorConfigListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["ConnectorConfigOut"][];
+        };
+        /** ConnectorConfigOut */
+        ConnectorConfigOut: {
             /**
              * Id
-             * @constant
+             * Format: uuid
              */
-            id: "url_batch";
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Connector Id */
+            connector_id: string;
+            /** Name */
+            name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Schedule Cron */
+            schedule_cron?: string | null;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** State */
+            state?: {
+                [key: string]: unknown;
+            };
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ConnectorConfigUpdateRequest */
+        ConnectorConfigUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Schedule Cron */
+            schedule_cron?: string | null;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            /** State */
+            state?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** ConnectorInfo */
+        ConnectorInfo: {
+            /** Id */
+            id: string;
             /** Name */
             name: string;
             /**
@@ -4116,12 +5617,14 @@ export interface components {
             /**
              * Connector Id
              * @default url_batch
-             * @constant
              */
-            connector_id: "url_batch";
+            connector_id: string;
             /** Dataset Id */
             dataset_id?: string | null;
-            config: components["schemas"]["UrlBatchConnectorConfig"];
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
         };
         /** ConnectorRunDocumentOut */
         ConnectorRunDocumentOut: {
@@ -4192,6 +5695,31 @@ export interface components {
             /** Documents */
             documents?: components["schemas"]["ConnectorRunDocumentOut"][];
         };
+        /** ConnectorRunSummary */
+        ConnectorRunSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Connector Id */
+            connector_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * ConversationCreate
          * @description Create conversation.
@@ -4199,6 +5727,8 @@ export interface components {
         ConversationCreate: {
             /** Title */
             title?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Document Ids */
             document_ids?: string[];
         };
@@ -4272,12 +5802,226 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ConversationSummaryResponse */
+        ConversationSummaryResponse: {
+            /** Available */
+            available: boolean;
+            /** Summary */
+            summary?: string | null;
+        };
+        /** ConversationSummaryUpdateResponse */
+        ConversationSummaryUpdateResponse: {
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * ConversationUpdate
+         * @description Update conversation fields.
+         */
+        ConversationUpdate: {
+            /** Title */
+            title?: string | null;
+        };
         /** DatabaseStatus */
         DatabaseStatus: {
             /** Status */
             status: string;
             /** Error */
             error?: string | null;
+        };
+        /** DatasetCategoryAssignmentRequest */
+        DatasetCategoryAssignmentRequest: {
+            /** Category Ids */
+            category_ids?: string[];
+        };
+        /** DatasetCategoryAssignmentResponse */
+        DatasetCategoryAssignmentResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Category Ids */
+            category_ids?: string[];
+        };
+        /** DatasetCategoryCreate */
+        DatasetCategoryCreate: {
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
+        /** DatasetCategoryMoveRequest */
+        DatasetCategoryMoveRequest: {
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
+        /** DatasetCategoryNode */
+        DatasetCategoryNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /**
+             * Depth
+             * @default 0
+             */
+            depth: number;
+            /**
+             * Datasets
+             * @default 0
+             */
+            datasets: number;
+            /** Children */
+            children?: components["schemas"]["DatasetCategoryNode"][];
+        };
+        /** DatasetCategoryOut */
+        DatasetCategoryOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+        };
+        /** DatasetCategoryTreeResponse */
+        DatasetCategoryTreeResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["DatasetCategoryNode"][];
+        };
+        /** DatasetCategoryUpdate */
+        DatasetCategoryUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
+        /** DatasetCloneRequest */
+        DatasetCloneRequest: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Copy Permission
+             * @default true
+             */
+            copy_permission: boolean;
+            /**
+             * Copy Partial Members
+             * @default true
+             */
+            copy_partial_members: boolean;
+        };
+        /**
+         * DatasetConfigBundle
+         * @description Dataset-level configuration bundle (portable).
+         *
+         *     Used for export/import/clone to standardize ingestion + retrieval behavior
+         *     across datasets without introducing visual workflow editors.
+         */
+        "DatasetConfigBundle-Input": {
+            /** Default Parser Backend */
+            default_parser_backend?: string | null;
+            /** Default Chunk Strategy */
+            default_chunk_strategy?: string | null;
+            rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Prompt Template Id */
+            default_prompt_template_id?: string | null;
+            /** Default Prompt Template Key */
+            default_prompt_template_key?: string | null;
+            /** Default Prompt Ab Experiment Key */
+            default_prompt_ab_experiment_key?: string | null;
+            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            ingestion_policy?: components["schemas"]["IngestionPolicy-Input"] | null;
+        };
+        /**
+         * DatasetConfigBundle
+         * @description Dataset-level configuration bundle (portable).
+         *
+         *     Used for export/import/clone to standardize ingestion + retrieval behavior
+         *     across datasets without introducing visual workflow editors.
+         */
+        "DatasetConfigBundle-Output": {
+            /** Default Parser Backend */
+            default_parser_backend?: string | null;
+            /** Default Chunk Strategy */
+            default_chunk_strategy?: string | null;
+            rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Prompt Template Id */
+            default_prompt_template_id?: string | null;
+            /** Default Prompt Template Key */
+            default_prompt_template_key?: string | null;
+            /** Default Prompt Ab Experiment Key */
+            default_prompt_ab_experiment_key?: string | null;
+            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            ingestion_policy?: components["schemas"]["IngestionPolicy-Output"] | null;
+        };
+        /** DatasetConfigExport */
+        DatasetConfigExport: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            config: components["schemas"]["DatasetConfigBundle-Output"];
+        };
+        /** DatasetConfigImportRequest */
+        DatasetConfigImportRequest: {
+            config: components["schemas"]["DatasetConfigBundle-Input"];
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
         };
         /** DatasetCreate */
         DatasetCreate: {
@@ -4289,7 +6033,158 @@ export interface components {
             permission: components["schemas"]["DatasetPermissionEnum"];
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Default Parser Backend */
+            default_parser_backend?: string | null;
+            /** Default Chunk Strategy */
+            default_chunk_strategy?: string | null;
+            rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Prompt Template Id */
+            default_prompt_template_id?: string | null;
+            /** Default Prompt Template Key */
+            default_prompt_template_key?: string | null;
+            /** Default Prompt Ab Experiment Key */
+            default_prompt_ab_experiment_key?: string | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
+        /**
+         * DatasetGovernanceMetricsOut
+         * @description Best-effort governance metrics aggregated from per-document metadata.
+         */
+        DatasetGovernanceMetricsOut: {
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /**
+             * Used Documents
+             * @default 0
+             */
+            used_documents: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Docs With Governance
+             * @default 0
+             */
+            docs_with_governance: number;
+            /**
+             * Rules Applied Total
+             * @default 0
+             */
+            rules_applied_total: number;
+            /**
+             * Changed Documents Total
+             * @default 0
+             */
+            changed_documents_total: number;
+            /**
+             * Dropped Documents Total
+             * @default 0
+             */
+            dropped_documents_total: number;
+            /** Drop Reasons Total */
+            drop_reasons_total?: {
+                [key: string]: number;
+            };
+            /** Rule Packs Docs */
+            rule_packs_docs?: {
+                [key: string]: number;
+            };
+        };
+        /** DatasetHealthIngestionSummary */
+        DatasetHealthIngestionSummary: {
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /** By Status */
+            by_status?: {
+                [key: string]: number;
+            };
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Processing
+             * @default 0
+             */
+            processing: number;
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Quarantined
+             * @default 0
+             */
+            quarantined: number;
+            /**
+             * Cancelled
+             * @default 0
+             */
+            cancelled: number;
+        };
+        /** DatasetHealthResponse */
+        DatasetHealthResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            profile: components["schemas"]["DatasetProfileSummary"];
+            ingestion: components["schemas"]["DatasetHealthIngestionSummary"];
+        };
+        /**
+         * DatasetIngestionStats
+         * @description Lightweight dataset ingestion stats for dashboards.
+         */
+        DatasetIngestionStats: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Total Documents */
+            total_documents: number;
+            /** By Status */
+            by_status?: {
+                [key: string]: number;
+            };
+            /**
+             * Total Chunks
+             * @default 0
+             */
+            total_chunks: number;
+            /**
+             * Total Size
+             * @default 0
+             */
+            total_size: number;
+            /**
+             * Total Characters
+             * @default 0
+             */
+            total_characters: number;
+            /** Last Processed At */
+            last_processed_at?: string | null;
         };
         /** DatasetListResponse */
         DatasetListResponse: {
@@ -4319,6 +6214,17 @@ export interface components {
             owner_id: string | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Default Parser Backend */
+            default_parser_backend?: string | null;
+            /** Default Chunk Strategy */
+            default_chunk_strategy?: string | null;
+            rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Prompt Template Id */
+            default_prompt_template_id?: string | null;
+            /** Default Prompt Template Key */
+            default_prompt_template_key?: string | null;
+            /** Default Prompt Ab Experiment Key */
+            default_prompt_ab_experiment_key?: string | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
@@ -5181,6 +7087,65 @@ export interface components {
             findings?: components["schemas"]["DatasetProfileFindingSummary"][];
             latest_scan_run?: components["schemas"]["DatasetProfileScanRunSummary"] | null;
         };
+        /**
+         * DatasetRAGDefaults
+         * @description Dataset-level default RAG settings (optional overrides).
+         *
+         *     These defaults are applied when the chat request doesn't explicitly provide the corresponding fields.
+         */
+        DatasetRAGDefaults: {
+            /** Top K */
+            top_k?: number | null;
+            /** Score Threshold */
+            score_threshold?: number | null;
+            /** Retrieval Mode */
+            retrieval_mode?: string | null;
+            /** Alpha */
+            alpha?: number | null;
+            /** Enable Weight Rerank */
+            enable_weight_rerank?: boolean | null;
+            /** Vector Weight */
+            vector_weight?: number | null;
+            /** Keyword Weight */
+            keyword_weight?: number | null;
+            /** Mmr Lambda */
+            mmr_lambda?: number | null;
+            /** Enable Reranker */
+            enable_reranker?: boolean | null;
+            /** Reranker Provider */
+            reranker_provider?: string | null;
+            /** Reranker Top N */
+            reranker_top_n?: number | null;
+        };
+        /** DatasetReportOut */
+        DatasetReportOut: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Dataset Name */
+            dataset_name?: string | null;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            profile: components["schemas"]["DatasetProfileSummary"];
+            compliance: components["schemas"]["ComplianceSummary"];
+            /** Pipeline Versions */
+            pipeline_versions?: components["schemas"]["PipelineVersionSummary"][];
+            /** Connectors */
+            connectors?: components["schemas"]["ConnectorRunSummary"][];
+            /** Dataset Metadata */
+            dataset_metadata?: {
+                [key: string]: unknown;
+            };
+            folder_tree?: components["schemas"]["DocumentFolderTreeResponse"] | null;
+            governance_metrics?: components["schemas"]["DatasetGovernanceMetricsOut"] | null;
+        };
         /** DatasetTablesListResponse */
         DatasetTablesListResponse: {
             /** Total */
@@ -5197,6 +7162,17 @@ export interface components {
             permission?: components["schemas"]["DatasetPermissionEnum"] | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Default Parser Backend */
+            default_parser_backend?: string | null;
+            /** Default Chunk Strategy */
+            default_chunk_strategy?: string | null;
+            rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Prompt Template Id */
+            default_prompt_template_id?: string | null;
+            /** Default Prompt Template Key */
+            default_prompt_template_key?: string | null;
+            /** Default Prompt Ab Experiment Key */
+            default_prompt_ab_experiment_key?: string | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
@@ -5230,6 +7206,84 @@ export interface components {
             partial_member_list?: string[] | null;
         };
         /**
+         * DocumentAnalyticsBundle
+         * @description Raw vs cleaned analytics (for governance diff/preview).
+         */
+        DocumentAnalyticsBundle: {
+            raw?: components["schemas"]["DocumentAnalyticsSchema"];
+            cleaned?: components["schemas"]["DocumentAnalyticsSchema"];
+        };
+        /**
+         * DocumentAnalyticsSchema
+         * @description Lightweight document analytics for UI panels (preview/ingestion).
+         */
+        DocumentAnalyticsSchema: {
+            /**
+             * Char Count
+             * @default 0
+             */
+            char_count: number;
+            /**
+             * Line Count
+             * @default 0
+             */
+            line_count: number;
+            /**
+             * Heading Count
+             * @default 0
+             */
+            heading_count: number;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /**
+             * Table Count
+             * @default 0
+             */
+            table_count: number;
+            /**
+             * Image Count
+             * @default 0
+             */
+            image_count: number;
+            /**
+             * Block Count
+             * @default 0
+             */
+            block_count: number;
+            /** Language */
+            language?: string | null;
+            /** Language Confidence */
+            language_confidence?: number | null;
+            /** Cjk Chars */
+            cjk_chars?: number | null;
+            /** Latin Chars */
+            latin_chars?: number | null;
+        };
+        /**
+         * DocumentBatchAccessUpdateRequest
+         * @description Batch update document-level ACL.
+         */
+        DocumentBatchAccessUpdateRequest: {
+            /** Document Ids */
+            document_ids: string[];
+            access: components["schemas"]["DocumentAccessUpdateRequest"];
+        };
+        /**
+         * DocumentBatchAccessUpdateResponse
+         * @description Batch ACL update result.
+         */
+        DocumentBatchAccessUpdateResponse: {
+            /** Updated */
+            updated: number;
+            /** Not Found */
+            not_found?: string[];
+            /** Denied */
+            denied?: string[];
+        };
+        /**
          * DocumentBatchDeleteRequest
          * @description Batch delete documents.
          */
@@ -5248,6 +7302,114 @@ export interface components {
             not_found?: string[];
             /** Denied */
             denied?: string[];
+        };
+        /**
+         * DocumentBatchLifecycleRequest
+         * @description Batch document lifecycle update (enable/disable/archive/unarchive).
+         */
+        DocumentBatchLifecycleRequest: {
+            /** Document Ids */
+            document_ids: string[];
+        };
+        /**
+         * DocumentBatchLifecycleResponse
+         * @description Batch lifecycle update result.
+         */
+        DocumentBatchLifecycleResponse: {
+            /** Updated */
+            updated: number;
+            /** Not Found */
+            not_found?: string[];
+            /** Denied */
+            denied?: string[];
+            /** Conflicts */
+            conflicts?: string[];
+        };
+        /**
+         * DocumentBatchMoveRequest
+         * @description Batch move documents between datasets (best-effort).
+         */
+        DocumentBatchMoveRequest: {
+            /** Document Ids */
+            document_ids: string[];
+            /** Target Dataset Id */
+            target_dataset_id?: string | null;
+        };
+        /**
+         * DocumentBatchMoveResponse
+         * @description Batch move result.
+         */
+        DocumentBatchMoveResponse: {
+            /** Moved */
+            moved: number;
+            /** Not Found */
+            not_found?: string[];
+            /** Denied */
+            denied?: string[];
+            /** Conflicts */
+            conflicts?: string[];
+        };
+        /**
+         * DocumentBatchReingestRequest
+         * @description Batch re-ingest documents (patch pipeline then retry).
+         *
+         *     Intended for pipeline version regeneration and index rebuilds:
+         *     - update `documents.metadata.pipeline` overrides (optional)
+         *     - trigger `/documents/{id}/retry` with `force` (default true)
+         */
+        DocumentBatchReingestRequest: {
+            /** Document Ids */
+            document_ids: string[];
+            patch?: components["schemas"]["DocumentPipelineOptions"];
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
+            /**
+             * Force
+             * @default true
+             */
+            force: boolean;
+            /**
+             * Skip If Unchanged
+             * @default false
+             */
+            skip_if_unchanged: boolean;
+        };
+        /**
+         * DocumentBatchRetryRequest
+         * @description Batch retry document ingestion (reprocess).
+         */
+        DocumentBatchRetryRequest: {
+            /** Document Ids */
+            document_ids: string[];
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /**
+             * Skip If Unchanged
+             * @default false
+             */
+            skip_if_unchanged: boolean;
+        };
+        /**
+         * DocumentBatchRetryResponse
+         * @description Batch retry result.
+         */
+        DocumentBatchRetryResponse: {
+            /** Queued */
+            queued: number;
+            /** Skipped */
+            skipped: number;
+            /** Not Found */
+            not_found?: string[];
+            /** Denied */
+            denied?: string[];
+            /** Conflicts */
+            conflicts?: string[];
         };
         /**
          * DocumentBatchUploadFailure
@@ -5324,6 +7486,24 @@ export interface components {
             denied?: string[];
         };
         /**
+         * DocumentChunkCreateRequest
+         * @description Create a new chunk (appends to the active pipeline version).
+         */
+        DocumentChunkCreateRequest: {
+            /** Content */
+            content: string;
+            /** Page Number */
+            page_number?: number | null;
+            /** Start Char */
+            start_char?: number | null;
+            /** End Char */
+            end_char?: number | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * DocumentChunkList
          * @description Paged document chunks.
          */
@@ -5364,6 +7544,33 @@ export interface components {
             items?: components["schemas"]["DocumentChunkMatch"][];
         };
         /**
+         * DocumentChunkReembedRequest
+         * @description Re-embed (re-index) selected chunks for a document.
+         */
+        DocumentChunkReembedRequest: {
+            /** Chunk Ids */
+            chunk_ids: string[];
+            /**
+             * Include Disabled
+             * @default false
+             */
+            include_disabled: boolean;
+        };
+        /**
+         * DocumentChunkReembedResponse
+         * @description Re-embed result.
+         */
+        DocumentChunkReembedResponse: {
+            /** Reembedded */
+            reembedded: number;
+            /** Not Found */
+            not_found?: string[];
+            /** Denied */
+            denied?: string[];
+            /** Conflicts */
+            conflicts?: string[];
+        };
+        /**
          * DocumentChunkSchema
          * @description Document chunk.
          */
@@ -5383,10 +7590,41 @@ export interface components {
             end_char?: number | null;
             /** Chunk Index */
             chunk_index: number;
+            /** Disabled At */
+            disabled_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
             /** Metadata */
             metadata?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * DocumentChunkUpdateRequest
+         * @description Patch a document chunk.
+         *
+         *     Notes:
+         *     - This is used for post-ingest manual chunk editing (no re-parse required).
+         *     - metadata is a patch dict: keys with null values are removed.
+         */
+        DocumentChunkUpdateRequest: {
+            /** Content */
+            content?: string | null;
+            /** Page Number */
+            page_number?: number | null;
+            /** Start Char */
+            start_char?: number | null;
+            /** End Char */
+            end_char?: number | null;
+            /**
+             * Metadata
+             * @description Chunk metadata patch (null values delete keys)
+             */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * DocumentDetail
@@ -5416,6 +7654,10 @@ export interface components {
             owner_id?: string | null;
             /** Access Mode */
             access_mode?: ("inherit" | "only_me" | "all_team_members" | "partial_members") | null;
+            /** Archived At */
+            archived_at?: string | null;
+            /** Disabled At */
+            disabled_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5437,8 +7679,71 @@ export interface components {
                 [key: string]: unknown;
             };
             governance?: components["schemas"]["GovernanceInfo"];
+            pipeline?: components["schemas"]["DocumentPipelineProvenance"] | null;
             /** Chunks */
             chunks?: components["schemas"]["DocumentChunkSchema"][] | null;
+        };
+        /** DocumentDuplicateGroup */
+        DocumentDuplicateGroup: {
+            /** File Sha256 */
+            file_sha256: string;
+            /** Count */
+            count: number;
+            /** Documents */
+            documents?: components["schemas"]["DuplicateDocumentItem"][];
+        };
+        /** DocumentDuplicateList */
+        DocumentDuplicateList: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["DocumentDuplicateGroup"][];
+        };
+        /** DocumentFolderNode */
+        DocumentFolderNode: {
+            /**
+             * Name
+             * @description Folder name (single path segment)
+             */
+            name: string;
+            /**
+             * Path
+             * @description Folder path from root (slash-separated, no leading slash)
+             */
+            path: string;
+            /**
+             * Depth
+             * @description Folder depth (root=0)
+             * @default 0
+             */
+            depth: number;
+            /**
+             * Documents
+             * @description Document count in this subtree
+             * @default 0
+             */
+            documents: number;
+            /** Children */
+            children?: components["schemas"]["DocumentFolderNode"][];
+        };
+        /** DocumentFolderTreeResponse */
+        DocumentFolderTreeResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /**
+             * Total With Source Path
+             * @default 0
+             */
+            total_with_source_path: number;
+            root: components["schemas"]["DocumentFolderNode"];
         };
         /**
          * DocumentList
@@ -5465,6 +7770,7 @@ export interface components {
             segments: components["schemas"]["ParsedSegment"][];
             /** Parser Backend */
             parser_backend: string;
+            analytics?: components["schemas"]["DocumentAnalyticsBundle"];
         };
         /**
          * DocumentParsedContentResponse
@@ -5538,6 +7844,11 @@ export interface components {
              * @description Image removal mode: none | decorative | all
              */
             governance_remove_images?: string | null;
+            /**
+             * Governance Rule Packs
+             * @description Optional named governance rule packs (server-defined presets). Default off.
+             */
+            governance_rule_packs?: string[] | null;
             /**
              * Governance Regex Rules
              * @description Additional regex cleanup rules (stored in metadata.pipeline.governance.regex_rules).
@@ -5641,6 +7952,11 @@ export interface components {
              */
             governance_pii_mask?: string | null;
             /**
+             * Governance Pii Max Hits
+             * @description Max allowed PII matches per document before drop/quarantine (sum across kinds). None disables gate.
+             */
+            governance_pii_max_hits?: number | null;
+            /**
              * Governance Secrets Redact
              * @description Redact common secrets/tokens (API keys, private keys, bearer tokens)
              */
@@ -5655,6 +7971,11 @@ export interface components {
              * @description Secrets replacement string (mask mode)
              */
             governance_secrets_mask?: string | null;
+            /**
+             * Governance Secrets Max Hits
+             * @description Max allowed secrets matches per document before drop/quarantine (sum across kinds). None disables gate.
+             */
+            governance_secrets_max_hits?: number | null;
             /**
              * Governance Max Blank Lines
              * @description Max consecutive blank lines
@@ -5856,6 +8177,98 @@ export interface components {
             replace: boolean;
         };
         /**
+         * DocumentPipelineProvenance
+         * @description Stable, UI-facing pipeline provenance snapshot for a document.
+         */
+        DocumentPipelineProvenance: {
+            /** Active Pipeline Hash */
+            active_pipeline_hash?: string | null;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /** Parser Backend */
+            parser_backend?: string | null;
+            /** Parser Backend Requested */
+            parser_backend_requested?: string | null;
+            /** Chunk Strategy */
+            chunk_strategy?: string | null;
+            /** Chunk Strategy Requested */
+            chunk_strategy_requested?: string | null;
+            /**
+             * Governance Enabled
+             * @default false
+             */
+            governance_enabled: boolean;
+            /** Governance Rule Packs */
+            governance_rule_packs?: string[];
+            pipeline_effective?: components["schemas"]["PipelineEffectiveSnapshot"];
+            analytics_raw?: components["schemas"]["DocumentAnalyticsSchema"];
+            /** Parsed Text Quality */
+            parsed_text_quality?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DocumentQAGenerateRequest */
+        DocumentQAGenerateRequest: {
+            /**
+             * Num Pairs
+             * @description Number of Q&A pairs to generate/extract
+             * @default 20
+             */
+            num_pairs: number;
+            /**
+             * Replace Existing
+             * @description Delete existing QA chunks (file_type=qa) in active version first
+             * @default true
+             */
+            replace_existing: boolean;
+            /**
+             * Prefer Llm
+             * @description Prefer LLM generation when configured; otherwise fall back to extraction
+             * @default true
+             */
+            prefer_llm: boolean;
+            /**
+             * Max Source Chars
+             * @description Max chars used as LLM/extraction source
+             * @default 12000
+             */
+            max_source_chars: number;
+            /**
+             * Preview Pairs
+             * @description Return this many pairs as preview
+             * @default 5
+             */
+            preview_pairs: number;
+        };
+        /** DocumentQAGenerateResponse */
+        DocumentQAGenerateResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Mode
+             * @description llm | extract | none
+             * @default none
+             */
+            mode: string;
+            /**
+             * Deleted
+             * @default 0
+             */
+            deleted: number;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /** Chunk Ids */
+            chunk_ids?: string[];
+            /** Preview */
+            preview?: components["schemas"]["QAPairPreview"][];
+        };
+        /**
          * DocumentStats
          * @description Document stats for knowledge-base dashboards.
          */
@@ -5896,6 +8309,48 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
+        /** DocumentTimelineItem */
+        DocumentTimelineItem: {
+            /** Id */
+            id: string;
+            /** Action */
+            action: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Source
+             * @default audit
+             * @enum {string}
+             */
+            source: "audit" | "synthetic";
+            /** Actor Id */
+            actor_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
+            /** Stage */
+            stage?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Progress */
+            progress?: number | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DocumentTimelineResponse */
+        DocumentTimelineResponse: {
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["DocumentTimelineItem"][];
+        };
         /**
          * DocumentUserMetadataPatchRequest
          * @description Patch `documents.metadata.user` (user-editable metadata namespace).
@@ -5918,6 +8373,69 @@ export interface components {
              * @default false
              */
             replace: boolean;
+        };
+        /**
+         * DocumentVersionInfo
+         * @description A document processing/version entry (keyed by pipeline_hash).
+         */
+        DocumentVersionInfo: {
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /** Doc Pipeline Key */
+            doc_pipeline_key: string;
+            /**
+             * Chunk Count
+             * @default 0
+             */
+            chunk_count: number;
+            /** First Chunk At */
+            first_chunk_at?: string | null;
+            /** Last Chunk At */
+            last_chunk_at?: string | null;
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+        };
+        /**
+         * DocumentVersionList
+         * @description List document versions (pipeline history).
+         */
+        DocumentVersionList: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Active Pipeline Hash */
+            active_pipeline_hash?: string | null;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /** Items */
+            items?: components["schemas"]["DocumentVersionInfo"][];
+        };
+        /**
+         * DuplicateDocumentItem
+         * @description Document info in a duplicate group (by file_sha256).
+         */
+        DuplicateDocumentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** Status */
+            status: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * EmbeddingConfig
@@ -6041,6 +8559,26 @@ export interface components {
              * @default false
              */
             magicpdf_enabled: boolean;
+        };
+        /** FeedbackToRegressionCaseRequest */
+        FeedbackToRegressionCaseRequest: {
+            /**
+             * Include Document Scope
+             * @default true
+             */
+            include_document_scope: boolean;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Extra
+             * @default {}
+             */
+            extra: {
+                [key: string]: unknown;
+            };
         };
         /**
          * GeneratedQuestion
@@ -6177,6 +8715,85 @@ export interface components {
             suggested_pipeline_patch?: {
                 [key: string]: unknown;
             };
+        };
+        /** GovernanceCommonLineCandidate */
+        GovernanceCommonLineCandidate: {
+            /** Signature */
+            signature: string;
+            /**
+             * Sample
+             * @default
+             */
+            sample: string;
+            /**
+             * Docs
+             * @default 0
+             */
+            docs: number;
+            /**
+             * Ratio
+             * @default 0
+             */
+            ratio: number;
+        };
+        /** GovernanceCommonLinesLearnRequest */
+        GovernanceCommonLinesLearnRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Limit Docs
+             * @default 20
+             */
+            limit_docs: number;
+            /**
+             * Use Original
+             * @description Prefer DocumentParsedContent.original_markdown_content (pre-governance) when available.
+             * @default true
+             */
+            use_original: boolean;
+            /**
+             * Min Docs
+             * @default 3
+             */
+            min_docs: number;
+            /**
+             * Min Ratio
+             * @default 0.5
+             */
+            min_ratio: number;
+            /**
+             * Max Line Length
+             * @default 120
+             */
+            max_line_length: number;
+            /**
+             * Max Candidates
+             * @default 50
+             */
+            max_candidates: number;
+        };
+        /** GovernanceCommonLinesLearnResponse */
+        GovernanceCommonLinesLearnResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /**
+             * Used Documents
+             * @default 0
+             */
+            used_documents: number;
+            /** Candidates */
+            candidates?: components["schemas"]["GovernanceCommonLineCandidate"][];
         };
         /**
          * GovernanceConfig
@@ -6337,6 +8954,11 @@ export interface components {
              */
             version: string;
             /**
+             * Extends
+             * @description Optional parent profile ref (builtin:<key> | UUID | tenant-scoped key).
+             */
+            extends?: string | null;
+            /**
              * Input Formats
              * @description Recommended input format(s) for preview tools
              */
@@ -6347,6 +8969,20 @@ export interface components {
             };
             /** Regex Rules */
             regex_rules?: components["schemas"]["app__api__schemas__governance_profile__RegexRuleModel"][];
+        };
+        /**
+         * GovernanceProfileResolvedResponse
+         * @description Governance profile resolution output (raw + effective) for UI preview.
+         *
+         *     - profile: the selected profile (may include `payload.extends`)
+         *     - chain: inheritance chain from root -> selected profile
+         *     - effective: resolved payload to apply (merged pipeline_patch, concatenated regex_rules)
+         */
+        GovernanceProfileResolvedResponse: {
+            profile: components["schemas"]["GovernanceProfileOut"];
+            /** Chain */
+            chain?: components["schemas"]["GovernanceProfileSummary"][];
+            effective: components["schemas"]["GovernanceProfilePayload"];
         };
         /** GovernanceProfileSummary */
         GovernanceProfileSummary: {
@@ -6389,6 +9025,11 @@ export interface components {
              * @default 0
              */
             flags: number;
+        };
+        /** GovernanceRulePackListResponse */
+        GovernanceRulePackListResponse: {
+            /** Items */
+            items?: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -6460,6 +9101,48 @@ export interface components {
              */
             rule_count: number;
         };
+        /** IngestionPolicyRollbackRequest */
+        IngestionPolicyRollbackRequest: {
+            /** Version Id */
+            version_id: string;
+        };
+        /**
+         * IngestionPolicyVersion
+         * @description One version entry for a dataset ingestion policy (stored in dataset metadata).
+         *
+         *     Note: This is best-effort "versioning for operators" rather than a full audit log.
+         */
+        IngestionPolicyVersion: {
+            /** Id */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by?: string | null;
+            /**
+             * Source
+             * @default put
+             * @enum {string}
+             */
+            source: "put" | "import" | "rollback";
+            policy: components["schemas"]["IngestionPolicy-Output"];
+            /** Note */
+            note?: string | null;
+            /** Rollback From Version Id */
+            rollback_from_version_id?: string | null;
+            /** Rollback To Version Id */
+            rollback_to_version_id?: string | null;
+        };
+        /** IngestionPolicyVersionListResponse */
+        IngestionPolicyVersionListResponse: {
+            /** Current Version Id */
+            current_version_id?: string | null;
+            /** Items */
+            items?: components["schemas"]["IngestionPolicyVersion"][];
+        };
         /** IngestionPreprocessConfig */
         IngestionPreprocessConfig: {
             /**
@@ -6490,6 +9173,10 @@ export interface components {
             preprocess: components["schemas"]["PreprocessSummary"];
             parse: components["schemas"]["ParsePreviewResponse"];
             clean: components["schemas"]["CleanPreviewResponse"];
+            /** Explain */
+            explain?: {
+                [key: string]: unknown;
+            };
         };
         /** IngestionPreviewRule */
         IngestionPreviewRule: {
@@ -7290,6 +9977,18 @@ export interface components {
             minio_enabled: boolean;
             /** Use Langgraph Pipeline */
             use_langgraph_pipeline: boolean;
+            /**
+             * Gzip Enabled
+             * @default true
+             */
+            gzip_enabled: boolean;
+            /**
+             * Rate Limit Enabled
+             * @default false
+             */
+            rate_limit_enabled: boolean;
+            /** Cors Origins */
+            cors_origins?: string[];
         };
         /** MetaResponse */
         MetaResponse: {
@@ -7401,6 +10100,16 @@ export interface components {
              * @default 500
              */
             agent_log_max_preview_chars: number;
+            /**
+             * Metrics Log Enabled
+             * @default false
+             */
+            metrics_log_enabled: boolean;
+            /**
+             * Metrics Log Include Text
+             * @default false
+             */
+            metrics_log_include_text: boolean;
         };
         /**
          * PDFQualityScore
@@ -7458,6 +10167,16 @@ export interface components {
              * @default 600
              */
             timeout_sec: number;
+            /**
+             * Pipeline Version
+             * @default v1.5
+             */
+            pipeline_version: string;
+            /**
+             * Mode
+             * @default doc_parser
+             */
+            mode: string;
         };
         /** ParsePreviewResponse */
         ParsePreviewResponse: {
@@ -7516,8 +10235,17 @@ export interface components {
              * @default
              */
             original_markdown_content: string;
+            /** Stats */
+            stats?: {
+                [key: string]: number;
+            } | null;
             /** Parse Duration Sec */
             parse_duration_sec?: number | null;
+            /** Pdf Quality */
+            pdf_quality?: {
+                [key: string]: unknown;
+            } | null;
+            quality_gate?: components["schemas"]["ParsingQualityGate"] | null;
         };
         /** ParsingContentUpdateRequest */
         ParsingContentUpdateRequest: {
@@ -7529,6 +10257,29 @@ export interface components {
             /** Original Markdown Content */
             original_markdown_content?: string | null;
         };
+        /**
+         * ParsingQualityGate
+         * @description Unified parsing quality gate (preview/workspace).
+         *
+         *     grade:
+         *       - pass: looks OK
+         *       - warn: usable but needs review/tuning
+         *       - fail: likely broken output; best-effort fallback attempted (PDF auto only)
+         */
+        ParsingQualityGate: {
+            /**
+             * Grade
+             * @default pass
+             * @enum {string}
+             */
+            grade: "pass" | "warn" | "fail";
+            /** Reasons */
+            reasons?: string[];
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            };
+        };
         /** PipelineCapabilitiesResponse */
         PipelineCapabilitiesResponse: {
             /** Default Parser Backend */
@@ -7539,6 +10290,116 @@ export interface components {
             pdf_backends?: components["schemas"]["ParserBackendInfo"][];
             /** Chunk Strategies */
             chunk_strategies?: components["schemas"]["ChunkStrategyInfo"][];
+        };
+        /**
+         * PipelineEffectiveSnapshot
+         * @description Effective pipeline settings persisted on documents (best-effort).
+         */
+        PipelineEffectiveSnapshot: {
+            /**
+             * Governance Enabled
+             * @default false
+             */
+            governance_enabled: boolean;
+            /**
+             * Governance Remove Toc Lines
+             * @default false
+             */
+            governance_remove_toc_lines: boolean;
+            /**
+             * Governance Remove Noise Lines
+             * @default false
+             */
+            governance_remove_noise_lines: boolean;
+            /**
+             * Governance Unwrap Lines
+             * @default false
+             */
+            governance_unwrap_lines: boolean;
+            /**
+             * Governance Remove Common Lines
+             * @default false
+             */
+            governance_remove_common_lines: boolean;
+            /**
+             * Governance Unwrap Max Line Length
+             * @default 0
+             */
+            governance_unwrap_max_line_length: number;
+            /**
+             * Governance Noise Min Chars
+             * @default 0
+             */
+            governance_noise_min_chars: number;
+            /**
+             * Governance Noise Ratio Threshold
+             * @default 0
+             */
+            governance_noise_ratio_threshold: number;
+            /**
+             * Governance Common Lines Min Docs
+             * @default 0
+             */
+            governance_common_lines_min_docs: number;
+            /**
+             * Governance Common Lines Min Ratio
+             * @default 0
+             */
+            governance_common_lines_min_ratio: number;
+            /**
+             * Chunk Size
+             * @default 0
+             */
+            chunk_size: number;
+            /**
+             * Chunk Overlap
+             * @default 0
+             */
+            chunk_overlap: number;
+            /**
+             * Chunk Merge Small Min Chars
+             * @default 0
+             */
+            chunk_merge_small_min_chars: number;
+            /** Chunk Strategy Params */
+            chunk_strategy_params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Chunk Vector Enabled
+             * @default false
+             */
+            chunk_vector_enabled: boolean;
+            /**
+             * Bm25 Index Enabled
+             * @default false
+             */
+            bm25_index_enabled: boolean;
+            /**
+             * Kg Enabled
+             * @default false
+             */
+            kg_enabled: boolean;
+            /**
+             * Event Vector Enabled
+             * @default false
+             */
+            event_vector_enabled: boolean;
+            /**
+             * Entity Vector Enabled
+             * @default false
+             */
+            entity_vector_enabled: boolean;
+        };
+        /** PipelineVersionSummary */
+        PipelineVersionSummary: {
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /**
+             * Documents
+             * @default 0
+             */
+            documents: number;
         };
         /** PreprocessStepLog */
         PreprocessStepLog: {
@@ -7582,6 +10443,8 @@ export interface components {
             query: string;
             /** History */
             history?: components["schemas"]["HistoryMessage"][];
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Document Ids */
             document_ids?: string[];
             rag_config?: components["schemas"]["ChatRAGConfig"];
@@ -7863,6 +10726,13 @@ export interface components {
             /** Ab Weight */
             ab_weight?: number | null;
         };
+        /** QAPairPreview */
+        QAPairPreview: {
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string;
+        };
         /**
          * RAGConfig
          * @description RAG parameter config.
@@ -7965,6 +10835,166 @@ export interface components {
              */
             timeseries: {
                 [key: string]: unknown[];
+            };
+        };
+        /** RagTrace */
+        RagTrace: {
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+            /**
+             * Ts Ms
+             * @default 0
+             */
+            ts_ms: number;
+            /** Request Id */
+            request_id?: string | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            retrieval?: components["schemas"]["RagTraceRetrieval"];
+            rerank?: components["schemas"]["RagTraceRerank"];
+            /** Citations */
+            citations?: components["schemas"]["RagTraceCitation"][];
+            /**
+             * Citations Count
+             * @default 0
+             */
+            citations_count: number;
+            /** Steps */
+            steps?: components["schemas"]["RagTraceStep"][];
+        };
+        /** RagTraceCitation */
+        RagTraceCitation: {
+            /** Document Id */
+            document_id?: string | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Chunk Index */
+            chunk_index?: number | null;
+            /** Page Number */
+            page_number?: number | null;
+            /** Start Char */
+            start_char?: number | null;
+            /** End Char */
+            end_char?: number | null;
+            /** Doc Pipeline Key */
+            doc_pipeline_key?: string | null;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /** Relevance Score */
+            relevance_score?: number | null;
+            /** Vector Score */
+            vector_score?: number | null;
+            /** Bm25 Score */
+            bm25_score?: number | null;
+            /** Keyword Score */
+            keyword_score?: number | null;
+            /** Rerank Score */
+            rerank_score?: number | null;
+            /** Retrieval Score */
+            retrieval_score?: number | null;
+            /** Reranker Provider */
+            reranker_provider?: string | null;
+            /** Rerank Elapsed Sec */
+            rerank_elapsed_sec?: number | null;
+            /** Rerank Model Used */
+            rerank_model_used?: string | null;
+            /** Retrieval Mode */
+            retrieval_mode?: string | null;
+            /** Vector Backend */
+            vector_backend?: string | null;
+            /** Retrieval Elapsed Sec */
+            retrieval_elapsed_sec?: number | null;
+            /** Hit Type */
+            hit_type?: string | null;
+            /**
+             * Has Image
+             * @default false
+             */
+            has_image: boolean;
+        };
+        /** RagTraceListResponse */
+        RagTraceListResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Path */
+            path: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Returned */
+            returned: number;
+            /** Items */
+            items?: components["schemas"]["RagTrace"][];
+        };
+        /** RagTraceRerank */
+        RagTraceRerank: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Provider */
+            provider?: string | null;
+            /** Top N */
+            top_n?: number | null;
+            /** Elapsed Sec */
+            elapsed_sec?: number | null;
+            /** Model Used */
+            model_used?: string | null;
+        };
+        /** RagTraceRetrieval */
+        RagTraceRetrieval: {
+            /** Mode */
+            mode?: string | null;
+            /** Requested Mode */
+            requested_mode?: string | null;
+            /** Auto Routed */
+            auto_routed?: boolean | null;
+            /** Top K */
+            top_k?: number | null;
+            /** Query Parallelism */
+            query_parallelism?: number | null;
+            /** Query Count */
+            query_count?: number | null;
+            /** Per Query */
+            per_query?: components["schemas"]["RagTraceRetrievalQuery"][];
+            /** Errors */
+            errors?: string[];
+            /** Enable Reranker */
+            enable_reranker?: boolean | null;
+            /** Reranker Provider */
+            reranker_provider?: string | null;
+            /** Reranker Top N */
+            reranker_top_n?: number | null;
+            /** Elapsed Sec */
+            elapsed_sec?: number | null;
+        };
+        /** RagTraceRetrievalQuery */
+        RagTraceRetrievalQuery: {
+            /** Kind */
+            kind?: string | null;
+            /** Query Chars */
+            query_chars?: number | null;
+            /** Elapsed Sec */
+            elapsed_sec?: number | null;
+            /** Ok */
+            ok?: boolean | null;
+        };
+        /** RagTraceStep */
+        RagTraceStep: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Elapsed Sec */
+            elapsed_sec?: number | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
             };
         };
         /**
@@ -8399,6 +11429,8 @@ export interface components {
             query: string;
             /** History */
             history?: components["schemas"]["HistoryMessage"][];
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Document Ids */
             document_ids?: string[];
             rag_config?: components["schemas"]["ChatRAGConfig"];
@@ -8538,6 +11570,7 @@ export interface components {
             embedding: components["schemas"]["EmbeddingConfig"];
             milvus: components["schemas"]["MilvusConfig"];
             rag: components["schemas"]["RAGConfig"];
+            cache: components["schemas"]["CacheConfig"];
             url_ingest: components["schemas"]["UrlIngestConfig"];
             governance: components["schemas"]["GovernanceConfig"];
             mineru: components["schemas"]["MinerUConfig"];
@@ -8547,6 +11580,7 @@ export interface components {
             magicpdf: components["schemas"]["MagicPDFConfig"];
             observability: components["schemas"]["ObservabilityConfig"];
             safety: components["schemas"]["SafetyConfig"];
+            chat: components["schemas"]["ChatConfig"];
             langgraph: components["schemas"]["LangGraphConfig"];
         };
         /** TableAskRequest */
@@ -8772,6 +11806,7 @@ export interface components {
             embedding?: components["schemas"]["EmbeddingConfig"] | null;
             milvus?: components["schemas"]["MilvusConfig"] | null;
             rag?: components["schemas"]["RAGConfig"] | null;
+            cache?: components["schemas"]["CacheConfig"] | null;
             url_ingest?: components["schemas"]["UrlIngestConfig"] | null;
             governance?: components["schemas"]["GovernanceConfig"] | null;
             mineru?: components["schemas"]["MinerUConfig"] | null;
@@ -8781,35 +11816,8 @@ export interface components {
             magicpdf?: components["schemas"]["MagicPDFConfig"] | null;
             observability?: components["schemas"]["ObservabilityConfig"] | null;
             safety?: components["schemas"]["SafetyConfig"] | null;
+            chat?: components["schemas"]["ChatConfig"] | null;
             langgraph?: components["schemas"]["LangGraphConfig"] | null;
-        };
-        /**
-         * UrlBatchConnectorConfig
-         * @description Config for `url_batch` connector.
-         */
-        UrlBatchConnectorConfig: {
-            /**
-             * Urls
-             * @description One URL per entry
-             */
-            urls: string[];
-            /**
-             * Filename
-             * @description Optional: override filename for display/extension inference (applies to all urls).
-             */
-            filename?: string | null;
-            /**
-             * Parser Backend
-             * @default auto
-             */
-            parser_backend: string;
-            /**
-             * Chunk Strategy
-             * @default langchain_recursive
-             */
-            chunk_strategy: string;
-            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
-            access?: components["schemas"]["DocumentAccessUpdateRequest"] | null;
         };
         /**
          * UrlIngestConfig
@@ -8856,6 +11864,12 @@ export interface components {
              * @description Optional override filename (used for extension + display)
              */
             filename?: string | null;
+            /** Fetch Headers */
+            fetch_headers?: {
+                [key: string]: string;
+            } | null;
+            /** User Agent */
+            user_agent?: string | null;
             /**
              * Parser Backend
              * @default auto
@@ -8999,6 +12013,8 @@ export interface components {
             recommendation_patches?: components["schemas"]["ChunkPreviewRecommendationPatch"][];
             /** Original Text */
             original_text?: string | null;
+            /** Original Text Cleaned */
+            original_text_cleaned?: string | null;
             /**
              * Original Text Included
              * @default false
@@ -9340,8 +12356,12 @@ export interface operations {
                 skip?: number;
                 limit?: number;
                 status?: string | null;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
                 dataset_id?: string | null;
+                file_type?: string | null;
+                owner_id?: string | null;
                 q?: string | null;
+                source_path_prefix?: string | null;
                 order_by?: "created_at" | "filename" | "file_size";
                 order_dir?: "asc" | "desc";
             };
@@ -9375,10 +12395,50 @@ export interface operations {
             };
         };
     };
+    list_document_folders_api_v1_documents_folders_get: {
+        parameters: {
+            query: {
+                dataset_id: string;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                max_depth?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentFolderTreeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_stats_api_v1_documents_stats_get: {
         parameters: {
             query?: {
                 dataset_id?: string | null;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                file_type?: string | null;
+                owner_id?: string | null;
                 q?: string | null;
             };
             header?: {
@@ -9411,10 +12471,53 @@ export interface operations {
             };
         };
     };
+    list_document_duplicates_api_v1_documents_duplicates_get: {
+        parameters: {
+            query: {
+                /** @description Dataset scope for duplicate detection */
+                dataset_id: string;
+                min_count?: number;
+                max_groups?: number;
+                max_docs_per_group?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDuplicateList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_v1_documents__document_id__get: {
         parameters: {
             query?: {
                 include_chunks?: boolean;
+                /** @description Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true) */
+                pipeline_hash?: string | null;
+                /** @description If true, include chunks across all pipeline versions (debug; when include_chunks=true) */
+                all_versions?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -9469,6 +12572,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_timeline_api_v1_documents__document_id__timeline_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTimelineResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -9592,12 +12732,121 @@ export interface operations {
             };
         };
     };
+    list_document_versions_api_v1_documents__document_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_document_version_api_v1_documents__document_id__versions__pipeline_hash__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                pipeline_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_version_api_v1_documents__document_id__versions__pipeline_hash__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                pipeline_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_document_chunks_api_v1_documents__document_id__chunks_get: {
         parameters: {
             query?: {
                 skip?: number;
                 limit?: number;
                 q?: string | null;
+                /** @description Optional: filter by a specific pipeline_hash version */
+                pipeline_hash?: string | null;
+                /** @description If true, return chunks across all pipeline versions (debug) */
+                all_versions?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -9631,6 +12880,45 @@ export interface operations {
             };
         };
     };
+    create_document_chunk_api_v1_documents__document_id__chunks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentChunkCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_document_chunk_matches_api_v1_documents__document_id__chunks_matches_get: {
         parameters: {
             query: {
@@ -9638,6 +12926,10 @@ export interface operations {
                 q: string;
                 /** @description Max returned matches (may be truncated) */
                 limit?: number;
+                /** @description Optional: filter by a specific pipeline_hash version */
+                pipeline_hash?: string | null;
+                /** @description If true, return matches across all pipeline versions (debug) */
+                all_versions?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -9694,6 +12986,230 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_chunk_api_v1_documents__document_id__chunks__chunk_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_chunk_api_v1_documents__document_id__chunks__chunk_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentChunkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentChunkReembedRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkReembedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_document_qa_api_v1_documents__document_id__qa_generate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentQAGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentQAGenerateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9929,6 +13445,7 @@ export interface operations {
         parameters: {
             query?: {
                 force?: boolean;
+                skip_if_unchanged?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -9949,6 +13466,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_disable_documents_api_v1_documents_batch_disable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_enable_documents_api_v1_documents_batch_enable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_archive_documents_api_v1_documents_batch_archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_unarchive_documents_api_v1_documents_batch_unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9986,6 +13651,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentBatchDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_retry_documents_api_v1_documents_batch_retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchRetryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_reingest_documents_api_v1_documents_batch_reingest_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchReingestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchRetryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_update_document_access_api_v1_documents_batch_access_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchAccessUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchAccessUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_move_documents_api_v1_documents_batch_move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchMoveResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10375,6 +14188,7 @@ export interface operations {
         parameters: {
             query?: {
                 parser_backend?: string | null;
+                image_caption_enabled?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -10492,6 +14306,151 @@ export interface operations {
             };
             path: {
                 document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chunk_presets_api_v1_chunk_presets_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkPresetListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_chunk_preset_api_v1_chunk_presets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChunkPresetCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkPresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_chunk_preset_api_v1_chunk_presets__preset_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChunkPresetUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkPresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_chunk_preset_api_v1_chunk_presets__preset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                preset_id: string;
             };
             cookie?: never;
         };
@@ -10662,6 +14621,116 @@ export interface operations {
             };
         };
     };
+    delete_conversation_api_v1_chat_conversations__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_conversation_api_v1_chat_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_conversation_api_v1_chat_conversations__conversation_id__export_get: {
+        parameters: {
+            query?: {
+                fmt?: string;
+                include_citations?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_conversation_messages_api_v1_chat_conversations__conversation_id__messages_get: {
         parameters: {
             query?: {
@@ -10687,6 +14756,148 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_rag_traces_api_v1_chat_conversations__conversation_id__rag_traces_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                window_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagTraceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSummaryUpdateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10810,7 +15021,7 @@ export interface operations {
             };
         };
     };
-    delete_conversation_api_v1_chat_conversations__conversation_id__delete: {
+    get_dataset_ingestion_stats_api_v1_datasets__dataset_id__ingestion_stats_get: {
         parameters: {
             query?: never;
             header?: {
@@ -10819,18 +15030,20 @@ export interface operations {
                 "x-user-id"?: string | null;
             };
             path: {
-                conversation_id: string;
+                dataset_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DatasetIngestionStats"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -10848,6 +15061,10 @@ export interface operations {
             query?: {
                 skip?: number;
                 limit?: number;
+                /** @description Optional: filter datasets by category (tree) */
+                category_id?: string | null;
+                /** @description When filtering by category_id, include subtree */
+                include_descendants?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -11023,6 +15240,193 @@ export interface operations {
             };
         };
     };
+    get_dataset_categories_api_v1_datasets__dataset_id__categories_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCategoryAssignmentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_dataset_categories_api_v1_datasets__dataset_id__categories_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetCategoryAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCategoryAssignmentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_config_api_v1_datasets__dataset_id__config_export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetConfigExport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_dataset_config_api_v1_datasets__dataset_id__config_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetConfigImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_dataset_api_v1_datasets__dataset_id__clone_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetCloneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_get: {
         parameters: {
             query?: never;
@@ -11074,6 +15478,80 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["IngestionPolicy-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionPolicy-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_ingestion_policy_versions_api_v1_datasets__dataset_id__ingestion_policy_versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionPolicyVersionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_rollback_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestionPolicyRollbackRequest"];
             };
         };
         responses: {
@@ -11193,6 +15671,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatasetProfileSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_health_api_v1_datasets__dataset_id__health_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetHealthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12199,6 +16712,187 @@ export interface operations {
             };
         };
     };
+    list_dataset_categories_api_v1_dataset_categories__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCategoryTreeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dataset_category_api_v1_dataset_categories__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetCategoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dataset_category_api_v1_dataset_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_dataset_category_api_v1_dataset_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetCategoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_dataset_category_api_v1_dataset_categories__category_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetCategoryMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_kg_graph_api_v1_kg_graph_get: {
         parameters: {
             query?: {
@@ -12724,6 +17418,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rule_packs_api_v1_governance_rule_packs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRulePackListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -13514,6 +18241,45 @@ export interface operations {
             };
         };
     };
+    create_regression_case_from_feedback_api_v1_feedback_messages__feedback_id__to_regression_case_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                feedback_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackToRegressionCaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagasRegressionCaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pipeline_capabilities_api_v1_pipeline_capabilities_get: {
         parameters: {
             query?: never;
@@ -13728,6 +18494,41 @@ export interface operations {
             };
         };
     };
+    get_governance_profile_resolved_api_v1_pipeline_governance_profiles__profile_ref__resolved_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                profile_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceProfileResolvedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
         parameters: {
             query?: never;
@@ -13766,6 +18567,41 @@ export interface operations {
         };
     };
     export_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                profile_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_governance_profile_ingestion_policy_api_v1_pipeline_governance_profiles__profile_ref__export_ingestion_policy_get: {
         parameters: {
             query?: never;
             header?: {
@@ -13935,6 +18771,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CleanPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    learn_common_lines_api_v1_pipeline_learn_common_lines_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GovernanceCommonLinesLearnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceCommonLinesLearnResponse"];
                 };
             };
             /** @description Validation Error */
@@ -14258,6 +19131,76 @@ export interface operations {
             };
         };
     };
+    retry_failed_connector_run_api_v1_connectors_runs__run_id__retry_failed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_connector_run_api_v1_connectors_runs__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_connector_run_api_v1_connectors_runs__run_id__cancel_post: {
         parameters: {
             query?: never;
@@ -14280,6 +19223,222 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectorRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connector_configs_api_v1_connectors_configs_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                dataset_id?: string | null;
+                connector_id?: string | null;
+                enabled?: boolean | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorConfigListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_connector_config_api_v1_connectors_configs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectorConfigCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_connector_config_api_v1_connectors_configs__config_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectorConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_connector_config_api_v1_connectors_configs__config_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_connector_config_api_v1_connectors_configs__config_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scheduled_tick_api_v1_connectors_scheduled_tick_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -14437,6 +19596,123 @@ export interface operations {
             };
         };
     };
+    get_dataset_report_api_v1_reports_datasets__dataset_id__get: {
+        parameters: {
+            query?: {
+                /** @description Optional: filter by pipeline_hash (active) */
+                pipeline_hash?: string | null;
+                connector_runs_limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_report_json_api_v1_reports_datasets__dataset_id__export_get: {
+        parameters: {
+            query?: {
+                pipeline_hash?: string | null;
+                connector_runs_limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_report_html_api_v1_reports_datasets__dataset_id__export_html_get: {
+        parameters: {
+            query?: {
+                pipeline_hash?: string | null;
+                connector_runs_limit?: number;
+                /** @description Whether to redact dataset name/id for sharing */
+                redact?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_rag_metrics_summary_api_v1_observability_rag_metrics_summary_get: {
         parameters: {
             query?: {
@@ -14460,6 +19736,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RagMetricsSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_logs_api_v1_audit_logs_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                actor_id?: string | null;
+                action?: string | null;
+                resource_type?: string | null;
+                resource_id?: string | null;
+                request_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_token_quota_status_api_v1_usage_chat_tokens_quota_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTokenQuotaStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_token_usage_summary_api_v1_usage_chat_tokens_summary_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTokenUsageSummary"];
                 };
             };
             /** @description Validation Error */

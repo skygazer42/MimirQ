@@ -11,6 +11,7 @@ from fastapi import APIRouter
 
 from app.api.schemas.meta import MetaResponse
 from app.core.config import settings
+from app.core.utils import parse_csv
 
 router = APIRouter()
 
@@ -51,6 +52,9 @@ def get_meta() -> dict:
             "embedding_cache_enabled": bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
             "minio_enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
             "use_langgraph_pipeline": bool(getattr(settings, "USE_LANGGRAPH_PIPELINE", False)),
+            "gzip_enabled": bool(getattr(settings, "GZIP_ENABLED", True)),
+            "rate_limit_enabled": bool(getattr(settings, "RATE_LIMIT_ENABLED", False)),
+            "cors_origins": parse_csv(getattr(settings, "CORS_ORIGINS", "")),
         },
         "runtime": {
             "python": platform.python_version(),
