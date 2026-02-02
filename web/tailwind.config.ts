@@ -94,7 +94,6 @@ const config = {
       boxShadow: {
         'soft': 'var(--shadow-soft)',
         'strong': 'var(--shadow-strong)',
-        'glow': '0 0 20px -5px hsl(var(--primary) / 0.3)',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
