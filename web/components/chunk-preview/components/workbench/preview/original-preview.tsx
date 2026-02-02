@@ -297,7 +297,7 @@ export function OriginalPreview() {
                   {' '}
                   <span className="text-muted-foreground">{activeChunkMeta.range}</span>
                   {activeChunkMeta.role ? (
-                    <span className="ml-1 text-[9px] uppercase tracking-wide text-muted-foreground">
+                    <span className="ml-1 text-[9px] uppercase  text-muted-foreground">
                       {activeChunkMeta.role}
                     </span>
                   ) : null}

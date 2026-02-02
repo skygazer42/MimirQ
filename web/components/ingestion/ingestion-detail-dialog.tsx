@@ -133,7 +133,7 @@ export function IngestionDetailDialog({
 
         <DialogHeader className="px-8 pt-8 pb-6 border-b border-border/60 bg-card relative z-10">
           <DialogTitle className="flex items-center justify-between gap-3">
-            <span className="truncate text-xl font-bold tracking-tight text-slate-900">{doc?.filename || '入库详情'}</span>
+            <span className="truncate text-xl font-bold  text-slate-900">{doc?.filename || '入库详情'}</span>
             {doc && (
               <Badge variant={statusBadgeVariant(doc.status)} className="shrink-0">
                 {doc.status}
@@ -174,7 +174,7 @@ export function IngestionDetailDialog({
             {/* Pipeline Stage Card */}
             <div className="rounded-2xl border border-border bg-card shadow-sm p-6 relative overflow-hidden">
               <div className="flex items-center justify-between gap-3 mb-6">
-                <div className="text-sm font-bold text-slate-900 uppercase tracking-wider">Processing Pipeline</div>
+                <div className="text-sm font-bold text-slate-900 uppercase ">Processing Pipeline</div>
                 <div className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-md">Progress: {doc.processing_progress ?? 0}%</div>
               </div>
 
@@ -198,7 +198,7 @@ export function IngestionDetailDialog({
                         >
                           {Icon ? <Icon className={cn('h-5 w-5', isDone && 'text-emerald-600')} /> : <span className="text-xs font-bold">{idx + 1}</span>}
                         </div>
-                        <div className={cn('text-[11px] font-bold uppercase tracking-wider', isActive ? 'text-slate-900' : 'text-slate-400')}>
+                        <div className={cn('text-[11px] font-bold uppercase ', isActive ? 'text-slate-900' : 'text-slate-400')}>
                           {s.label}
                         </div>
                       </div>
@@ -242,11 +242,11 @@ export function IngestionDetailDialog({
 
             {/* Runtime Info - Ticket Style */}
             <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-6">
-              <div className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Runtime Details</div>
+              <div className="text-sm font-bold text-slate-900 uppercase  mb-4">Runtime Details</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {runtime.map((item) => (
                   <div key={item.k} className="bg-card rounded-xl border border-border p-3 shadow-sm hover:shadow-md transition-shadow duration-200 motion-reduce:transition-none">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.k}</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase  mb-1">{item.k}</div>
                     <div className="text-xs font-mono text-slate-700 break-words font-medium">{item.v}</div>
                   </div>
                 ))}

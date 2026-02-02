@@ -157,7 +157,7 @@ export default function IngestionMonitorPage() {
         description={
           <span className="flex items-center gap-2 text-muted-foreground">
             <span className="font-bold text-foreground">SYSTEM_STATUS</span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 uppercase tracking-wider">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 uppercase ">
               Online
             </span>
             <span className="text-muted-foreground/60">|</span>
@@ -205,10 +205,10 @@ export default function IngestionMonitorPage() {
                     <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
                       <stat.icon className={cn("w-5 h-5", stat.color, stat.spin && "animate-spin motion-reduce:animate-none")} />
                     </div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</div>
+                    <div className="text-[10px] font-bold uppercase  text-muted-foreground">{stat.label}</div>
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
+                    <span className={cn("text-3xl font-black ", stat.color)}>{stat.value}</span>
                     {idx === 4 && <span className="text-xs font-medium text-muted-foreground">Total</span>}
                   </div>
                 </div>
@@ -294,7 +294,7 @@ export default function IngestionMonitorPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <p className="font-bold text-base text-foreground truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors tracking-tight">{doc.filename}</p>
+                      <p className="font-bold text-base text-foreground truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors ">{doc.filename}</p>
                     </div>
 
                     <div className="mt-3 text-xs text-muted-foreground flex flex-wrap gap-x-6 gap-y-1 font-medium items-center">
@@ -311,7 +311,7 @@ export default function IngestionMonitorPage() {
                         {doc.chunk_count ?? 0} 切片
                       </div>
                       {doc.current_stage && (
-                        <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-bold bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-500/20 text-[10px] uppercase tracking-wider">
+                        <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-bold bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-500/20 text-[10px] uppercase ">
                           <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse motion-reduce:animate-none" />
                           {doc.current_stage}
                         </div>
@@ -368,7 +368,7 @@ export default function IngestionMonitorPage() {
 
                     {/* Progress Bar */}
                     <div className="w-full max-w-[140px] space-y-1.5">
-                      <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase ">
                         <span>Progress</span>
                         <span className={cn(doc.status === 'processing' ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground")}>{doc.processing_progress || 0}%</span>
                       </div>
@@ -409,7 +409,7 @@ export default function IngestionMonitorPage() {
                     </div>
                     <div className="space-y-1">
                       <div className={cn(
-                        "text-xs font-bold uppercase tracking-wider",
+                        "text-xs font-bold uppercase ",
                         doc.status === 'quarantined' ? "text-amber-700 dark:text-amber-300" : "text-red-600 dark:text-red-400"
                       )}>
                         {doc.status === 'quarantined' ? 'Quarantined' : 'Error Log'}

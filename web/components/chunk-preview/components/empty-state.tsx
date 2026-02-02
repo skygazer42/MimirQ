@@ -30,7 +30,7 @@ export function EmptyState() {
             <Upload className="w-3.5 h-3.5 text-primary" />
             <span className="text-xs font-semibold text-muted-foreground">切块预览</span>
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight text-foreground">上传文档，预览切片质量</h1>
+          <h1 className="mt-4 text-2xl font-bold  text-foreground">上传文档，预览切片质量</h1>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
             选择合适的解析器/切块策略与参数，右侧实时查看切片列表与原文定位，确认无误后再入库。
           </p>

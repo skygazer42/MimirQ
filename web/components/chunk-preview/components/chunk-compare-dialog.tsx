@@ -272,7 +272,7 @@ export function ChunkCompareDialog(props: {
               {baseline && diff ? (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                   <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Chunks</div>
+                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">Chunks</div>
                     <div className="mt-2 flex items-end justify-between">
                       <div className="text-sm font-mono text-foreground/90">{diff.bCount}</div>
                       <div className={cn('text-xs font-mono', diff.deltaCount === 0 ? 'text-muted-foreground' : diff.deltaCount > 0 ? 'text-info' : 'text-warning')}>
@@ -285,7 +285,7 @@ export function ChunkCompareDialog(props: {
                   </div>
 
                   <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">长度分布（{diff.unit}）</div>
+                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">长度分布（{diff.unit}）</div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
                       <div className="text-muted-foreground">
                         P10<br />
@@ -306,7 +306,7 @@ export function ChunkCompareDialog(props: {
                   </div>
 
                   <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">内容重合度（估算）</div>
+                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">内容重合度（估算）</div>
                     <div className="mt-2 flex items-end justify-between">
                       <div className="text-sm font-mono text-foreground/90">{Math.round((diff.overlap || 0) * 100)}%</div>
                       <div className="text-[11px] text-muted-foreground">
@@ -319,7 +319,7 @@ export function ChunkCompareDialog(props: {
                   </div>
 
                   <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">覆盖/重叠/质量</div>
+                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">覆盖/重叠/质量</div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
                       <div className="text-muted-foreground">
                         coverage<br />

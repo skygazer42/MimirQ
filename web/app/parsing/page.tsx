@@ -1959,7 +1959,7 @@ export default function ParsingPage() {
 	                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 	                          <div className="min-w-0">
 	                            <div className="flex flex-wrap items-center gap-2">
-	                              <span className="inline-flex max-w-[560px] min-w-0 items-center gap-2 rounded-xl border border-border/60 bg-background/70 dark:bg-background/20 px-2.5 py-1 text-sm font-semibold tracking-tight text-foreground">
+	                              <span className="inline-flex max-w-[560px] min-w-0 items-center gap-2 rounded-xl border border-border/60 bg-background/70 dark:bg-background/20 px-2.5 py-1 text-sm font-semibold  text-foreground">
 	                                {getFileIcon(activeLibraryFile.filename, 'w-7 h-7 rounded-lg')}
 	                                <span className="min-w-0 truncate">{activeLibraryFile.filename}</span>
 	                              </span>

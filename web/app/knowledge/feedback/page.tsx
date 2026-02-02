@@ -137,7 +137,7 @@ export default function FeedbackTriagePage() {
         description={
           <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
             <span className="font-bold text-slate-700 dark:text-slate-200">TRIAGE_MODE</span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 uppercase tracking-wider">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 uppercase ">
               Active
             </span>
             <span className="text-slate-300 dark:text-slate-600">|</span>
@@ -174,10 +174,10 @@ export default function FeedbackTriagePage() {
                     <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
                       <stat.icon className={cn("w-5 h-5", stat.color)} />
                     </div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{stat.label}</div>
+                    <div className="text-[10px] font-bold uppercase  text-slate-400 dark:text-slate-500">{stat.label}</div>
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
+                    <span className={cn("text-3xl font-black ", stat.color)}>{stat.value}</span>
                   </div>
                 </div>
               </div>
@@ -290,7 +290,7 @@ export default function FeedbackTriagePage() {
                     {Array.isArray(item.tags) && item.tags.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {item.tags.slice(0, 5).map((t) => (
-                          <span key={t} className="text-[10px] uppercase tracking-wider font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 px-2 py-0.5 rounded-md">
+                          <span key={t} className="text-[10px] uppercase  font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 px-2 py-0.5 rounded-md">
                             {t}
                           </span>
                         ))}
@@ -321,7 +321,7 @@ export default function FeedbackTriagePage() {
 	            <DialogHeader className="px-8 pt-8 pb-4 border-b border-border/60 bg-card relative z-10">
 	              <DialogTitle className="flex items-center justify-between gap-3">
 	                <div className="flex items-center gap-3">
-	                  <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">反馈详情报告</span>
+	                  <span className="text-lg font-bold  text-slate-900 dark:text-slate-100">反馈详情报告</span>
 	                </div>
 	                {detail && (
 	                  <Button size="sm" variant="outline" className="border-border/80 text-xs bg-card" onClick={() => copyDetail(detail)}>
@@ -355,7 +355,7 @@ export default function FeedbackTriagePage() {
                 <div className="grid grid-cols-1 gap-8">
                   {detail.reason && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase  pl-1">
                         <MessageSquare className="w-3.5 h-3.5" />
                         User Feedback
                       </div>
@@ -367,7 +367,7 @@ export default function FeedbackTriagePage() {
 
                   {detail.expected_answer && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase  pl-1">
                         <Star className="w-3.5 h-3.5" />
                         Expected Output
                       </div>
@@ -379,7 +379,7 @@ export default function FeedbackTriagePage() {
 
                   {detail.message_content && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase  pl-1">
                         <Loader2 className="w-3.5 h-3.5" />
                         AI Response
                       </div>

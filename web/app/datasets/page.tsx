@@ -201,7 +201,7 @@ export default function DatasetsPage() {
 	          <span className="flex items-center gap-2">
 	            <span className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-pulse motion-reduce:animate-none" />
 	            管理知识库集合与访问权限
-            <span className="ml-4 text-xs font-mono text-primary/70 uppercase tracking-widest">
+            <span className="ml-4 text-xs font-mono text-primary/70 uppercase ">
               Total Archives: <span className="text-primary font-bold">{total}</span>
             </span>
           </span>
@@ -210,7 +210,7 @@ export default function DatasetsPage() {
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              className="gap-2 rounded-lg bg-card/60 backdrop-blur-md font-mono text-xs uppercase tracking-wider"
+              className="gap-2 rounded-lg bg-card/60 backdrop-blur-md font-mono text-xs uppercase "
               onClick={() => load()}
               disabled={isLoading}
 	            >
@@ -262,7 +262,7 @@ export default function DatasetsPage() {
 
           <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
             <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dataset Registry</div>
+              <div className="text-xs font-bold text-muted-foreground uppercase ">Dataset Registry</div>
 	              {isLoading && (
 	                <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
 	                  <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
@@ -297,8 +297,8 @@ export default function DatasetsPage() {
                   <div key={ds.id} className="group px-6 py-5 flex items-start justify-between gap-6 hover:bg-muted/20 transition-colors">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-3 mb-1.5">
-                        <div className="font-bold text-lg text-foreground group-hover:text-primary transition-colors truncate tracking-tight">{ds.name}</div>
-                        <Badge variant={permissionBadgeVariant(ds.permission)} className="text-[10px] uppercase tracking-wider font-mono">
+                        <div className="font-bold text-lg text-foreground group-hover:text-primary transition-colors truncate ">{ds.name}</div>
+                        <Badge variant={permissionBadgeVariant(ds.permission)} className="text-[10px] uppercase  font-mono">
                           {permissionLabel(ds.permission)}
                         </Badge>
                       </div>

@@ -987,7 +987,7 @@ export default function DatasetIngestionPolicyPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold truncate">{r.name}</span>
-                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="text-[10px] font-mono uppercase tracking-wider">
+                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="text-[10px] font-mono uppercase ">
                               {r.enabled ? 'enabled' : 'disabled'}
                             </Badge>
                             <span className="text-xs text-muted-foreground font-mono">#{idx + 1}</span>

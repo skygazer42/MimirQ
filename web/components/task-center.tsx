@@ -99,7 +99,7 @@ export function TaskCenter() {
 	            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-2xl ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
                 <div className="px-4 py-3 border-b border-border/60 bg-muted/30 flex justify-between items-center">
                     <div className="min-w-0">
-                      <h4 className="text-sm font-semibold leading-none tracking-tight">任务中心</h4>
+                      <h4 className="text-sm font-semibold leading-none ">任务中心</h4>
                       <div className="mt-2 flex items-center gap-2">
                         {totalActive > 0 && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">

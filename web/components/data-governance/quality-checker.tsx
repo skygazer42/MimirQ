@@ -317,11 +317,11 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
         {/* 质量分数卡片 */}
         {score > 0 && (
           <div className={cn(
-            "p-4 rounded-xl border-2 bg-gradient-to-br",
-            scoreGrade.tone === 'success' && "from-success/15 to-success/5 border-success/30",
-            scoreGrade.tone === 'info' && "from-info/15 to-info/5 border-info/30",
-            scoreGrade.tone === 'warning' && "from-warning/15 to-warning/5 border-warning/30",
-            scoreGrade.tone === 'destructive' && "from-destructive/15 to-destructive/5 border-destructive/30",
+            "p-4 rounded-xl border-2",
+            scoreGrade.tone === 'success' && "bg-success/10 border-success/30",
+            scoreGrade.tone === 'info' && "bg-info/10 border-info/30",
+            scoreGrade.tone === 'warning' && "bg-warning/10 border-warning/30",
+            scoreGrade.tone === 'destructive' && "bg-destructive/10 border-destructive/30",
           )}>
             <div className="flex items-center justify-between">
               <div>
