@@ -77,6 +77,16 @@ const RULES = [
     description: 'Avoid Tailwind cyan palette utilities; use border-primary/border-info/etc.',
     re: /\bborder-cyan-\d{2,3}(?:\/\d+)?\b/g,
   },
+  {
+    id: 'tailwind-gradients',
+    description: 'Avoid Tailwind gradient utilities; use token surfaces and borders instead.',
+    re: /\bbg-gradient-[a-z-]+\b/g,
+  },
+  {
+    id: 'tailwind-tracking',
+    description: 'Avoid Tailwind letter-spacing utilities; use font weight/size instead.',
+    re: /\btracking-(?:tighter|tight|normal|wide|wider|widest)\b/g,
+  },
 ]
 
 async function collectFiles(dir) {
