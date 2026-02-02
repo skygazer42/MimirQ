@@ -306,10 +306,27 @@ export default function FeedbackTriagePage() {
 
             {!filtered.length && (
               <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-20 h-20 rounded-full bg-slate-50 dark:bg-slate-900 flex items-center justify-center mb-4">
-                  <Search className="w-8 h-8 text-slate-300 dark:text-slate-600" />
+                <div className="mb-4 flex size-20 items-center justify-center rounded-full bg-muted/50">
+                  <Search className="size-8 text-muted-foreground/50" aria-hidden="true" />
                 </div>
-                <p className="text-slate-500 dark:text-slate-400 font-medium">没有找到相关的反馈记录</p>
+                <p className="font-medium text-muted-foreground">没有找到相关的反馈记录</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-5"
+                  onClick={() => {
+                    if (searchTerm.trim().length > 0 || filterType !== 'all') {
+                      setSearchTerm('')
+                      setFilterType('all')
+                      return
+                    }
+                    void refetch()
+                  }}
+                >
+                  {searchTerm.trim().length > 0 || filterType !== 'all'
+                    ? '清除筛选'
+                    : '刷新'}
+                </Button>
               </div>
             )}
           </div>
