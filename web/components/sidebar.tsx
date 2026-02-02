@@ -33,6 +33,17 @@ import { Magnetic } from '@/components/ui/magnetic'
 import { TiltCard } from '@/components/ui/tilt-card'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
 export function Sidebar() {
@@ -377,20 +388,43 @@ function DocumentCard({
             <X className="size-3.5" aria-hidden="true" />
           </Button>
         ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-            aria-label="删除文档"
-            title="删除文档"
-            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-destructive hover:text-destructive-foreground"
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={(e) => {
+                  // Avoid triggering the card's click handler.
+                  e.stopPropagation()
+                }}
+                aria-label="删除文档"
+                title="删除文档"
+                className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-destructive hover:text-destructive-foreground"
+              >
+                <Trash2 className="size-3.5" aria-hidden="true" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>删除文档？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  你将删除 <span className="font-mono">{document.filename}</span>。此操作不可撤销。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={(e) => e.stopPropagation()}>取消</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete()
+                  }}
+                >
+                  删除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
     </TiltCard>
