@@ -231,7 +231,7 @@ export function Navbar({
         <button
           type="button"
           aria-label="关闭侧边栏"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity md:hidden border-0 p-0 focus:outline-none"
+          className="fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden border-0 p-0 focus:outline-none"
           onClick={() => setSidebarOpen(false)}
         />
       ) : null}
