@@ -71,14 +71,14 @@ export function getFileIcon(filename: string, className?: string) {
   // Large Icon (Detailed Paper Style)
   // Simulating a vertical document page with a colored fold/header
   const paperBand: Record<string, string> = {
-    red: "from-red-500 to-red-600",
-    blue: "from-blue-500 to-blue-600",
-    emerald: "from-emerald-500 to-emerald-600",
-    amber: "from-amber-500 to-amber-600",
-    rose: "from-rose-500 to-rose-600",
-    sky: "from-primary to-info",
-    teal: "from-teal-500 to-teal-600",
-    slate: "from-muted-foreground/40 to-muted-foreground/60",
+    red: "bg-red-500/70",
+    blue: "bg-blue-500/70",
+    emerald: "bg-emerald-500/70",
+    amber: "bg-amber-500/70",
+    rose: "bg-rose-500/70",
+    sky: "bg-primary/30",
+    teal: "bg-teal-500/70",
+    slate: "bg-muted-foreground/40",
   }
 
   const textTone: Record<string, string> = {
@@ -109,7 +109,7 @@ export function getFileIcon(filename: string, className?: string) {
       <div className="relative w-9 h-11 bg-card rounded-sm shadow-soft/40 border border-border/60 overflow-hidden flex flex-col">
 
         {/* Top Color Band / Header */}
-        <div className={cn("h-3 w-full bg-gradient-to-r opacity-85", paperBand[tone] || paperBand.slate)} />
+        <div className={cn("h-3 w-full opacity-80", paperBand[tone] || paperBand.slate)} />
 
         {/* Corner Fold Effect (CSS Triangle) */}
         <div className="absolute top-0 right-0 border-t-[8px] border-r-[8px] border-t-black/5 border-r-white/0" />
