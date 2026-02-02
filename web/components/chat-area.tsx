@@ -29,7 +29,6 @@ import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
-import { ScrollReveal } from '@/components/ui/scroll-reveal'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -421,9 +420,12 @@ export function ChatArea({
 
           <div className="space-y-6">
             {visibleMessages.map((message) => (
-              <ScrollReveal key={message.id}>
+              <div
+                key={message.id}
+                className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200 motion-safe:ease-out"
+              >
                 <ChatMessageItem message={message} />
-              </ScrollReveal>
+              </div>
             ))}
 
             {isLoading && (currentResponse || (currentSteps && currentSteps.length > 0)) && (
