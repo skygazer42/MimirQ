@@ -776,7 +776,7 @@ function WelcomeScreen() {
 	    <div className="flex flex-col items-center justify-center text-center space-y-10 motion-safe:animate-fade-in-up px-4 py-10 relative z-10">
 	      <div className="relative">
 	        <div className="absolute -inset-10 bg-gradient-radial from-primary/20 via-primary/5 to-transparent blur-3xl opacity-40 motion-safe:animate-pulse-subtle"></div>
-	        <div className="relative h-24 w-24 glass rounded-[2rem] shadow-glow flex items-center justify-center border-border/60">
+	        <div className="relative h-24 w-24 glass rounded-[2rem] shadow-strong flex items-center justify-center border-border/60">
 	          <Bot className="h-12 w-12 text-primary drop-shadow-[0_0_15px_hsl(var(--primary)/0.55)]" />
 	        </div>
 	      </div>
