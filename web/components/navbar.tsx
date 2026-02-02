@@ -239,7 +239,7 @@ export function Navbar({
       <nav
         aria-label="主导航"
         className={cn(
-          'peer flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col transition-all duration-300 ease-in-out z-50',
+          'peer flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col transition-transform duration-200 ease-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
           isSidebarOpen ? 'w-[280px] translate-x-0' : 'w-[280px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
@@ -247,12 +247,12 @@ export function Navbar({
         {/* Logo 区域 */}
         <div className="h-16 px-6 border-b border-sidebar-border flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-lg group-hover:shadow-primary/30 transition-all duration-300 motion-safe:group-hover:scale-105">
+            <div className="size-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-sm border border-primary/20 transition-colors duration-200 group-hover:border-primary/30">
               <span className="text-primary-foreground font-bold text-lg">M</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-foreground leading-none tracking-tight">MimirQ</span>
-              <span className="text-[10px] text-muted-foreground font-medium tracking-wide mt-1">智能知识库</span>
+              <span className="font-semibold text-foreground leading-none">MimirQ</span>
+              <span className="text-[10px] text-muted-foreground font-medium mt-1">智能知识库</span>
             </div>
           </Link>
         </div>
@@ -261,16 +261,10 @@ export function Navbar({
         <div className="p-4 pb-2">
           <Button
             className={cn(
-              "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-all duration-300",
-              // Softer, more neutral “glass” look to match the page theme.
-              "bg-card/70 backdrop-blur-xl",
-              "border border-border/70",
-              "text-foreground",
-              // Subtle tint + lift on hover (keeps brand feel without being too blue).
-              "hover:bg-gradient-to-r hover:from-sky-50/80 hover:via-white hover:to-teal-50/70",
-              "dark:hover:from-sky-950/30 dark:hover:via-slate-900/40 dark:hover:to-teal-950/25",
-              "shadow-sm hover:shadow-md hover:shadow-sky-500/10",
-              "motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0"
+              "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-colors duration-200",
+              "bg-card border border-border shadow-sm text-foreground",
+              "hover:bg-accent hover:border-border",
+              "active:bg-accent/80"
             )}
             onClick={() => {
               router.push('/')
@@ -288,7 +282,7 @@ export function Navbar({
           <div className="space-y-4">
             {menuSections.map((section) => (
               <div key={section.title} className="space-y-1">
-                <p className="px-3 text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+                <p className="px-3 text-[11px] font-semibold text-muted-foreground mb-2 uppercase">
                   {section.title}
                 </p>
                 {section.items.map((item) => {
@@ -303,7 +297,7 @@ export function Navbar({
                         onClick={closeSidebarOnMobile}
                         aria-current={isActive ? 'page' : undefined}
                         className={cn(
-                          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group focus-ring',
+                          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
                           isActive
                             ? 'bg-muted text-foreground font-medium'
                             : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -327,7 +321,7 @@ export function Navbar({
               type="button"
               aria-label={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
               title={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
-              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-all duration-200 border border-transparent hover:border-border group text-left focus-ring"
+              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-colors duration-200 border border-transparent hover:border-border group text-left focus-ring"
               onClick={() => {
                 if (isAuthenticated) {
                   router.push('/settings')
@@ -338,12 +332,12 @@ export function Navbar({
               }}
             >
               <div className="relative w-10 h-10 flex-shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-tr from-muted to-background rounded-xl border border-border shadow-sm group-hover:border-primary/30 transition-colors" />
+                <div className="absolute inset-0 rounded-xl border border-border bg-muted/50 shadow-sm group-hover:border-primary/30 transition-colors duration-200" />
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
                   <User className="h-5 w-5" />
                 </div>
                 {isAuthenticated && (
-                  <div className="absolute -right-0.5 -bottom-0.5 w-3 h-3 bg-green-500 border-2 border-background rounded-full" />
+                  <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-success border-2 border-background rounded-full" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -359,7 +353,7 @@ export function Navbar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg hover:bg-accent hover:text-red-500 transition-colors"
+                className="size-8 rounded-lg hover:bg-accent hover:text-destructive transition-colors duration-200"
                 onClick={() => {
                   if (isAuthenticated) {
                     logout()
@@ -483,7 +477,7 @@ export function Navbar({
         aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         className={cn(
-          'fixed bottom-4 z-50 h-11 w-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-all duration-200 ease-in-out sm:h-10 sm:w-10',
+          'fixed bottom-4 z-50 size-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-colors duration-200 ease-out sm:size-10',
           isSidebarOpen
             ? 'left-[260px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto'
             : 'left-4 opacity-100'
