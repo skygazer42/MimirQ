@@ -127,7 +127,7 @@ export function IngestionDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl bg-[#fafafa] border-slate-200 shadow-2xl sm:rounded-[2rem] p-0 overflow-hidden outline-none">
+      <DialogContent className="max-w-3xl p-0 overflow-hidden sm:rounded-2xl">
 
         <DialogHeader className="px-8 pt-8 pb-6 border-b border-border/60 bg-card relative z-10">
           <DialogTitle className="flex items-center justify-between gap-3">
