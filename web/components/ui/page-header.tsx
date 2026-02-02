@@ -1,80 +1,55 @@
-import { LucideIcon } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface PageHeaderProps {
-    title: string
-    description?: React.ReactNode
-    icon: LucideIcon
-    iconColor?: string
-    children?: React.ReactNode
-    className?: string
-    badge?: string
-}
-
-function toGlowBgClasses(iconColor?: string) {
-    if (!iconColor) return "bg-primary"
-    return iconColor
-        .split(/\s+/g)
-        .filter(Boolean)
-        .map((cls) => {
-            if (cls.startsWith("dark:text-")) return cls.replace("dark:text-", "dark:bg-")
-            if (cls.startsWith("text-")) return cls.replace("text-", "bg-")
-            return cls
-        })
-        .join(" ")
+  title: string
+  description?: React.ReactNode
+  icon: LucideIcon
+  iconColor?: string
+  children?: React.ReactNode
+  className?: string
+  badge?: string
 }
 
 export function PageHeader({
-    title,
-    description,
-    icon: Icon,
-    iconColor = "text-primary",
-    children,
-    className,
-    badge
+  title,
+  description,
+  icon: Icon,
+  iconColor = "text-primary",
+  children,
+  className,
+  badge,
 }: PageHeaderProps) {
-    return (
-        <header className={cn("flex-shrink-0 relative z-10", className)}>
-            <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-5">
-                    {/* Icon Container with Glass Effect */}
-                    <div className="relative group">
-                    <div className={cn("absolute inset-0 blur-xl opacity-20 rounded-2xl transition-opacity group-hover:opacity-40", toGlowBgClasses(iconColor))} />
-                        <div className="relative w-14 h-14 rounded-2xl flex items-center justify-center bg-card border border-border shadow-sm dark:shadow-none transition-transform duration-500 motion-safe:group-hover:scale-105 group-hover:shadow-[0_0_30px_-10px_rgba(14,165,233,0.1)]">
-                            <div className={cn("absolute inset-0 rounded-2xl opacity-50 bg-gradient-to-br from-card/90 to-transparent dark:from-card/50")} />
-                            <Icon className={cn("w-7 h-7 relative z-10 transition-colors duration-300", iconColor)} />
-                        </div>
-                    </div>
+  return (
+    <header className={cn("flex-shrink-0 relative z-10", className)}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4 min-w-0">
+          <div className="size-12 shrink-0 rounded-xl bg-card border border-border shadow-sm flex items-center justify-center">
+            <Icon className={cn("size-6", iconColor)} />
+          </div>
 
-                    <div className="pt-1">
-                        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight leading-tight flex items-center gap-3">
-                            {title}
-                            {badge && (
-                                <span className={cn(
-                                    "text-[10px] font-mono px-2 py-0.5 rounded border uppercase tracking-widest align-middle flex items-center",
-                                    "bg-muted border-border text-muted-foreground"
-                                )}>
-                                    {badge}
-                                </span>
-                            )}
-                        </h1>
-                        {description && (
-                            <div className="mt-2 max-w-[65ch] text-sm leading-relaxed text-muted-foreground">
-                                {description}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Actions Container */}
-                {children && (
-                    <div className="flex items-center gap-3 pt-1">
-                        {children}
-                    </div>
-                )}
+          <div className="min-w-0 pt-0.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="text-balance text-2xl md:text-3xl font-semibold leading-tight text-foreground">
+                {title}
+              </h1>
+              {badge ? (
+                <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-mono text-muted-foreground tabular-nums">
+                  {badge}
+                </span>
+              ) : null}
             </div>
 
-            {/* Decorative Separator Gradient - Only if needed, otherwise rely on main layout */}
-        </header>
-    )
+            {description ? (
+              <div className="mt-1.5 max-w-[70ch] text-pretty text-sm leading-relaxed text-muted-foreground">
+                {description}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {children ? <div className="flex items-center gap-2 pt-0.5">{children}</div> : null}
+      </div>
+    </header>
+  )
 }
