@@ -790,10 +790,10 @@ export function DataGovernancePanel() {
             title="数据治理工作台"
             badge="Governance"
             icon={ShieldCheck}
-            iconColor="text-sky-400"
+            iconColor="text-primary"
 	            description={
 	              <span className="flex items-center gap-2">
-	                <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse motion-reduce:animate-none" />
+	                <span className="h-1.5 w-1.5 rounded-full bg-primary/20" />
 	                智能文档清洗、标注与结构化处理中心
 	              </span>
 	            }
@@ -808,10 +808,10 @@ export function DataGovernancePanel() {
         <div className="flex-1 flex items-center justify-center p-6 relative">
           <div
             className={cn(
-              "w-full max-w-3xl border border-dashed rounded-[2rem] p-16 text-center transition-all duration-500 relative overflow-hidden group",
+              "group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none",
               isDragging
-                ? "border-sky-500 bg-sky-500/10 dark:bg-sky-500/20 scale-[1.02] shadow-[0_0_50px_-10px_rgba(14,165,233,0.3)]"
-                : "border-border/40 bg-card/5 hover:border-sky-500/50 hover:bg-card/[0.07] hover:shadow-2xl"
+                ? "border-primary/50 bg-primary/10"
+                : "border-border/50 bg-card/5 hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
             )}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -821,11 +821,11 @@ export function DataGovernancePanel() {
 	            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
 
 	            <div className="relative z-10 flex flex-col items-center">
-		              <div className="w-24 h-24 mb-8 rounded-full bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/20 flex items-center justify-center motion-safe:animate-pulse-subtle shadow-[0_0_30px_-5px_rgba(14,165,233,0.2)]">
+		              <div className="mb-8 flex size-24 items-center justify-center rounded-full border border-primary/20 bg-primary/10 shadow-sm">
 		                {uploading ? (
-	                  <Sparkles className="w-10 h-10 text-sky-400 animate-spin motion-reduce:animate-none" />
+	                  <Sparkles className="w-10 h-10 text-primary animate-spin motion-reduce:animate-none" />
 	                ) : (
-	                  <Upload className="w-10 h-10 text-sky-400 group-hover:scale-110 transition-transform duration-300" />
+	                  <Upload className="w-10 h-10 text-primary" />
 	                )}
 	              </div>
 
@@ -839,9 +839,9 @@ export function DataGovernancePanel() {
                 }
               </p>
 
-              <div className="max-w-md w-full mx-auto mb-10 text-left relative z-20">
-                <div className="text-xs font-medium text-sky-500 uppercase  mb-3 pl-2">文档结构</div>
-                <div className="bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/30 rounded-2xl p-5 max-h-48 overflow-y-auto overscroll-contain no-scrollbar shadow-sm">
+              <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
+                <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">文档结构</div>
+                <div className="max-h-48 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/30 p-5 shadow-sm">
                   <DocumentFolderTree />
                 </div>
               </div>
