@@ -32,6 +32,7 @@ import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
 import { Magnetic } from '@/components/ui/magnetic'
 import { TiltCard } from '@/components/ui/tilt-card'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
+import { Button } from '@/components/ui/button'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
 export function Sidebar() {
@@ -348,39 +349,48 @@ function DocumentCard({
 	        isHovered ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
 	      )}>
         <DocumentDetailDialog document={document} trigger={
-          <button
-            className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors"
-            title="查看详情"
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-primary hover:text-primary-foreground"
             aria-label="查看详情"
+            title="查看详情"
           >
-            <FileText className="h-3.5 w-3.5" />
-          </button>
+            <FileText className="size-3.5" aria-hidden="true" />
+          </Button>
         } />
 
         {(document.status === 'processing' || document.status === 'pending') ? (
-          <button
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
             onClick={(e) => {
               e.stopPropagation()
               onCancel()
             }}
-            className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-amber-100 hover:text-amber-600 transition-colors"
-            title="取消处理"
             aria-label="取消处理"
+            title="取消处理"
+            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-warning/10 hover:text-warning"
           >
-            <X className="h-3.5 w-3.5" />
-          </button>
+            <X className="size-3.5" aria-hidden="true" />
+          </Button>
         ) : (
-          <button
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
             onClick={(e) => {
               e.stopPropagation()
               onDelete()
             }}
-            className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-destructive hover:text-destructive-foreground transition-colors"
-            title="删除文档"
             aria-label="删除文档"
+            title="删除文档"
+            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-destructive hover:text-destructive-foreground"
           >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+            <Trash2 className="size-3.5" aria-hidden="true" />
+          </Button>
         )}
       </div>
     </TiltCard>
