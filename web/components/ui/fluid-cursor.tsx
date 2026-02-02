@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion"
 import { usePathname } from "next/navigation"
 
+import { cn } from "@/lib/utils"
+
 export function FluidCursor() {
   const [variant, setVariant] = useState<"default" | "pointer" | "text" | "hidden">("default")
   const cursorX = useMotionValue(-100)
@@ -46,8 +48,7 @@ export function FluidCursor() {
     document.body.classList.add('custom-cursor-enabled')
 
     const moveCursor = (e: MouseEvent) => {
-      // Center the cursor ring (typically larger than the dot)
-      // Assuming roughly 32px or 40px ring
+      // Keep the cursor centered; ring size is stable and we only animate transform/opacity.
       cursorX.set(e.clientX - 16)
       cursorY.set(e.clientY - 16)
     }
@@ -91,52 +92,41 @@ export function FluidCursor() {
   // Variants for Framer Motion
   const variants = {
     default: {
-      height: 32,
-      width: 32,
-      x: 0,
-      y: 0,
-      backgroundColor: "transparent",
-      border: "2px solid hsl(var(--primary))",
-      borderRadius: "50%",
+      scale: 1,
       opacity: 0.5,
-      mixBlendMode: "normal" as const,
     },
     pointer: {
-      height: 48, // Larger ring for clickable
-      width: 48,
-      x: -8,
-      y: -8,
-      backgroundColor: "hsl(var(--primary) / 0.12)",
-      border: "1px solid hsl(var(--primary))",
-      borderRadius: "50%",
+      scale: 1.5,
       opacity: 0.8,
-      mixBlendMode: "normal" as const,
     },
     text: {
-      height: 32,
-      width: 32,
-      x: 0,
-      y: 0,
-      backgroundColor: "transparent",
-      border: "2px dashed hsl(var(--primary))", // Dashed ring for input
-      borderRadius: "50%",
+      scale: 1,
       opacity: 0.5,
-      mixBlendMode: "normal" as const,
     },
     hidden: {
+      scale: 0.8,
       opacity: 0
     }
   }
 
   if (shouldReduceMotion || !isDesktop) return null
 
+  const appearance = variant === "hidden" ? "default" : variant
+
   return (
     <motion.div
-      className="fixed top-0 left-0 z-90 pointer-events-none"
+      className={cn(
+        "fixed top-0 left-0 z-90 pointer-events-none size-8 rounded-full border-2 border-primary",
+        appearance === "pointer" && "bg-primary/10 border-solid",
+        appearance === "default" && "bg-transparent border-solid",
+        appearance === "text" && "bg-transparent border-dashed"
+      )}
       aria-hidden="true"
       style={{
         translateX: cursorXSpring,
         translateY: cursorYSpring,
+        // Keep the cursor opt-in to normal blending; avoids weird contrast inversions on rich content.
+        mixBlendMode: "normal",
       }}
       variants={variants}
       animate={variant}
