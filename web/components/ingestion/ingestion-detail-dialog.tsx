@@ -131,7 +131,7 @@ export function IngestionDetailDialog({
 
         <DialogHeader className="px-8 pt-8 pb-6 border-b border-border/60 bg-card relative z-10">
           <DialogTitle className="flex items-center justify-between gap-3">
-            <span className="truncate text-xl font-bold  text-slate-900">{doc?.filename || '入库详情'}</span>
+            <span className="truncate text-xl font-bold text-foreground">{doc?.filename || '入库详情'}</span>
             {doc && (
               <Badge variant={statusBadgeVariant(doc.status)} className="shrink-0">
                 {doc.status}
@@ -141,7 +141,7 @@ export function IngestionDetailDialog({
         </DialogHeader>
 
 	        {isLoading && (
-	          <div className="py-20 flex items-center justify-center text-slate-400">
+	          <div className="flex items-center justify-center py-20 text-muted-foreground">
 	            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
 	          </div>
 	        )}
@@ -172,8 +172,10 @@ export function IngestionDetailDialog({
             {/* Pipeline Stage Card */}
             <div className="rounded-2xl border border-border bg-card shadow-sm p-6 relative overflow-hidden">
               <div className="flex items-center justify-between gap-3 mb-6">
-                <div className="text-sm font-bold text-slate-900 uppercase ">Processing Pipeline</div>
-                <div className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-md">Progress: {doc.processing_progress ?? 0}%</div>
+                <div className="text-sm font-bold uppercase text-foreground">Processing Pipeline</div>
+                <div className="rounded-md bg-muted px-2 py-1 text-xs font-mono tabular-nums text-muted-foreground">
+                  Progress: {doc.processing_progress ?? 0}%
+                </div>
               </div>
 
               <div className="relative z-10">
