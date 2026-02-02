@@ -1144,8 +1144,8 @@ export function DataGovernancePanel() {
           {/* 拖拽手柄 */}
           <div
             className={cn(
-              "absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-500/10 dark:bg-sky-500/20 active:bg-sky-400 z-20 transition-colors opacity-0 hover:opacity-100",
-              isResizing && "bg-sky-600 opacity-100 w-1"
+              "absolute right-0 top-0 w-1 h-full cursor-col-resize z-20 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
+              isResizing && "bg-primary opacity-100"
             )}
             onMouseDown={startResizing}
           />
@@ -1159,13 +1159,13 @@ export function DataGovernancePanel() {
               {/* 中间：预览画布 */}
               <div className="flex-1 flex flex-col overflow-hidden relative z-0">
                 {/* 画布工具栏 (悬浮或集成) */}
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card/80 backdrop-blur-md border border-border shadow-sm rounded-full px-2 py-1 gap-1 transition-all hover:bg-card hover:border-border">
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card/80 backdrop-blur-md border border-border shadow-sm rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none hover:bg-card hover:border-border">
                   {/* 视图切换 */}
                   <div className="flex items-center bg-muted rounded-full p-0.5 border border-border">
                     <button
                       onClick={() => setViewMode('preview')}
                       className={cn(
-                        "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                        "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none",
                         viewMode === 'preview' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
@@ -1174,7 +1174,7 @@ export function DataGovernancePanel() {
                     <button
                       onClick={() => setViewMode('edit')}
                       className={cn(
-                        "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                        "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none",
                         viewMode === 'edit' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
@@ -1183,7 +1183,7 @@ export function DataGovernancePanel() {
                     <button
                       onClick={() => setViewMode('original')}
                       className={cn(
-                        "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                        "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none",
                         viewMode === 'original' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
@@ -1211,7 +1211,7 @@ export function DataGovernancePanel() {
 	                    variant="ghost"
 	                    size="icon"
 	                    onClick={() => setIsSidebarCollapsed(false)}
-	                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-all"
+	                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-colors duration-150 motion-reduce:transition-none"
 	                    aria-label="展开侧边栏"
 	                    title="展开侧边栏"
 	                  >
@@ -1224,7 +1224,7 @@ export function DataGovernancePanel() {
 	                    variant="ghost"
 	                    size="icon"
 	                    onClick={() => setIsPanelCollapsed(false)}
-	                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-all"
+	                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-colors duration-150 motion-reduce:transition-none"
 	                    aria-label="展开右侧面板"
 	                    title="展开右侧面板"
 	                  >
@@ -1451,8 +1451,8 @@ export function DataGovernancePanel() {
                 {/* 拖拽手柄 */}
                 <div
                   className={cn(
-                    "absolute left-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors opacity-0 hover:opacity-100",
-                    isPanelResizing && "bg-sky-600 opacity-100 w-1"
+                    "absolute left-0 top-0 w-1 h-full cursor-col-resize z-20 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
+                    isPanelResizing && "bg-primary opacity-100"
                   )}
                   onMouseDown={startPanelResizing}
                 />
