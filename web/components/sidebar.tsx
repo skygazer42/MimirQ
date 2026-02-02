@@ -77,7 +77,7 @@ export function Sidebar() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+        return <CheckCircle2 className="h-4 w-4 text-success" />
       case 'failed':
         return <AlertCircle className="h-4 w-4 text-destructive" />
       case 'processing':
@@ -89,15 +89,15 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-80 h-dvh glass border-r border-border/60 flex flex-col shadow-strong transition-all duration-300 relative z-20">
+    <aside className="w-80 h-dvh bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col shadow-strong relative z-20">
       {/* 头部 - 增加空间感 */}
       <div className="p-6 border-b border-border/60">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
               <FileText className="h-4 w-4 text-primary" />
             </div>
-            <h2 className="text-lg font-semibold tracking-tight text-foreground/90">知识库</h2>
+            <h2 className="text-lg font-semibold text-foreground/90">知识库</h2>
           </div>
           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
             {documents.length}
@@ -126,8 +126,10 @@ export function Sidebar() {
           </div>
 
           <Magnetic strength={0.3}>
-            <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 cursor-pointer transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <label
+              htmlFor="file-upload"
+              className="group relative flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl border border-primary/30 shadow-sm hover:bg-primary/90 transition-colors duration-200 cursor-pointer"
+            >
               <Upload className="h-4 w-4" />
               <span className="text-sm font-medium">上传文档</span>
               <input
@@ -178,7 +180,7 @@ export function Sidebar() {
               url={LOTTIE_URLS.EMPTY_DOCUMENTS}
               className="w-40 h-40 opacity-80"
             />
-            <p className="text-sm font-medium tracking-tight">
+            <p className="text-sm font-medium">
               {documents.length > 0 ? "未找到匹配文档" : "暂无文档，请上传知识"}
             </p>
           </div>
@@ -251,14 +253,14 @@ function DocumentCard({
   const chunkStrategyValue = (document.metadata?.chunk_strategy as string) || ''
   const chunkStrategyLabel = chunkStrategyValue ? getChunkStrategyLabel(chunkStrategyValue) : null
 
-  return (
-      <TiltCard
-      className={cn(
-        'group relative p-3 rounded-xl border cursor-pointer motion-safe:animate-fade-in-up h-full transition-all duration-300',
-        isSelected
-          ? 'bg-primary/10 border-primary/40 shadow-soft'
-          : 'bg-background/40 hover:bg-background/60 border-border/60 hover:border-primary/20 hover:shadow-soft'
-      )}
+	    return (
+	      <TiltCard
+	      className={cn(
+	        'group relative p-3 rounded-xl border cursor-pointer h-full transition-colors duration-200',
+	        isSelected
+	          ? 'bg-primary/10 border-primary/40 shadow-soft'
+	          : 'bg-background/40 hover:bg-background/60 border-border/60 hover:border-primary/20 hover:shadow-soft'
+	      )}
       onClick={onSelect}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -340,11 +342,11 @@ function DocumentCard({
         </div>
       </div>
 
-      {/* 悬浮操作栏 */}
-      <div className={cn(
-        "absolute right-2 top-2 flex flex-col gap-1 transition-all duration-200",
-        isHovered ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
-      )}>
+	      {/* 悬浮操作栏 */}
+	      <div className={cn(
+	        "absolute right-2 top-2 flex flex-col gap-1 transition duration-200 ease-out",
+	        isHovered ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
+	      )}>
         <DocumentDetailDialog document={document} trigger={
           <button
             className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors"
