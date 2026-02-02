@@ -86,8 +86,11 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	        syncCanvasSize()
 	        window.addEventListener('resize', onResize)
 
+	        const shouldAnimate = () =>
+	            !reduceMotion && isListening && document.visibilityState === 'visible'
+
 	        const render = () => {
-	            if (!reduceMotion) phase += 0.1
+	            if (shouldAnimate()) phase += 0.1
 	            const { width, height } = viewport
 
 	            ctx.fillStyle = bgColor
@@ -115,14 +118,35 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	                ctx.stroke()
 	            }
 
-	            if (!reduceMotion) {
+	            if (shouldAnimate()) {
 	                animationFrameId = window.requestAnimationFrame(render)
+	            } else {
+	                animationFrameId = null
 	            }
 	        }
 
+	        const onVisibilityChange = () => {
+	            if (shouldAnimate()) {
+	                if (animationFrameId == null) {
+	                    render()
+	                }
+	                return
+	            }
+
+	            if (animationFrameId != null) {
+	                window.cancelAnimationFrame(animationFrameId)
+	                animationFrameId = null
+	            }
+
+	            // Ensure we paint a final static frame on hide.
+	            render()
+	        }
+
+	        document.addEventListener('visibilitychange', onVisibilityChange)
 	        render()
 	        return () => {
 	            window.removeEventListener('resize', onResize)
+	            document.removeEventListener('visibilitychange', onVisibilityChange)
 	            if (animationFrameId != null) {
 	                window.cancelAnimationFrame(animationFrameId)
 	            }
