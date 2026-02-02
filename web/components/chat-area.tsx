@@ -678,10 +678,11 @@ export function ChatArea({
 	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
 	          )}>
 	            <textarea
+	              id="chat-composer"
 	              ref={textareaRef}
 	              value={inputValue}
 	              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
+	              onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
 	              placeholder="问点什么... (Shift + Enter 换行)"
 	              autoFocus
@@ -772,29 +773,38 @@ function WelcomeScreen() {
   const hour = new Date().getHours()
   const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
 
+  const focusComposer = () => {
+    if (typeof document === 'undefined') return
+    const el = document.getElementById('chat-composer') as HTMLTextAreaElement | null
+    el?.focus()
+  }
+
   return (
-	    <div className="flex flex-col items-center justify-center text-center space-y-10 motion-safe:animate-fade-in-up px-4 py-10 relative z-10">
-	      <div className="relative">
-	        <div className="absolute -inset-10 bg-gradient-radial from-primary/20 via-primary/5 to-transparent blur-3xl opacity-40 motion-safe:animate-pulse-subtle"></div>
-	        <div className="relative h-24 w-24 glass rounded-[2rem] shadow-strong flex items-center justify-center border-border/60">
-	          <Bot className="h-12 w-12 text-primary drop-shadow-[0_0_15px_hsl(var(--primary)/0.55)]" />
-	        </div>
-	      </div>
+    <div className="flex flex-col items-center justify-center text-center space-y-8 px-4 py-10 relative z-10">
+      <div className="size-24 rounded-[2rem] border border-border bg-card shadow-soft flex items-center justify-center">
+        <Bot className="h-12 w-12 text-primary" aria-hidden="true" />
+      </div>
 
       <div className="space-y-2 max-w-lg">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">
+        <h2 className="text-balance text-3xl font-semibold text-foreground">
           {greeting}，<span className="text-primary">探索者</span>
         </h2>
-        <p className="text-muted-foreground text-sm md:text-base leading-relaxed">
+        <p className="text-pretty text-muted-foreground text-sm md:text-base leading-relaxed">
           我是 MimirQ，你的智能知识中枢。<br />
-          我可以协助你分析文档、提取信息或进行深入的研究。
+          你可以在下方输入问题，我会基于你的知识库进行检索与回答。
         </p>
       </div>
 
-	      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-2xl opacity-0 motion-safe:animate-fade-in-up" style={{ animationDelay: '200ms', animationFillMode: 'forwards' }}>
+      <div>
+        <Button type="button" onClick={focusComposer} className="rounded-full">
+          开始提问
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-2xl">
         <FeatureCard icon={Database} title="混合检索" desc="结合语义与关键词的精准召回" />
-        <FeatureCard icon={Sparkles} title="智能问答" desc="基于上下文的深度推理与回答" />
-        <FeatureCard icon={Wand2} title="结构化输出" desc="将非结构化数据转化为表格或JSON" />
+        <FeatureCard icon={Sparkles} title="智能问答" desc="基于上下文的推理与回答" />
+        <FeatureCard icon={Wand2} title="结构化输出" desc="将非结构化内容整理为表格或 JSON" />
       </div>
     </div>
   )
@@ -802,10 +812,10 @@ function WelcomeScreen() {
 
 function FeatureCard({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) {
   return (
-	    <div className="p-5 rounded-2xl glass border border-border/50 hover:border-primary/30 hover:bg-accent/30 transition-all duration-300 motion-reduce:transition-none cursor-default text-left group motion-safe:hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5">
-	      <Icon className="h-6 w-6 text-primary/80 mb-3 group-hover:text-primary motion-safe:group-hover:scale-110 transition-all duration-300 motion-reduce:transition-none" />
-	      <h3 className="text-sm font-semibold text-foreground/90 mb-1.5">{title}</h3>
-	      <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
-	    </div>
+    <div className="p-5 rounded-2xl border border-border bg-card shadow-soft cursor-default text-left">
+      <Icon className="h-6 w-6 text-primary/80 mb-3" aria-hidden="true" />
+      <h3 className="text-sm font-semibold text-balance text-foreground/90 mb-1.5">{title}</h3>
+      <p className="text-xs text-pretty text-muted-foreground leading-relaxed">{desc}</p>
+    </div>
   )
 }
