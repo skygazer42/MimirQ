@@ -53,30 +53,28 @@ export default function AuthPage() {
     return (
         <FullScreenFrame
             showBackground={false}
-            className="relative w-full overflow-hidden bg-gradient-to-br from-background via-background to-card text-foreground"
+            className="relative w-full overflow-hidden bg-background text-foreground"
         >
             {/* 3D 粒子背景 */}
             <ParticleBackground />
 
-            {/* 光效装饰 */}
-            <div className="pointer-events-none absolute inset-0 bg-hero-glow opacity-40 motion-reduce:opacity-25" />
-            <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] motion-safe:animate-pulse-subtle pointer-events-none" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-info/15 rounded-full blur-[120px] motion-safe:animate-pulse-subtle pointer-events-none" style={{ animationDelay: '1s' }} />
+            {/* Subtle texture; avoids heavy glow/gradient layers (better for performance + accessibility). */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 opacity-[0.04] dark:opacity-[0.06] bg-[url('/noise.svg')] mix-blend-multiply dark:mix-blend-overlay"
+            />
 
             <div className="relative z-10 w-full max-w-md p-6 motion-safe:animate-fade-in-up">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center mb-8 space-y-4">
-                    <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-primary to-info rounded-xl blur opacity-40 group-hover:opacity-75 transition duration-500 motion-reduce:transition-none"></div>
-                        <div className="relative w-16 h-16 glass rounded-xl flex items-center justify-center border border-border/60 shadow-glow">
-                            <Sparkles className="w-8 h-8 text-primary motion-safe:animate-pulse" />
-                        </div>
+                    <div className="size-16 glass rounded-xl flex items-center justify-center border border-border/60 shadow-strong">
+                      <Sparkles className="size-8 text-primary" aria-hidden="true" />
                     </div>
                     <div className="text-center">
-                        <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-foreground to-muted-foreground">
+                        <h1 className="text-balance text-3xl font-semibold text-foreground">
                             MimirQ
                         </h1>
-                        <p className="text-sm text-muted-foreground mt-2 font-medium tracking-wide">
+                        <p className="mt-2 text-pretty text-sm text-muted-foreground font-medium">
                             下一代智能知识库平台
                         </p>
                     </div>
@@ -209,7 +207,7 @@ export default function AuthPage() {
 
                         <Button
                             type="submit"
-                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-lg shadow-primary/20 transition-colors duration-200 motion-reduce:transition-none motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
+                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-md transition-colors duration-200 motion-reduce:transition-none motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
                             disabled={isSubmitting}
                         >
 	                            {isSubmitting ? (
