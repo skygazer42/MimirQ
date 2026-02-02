@@ -257,13 +257,13 @@ export function IngestionDetailDialog({
             )}
 
             {/* Runtime Info - Ticket Style */}
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-6">
-              <div className="text-sm font-bold text-slate-900 uppercase  mb-4">Runtime Details</div>
+            <div className="rounded-2xl border border-border bg-muted/30 p-6">
+              <div className="mb-4 text-sm font-semibold text-foreground">Runtime Details</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {runtime.map((item) => (
                   <div key={item.k} className="bg-card rounded-xl border border-border p-3 shadow-sm hover:shadow-md transition-shadow duration-200 motion-reduce:transition-none">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase  mb-1">{item.k}</div>
-                    <div className="text-xs font-mono text-slate-700 break-words font-medium">{item.v}</div>
+                    <div className="mb-1 text-[10px] font-semibold text-muted-foreground">{item.k}</div>
+                    <div className="break-words text-xs font-mono font-medium text-foreground">{item.v}</div>
                   </div>
                 ))}
               </div>
