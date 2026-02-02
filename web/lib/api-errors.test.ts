@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractBackendMessage, extractBackendRequestId, withRequestId } from './api-errors'
+import { extractAxiosRequestId, extractBackendMessage, extractBackendRequestId, toApiErrorInfo, withRequestId } from './api-errors'
 
 describe('api-errors', () => {
   it('extractBackendRequestId reads request_id', () => {
@@ -22,5 +22,30 @@ describe('api-errors', () => {
     expect(withRequestId('oops', 'rid')).toBe('oops (request_id=rid)')
     expect(withRequestId('oops (request_id=rid)', 'rid')).toBe('oops (request_id=rid)')
   })
-})
 
+  it('extractAxiosRequestId prefers explicit requestId property', () => {
+    expect(extractAxiosRequestId({ requestId: 'rid-direct' })).toBe('rid-direct')
+  })
+
+  it('extractAxiosRequestId falls back to response body request_id', () => {
+    expect(extractAxiosRequestId({ response: { data: { request_id: 'rid-body' } } })).toBe('rid-body')
+  })
+
+  it('extractAxiosRequestId falls back to response header x-request-id', () => {
+    expect(extractAxiosRequestId({ response: { headers: { 'x-request-id': 'rid-header' } } })).toBe('rid-header')
+  })
+
+  it('extractAxiosRequestId falls back to config header X-Request-ID', () => {
+    expect(extractAxiosRequestId({ config: { headers: { 'X-Request-ID': 'rid-config' } } })).toBe('rid-config')
+  })
+
+  it('toApiErrorInfo returns message + requestId + status for axios-like errors', () => {
+    const info = toApiErrorInfo(
+      { response: { status: 500, headers: { 'x-request-id': 'rid' }, data: { detail: 'boom' } } },
+      'fallback'
+    )
+    expect(info.status).toBe(500)
+    expect(info.requestId).toBe('rid')
+    expect(info.message).toBe('boom')
+  })
+})
