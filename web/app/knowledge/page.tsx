@@ -1924,7 +1924,7 @@ export default function KnowledgePage() {
                           type="button"
                           onClick={() => setStatusFilter(item.key)}
                           className={cn(
-                            "h-9 px-3 rounded-full border text-xs font-semibold tracking-wide transition-colors focus-ring",
+                            "h-9 px-3 rounded-full border text-xs font-semibold  transition-colors focus-ring",
                             statusFilter === item.key
                               ? "bg-primary/10 border-primary/40 text-primary"
                               : "bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30"
@@ -2135,7 +2135,7 @@ export default function KnowledgePage() {
                                     <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
                                     <span
                                       className={cn(
-                                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ",
                                         fileType.bg,
                                         fileType.border,
                                         fileType.color
@@ -2679,16 +2679,16 @@ function DocumentCard({
             <TypeIcon className="w-6 h-6" />
           </div>
           <div className="flex items-center gap-2">
-            <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", fileType.bg, fileType.color, fileType.border)}>
+            <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase  border", fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
             {doc.disabled_at ? (
-              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-border/60 bg-muted/60 text-muted-foreground">
+              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase  border border-border/60 bg-muted/60 text-muted-foreground">
                 Disabled
               </div>
             ) : null}
             {!doc.disabled_at && doc.archived_at ? (
-              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-border/60 bg-muted/60 text-muted-foreground">
+              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase  border border-border/60 bg-muted/60 text-muted-foreground">
                 Archived
               </div>
             ) : null}

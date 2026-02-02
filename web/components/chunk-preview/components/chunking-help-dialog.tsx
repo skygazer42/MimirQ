@@ -29,7 +29,7 @@ export function ChunkingHelpDialog({
         <ScrollArea className="max-h-[70vh] pr-4">
           <div className="space-y-6 text-sm">
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
                 <Sparkles className="w-3.5 h-3.5" />
                 推荐工作流
               </div>
@@ -42,7 +42,7 @@ export function ChunkingHelpDialog({
             </section>
 
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
                 <Settings2 className="w-3.5 h-3.5" />
                 参数建议（经验值）
               </div>
@@ -62,7 +62,7 @@ export function ChunkingHelpDialog({
             </section>
 
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
                 <Scissors className="w-3.5 h-3.5" />
                 策略速查
               </div>
@@ -110,7 +110,7 @@ export function ChunkingHelpDialog({
             </section>
 
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
                 <Keyboard className="w-3.5 h-3.5" />
                 快捷键
               </div>

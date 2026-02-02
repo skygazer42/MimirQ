@@ -342,7 +342,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
       {/* 分类信息摘要 */}
       {(selectedCategory || tags.length > 0) && (
-        <div className="bg-gradient-to-r from-primary/10 to-info/10 border border-primary/20 rounded-xl p-4">
+        <div className="bg-muted/40 border border-border/60 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Check className="w-4 h-4 text-success" />
             <span className="text-sm font-medium text-foreground">归档信息</span>

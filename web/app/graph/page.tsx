@@ -809,7 +809,7 @@ export default function GraphPage() {
 		              <Share2 className="w-5 h-5" />
 		            </div>
 	            <div>
-	              <h1 className="text-3xl font-bold text-foreground tracking-tight">知识图谱</h1>
+	              <h1 className="text-3xl font-bold text-foreground ">知识图谱</h1>
 	            </div>
 	          </div>
           
@@ -1210,7 +1210,7 @@ export default function GraphPage() {
                   {/* KG Detail (Live) */}
                   {dataSource === 'live' && (selectedNode?.meta?.kind === 'entity' || selectedNode?.meta?.kind === 'event') && (
                     <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase  mb-3 flex items-center gap-2">
                         <Network className="w-3 h-3" />
                         KG Detail
                       </h3>
@@ -1269,7 +1269,7 @@ export default function GraphPage() {
 
                   {/* Properties List */}
                   <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase  mb-3 flex items-center gap-2">
                       <Info className="w-3 h-3" />
                       属性详情
                     </h3>
@@ -1299,7 +1299,7 @@ export default function GraphPage() {
 
                   {/* Edit Actions */}
                   <div>
-                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                     <h3 className="text-xs font-semibold text-muted-foreground uppercase  mb-3 flex items-center gap-2">
                       <Layers className="w-3 h-3" />
                       操作
                     </h3>

@@ -859,7 +859,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
 
           {isSeparatorStrategy ? (
             <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">分隔符策略参数</div>
+              <div className="text-[10px] text-muted-foreground uppercase  font-medium">分隔符策略参数</div>
 
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[10px] text-muted-foreground">同步到 Pipeline.chunk_strategy_params</div>
@@ -981,7 +981,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
 
           {isParentChildStrategy ? (
             <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">PARENT-CHILD OPTIONS</div>
+              <div className="text-[10px] text-muted-foreground uppercase  font-medium">PARENT-CHILD OPTIONS</div>
 
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[10px] text-muted-foreground">同步到 Pipeline.chunk_strategy_params</div>
@@ -1245,11 +1245,11 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
 
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">切片数量</div>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">切片数量</div>
                 <div className="text-xl font-bold text-foreground mt-1">{previewData.total_chunks}</div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">
                   {isTokenStrategy ? '平均 TOKENS' : '平均长度'}
                 </div>
                 <div className="text-xl font-bold text-foreground mt-1">
@@ -1260,7 +1260,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">
                   {isTokenStrategy ? 'P95 TOKENS' : 'P95'}
                 </div>
                 <div className="text-xl font-bold text-foreground mt-1">
@@ -1271,19 +1271,19 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="coverage_ratio">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">覆盖率</div>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">覆盖率</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {coverageSignals?.coveragePct != null ? `${coverageSignals.coveragePct}%` : '-'}
                 </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="overlap_waste_ratio">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">重叠浪费</div>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">重叠浪费</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {coverageSignals?.overlapWastePct != null ? `${coverageSignals.overlapWastePct}%` : '-'}
                 </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="gap_count / largest_gap">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Gaps</div>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">Gaps</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {coverageSignals?.gapCount != null ? String(coverageSignals.gapCount) : '-'}
                 </div>
@@ -1296,7 +1296,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             {showAdvancedStats && chunkStats ? (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">
                     {isTokenStrategy ? '最小 / 最大 TOKENS' : '最短 / 最长'}
                   </div>
                   <div className="mt-1 text-sm font-mono text-foreground/90">
@@ -1305,7 +1305,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   <div className="mt-1 text-[10px] text-muted-foreground font-mono">P10: {chunkStats.p10}</div>
                 </div>
                 <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">质量信号</div>
+                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">质量信号</div>
                   <div className="mt-1 text-[11px] text-muted-foreground">
                     <span className="font-mono text-foreground/90">{chunkStats.shortCount}</span> 个短切片 ·{' '}
                     <span className="font-mono text-foreground/90">{chunkStats.duplicateCount}</span> 个重复（估算）
@@ -1328,7 +1328,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   ) : null}
                 </div>
                 <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">
                     {isTokenStrategy ? 'TOKENS 分布' : '长度分布'}
                   </div>
                   {histogramData.length ? (
@@ -1363,7 +1363,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
                   <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">RECOMMENDATIONS</div>
+                      <div className="text-[10px] text-muted-foreground uppercase  font-medium">RECOMMENDATIONS</div>
                       {previewData?.recommendation_patches?.length ? (
                         <Button
                           type="button"

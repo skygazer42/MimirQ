@@ -170,7 +170,7 @@ export function DataGovernancePanel() {
     return (
       <div className="mt-3 rounded-xl border border-border/60 bg-card px-4 py-3 text-[12px] text-muted-foreground flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Inbound</div>
+          <div className="text-[11px] uppercase  text-muted-foreground/80">Inbound</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {inboundContext.from ? (
               <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
@@ -817,20 +817,19 @@ export function DataGovernancePanel() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
-            {/* Holographic Grid Background */}
-            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-sky-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+	            {/* Holographic Grid Background */}
+	            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
 
-            <div className="relative z-10 flex flex-col items-center">
-	              <div className="w-24 h-24 mb-8 rounded-full bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/20 flex items-center justify-center motion-safe:animate-pulse-subtle shadow-[0_0_30px_-5px_rgba(14,165,233,0.2)]">
-	                {uploading ? (
+	            <div className="relative z-10 flex flex-col items-center">
+		              <div className="w-24 h-24 mb-8 rounded-full bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/20 flex items-center justify-center motion-safe:animate-pulse-subtle shadow-[0_0_30px_-5px_rgba(14,165,233,0.2)]">
+		                {uploading ? (
 	                  <Sparkles className="w-10 h-10 text-sky-400 animate-spin motion-reduce:animate-none" />
 	                ) : (
 	                  <Upload className="w-10 h-10 text-sky-400 group-hover:scale-110 transition-transform duration-300" />
 	                )}
 	              </div>
 
-              <h3 className="text-3xl font-bold text-foreground mb-4 tracking-tight">
+              <h3 className="text-3xl font-bold text-foreground mb-4 ">
                 {uploading ? '正在解析文档...' : '拖拽文档至全息工作台'}
               </h3>
               <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
@@ -841,7 +840,7 @@ export function DataGovernancePanel() {
               </p>
 
               <div className="max-w-md w-full mx-auto mb-10 text-left relative z-20">
-                <div className="text-xs font-medium text-sky-500 uppercase tracking-widest mb-3 pl-2">文档结构</div>
+                <div className="text-xs font-medium text-sky-500 uppercase  mb-3 pl-2">文档结构</div>
                 <div className="bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/30 rounded-2xl p-5 max-h-48 overflow-y-auto overscroll-contain no-scrollbar shadow-sm">
                   <DocumentFolderTree />
                 </div>
@@ -882,7 +881,7 @@ export function DataGovernancePanel() {
                 )}
               </div>
 
-              <div className="mt-12 flex items-center justify-center gap-8 text-xs font-mono text-muted-foreground uppercase tracking-wider">
+              <div className="mt-12 flex items-center justify-center gap-8 text-xs font-mono text-muted-foreground uppercase ">
                 <span className="flex items-center gap-2 hover:text-sky-400 transition-colors">
                   <FileText className="w-4 h-4" /> Smart Parse
                 </span>
@@ -1019,7 +1018,7 @@ export function DataGovernancePanel() {
             </div>
 
             <div className="flex items-center justify-between px-4 py-2 mt-2">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase  pl-1">
                 Files ({visibleFiles.length})
               </h3>
             </div>
@@ -1127,13 +1126,13 @@ export function DataGovernancePanel() {
             <div className="mt-auto border-t border-border bg-muted/50 p-3 space-y-2 backdrop-blur-sm">
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-card p-2 rounded-lg border border-border hover:border-sky-500/30 transition-colors">
-                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wider">Storage</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">Storage</div>
                   <div className="text-sm font-bold text-foreground/80 flex items-baseline gap-1 font-mono">
                     {stats.completedFiles} <span className="text-muted-foreground font-normal text-xs">/ {stats.totalFiles}</span>
                   </div>
                 </div>
                 <div className="bg-card p-2 rounded-lg border border-border hover:border-emerald-500/30 transition-colors">
-                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wider">Avg Score</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">Avg Score</div>
                   <div className="text-sm font-bold text-foreground/80 font-mono">
                     {stats.avgScore > 0 ? stats.avgScore.toFixed(1) : '-'}
                   </div>

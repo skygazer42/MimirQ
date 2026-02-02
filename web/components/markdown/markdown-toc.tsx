@@ -42,7 +42,7 @@ export function MarkdownToc({
 
   return (
     <nav className={cn('text-sm', className)} aria-label="Table of contents">
-      <div className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+      <div className="text-xs font-semibold text-muted-foreground  uppercase">
         {title}
       </div>
       <ul className="mt-2 space-y-1">

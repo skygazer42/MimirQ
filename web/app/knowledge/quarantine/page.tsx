@@ -299,7 +299,7 @@ export default function QuarantineQueuePage() {
         description={
           <span className="flex items-center gap-2 text-muted-foreground">
             <span className="font-bold text-foreground">QUARANTINE</span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-500/20 uppercase tracking-wider">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-500/20 uppercase ">
               Review
             </span>
             <span className="text-muted-foreground/60">|</span>
@@ -514,7 +514,7 @@ export default function QuarantineQueuePage() {
               ) : (
                 <div className="space-y-4">
                   <div className="min-w-0">
-                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Selected</div>
+                    <div className="text-xs font-bold text-muted-foreground uppercase ">Selected</div>
                     <div className="mt-1 font-bold text-foreground truncate">{selected.filename}</div>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span className="font-mono">{formatDate(selected.updated_at)}</span>
@@ -527,7 +527,7 @@ export default function QuarantineQueuePage() {
 
                   {selected.error_message && (
                     <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/10 p-4">
-                      <div className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">隔离原因</div>
+                      <div className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase ">隔离原因</div>
                       <div className="mt-2 text-xs font-mono break-words text-amber-800/80 dark:text-amber-200/80">
                         {selected.error_message}
                       </div>
@@ -536,7 +536,7 @@ export default function QuarantineQueuePage() {
 
                   {getDropReasons(selected).length > 0 && (
                     <div className="rounded-xl border border-border bg-muted/30 p-4">
-                      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">命中规则</div>
+                      <div className="text-xs font-bold text-muted-foreground uppercase ">命中规则</div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {getDropReasons(selected).map((r) => (
                           <Badge

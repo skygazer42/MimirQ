@@ -204,12 +204,12 @@ export function TopBar() {
   }
 
   return (
-    <header className="flex-shrink-0 h-20 border-b border-border/60 flex justify-between items-center px-6 bg-card z-20 shadow-sm relative">
-      <div className="flex items-center gap-4">
-        {/* Logo Icon */}
-        <div className="w-10 h-10 bg-gradient-to-br from-primary to-info rounded-xl flex items-center justify-center shadow-primary/20 dark:shadow-primary/10 shadow-lg ring-1 ring-border/60">
-          <Layers className="text-primary-foreground w-5 h-5" />
-        </div>
+	    <header className="flex-shrink-0 h-20 border-b border-border/60 flex justify-between items-center px-6 bg-card z-20 shadow-sm relative">
+	      <div className="flex items-center gap-4">
+	        {/* Logo Icon */}
+	        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 text-primary shadow-soft ring-1 ring-border/60">
+	          <Layers className="w-5 h-5" />
+	        </div>
         
         <div className="flex flex-col justify-center min-w-0">
           {/* Row 1: Title & File Info */}
@@ -742,12 +742,12 @@ export function TopBar() {
             <Save className="w-3.5 h-3.5 mr-2" />
           )}
           {submitSuccess ? '已完成' : '确认入库'}
-        </Button>
-      </div>
-      <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+	        </Button>
+	      </div>
+	      <div className="absolute inset-x-6 bottom-0 h-px bg-border/60" />
 
-      <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
-      {previewData ? (
+	      <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+	      {previewData ? (
         <ChunkCompareDialog
           open={compareOpen}
           onOpenChange={setCompareOpen}

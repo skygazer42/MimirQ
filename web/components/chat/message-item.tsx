@@ -265,7 +265,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         {/* 思维链 / 步骤展示 */}
 	        {!isUser && message.steps && message.steps.length > 0 && (
 	          <div className="mb-4 space-y-2 motion-safe:animate-fade-in">
-	            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase tracking-widest">
+	            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase ">
 	              <div className="relative flex h-2 w-2">
 	                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
 	                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -451,7 +451,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	          )}
 	        >
           {isUser ? (
-            <div className="whitespace-pre-wrap font-normal tracking-wide">{message.content}</div>
+            <div className="whitespace-pre-wrap font-normal ">{message.content}</div>
           ) : isStreaming ? (
             <CinematicTypewriter content={message.content} isStreaming={true} />
           ) : (
@@ -466,7 +466,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
         {!isUser && message.citations && message.citations.length > 0 && (
           <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase  opacity-80">
               <Database className="w-3 h-3" />
               参考来源
             </div>
@@ -483,7 +483,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
         {!isUser && canRate && (
           <div className="mt-5 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
+            <div className="text-[10px] font-bold text-muted-foreground uppercase  opacity-80">
               反馈评分
             </div>
             <div className="flex items-center gap-1">

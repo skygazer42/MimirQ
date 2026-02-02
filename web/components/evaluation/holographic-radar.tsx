@@ -13,7 +13,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-popover/95 backdrop-blur-md border border-primary/30 p-3 rounded-lg shadow-xl shadow-primary/10">
-        <p className="text-primary font-bold text-xs uppercase tracking-wider mb-1">{label}</p>
+        <p className="text-primary font-semibold text-xs uppercase mb-1">{label}</p>
         <div className="flex items-baseline gap-1">
             <span className="text-2xl font-mono text-foreground font-bold">{payload[0].value}</span>
             <span className="text-xs text-muted-foreground">/ 100</span>
@@ -39,14 +39,14 @@ export function HolographicRadar({ data, className }: HolographicRadarProps) {
       <div className="absolute inset-0 rounded-full border border-primary/10 overflow-hidden pointer-events-none">
          {!reduceMotion ? (
             <motion.div 
-              className="w-full h-1/2 bg-gradient-to-b from-transparent to-primary/10 origin-bottom"
+              className="w-full h-1/2 bg-primary/5 origin-bottom"
               animate={{ rotate: 360 }}
               transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
               style={{ position: 'absolute', top: 0, left: 0 }}
             />
          ) : (
             <div
-              className="w-full h-1/2 bg-gradient-to-b from-transparent to-primary/10 origin-bottom"
+              className="w-full h-1/2 bg-primary/5 origin-bottom"
               style={{ position: 'absolute', top: 0, left: 0 }}
             />
          )}

@@ -123,7 +123,7 @@ export function getFileIcon(filename: string, className?: string) {
           ) : ['PDF', 'TXT', 'ZIP', 'IMG'].includes(label) ? (
             <span
               className={cn(
-                "font-bold text-[9px] tracking-tighter leading-none border-2 rounded px-0.5",
+                "font-bold text-[9px]  leading-none border-2 rounded px-0.5",
                 textTone[tone],
                 badgeBorder[tone] || badgeBorder.slate
               )}
