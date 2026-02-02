@@ -272,7 +272,7 @@ function HistoryPageContent() {
 
                   return (
                     <div key={group}>
-                      <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-0 bg-card/80 backdrop-blur-sm z-10 border-b border-border/60">
+                      <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase sticky top-0 bg-card/80 backdrop-blur-sm z-10 border-b border-border/60">
                         {group}
                       </div>
                       {convs.map((conversation) => (
@@ -299,20 +299,20 @@ function HistoryPageContent() {
             {selectedConversation ? (
               <>
                 {/* 对话头部 */}
-	                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md">
-	                  <div className="flex items-center gap-4">
-	                    <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-sky-200 dark:shadow-none">
-	                      <MessageSquare className="h-5 w-5 text-background dark:text-foreground" />
+		                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md">
+		                  <div className="flex items-center gap-4">
+		                    <div className="size-10 rounded-xl bg-primary text-primary-foreground border border-primary/20 shadow-sm flex items-center justify-center">
+		                      <MessageSquare className="h-5 w-5" />
+		                    </div>
+		                    <div>
+		                      <h2 className="font-semibold text-foreground">
+		                        {selectedConversation.title || '未命名对话'}
+	                      </h2>
+	                      <p className="text-[11px] font-medium text-muted-foreground mt-0.5 tabular-nums">
+	                        {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}
+	                      </p>
 	                    </div>
-	                    <div>
-	                      <h2 className="font-bold text-foreground tracking-tight">
-	                        {selectedConversation.title || '未命名对话'}
-                      </h2>
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
-                        {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}
-                      </p>
-                    </div>
-                  </div>
+	                  </div>
                   <div className="flex items-center gap-3">
                     <Button
                       variant="outline"
@@ -444,20 +444,20 @@ function ConversationItem({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className={cn(
-            'font-bold truncate text-[14px] tracking-tight',
-            isSelected ? 'text-primary' : 'text-foreground'
-          )}>
-            {conversation.title || '未命名对话'}
-          </h3>
+	          <h3 className={cn(
+	            'font-semibold truncate text-[14px]',
+	            isSelected ? 'text-primary' : 'text-foreground'
+	          )}>
+	            {conversation.title || '未命名对话'}
+	          </h3>
           <p className="text-xs text-muted-foreground truncate mt-1 leading-relaxed opacity-70">
             {conversation.last_message || '暂无消息'}
           </p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest bg-muted/60 px-1.5 py-0.5 rounded">
-              {formatRelativeTime(conversation.updated_at)}
-            </span>
-          </div>
+	          <div className="flex items-center gap-2 mt-2">
+	            <span className="text-[10px] font-medium text-muted-foreground tabular-nums bg-muted/60 px-1.5 py-0.5 rounded">
+	              {formatRelativeTime(conversation.updated_at)}
+	            </span>
+	          </div>
         </div>
 
         {/* 删除按钮 */}
