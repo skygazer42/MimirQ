@@ -26,6 +26,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const enableFluidCursor = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === "1"
+
   return (
     <html lang="zh-CN" suppressHydrationWarning className="h-full overflow-hidden">
       {/* Lock window scrolling: the app uses panel-internal scrolling for better UX. */}
@@ -40,7 +42,7 @@ export default function RootLayout({
             <SonnerToaster />
             <CommandMenu />
             <RouteScrollReset />
-            <FluidCursor />
+            {enableFluidCursor ? <FluidCursor /> : null}
             <TaskCenter />
             <PipelineCapabilitiesProvider>
               <ParserBackendProvider>

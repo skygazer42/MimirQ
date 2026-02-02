@@ -7,6 +7,8 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 
 export function FluidCursor() {
+  const enabled = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === "1"
+
   const [variant, setVariant] = useState<"default" | "pointer" | "text" | "hidden">("default")
   const cursorX = useMotionValue(-100)
   const cursorY = useMotionValue(-100)
@@ -22,6 +24,7 @@ export function FluidCursor() {
   // Only render/attach listeners on desktop pointers.
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
+    if (!enabled) return
     if (typeof window === "undefined") return
     const mq = window.matchMedia("(pointer: fine)")
     const update = () => setIsDesktop(mq.matches)
@@ -36,9 +39,10 @@ export function FluidCursor() {
       mq.addListener(update)
       return () => mq.removeListener(update)
     }
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
+    if (!enabled) return
     if (shouldReduceMotion) return
     if (!isDesktop) return
     // IMPORTANT: Do NOT hide default cursor. User feedback indicated visibility issues.
@@ -87,7 +91,7 @@ export function FluidCursor() {
       document.body.style.cursor = ''
       document.body.classList.remove('custom-cursor-enabled')
     }
-  }, [pathname, cursorX, cursorY, isDesktop, shouldReduceMotion])
+  }, [enabled, pathname, cursorX, cursorY, isDesktop, shouldReduceMotion])
 
   // Variants for Framer Motion
   const variants = {
@@ -109,7 +113,7 @@ export function FluidCursor() {
     }
   }
 
-  if (shouldReduceMotion || !isDesktop) return null
+  if (!enabled || shouldReduceMotion || !isDesktop) return null
 
   const appearance = variant === "hidden" ? "default" : variant
 
