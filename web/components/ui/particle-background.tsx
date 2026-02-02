@@ -7,6 +7,7 @@ import type { Engine, IOptions, RecursivePartial } from "tsparticles-engine"
 import { useTheme } from "next-themes"
 import { useReducedMotion } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { getCssHslColor } from "@/lib/css-vars"
 
 type ParticleBackgroundProps = {
   className?: string
@@ -17,6 +18,7 @@ export function ParticleBackground({ className, interactive = true }: ParticleBa
   const { resolvedTheme } = useTheme()
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
+  const [isVisible, setIsVisible] = useState(true)
   
   const particlesInit = useCallback(async (engine: Engine) => {
     await loadSlim(engine)
@@ -25,17 +27,33 @@ export function ParticleBackground({ className, interactive = true }: ParticleBa
   // Disable particles on touch devices and in reduced motion mode.
   useEffect(() => {
     if (typeof window === "undefined") return
+    const mq = window.matchMedia("(pointer: fine)")
+    const update = () => setIsFinePointer(mq.matches)
+    update()
+
     try {
-      setIsFinePointer(window.matchMedia("(pointer: fine)").matches)
+      mq.addEventListener("change", update)
+      return () => mq.removeEventListener("change", update)
     } catch {
-      setIsFinePointer(true)
+      // Safari < 14
+      mq.addListener(update)
+      return () => mq.removeListener(update)
     }
   }, [])
 
-  // Dark mode vs Light mode colors
-  const isDark = resolvedTheme === "dark"
-  const color = isDark ? "#ffffff" : "#0ea5e9" // White in dark, Sky-500 in light
-  const linkColor = isDark ? "#ffffff" : "#0284c7" // Sky-600 in light
+  // Pause/disable when the tab is hidden (keeps background loops from burning CPU).
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const update = () => setIsVisible(document.visibilityState === "visible")
+    update()
+    document.addEventListener("visibilitychange", update)
+    return () => document.removeEventListener("visibilitychange", update)
+  }, [])
+
+  // Token-driven colors (re-evaluated when theme flips).
+  // NOTE: the `resolvedTheme` dependency is only used to re-run after theme changes.
+  const color = useMemo(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"), [resolvedTheme])
+  const linkColor = useMemo(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"), [resolvedTheme])
 
   const options = useMemo(
     () =>
@@ -92,7 +110,7 @@ export function ParticleBackground({ className, interactive = true }: ParticleBa
     [color, interactive, linkColor]
   )
 
-  if (shouldReduceMotion || !isFinePointer) return null
+  if (shouldReduceMotion || !isFinePointer || !isVisible) return null
 
   return (
     <Particles
