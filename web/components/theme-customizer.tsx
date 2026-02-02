@@ -100,7 +100,7 @@ export function ThemeCustomizer() {
                   aria-label={`选择主色调：${preset.name}`}
                   title={preset.name}
                   className={cn(
-                    "flex h-8 w-full items-center justify-center rounded-md border border-muted bg-popover hover:bg-accent hover:text-accent-foreground transition-all",
+                    "flex h-8 w-full items-center justify-center rounded-md border border-muted bg-popover hover:bg-accent hover:text-accent-foreground transition-colors duration-200 motion-reduce:transition-none",
                     color === preset.value && "border-primary ring-2 ring-primary/20"
                   )}
                 >
@@ -122,7 +122,7 @@ export function ThemeCustomizer() {
                 <button 
                     onClick={() => setTheme('light')}
                     className={cn(
-                        "flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition-all",
+                        "flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors duration-200 motion-reduce:transition-none",
                         theme === 'light' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
@@ -131,7 +131,7 @@ export function ThemeCustomizer() {
                 <button 
                     onClick={() => setTheme('dark')}
                     className={cn(
-                        "flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition-all",
+                        "flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors duration-200 motion-reduce:transition-none",
                         theme === 'dark' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
