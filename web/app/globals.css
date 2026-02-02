@@ -171,7 +171,7 @@
   }
 
   .glass-card {
-    @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-all hover:border-primary/20 hover:shadow-md;
+    @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-shadow duration-200 hover:border-primary/20 hover:shadow-md;
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
