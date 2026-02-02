@@ -1608,7 +1608,7 @@ export default function KnowledgePage() {
               </Dialog>
               <label>
                 <Button
-                  className="gap-2 rounded-xl shadow-glow border border-primary/20"
+                  className="gap-2 rounded-xl shadow-sm border border-primary/20"
                   size="lg"
                   asChild
                 >
@@ -1770,7 +1770,7 @@ export default function KnowledgePage() {
                     className="bg-transparent shadow-none"
                   >
                     <label>
-                      <Button size="lg" className="gap-2 rounded-xl shadow-glow" asChild>
+                      <Button size="lg" className="gap-2 rounded-xl shadow-sm" asChild>
                         <span>
                           <Upload className="w-5 h-5" />
                           立即上传文档
@@ -2222,7 +2222,7 @@ export default function KnowledgePage() {
                     <Button
                       onClick={handleSearch}
                       disabled={isSearching || !searchQuery.trim()}
-                      className="rounded-xl px-6 h-12 text-base font-medium shadow-glow border border-primary/20"
+                      className="rounded-xl px-6 h-12 text-base font-medium shadow-md border border-primary/20"
                     >
                       {isSearching ? <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : "开始检索"}
                     </Button>
