@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label'
 import { authApi } from '@/lib/api-client'
 import { setAuthSession } from '@/lib/auth-storage'
 import { formatApiError } from '@/lib/api-errors'
-import { ParticleBackground } from '@/components/ui/particle-background'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { cn } from '@/lib/utils'
 
@@ -52,22 +51,12 @@ export default function AuthPage() {
 
     return (
         <FullScreenFrame
-            showBackground={false}
-            className="relative w-full overflow-hidden bg-background text-foreground"
+            className="relative w-full overflow-hidden"
         >
-            {/* 3D 粒子背景 */}
-            <ParticleBackground />
-
-            {/* Subtle texture; avoids heavy glow/gradient layers (better for performance + accessibility). */}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-0 opacity-[0.04] dark:opacity-[0.06] bg-[url('/noise.svg')] mix-blend-multiply dark:mix-blend-overlay"
-            />
-
-            <div className="relative z-10 w-full max-w-md p-6 motion-safe:animate-fade-in-up">
+            <div className="relative z-10 w-full max-w-md p-6">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center mb-8 space-y-4">
-                    <div className="size-16 glass rounded-xl flex items-center justify-center border border-border/60 shadow-strong">
+                    <div className="size-16 rounded-xl border border-border bg-card shadow-soft flex items-center justify-center">
                       <Sparkles className="size-8 text-primary" aria-hidden="true" />
                     </div>
                     <div className="text-center">
@@ -80,8 +69,7 @@ export default function AuthPage() {
                     </div>
                 </div>
 
-                {/* 玻璃拟态卡片 */}
-                <div className="glass rounded-3xl p-8 shadow-strong ring-1 ring-border/40">
+                <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
                     {/* Tab Switcher */}
                     <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
                         <button
@@ -112,7 +100,7 @@ export default function AuthPage() {
 
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {mode === 'register' && (
-                            <div className="space-y-4 motion-safe:animate-fade-in">
+                            <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="email" className="text-xs text-muted-foreground">邮箱地址</Label>
                                     <div className="relative group">
