@@ -1584,8 +1584,8 @@ export default function ParsingPage() {
         />
 
         {/* 顶部标题栏 */}
-        <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
-          <div className="flex items-center gap-4">
+	        <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
+	          <div className="flex items-center gap-4">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-card ring-1 ring-border/60 shadow-sm dark:shadow-none">
               <Sparkles className="w-5 h-5 text-foreground/80 dark:text-muted-foreground" />
             </div>
@@ -1596,20 +1596,19 @@ export default function ParsingPage() {
               </p>
             </div>
           </div>
-          <div className="hidden xl:flex items-center gap-3">
-            <IngestionWorkflowStepper />
-          </div>
-          <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-200/70 dark:via-slate-800/60 to-transparent" />
-        </header>
+	          <div className="hidden xl:flex items-center gap-3">
+	            <IngestionWorkflowStepper />
+	          </div>
+	        </header>
 
         <div className="flex-1 flex overflow-hidden min-h-0">
             {/* 左侧：文件列表面板 */}
-            <aside
-              className={cn(
-                "group/sidebar relative flex flex-col flex-shrink-0 bg-card/85 dark:bg-background/60 border-r border-border/60 transition-all duration-300 ease-in-out z-10 backdrop-blur",
-                isSidebarCollapsed ? "w-0 border-r-0" : "w-80"
-              )}
-              style={{ width: isSidebarCollapsed ? 0 : 320 }}
+	            <aside
+	              className={cn(
+	                "group/sidebar relative flex flex-col flex-shrink-0 bg-card/85 dark:bg-background/60 border-r border-border/60 z-10 backdrop-blur",
+	                isSidebarCollapsed ? "w-0 border-r-0" : "w-80"
+	              )}
+	              style={{ width: isSidebarCollapsed ? 0 : 320 }}
             >
               {/* Toggle Button */}
               <Button
@@ -1764,20 +1763,20 @@ export default function ParsingPage() {
                 {/* File List */}
                 <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-2 bg-card dark:bg-background/40">
                   <div className="min-h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
-                    {!isLibraryLoaded ? (
-                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                        <div className="w-14 h-14 bg-gradient-to-br from-slate-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
-	                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none" />
-                        </div>
-                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">正在加载文档库…</p>
-                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">首次进入或刷新时会稍等片刻</p>
-                      </div>
-                    ) : directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                        <div className="w-14 h-14 bg-gradient-to-br from-slate-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
-                          <FolderOpen className="w-6 h-6 text-muted-foreground" />
-                        </div>
-                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">暂无文件</p>
+	                    {!isLibraryLoaded ? (
+	                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+	                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
+		                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none" />
+	                        </div>
+	                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">正在加载文档库…</p>
+	                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">首次进入或刷新时会稍等片刻</p>
+	                      </div>
+	                    ) : directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0 ? (
+	                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+	                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
+	                          <FolderOpen className="w-6 h-6 text-muted-foreground" />
+	                        </div>
+	                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">暂无文件</p>
                         <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">拖拽文件到此处或点击上方按钮添加</p>
                         {isQueueRehydrating ? (
                           <p className="text-[11px] text-muted-foreground dark:text-muted-foreground mt-3">正在恢复队列…</p>
@@ -1938,14 +1937,14 @@ export default function ParsingPage() {
 
             {/* 右侧：预览区域 */}
             <div className="flex-1 flex flex-col bg-card/85 dark:bg-background/60 backdrop-blur overflow-hidden min-h-0 ring-1 ring-border/40 shadow-sm dark:shadow-none">
-              {!(activeFile || activeLibraryFile) ? (
-                // 空状态
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center max-w-md">
-                    <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-slate-100/70 to-slate-50/70 dark:from-slate-900/60 dark:to-slate-950/60 rounded-2xl flex items-center justify-center">
-                      <FileText className="w-10 h-10 text-muted-foreground dark:text-muted-foreground" />
-                    </div>
-                    <h3 className="text-lg font-medium text-foreground/80 dark:text-muted-foreground mb-2">选择文件开始</h3>
+	              {!(activeFile || activeLibraryFile) ? (
+	                // 空状态
+	                <div className="flex-1 flex items-center justify-center">
+	                  <div className="text-center max-w-md">
+	                    <div className="size-20 mx-auto mb-4 rounded-2xl border border-border/60 bg-card flex items-center justify-center shadow-soft">
+	                      <FileText className="w-10 h-10 text-muted-foreground dark:text-muted-foreground" />
+	                    </div>
+	                    <h3 className="text-lg font-medium text-foreground/80 dark:text-muted-foreground mb-2">选择文件开始</h3>
                     <p className="text-muted-foreground dark:text-muted-foreground text-sm">
                       从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
                     </p>
@@ -2105,13 +2104,13 @@ export default function ParsingPage() {
                           <div className="h-full overflow-y-auto overscroll-contain no-scrollbar px-6 py-6">
                             <MarkdownRenderer markdown={activeMarkdown} />
                           </div>
-                        ) : (
-                          <div className="h-full flex items-center justify-center">
-                            <div className="text-center max-w-md">
-                              <div className="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-slate-100/70 to-slate-50/70 dark:from-slate-900/60 dark:to-slate-950/60 rounded-2xl flex items-center justify-center">
-                                <FileText className="w-8 h-8 text-muted-foreground dark:text-muted-foreground" />
-                              </div>
-                              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">暂无可展示的解析内容</p>
+	                        ) : (
+	                          <div className="h-full flex items-center justify-center">
+	                            <div className="text-center max-w-md">
+	                              <div className="size-16 mx-auto mb-3 rounded-2xl border border-border/60 bg-card flex items-center justify-center shadow-soft">
+	                                <FileText className="w-8 h-8 text-muted-foreground dark:text-muted-foreground" />
+	                              </div>
+	                              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">暂无可展示的解析内容</p>
                               <p className="text-muted-foreground dark:text-muted-foreground text-xs mt-1">若该文件还未解析，或内容未缓存，请重新选择文件并解析。</p>
                             </div>
                           </div>
@@ -2121,12 +2120,12 @@ export default function ParsingPage() {
                   ) : null}
                   {activeFile ? (
                     <>
-                      {/* 统计卡片区 - 解析完成后显示 */}
-                      {activeFile.status === 'parsed' && activeFile.stats && (
-                        <div className="px-6 py-4 border-b border-border/60 bg-gradient-to-r from-slate-50/70 to-white dark:from-slate-950/40 dark:to-slate-950/10">
-                          <StatsGrid>
-                            <StatCard
-                              icon={FileText}
+	                      {/* 统计卡片区 - 解析完成后显示 */}
+	                      {activeFile.status === 'parsed' && activeFile.stats && (
+	                        <div className="px-6 py-4 border-b border-border/60 bg-card/70 dark:bg-background/40">
+	                          <StatsGrid>
+	                            <StatCard
+	                              icon={FileText}
                               label="字符数"
                               value={activeFile.stats.charCount.toLocaleString()}
                               color="blue"
@@ -2618,24 +2617,24 @@ export default function ParsingPage() {
                         )}
                       </div>
 
-                      {/* 底部操作栏 */}
-                      {activeFile.status === 'parsed' && activeMarkdown && (
-                        <div className="px-6 py-4 border-t border-border/60 bg-gradient-to-r from-slate-50/70 to-white dark:from-slate-950/40 dark:to-slate-950/10">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm text-muted-foreground dark:text-muted-foreground">
-                              {isEditing
-                                ? '编辑完成后点击"保存修改"，然后提交到数据治理'
-                                : '确认解析内容无误后，提交到数据治理工作台'
-                              }
-                            </div>
-                            <div className="flex items-center gap-3">
-                              {!isEditing && (
-                                <Button
-                                  onClick={handleSubmitToGovernance}
-                                  className="gap-2 bg-sky-600 hover:bg-sky-700"
-                                >
-                                  <ShieldCheck className="w-4 h-4" />
-                                  提交到数据治理
+	                      {/* 底部操作栏 */}
+	                      {activeFile.status === 'parsed' && activeMarkdown && (
+	                        <div className="px-6 py-4 border-t border-border/60 bg-card/70 dark:bg-background/40">
+	                          <div className="flex items-center justify-between">
+	                            <div className="text-sm text-muted-foreground dark:text-muted-foreground">
+	                              {isEditing
+	                                ? '编辑完成后点击"保存修改"，然后提交到数据治理'
+	                                : '确认解析内容无误后，提交到数据治理工作台'
+	                              }
+	                            </div>
+	                            <div className="flex items-center gap-3">
+	                              {!isEditing && (
+	                                <Button
+	                                  onClick={handleSubmitToGovernance}
+	                                  className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+	                                >
+	                                  <ShieldCheck className="w-4 h-4" />
+	                                  提交到数据治理
                                   <ChevronRight className="w-4 h-4" />
                                 </Button>
                               )}
