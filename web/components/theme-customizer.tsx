@@ -67,7 +67,7 @@ export function ThemeCustomizer() {
         <IconButton
           label="打开主题定制"
           variant="outline"
-          className="fixed bottom-4 right-4 z-50 rounded-full h-12 w-12 shadow-2xl bg-background/80 backdrop-blur-md border-primary/20 hover:border-primary transition-all duration-300 hover:rotate-90"
+          className="fixed bottom-4 right-4 z-50 size-12 rounded-full border-primary/20 bg-background/80 backdrop-blur-md shadow-lg hover:border-primary transition-colors duration-200 motion-reduce:transition-none supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]"
         >
           <Settings2 className="h-6 w-6 text-primary" />
         </IconButton>
