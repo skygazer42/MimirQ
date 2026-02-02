@@ -187,7 +187,7 @@ export function CinematicTypewriter({
 
       {/* 电影感光标 */}
       {isTyping && !reduceMotion && (
-        <span className="inline-block w-1.5 h-5 ml-0.5 align-middle bg-primary motion-safe:animate-blink shadow-[0_0_8px_hsl(var(--primary)/0.55)] rounded-full" />
+        <span className="inline-block w-1.5 h-5 ml-0.5 align-middle bg-primary motion-safe:animate-blink rounded-full" />
       )}
     </div>
   )
