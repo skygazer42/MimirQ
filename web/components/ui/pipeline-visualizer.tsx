@@ -27,11 +27,11 @@ export function PipelineVisualizer({ progress, stage, className }: PipelineVisua
         {/* Background Line */}
         <div className="absolute left-0 right-0 top-1/2 h-1 bg-secondary rounded-full -z-10" />
         
-        {/* Animated Progress Line */}
+        {/* Progress Line (transform-only; avoids animating layout width) */}
         <motion.div 
-            className="absolute left-0 top-1/2 h-1 bg-gradient-to-r from-primary to-cyan-400 rounded-full -z-10"
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
+            className="absolute left-0 right-0 top-1/2 h-1 bg-primary rounded-full -z-10 origin-left"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: Math.max(0, Math.min(1, progress / 100)) }}
             transition={{ type: "spring", stiffness: 50, damping: 20 }}
         />
 
