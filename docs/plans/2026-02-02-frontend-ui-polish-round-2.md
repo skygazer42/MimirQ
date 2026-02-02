@@ -499,3 +499,23 @@ git add docs/plans/2026-02-02-frontend-ui-polish-round-2.md
 git commit -m "docs(plans): record round 2 verification"
 ```
 
+---
+
+## Verification (2026-02-02)
+
+Ran:
+```bash
+make enterprise-checks
+```
+
+Result: PASS
+- ruff: OK
+- api-check: OK (contract + coverage)
+- web: lint OK, ui-check OK, typecheck OK
+- backend: compileall OK
+- pytest: 568 passed, 3 skipped (integration tests disabled by default)
+- vitest: 28 files, 72 tests passed
+
+Notes:
+- One Python warning: torch/cuda FutureWarning (pynvml deprecation).
+- One vitest warning: Vite CJS Node API deprecation notice.
