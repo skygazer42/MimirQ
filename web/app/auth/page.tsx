@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, Mail, Lock, Sparkles, ArrowRight, Loader2 } from 'lucide-react'
+import { User, Mail, Lock, Sparkles, ArrowRight, Loader2, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi } from '@/lib/api-client'
 import { setAuthSession } from '@/lib/auth-storage'
-import { formatApiError } from '@/lib/api-errors'
+import { formatRequestId, toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { cn } from '@/lib/utils'
 
@@ -23,14 +23,14 @@ export default function AuthPage() {
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<ApiErrorInfo | null>(null)
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault()
         setError(null)
 
         if (mode === 'register' && password !== confirmPassword) {
-            setError('两次输入的密码不一致')
+            setError({ message: '两次输入的密码不一致' })
             return
         }
 
@@ -43,7 +43,7 @@ export default function AuthPage() {
             setAuthSession({ token: response.token, user: response.user })
             router.push('/')
         } catch (err: any) {
-            setError(formatApiError(err, '请求失败，请重试'))
+            setError(toApiErrorInfo(err, '请求失败，请重试'))
         } finally {
             setIsSubmitting(false)
         }
@@ -189,7 +189,26 @@ export default function AuthPage() {
                         {error && (
                             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 flex items-start gap-2 motion-safe:animate-fade-in">
                                 <div className="w-1 h-1 mt-2 rounded-full bg-destructive shrink-0" />
-                                <p className="text-xs text-destructive">{error}</p>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs text-destructive">{error.message}</p>
+                                  {error.requestId ? (
+                                    <div className="mt-2 flex items-center justify-between gap-2">
+                                      <span className="min-w-0 truncate text-[10px] font-mono text-muted-foreground">
+                                        {formatRequestId(error.requestId)}
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                                        aria-label="复制 request_id"
+                                        onClick={() => navigator.clipboard?.writeText?.(error.requestId || '')}
+                                      >
+                                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                                      </Button>
+                                    </div>
+                                  ) : null}
+                                </div>
                             </div>
                         )}
 
