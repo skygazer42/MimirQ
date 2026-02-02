@@ -290,7 +290,10 @@ export default function FeedbackTriagePage() {
                     {Array.isArray(item.tags) && item.tags.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {item.tags.slice(0, 5).map((t) => (
-                          <span key={t} className="text-[10px] uppercase  font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 px-2 py-0.5 rounded-md">
+                          <span
+                            key={t}
+                            className="rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                          >
                             {t}
                           </span>
                         ))}
