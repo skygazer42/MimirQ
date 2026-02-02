@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
+.PHONY: help init up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -56,6 +56,7 @@ help:
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
 	@echo "  make api-check - verify web routes exist in backend"
+	@echo "  make api-ping  - ping backend health endpoints (quick reachability check)"
 	@echo "  make api-smoke - smoke-test all OpenAPI endpoints (docker backend)"
 	@echo "  make typecheck - run web TypeScript typecheck"
 	@echo "  make ui-check  - verify web UI design tokens (no hard-coded white/cyan etc)"
@@ -164,6 +165,9 @@ parser-status:
 api-check:
 	node web/scripts/check-api-contract.mjs
 	node web/scripts/check-api-coverage.mjs
+
+api-ping:
+	$(PY) scripts/api_ping.py
 
 api-smoke:
 	$(COMPOSE) exec -T mimirq-api python scripts/api_smoke.py --base-url http://localhost:8000 --skip-llm-test --skip-mineru
