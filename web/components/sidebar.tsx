@@ -256,7 +256,7 @@ function DocumentCard({
       className={cn(
         'group relative p-3 rounded-xl border cursor-pointer motion-safe:animate-fade-in-up h-full transition-all duration-300',
         isSelected
-          ? 'bg-primary/10 border-primary/40 shadow-glow'
+          ? 'bg-primary/10 border-primary/40 shadow-soft'
           : 'bg-background/40 hover:bg-background/60 border-border/60 hover:border-primary/20 hover:shadow-soft'
       )}
       onClick={onSelect}
