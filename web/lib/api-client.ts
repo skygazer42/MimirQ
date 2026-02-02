@@ -220,6 +220,7 @@ apiClient.interceptors.response.use(
       const detail = extractBackendMessage(data) || error.message
       const headerRequestId = error.response.headers?.['x-request-id']
       const requestId = extractBackendRequestId(data) || (headerRequestId ? String(headerRequestId) : undefined)
+      ;(error as any).requestId = requestId
 
       switch (status) {
         case 401: {
@@ -263,6 +264,7 @@ apiClient.interceptors.response.use(
     } else if (error.request) {
       const headers = AxiosHeaders.from(error.config?.headers)
       const requestId = headers.get('X-Request-ID')
+      ;(error as any).requestId = requestId ? String(requestId) : undefined
       console.error('[API] 网络错误，请检查后端服务是否启动', requestId ? `(request_id=${requestId})` : '')
     }
 
