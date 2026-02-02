@@ -792,7 +792,7 @@ export default function GraphPage() {
   }
 
   return (
-    <AppFrame mainClassName="transition-all duration-300">
+    <AppFrame>
       <PageScaffold
         showHeader={false}
         title="知识图谱"
@@ -805,9 +805,9 @@ export default function GraphPage() {
          {/* Header */}
          <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
 	          <div className="flex items-center gap-3 pointer-events-auto">
-	            <div className="p-2 bg-gradient-to-br from-sky-500 to-teal-600 rounded-lg shadow-sm">
-	              <Share2 className="w-5 h-5 text-background dark:text-foreground" />
-	            </div>
+		            <div className="p-2 rounded-lg bg-primary text-primary-foreground shadow-sm border border-primary/20">
+		              <Share2 className="w-5 h-5" />
+		            </div>
 	            <div>
 	              <h1 className="text-3xl font-bold text-foreground tracking-tight">知识图谱</h1>
 	            </div>
@@ -1033,25 +1033,25 @@ export default function GraphPage() {
                  >
                    {isLoading ? '加载中...' : '加载示例数据'}
                  </Button>
-                 <Button
-                   size="lg"
-                   className="bg-sky-600 hover:bg-sky-700 shadow-xl shadow-sky-500/20 dark:shadow-sky-500/10"
-                   onClick={triggerFileUpload}
-                 >
-                   <Upload className="w-5 h-5" />
-                   开始上传
-                 </Button>
+	               <Button
+	                 size="lg"
+	                 className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-soft"
+	                 onClick={triggerFileUpload}
+	               >
+	                 <Upload className="w-5 h-5" />
+	                 开始上传
+	               </Button>
                </EmptyState>
              </div>
            )}
 
 	          {/* Explainability Panel (Bottom Left) */}
-	          {isExplainMode && (
-	            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-2xl border border-teal-500/30 animate-in slide-in-from-bottom-10 fade-in duration-500 motion-reduce:animate-none motion-reduce:transition-none overflow-hidden">
-	               <div className="p-4 border-b border-teal-500/20 bg-teal-500/10 flex items-center gap-2">
-	                 <Lightbulb className="w-4 h-4 text-teal-600 dark:text-teal-300" />
-	                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
-	               </div>
+		          {isExplainMode && (
+		            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-strong border border-border overflow-hidden">
+		               <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
+		                 <Lightbulb className="w-4 h-4 text-primary" />
+		                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
+		               </div>
                <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar">
                  {explainSteps.map((step, idx) => {
                    const node = graphData.nodes.find(n => n.id === step.node)
@@ -1159,14 +1159,16 @@ export default function GraphPage() {
              </div>
           </div>
 
-          {/* Info Panel / Sidebar (Right) */}
-          <div className={cn(
-            "absolute top-4 right-4 bottom-24 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-2xl border border-border transform transition-transform duration-300 ease-in-out z-20 flex flex-col overflow-hidden",
-            isDetailOpen && selectedNode ? "translate-x-0" : "translate-x-[120%]"
-          )}>
+	          {/* Info Panel / Sidebar (Right) */}
+	          <div
+	            className={cn(
+	              "absolute top-4 right-4 bottom-24 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-strong border border-border transform transition-transform duration-200 ease-out z-20 flex flex-col overflow-hidden",
+	              isDetailOpen && selectedNode ? "translate-x-0" : "translate-x-[120%]"
+	            )}
+	          >
             {selectedNode && (
               <>
-                <div className="p-5 border-b border-border flex items-start justify-between bg-gradient-to-r from-muted/60 to-card">
+	                <div className="p-5 border-b border-border flex items-start justify-between bg-card">
                   <div>
                     <h2 className="font-bold text-lg text-foreground line-clamp-2">{selectedNode.label}</h2>
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300 mt-2 border border-sky-500/30">
