@@ -128,8 +128,6 @@ export function IngestionDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl bg-[#fafafa] border-slate-200 shadow-2xl sm:rounded-[2rem] p-0 overflow-hidden outline-none">
-        {/* Paper Texture Overlay */}
-        <div className="absolute inset-0 opacity-50 pointer-events-none mix-blend-multiply" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/200\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100\' height=\'100\' filter=\'url(%23noise)\' opacity=\'0.08\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
 
         <DialogHeader className="px-8 pt-8 pb-6 border-b border-border/60 bg-card relative z-10">
           <DialogTitle className="flex items-center justify-between gap-3">
