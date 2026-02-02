@@ -306,141 +306,115 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             </button>
 
 	            <Dialog open={diagOpen} onOpenChange={setDiagOpen}>
-	              <DialogContent className="max-w-4xl border-primary/20 bg-background/95 shadow-[0_0_50px_-10px_hsl(var(--primary)/0.15)] backdrop-blur-xl p-0 overflow-hidden sm:rounded-[2rem]">
-	                {/* Decorative HUD Elements */}
-	                <div className="absolute top-0 left-0 w-20 h-20 border-l-2 border-t-2 border-primary/30 rounded-tl-3xl pointer-events-none" />
-	                <div className="absolute top-0 right-0 w-20 h-20 border-r-2 border-t-2 border-primary/30 rounded-tr-3xl pointer-events-none" />
-	                <div className="absolute bottom-0 left-0 w-20 h-20 border-l-2 border-b-2 border-primary/30 rounded-bl-3xl pointer-events-none" />
-	                <div className="absolute bottom-0 right-0 w-20 h-20 border-r-2 border-b-2 border-primary/30 rounded-br-3xl pointer-events-none" />
-	                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-	                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-	
-	                <DialogHeader className="px-8 pt-8 pb-4 relative z-10 border-b border-border/60 bg-primary/5">
-	                  <DialogTitle className="flex items-center justify-between gap-3">
-	                    <div className="flex items-center gap-3">
-	                      <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 text-primary">
-	                        <BarChart3 className="w-5 h-5" />
-	                      </div>
-	                      <div>
-	                        <span className="block text-lg font-bold text-foreground tracking-wide">SYSTEM_DIAGNOSTICS</span>
-	                        <span className="block text-[10px] font-mono text-muted-foreground/70 uppercase tracking-widest">Retrieval & Generation Telemetry</span>
-	                      </div>
-	                    </div>
-	                    <Button
-	                      size="sm"
-	                      variant="outline"
-	                      onClick={handleCopyDiagnostics}
-	                      className="bg-background/50 border-primary/30 text-primary hover:bg-primary/15 hover:border-primary/50 uppercase text-[10px] font-mono tracking-wider"
-	                    >
-	                      <Copy className="w-3.5 h-3.5 mr-2" />
-	                      Copy JSON payload
-	                    </Button>
-                  </DialogTitle>
-                </DialogHeader>
-
-                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto overscroll-contain no-scrollbar relative z-10">
-
-                  {/* Grid Layout */}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-
-                    {/* Left Column: Metadata & Metrics */}
-                    <div className="md:col-span-4 space-y-6">
-                      {/* Message Info */}
-	                      <div className="rounded-xl border border-border/60 bg-background/40 overflow-hidden">
-	                        <div className="px-4 py-2 bg-primary/5 border-b border-border/60 flex items-center justify-between">
-	                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-primary to-info font-black uppercase tracking-widest">Meta Info</span>
-	                          <div className="flex gap-1">
-	                            <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
-	                            <div className="w-1.5 h-1.5 rounded-full bg-primary/20" />
-	                          </div>
-	                        </div>
-	                        <div className="p-4 space-y-4">
-	                          <div>
-	                            <div className="text-[10px] text-muted-foreground/70 uppercase tracking-wider mb-1">Message ID</div>
-	                            <div className="font-mono text-xs text-foreground break-all bg-background/60 p-2 rounded border border-border/60 select-all">{message.id}</div>
-	                          </div>
-	                        </div>
-	                      </div>
-
-	                      {/* Metrics */}
-	                      <div className="rounded-xl border border-info/20 bg-info/10 overflow-hidden">
-	                        <div className="px-4 py-2 bg-info/5 border-b border-info/10 flex items-center justify-between">
-	                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-info to-primary font-black uppercase tracking-widest">Performance</span>
-	                        </div>
-	                        <div className="p-2 grid grid-cols-1 gap-2">
-	                          {metricEntries.length ? metricEntries.map((e) => (
-	                            <div key={e.k} className="flex items-center justify-between p-2 rounded bg-info/5 border border-info/10">
-	                              <span className="text-[10px] text-info/80 uppercase tracking-wider">{e.k.replace(/_/g, ' ')}</span>
-	                              <span className="font-mono text-xs text-foreground">{String(e.v)}</span>
-	                            </div>
-	                          )) : (
-	                            <div className="p-4 text-center text-xs text-info/60">No metrics recorded</div>
-	                          )}
-	                        </div>
-	                      </div>
+	              <DialogContent className="max-w-4xl border border-border bg-popover text-popover-foreground p-0 overflow-hidden shadow-strong sm:rounded-2xl">
+                  <DialogHeader className="px-6 py-5 border-b border-border bg-card">
+                    <div className="flex items-start justify-between gap-4">
+                      <DialogTitle className="flex items-center gap-3">
+                        <div className="size-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                          <BarChart3 className="size-5" aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-base font-semibold text-foreground">检索诊断</div>
+                          <div className="text-xs text-muted-foreground">message_metadata / citations（仅用于调试）</div>
+                        </div>
+                      </DialogTitle>
+                      <Button size="sm" variant="outline" onClick={handleCopyDiagnostics} className="text-xs">
+                        <Copy className="w-3.5 h-3.5 mr-2" />
+                        复制 JSON
+                      </Button>
                     </div>
+                  </DialogHeader>
 
-                    {/* Right Column: Citations Table */}
-                    <div className="md:col-span-8 space-y-6">
-	                      <div className="rounded-xl border border-success/20 bg-success/10 overflow-hidden min-h-[300px] flex flex-col">
-	                        <div className="px-4 py-2 bg-success/5 border-b border-success/10 flex items-center justify-between">
-	                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-success to-info font-black uppercase tracking-widest">Citation Reliability Analysis</span>
-	                          <span className="text-[10px] px-2 py-0.5 rounded bg-success/20 text-success font-mono">{citationRows.length} Sources</span>
-	                        </div>
+                  <div className="p-6 md:p-8 space-y-6 max-h-[70vh] overflow-y-auto overscroll-contain no-scrollbar">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                      <div className="md:col-span-5 space-y-6">
+                        <div className="rounded-xl border border-border bg-card overflow-hidden">
+                          <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+                            <div className="text-xs font-semibold text-foreground">元数据</div>
+                          </div>
+                          <div className="p-4 space-y-4">
+                            <div>
+                              <div className="text-[11px] text-muted-foreground mb-1">Message ID</div>
+                              <div className="font-mono text-xs tabular-nums break-all rounded-md border border-border bg-background/50 p-2 select-all">{message.id}</div>
+                            </div>
 
-                        {citationRows.length ? (
-                          <div className="overflow-x-auto flex-1">
-                            <table className="w-full text-xs text-left">
-                              <thead>
-	                                <tr className="border-b border-success/10 text-success/60 uppercase tracking-wider text-[10px]">
-	                                  <th className="px-4 py-3 font-medium">#</th>
-	                                  <th className="px-4 py-3 font-medium">Document / Source</th>
-	                                  <th className="px-4 py-3 font-medium text-right">Page</th>
-	                                  <th className="px-4 py-3 font-medium text-right text-success">Score</th>
-	                                  <th className="px-4 py-3 font-medium text-right">Vector</th>
-	                                  <th className="px-4 py-3 font-medium text-right">BM25</th>
-	                                  <th className="px-4 py-3 font-medium text-right">Rerank</th>
-	                                </tr>
-	                              </thead>
-	                              <tbody className="divide-y divide-success/10">
-	                                {citationRows.map((c, idx) => (
-	                                  <tr key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`} className="hover:bg-success/5 transition-colors motion-reduce:transition-none group">
-	                                    <td className="px-4 py-2.5 font-mono text-success/50">{idx + 1}</td>
-	                                    <td className="px-4 py-2.5">
-	                                      <div className="max-w-[200px] truncate text-foreground font-medium group-hover:text-success transition-colors motion-reduce:transition-none" title={c.document_name}>{c.document_name}</div>
-	                                    </td>
-	                                    <td className="px-4 py-2.5 text-success/70 text-right font-mono">{c.page_number ?? '-'}</td>
-	                                    <td className="px-4 py-2.5 text-right font-mono text-success font-bold shadow-[0_0_10px_-4px_hsl(var(--success)/0.35)]">{Number.isFinite(c.relevance_score) ? c.relevance_score.toFixed(3) : '-'}</td>
-	                                    <td className="px-4 py-2.5 text-right font-mono text-success/60">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : '-'}</td>
-	                                    <td className="px-4 py-2.5 text-right font-mono text-success/60">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : '-'}</td>
-	                                    <td className="px-4 py-2.5 text-right font-mono text-success/60">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : '-'}</td>
-	                                  </tr>
-	                                ))}
-	                              </tbody>
-	                            </table>
-	                          </div>
-	                        ) : (
-	                          <div className="flex-1 flex items-center justify-center p-8 text-success/40 text-xs uppercase tracking-widest">
-	                            No citations recorded for this response
-	                          </div>
-	                        )}
+                            {metricEntries.length ? (
+                              <dl className="space-y-2 text-xs">
+                                {metricEntries.map((e) => (
+                                  <div key={e.k} className="flex items-start justify-between gap-3">
+                                    <dt className="text-muted-foreground">{e.k}</dt>
+                                    <dd className="font-mono tabular-nums text-foreground text-right break-all">{String(e.v)}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            ) : (
+                              <div className="text-xs text-muted-foreground">无可用指标。</div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card overflow-hidden">
+                          <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+                            <div className="text-xs font-semibold text-foreground">Raw payload</div>
+                          </div>
+                          <pre className="p-4 text-[11px] font-mono tabular-nums text-muted-foreground overflow-auto max-h-56 custom-scrollbar">{JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}</pre>
+                        </div>
                       </div>
 
-	                      {/* Raw Data Toggle */}
-	                      <div className="rounded-xl border border-border/60 bg-background/40">
-	                        <div className="px-4 py-2 border-b border-border/60 bg-secondary/30 flex items-center gap-2">
-	                          <div className="w-2 h-2 rounded-full bg-muted-foreground/60" />
-	                          <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Raw Payload</span>
-	                        </div>
-	                        <pre className="p-4 text-[10px] font-mono text-muted-foreground overflow-auto max-h-40 custom-scrollbar opacity-70 hover:opacity-100 transition-opacity motion-reduce:transition-none">
-	                          {JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}
-	                        </pre>
-	                      </div>
-                    </div>
+                      <div className="md:col-span-7">
+                        <div className="rounded-xl border border-border bg-card overflow-hidden min-h-[300px] flex flex-col">
+                          <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center justify-between gap-3">
+                            <div className="text-xs font-semibold text-foreground">引用来源</div>
+                            <div className="text-xs text-muted-foreground tabular-nums">{citationRows.length} 条</div>
+                          </div>
 
+                          {citationRows.length ? (
+                            <div className="overflow-x-auto flex-1">
+                              <table className="w-full text-xs text-left tabular-nums">
+                                <thead className="text-muted-foreground">
+                                  <tr className="border-b border-border">
+                                    <th className="px-4 py-2.5 font-medium">#</th>
+                                    <th className="px-4 py-2.5 font-medium">Document / Source</th>
+                                    <th className="px-4 py-2.5 font-medium text-right">Page</th>
+                                    <th className="px-4 py-2.5 font-medium text-right">Score</th>
+                                    <th className="px-4 py-2.5 font-medium text-right">Vector</th>
+                                    <th className="px-4 py-2.5 font-medium text-right">BM25</th>
+                                    <th className="px-4 py-2.5 font-medium text-right">Rerank</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border">
+                                  {citationRows.map((c, idx) => {
+                                    const score = Number(c.relevance_score)
+                                    return (
+                                      <tr
+                                        key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`}
+                                        className="hover:bg-muted/30 transition-colors duration-200 motion-reduce:transition-none"
+                                      >
+                                        <td className="px-4 py-2.5 text-muted-foreground">{idx + 1}</td>
+                                        <td className="px-4 py-2.5">
+                                          <div className="max-w-[240px] truncate text-foreground font-medium" title={c.document_name}>
+                                            {c.document_name}
+                                          </div>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right font-mono">{c.page_number ?? "-"}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono font-semibold">{Number.isFinite(score) ? score.toFixed(3) : "-"}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : "-"}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : "-"}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : "-"}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground text-sm">未记录 citations</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </DialogContent>
+                </DialogContent>
             </Dialog>
           </>
         )}
