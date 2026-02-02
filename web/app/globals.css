@@ -152,7 +152,11 @@
   h4,
   h5,
   h6 {
-    @apply tracking-tight font-semibold;
+    @apply font-semibold text-balance;
+  }
+
+  p {
+    @apply text-pretty;
   }
 }
 
@@ -168,15 +172,6 @@
 
   .glass-card {
     @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-all hover:border-primary/20 hover:shadow-md;
-  }
-
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500;
-  }
-
-  .border-gradient {
-    @apply border-transparent bg-origin-border bg-clip-border;
-    background-image: linear-gradient(to right, hsl(var(--background)), hsl(var(--background))), linear-gradient(to right, hsl(var(--primary)), orchid);
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
