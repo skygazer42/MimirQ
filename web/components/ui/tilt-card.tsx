@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useRef } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion"
 import { cn } from "@/lib/utils"
 
@@ -15,6 +15,7 @@ interface TiltCardProps {
 export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave }: TiltCardProps) {
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
+  const [isFinePointer, setIsFinePointer] = useState(false)
 
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -27,11 +28,28 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   const rotateX = useTransform(mouseY, [-0.5, 0.5], ["5deg", "-5deg"])
   const rotateY = useTransform(mouseX, [-0.5, 0.5], ["-5deg", "5deg"])
 
-  // Sheen gradient position
-  const sheenX = useTransform(mouseX, [-0.5, 0.5], ["0%", "100%"])
-  const sheenY = useTransform(mouseY, [-0.5, 0.5], ["0%", "100%"])
+  const enabled = !shouldReduceMotion && isFinePointer
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const mq = window.matchMedia("(pointer: fine)")
+    const update = () => setIsFinePointer(mq.matches)
+    update()
+
+    // Keep in sync on hybrid devices / pointer changes.
+    try {
+      mq.addEventListener("change", update)
+      return () => mq.removeEventListener("change", update)
+    } catch {
+      // Safari < 14
+      mq.addListener(update)
+      return () => mq.removeListener(update)
+    }
+  }, [])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!enabled) return
     if (!ref.current) return
 
     const rect = ref.current.getBoundingClientRect()
@@ -56,33 +74,38 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     onMouseLeave?.()
   }
 
+  if (!enabled) {
+    return (
+      <div
+        ref={ref}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        onClick={onClick}
+        className={cn("relative", className)}
+      >
+        {children}
+      </div>
+    )
+  }
+
   return (
     <motion.div
       ref={ref}
-      onMouseMove={shouldReduceMotion ? undefined : handleMouseMove}
+      onMouseMove={handleMouseMove}
       onMouseEnter={onMouseEnter}
-      onMouseLeave={shouldReduceMotion ? onMouseLeave : handleMouseLeave}
+      onMouseLeave={handleMouseLeave}
       onClick={onClick}
       style={{
-        ...(shouldReduceMotion ? {} : { rotateX, rotateY }),
+        rotateX,
+        rotateY,
         transformStyle: "preserve-3d",
       }}
-      className={cn("relative transition-all duration-200 ease-out will-change-transform perspective-1000", className)}
+      className={cn("relative transition-transform duration-200 ease-out perspective-1000", className)}
     >
       {/* Content */}
       <div className="relative z-10 h-full">
         {children}
       </div>
-
-      {/* Sheen Effect */}
-      {!shouldReduceMotion && (
-        <motion.div
-          className="absolute inset-0 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl mix-blend-overlay"
-          style={{
-            background: `radial-gradient(circle at ${sheenX} ${sheenY}, rgba(255,255,255,0.3) 0%, transparent 60%)`,
-          }}
-        />
-      )}
     </motion.div>
   )
 }
