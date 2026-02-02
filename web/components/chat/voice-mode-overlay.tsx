@@ -56,6 +56,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 
 	        let animationFrameId: number | null = null
 	        let phase = 0
+	        let viewport = { width: 0, height: 0 }
 
 	        const root = document.documentElement
 	        const styles = getComputedStyle(root)
@@ -68,10 +69,26 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	        const primaryColor = primaryVar ? `hsl(${primaryVar})` : '#0ea5e9'
 	        const primaryColorMuted = primaryVar ? `hsl(${primaryVar} / 0.3)` : 'rgba(14, 165, 233, 0.3)'
 
+	        const syncCanvasSize = () => {
+	            const dpr = Math.max(1, window.devicePixelRatio || 1)
+	            const width = window.innerWidth
+	            const height = window.innerHeight
+	            viewport = { width, height }
+
+	            // Render in CSS pixels, but keep the backing store crisp on HiDPI.
+	            canvas.width = Math.round(width * dpr)
+	            canvas.height = Math.round(height * dpr)
+	            ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+	        }
+
+	        const onResize = () => syncCanvasSize()
+
+	        syncCanvasSize()
+	        window.addEventListener('resize', onResize)
+
 	        const render = () => {
 	            if (!reduceMotion) phase += 0.1
-	            const width = canvas.width = window.innerWidth
-	            const height = canvas.height = window.innerHeight
+	            const { width, height } = viewport
 
 	            ctx.fillStyle = bgColor
 	            ctx.fillRect(0, 0, width, height)
@@ -105,6 +122,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 
 	        render()
 	        return () => {
+	            window.removeEventListener('resize', onResize)
 	            if (animationFrameId != null) {
 	                window.cancelAnimationFrame(animationFrameId)
 	            }
