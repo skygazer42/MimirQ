@@ -11,6 +11,17 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -178,7 +189,6 @@ export default function DatasetsPage() {
 
   const handleDelete = async (ds: Dataset) => {
     if (!ds?.id) return
-    if (!confirm(`确定删除数据集 “${ds.name}” 吗？此操作不可恢复。`)) return
     try {
       await datasetApi.delete(ds.id)
       toast.success('已删除数据集')
@@ -365,15 +375,26 @@ export default function DatasetsPage() {
                         <Pencil className="w-3.5 h-3.5" />
                         编辑
                       </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => handleDelete(ds)}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        删除
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm" className="gap-2">
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            删除
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>删除数据集？</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              你将删除 <span className="font-mono">{ds.name}</span>。此操作不可撤销。
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(ds)}>删除</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                 ))}
