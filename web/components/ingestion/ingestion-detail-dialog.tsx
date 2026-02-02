@@ -269,27 +269,27 @@ export function IngestionDetailDialog({
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t border-slate-200/60 block">
+            <div className="flex flex-col items-stretch justify-end gap-3 border-t border-border/60 pt-6 sm:flex-row sm:items-center">
               <Button
                 variant="outline"
-                className="rounded-full border-slate-200 hover:bg-slate-50 text-slate-700"
+                className="rounded-full"
                 disabled={!doc || isActing}
                 onClick={() => doc && openDocument(doc.id)}
               >
                 查看解析内容
               </Button>
               {canCancel && (
-                <Button variant="destructive" className="rounded-full shadow-red-200 shadow-lg" disabled={isActing} onClick={handleCancel}>
+                <Button variant="destructive" className="rounded-full" disabled={isActing} onClick={handleCancel}>
                   取消任务
                 </Button>
               )}
               {canRetry && (
-                <Button className="rounded-full bg-sky-600 hover:bg-sky-700 shadow-sky-200 shadow-lg" disabled={isActing} onClick={() => handleRetry(false)}>
+                <Button className="rounded-full" disabled={isActing} onClick={() => handleRetry(false)}>
                   重试入库
                 </Button>
               )}
               {canForceRetry && (
-                <Button variant="outline" className="rounded-full border-slate-200 hover:text-red-600 hover:border-red-200" disabled={isActing} onClick={() => handleRetry(true)}>
+                <Button variant="outline" className="rounded-full hover:border-destructive/30 hover:text-destructive" disabled={isActing} onClick={() => handleRetry(true)}>
                   强制重跑
                 </Button>
               )}
