@@ -101,10 +101,15 @@ export function extractAxiosRequestId(err: unknown): string | undefined {
 }
 
 export function withRequestId(message: string, requestId?: string): string {
-  const rid = (requestId || '').trim()
-  if (!rid) return message
+  const label = formatRequestId(requestId)
+  if (!label) return message
   if (/\brequest_id=/.test(message)) return message
-  return `${message} (request_id=${rid})`
+  return `${message} (${label})`
+}
+
+export function formatRequestId(requestId?: string): string | undefined {
+  const rid = (requestId || '').trim()
+  return rid ? `request_id=${rid}` : undefined
 }
 
 export function formatApiError(err: unknown, fallbackMessage: string): string {
