@@ -95,9 +95,6 @@ const config = {
         'soft': 'var(--shadow-soft)',
         'strong': 'var(--shadow-strong)',
       },
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
