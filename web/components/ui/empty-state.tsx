@@ -28,14 +28,8 @@ export function EmptyState({
       )}
     >
       {Icon ? (
-        <div className="relative mb-6">
-          <div
-            aria-hidden="true"
-            className="absolute -inset-8 rounded-full bg-primary/10 blur-2xl"
-          />
-          <div className="relative grid h-16 w-16 place-items-center rounded-2xl border border-border bg-background/60 shadow-soft">
+        <div className="mb-6 grid h-16 w-16 place-items-center rounded-2xl border border-border bg-background/60 shadow-soft">
             <Icon className={cn("h-8 w-8 text-primary", iconClassName)} />
-          </div>
         </div>
       ) : null}
 
@@ -50,4 +44,3 @@ export function EmptyState({
     </section>
   )
 }
-
