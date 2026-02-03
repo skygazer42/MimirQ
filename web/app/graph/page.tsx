@@ -964,11 +964,12 @@ export default function GraphPage() {
               onChange={handleTraceFileUpload}
             />
 
-            <Button 
-              size="sm" 
-              className="gap-2 bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-500/20 dark:shadow-sky-500/10 transition-all"
-              onClick={triggerFileUpload}
-            >
+	            <Button 
+	              variant="info"
+	              size="sm" 
+	              className="gap-2"
+	              onClick={triggerFileUpload}
+	            >
               <Upload className="w-4 h-4" />
               导入
             </Button>
