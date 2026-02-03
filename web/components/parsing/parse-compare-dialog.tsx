@@ -133,28 +133,28 @@ export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId,
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex items-center rounded-lg border border-border bg-muted/20 p-1">
-              <button
-                type="button"
-                onClick={() => setMode('cleaned')}
-                className={cn(
-                  'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                  mode === 'cleaned'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground/80'
-                )}
+	              <button
+	                type="button"
+	                onClick={() => setMode('cleaned')}
+	                className={cn(
+	                  'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+	                  mode === 'cleaned'
+	                    ? 'bg-card text-foreground shadow-sm'
+	                    : 'text-muted-foreground hover:text-foreground/80'
+	                )}
               >
                 <FileText className="w-3.5 h-3.5" />
                 Cleaned
               </button>
-              <button
-                type="button"
-                onClick={() => setMode('raw')}
-                className={cn(
-                  'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                  mode === 'raw'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground/80'
-                )}
+	              <button
+	                type="button"
+	                onClick={() => setMode('raw')}
+	                className={cn(
+	                  'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+	                  mode === 'raw'
+	                    ? 'bg-card text-foreground shadow-sm'
+	                    : 'text-muted-foreground hover:text-foreground/80'
+	                )}
               >
                 <FileText className="w-3.5 h-3.5" />
                 Raw
