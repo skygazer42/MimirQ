@@ -192,13 +192,13 @@ export default function IngestionMonitorPage() {
               { label: '失败/隔离', value: stats.failed + stats.quarantined, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
               { label: '总存储量', value: formatFileSize(stats.totalSize), icon: Search, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'group-hover:border-indigo-200 dark:group-hover:border-indigo-800' },
             ].map((stat, idx) => (
-              <div
-                key={idx}
-                className={cn(
-                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-soft hover:shadow-strong transition-all duration-300 hover:-translate-y-1",
-                  stat.border
-                )}
-              >
+	              <div
+	                key={idx}
+	                className={cn(
+	                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-soft hover:shadow-strong transition-colors transition-shadow duration-200 motion-reduce:transition-none",
+	                  stat.border
+	                )}
+	              >
                 <div className="p-5 flex flex-col justify-between h-full relative z-10">
                   <div className="flex items-center justify-between mb-4">
                     <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
