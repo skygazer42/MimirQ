@@ -371,20 +371,20 @@ export default function IngestionMonitorPage() {
                         <span>Progress</span>
                         <span className={cn(doc.status === 'processing' ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground")}>{doc.processing_progress || 0}%</span>
                       </div>
-                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                        <div
-                          className={cn(
-                            "h-full transition-all duration-500 relative rounded-full",
-                            doc.status === 'failed' ? "bg-red-400" :
-                              doc.status === 'quarantined' ? "bg-amber-400" :
-                              doc.status === 'completed' ? "bg-emerald-400" :
-                                "bg-sky-500"
-                          )}
-                          style={{ width: `${Math.max(0, Math.min(100, doc.processing_progress || 0))}%` }}
-                        >
-                          {doc.status === 'processing' && <div className="absolute inset-0 bg-foreground/20 animate-pulse motion-reduce:animate-none" />}
-                        </div>
-                      </div>
+	                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+	                        <div
+	                          className={cn(
+	                            "h-full w-full origin-left transition-transform duration-200 ease-out motion-reduce:transition-none rounded-full",
+	                            doc.status === 'failed' ? "bg-red-400" :
+	                              doc.status === 'quarantined' ? "bg-amber-400" :
+	                              doc.status === 'completed' ? "bg-emerald-400" :
+	                                "bg-sky-500"
+	                          )}
+	                          style={{
+	                            transform: `scaleX(${Math.max(0, Math.min(100, doc.processing_progress || 0)) / 100})`,
+	                          }}
+	                        />
+	                      </div>
                     </div>
                   </div>
                 </div>
