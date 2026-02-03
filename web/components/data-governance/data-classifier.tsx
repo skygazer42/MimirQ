@@ -211,17 +211,17 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
             const isSelected = selectedCategory === category.label
             const tone = getCategoryToneStyles(category.tone)
 
-            return (
-              <button
-                key={category.id}
-                onClick={() => handleSelectCategory(category.id)}
-                className={cn(
-                  "flex items-center gap-2 p-3 rounded-xl border text-left transition-all",
-                  isSelected
-                    ? tone.selected
-                    : "bg-muted border-border hover:bg-muted"
-                )}
-              >
+	            return (
+	              <button
+	                key={category.id}
+	                onClick={() => handleSelectCategory(category.id)}
+	                className={cn(
+	                  "flex items-center gap-2 p-3 rounded-xl border text-left transition-colors duration-200 motion-reduce:transition-none focus-ring",
+	                  isSelected
+	                    ? tone.selected
+	                    : "bg-muted border-border hover:bg-muted"
+	                )}
+	              >
                 <div className={cn(
                   "w-8 h-8 rounded-lg flex items-center justify-center",
                   tone.iconWrap,
