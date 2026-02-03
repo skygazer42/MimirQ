@@ -358,65 +358,61 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 : ''
               const fileIndex = fileList.findIndex((item) => item.id === f.id)
               return (
-              <div
-                key={f.id}
-                onClick={() => {
-                  if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label={`选择文件：${f.displayName}`}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
-                  }
-                }}
-                className={cn(
-                  'group flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors border',
-                  isActive
-                    ? 'bg-card border-primary/25 shadow-sm ring-1 ring-ring/15'
-                    : 'bg-transparent border-transparent hover:bg-primary/10 hover:border-primary/20'
-                )}
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <FileIcon
-                    className={cn('w-3.5 h-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
-                  />
-                  <span className={cn('truncate font-medium', isActive ? 'text-foreground' : 'text-muted-foreground')}>
-                    {f.displayName}
-                  </span>
-                </div>
+                <div
+                  key={f.id}
+                  className={cn(
+                    'group flex items-center gap-2 rounded-lg text-xs transition-colors border',
+                    isActive
+                      ? 'bg-card border-primary/25 shadow-sm ring-1 ring-ring/15'
+                      : 'bg-transparent border-transparent hover:bg-primary/10 hover:border-primary/20'
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
+                    }}
+                    aria-label={`选择文件：${f.displayName}`}
+                    className="flex flex-1 min-w-0 items-center justify-between gap-2 p-2 text-left rounded-lg cursor-pointer focus-ring"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <FileIcon
+                        className={cn('w-3.5 h-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
+                      />
+                      <span className={cn('truncate font-medium', isActive ? 'text-foreground' : 'text-muted-foreground')}>
+                        {f.displayName}
+                      </span>
+                    </div>
 
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {displayTime && (
-                    <span className="text-[10px] text-muted-foreground mr-1">{displayTime}</span>
-                  )}
-                  {f.originalFileType && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border/60 bg-muted/60 text-muted-foreground">
-                      {String(f.originalFileType).toUpperCase()}
-                    </span>
-                  )}
-                  {typeof f.originalFileSize === 'number' ? (
-                    <span className="text-[10px] text-muted-foreground font-mono">{formatFileSize(f.originalFileSize)}</span>
-                  ) : null}
-                  {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-success" />}
-                  {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {displayTime && (
+                        <span className="text-[10px] text-muted-foreground mr-1">{displayTime}</span>
+                      )}
+                      {f.originalFileType && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border/60 bg-muted/60 text-muted-foreground">
+                          {String(f.originalFileType).toUpperCase()}
+                        </span>
+                      )}
+                      {typeof f.originalFileSize === 'number' ? (
+                        <span className="text-[10px] text-muted-foreground font-mono">{formatFileSize(f.originalFileSize)}</span>
+                      ) : null}
+                      {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-success" />}
+                      {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
+                    </div>
+                  </button>
 
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeFile(fileIndex)
+                    onClick={() => {
+                      if (fileIndex >= 0) removeFile(fileIndex)
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none focus-ring"
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1.5 mr-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none cursor-pointer focus-ring"
                     aria-label={`移除文件：${f.displayName}`}
                     title="移除文件"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
-              </div>
               )
             })}
           </div>
