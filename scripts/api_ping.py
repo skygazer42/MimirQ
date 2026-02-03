@@ -105,6 +105,7 @@ def main() -> int:
     targets = [
         ("/api/v1/health", "health"),
         ("/api/v1/health/ready", "ready"),
+        ("/api/v1/meta", "meta"),
     ]
 
     ok = True
@@ -126,4 +127,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
