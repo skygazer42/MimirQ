@@ -17,12 +17,14 @@ pnpm run ui-check
 ```
 
 该检查会阻止部分高风险的硬编码类名回归（例如 `bg-white`、`border-white`、`text-cyan-*` 等）。
+同时也会阻止在 UI 代码中使用原生浏览器对话框（`confirm()` / `prompt()`），避免阻塞式交互与样式/可访问性不一致。
 
 ## 2. Baseline UI（约束）
 
 本项目遵循以下基线规则（节选）：
 
-- **交互**：破坏性操作必须使用 `AlertDialog` 二次确认
+- **交互**：破坏性/不可逆操作必须使用 `AlertDialog` 二次确认（推荐使用 `web/components/ui/confirm-dialog.tsx` 的 `ConfirmDialog`）
+- **交互**：禁止 `window.confirm` / `window.prompt`（改用 `ConfirmDialog` / `Dialog` + `Input/Textarea`）
 - **可访问性**：图标按钮必须有 `aria-label`；可聚焦元素必须有可见 focus 样式
 - **动画**：默认不加动画；需要动画时只动 `transform/opacity`，交互反馈不超过 200ms，尊重 `prefers-reduced-motion`
 - **性能**：避免大面积 `backdrop-filter/blur`（尤其叠加在全屏遮罩上）
@@ -53,4 +55,3 @@ pnpm run verify
 ```bash
 make enterprise-checks
 ```
-
