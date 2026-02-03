@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -142,6 +143,8 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   const [chunkStrategyParamsText, setChunkStrategyParamsText] = useState('')
   const [chunkStrategyParamsError, setChunkStrategyParamsError] = useState<string | null>(null)
   const [indexPresetDraft, setIndexPresetDraft] = useState<PipelineIndexPreset | null>(null)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importText, setImportText] = useState('')
 
   useEffect(() => {
     try {
@@ -569,14 +572,19 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   }
 
   const importPipelineJson = () => {
-    const text = window.prompt('粘贴管线 JSON（支持 {enabled, options} 或仅 options）')
-    if (!text) return
+    const text = (importText || '').trim()
+    if (!text) {
+      toast.error('请输入 JSON')
+      return
+    }
     const res = ctx.importJson(text)
     if (!res.ok) {
       toast.error(res.error || '导入失败')
       return
     }
     toast.success('已导入管线 JSON')
+    setImportDialogOpen(false)
+    setImportText('')
   }
 
   const applyIndexPreset = (preset: PipelineIndexPreset) => {
@@ -720,9 +728,43 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
           >
             重置
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={importPipelineJson}>
-            导入 JSON
-          </Button>
+          <Dialog
+            open={importDialogOpen}
+            onOpenChange={(next) => {
+              setImportDialogOpen(next)
+              if (next) setImportText('')
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                导入 JSON
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>导入管线 JSON</DialogTitle>
+                <DialogDescription>
+                  粘贴管线 JSON（支持 <span className="font-mono">{'{enabled, options}'}</span> 或仅 <span className="font-mono">options</span>）。
+                </DialogDescription>
+              </DialogHeader>
+
+              <Textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder='例如：{"enabled": true, "options": {"chunk_size": 900}}'
+                className="min-h-[220px] font-mono text-xs"
+              />
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setImportDialogOpen(false)}>
+                  取消
+                </Button>
+                <Button type="button" onClick={importPipelineJson} disabled={!importText.trim()}>
+                  导入
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Button type="button" variant="outline" size="sm" onClick={exportPipelineJson}>
             导出 JSON
           </Button>
