@@ -5,6 +5,11 @@ type ErrorResponseLike = {
   request_id?: unknown
 }
 
+function looksLikeHtmlDocument(value: string): boolean {
+  const trimmed = (value || '').trimStart().slice(0, 200).toLowerCase()
+  return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
@@ -31,7 +36,12 @@ export function extractBackendRequestId(data: unknown): string | undefined {
 
 export function extractBackendMessage(data: unknown): string | undefined {
   if (!data) return undefined
-  if (typeof data === 'string') return asNonEmptyString(data)
+  if (typeof data === 'string') {
+    if (looksLikeHtmlDocument(data)) {
+      return 'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
+    }
+    return asNonEmptyString(data)
+  }
 
   if (typeof data === 'object') {
     const payload = data as ErrorResponseLike

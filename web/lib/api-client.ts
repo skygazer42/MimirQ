@@ -211,7 +211,31 @@ apiClient.interceptors.request.use((config) => {
 
 // 响应拦截器：统一错误处理
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const responseType = response.config?.responseType
+    const expectsJson = !responseType || responseType === 'json'
+    if (expectsJson) {
+      const contentType = String(response.headers?.['content-type'] || '').toLowerCase()
+      if (typeof response.data === 'string') {
+        const trimmed = response.data.trimStart().slice(0, 200).toLowerCase()
+        const looksHtml = trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
+        if (looksHtml || contentType.includes('text/html')) {
+          // When NEXT_PUBLIC_API_URL points to a web app / reverse proxy, the API may return HTML with 200 OK.
+          // Fail fast so callers don't accidentally treat `string` payloads as typed JSON objects.
+          const err: any = new Error(
+            'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
+          )
+          err.code = 'ERR_BAD_RESPONSE'
+          err.response = response
+          err.config = response.config
+          err.request = response.request
+          return Promise.reject(err)
+        }
+      }
+    }
+
+    return response
+  },
   (error) => {
     // 统一错误处理
     if (error.response) {
