@@ -14,6 +14,7 @@ import { useState, useEffect } from 'react'
 import { evaluationApi } from '@/lib/api-client'
 import type { RegressionCase, RegressionCaseCreate } from '@/types'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -95,8 +96,6 @@ export function TestCaseManager({
 
   // 删除用例
   const handleDelete = async (caseId: string) => {
-    if (!confirm('确定删除这个测试用例吗？')) return
-
     try {
       await evaluationApi.deleteRegressionCase(caseId)
       toast.success('删除成功')
@@ -370,15 +369,26 @@ export function TestCaseManager({
                     </div>
 
                     {/* 删除按钮 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(caseItem.id)
-                      }}
-                      className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none"
+                    <ConfirmDialog
+                      title="删除该测试用例？"
+                      description="此操作不可恢复。"
+                      confirmLabel="删除"
+                      cancelLabel="返回"
+                      confirmVariant="destructive"
+                      onConfirm={() => void handleDelete(caseItem.id)}
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                        }}
+                        className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none"
+                        aria-label="删除测试用例"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </ConfirmDialog>
                   </div>
                 </div>
               ))}
