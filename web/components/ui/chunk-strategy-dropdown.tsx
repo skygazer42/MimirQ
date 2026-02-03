@@ -96,7 +96,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all',
+          'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-150 motion-reduce:transition-none',
           'bg-card hover:bg-muted',
           isOpen
             ? 'border-sky-300/60 ring-2 ring-sky-500/10'
