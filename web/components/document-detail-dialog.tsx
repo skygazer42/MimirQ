@@ -478,7 +478,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
 
   const handleDeleteKG = async () => {
     if (isKgWorking) return
-    if (!confirm('确定要删除该文档的 KG 事件吗？')) return
     setIsKgWorking(true)
     try {
       const res = await kgApi.deleteDocumentKG(displayDoc.id, { prune_orphan_entities: true })
@@ -1340,14 +1339,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 ) : null}
                 抽取 KG
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleDeleteKG}
-                disabled={isKgWorking}
-                className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
+              <ConfirmDialog
+                title="清理 KG 事件？"
+                description="将删除该文档的 KG 事件，并尝试清理孤儿实体。此操作不可恢复。"
+                confirmLabel="清理"
+                cancelLabel="返回"
+                confirmVariant="destructive"
+                confirmDisabled={isKgWorking}
+                onConfirm={() => void handleDeleteKG()}
               >
-                清理 KG
-              </Button>
+                <Button
+                  variant="outline"
+                  disabled={isKgWorking}
+                  className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
+                >
+                  清理 KG
+                </Button>
+              </ConfirmDialog>
             </div>
 
             <Button variant="secondary" onClick={() => setOpen(false)} className="w-full sm:w-auto">
