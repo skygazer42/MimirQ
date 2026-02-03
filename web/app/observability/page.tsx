@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { observabilityApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import type { RagMetricsSummaryResponse } from '@/types'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -59,7 +60,7 @@ export default function ObservabilityPage() {
       setSummary(data)
     } catch (err: any) {
       setSummary(null)
-      toast.error(err?.response?.data?.detail || err?.message || '加载监控数据失败')
+      toast.error(formatApiError(err, '加载监控数据失败'))
     } finally {
       setLoading(false)
     }
