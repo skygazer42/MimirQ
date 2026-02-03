@@ -626,15 +626,17 @@ export default function SettingsPage() {
                     const isEdited = editedSettings.feature_flags && feature.key in editedSettings.feature_flags
 
                     return (
-                      <div
-                        key={feature.key}
-                        className={cn(
-                          "relative bg-card rounded-xl p-5 border-2 transition-all duration-200 cursor-pointer group",
-                          isEnabled ? `${colors.border} ${colors.bg}` : "border-border hover:border-border",
-                          isEdited && "ring-2 ring-blue-400 ring-offset-2"
-                        )}
-                        onClick={() => toggleFeature(feature.key)}
-                      >
+	                      <button
+	                        type="button"
+	                        key={feature.key}
+	                        className={cn(
+	                          "w-full text-left relative bg-card rounded-xl p-5 border-2 group focus-ring transition-colors duration-200 motion-reduce:transition-none",
+	                          isEnabled ? `${colors.border} ${colors.bg}` : "border-border hover:border-border",
+	                          isEdited && "ring-2 ring-blue-400 ring-offset-2"
+	                        )}
+	                        aria-pressed={isEnabled}
+	                        onClick={() => toggleFeature(feature.key)}
+	                      >
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-3">
                             <div className={cn(
@@ -672,9 +674,9 @@ export default function SettingsPage() {
                             )}
                           </div>
                         </div>
-                      </div>
-                    )
-                  })}
+	                      </button>
+	                    )
+	                  })}
                 </div>
               </section>
 
