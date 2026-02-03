@@ -10,6 +10,7 @@ import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { auditApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import type { AuditLogItem, AuditLogListResponse } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -67,7 +68,7 @@ export default function AuditLogsPage() {
       setResp(data)
     } catch (err: any) {
       setResp(null)
-      toast.error(err?.response?.data?.detail || err?.message || '加载审计日志失败')
+      toast.error(formatApiError(err, '加载审计日志失败'))
     } finally {
       setLoading(false)
     }
@@ -289,4 +290,3 @@ function shorten(id: string) {
   if (!v) return ''
   return v.length > 16 ? `${v.slice(0, 8)}…${v.slice(-6)}` : v
 }
-
