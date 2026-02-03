@@ -6,6 +6,7 @@ import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -579,8 +580,6 @@ export function DocumentViewerPanel() {
     async (chunk: DocumentChunk) => {
       if (!documentId) return
       if (!canEditChunks) return
-      const ok = window.confirm(`Delete chunk #${chunk.chunk_index}? This cannot be undone.`)
-      if (!ok) return
 
       setChunkDeleteSubmitting(chunk.id)
       try {
@@ -1372,22 +1371,31 @@ export function DocumentViewerPanel() {
                                    >
                                      <Pencil className="h-4 w-4" />
                                    </Button>
-                                   <Button
-                                     type="button"
-                                     variant="ghost"
-                                     size="icon"
-                                     className="h-7 w-7 text-destructive hover:text-destructive"
-                                     onClick={() => void deleteChunk(highlightChunk)}
-                                     disabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id}
-                                     aria-label="Delete chunk"
-                                     title="Delete chunk"
+                                   <ConfirmDialog
+                                     title={`Delete chunk #${highlightChunk.chunk_index}?`}
+                                     description="This cannot be undone."
+                                     confirmLabel="Delete"
+                                     cancelLabel="Cancel"
+                                     confirmVariant="destructive"
+                                     confirmDisabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id}
+                                     onConfirm={() => void deleteChunk(highlightChunk)}
                                    >
-                                     {chunkDeleteSubmitting === highlightChunk.id ? (
-                                       <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                                     ) : (
-                                       <Trash2 className="h-4 w-4" />
-                                     )}
-                                   </Button>
+                                     <Button
+                                       type="button"
+                                       variant="ghost"
+                                       size="icon"
+                                       className="h-7 w-7 text-destructive hover:text-destructive"
+                                       disabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id}
+                                       aria-label="Delete chunk"
+                                       title="Delete chunk"
+                                     >
+                                       {chunkDeleteSubmitting === highlightChunk.id ? (
+                                         <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                       ) : (
+                                         <Trash2 className="h-4 w-4" />
+                                       )}
+                                     </Button>
+                                   </ConfirmDialog>
                                  </div>
                                </div>
                              </div>
@@ -1495,22 +1503,31 @@ export function DocumentViewerPanel() {
                                       >
                                         <Pencil className="h-4 w-4" />
                                       </Button>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-destructive hover:text-destructive"
-                                        onClick={() => void deleteChunk(chunk)}
-                                        disabled={!canEditChunks || chunkDeleteSubmitting === chunk.id}
-                                        aria-label="Delete chunk"
-                                        title="Delete chunk"
+                                      <ConfirmDialog
+                                        title={`Delete chunk #${chunk.chunk_index}?`}
+                                        description="This cannot be undone."
+                                        confirmLabel="Delete"
+                                        cancelLabel="Cancel"
+                                        confirmVariant="destructive"
+                                        confirmDisabled={!canEditChunks || chunkDeleteSubmitting === chunk.id}
+                                        onConfirm={() => void deleteChunk(chunk)}
                                       >
-                                        {chunkDeleteSubmitting === chunk.id ? (
-                                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                                        ) : (
-                                          <Trash2 className="h-4 w-4" />
-                                        )}
-                                      </Button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-destructive hover:text-destructive"
+                                          disabled={!canEditChunks || chunkDeleteSubmitting === chunk.id}
+                                          aria-label="Delete chunk"
+                                          title="Delete chunk"
+                                        >
+                                          {chunkDeleteSubmitting === chunk.id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                          ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </ConfirmDialog>
                                     </div>
                                   </div>
                                 </div>
