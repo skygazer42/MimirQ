@@ -18,6 +18,11 @@ make openapi-check
 
 ## Results
 
-- `make enterprise-checks`: TODO
-- `make openapi-check`: TODO
-
+- `make enterprise-checks`: OK
+  - ruff: OK
+  - api-check (contract/coverage): OK
+  - web: lint OK, ui-check OK (design-tokens + native-dialogs), typecheck OK
+  - python: 568 passed, 3 skipped
+  - vitest: 72 passed
+- `make openapi-check`: OK (`web/openapi.json` + `web/types/openapi.ts` regenerated)
+  - Note: MinerU token warning printed, but MinerU is disabled in this environment.
