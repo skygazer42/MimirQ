@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
-    "ui-check": "node scripts/check-design-tokens.mjs",
+    "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
     "api-ping": "node scripts/api-ping.mjs",
     "openapi:export": "node scripts/export-openapi.mjs --out openapi.json",

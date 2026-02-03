@@ -1,7 +1,7 @@
 /**
  * ConfirmDialog - Baseline UI wrapper for confirmations.
  *
- * Prefer this over native `confirm()` so we keep:
+ * Prefer this over native `window.confirm` dialogs so we keep:
  * - consistent styling (token-first)
  * - keyboard/focus behavior (Radix)
  * - reduced-motion support
@@ -68,4 +68,3 @@ export function ConfirmDialog({
     </AlertDialog>
   )
 }
-
