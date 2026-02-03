@@ -728,7 +728,7 @@ export function TopBar() {
           onClick={submitChunks}
           disabled={!previewData || isSubmitting || submitSuccess}
           className={cn(
-            'h-9 px-5 text-xs font-semibold rounded-lg shadow-lg transition-all motion-reduce:transition-none',
+            'h-9 px-5 text-xs font-semibold rounded-lg shadow-sm transition-colors transition-shadow duration-150 motion-reduce:transition-none',
             submitSuccess
               ? 'bg-success text-success-foreground hover:bg-success/90 shadow-success/20'
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
