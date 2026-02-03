@@ -5,6 +5,7 @@ import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -215,9 +216,6 @@ export function DocumentFolderTree({
 
   const handleDelete = useCallback(
     (folderId: string) => {
-      const ok = window.confirm('确认删除该文件夹及其子文件夹？所有内容将被永久删除。')
-      if (!ok) return
-
       const collectDescendants = (fid: string): string[] => {
         const children = folders.filter((f) => f.parentId === fid)
         return children.flatMap((c) => [c.id, ...collectDescendants(c.id)])
@@ -716,13 +714,19 @@ export function DocumentFolderTree({
                   <Pencil className="w-4 h-4 mr-2" />
                   重命名
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
-                  onClick={() => handleDelete(folder.id)}
+                <ConfirmDialog
+                  title="删除该文件夹？"
+                  description="将删除该文件夹及其子文件夹，且所有内容将被永久删除。此操作不可恢复。"
+                  confirmLabel="删除"
+                  cancelLabel="返回"
+                  confirmVariant="destructive"
+                  onConfirm={() => handleDelete(folder.id)}
                 >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  删除
-                </DropdownMenuItem>
+                  <DropdownMenuItem className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    删除
+                  </DropdownMenuItem>
+                </ConfirmDialog>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
