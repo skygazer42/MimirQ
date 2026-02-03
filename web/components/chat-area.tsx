@@ -8,6 +8,7 @@ import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, Arrow
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { promptTemplateApi, settingsApi, type PromptTemplate } from '@/lib/api-client'
 import { ChatMessageItem } from '@/components/chat/message-item'
@@ -45,6 +46,7 @@ export function ChatArea({
   initialOpenRagSettings?: boolean
   onConversationId?: (conversationId: string) => void
 } = {}) {
+  const summaryMemoryId = 'chat-enable-summary-memory'
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
@@ -620,7 +622,12 @@ export function ChatArea({
                       />
                     </label>
                     <div className="flex items-center justify-between text-sm hover:bg-secondary/50 p-1 rounded-md transition-colors">
-                      <span className="text-muted-foreground text-xs">启用摘要记忆（持久）</span>
+                      <Label
+                        htmlFor={summaryMemoryId}
+                        className="text-muted-foreground text-xs cursor-pointer"
+                      >
+                        启用摘要记忆（持久）
+                      </Label>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -634,10 +641,11 @@ export function ChatArea({
                           查看
                         </Button>
                         <input
+                          id={summaryMemoryId}
                           type="checkbox"
                           checked={enableSummaryMemory}
                           onChange={(e) => setEnableSummaryMemory(e.target.checked)}
-                          className="accent-primary h-4 w-4"
+                          className="accent-primary h-4 w-4 focus-ring"
                         />
                       </div>
                     </div>
@@ -679,6 +687,9 @@ export function ChatArea({
 	            "shadow-2xl shadow-primary/5 hover:shadow-primary/10",
 	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
 	          )}>
+              <Label htmlFor="chat-composer" className="sr-only">
+                消息输入框
+              </Label>
 	            <textarea
 	              id="chat-composer"
 	              ref={textareaRef}
