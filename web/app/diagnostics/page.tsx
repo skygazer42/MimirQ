@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Copy, RefreshCcw } from 'lucide-react'
+import { Activity, Copy, FileJson, FileText, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,9 @@ export default function DiagnosticsPage() {
   const meta = useBackendMeta()
   const ready = useBackendReady()
 
+  const docsUrl = `${API_BASE_URL}/docs`
+  const openapiUrl = `${API_BASE_URL}/openapi.json`
+
   const healthJson = prettyJson(health.data?.payload ?? { error: health.error ? String(health.error) : 'loading' })
   const metaJson = prettyJson(meta.data ?? { error: meta.error ? String(meta.error) : 'loading' })
   const readyJson = prettyJson(ready.data ?? { error: ready.error ? String(ready.error) : 'loading' })
@@ -78,6 +81,22 @@ export default function DiagnosticsPage() {
       icon={Activity}
       iconColor="text-info"
       size="5xl"
+      actions={
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <a href={docsUrl} target="_blank" rel="noreferrer" aria-label="打开后端接口文档（/docs）">
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              /docs
+            </a>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <a href={openapiUrl} target="_blank" rel="noreferrer" aria-label="打开后端 OpenAPI（/openapi.json）">
+              <FileJson className="h-4 w-4" aria-hidden="true" />
+              openapi.json
+            </a>
+          </Button>
+        </div>
+      }
     >
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
