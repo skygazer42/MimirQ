@@ -1060,7 +1060,7 @@ export default function GraphPage() {
                    const isDone = idx < currentStepIndex
                    
                    return (
-	                     <div key={idx} className={cn("relative pl-4 border-l-2 transition-all duration-500 motion-reduce:transition-none", 
+	                     <div key={idx} className={cn("relative pl-4 border-l-2 transition-colors duration-150 motion-reduce:transition-none", 
 	                        isActive ? "border-teal-500" : isDone ? "border-teal-500/30" : "border-border opacity-50"
 	                     )}>
                         <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors", 
