@@ -290,7 +290,6 @@ export default function QuarantineQueuePage() {
     <AppFrame
       rightPanel={<DocumentViewerPanel />}
       withDocumentViewerPadding
-      mainClassName="transition-all duration-300 ease-out-expo"
     >
       <PageScaffold
         title="隔离审核队列"
@@ -316,10 +315,10 @@ export default function QuarantineQueuePage() {
               <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
               刷新
             </Button>
-            <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
-              <span className="text-xs font-bold text-muted-foreground">自动同步</span>
-              <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75 data-[state=checked]:bg-sky-500" />
-            </div>
+	            <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
+	              <span className="text-xs font-bold text-muted-foreground">自动同步</span>
+	              <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75 data-[state=checked]:bg-sky-500" />
+	            </div>
           </>
         }
         top={
@@ -337,11 +336,11 @@ export default function QuarantineQueuePage() {
         }
         toolbar={
           <div className="space-y-3">
-            <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-background/70 backdrop-blur-xl border border-border/60 shadow-soft rounded-2xl p-3 transition-all duration-300 hover:shadow-strong hover:border-primary/20">
-              <div className="relative flex-1 group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
-                <Input
-                  value={search}
+	            <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-background/70 border border-border/60 shadow-soft rounded-2xl p-3 transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:shadow-strong hover:border-primary/20">
+	              <div className="relative flex-1 group">
+	                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
+	                <Input
+	                  value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="搜索文件名..."
                   className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground h-10 rounded-xl"

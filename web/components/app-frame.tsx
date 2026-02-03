@@ -47,7 +47,8 @@ export function AppFrame({
           id="main-content"
           tabIndex={-1}
           className={cn(
-            "flex-1 min-h-0 relative flex flex-col overflow-hidden transition-[margin] duration-300 ease-in-out",
+            // Avoid animating layout properties like `margin` (baseline-ui).
+            "flex-1 min-h-0 relative flex flex-col overflow-hidden",
             docPanelPadding,
             mainClassName
           )}
