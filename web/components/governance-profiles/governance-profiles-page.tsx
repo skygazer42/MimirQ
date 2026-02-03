@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { pipelineApi } from '@/lib/api-client'
@@ -99,8 +100,6 @@ export function GovernanceProfilesPage() {
     if (p.is_system) return
     const ref = String(p.id || '').trim() || p.key
     if (!ref) return
-    const ok = window.confirm(`确认删除该 Profile？\n\n${p.name}\n${p.key}`)
-    if (!ok) return
     try {
       await pipelineApi.deleteGovernanceProfile(ref)
       toast.success('已删除')
@@ -302,17 +301,34 @@ export function GovernanceProfilesPage() {
                     >
                       <Download className="w-4 h-4" />
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl"
-                      disabled={p.is_system}
-                      aria-label="删除 Profile"
-                      onClick={() => void deleteOne(p)}
+                    <ConfirmDialog
+                      title="删除该 Profile？"
+                      description={
+                        <>
+                          此操作不可恢复：
+                          <div className="mt-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
+                            <div className="text-xs font-semibold text-foreground truncate">{p.name || p.key}</div>
+                            <div className="mt-0.5 text-[10px] font-mono text-muted-foreground truncate">{p.key}</div>
+                          </div>
+                        </>
+                      }
+                      confirmLabel="删除"
+                      cancelLabel="返回"
+                      confirmVariant="destructive"
+                      confirmDisabled={p.is_system}
+                      onConfirm={() => void deleteOne(p)}
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl text-destructive hover:text-destructive"
+                        disabled={p.is_system}
+                        aria-label="删除 Profile"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </ConfirmDialog>
                   </div>
                 </div>
               </Panel>
