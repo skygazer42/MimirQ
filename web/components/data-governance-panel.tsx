@@ -1356,14 +1356,14 @@ export function DataGovernancePanel() {
               </div>
 
               {/* 右侧：治理工具面板 (整合了 Tabs) */}
-              <div
-                ref={panelRef}
-                className={cn(
-                  "group/panel relative flex-shrink-0 border-l border-border bg-card flex flex-col transition-all duration-300 ease-in-out z-10 shadow-xl",
+                <div
+                  ref={panelRef}
+                  className={cn(
+                  "group/panel relative flex-shrink-0 border-l border-border bg-card flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-10 shadow-xl",
                   isPanelCollapsed ? "w-0 border-l-0 translate-x-full" : ""
                 )}
-                style={{ width: isPanelCollapsed ? 0 : panelWidth }}
-              >
+                  style={{ width: isPanelCollapsed ? 0 : panelWidth }}
+                >
                 {/* 工具面板头部：治理阶段选择 */}
                 <div className="flex-shrink-0 p-4 border-b border-border bg-card">
                   <div className="flex items-center justify-between mb-4">
