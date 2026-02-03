@@ -91,7 +91,7 @@ export function EmptyState() {
               e.stopPropagation()
               loadExample()
             }}
-            className="group text-left bg-card p-5 rounded-2xl border border-border/70 shadow-sm hover:shadow-md hover:border-primary/25 cursor-pointer transition-all duration-200 motion-reduce:transition-none focus-ring"
+            className="group text-left bg-card p-5 rounded-2xl border border-border/70 shadow-sm hover:shadow-md hover:border-primary/25 cursor-pointer transition-colors transition-shadow duration-200 motion-reduce:transition-none focus-ring"
           >
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
