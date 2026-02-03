@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
@@ -417,7 +418,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     async (pipelineHash: string) => {
       const ph = String(pipelineHash || '').trim()
       if (!ph) return
-      if (!confirm(`确定要将该文档切换到版本 ${ph.slice(0, 12)}… 吗？\n\n这不会重新解析/重新向量化，只会切换检索与引用的激活版本。`)) return
 
       setIsVersionWorking(true)
       try {
@@ -1205,14 +1205,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                                   </Button>
                                 ) : (
                                   <>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => void handleActivateVersion(v.pipeline_hash)}
-                                      disabled={isVersionWorking}
+                                    <ConfirmDialog
+                                      title="切换激活版本？"
+                                      description={
+                                        <>
+                                          将把激活版本切换为 <span className="font-mono">{v.pipeline_hash.slice(0, 12)}…</span>。这不会重新解析/重新向量化，只会影响检索与引用。
+                                        </>
+                                      }
+                                      confirmLabel="切换"
+                                      cancelLabel="返回"
+                                      confirmVariant="default"
+                                      confirmDisabled={isVersionWorking}
+                                      onConfirm={() => void handleActivateVersion(v.pipeline_hash)}
                                     >
-                                      激活
-                                    </Button>
+                                      <Button size="sm" variant="outline" disabled={isVersionWorking}>
+                                        激活
+                                      </Button>
+                                    </ConfirmDialog>
                                     <Button
                                       size="sm"
                                       variant="outline"
