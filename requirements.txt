@@ -1,5 +1,7 @@
 # FastAPI Core
---extra-index-url https://download.pytorch.org/whl/cpu
+# NOTE: We intentionally avoid `--extra-index-url https://download.pytorch.org/whl/cpu` here.
+# It causes pip to hit download.pytorch.org for *every* dependency which is slow/flaky in some environments.
+# CPU wheels for torch/torchvision are available on PyPI for our supported Python versions.
 
 torch==2.4.1
 torchvision==0.19.1
