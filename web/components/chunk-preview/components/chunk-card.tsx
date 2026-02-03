@@ -130,11 +130,11 @@ export function ChunkCard({
   return (
     <div
       className={cn(
-        'group relative bg-card p-4 rounded-xl border transition-all duration-200 cursor-pointer focus-within:ring-1 focus-within:ring-ring/20',
+        'group relative bg-card p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer focus-within:ring-1 focus-within:ring-ring/20',
         isSelected
           ? 'border-primary/45 shadow-lg shadow-primary/10 ring-1 ring-primary/20'
           : isHovered
-            ? 'border-primary/30 shadow-md shadow-primary/10 ring-1 ring-ring/10 motion-safe:-translate-y-0.5 z-10'
+            ? 'border-primary/30 shadow-sm shadow-primary/10 ring-1 ring-ring/10 z-10'
             : 'border-border hover:border-primary/25 hover:shadow-sm hover:shadow-primary/10',
         isDisabled && !isSelected && !isHovered ? 'opacity-60' : ''
       )}
