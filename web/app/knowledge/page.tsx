@@ -2465,15 +2465,15 @@ export default function KnowledgePage() {
                                           {processedUrls}/{totalUrls} ({progressPct}%)
                                         </span>
                                       </div>
-                                      <div className="mt-1 h-2 w-full rounded-full bg-muted/60 overflow-hidden">
-                                        <div
-                                          className={cn(
-                                            'h-2 rounded-full transition-all',
-                                            failed > 0 ? 'bg-destructive/70' : 'bg-primary/70'
-                                          )}
-                                          style={{ width: `${progressPct}%` }}
-                                        />
-                                      </div>
+	                                      <div className="mt-1 h-2 w-full rounded-full bg-muted/60 overflow-hidden">
+	                                        <div
+	                                          className={cn(
+	                                            'h-2 w-full rounded-full origin-left transition-transform duration-200 ease-out motion-reduce:transition-none',
+	                                            failed > 0 ? 'bg-destructive/70' : 'bg-primary/70'
+	                                          )}
+	                                          style={{ transform: `scaleX(${progressPct / 100})` }}
+	                                        />
+	                                      </div>
                                     </div>
                                   ) : null}
                                   {run.error_message ? (
