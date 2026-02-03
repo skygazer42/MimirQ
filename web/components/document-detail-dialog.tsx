@@ -710,7 +710,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 <button
                   type="button"
                   className={cn(
-                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-all",
+                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none",
                     activeView === "chunks" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
                   )}
                   onClick={() => setActiveView("chunks")}
@@ -720,7 +720,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 <button
                   type="button"
                   className={cn(
-                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-all",
+                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none",
                     activeView === "timeline" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
                   )}
                   onClick={() => setActiveView("timeline")}
