@@ -1435,10 +1435,10 @@ export function DocumentViewerPanel() {
                               }}
                               className="pb-4"
                             >
-                              <div
-                                id={`chunk-${chunk.id}`}
-                                className={cn(
-                                  "group p-4 rounded-xl border transition-all duration-300",
+                                <div
+                                  id={`chunk-${chunk.id}`}
+                                  className={cn(
+                                  "group p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none",
                                   highlightChunkId === chunk.id
                                     ? "bg-primary/5 border-primary shadow-[0_0_0_1px_rgba(var(--primary),0.2)] ring-1 ring-primary/20"
                                     : "bg-background border-border hover:border-primary/30 hover:shadow-sm"
