@@ -2299,25 +2299,25 @@ export default function ParsingPage() {
                                   {activeBlocksWithPositions.length > 0 && (
                                     <div className="flex items-center bg-muted dark:bg-muted rounded-lg p-0.5 mr-2">
                                       <button
-                                        onClick={() => setRightPanelMode('blocks')}
-                                        className={cn(
-                                          'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                                          rightPanelMode === 'blocks'
-                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-                                        )}
+	                                        onClick={() => setRightPanelMode('blocks')}
+	                                        className={cn(
+	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+	                                          rightPanelMode === 'blocks'
+	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
+	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
+	                                        )}
                                       >
                                         <FileStack className="w-3.5 h-3.5" />
                                         版面
                                       </button>
                                       <button
-                                        onClick={() => setRightPanelMode('markdown')}
-                                        className={cn(
-                                          'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                                          rightPanelMode === 'markdown'
-                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-                                        )}
+	                                        onClick={() => setRightPanelMode('markdown')}
+	                                        className={cn(
+	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+	                                          rightPanelMode === 'markdown'
+	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
+	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
+	                                        )}
                                       >
                                         <FileText className="w-3.5 h-3.5" />
                                         Markdown
@@ -2328,25 +2328,25 @@ export default function ParsingPage() {
                                   {rightPanelMode === 'markdown' && (
                                     <div className="flex items-center bg-muted dark:bg-muted rounded-lg p-0.5 mr-2">
                                       <button
-                                        onClick={() => setPreviewMode('rendered')}
-                                        className={cn(
-                                          'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                                          previewMode === 'rendered'
-                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-                                        )}
+	                                        onClick={() => setPreviewMode('rendered')}
+	                                        className={cn(
+	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+	                                          previewMode === 'rendered'
+	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
+	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
+	                                        )}
                                       >
                                         <Eye className="w-3.5 h-3.5" />
                                         预览
                                       </button>
                                       <button
-                                        onClick={() => setPreviewMode('raw')}
-                                        className={cn(
-                                          'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                                          previewMode === 'raw'
-                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-                                        )}
+	                                        onClick={() => setPreviewMode('raw')}
+	                                        className={cn(
+	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+	                                          previewMode === 'raw'
+	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
+	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
+	                                        )}
                                       >
                                         <Code className="w-3.5 h-3.5" />
                                         源码
