@@ -148,7 +148,6 @@ export default function IngestionMonitorPage() {
     <AppFrame
       rightPanel={<DocumentViewerPanel />}
       withDocumentViewerPadding
-      mainClassName="transition-all duration-300 ease-out-expo"
     >
       <PageScaffold
         title="入库监控中心"
@@ -174,10 +173,10 @@ export default function IngestionMonitorPage() {
               <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
               刷新状态
             </Button>
-            <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
-              <span className="text-xs font-bold text-muted-foreground">自动同步</span>
-              <Switch
-                checked={autoRefresh}
+	            <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
+	              <span className="text-xs font-bold text-muted-foreground">自动同步</span>
+	              <Switch
+	                checked={autoRefresh}
                 onCheckedChange={setAutoRefresh}
                 className="scale-75 data-[state=checked]:bg-sky-500"
               />
@@ -215,13 +214,13 @@ export default function IngestionMonitorPage() {
               </div>
             ))}
           </div>
-        }
-        toolbar={
-          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-background/70 backdrop-blur-xl border border-border/60 shadow-soft rounded-full p-1.5 transition-all duration-300 hover:shadow-strong hover:border-primary/30 max-w-4xl mx-auto md:mx-0">
-            <div className="relative flex-1 group pl-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
-              <Input
-                value={search}
+	        }
+	        toolbar={
+	          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-background/70 border border-border/60 shadow-soft rounded-full p-1.5 max-w-4xl mx-auto md:mx-0 transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:shadow-strong hover:border-primary/30">
+	            <div className="relative flex-1 group pl-2">
+	              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
+	              <Input
+	                value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜索任务ID或文件名..."
                 className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground h-10 rounded-full"
