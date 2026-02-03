@@ -226,8 +226,6 @@ export default function PromptsPage() {
   }
 
   const handleDelete = async (template: PromptTemplate) => {
-    if (!confirm(`确定要删除模板 "${template.name}" 吗？`)) return
-
     try {
       await promptTemplateApi.delete(template.id)
       toast.success('模板已删除')
@@ -492,14 +490,26 @@ export default function PromptsPage() {
                             <Edit className="w-3 h-3 mr-1" />
                             编辑
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDelete(template)}
-                          >
-                            <Trash2 className="w-3 h-3 mr-1" />
-                            删除
-                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="outline">
+                                <Trash2 className="w-3 h-3 mr-1" />
+                                删除
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>删除模板？</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  你将删除提示词模板 <span className="font-mono">{template.name}</span>。此操作不可撤销。
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => void handleDelete(template)}>删除</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </>
                       )}
                       <Button
