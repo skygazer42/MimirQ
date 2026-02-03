@@ -546,11 +546,11 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
     }
   }, [citation.document_id, citation.chunk_id, citation.start_char, citation.end_char, openDocument])
 
-  return (
-    <div
-      onClick={handleClick}
-      className="group/card text-xs bg-card hover:bg-secondary/30 rounded-lg p-3 border border-border/60 hover:border-primary/30 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5"
-    >
+	  return (
+	    <div
+	      onClick={handleClick}
+	      className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 cursor-pointer shadow-sm focus-ring transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md"
+	    >
       <div className="flex items-start gap-3">
         <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
           {index + 1}
@@ -571,19 +571,19 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
 
           {citation.has_image && imgUrl && !hideImage && (
             <div className="mt-2 rounded-md overflow-hidden border border-border/50">
-              <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video">
-                <Image
-                  src={imgUrl}
-                  alt="引用图片"
-                  fill
-                  unoptimized
-                  sizes="(max-width: 768px) 100vw, 300px"
-                  className="object-cover group-hover/card:scale-105 transition-transform duration-500"
-                  onError={() => setHideImage(true)}
-                />
-              </a>
-            </div>
-          )}
+	              <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video">
+	                <Image
+	                  src={imgUrl}
+	                  alt="引用图片"
+	                  fill
+	                  unoptimized
+	                  sizes="(max-width: 768px) 100vw, 300px"
+	                  className="object-cover"
+	                  onError={() => setHideImage(true)}
+	                />
+	              </a>
+	            </div>
+	          )}
         </div>
       </div>
     </div>
