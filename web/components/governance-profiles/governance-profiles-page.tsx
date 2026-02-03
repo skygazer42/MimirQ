@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { pipelineApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import type { GovernanceProfileCreate, GovernanceProfileListResponse, GovernanceProfileSummary } from '@/types'
 import { ProfileEditorDrawer } from '@/components/governance-profiles/profile-editor-drawer'
@@ -45,7 +46,7 @@ export function GovernanceProfilesPage() {
       setResp(data)
     } catch (err: any) {
       setResp(null)
-      toast.error(err?.response?.data?.detail || err?.message || '加载治理 Profiles 失败')
+      toast.error(formatApiError(err, '加载治理 Profiles 失败'))
     } finally {
       setLoading(false)
     }
@@ -74,7 +75,7 @@ export function GovernanceProfilesPage() {
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('已导出')
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || '导出失败')
+      toast.error(formatApiError(err, '导出失败'))
     }
   }
 
@@ -92,7 +93,7 @@ export function GovernanceProfilesPage() {
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('已导出 ingestion policy')
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || '导出 ingestion policy 失败')
+      toast.error(formatApiError(err, '导出 ingestion policy 失败'))
     }
   }
 
@@ -105,7 +106,7 @@ export function GovernanceProfilesPage() {
       toast.success('已删除')
       void load()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || '删除失败')
+      toast.error(formatApiError(err, '删除失败'))
     }
   }
 
@@ -146,7 +147,7 @@ export function GovernanceProfilesPage() {
                     toast.success(`导入完成：created=${result.created}, updated=${result.updated}`)
                     void load()
                   } catch (err: any) {
-                    toast.error(err?.response?.data?.detail || err?.message || '导入失败')
+                    toast.error(formatApiError(err, '导入失败'))
                   } finally {
                     setImporting(false)
                     if (importInputRef.current) importInputRef.current.value = ''
@@ -274,7 +275,7 @@ export function GovernanceProfilesPage() {
                             setEditorSeedCreate(buildGovernanceProfileCreateFromExisting(prof))
                             setEditorOpen(true)
                           } catch (err: any) {
-                            toast.error(err?.response?.data?.detail || err?.message || '复制失败')
+                            toast.error(formatApiError(err, '复制失败'))
                           }
                         })()
                       }

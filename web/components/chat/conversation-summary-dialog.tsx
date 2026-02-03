@@ -14,6 +14,7 @@ import { Copy, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { chatApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
@@ -48,7 +49,7 @@ export function ConversationSummaryDialog(props: {
     } catch (err: any) {
       setAvailable(false)
       setSummary('')
-      toast.error(err?.response?.data?.detail || err?.message || '加载摘要失败')
+      toast.error(formatApiError(err, '加载摘要失败'))
     } finally {
       setLoading(false)
     }
@@ -80,7 +81,7 @@ export function ConversationSummaryDialog(props: {
       setSummary(String(res?.summary || ''))
       toast.success('摘要已更新')
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || '更新摘要失败')
+      toast.error(formatApiError(err, '更新摘要失败'))
     } finally {
       setUpdating(false)
     }
@@ -96,7 +97,7 @@ export function ConversationSummaryDialog(props: {
       setSummary('')
       toast.success('摘要已清空')
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || '清空摘要失败')
+      toast.error(formatApiError(err, '清空摘要失败'))
     } finally {
       setClearing(false)
     }

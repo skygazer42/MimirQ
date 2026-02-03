@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { governanceApi, pipelineApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import type {
   CleanPreviewResponse,
@@ -222,7 +223,7 @@ export function ProfileEditorDrawer({
         setActiveTab('edit')
         setTestResp(null)
       } catch (err: any) {
-        toast.error(err?.response?.data?.detail || err?.message || '加载 Profile 失败')
+        toast.error(formatApiError(err, '加载 Profile 失败'))
       } finally {
         if (!cancelled) setLoadingProfile(false)
       }
@@ -368,7 +369,7 @@ export function ProfileEditorDrawer({
         onOpenChange(false)
       }
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || '保存失败')
+      toast.error(formatApiError(err, '保存失败'))
     } finally {
       setSaving(false)
     }
@@ -389,7 +390,7 @@ export function ProfileEditorDrawer({
       toast.success('清洗预览完成')
     } catch (err: any) {
       setTestResp(null)
-      toast.error(err?.response?.data?.detail || err?.message || '清洗预览失败')
+      toast.error(formatApiError(err, '清洗预览失败'))
     } finally {
       setTestRunning(false)
     }
