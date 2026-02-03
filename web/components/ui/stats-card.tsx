@@ -49,7 +49,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 px-4 py-3 rounded-xl border transition-all hover:shadow-md motion-reduce:transition-none',
+        'flex items-center gap-3 px-4 py-3 rounded-xl border transition-shadow duration-200 motion-reduce:transition-none hover:shadow-md',
         colorStyles[color as keyof typeof colorStyles] || colorStyles.sky,
         className
       )}
@@ -59,7 +59,7 @@ export function StatCard({
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-xs text-muted-foreground truncate font-medium">{label}</p>
-        <p className="text-lg font-bold leading-tight truncate">{value}</p>
+        <p className="text-lg font-bold leading-tight truncate tabular-nums">{value}</p>
         {subValue && (
           <p className="text-xs text-muted-foreground/80 truncate">{subValue}</p>
         )}
