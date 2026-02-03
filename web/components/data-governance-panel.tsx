@@ -52,6 +52,16 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -136,6 +146,8 @@ export function DataGovernancePanel() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deleteFileOpen, setDeleteFileOpen] = useState(false)
+  const [deleteFileTarget, setDeleteFileTarget] = useState<{ id: string; filename: string } | null>(null)
   const uploadAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -408,9 +420,6 @@ export function DataGovernancePanel() {
     (fileId: string) => {
       const target = files.find((f) => f.id === fileId)
       if (!target) return
-
-      const ok = window.confirm(`删除文件 “${target.filename}” ？`)
-      if (!ok) return
 
       void (async () => {
         try {
@@ -1107,7 +1116,8 @@ export function DataGovernancePanel() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                handleDeleteFile(file.id)
+                                setDeleteFileTarget({ id: file.id, filename: file.filename })
+                                setDeleteFileOpen(true)
                               }}
                               className="opacity-0 group-hover:opacity-100 p-1 -mr-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
                               aria-label={`删除文件：${file.filename}`}
@@ -1474,6 +1484,35 @@ export function DataGovernancePanel() {
           )}
         </main>
       </div>
+
+      <AlertDialog
+        open={deleteFileOpen}
+        onOpenChange={(open) => {
+          setDeleteFileOpen(open)
+          if (!open) setDeleteFileTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除文件？</AlertDialogTitle>
+            <AlertDialogDescription>
+              你将删除文件 <span className="font-mono">{deleteFileTarget?.filename || '-'}</span>。此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const id = deleteFileTarget?.id
+                if (!id) return
+                handleDeleteFile(id)
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
