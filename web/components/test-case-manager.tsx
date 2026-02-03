@@ -113,7 +113,6 @@ export function TestCaseManager({
   // 批量删除
   const handleBatchDelete = async () => {
     if (selectedCaseIds.size === 0) return
-    if (!confirm(`确定删除 ${selectedCaseIds.size} 个测试用例吗？`)) return
 
     try {
       await Promise.all(
@@ -188,15 +187,23 @@ export function TestCaseManager({
                 >
                   运行选中 ({selectedCaseIds.size})
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2 text-destructive hover:text-destructive"
-                  onClick={handleBatchDelete}
+                <ConfirmDialog
+                  title="批量删除测试用例？"
+                  description={`将删除 ${selectedCaseIds.size} 个测试用例。此操作不可恢复。`}
+                  confirmLabel="删除"
+                  cancelLabel="返回"
+                  confirmVariant="destructive"
+                  onConfirm={() => void handleBatchDelete()}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  删除
-                </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    删除
+                  </Button>
+                </ConfirmDialog>
               </>
             )}
             <Button
