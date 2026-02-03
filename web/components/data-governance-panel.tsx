@@ -1237,7 +1237,7 @@ export function DataGovernancePanel() {
                 {/* 内容区域 */}
                 <div ref={contentScrollRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 md:p-8">
                   <div className={cn(
-                    "mx-auto transition-all duration-300 ease-out",
+                    "mx-auto",
                     viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
                   )}>
                     {/* 纸张效果容器 */}
