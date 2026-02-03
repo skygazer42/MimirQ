@@ -19,10 +19,10 @@ export function ModelProviderCard({ provider, onConfigure }: ModelProviderCardPr
     <button
       type="button"
       className={cn(
-        'group relative flex h-full w-full flex-col rounded-2xl border bg-card p-5 text-left shadow-soft transition-all duration-300 motion-reduce:transition-none focus-ring',
+        'group relative flex h-full w-full flex-col rounded-2xl border bg-card p-5 text-left shadow-soft transition-colors transition-shadow duration-200 motion-reduce:transition-none focus-ring',
         provider.isConfigured
           ? 'border-primary/25 ring-1 ring-primary/10 hover:border-primary/35 hover:shadow-strong'
-          : 'border-border hover:border-primary/25 hover:shadow-strong motion-safe:hover:-translate-y-0.5'
+          : 'border-border hover:border-primary/25 hover:shadow-strong'
       )}
       onClick={() => onConfigure(provider)}
     >
@@ -91,7 +91,7 @@ export function ModelProviderCard({ provider, onConfigure }: ModelProviderCardPr
         </span>
         
         {/* 仅在 Hover 时显示的箭头或图标 */}
-        <ChevronRight className="h-4 w-4 text-muted-foreground/60 opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 motion-reduce:transition-none" />
+        <ChevronRight className="h-4 w-4 text-muted-foreground/60 opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0 transition-opacity transition-transform duration-200 motion-reduce:transition-none" />
       </div>
     </button>
   )
