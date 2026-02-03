@@ -725,7 +725,7 @@ export function ChatArea({
 	                    onClick={handleSend}
 	                    disabled={!inputValue.trim()}
                     className={cn(
-                      "rounded-full h-9 w-9 transition-all duration-300 shadow-sm",
+                      "rounded-full size-9 shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none",
                       inputValue.trim()
                         ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
                         : "bg-secondary text-muted-foreground cursor-not-allowed"
