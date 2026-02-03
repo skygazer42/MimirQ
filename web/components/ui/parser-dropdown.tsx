@@ -134,7 +134,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'w-full flex items-center gap-3 px-3 border transition-all',
+          'w-full flex items-center gap-3 px-3 border transition-colors duration-150 motion-reduce:transition-none',
           compact ? 'py-2 rounded-full' : 'py-2.5 rounded-2xl',
           'bg-card hover:bg-muted',
           isOpen
