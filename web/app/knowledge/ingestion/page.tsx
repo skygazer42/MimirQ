@@ -321,10 +321,10 @@ export default function IngestionMonitorPage() {
                   {/* Actions & Progress Area */}
                   <div className="flex flex-col items-end gap-3 min-w-[140px]">
 
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
-                      <Button
-                        size="sm"
-                        variant="ghost"
+	                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-opacity transition-transform duration-200 ease-out motion-reduce:transition-none">
+	                      <Button
+	                        size="sm"
+	                        variant="ghost"
                         className="h-8 px-3 text-xs text-muted-foreground hover:text-primary rounded-lg"
                         onClick={(e) => {
                           e.stopPropagation()
