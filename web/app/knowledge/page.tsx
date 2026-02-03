@@ -958,7 +958,6 @@ export default function KnowledgePage() {
   const handleRetryFailedConnectorRun = useCallback(
     async (runId: string) => {
       if (!runId) return
-      if (!confirm('只重试失败项？将创建一个新的导入任务（best-effort）。')) return
       try {
         const next = await connectorApi.retryFailed(runId)
         toast.success(`已创建重试任务：${String(next.id || '').slice(0, 8)}`)
@@ -974,7 +973,6 @@ export default function KnowledgePage() {
   const handleResumeConnectorRun = useCallback(
     async (runId: string) => {
       if (!runId) return
-      if (!confirm('续跑该导入任务？将从上次 cursor 位置创建一个新的导入任务（best-effort）。')) return
       try {
         const next = await connectorApi.resumeRun(runId)
         toast.success(`已创建续跑任务：${String(next.id || '').slice(0, 8)}`)
@@ -2608,24 +2606,48 @@ export default function KnowledgePage() {
                                     </AlertDialog>
                                   ) : null}
                                   {canResume ? (
-                                    <Button
-                                      variant="outline"
-                                      className="gap-2"
-                                      onClick={() => void handleResumeConnectorRun(run.id)}
-                                    >
-                                      <Play className="w-4 h-4" />
-                                      续跑
-                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button variant="outline" className="gap-2">
+                                          <Play className="w-4 h-4" />
+                                          续跑
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>续跑导入任务？</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            将从上次 cursor 位置创建一个新的导入任务（best-effort）。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>返回</AlertDialogCancel>
+                                          <AlertDialogAction onClick={() => void handleResumeConnectorRun(run.id)}>续跑</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
                                   ) : null}
                                   {canRetryFailed ? (
-                                    <Button
-                                      variant="outline"
-                                      className="gap-2"
-                                      onClick={() => void handleRetryFailedConnectorRun(run.id)}
-                                    >
-                                      <RotateCcw className="w-4 h-4" />
-                                      只重试失败
-                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button variant="outline" className="gap-2">
+                                          <RotateCcw className="w-4 h-4" />
+                                          只重试失败
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>只重试失败项？</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            将创建一个新的导入任务（best-effort），仅处理失败项。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>返回</AlertDialogCancel>
+                                          <AlertDialogAction onClick={() => void handleRetryFailedConnectorRun(run.id)}>创建重试任务</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
                                   ) : null}
                                 </div>
                               </div>
