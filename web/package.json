@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
     "openapi:export": "node scripts/export-openapi.mjs --out openapi.json",
