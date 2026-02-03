@@ -65,7 +65,6 @@ export function ChatPageClient({
     <AppFrame
       rightPanel={<DocumentViewerPanel />}
       withDocumentViewerPadding
-      mainClassName="transition-all duration-300 ease-in-out"
     >
       <ChatArea
         initialConversationId={initialConversationId}
