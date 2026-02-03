@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM python:3.11-slim AS base
 
 WORKDIR /app
@@ -6,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=60 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=0
 
 
 FROM base AS builder
@@ -15,11 +17,14 @@ FROM base AS builder
 COPY requirements.txt /tmp/requirements.txt
 
 # 安装系统依赖 + Python 依赖（builder stage）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install -r "/tmp/requirements.txt" \
+    && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
+    # Avoid fetching "build dependencies" in isolated envs when network is flaky.
+    # Most of our sdists are pure-Python and build fine with setuptools already present.
+    && /opt/venv/bin/pip install --retries 10 --no-build-isolation -r "/tmp/requirements.txt" \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 
