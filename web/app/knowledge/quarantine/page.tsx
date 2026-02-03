@@ -410,14 +410,11 @@ export default function QuarantineQueuePage() {
                       const busy = acting?.id === doc.id
 
                       return (
-                        <div
+                        <button
                           key={doc.id}
-                          role="button"
-                          tabIndex={0}
                           onClick={() => setSelectedId(doc.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') setSelectedId(doc.id)
-                          }}
+                          type="button"
+                          aria-pressed={active}
                           className={cn(
                             'group p-4 flex items-start justify-between gap-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                             active
@@ -499,7 +496,7 @@ export default function QuarantineQueuePage() {
                               调参
                             </Button>
                           </div>
-                        </div>
+                        </button>
                       )
                     })}
                   </div>
