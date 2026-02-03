@@ -2200,11 +2200,11 @@ export default function KnowledgePage() {
                   </p>
                 </div>
 
-                <div className="max-w-2xl mx-auto relative mb-10">
-                  <div className={cn(
-                    "flex items-center bg-background/60 border-2 border-border/60 rounded-2xl p-2 shadow-soft transition-all duration-300",
-                    "focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-ring/15 focus-within:shadow-strong/10"
-                  )}>
+	                <div className="max-w-2xl mx-auto relative mb-10">
+	                  <div className={cn(
+	                    "flex items-center bg-background/60 border-2 border-border/60 rounded-2xl p-2 shadow-soft transition-colors transition-shadow duration-200 motion-reduce:transition-none",
+	                    "focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-ring/15 focus-within:shadow-strong/10"
+	                  )}>
                     <Search className="w-5 h-5 text-muted-foreground ml-3" />
                     <input
                       type="text"
