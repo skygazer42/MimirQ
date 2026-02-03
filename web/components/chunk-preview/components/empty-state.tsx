@@ -44,7 +44,7 @@ export function EmptyState() {
 
         <div
           className={cn(
-            'w-full bg-card rounded-3xl p-2 shadow-xl border border-border/70 transition-all duration-200 motion-reduce:transition-none',
+            'w-full bg-card rounded-3xl p-2 shadow-xl border border-border/70 transition-colors transition-shadow duration-200 motion-reduce:transition-none',
             isDragging ? 'ring-4 ring-primary/15 border-primary/25' : 'hover:border-primary/25'
           )}
           onDragOver={handleDragOver}
