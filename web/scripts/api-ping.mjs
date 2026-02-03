@@ -21,13 +21,24 @@ async function fetchJson(url, { timeoutMs = 5000 } = {}) {
       signal: controller.signal,
     })
     const requestId = res.headers.get("x-request-id") || res.headers.get("X-Request-ID") || undefined
+    const contentType = String(res.headers.get("content-type") || "")
+    const isJsonContentType = /application\/json|application\/[^;]+\+json/i.test(contentType)
+
+    const bodyText = await res.text()
     let json = null
-    try {
-      json = await res.json()
-    } catch {
-      // ignore invalid json
+    let jsonError = null
+    if (bodyText) {
+      try {
+        json = JSON.parse(bodyText)
+      } catch (err) {
+        jsonError = String(err?.message || err)
+      }
     }
-    return { ok: res.ok, status: res.status, requestId, json }
+
+    // Require JSON on success; otherwise the frontend will likely crash on shape mismatches.
+    const ok = Boolean(res.ok && isJsonContentType && json && typeof json === "object")
+    const snippet = bodyText ? bodyText.trimStart().slice(0, 160) : ""
+    return { ok, status: res.status, requestId, json, jsonError, contentType, snippet }
   } finally {
     clearTimeout(timeout)
   }
@@ -51,7 +62,11 @@ async function main() {
       console.log(`[api-ping] ${ep.name} ${out.status}${rid}`)
       if (!out.ok) {
         failed++
-        if (out.json) console.log(JSON.stringify(out.json, null, 2))
+        const ct = out.contentType ? ` content-type=${out.contentType}` : ""
+        console.error(`[api-ping] ${ep.name} FAIL${ct}`)
+        if (out.json) console.error(JSON.stringify(out.json, null, 2))
+        else if (out.jsonError) console.error(`[api-ping] ${ep.name} JSON parse error: ${out.jsonError}`)
+        if (out.snippet) console.error(`[api-ping] ${ep.name} body: ${out.snippet}`)
       }
     } catch (err) {
       failed++
