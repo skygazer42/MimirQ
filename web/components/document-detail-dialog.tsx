@@ -440,7 +440,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     async (pipelineHash: string) => {
       const ph = String(pipelineHash || '').trim()
       if (!ph) return
-      if (!confirm(`确定要删除该文档的版本 ${ph.slice(0, 12)}… 吗？\n\n注意：当前激活版本无法删除。`)) return
 
       setIsVersionWorking(true)
       try {
@@ -1222,15 +1221,28 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                                         激活
                                       </Button>
                                     </ConfirmDialog>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => void handleDeleteVersion(v.pipeline_hash)}
-                                      disabled={isVersionWorking}
-                                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    <ConfirmDialog
+                                      title="删除该版本？"
+                                      description={
+                                        <>
+                                          将删除版本 <span className="font-mono">{v.pipeline_hash.slice(0, 12)}…</span>。注意：当前激活版本无法删除。
+                                        </>
+                                      }
+                                      confirmLabel="删除"
+                                      cancelLabel="返回"
+                                      confirmVariant="destructive"
+                                      confirmDisabled={isVersionWorking}
+                                      onConfirm={() => void handleDeleteVersion(v.pipeline_hash)}
                                     >
-                                      删除
-                                    </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={isVersionWorking}
+                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      >
+                                        删除
+                                      </Button>
+                                    </ConfirmDialog>
                                   </>
                                 )}
                               </div>
