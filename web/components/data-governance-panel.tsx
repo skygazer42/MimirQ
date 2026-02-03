@@ -1391,7 +1391,7 @@ export function DataGovernancePanel() {
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
                           className={cn(
-                            "flex flex-col items-center justify-center py-2 px-1 rounded-md transition-all duration-200 relative",
+                            "flex flex-col items-center justify-center py-2 px-1 rounded-md transition-colors transition-shadow duration-150 motion-reduce:transition-none relative",
                             isActive
                               ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-slate-200"
                               : "text-muted-foreground hover:text-foreground/80 hover:bg-border/50"
