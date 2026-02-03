@@ -256,7 +256,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
 	      <div
 	        className={cn(
-	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-all duration-300 motion-reduce:transition-none',
+	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-shadow duration-200 motion-reduce:transition-none',
 	          isUser
 	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-2xl shadow-primary/25 border border-primary/20 backdrop-blur-sm'
 	            : 'glass-card text-foreground rounded-2xl rounded-tl-sm hover:shadow-lg hover:shadow-primary/10'
@@ -277,7 +277,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	                <div
 	                  key={idx}
 	                  className={cn(
-	                    "text-xs transition-opacity duration-500 motion-reduce:transition-none",
+	                    "text-xs transition-opacity duration-200 motion-reduce:transition-none",
 	                    idx === message.steps!.length - 1 ? "text-foreground font-medium motion-safe:animate-pulse" : "text-muted-foreground/60"
 	                  )}
 	                >
@@ -296,7 +296,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               aria-label="Diagnostics"
               title="检索诊断"
               className={cn(
-                'absolute bottom-2 right-11 z-10 rounded-md p-1.5 transition-all duration-200',
+                'absolute bottom-2 right-11 z-10 rounded-md p-1.5 transition-opacity transition-transform transition-colors duration-200 motion-reduce:transition-none',
                 'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
                 'text-muted-foreground hover:text-foreground hover:bg-secondary'
@@ -425,7 +425,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied' : 'Copy'}
 	          className={cn(
-	            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition-all duration-200',
+	            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition-opacity transition-transform transition-colors duration-200 motion-reduce:transition-none',
 	            'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
 	            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
 	            isUser
