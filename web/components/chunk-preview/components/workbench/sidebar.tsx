@@ -409,7 +409,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       e.stopPropagation()
                       removeFile(fileIndex)
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-all focus-ring"
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none focus-ring"
                     aria-label={`移除文件：${f.displayName}`}
                     title="移除文件"
                   >
