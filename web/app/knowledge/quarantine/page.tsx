@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
@@ -230,7 +231,6 @@ export default function QuarantineQueuePage() {
   }, [buildRecommendedPatch, markReviewed, refetch])
 
   const handleDelete = useCallback(async (doc: Document) => {
-    if (!confirm(`确定删除文档「${doc.filename}」吗？此操作不可恢复。`)) return
     setActing({ id: doc.id, action: 'delete' })
     try {
       await documentApi.delete(doc.id)
@@ -614,16 +614,29 @@ export default function QuarantineQueuePage() {
                       <CheckCircle2 className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'review' ? 'animate-spin motion-reduce:animate-none' : '')} />
                       标记已处理
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="rounded-xl"
-                      disabled={acting?.id === selected.id}
-                      onClick={() => handleDelete(selected)}
+                    <ConfirmDialog
+                      title="删除该文档？"
+                      description={
+                        <>
+                          确定删除文档「<span className="font-mono">{selected.filename}</span>」吗？此操作不可恢复。
+                        </>
+                      }
+                      confirmLabel="删除"
+                      cancelLabel="返回"
+                      confirmVariant="destructive"
+                      confirmDisabled={acting?.id === selected.id}
+                      onConfirm={() => handleDelete(selected)}
                     >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      删除
-                    </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="rounded-xl"
+                        disabled={acting?.id === selected.id}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        删除
+                      </Button>
+                    </ConfirmDialog>
                   </div>
                 </div>
               )}
