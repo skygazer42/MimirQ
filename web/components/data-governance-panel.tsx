@@ -860,7 +860,7 @@ export function DataGovernancePanel() {
                   <label
                     htmlFor="file-upload"
                     className={cn(
-                      "flex items-center gap-3 px-8 py-4 rounded-xl font-bold shadow-lg hover:-translate-y-0.5 transition-all motion-reduce:transition-none cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30",
+                      "flex items-center gap-3 px-8 py-4 rounded-xl font-bold shadow-sm cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30 transition-colors duration-150 motion-reduce:transition-none",
                       uploading && "opacity-50 cursor-not-allowed"
                     )}
                   >
@@ -873,7 +873,7 @@ export function DataGovernancePanel() {
                     type="button"
                     variant="outline"
                     onClick={cancelUploadAndParse}
-                    className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card/5 hover:bg-red-500/10 dark:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-all text-muted-foreground"
+                    className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card/5 hover:bg-red-500/10 dark:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-colors duration-150 motion-reduce:transition-none text-muted-foreground"
                   >
                     <X className="w-5 h-5" />
                     取消解析
