@@ -129,7 +129,7 @@ export default function FeedbackTriagePage() {
   }, [detail?.id])
 
   return (
-    <AppFrame mainClassName="transition-all duration-300">
+    <AppFrame>
       <PageScaffold
         title="反馈分析中心"
         icon={MessageSquare}
