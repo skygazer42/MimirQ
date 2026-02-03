@@ -957,14 +957,14 @@ export function DataGovernancePanel() {
 
       <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
         {/* 左侧文件列表 */}
-        <aside
-          ref={sidebarRef}
-          className={cn(
-            "group/sidebar relative flex flex-col flex-shrink-0 bg-card border-r border-border transition-all duration-300 ease-in-out z-10",
-            isSidebarCollapsed ? "w-0 border-r-0" : ""
-          )}
-          style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
-        >
+	        <aside
+	          ref={sidebarRef}
+	          className={cn(
+	            "group/sidebar relative flex flex-col flex-shrink-0 bg-card border-r border-border z-10",
+	            isSidebarCollapsed ? "w-0 border-r-0" : ""
+	          )}
+	          style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
+	        >
           {/* 折叠/展开按钮 */}
 	          <Button
 	            variant="ghost"
