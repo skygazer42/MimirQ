@@ -15,6 +15,9 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Kbd } from '@/components/ui/kbd'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { SearchInput } from '@/components/ui/search-input'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -100,6 +103,9 @@ export default function GraphPage() {
   // Editing State
   const [isConnectMode, setIsConnectMode] = useState(false)
   const [connectSourceNode, setConnectSourceNode] = useState<any | null>(null)
+  const [connectLabelOpen, setConnectLabelOpen] = useState(false)
+  const [connectTargetNode, setConnectTargetNode] = useState<any | null>(null)
+  const [connectLabelDraft, setConnectLabelDraft] = useState('related_to')
 
   const detailScrollRef = useRef<HTMLDivElement>(null)
   const selectedNodeId = selectedNode?.id as string | undefined
@@ -513,21 +519,34 @@ export default function GraphPage() {
       return
     }
 
-    const label = prompt("请输入关系名称 (例如: related_to):", "related_to")
-    if (label === null) {
+    setConnectTargetNode(targetNode)
+    setConnectLabelDraft('related_to')
+    setConnectLabelOpen(true)
+  }
+
+  const confirmConnectionLabel = () => {
+    if (!connectSourceNode || !connectTargetNode) {
+      setConnectLabelOpen(false)
+      setConnectTargetNode(null)
       resetConnectMode()
-      return 
+      return
     }
 
-    setGraphData(prev => ({
+    const label = connectLabelDraft.trim() || 'related_to'
+    setGraphData((prev) => ({
       ...prev,
-      links: [...prev.links, {
-        source: connectSourceNode.id,
-        target: targetNode.id,
-        label: label || 'related_to'
-      }]
+      links: [
+        ...prev.links,
+        {
+          source: connectSourceNode.id,
+          target: connectTargetNode.id,
+          label,
+        },
+      ],
     }))
 
+    setConnectLabelOpen(false)
+    setConnectTargetNode(null)
     resetConnectMode()
   }
 
@@ -1384,6 +1403,56 @@ export default function GraphPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={connectLabelOpen}
+          onOpenChange={(open) => {
+            setConnectLabelOpen(open)
+            if (!open) {
+              setConnectTargetNode(null)
+              resetConnectMode()
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>关系名称</DialogTitle>
+              <DialogDescription>
+                {connectSourceNode?.label && connectTargetNode?.label ? (
+                  <>
+                    将创建连线：<span className="font-mono">{String(connectSourceNode.label)}</span> →{' '}
+                    <span className="font-mono">{String(connectTargetNode.label)}</span>
+                  </>
+                ) : (
+                  '请输入关系名称（例如：related_to）'
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <Label htmlFor="graph-connect-label">关系名称</Label>
+              <Input
+                id="graph-connect-label"
+                value={connectLabelDraft}
+                onChange={(e) => setConnectLabelDraft(e.target.value)}
+                placeholder="related_to"
+                className="font-mono"
+              />
+              <div className="text-xs text-muted-foreground">
+                留空将使用默认值：<span className="font-mono">related_to</span>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setConnectLabelOpen(false)}>
+                取消
+              </Button>
+              <Button type="button" onClick={confirmConnectionLabel}>
+                创建连线
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </PageScaffold>
     </AppFrame>
   )
