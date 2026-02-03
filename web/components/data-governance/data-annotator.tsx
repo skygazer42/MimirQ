@@ -255,17 +255,17 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
             const isSelected = selectedType === type.id
             const count = annotationsByType[type.id].length
 
-            return (
-              <button
-                key={type.id}
-                onClick={() => setSelectedType(type.id)}
-                className={cn(
-                  "flex items-center gap-2 p-2.5 rounded-lg border text-left transition-all",
-                  isSelected
-                    ? getToneStyles(type.tone).selected
-                    : "bg-muted border-border hover:bg-muted"
-                )}
-              >
+	            return (
+	              <button
+	                key={type.id}
+	                onClick={() => setSelectedType(type.id)}
+	                className={cn(
+	                  "flex items-center gap-2 p-2.5 rounded-lg border text-left transition-colors duration-200 motion-reduce:transition-none focus-ring",
+	                  isSelected
+	                    ? getToneStyles(type.tone).selected
+	                    : "bg-muted border-border hover:bg-muted"
+	                )}
+	              >
                 <div className={cn(
                   "w-7 h-7 rounded-lg flex items-center justify-center",
                   getToneStyles(type.tone).iconWrap,
