@@ -1104,11 +1104,13 @@ export function DataGovernancePanel() {
                             </div>
 
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleDeleteFile(file.id)
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 -mr-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-all"
+                              className="opacity-0 group-hover:opacity-100 p-1 -mr-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
+                              aria-label={`删除文件：${file.filename}`}
                               title="删除文件"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
