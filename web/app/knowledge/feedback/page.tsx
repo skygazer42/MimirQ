@@ -218,23 +218,15 @@ export default function FeedbackTriagePage() {
               const isUp = kind === 'thumbs_up'
               const isDown = kind === 'thumbs_down'
 	              return (
-	                <div
+	                <button
 	                  key={item.id}
-	                  role="button"
-	                  tabIndex={0}
+	                  type="button"
 	                  onClick={() => setDetail(item)}
-	                  onKeyDown={(e) => {
-	                    if (e.currentTarget !== e.target) return
-	                    if (e.key === 'Enter' || e.key === ' ') {
-	                      e.preventDefault()
-	                      setDetail(item)
-	                    }
-	                  }}
 	                  aria-label={`查看反馈详情：${item.reason || '用户未填写原因'}`}
-		                  className={cn(
-		                    'group w-full text-left rounded-xl border border-border bg-card shadow-sm hover:shadow-md hover:border-primary/20 transition-shadow duration-200 relative overflow-hidden cursor-pointer focus-ring motion-reduce:transition-none'
-		                  )}
-		                >
+	                  className={cn(
+	                    'group w-full text-left rounded-xl border border-border bg-card shadow-sm hover:shadow-md hover:border-primary/20 transition-shadow duration-200 relative overflow-hidden cursor-pointer focus-ring motion-reduce:transition-none'
+	                  )}
+	                >
                   <div
                     className={cn(
                       "absolute left-0 top-0 bottom-0 w-1 transition-colors",
@@ -300,7 +292,7 @@ export default function FeedbackTriagePage() {
                     )}
                   </div>
                   </div>
-                </div>
+                </button>
               )
             })}
 
