@@ -185,12 +185,12 @@ export default function FeedbackTriagePage() {
           </div>
 	        }
 	        toolbar={
-	          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-card/80 backdrop-blur-xl border border-border shadow-soft rounded-full p-1.5 transition-all duration-300 motion-reduce:transition-none max-w-4xl mx-auto md:mx-0">
-	            <div className="relative flex-1 group pl-2">
-	              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
-	              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+	          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-card/80 border border-border shadow-soft rounded-full p-1.5 max-w-4xl mx-auto md:mx-0">
+		            <div className="relative flex-1 group pl-2">
+		              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+		              <Input
+	                value={searchTerm}
+	                onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="搜索反馈内容..."
                 className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 h-10 rounded-full"
               />
