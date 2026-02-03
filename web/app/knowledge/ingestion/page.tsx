@@ -251,26 +251,12 @@ export default function IngestionMonitorPage() {
 	            {filtered.map((doc) => (
 	              <div
 	                key={doc.id}
-	                role="button"
-	                tabIndex={0}
-	                aria-label={`查看入库详情：${doc.filename}`}
-	                onClick={() => {
-	                  setDetailDocumentId(doc.id)
-	                  setDetailOpen(true)
-	                }}
-	                onKeyDown={(e) => {
-	                  if (e.currentTarget !== e.target) return
-	                  if (e.key === 'Enter' || e.key === ' ') {
-	                    e.preventDefault()
-	                    setDetailDocumentId(doc.id)
-	                    setDetailOpen(true)
-	                  }
-		                }}
-		                className={cn(
-		                  'group w-full text-left rounded-xl border relative overflow-hidden cursor-pointer focus-ring transition-colors transition-shadow duration-200 motion-reduce:transition-none',
-		                  'bg-card border-border hover:border-primary/30 hover:shadow-strong'
-		                )}
-		              >
+	                className={cn(
+	                  'group w-full rounded-xl border relative overflow-hidden transition-colors transition-shadow duration-200 motion-reduce:transition-none',
+	                  'bg-card border-border hover:border-primary/30 hover:shadow-strong',
+	                  'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background'
+	                )}
+	              >
                 {/* Progress Background Mesh for Processing */}
                 {doc.status === 'processing' && (
                   <div className="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none bg-[url('/noise.svg')] mix-blend-multiply dark:mix-blend-overlay" />
@@ -286,7 +272,15 @@ export default function IngestionMonitorPage() {
                 )} />
 
                 <div className="flex items-center justify-between gap-6 p-5 relative z-10 pl-6">
-                  <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left focus-ring rounded-lg"
+                    aria-label={`查看入库详情：${doc.filename}`}
+                    onClick={() => {
+                      setDetailDocumentId(doc.id)
+                      setDetailOpen(true)
+                    }}
+                  >
                     <div className="flex items-center gap-3 mb-2">
                       <StatusPill status={doc.status} />
                       <span className="font-mono text-[10px] text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
@@ -316,7 +310,7 @@ export default function IngestionMonitorPage() {
                         </div>
                       )}
                     </div>
-                  </div>
+                  </button>
 
                   {/* Actions & Progress Area */}
                   <div className="flex flex-col items-end gap-3 min-w-[140px]">
