@@ -243,7 +243,7 @@ function HistoryPageContent() {
       >
         <div className="flex h-full min-h-0 overflow-hidden">
           {/* 侧边栏 - 对话列表 */}
-          <div className="w-80 border-r border-border flex flex-col bg-card/50 backdrop-blur-sm">
+          <div className="w-80 border-r border-border flex flex-col bg-card">
             {/* 头部 */}
             <div className="p-4 border-b border-border">
               <SearchInput
@@ -272,7 +272,7 @@ function HistoryPageContent() {
 
                   return (
                     <div key={group}>
-                      <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase sticky top-0 bg-card/80 backdrop-blur-sm z-10 border-b border-border/60">
+                      <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase sticky top-0 bg-card z-10 border-b border-border/60">
                         {group}
                       </div>
                       {convs.map((conversation) => (
@@ -299,7 +299,7 @@ function HistoryPageContent() {
             {selectedConversation ? (
               <>
                 {/* 对话头部 */}
-		                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md">
+		                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background">
 		                  <div className="flex items-center gap-4">
 		                    <div className="size-10 rounded-xl bg-primary text-primary-foreground border border-primary/20 shadow-sm flex items-center justify-center">
 		                      <MessageSquare className="h-5 w-5" />
