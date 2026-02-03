@@ -751,7 +751,7 @@ export function ChatArea({
             </div>
           </div>
 
-	          <p className="text-[10px] text-muted-foreground/70 text-center font-medium  opacity-0 group-hover:opacity-100 transition-opacity duration-500 motion-reduce:transition-none">
+	          <p className="text-[10px] text-muted-foreground/70 text-center font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 motion-reduce:transition-none">
 	            POWERED BY MIMIRQ AI
 	          </p>
         </div>
