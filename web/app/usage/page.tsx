@@ -11,6 +11,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { datasetApi, usageApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import type { ChatTokenQuotaStatus, ChatTokenUsageSummary } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -53,7 +54,7 @@ export default function UsagePage() {
     } catch (err: any) {
       setSummary(null)
       setQuota(null)
-      toast.error(err?.response?.data?.detail || err?.message || '加载用量数据失败')
+      toast.error(formatApiError(err, '加载用量数据失败'))
     } finally {
       setLoading(false)
     }
