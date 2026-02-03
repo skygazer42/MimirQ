@@ -41,6 +41,17 @@ import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { Panel } from '@/components/ui/panel'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
@@ -1267,25 +1278,36 @@ export default function SettingsPage() {
 	                        允许通过 URL 拉取内容并入库（知识库页面的“URL 导入”会依赖此开关）
 	                      </div>
 	                    </div>
-	                    <button
-	                      type="button"
-	                      onClick={() => {
-	                        const next = !Boolean(urlIngestMerged.enabled ?? false)
-	                        if (next) {
-	                          const ok = confirm('启用 URL 导入会让后端对外发起请求，可能带来 SSRF 风险。确定启用吗？')
-	                          if (!ok) return
-	                        }
-	                        updateUrlIngest({ enabled: next })
-	                      }}
-	                      className="shrink-0"
-	                      aria-label="Toggle URL ingest"
-	                    >
-	                      {Boolean(urlIngestMerged.enabled ?? false) ? (
+	                    {Boolean(urlIngestMerged.enabled ?? false) ? (
+	                      <button
+	                        type="button"
+	                        onClick={() => updateUrlIngest({ enabled: false })}
+	                        className="shrink-0"
+	                        aria-label="Toggle URL ingest"
+	                      >
 	                        <ToggleRight className="w-10 h-10 text-primary" />
-	                      ) : (
-	                        <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                      )}
-	                    </button>
+	                      </button>
+	                    ) : (
+	                      <AlertDialog>
+	                        <AlertDialogTrigger asChild>
+	                          <button type="button" className="shrink-0" aria-label="Toggle URL ingest">
+	                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                          </button>
+	                        </AlertDialogTrigger>
+	                        <AlertDialogContent>
+	                          <AlertDialogHeader>
+	                            <AlertDialogTitle>启用 URL 导入？</AlertDialogTitle>
+	                            <AlertDialogDescription>
+	                              启用后端 URL 导入会让服务端对外发起网络请求，存在 SSRF 风险。生产环境建议保持关闭，或配置 egress 防火墙/allowlist。
+	                            </AlertDialogDescription>
+	                          </AlertDialogHeader>
+	                          <AlertDialogFooter>
+	                            <AlertDialogCancel>取消</AlertDialogCancel>
+	                            <AlertDialogAction onClick={() => updateUrlIngest({ enabled: true })}>启用</AlertDialogAction>
+	                          </AlertDialogFooter>
+	                        </AlertDialogContent>
+	                      </AlertDialog>
+	                    )}
 	                  </div>
 
 	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1318,26 +1340,36 @@ export default function SettingsPage() {
 	                          高风险：可能导致 SSRF 打到内网服务（强烈不建议）
 	                        </div>
 	                      </div>
-	                      <button
-	                        type="button"
-	                        onClick={() => {
-	                          const current = Boolean(urlIngestMerged.allow_private_ips ?? false)
-	                          const next = !current
-	                          if (next) {
-	                            const ok = confirm('允许访问内网/私网 IP 风险极高（SSRF）。确定开启吗？')
-	                            if (!ok) return
-	                          }
-	                          updateUrlIngest({ allow_private_ips: next })
-	                        }}
-	                        className="shrink-0"
-	                        aria-label="Toggle allow private IPs"
-	                      >
-	                        {Boolean(urlIngestMerged.allow_private_ips ?? false) ? (
+	                      {Boolean(urlIngestMerged.allow_private_ips ?? false) ? (
+	                        <button
+	                          type="button"
+	                          onClick={() => updateUrlIngest({ allow_private_ips: false })}
+	                          className="shrink-0"
+	                          aria-label="Toggle allow private IPs"
+	                        >
 	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        ) : (
-	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                        )}
-	                      </button>
+	                        </button>
+	                      ) : (
+	                        <AlertDialog>
+	                          <AlertDialogTrigger asChild>
+	                            <button type="button" className="shrink-0" aria-label="Toggle allow private IPs">
+	                              <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                            </button>
+	                          </AlertDialogTrigger>
+	                          <AlertDialogContent>
+	                            <AlertDialogHeader>
+	                              <AlertDialogTitle>允许访问内网/私网 IP？</AlertDialogTitle>
+	                              <AlertDialogDescription>
+	                                风险极高：可能导致 SSRF 打到内网服务（强烈不建议）。确认开启后，后端 URL 导入可能访问内网/私网地址。
+	                              </AlertDialogDescription>
+	                            </AlertDialogHeader>
+	                            <AlertDialogFooter>
+	                              <AlertDialogCancel>取消</AlertDialogCancel>
+	                              <AlertDialogAction onClick={() => updateUrlIngest({ allow_private_ips: true })}>开启</AlertDialogAction>
+	                            </AlertDialogFooter>
+	                          </AlertDialogContent>
+	                        </AlertDialog>
+	                      )}
 	                    </div>
 
 	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
@@ -1347,26 +1379,36 @@ export default function SettingsPage() {
 	                          可能重定向到内网/大文件；建议保持关闭
 	                        </div>
 	                      </div>
-	                      <button
-	                        type="button"
-	                        onClick={() => {
-	                          const current = Boolean(urlIngestMerged.follow_redirects ?? false)
-	                          const next = !current
-	                          if (next) {
-	                            const ok = confirm('跟随重定向可能引入 SSRF/大文件风险。确定开启吗？')
-	                            if (!ok) return
-	                          }
-	                          updateUrlIngest({ follow_redirects: next })
-	                        }}
-	                        className="shrink-0"
-	                        aria-label="Toggle follow redirects"
-	                      >
-	                        {Boolean(urlIngestMerged.follow_redirects ?? false) ? (
+	                      {Boolean(urlIngestMerged.follow_redirects ?? false) ? (
+	                        <button
+	                          type="button"
+	                          onClick={() => updateUrlIngest({ follow_redirects: false })}
+	                          className="shrink-0"
+	                          aria-label="Toggle follow redirects"
+	                        >
 	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        ) : (
-	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                        )}
-	                      </button>
+	                        </button>
+	                      ) : (
+	                        <AlertDialog>
+	                          <AlertDialogTrigger asChild>
+	                            <button type="button" className="shrink-0" aria-label="Toggle follow redirects">
+	                              <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                            </button>
+	                          </AlertDialogTrigger>
+	                          <AlertDialogContent>
+	                            <AlertDialogHeader>
+	                              <AlertDialogTitle>跟随重定向？</AlertDialogTitle>
+	                              <AlertDialogDescription>
+	                                开启后，URL 导入可能跟随重定向到内网地址或大文件，存在 SSRF/资源消耗风险。确认开启吗？
+	                              </AlertDialogDescription>
+	                            </AlertDialogHeader>
+	                            <AlertDialogFooter>
+	                              <AlertDialogCancel>取消</AlertDialogCancel>
+	                              <AlertDialogAction onClick={() => updateUrlIngest({ follow_redirects: true })}>开启</AlertDialogAction>
+	                            </AlertDialogFooter>
+	                          </AlertDialogContent>
+	                        </AlertDialog>
+	                      )}
 	                    </div>
 	                  </div>
 	                </div>
