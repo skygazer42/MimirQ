@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 
 import { chatApi } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -88,8 +89,6 @@ export function ConversationSummaryDialog(props: {
   const clear = React.useCallback(async () => {
     const id = (conversationId || '').trim()
     if (!id) return
-    const ok = window.confirm('确定要清空该会话的摘要记忆吗？')
-    if (!ok) return
     setClearing(true)
     try {
       await chatApi.deleteConversationSummary(id)
@@ -156,16 +155,25 @@ export function ConversationSummaryDialog(props: {
                   <Copy className="h-4 w-4" />
                   复制
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-2 text-destructive hover:text-destructive"
-                  onClick={() => void clear()}
-                  disabled={clearing || !hasConversation}
+                <ConfirmDialog
+                  title="清空摘要记忆？"
+                  description="将删除该会话的持久化摘要。你可以稍后重新生成。"
+                  confirmLabel="清空"
+                  cancelLabel="返回"
+                  confirmVariant="destructive"
+                  confirmDisabled={clearing || !hasConversation}
+                  onConfirm={() => void clear()}
                 >
-                  <Trash2 className={clearing ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} />
-                  清空
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-2 text-destructive hover:text-destructive"
+                    disabled={clearing || !hasConversation}
+                  >
+                    <Trash2 className={clearing ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} />
+                    清空
+                  </Button>
+                </ConfirmDialog>
               </div>
             </div>
 
@@ -186,4 +194,3 @@ export function ConversationSummaryDialog(props: {
     </Dialog>
   )
 }
-
