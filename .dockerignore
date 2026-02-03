@@ -46,3 +46,4 @@ tests/
 .gemini/
 .shared/
 .docling_tmp/
+.worktrees/
