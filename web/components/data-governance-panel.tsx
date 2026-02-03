@@ -1037,7 +1037,7 @@ export function DataGovernancePanel() {
                       key={file.id}
                       onClick={() => handleSelectFile(file.id)}
                       className={cn(
-                        "w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer group relative",
+                        "w-full text-left p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer group relative",
                         selectedFileId === file.id
                           ? "bg-sky-500/10 dark:bg-sky-500/20 border-sky-200 shadow-md ring-1 ring-sky-100"
                           : "bg-card border-border hover:border-sky-200 hover:shadow-sm"
@@ -1046,7 +1046,7 @@ export function DataGovernancePanel() {
                       <div className="flex items-start gap-4">
                         {/* File Icon */}
                         {getFileIcon(file.filename, cn(
-                          "w-12 h-12 rounded-xl shadow-sm border transition-all mr-0",
+                          "size-12 rounded-xl shadow-sm border transition-colors transition-shadow mr-0 motion-reduce:transition-none",
                           selectedFileId === file.id
                             ? "ring-2 ring-sky-100 ring-offset-1 border-sky-200"
                             : "border-border group-hover:border-sky-200 group-hover:shadow-md"
