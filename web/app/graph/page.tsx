@@ -846,7 +846,7 @@ export default function GraphPage() {
         bodyContainerClassName="flex h-full min-h-0 flex-col"
       >
          {/* Header */}
-         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
+         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card border-b border-border/50 pointer-events-none">
 	          <div className="flex items-center gap-3 pointer-events-auto">
 		            <div className="p-2 rounded-lg bg-primary text-primary-foreground shadow-sm border border-primary/20">
 		              <Share2 className="w-5 h-5" />
@@ -866,7 +866,7 @@ export default function GraphPage() {
                   onValueChange={setSearchTerm}
                   placeholder="搜索实体节点..."
                   aria-label="搜索实体节点"
-                  inputClassName="h-10 rounded-full bg-muted/50 backdrop-blur-sm shadow-sm pr-16"
+                  inputClassName="h-10 rounded-full bg-muted/60 shadow-sm pr-16"
                 />
                 <div className="pointer-events-none absolute right-11 top-1/2 -translate-y-1/2 flex items-center gap-2 text-xs text-muted-foreground">
                   {searchTerm ? <span>{highlightedNodeIds.size} 匹配</span> : null}
@@ -1066,7 +1066,7 @@ export default function GraphPage() {
                      支持实时数据加载、搜索与深度分析。
                    </>
                  }
-                 className="w-full max-w-2xl bg-card/70 backdrop-blur-md border-border"
+                 className="w-full max-w-2xl bg-card/80 border-border"
                >
                  <Button
                    size="lg"
@@ -1091,7 +1091,7 @@ export default function GraphPage() {
 
 	          {/* Explainability Panel (Bottom Left) */}
 		          {isExplainMode && (
-		            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-strong border border-border overflow-hidden">
+		            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card rounded-2xl shadow-strong border border-border overflow-hidden">
 		               <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
 		                 <Lightbulb className="w-4 h-4 text-primary" />
 		                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
@@ -1125,7 +1125,7 @@ export default function GraphPage() {
           {/* Floating Controls */}
           <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-3">
              {/* Main Zoom Controls */}
-             <div className="flex flex-col gap-1 bg-card/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/30 border border-border/50">
+             <div className="flex flex-col gap-1 bg-card/90 p-1.5 rounded-2xl shadow-md border border-border/50">
 	               <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl" title="放大" aria-label="放大">
 	                  <ZoomIn className="w-5 h-5" />
 	                </Button>
@@ -1139,7 +1139,7 @@ export default function GraphPage() {
              </div>
              
              {/* View Options */}
-             <div className="bg-card/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/30 border border-border/50 flex flex-col gap-1">
+             <div className="bg-card/90 p-1.5 rounded-2xl shadow-md border border-border/50 flex flex-col gap-1">
 	                <Button 
 	                   variant="ghost" 
 	                   size="icon" 
@@ -1206,7 +1206,7 @@ export default function GraphPage() {
 	          {/* Info Panel / Sidebar (Right) */}
 	          <div
 	            className={cn(
-	              "absolute top-4 right-4 bottom-24 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-strong border border-border transform transition-transform duration-200 ease-out z-20 flex flex-col overflow-hidden",
+	              "absolute top-4 right-4 bottom-24 w-80 bg-card rounded-2xl shadow-strong border border-border transform transition-transform duration-200 ease-out z-20 flex flex-col overflow-hidden",
 	              isDetailOpen && selectedNode ? "translate-x-0" : "translate-x-[120%]"
 	            )}
 	          >
