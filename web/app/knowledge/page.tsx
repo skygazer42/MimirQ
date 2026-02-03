@@ -83,6 +83,17 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 // Tab 类型
 type TabType = 'documents' | 'retrieval' | 'settings'
@@ -933,7 +944,6 @@ export default function KnowledgePage() {
   const handleCancelConnectorRun = useCallback(
     async (runId: string) => {
       if (!runId) return
-      if (!confirm('确定要取消该导入任务吗？（best-effort）')) return
       try {
         await connectorApi.cancelRun(runId)
         toast.success('已取消导入任务')
@@ -2576,14 +2586,26 @@ export default function KnowledgePage() {
 
                                 <div className="flex flex-col items-end gap-2">
                                   {isActive ? (
-                                    <Button
-                                      variant="outline"
-                                      className="gap-2"
-                                      onClick={() => void handleCancelConnectorRun(run.id)}
-                                    >
-                                      <X className="w-4 h-4" />
-                                      取消
-                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button variant="outline" className="gap-2">
+                                          <X className="w-4 h-4" />
+                                          取消
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>取消导入任务？</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            将以 best-effort 方式取消该导入任务（run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>）。此操作可能导致部分文件处于未完成状态。
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>返回</AlertDialogCancel>
+                                          <AlertDialogAction onClick={() => void handleCancelConnectorRun(run.id)}>取消任务</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
                                   ) : null}
                                   {canResume ? (
                                     <Button
