@@ -9,6 +9,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -134,7 +145,6 @@ export default function PromptsPage() {
 
   const handleBatchDelete = async () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`确定要删除 ${selectedIds.size} 个模板吗？`)) return
 
     try {
       await Promise.all(Array.from(selectedIds).map((id) => promptTemplateApi.delete(id)))
@@ -320,10 +330,26 @@ export default function PromptsPage() {
             <Button size="sm" variant="outline" onClick={() => handleBatchActivate(false)}>
               批量停用
             </Button>
-            <Button size="sm" variant="destructive" onClick={handleBatchDelete}>
-              <Trash2 className="w-3 h-3 mr-1" />
-              批量删除
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive">
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  批量删除
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>批量删除模板？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    你将删除 <span className="font-mono">{selectedIds.size}</span> 个提示词模板。此操作不可撤销。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleBatchDelete}>删除</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       )}
