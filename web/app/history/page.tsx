@@ -426,24 +426,20 @@ function ConversationItem({
 }) {
   return (
     <div
-      role="button"
-      tabIndex={0}
       className={cn(
-        'group px-4 py-4 cursor-pointer transition-colors border-l-4 relative focus-ring',
+        'group transition-colors border-l-4 relative',
         isSelected 
           ? 'bg-primary/10 border-l-primary' 
           : 'border-l-transparent hover:bg-muted/30'
       )}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onSelect()
-        }
-      }}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-label={`选择对话：${conversation.title || '未命名对话'}`}
+          className="flex-1 min-w-0 px-4 py-4 text-left cursor-pointer focus-ring"
+        >
 	          <h3 className={cn(
 	            'font-semibold truncate text-[14px]',
 	            isSelected ? 'text-primary' : 'text-foreground'
@@ -458,12 +454,12 @@ function ConversationItem({
 	              {formatRelativeTime(conversation.updated_at)}
 	            </span>
 	          </div>
-        </div>
+        </button>
 
         {/* 删除按钮 */}
-        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center">
+        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center py-4 pr-4">
           {showDeleteConfirm ? (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1">
               <IconButton
                 label="确认删除对话"
                 className="text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -481,10 +477,7 @@ function ConversationItem({
             </div>
           ) : (
             <IconButton
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete()
-              }}
+              onClick={onDelete}
               label="删除对话"
               className="hover:bg-muted hover:text-destructive"
             >
