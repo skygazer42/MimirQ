@@ -220,7 +220,7 @@ export default function DatasetsPage() {
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              className="gap-2 rounded-lg bg-card/60 backdrop-blur-md font-mono text-xs uppercase "
+              className="gap-2 rounded-lg bg-card/80 font-mono text-xs uppercase "
               onClick={() => load()}
               disabled={isLoading}
 	            >
@@ -241,7 +241,7 @@ export default function DatasetsPage() {
                   新建数据集
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+              <DialogContent className="max-w-xl sm:rounded-2xl">
                 <DialogHeader>
                   <DialogTitle className="text-xl font-bold text-foreground">新建数据集</DialogTitle>
                   <DialogDescription className="text-muted-foreground">为文档分组并设置访问权限</DialogDescription>
@@ -411,7 +411,7 @@ export default function DatasetsPage() {
             resetForm()
           }
         }}>
-          <DialogContent className="max-w-xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-xl sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground">编辑数据集</DialogTitle>
               <DialogDescription className="text-muted-foreground">更新名称、描述与访问权限</DialogDescription>
