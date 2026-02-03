@@ -15,6 +15,16 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Kbd } from '@/components/ui/kbd'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { SearchInput } from '@/components/ui/search-input'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { 
   Upload, 
   Share2, 
@@ -62,6 +72,8 @@ export default function GraphPage() {
   const [selectedNode, setSelectedNode] = useState<any | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [deleteNodeOpen, setDeleteNodeOpen] = useState(false)
+  const [deleteNodeTarget, setDeleteNodeTarget] = useState<{ id: string; label: string } | null>(null)
   const [dataSource, setDataSource] = useState<'live' | 'mock' | 'file'>('live')
   const [includeEntityLinks, setIncludeEntityLinks] = useState(true)
   const [minSharedEvents, setMinSharedEvents] = useState(2)
@@ -422,21 +434,33 @@ export default function GraphPage() {
 
   const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return
-    if (!confirm(`确定要删除节点 "${selectedNode.label}" 及其所有连线吗？`)) return
+    setDeleteNodeTarget({
+      id: String(selectedNode.id),
+      label: String(selectedNode.label || selectedNode.id || ''),
+    })
+    setDeleteNodeOpen(true)
+  }, [selectedNode])
 
-    const nodeId = selectedNode.id
-    setGraphData(prev => ({
-      nodes: prev.nodes.filter(n => n.id !== nodeId),
-      links: prev.links.filter(l => {
+  const confirmDeleteNode = useCallback(() => {
+    const nodeId = (deleteNodeTarget?.id || '').trim()
+    if (!nodeId) return
+
+    setGraphData((prev) => ({
+      nodes: prev.nodes.filter((n) => String(n.id) !== nodeId),
+      links: prev.links.filter((l) => {
         const s = (l.source as any).id || l.source
         const t = (l.target as any).id || l.target
-        return s !== nodeId && t !== nodeId
-      })
+        return String(s) !== nodeId && String(t) !== nodeId
+      }),
     }))
-    
-    setSelectedNode(null)
-    setIsDetailOpen(false)
-  }, [selectedNode])
+
+    if (String(selectedNode?.id) === nodeId) {
+      setSelectedNode(null)
+      setIsDetailOpen(false)
+    }
+    setDeleteNodeTarget(null)
+    setDeleteNodeOpen(false)
+  }, [deleteNodeTarget, selectedNode])
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -1339,6 +1363,27 @@ export default function GraphPage() {
             )}
           </div>
         </div>
+
+        <AlertDialog
+          open={deleteNodeOpen}
+          onOpenChange={(open) => {
+            setDeleteNodeOpen(open)
+            if (!open) setDeleteNodeTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>删除节点？</AlertDialogTitle>
+              <AlertDialogDescription>
+                你将删除节点 <span className="font-mono">{deleteNodeTarget?.label || '-'}</span> 及其所有连线。此操作不可撤销。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteNode}>删除</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </PageScaffold>
     </AppFrame>
   )
