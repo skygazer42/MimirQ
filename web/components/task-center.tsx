@@ -94,12 +94,12 @@ export function TaskCenter() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
+	      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
 	        {isOpen && (
 	            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-2xl ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
                 <div className="px-4 py-3 border-b border-border/60 bg-muted/30 flex justify-between items-center">
                     <div className="min-w-0">
-                      <h4 className="text-sm font-semibold leading-none ">任务中心</h4>
+                      <h4 className="text-sm font-semibold leading-none text-balance">任务中心</h4>
                       <div className="mt-2 flex items-center gap-2">
                         {totalActive > 0 && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
@@ -172,8 +172,8 @@ export function TaskCenter() {
                                       </div>
                                       <div className="mt-2 w-full h-1.5 bg-secondary rounded-full overflow-hidden">
                                         <div
-                                          className="h-full bg-primary transition-all duration-500"
-                                          style={{ width: `${progress}%` }}
+                                          className="h-full bg-primary origin-left transition-transform duration-200 ease-out motion-reduce:transition-none"
+                                          style={{ transform: `scaleX(${progress / 100})` }}
                                         />
                                       </div>
                                     </div>
@@ -268,14 +268,14 @@ export function TaskCenter() {
           variant="outline"
           size="icon"
           className={cn(
-            "group relative rounded-full h-12 w-12 shadow-2xl bg-background/80 backdrop-blur-md border-primary/20 hover:border-primary transition-all duration-300",
+            "group relative rounded-full size-12 shadow-strong bg-background/90 border-primary/20 hover:border-primary transition-colors transition-shadow duration-200 motion-reduce:transition-none",
             isOpen && "bg-primary/10"
           )}
           onClick={() => setIsOpen(v => !v)}
           aria-label="任务中心"
           title="任务中心"
         >
-          <Settings2 className="h-6 w-6 text-primary transition-transform duration-300 group-hover:rotate-90" />
+          <Settings2 className="h-6 w-6 text-primary transition-transform duration-200 motion-reduce:transition-none group-hover:rotate-90" />
           <span
             className={cn(
               "absolute -top-2 -right-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full text-[10px] px-1 tabular-nums",
@@ -288,8 +288,8 @@ export function TaskCenter() {
           </span>
           {totalActive > 0 && (
             <span className="absolute -top-1 -left-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+              <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-primary/60 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
           )}
         </Button>
