@@ -51,6 +51,7 @@ import {
   LayoutTemplate
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1329,23 +1330,30 @@ export function DataGovernancePanel() {
                                 <Copy className="w-4 h-4" />
                                 复制名称
                               </Button>
-                              <Button
-                                variant="outline"
-                                className="gap-2 bg-card hover:bg-red-500/10 dark:bg-red-500/20 text-foreground/80 hover:text-red-600 dark:text-red-300 border-border hover:border-red-500/30"
-                                onClick={() => {
-                                  if (confirm('确定要从文档库中移除该文件记录吗？')) {
-                                    if (selectedFileId) {
-                                      const { removeFile } = useParsedFiles.getState()
-                                      removeFile(selectedFileId)
-                                      setSelectedFileId(null)
-                                      toast.success('文件已移除')
-                                    }
-                                  }
+                              <ConfirmDialog
+                                title="移除该文件？"
+                                description="将从文档库中移除该文件记录。此操作不可恢复。"
+                                confirmLabel="移除"
+                                cancelLabel="返回"
+                                confirmVariant="destructive"
+                                confirmDisabled={!selectedFileId}
+                                onConfirm={() => {
+                                  if (!selectedFileId) return
+                                  const { removeFile } = useParsedFiles.getState()
+                                  removeFile(selectedFileId)
+                                  setSelectedFileId(null)
+                                  toast.success('文件已移除')
                                 }}
                               >
-                                <Trash2 className="w-4 h-4" />
-                                移除文件
-                              </Button>
+                                <Button
+                                  variant="outline"
+                                  className="gap-2 bg-card hover:bg-red-500/10 dark:bg-red-500/20 text-foreground/80 hover:text-red-600 dark:text-red-300 border-border hover:border-red-500/30"
+                                  disabled={!selectedFileId}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  移除文件
+                                </Button>
+                              </ConfirmDialog>
                             </div>
                           </div>
                         ) : (
