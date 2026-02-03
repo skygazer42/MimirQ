@@ -1584,7 +1584,7 @@ export default function ParsingPage() {
         />
 
         {/* 顶部标题栏 */}
-	        <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
+	        <header className="flex-shrink-0 bg-card dark:bg-background border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative">
 	          <div className="flex items-center gap-4">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-card ring-1 ring-border/60 shadow-sm dark:shadow-none">
               <Sparkles className="w-5 h-5 text-foreground/80 dark:text-muted-foreground" />
@@ -1605,7 +1605,7 @@ export default function ParsingPage() {
             {/* 左侧：文件列表面板 */}
 	            <aside
 	              className={cn(
-	                "group/sidebar relative flex flex-col flex-shrink-0 bg-card/85 dark:bg-background/60 border-r border-border/60 z-10 backdrop-blur",
+	                "group/sidebar relative flex flex-col flex-shrink-0 bg-card dark:bg-background border-r border-border/60 z-10",
 	                isSidebarCollapsed ? "w-0 border-r-0" : "w-80"
 	              )}
 	              style={{ width: isSidebarCollapsed ? 0 : 320 }}
@@ -1936,7 +1936,7 @@ export default function ParsingPage() {
             </aside>
 
             {/* 右侧：预览区域 */}
-            <div className="flex-1 flex flex-col bg-card/85 dark:bg-background/60 backdrop-blur overflow-hidden min-h-0 ring-1 ring-border/40 shadow-sm dark:shadow-none">
+            <div className="flex-1 flex flex-col bg-card dark:bg-background overflow-hidden min-h-0 ring-1 ring-border/40 shadow-sm dark:shadow-none">
 	              {!(activeFile || activeLibraryFile) ? (
 	                // 空状态
 	                <div className="flex-1 flex items-center justify-center">
@@ -1955,7 +1955,7 @@ export default function ParsingPage() {
                   {/* Library-only selection (no File object in current session) */}
                   {!activeFile && activeLibraryFile ? (
                     <div className="flex-1 flex flex-col min-h-0">
-	                      <div className="px-6 py-2 border-b border-border/60 bg-card/60 dark:bg-background/40 backdrop-blur-sm">
+	                      <div className="px-6 py-2 border-b border-border/60 bg-card/80 dark:bg-background/60">
 	                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 	                          <div className="min-w-0">
 	                            <div className="flex flex-wrap items-center gap-2">
