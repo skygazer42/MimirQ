@@ -850,17 +850,17 @@ export function DocumentViewerPanel() {
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
-    <div 
-        className={cn(
-            "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-2xl transition-all duration-300 ease-in-out",
-           // Keep width aligned with AppFrame's right padding:
-           // - md: 40vw
-           // - lg: fixed 500px
-           // - xl+: 40vw
-           isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
-        )}
-    >
+	    </Dialog>
+	    <div 
+	        className={cn(
+	            "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-strong",
+	           // Keep width aligned with AppFrame's right padding:
+	           // - md: 40vw
+	           // - lg: fixed 500px
+	           // - xl+: 40vw
+	           isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
+	        )}
+	    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30 backdrop-blur-sm">
         <div className="flex items-center gap-3 overflow-hidden">
