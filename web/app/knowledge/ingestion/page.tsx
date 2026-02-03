@@ -265,12 +265,12 @@ export default function IngestionMonitorPage() {
 	                    setDetailDocumentId(doc.id)
 	                    setDetailOpen(true)
 	                  }
-	                }}
-	                className={cn(
-	                  'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden cursor-pointer focus-ring motion-reduce:transition-none',
-	                  'bg-card border-border hover:border-primary/30 hover:shadow-strong hover:-translate-y-0.5'
-	                )}
-	              >
+		                }}
+		                className={cn(
+		                  'group w-full text-left rounded-xl border relative overflow-hidden cursor-pointer focus-ring transition-colors transition-shadow duration-200 motion-reduce:transition-none',
+		                  'bg-card border-border hover:border-primary/30 hover:shadow-strong'
+		                )}
+		              >
                 {/* Progress Background Mesh for Processing */}
                 {doc.status === 'processing' && (
                   <div className="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none bg-[url('/noise.svg')] mix-blend-multiply dark:mix-blend-overlay" />
