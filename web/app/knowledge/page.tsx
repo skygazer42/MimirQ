@@ -2253,11 +2253,11 @@ export default function KnowledgePage() {
                       </div>
                     )}
 
-                    {searchResults.map((result, index) => (
-                      <div
-                        key={`${result.document_id}-${index}`}
-                        className="group p-5 bg-card border border-border/60 rounded-xl hover:border-primary/30 hover:shadow-strong/10 transition-all duration-300 relative overflow-hidden"
-                      >
+	                    {searchResults.map((result, index) => (
+	                      <div
+	                        key={`${result.document_id}-${index}`}
+	                        className="group p-5 bg-card border border-border/60 rounded-xl hover:border-primary/30 hover:shadow-strong/10 relative overflow-hidden transition-colors transition-shadow duration-200 motion-reduce:transition-none"
+	                      >
                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/80 opacity-0 group-hover:opacity-100 transition-opacity" />
                         <div className="flex items-start gap-4">
                           <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
@@ -2649,11 +2649,11 @@ function DocumentCard({
   const fileType = getFileTypeStyle(doc)
   const TypeIcon = fileType.icon
 
-  return (
-    <Panel
-      padding="none"
-      className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-strong/20 hover:border-primary/30"
-    >
+	  return (
+	    <Panel
+	      padding="none"
+	      className="group relative rounded-2xl overflow-hidden hover:shadow-strong/20 hover:border-primary/30 transition-colors transition-shadow duration-200 motion-reduce:transition-none"
+	    >
       {/* 顶部装饰条 */}
       <div className={cn("h-1.5 w-full", statusBarClassName)} />
 
