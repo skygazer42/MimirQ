@@ -38,6 +38,7 @@ async function main() {
   const endpoints = [
     { name: "health", url: `${base}/api/v1/health` },
     { name: "ready", url: `${base}/api/v1/health/ready` },
+    { name: "meta", url: `${base}/api/v1/meta` },
   ]
 
   console.log(`[api-ping] base=${base}`)
