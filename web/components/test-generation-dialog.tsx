@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { formatApiError } from '@/lib/api-errors'
 
 interface TestGenerationDialogProps {
   open: boolean
@@ -116,7 +117,7 @@ export function TestGenerationDialog({
         }
       } catch (error) {
         console.error('加载数据失败:', error)
-        toast.error('加载数据失败')
+        toast.error(formatApiError(error, '加载数据失败'))
       } finally {
         setIsLoadingData(false)
       }
@@ -222,8 +223,9 @@ export function TestGenerationDialog({
       }
     } catch (error: any) {
       console.error('生成问题失败:', error)
-      setError(error.message || '生成失败')
-      toast.error('生成问题失败')
+      const msg = formatApiError(error, '生成问题失败')
+      setError(msg)
+      toast.error(msg)
     } finally {
       setIsGenerating(false)
     }
