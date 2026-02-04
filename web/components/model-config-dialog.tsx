@@ -154,7 +154,7 @@ export function ModelConfigDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-2xl">
+      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-strong">
         {/* 头部 */}
         <div className="bg-muted/40 border-b border-border p-6 flex items-start gap-4">
           <div className="h-11 w-11 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
