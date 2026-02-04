@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { pipelineApi } from '@/lib/api-client'
 import type { DocumentPipelineOptions, GovernanceProfileResolvedResponse, GovernanceProfileSummary } from '@/types'
 import { toast } from 'sonner'
+import { formatApiError } from '@/lib/api-errors'
 
 type Props = {
   className?: string
@@ -43,7 +44,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     } catch (e) {
       console.error('Failed to load governance profiles', e)
       setProfiles([])
-      toast.error('加载治理预设失败')
+      toast.error(formatApiError(e, '加载治理预设失败'))
     } finally {
       setLoading(false)
     }
@@ -73,6 +74,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         if (cancelled) return
         console.error('Failed to load governance profile detail', e)
         setSelectedResolved(null)
+        toast.error(formatApiError(e, '加载治理预设详情失败'))
       }
     }
     loadDetail()
@@ -111,7 +113,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
       await loadProfiles()
     } catch (e) {
       console.error('Failed to import governance profiles', e)
-      toast.error('导入失败（请检查脚本格式/正则是否安全）')
+      toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
@@ -128,7 +130,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
       downloadBlob(blob, `${safe}.governance-profile.json`)
     } catch (e) {
       console.error('Failed to export governance profile', e)
-      toast.error('导出失败')
+      toast.error(formatApiError(e, '导出失败'))
     }
   }, [selectedRef, selectedSummary])
 
@@ -158,7 +160,14 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
             </SelectContent>
           </Select>
         </div>
-        <Button variant="outline" size={compact ? 'sm' : 'default'} onClick={loadProfiles} disabled={loading}>
+        <Button
+          variant="outline"
+          size={compact ? 'sm' : 'default'}
+          onClick={loadProfiles}
+          disabled={loading}
+          aria-label="刷新治理预设"
+          title="刷新治理预设"
+        >
           <RefreshCw className="w-4 h-4" />
         </Button>
       </div>

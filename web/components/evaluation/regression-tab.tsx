@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
+import { formatApiError } from '@/lib/api-errors'
 
 const METRIC_OPTIONS = [
   { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
@@ -61,7 +62,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
       }
     } catch (error) {
       console.error('加载运行历史失败:', error)
-      toast.error('加载运行历史失败')
+      toast.error(formatApiError(error, '加载运行历史失败'))
     } finally {
       setIsLoadingRuns(false)
     }
@@ -128,7 +129,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
       setSelectedRunId(run.id)
     } catch (error) {
       console.error('运行测试失败:', error)
-      toast.error('运行测试失败')
+      toast.error(formatApiError(error, '运行测试失败'))
     } finally {
       setIsRunning(false)
     }

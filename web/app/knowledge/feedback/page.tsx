@@ -135,12 +135,12 @@ export default function FeedbackTriagePage() {
         icon={MessageSquare}
         iconColor="text-indigo-500 dark:text-indigo-400"
         description={
-          <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-            <span className="font-bold text-slate-700 dark:text-slate-200">TRIAGE_MODE</span>
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <span className="font-semibold text-foreground">TRIAGE_MODE</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 uppercase ">
               Active
             </span>
-            <span className="text-slate-300 dark:text-slate-600">|</span>
+            <span className="text-muted-foreground/50">|</span>
             用户反馈实时监控与优化分析。
           </span>
         }
@@ -174,7 +174,7 @@ export default function FeedbackTriagePage() {
                     <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
                       <stat.icon className={cn("w-5 h-5", stat.color)} />
                     </div>
-                    <div className="text-[10px] font-bold uppercase  text-slate-400 dark:text-slate-500">{stat.label}</div>
+                    <div className="text-[10px] font-bold uppercase text-muted-foreground">{stat.label}</div>
                   </div>
                   <div className="flex items-baseline gap-1">
                     <span className={cn("text-3xl font-black ", stat.color)}>{stat.value}</span>
@@ -187,19 +187,19 @@ export default function FeedbackTriagePage() {
 	        toolbar={
 	          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-card/80 border border-border shadow-soft rounded-full p-1.5 max-w-4xl mx-auto md:mx-0">
 		            <div className="relative flex-1 group pl-2">
-		              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+		              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
 		              <Input
 	                value={searchTerm}
 	                onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="搜索反馈内容..."
-                className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 h-10 rounded-full"
+                className="pl-9 bg-transparent border-0 text-foreground placeholder:text-muted-foreground h-10 rounded-full"
               />
             </div>
 
-            <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 hidden md:block mx-2" />
+            <div className="w-px h-6 bg-border hidden md:block mx-2" />
 
             <Select value={filterType} onValueChange={(v) => setFilterType(v as FeedbackTypeFilter)}>
-              <SelectTrigger className="w-full md:w-32 bg-transparent border-0 focus:ring-0 h-10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+              <SelectTrigger className="w-full md:w-32 bg-transparent border-0 h-10 text-muted-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors">
                 <SelectValue placeholder="类型" />
               </SelectTrigger>
               <SelectContent>

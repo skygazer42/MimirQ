@@ -1377,7 +1377,7 @@ export function DataGovernancePanel() {
                 <div
                   ref={panelRef}
                   className={cn(
-                  "group/panel relative flex-shrink-0 border-l border-border bg-card flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-10 shadow-xl",
+                  "group/panel relative flex-shrink-0 border-l border-border bg-card flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-10 shadow-strong",
                   isPanelCollapsed ? "w-0 border-l-0 translate-x-full" : ""
                 )}
                   style={{ width: isPanelCollapsed ? 0 : panelWidth }}

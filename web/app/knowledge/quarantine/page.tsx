@@ -343,7 +343,7 @@ export default function QuarantineQueuePage() {
 	                  value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="搜索文件名..."
-                  className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground h-10 rounded-xl"
+                  className="pl-9 bg-transparent border-0 text-foreground placeholder:text-muted-foreground h-10 rounded-xl"
                 />
               </div>
 
