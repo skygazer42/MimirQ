@@ -19,6 +19,7 @@ import { FloatingMenu } from "@/components/document-viewer/floating-menu"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
 import { OriginalPreviewMonaco } from "@/components/chunk-preview/components/workbench/preview/original-preview-monaco"
+import { formatApiError } from "@/lib/api-errors"
 import { toast } from "sonner"
 
 function escapeRegExp(value: string): string {
@@ -514,7 +515,7 @@ export function DocumentViewerPanel() {
 
     const content = (chunkEditorContent || "").trim()
     if (!content) {
-      toast.error("Chunk content is empty")
+      toast.error("切片内容不能为空")
       return
     }
 
@@ -530,7 +531,7 @@ export function DocumentViewerPanel() {
           page_number: pageNumber,
           metadata: {},
         })
-        toast.success("Chunk created")
+        toast.success("切片已创建")
 
         // If we haven't loaded all chunks, switch to full load so the new chunk can be discovered/browsed.
         if (!chunksLoaded) setLoadAllChunks(true)
@@ -549,7 +550,7 @@ export function DocumentViewerPanel() {
         const target = chunkEditorTarget
         if (!target) return
         const updated = await documentApi.updateChunk(documentId, target.id, { content, page_number: pageNumber })
-        toast.success("Chunk updated")
+        toast.success("切片已更新")
         setChunks((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
         setHighlightChunkState((prev) => (prev && prev.id === updated.id ? updated : prev))
       }
@@ -560,7 +561,7 @@ export function DocumentViewerPanel() {
       setChunkEditorOpen(false)
     } catch (err: any) {
       console.error(err)
-      toast.error("Chunk edit failed")
+      toast.error(formatApiError(err, "切片保存失败"))
     } finally {
       setChunkEditorSubmitting(false)
     }
@@ -584,7 +585,7 @@ export function DocumentViewerPanel() {
       setChunkDeleteSubmitting(chunk.id)
       try {
         await documentApi.deleteChunk(documentId, chunk.id)
-        toast.success("Chunk deleted")
+        toast.success("切片已删除")
         setChunks((prev) => prev.filter((c) => c.id !== chunk.id))
         setDoc((prev) =>
           prev
@@ -602,7 +603,7 @@ export function DocumentViewerPanel() {
         window.requestAnimationFrame(() => rowVirtualizer.measure())
       } catch (err) {
         console.error(err)
-        toast.error("Chunk delete failed")
+        toast.error(formatApiError(err, "切片删除失败"))
       } finally {
         setChunkDeleteSubmitting(null)
       }
@@ -645,7 +646,7 @@ export function DocumentViewerPanel() {
       }
     } catch (err) {
       console.error(err)
-      toast.error("Q&A generation failed")
+      toast.error(formatApiError(err, "问答生成失败"))
     } finally {
       setQaSubmitting(false)
     }
