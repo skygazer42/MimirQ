@@ -231,9 +231,9 @@ function HistoryPageContent() {
         bodyContainerClassName="h-full"
         actions={
           <Button
-            variant="outline"
+            variant="default"
             size="sm"
-            className="gap-2"
+            className="gap-2 rounded-full"
             onClick={() => router.push('/', { scroll: false })}
           >
             <Plus className="h-4 w-4" />
@@ -264,6 +264,9 @@ function HistoryPageContent() {
                 <div className="text-center py-12 px-4 text-muted-foreground text-sm">
                   <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20" />
                   <p>{searchQuery ? '没有找到匹配的对话' : '暂无对话记录'}</p>
+                  {!searchQuery ? (
+                    <p className="mt-2 text-[11px] text-muted-foreground/80">去首页发起新对话开始探索</p>
+                  ) : null}
                 </div>
               ) : (
                 groupOrder.map((group) => {
@@ -390,7 +393,15 @@ function HistoryPageContent() {
                     </>
                   }
                   className="min-h-full border-0 bg-transparent shadow-none"
-                />
+                >
+                  <Button
+                    type="button"
+                    onClick={() => router.push('/', { scroll: false })}
+                    className="rounded-full"
+                  >
+                    发起新对话
+                  </Button>
+                </EmptyState>
               </div>
             )}
           </div>
