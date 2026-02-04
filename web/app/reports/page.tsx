@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -488,23 +489,24 @@ export default function ReportsCenterPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">目录分布（Top）</div>
-                      {folderTree ? (
-                        <div className="text-xs text-muted-foreground">
-                          with source_path: {folderTree.total_with_source_path}/{folderTree.total_documents}
-                        </div>
-                      ) : null}
-                    </div>
-                    <Input
-                      value={folderQuery}
-                      onChange={(e) => setFolderQuery(e.target.value)}
-                      placeholder="搜索目录…"
-                      className="h-8 w-56 text-xs"
-                      disabled={!folderTree}
-                    />
-                  </div>
+	                  <div className="flex items-start justify-between gap-3 flex-wrap">
+	                    <div>
+	                      <div className="text-sm font-semibold text-foreground">目录分布（Top）</div>
+	                      {folderTree ? (
+	                        <div className="text-xs text-muted-foreground">
+	                          with source_path: {folderTree.total_with_source_path}/{folderTree.total_documents}
+	                        </div>
+	                      ) : null}
+	                    </div>
+	                    <SearchInput
+	                      value={folderQuery}
+	                      onValueChange={setFolderQuery}
+	                      placeholder="搜索目录…"
+	                      containerClassName="w-56"
+	                      inputClassName="h-8 text-xs"
+	                      disabled={!folderTree}
+	                    />
+	                  </div>
 
                   {!folderTree ? (
                     <div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>
@@ -560,23 +562,24 @@ export default function ReportsCenterPage() {
 
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">分类分布（Top）</div>
-                      <div className="text-xs text-muted-foreground">按分类统计「数据集数量」</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={categoryQuery}
-                        onChange={(e) => setCategoryQuery(e.target.value)}
-                        placeholder="搜索分类…"
-                        className="h-8 w-44 text-xs"
-                        disabled={isLoadingCategories}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-muted-foreground"
-                        onClick={() => void loadCategories()}
+	                    <div>
+	                      <div className="text-sm font-semibold text-foreground">分类分布（Top）</div>
+	                      <div className="text-xs text-muted-foreground">按分类统计「数据集数量」</div>
+	                    </div>
+	                    <div className="flex items-center gap-2">
+	                      <SearchInput
+	                        value={categoryQuery}
+	                        onValueChange={setCategoryQuery}
+	                        placeholder="搜索分类…"
+	                        containerClassName="w-44"
+	                        inputClassName="h-8 text-xs"
+	                        disabled={isLoadingCategories}
+	                      />
+	                      <Button
+	                        variant="ghost"
+	                        size="sm"
+	                        className="h-8 px-2 text-muted-foreground"
+	                        onClick={() => void loadCategories()}
                         disabled={isLoadingCategories}
                         aria-label="刷新分类"
                       >

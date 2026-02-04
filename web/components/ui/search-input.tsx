@@ -44,7 +44,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
 
   return (
     <div className={cn("relative", containerClassName)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
       <Input
         ref={setRefs}
         type="search"
@@ -58,14 +58,15 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
         <IconButton
           label="清除搜索"
           type="button"
-          className="absolute right-1.5 top-1/2 h-8 w-8 -translate-y-1/2"
+          variant="ghost"
+          className="absolute right-1.5 top-1/2 size-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           onClick={() => {
             onValueChange("")
             onClear?.()
             inputRef.current?.focus()
           }}
         >
-          <X className="h-4 w-4" />
+          <X className="size-4" />
         </IconButton>
       ) : null}
     </div>

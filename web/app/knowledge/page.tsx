@@ -52,6 +52,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Panel } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
@@ -1796,25 +1797,13 @@ export default function KnowledgePage() {
                   {/* Filters */}
                   <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
                     <div className="flex w-full lg:max-w-2xl flex-col sm:flex-row gap-3">
-                      <div className="relative w-full">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <input
-                          value={docFilter}
-                          onChange={(e) => setDocFilter(e.target.value)}
-                          placeholder="搜索文档名称…"
-                          className="w-full h-10 pl-9 pr-10 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40 focus-ring"
-                        />
-                        {docFilter.trim() ? (
-                          <button
-                            type="button"
-                            onClick={() => setDocFilter('')}
-                            aria-label="清除搜索"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-muted/40 focus-ring"
-                          >
-                            <X className="h-4 w-4 text-muted-foreground" />
-                          </button>
-                        ) : null}
-                      </div>
+	                      <SearchInput
+	                        value={docFilter}
+	                        onValueChange={setDocFilter}
+	                        placeholder="搜索文档名称…"
+	                        containerClassName="w-full"
+	                        inputClassName="h-10 rounded-xl border-border/60 bg-background/60 backdrop-blur-sm placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40"
+	                      />
 
                       <Select
                         value={datasetScope}

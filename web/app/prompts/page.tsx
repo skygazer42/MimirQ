@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -35,7 +36,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api-client'
-import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter, Wand2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { AppFrame } from '@/components/app-frame'
@@ -278,21 +279,18 @@ export default function PromptsPage() {
           <KgExtractPromptSettings templates={templates} />
         </div>
 
-          {/* Filters & Search */}
-          <div className="mb-6 flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="搜索模板名称、描述、内容或标签..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px]">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="筛选分类" />
+	          {/* Filters & Search */}
+	          <div className="mb-6 flex flex-col sm:flex-row gap-4">
+	            <SearchInput
+	              value={searchQuery}
+	              onValueChange={setSearchQuery}
+	              placeholder="搜索模板名称、描述、内容或标签..."
+	              containerClassName="flex-1"
+	            />
+	            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+	              <SelectTrigger className="w-[180px]">
+	                <Filter className="w-4 h-4 mr-2" />
+	                <SelectValue placeholder="筛选分类" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">所有分类</SelectItem>

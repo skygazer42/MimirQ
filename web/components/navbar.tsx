@@ -297,13 +297,19 @@ export function Navbar({
                         onClick={closeSidebarOnMobile}
                         aria-current={isActive ? 'page' : undefined}
                         className={cn(
-                          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
+                          'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
+                          "before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-transparent",
                           isActive
-                            ? 'bg-muted text-foreground font-medium'
+                            ? 'bg-muted text-foreground font-medium before:bg-primary/80'
                             : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                         )}
                       >
-                        <Icon className={cn("h-4 w-4 transition-colors", isActive ? "text-foreground" : "text-muted-foreground/70 group-hover:text-foreground")} />
+                        <Icon
+                          className={cn(
+                            "h-4 w-4 transition-colors",
+                            isActive ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"
+                          )}
+                        />
                         <span className="text-sm">{item.label}</span>
                       </Link>
                     </div>
@@ -477,10 +483,10 @@ export function Navbar({
         aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         className={cn(
-          'fixed bottom-4 z-50 size-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-colors duration-200 ease-out sm:size-10',
+          'fixed bottom-4 z-50 size-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-colors duration-200 ease-out sm:size-10 supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)]',
           isSidebarOpen
             ? 'left-[260px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto'
-            : 'left-4 opacity-100'
+            : 'left-4 opacity-100 supports-[padding:env(safe-area-inset-left)]:left-[calc(env(safe-area-inset-left)+1rem)]'
         )}
         onClick={() => setSidebarOpen(!isSidebarOpen)}
       >
