@@ -329,7 +329,7 @@ export default function DatasetsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0 duration-300">
+                    <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-opacity transition-transform duration-200 motion-reduce:transition-none">
                       <Button
                         variant="outline"
                         size="sm"
