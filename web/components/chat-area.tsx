@@ -391,7 +391,7 @@ export function ChatArea({
   }, [handleSend])
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-background relative transition-colors duration-300">
+    <div className="flex-1 min-h-0 flex flex-col bg-background relative transition-colors duration-200 motion-reduce:transition-none">
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
@@ -469,7 +469,7 @@ export function ChatArea({
       <div className="px-4 pt-2 z-10 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
         <div className="max-w-3xl mx-auto space-y-4">
 
-          <div className="flex items-center justify-between px-2 animate-fade-in opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
+          <div className="flex items-center justify-between px-2 animate-fade-in opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 motion-reduce:transition-none">
             <div className="flex items-center gap-2">
               {promptTemplates.length > 0 && (
                 <Popover>
@@ -515,7 +515,7 @@ export function ChatArea({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium text-sm">检索设置</h4>
-                    <span className="text-[10px] text-muted-foreground">Adjust retrieval parameters</span>
+                    <span className="text-[10px] text-muted-foreground">调整检索参数</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

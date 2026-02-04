@@ -96,7 +96,7 @@ export function TaskCenter() {
   return (
 	      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
 	        {isOpen && (
-	            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-2xl ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
+	            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-strong ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
                 <div className="px-4 py-3 border-b border-border/60 bg-muted/30 flex justify-between items-center">
                     <div className="min-w-0">
                       <h4 className="text-sm font-semibold leading-none text-balance">任务中心</h4>

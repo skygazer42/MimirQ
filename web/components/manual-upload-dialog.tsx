@@ -354,7 +354,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
             </div>
 
             {/* 2. 切片策略 */}
-            <div className={cn("space-y-4 transition-opacity duration-300", !preview && "opacity-50 pointer-events-none")}>
+            <div className={cn("space-y-4 transition-opacity duration-200 motion-reduce:transition-none", !preview && "opacity-50 pointer-events-none")}>
               <label className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs">2</span>
                 切片策略
@@ -464,7 +464,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
               </div>
             </div>
 
-            <div className={cn("space-y-3 transition-opacity duration-300", !preview && "opacity-50 pointer-events-none")}>
+            <div className={cn("space-y-3 transition-opacity duration-200 motion-reduce:transition-none", !preview && "opacity-50 pointer-events-none")}>
               <label className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs">3</span>
                 入库管线

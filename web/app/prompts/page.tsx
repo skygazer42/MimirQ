@@ -41,6 +41,7 @@ import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { cn } from '@/lib/utils'
+import { formatApiError } from '@/lib/api-errors'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -80,7 +81,7 @@ export default function PromptsPage() {
       const response = await promptTemplateApi.list({ limit: 100 })
       setTemplates(response.items)
     } catch (error) {
-      toast.error('加载提示词模板失败')
+      toast.error(formatApiError(error, '加载提示词模板失败'))
       console.error(error)
     } finally {
       setLoading(false)
@@ -152,7 +153,7 @@ export default function PromptsPage() {
       setSelectedIds(new Set())
       loadTemplates()
     } catch (error) {
-      toast.error('批量删除失败')
+      toast.error(formatApiError(error, '批量删除失败'))
       console.error(error)
     }
   }
@@ -170,7 +171,7 @@ export default function PromptsPage() {
       setSelectedIds(new Set())
       loadTemplates()
     } catch (error) {
-      toast.error('批量操作失败')
+      toast.error(formatApiError(error, '批量操作失败'))
       console.error(error)
     }
   }
@@ -220,7 +221,7 @@ export default function PromptsPage() {
       setDialogOpen(false)
       loadTemplates()
     } catch (error) {
-      toast.error('保存失败')
+      toast.error(formatApiError(error, '保存失败'))
       console.error(error)
     }
   }
@@ -231,7 +232,7 @@ export default function PromptsPage() {
       toast.success('模板已删除')
       loadTemplates()
     } catch (error) {
-      toast.error('删除失败')
+      toast.error(formatApiError(error, '删除失败'))
       console.error(error)
     }
   }
@@ -242,7 +243,7 @@ export default function PromptsPage() {
       toast.success('模板已复制')
       loadTemplates()
     } catch (error) {
-      toast.error('复制失败')
+      toast.error(formatApiError(error, '复制失败'))
       console.error(error)
     }
   }
@@ -253,7 +254,7 @@ export default function PromptsPage() {
       toast.success(template.is_active ? '模板已停用' : '模板已启用')
       loadTemplates()
     } catch (error) {
-      toast.error('更新失败')
+      toast.error(formatApiError(error, '更新失败'))
       console.error(error)
     }
   }

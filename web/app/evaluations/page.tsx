@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/ui/status-badge'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { evaluationApi, chatApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import type { Conversation } from '@/types'
 import {
   BarChart3,
@@ -185,7 +186,7 @@ function EvaluationsPageContent() {
       setSelectedRunId(run.id)
     } catch (e) {
       console.error('Failed to start evaluation', e)
-      toast.error('启动评测失败，请检查后端日志/配置。')
+      toast.error(formatApiError(e, '启动评测失败'))
     } finally {
       setIsStarting(false)
     }
