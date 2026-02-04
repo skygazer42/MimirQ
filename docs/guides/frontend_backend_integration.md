@@ -66,7 +66,34 @@ pnpm run verify
 
 包含：lint + ui-check + typecheck + tests + api-check。
 
-### 5.2 前后端路由契约检查（静态）
+### 5.2 最快可达性检查：`api-ping`（推荐）
+
+当你怀疑「前端没打到正确的后端 / 后端没起来 / 反向代理返回了 HTML」时，优先跑这个：
+
+```bash
+# 从“前端视角”检查（使用 NEXT_PUBLIC_API_URL 解析逻辑）
+make web-api-ping
+
+# 等价命令
+cd web
+pnpm run api-ping
+```
+
+它会检查：
+
+- `/api/v1/health`
+- `/api/v1/health/ready`
+- `/api/v1/meta`
+
+并在输出中尽量携带 `request_id`，方便你去后端日志/Trace 里定位请求。
+
+如果你想从“后端视角”直接 ping（不走前端 URL 逻辑），也可以：
+
+```bash
+make api-ping
+```
+
+### 5.3 前后端路由契约检查（静态）
 
 从仓库根目录：
 
@@ -77,7 +104,7 @@ make api-check
 - `api-contract`: web 中实际调用的路由必须在后端存在
 - `api-coverage`: 后端公开路由必须在 `web/lib/api-client.ts` 中有对应封装
 
-### 5.3 OpenAPI 导出 + 前端类型同步
+### 5.4 OpenAPI 导出 + 前端类型同步
 
 ```bash
 make openapi-check
@@ -97,4 +124,3 @@ make openapi-check
 - Frontend Env（API_BASE_URL 等）
 
 用于快速判断“前端是否在打到正确的后端”。
-
