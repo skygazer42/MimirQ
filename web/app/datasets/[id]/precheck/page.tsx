@@ -1066,7 +1066,7 @@ export default function DatasetPrecheckPage() {
             }
           }}
         >
-          <DialogContent className="max-w-4xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-4xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                 {selectedFinding?.label || '清单'}
@@ -1161,7 +1161,7 @@ export default function DatasetPrecheckPage() {
             if (!open) setFileDetail(null)
           }}
         >
-          <DialogContent className="max-w-4xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-4xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground">文件详情</DialogTitle>
               <DialogDescription className="text-muted-foreground">{fileDetail?.name || ''}</DialogDescription>
@@ -1223,7 +1223,7 @@ export default function DatasetPrecheckPage() {
         </Dialog>
 
         <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
-          <DialogContent className="max-w-3xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground">预检扫描 · 高级配置</DialogTitle>
               <DialogDescription className="text-muted-foreground">
@@ -1308,7 +1308,7 @@ export default function DatasetPrecheckPage() {
             }
           }}
         >
-          <DialogContent className="max-w-4xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-4xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                 预检 → 入库策略（建议）
