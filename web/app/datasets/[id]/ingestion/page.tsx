@@ -1120,7 +1120,7 @@ export default function DatasetIngestionPolicyPage() {
         </div>
 
         <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-          <DialogContent className="max-w-3xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground">{editingIndex == null ? '新增规则' : '编辑规则'}</DialogTitle>
               <DialogDescription className="text-muted-foreground">
@@ -1277,7 +1277,7 @@ export default function DatasetIngestionPolicyPage() {
         </Dialog>
 
         <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
-          <DialogContent className="max-w-3xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
@@ -1331,7 +1331,7 @@ export default function DatasetIngestionPolicyPage() {
         </Dialog>
 
         <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
-          <DialogContent className="max-w-3xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+          <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <History className="w-4 h-4 text-primary" />
