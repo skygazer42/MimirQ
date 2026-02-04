@@ -810,7 +810,7 @@ export default function KnowledgePage() {
   const handleWebCrawlImport = useCallback(async () => {
     const startUrls = parseWebCrawlStartUrls(webCrawlStartUrls)
     if (!startUrls.length) {
-      toast.error('Please input at least 1 http(s) seed URL (one per line)')
+      toast.error('请输入至少 1 个 http(s) 种子 URL（每行一个）')
       return
     }
 
@@ -819,14 +819,14 @@ export default function KnowledgePage() {
     if (authType === 'cookie') {
       const cookie = webCrawlAuthCookie.trim()
       if (!cookie) {
-        toast.error('Please input Cookie')
+        toast.error('请输入 Cookie')
         return
       }
       auth = { type: 'cookie', cookie }
     } else if (authType === 'bearer') {
       const token = webCrawlAuthToken.trim()
       if (!token) {
-        toast.error('Please input Bearer token')
+        toast.error('请输入 Bearer token')
         return
       }
       auth = { type: 'bearer', token }
@@ -834,7 +834,7 @@ export default function KnowledgePage() {
       const username = webCrawlAuthUsername.trim()
       const password = webCrawlAuthPassword.trim()
       if (!username || !password) {
-        toast.error('Please input Basic username/password')
+        toast.error('请输入 Basic 用户名/密码')
         return
       }
       auth = { type: 'basic', username, password }
@@ -902,7 +902,7 @@ export default function KnowledgePage() {
       void loadConnectorRuns({ datasetId: selectedDatasetId })
       void loadDocuments()
     } catch (err: any) {
-      toast.error(formatApiError(err, 'Failed to create web crawl run'))
+      toast.error(formatApiError(err, '创建网页爬取任务失败'))
     } finally {
       setWebCrawlSubmitting(false)
     }
