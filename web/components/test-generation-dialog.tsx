@@ -22,8 +22,8 @@ import type {
 } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
-  X,
   Sparkles,
   Loader2,
   FileText,
@@ -125,13 +125,20 @@ export function TestGenerationDialog({
     loadData()
   }, [open, sourceType, initialSourceType, initialDatasetId, initialDocumentIds])
 
-  // 重置状态
-  const handleClose = () => {
+  const resetState = () => {
     setStep('select_source')
     setSelectedDocumentIds(new Set())
     setSelectedConversationIds(new Set())
     setGeneratedQuestions([])
     setError('')
+  }
+
+  useEffect(() => {
+    if (!open) resetState()
+  }, [open])
+
+  // 关闭对话框
+  const handleClose = () => {
     onClose()
   }
 
@@ -236,33 +243,28 @@ export function TestGenerationDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) handleClose()
+      }}
+    >
+      <DialogContent className="flex flex-col max-w-4xl w-full max-h-[90vh] p-0 gap-0 bg-card overflow-hidden sm:rounded-2xl">
         {/* 头部 */}
-	        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
-	          <div className="flex items-center gap-3">
-	            <div className="p-2 rounded-lg bg-primary/10 text-primary border border-border/60">
-	              <Sparkles className="w-5 h-5" />
-	            </div>
-	            <div>
-	              <h2 className="text-lg font-semibold text-foreground">
-	                AI 生成测试问题
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary border border-border/60">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <DialogTitle className="text-lg font-semibold text-foreground">AI 生成测试问题</DialogTitle>
+              <p className="text-xs text-muted-foreground">
                 {step === 'select_source' && '选择生成来源'}
                 {step === 'configure' && '配置生成参数'}
                 {step === 'preview' && '预览生成结果'}
               </p>
             </div>
           </div>
-	          <button
-	            type="button"
-	            onClick={handleClose}
-	            aria-label="关闭"
-	            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-	          >
-	            <X className="w-5 h-5" />
-	          </button>
         </div>
 
         {/* 步骤 1: 选择来源 */}
@@ -273,38 +275,38 @@ export function TestGenerationDialog({
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => setSourceType('documents')}
-                  className={cn(
-                    'p-4 rounded-xl border-2 transition text-left',
-                    sourceType === 'documents'
-                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
-                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                  )}
-                >
+	                  className={cn(
+	                    'p-4 rounded-xl border-2 transition text-left',
+	                    sourceType === 'documents'
+	                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+	                      : 'border-border/60 hover:border-border'
+	                  )}
+	                >
                   <FileText className="w-6 h-6 mb-2 text-sky-600" />
                   <div className="font-medium text-foreground mb-1">
                     从文档生成
                   </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-400">
-                    基于知识库文档内容生成多样化测试问题
-                  </div>
+	                  <div className="text-xs text-muted-foreground">
+	                    基于知识库文档内容生成多样化测试问题
+	                  </div>
                 </button>
 
                 <button
                   onClick={() => setSourceType('conversations')}
-                  className={cn(
-                    'p-4 rounded-xl border-2 transition text-left',
-                    sourceType === 'conversations'
-                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
-                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                  )}
-                >
+	                  className={cn(
+	                    'p-4 rounded-xl border-2 transition text-left',
+	                    sourceType === 'conversations'
+	                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+	                      : 'border-border/60 hover:border-border'
+	                  )}
+	                >
                   <MessageSquare className="w-6 h-6 mb-2 text-purple-600" />
                   <div className="font-medium text-foreground mb-1">
                     从对话生成
                   </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-400">
-                    从真实对话历史中提炼高质量问题
-                  </div>
+	                  <div className="text-xs text-muted-foreground">
+	                    从真实对话历史中提炼高质量问题
+	                  </div>
                 </button>
               </div>
 
@@ -314,7 +316,7 @@ export function TestGenerationDialog({
                   {/* 知识库选择 */}
                   {datasets.length > 0 && (
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      <label className="block text-sm font-medium text-foreground/80 mb-2">
                         选择知识库（可选）
                       </label>
                       <select
@@ -334,23 +336,23 @@ export function TestGenerationDialog({
 
                   {/* 文档列表 */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-foreground/80 mb-2">
                       选择文档
                     </label>
-                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
+                    <div className="border border-border/60 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
                       {isLoadingData ? (
                         <div className="flex items-center justify-center py-8">
-                          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-slate-400" />
+                          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
                         </div>
                       ) : documents.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500 text-sm">
+                        <div className="text-center py-8 text-muted-foreground text-sm">
                           暂无可用文档
                         </div>
                       ) : (
                         documents.map((doc) => (
                           <label
                             key={doc.id}
-                            className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-100 dark:border-slate-800 last:border-0"
+                            className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0"
                           >
                             <input
                               type="checkbox"
@@ -358,11 +360,11 @@ export function TestGenerationDialog({
                               onChange={() => toggleDocument(doc.id)}
                               className="w-4 h-4 rounded"
                             />
-                            <FileText className="w-4 h-4 text-slate-400" />
-                            <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">
+                            <FileText className="w-4 h-4 text-muted-foreground" />
+                            <span className="flex-1 text-sm text-foreground truncate">
                               {doc.filename}
                             </span>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-muted-foreground">
                               {doc.chunk_count} 切片
                             </span>
                           </label>
@@ -376,23 +378,23 @@ export function TestGenerationDialog({
               {/* 对话选择 */}
               {sourceType === 'conversations' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground/80 mb-2">
                     选择对话
                   </label>
-                  <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
+                  <div className="border border-border/60 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
                     {isLoadingData ? (
                       <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-slate-400" />
+                        <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
                       </div>
                     ) : conversations.length === 0 ? (
-                      <div className="text-center py-8 text-slate-500 text-sm">
+                      <div className="text-center py-8 text-muted-foreground text-sm">
                         暂无对话记录
                       </div>
                     ) : (
                       conversations.map((conv) => (
                         <label
                           key={conv.id}
-                          className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-100 dark:border-slate-800 last:border-0"
+                          className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0"
                         >
                           <input
                             type="checkbox"
@@ -400,11 +402,11 @@ export function TestGenerationDialog({
                             onChange={() => toggleConversation(conv.id)}
                             className="w-4 h-4 rounded"
                           />
-                          <MessageSquare className="w-4 h-4 text-slate-400" />
-                          <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">
+                          <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                          <span className="flex-1 text-sm text-foreground truncate">
                             {conv.title || `对话 ${conv.id.slice(0, 8)}`}
                           </span>
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-muted-foreground">
                             {conv.message_count} 消息
                           </span>
                         </label>
@@ -423,7 +425,7 @@ export function TestGenerationDialog({
             <div className="space-y-6">
               {/* 生成数量 */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-foreground/80 mb-2">
                   生成数量: {numQuestions}
                 </label>
                 <input
@@ -434,7 +436,7 @@ export function TestGenerationDialog({
                   onChange={(e) => setNumQuestions(Number(e.target.value))}
                   className="w-full"
                 />
-                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>1</span>
                   <span>50</span>
                 </div>
@@ -443,7 +445,7 @@ export function TestGenerationDialog({
               {/* 问题类型（仅文档） */}
               {sourceType === 'documents' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground/80 mb-2">
                     问题类型
                   </label>
                   <div className="flex flex-wrap gap-2">
@@ -459,7 +461,7 @@ export function TestGenerationDialog({
                           'px-4 py-2 rounded-lg border-2 transition text-sm',
                           questionTypes.includes(type.key)
                             ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300'
-                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                            : 'border-border/60 text-muted-foreground hover:border-border'
                         )}
                       >
                         <div className="font-medium">{type.label}</div>
@@ -473,7 +475,7 @@ export function TestGenerationDialog({
               {/* 质量阈值（仅对话） */}
               {sourceType === 'conversations' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground/80 mb-2">
                     质量阈值: {qualityThreshold.toFixed(1)}
                   </label>
                   <input
@@ -485,7 +487,7 @@ export function TestGenerationDialog({
                     onChange={(e) => setQualityThreshold(Number(e.target.value))}
                     className="w-full"
                   />
-                  <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
                     <span>宽松 (0.0)</span>
                     <span>严格 (1.0)</span>
                   </div>
@@ -495,10 +497,10 @@ export function TestGenerationDialog({
               {/* 自动保存 */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-muted/40">
                 <div>
-                  <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <div className="text-sm font-medium text-foreground/80">
                     自动保存为测试用例
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <div className="text-xs text-muted-foreground mt-1">
                     生成后自动保存到用例库，可直接运行测试
                   </div>
                 </div>
@@ -521,12 +523,12 @@ export function TestGenerationDialog({
           <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
             <div className="space-y-4">
               {generatedQuestions.length === 0 ? (
-                <div className="text-center py-8 text-slate-500">
+                <div className="text-center py-8 text-muted-foreground">
                   没有生成问题
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="w-4 h-4 text-green-600" />
                     成功生成 {generatedQuestions.length} 个问题
                     {autoSave && '（已自动保存）'}
@@ -541,11 +543,11 @@ export function TestGenerationDialog({
 	                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-1">
+                            <div className="text-sm font-medium text-foreground mb-1">
                               {index + 1}. {q.question}
                             </div>
                             {q.expected_answer && (
-                              <div className="text-xs text-slate-600 dark:text-slate-400 mt-2">
+                              <div className="text-xs text-muted-foreground mt-2">
                                 <span className="font-medium">参考答案:</span> {q.expected_answer}
                               </div>
                             )}
@@ -556,13 +558,13 @@ export function TestGenerationDialog({
                             )}
 	                          </div>
 	                          <button
-	                            type="button"
-	                            onClick={() => handleDeleteQuestion(index)}
-	                            aria-label={`删除问题 ${index + 1}`}
-	                            className="text-slate-400 hover:text-red-600 transition"
-	                          >
-	                            <Trash2 className="w-4 h-4" />
-	                          </button>
+                            type="button"
+                            onClick={() => handleDeleteQuestion(index)}
+                            aria-label={`删除问题 ${index + 1}`}
+                            className="rounded-md p-1 text-muted-foreground hover:text-destructive transition-colors duration-150 motion-reduce:transition-none focus-ring"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -574,8 +576,8 @@ export function TestGenerationDialog({
         )}
 
         {/* 底部操作栏 */}
-        <div className="flex items-center justify-between p-6 border-t border-slate-200 dark:border-slate-800">
-          <div className="text-xs text-slate-500">
+        <div className="flex items-center justify-between p-6 border-t border-border">
+          <div className="text-xs text-muted-foreground">
             {step === 'select_source' && '第 1 步，共 3 步'}
             {step === 'configure' && '第 2 步，共 3 步'}
             {step === 'preview' && '第 3 步，共 3 步'}
@@ -630,7 +632,7 @@ export function TestGenerationDialog({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
