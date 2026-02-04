@@ -683,8 +683,8 @@ export function ChatArea({
           </div>
 
 	          <div className={cn(
-	            "relative group rounded-[2rem] glass border-border/60 transition-colors duration-200 motion-reduce:transition-none",
-	            "shadow-2xl shadow-primary/5 hover:shadow-primary/10",
+	            "relative group rounded-[2rem] glass border-border/60 transition-colors transition-shadow duration-200 motion-reduce:transition-none",
+	            "shadow-soft hover:shadow-strong",
 	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
 	          )}>
               <Label htmlFor="chat-composer" className="sr-only">

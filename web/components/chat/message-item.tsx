@@ -20,6 +20,7 @@ import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { feedbackApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 
 let BACKEND_ORIGIN = ''
@@ -235,7 +236,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       await feedbackApi.create({ message_id: message.id, rating: nextRating })
       toast.success('已提交反馈')
     } catch (err: any) {
-      toast.error(err?.message || '反馈提交失败')
+      toast.error(formatApiError(err, '反馈提交失败'))
     } finally {
       setRatingSending(false)
     }
@@ -244,7 +245,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	  return (
 	    <div
 	      className={cn(
-	        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none',
+	        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none',
 	        isUser ? 'justify-end' : 'justify-start'
 	      )}
 	    >
@@ -258,7 +259,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	        className={cn(
 	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-shadow duration-200 motion-reduce:transition-none',
 	          isUser
-	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-2xl shadow-primary/25 border border-primary/20 backdrop-blur-sm'
+	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-strong border border-primary/20 backdrop-blur-sm'
 	            : 'glass-card text-foreground rounded-2xl rounded-tl-sm hover:shadow-lg hover:shadow-primary/10'
 	        )}
 	      >

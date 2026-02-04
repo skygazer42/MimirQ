@@ -175,7 +175,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
+        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-2xl shadow-strong overflow-hidden">
           {(loading || error) && (
             <div
               className={cn(

@@ -223,14 +223,14 @@ export default function IngestionMonitorPage() {
 	                value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜索任务ID或文件名..."
-                className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground h-10 rounded-full"
+                className="pl-9 bg-transparent border-0 text-foreground placeholder:text-muted-foreground h-10 rounded-full"
               />
             </div>
 
             <div className="w-px h-6 bg-border hidden md:block mx-2" />
 
             <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-              <SelectTrigger className="w-full md:w-48 bg-transparent border-0 focus:ring-0 h-10 text-muted-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors">
+              <SelectTrigger className="w-full md:w-48 bg-transparent border-0 h-10 text-muted-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors">
                 <SelectValue placeholder="筛选状态" />
               </SelectTrigger>
               <SelectContent>

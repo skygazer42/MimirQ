@@ -1754,7 +1754,7 @@ export default function KnowledgePage() {
         >
 	          {/* 文档列表 */}
 	          {activeTab === 'documents' && (
-	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
+	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
               {isLoading && documents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                   <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3" />
@@ -2196,7 +2196,7 @@ export default function KnowledgePage() {
 
 		          {/* 检索测试 */}
 		          {activeTab === 'retrieval' && (
-		            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
+		            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
 	              <Panel padding="none" className="rounded-2xl p-8 text-center relative overflow-hidden">
 	                <div className="mb-8">
 	                  <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-soft">
@@ -2303,7 +2303,7 @@ export default function KnowledgePage() {
 
 	          {/* 设置 */}
 	          {activeTab === 'settings' && (
-	            <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
+	            <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
               <Panel padding="none" className="rounded-xl overflow-hidden">
                 <div className="p-6 border-b border-border/60 bg-muted/20">
                   <h3 className="text-lg font-bold text-foreground">知识库参数配置</h3>
