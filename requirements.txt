@@ -3,85 +3,85 @@
 # It causes pip to hit download.pytorch.org for *every* dependency which is slow/flaky in some environments.
 # CPU wheels for torch/torchvision are available on PyPI for our supported Python versions.
 
-torch==2.4.1
-torchvision==0.19.1
-sentence-transformers==5.1.2
+torch==2.10.0
+torchvision==0.25.0
+sentence-transformers==5.2.2
 
-fastapi==0.128.0
+fastapi==0.128.1
 uvicorn[standard]==0.40.0
-python-multipart==0.0.21
+python-multipart==0.0.22
 
 # gRPC (pre-built wheels for Windows)
-grpcio==1.67.1
-grpcio-tools==1.67.1
+grpcio==1.76.0
+grpcio-tools==1.76.0
 
 # Database
-sqlalchemy==2.0.25
+sqlalchemy==2.0.46
 asyncpg==0.31.0
-alembic==1.13.1
-psycopg2-binary==2.9.9
+alembic==1.18.3
+psycopg2-binary==2.9.11
 
 # LangChain Ecosystem (latest major versions)
-langchain==1.2.1
-langchain-core==1.2.6
+langchain==1.2.8
+langchain-core==1.2.8
 langchain-community==0.4.1
-langchain-openai==1.1.6
+langchain-openai==1.1.7
 langchain-anthropic==1.3.1
 langchain-text-splitters==1.1.0
 # NOTE: USTC mirror / PyPI currently provides up to 1.0.5 (1.0.15 not published).
-langgraph==1.0.5
+langgraph==1.0.7
 # FAISS has no official Windows wheels; it's only used when VECTOR_BACKEND=faiss.
-faiss-cpu==1.8.0; platform_system != "Windows"
-chromadb==1.4.0
+faiss-cpu==1.13.2; platform_system != "Windows"
+chromadb==1.4.1
 magic-pdf==1.3.12
 # Vector Database
-pymilvus==2.4.10
+pymilvus==2.6.8
 
 # Object Storage
-minio==7.2.10
+minio==7.2.20
 
 
 # Document Parsing
-PyMuPDF==1.24.14
-unstructured==0.14.10
+PyMuPDF==1.26.7
+unstructured==0.18.31
 python-magic==0.4.27
-markdown==3.5.2
+markdown==3.10.1
 markitdown==0.1.4
-numpy==1.26.4
-pdfplumber==0.11.7
-pypdf==6.5.0
-pandas==2.2.2
+numpy==2.4.2
+pdfplumber==0.11.9
+pypdf==6.6.2
+pandas==3.0.0
 openpyxl==3.1.5
-python-docx==1.1.2
+python-docx==1.2.0
 python-pptx==1.0.2
 chardet==5.2.0
-tiktoken==0.7.0
-trio==0.26.0
-xgboost==2.1.0
-huggingface-hub==0.34.6
-Pillow==10.4.0
-opencv-python-headless==4.10.0.84
-onnxruntime==1.19.2
+tiktoken==0.12.0
+trio==0.32.0
+xgboost==3.1.3
+huggingface-hub==1.4.0
+Pillow==12.1.0
+opencv-python-headless==4.13.0.90
+onnxruntime==1.23.2
 rapidocr-onnxruntime==1.4.4
-pyclipper==1.3.0.post5
-shapely==2.0.3
-tqdm==4.67.1
-beartype==0.18.5
+pyclipper==1.4.0
+shapely==2.1.2
+tqdm==4.67.3
+beartype==0.22.9
 hanziconv==0.3.2
-nltk==3.9.1
-docling==2.55.0
-docling-ibm-models==3.10.3
+nltk==3.9.2
+docling==2.72.0
+docling-ibm-models==3.11.0
 accelerate==1.12.0
-tencentcloud-sdk-python==3.0.1274
-html-text==0.6.2
-readability-lxml==0.8.1
+tencentcloud-sdk-python==3.1.43
+html-text==0.7.1
+readability-lxml==0.8.4.1
 
 # BM25 and Text Processing
 rank-bm25==0.2.2
 jieba==0.42.1
-hanlp==2.1.0
+hanlp==2.1.3
 word2number==1.1
-cn2an==0.5.22
+cn2an==0.5.23
 roman-numbers==1.0.2
 
 # Authentication
@@ -90,16 +90,16 @@ passlib[bcrypt]==1.7.4
 
 # Utilities
 # LangChain 1.x
-pydantic==2.10.5
-pydantic-settings==2.10.1
-email-validator==2.2.0
+pydantic==2.12.5
+pydantic-settings==2.12.0
+email-validator==2.3.0
 backports.tarfile==1.2.0
 strenum==0.4.15
-python-dotenv==1.0.1
+python-dotenv==1.2.1
 requests==2.32.5
-aiofiles==23.2.1
-prometheus-client==0.23.1
-sentry-sdk==2.48.0
+aiofiles==25.1.0
+prometheus-client==0.24.1
+sentry-sdk==2.52.0
 opentelemetry-api==1.39.1
 opentelemetry-sdk==1.39.1
 opentelemetry-exporter-otlp-proto-grpc==1.39.1
@@ -109,19 +109,19 @@ opentelemetry-instrumentation-httpx==0.60b1
 opentelemetry-semantic-conventions==0.60b1
 
 # Development
-pytest==7.4.4
-pytest-asyncio==0.23.8
+pytest==9.0.2
+pytest-asyncio==1.3.0
 httpx[http2]==0.28.1
 
 # RAGAS
-ragas==0.4.1
+ragas==0.4.3
 
 # LlamaIndex (用于高级切块策略)
-llama-index-core==0.11.14
+llama-index-core==0.14.13
 
 # Task Queue / Redis (用于 ingest 吞吐优化：任务队列、幂等锁、缓存)
-redis==4.6.0
-arq==0.26.0
+redis==7.1.0
+arq==0.27.0
 # Dev / test tooling
-pip-audit==2.7.3
-ruff==0.9.1
+pip-audit==2.10.0
+ruff==0.15.0
