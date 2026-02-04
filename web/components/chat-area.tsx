@@ -468,91 +468,55 @@ export function ChatArea({
 
       <div className="px-4 pt-2 z-10 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
         <div className="max-w-3xl mx-auto space-y-4">
-          <div
-            className={cn(
-              "relative group rounded-[2rem] glass border-border/60 transition-colors transition-shadow duration-200 motion-reduce:transition-none",
-              "shadow-soft hover:shadow-strong",
-              "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
-            )}
-          >
-            <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2">
-              <div className="flex items-center gap-2 min-w-0">
-                {promptTemplates.length > 0 ? (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 gap-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-secondary/80 min-w-0"
-                        title="选择 Prompt 模板"
-                      >
-                        <Wand2 className="w-3.5 h-3.5 shrink-0" />
-                        <span className="text-xs truncate">{selectedPromptTemplate?.name || '默认模板'}</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="start">
-                      <div className="text-xs font-medium text-muted-foreground mb-2 px-2">选择 Prompt 模板</div>
-                      <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
-                        <div
-                          className={cn(
-                            "px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors",
-                            !promptTemplateId && "bg-secondary/50 font-medium text-primary"
-                          )}
-                          onClick={() => setPromptTemplateId('')}
-                        >
-                          默认模板
-                        </div>
-                        {promptTemplates.map((t) => (
-                          <div
-                            key={t.id}
-                            className={cn(
-                              "px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors flex flex-col gap-0.5",
-                              promptTemplateId === t.id && "bg-secondary/50 font-medium text-primary"
-                            )}
-                            onClick={() => setPromptTemplateId(t.id)}
-                          >
-                            <span>{t.name}</span>
-                            {t.description ? (
-                              <span className="text-[10px] text-muted-foreground/70 truncate">{t.description}</span>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                ) : null}
-              </div>
 
-              <Popover open={showRagSettings} onOpenChange={setShowRagSettings}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      "h-8 gap-1.5 rounded-full transition-colors",
-                      ragConfigDirty ||
-                        ragConfig.use_graph ||
-                        ragConfig.retrieval_mode !== 'hybrid' ||
-                        metadataFilterMode !== 'all' ||
-                        structuredOutput ||
-                        enableLongTermMemory ||
-                        enableSummaryMemory
-                        ? "text-primary bg-primary/10 hover:bg-primary/20"
-                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/80"
-                    )}
-                    title="RAG 配置"
-                    aria-label="RAG 配置"
-                  >
-                    <Settings2 className="w-3.5 h-3.5" />
-                    <span className="text-xs">RAG 配置</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium text-sm">检索设置</h4>
-                      <span className="text-[10px] text-muted-foreground">调整检索参数</span>
+          <div className="flex items-center justify-between px-2 animate-fade-in opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 motion-reduce:transition-none">
+            <div className="flex items-center gap-2">
+              {promptTemplates.length > 0 && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8 gap-2 text-muted-foreground hover:text-primary rounded-full hover:bg-secondary/80">
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span className="text-xs">{selectedPromptTemplate?.name || '默认模板'}</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="text-xs font-medium text-muted-foreground mb-2 px-2">选择 Prompt 模板</div>
+                    <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
+                      <div
+                        className={cn("px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors", !promptTemplateId && "bg-secondary/50 font-medium text-primary")}
+                        onClick={() => setPromptTemplateId('')}
+                      >
+                        默认模板
+                      </div>
+                      {promptTemplates.map(t => (
+                        <div
+                          key={t.id}
+                          className={cn("px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors flex flex-col gap-0.5", promptTemplateId === t.id && "bg-secondary/50 font-medium text-primary")}
+                          onClick={() => setPromptTemplateId(t.id)}
+                        >
+                          <span>{t.name}</span>
+                          {t.description && <span className="text-[10px] text-muted-foreground/70 truncate">{t.description}</span>}
+                        </div>
+                      ))}
                     </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+
+            <Popover open={showRagSettings} onOpenChange={setShowRagSettings}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className={cn("h-8 gap-1.5 rounded-full transition-colors", (ragConfig.retrieval_mode !== 'auto' || ragConfig.use_graph) ? "text-primary bg-primary/10 hover:bg-primary/20" : "text-muted-foreground hover:bg-secondary/80")}>
+                  <Settings2 className="w-3.5 h-3.5" />
+                  <span className="text-xs">RAG 配置</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm">检索设置</h4>
+                    <span className="text-[10px] text-muted-foreground">调整检索参数</span>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
@@ -714,25 +678,30 @@ export function ChatArea({
                     )}
                   </div>
                 </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-            <Label htmlFor="chat-composer" className="sr-only">
-              消息输入框
-            </Label>
-            <textarea
-              id="chat-composer"
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
+	          <div className={cn(
+	            "relative group rounded-[2rem] glass border-border/60 transition-colors transition-shadow duration-200 motion-reduce:transition-none",
+	            "shadow-soft hover:shadow-strong",
+	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
+	          )}>
+              <Label htmlFor="chat-composer" className="sr-only">
+                消息输入框
+              </Label>
+	            <textarea
+	              id="chat-composer"
+	              ref={textareaRef}
+	              value={inputValue}
+	              onChange={(e) => setInputValue(e.target.value)}
+	              onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
-              placeholder="问点什么... (Shift + Enter 换行)"
-              autoFocus
-              className="w-full px-6 pb-5 pt-2 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium"
-              rows={1}
-            />
+	              placeholder="问点什么... (Shift + Enter 换行)"
+	              autoFocus
+	              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium"
+	              rows={1}
+	            />
 
             <div className="absolute right-2 bottom-2 flex items-center gap-2">
 	              <Magnetic strength={0.4}>
@@ -817,12 +786,6 @@ function WelcomeScreen() {
   const hour = new Date().getHours()
   const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
 
-  const focusComposer = () => {
-    if (typeof document === 'undefined') return
-    const el = document.getElementById('chat-composer') as HTMLTextAreaElement | null
-    el?.focus()
-  }
-
   return (
     <div className="flex flex-col items-center justify-center text-center space-y-8 px-4 py-10 relative z-10">
       <div className="size-24 rounded-[2rem] border border-border bg-card shadow-soft flex items-center justify-center">
@@ -839,80 +802,21 @@ function WelcomeScreen() {
         </p>
       </div>
 
-      <div className="space-y-3 w-full max-w-2xl">
-        <p className="text-[11px] font-medium text-muted-foreground">
-          试试这些快捷开始（点击填入输入框）
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
-          <PromptStarterCard
-            icon={Database}
-            title="混合检索"
-            desc="结合语义与关键词的精准召回"
-            prompt="帮我从知识库中检索「……」，并给出引用来源。"
-            onPick={() => {
-              globalEventBus.emit('chat:send', "帮我从知识库中检索「……」，并给出引用来源。")
-              focusComposer()
-            }}
-          />
-          <PromptStarterCard
-            icon={Sparkles}
-            title="智能问答"
-            desc="基于上下文的推理与回答"
-            prompt="基于已入库资料回答：……（请标注引用）。"
-            onPick={() => {
-              globalEventBus.emit('chat:send', "基于已入库资料回答：……（请标注引用）。")
-              focusComposer()
-            }}
-          />
-          <PromptStarterCard
-            icon={Wand2}
-            title="结构化输出"
-            desc="将非结构化内容整理为表格或 JSON"
-            prompt="把「……」整理为表格/JSON，并标注出处。"
-            onPick={() => {
-              globalEventBus.emit('chat:send', "把「……」整理为表格/JSON，并标注出处。")
-              focusComposer()
-            }}
-          />
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-2xl">
+        <FeatureCard icon={Database} title="混合检索" desc="结合语义与关键词的精准召回" />
+        <FeatureCard icon={Sparkles} title="智能问答" desc="基于上下文的推理与回答" />
+        <FeatureCard icon={Wand2} title="结构化输出" desc="将非结构化内容整理为表格或 JSON" />
       </div>
     </div>
   )
 }
 
-function PromptStarterCard({
-  icon: Icon,
-  title,
-  desc,
-  prompt,
-  onPick,
-}: {
-  icon: any
-  title: string
-  desc: string
-  prompt: string
-  onPick: () => void
-}) {
+function FeatureCard({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) {
   return (
-    <button
-      type="button"
-      onClick={onPick}
-      className={cn(
-        "group relative w-full text-left p-5 rounded-2xl border border-border bg-card shadow-soft",
-        "transition-transform duration-200 motion-reduce:transition-none",
-        "hover:-translate-y-0.5 hover:shadow-md hover:border-primary/20",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      )}
-      aria-label={`快捷提问：${title}（${prompt}）`}
-      title={prompt}
-    >
+    <div className="p-5 rounded-2xl border border-border bg-card shadow-soft cursor-default text-left">
       <Icon className="h-6 w-6 text-primary/80 mb-3" aria-hidden="true" />
       <h3 className="text-sm font-semibold text-balance text-foreground/90 mb-1.5">{title}</h3>
       <p className="text-xs text-pretty text-muted-foreground leading-relaxed">{desc}</p>
-      <span className="mt-3 block text-[10px] font-medium text-muted-foreground/70 group-hover:text-muted-foreground">
-        点击填入
-      </span>
-    </button>
+    </div>
   )
 }

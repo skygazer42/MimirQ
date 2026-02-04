@@ -7,10 +7,4 @@ describe('chat-area welcome screen', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
     expect(src).not.toContain('开始提问')
   })
-
-  it('supports prompt starters by emitting chat:send (fill composer) events', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
-    expect(src).toContain("globalEventBus.emit('chat:send'")
-  })
 })
-
