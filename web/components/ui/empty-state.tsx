@@ -28,8 +28,8 @@ export function EmptyState({
       )}
     >
       {Icon ? (
-        <div className="mb-6 grid h-16 w-16 place-items-center rounded-2xl border border-border bg-background/60 shadow-soft">
-            <Icon className={cn("h-8 w-8 text-primary", iconClassName)} />
+        <div className="mb-6 grid size-16 place-items-center rounded-2xl border border-border bg-background/60 shadow-soft">
+            <Icon className={cn("size-8 text-primary", iconClassName)} />
         </div>
       ) : null}
 

@@ -16,7 +16,7 @@ import { AppFrame } from '@/components/app-frame'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { documentApi } from '@/lib/api-client'
@@ -214,22 +214,20 @@ export default function IngestionMonitorPage() {
               </div>
             ))}
           </div>
-	        }
-	        toolbar={
-	          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-background/70 border border-border/60 shadow-soft rounded-full p-1.5 max-w-4xl mx-auto md:mx-0 transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:shadow-strong hover:border-primary/30">
-	            <div className="relative flex-1 group pl-2">
-	              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
-	              <Input
-	                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索任务ID或文件名..."
-                className="pl-9 bg-transparent border-0 text-foreground placeholder:text-muted-foreground h-10 rounded-full"
-              />
-            </div>
-
-            <div className="w-px h-6 bg-border hidden md:block mx-2" />
-
-            <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
+		        }
+		        toolbar={
+		          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-background/70 border border-border/60 shadow-soft rounded-full p-1.5 max-w-4xl mx-auto md:mx-0 transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:shadow-strong hover:border-primary/30">
+		            <SearchInput
+		              value={search}
+		              onValueChange={setSearch}
+		              placeholder="搜索任务ID或文件名..."
+		              containerClassName="flex-1"
+		              inputClassName="h-10 rounded-full border-0 bg-transparent text-foreground placeholder:text-muted-foreground"
+		            />
+	
+		            <div className="w-px h-6 bg-border hidden md:block mx-2" />
+	
+		            <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
               <SelectTrigger className="w-full md:w-48 bg-transparent border-0 h-10 text-muted-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors">
                 <SelectValue placeholder="筛选状态" />
               </SelectTrigger>

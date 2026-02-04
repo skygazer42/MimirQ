@@ -94,7 +94,7 @@ export function TaskCenter() {
   }
 
   return (
-	      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
+	      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]">
 	        {isOpen && (
 	            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-strong ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
                 <div className="px-4 py-3 border-b border-border/60 bg-muted/30 flex justify-between items-center">
