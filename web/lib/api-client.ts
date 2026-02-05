@@ -2389,6 +2389,11 @@ export const evaluationApi = {
     return data
   },
 
+  async exportRegressionCases(params: { dataset_id: string }): Promise<any> {
+    const { data } = await apiClient.get('/evaluations/ragas/regression/cases/export', { params })
+    return data
+  },
+
   async deleteRegressionCase(caseId: string): Promise<void> {
     await apiClient.delete(`/evaluations/ragas/regression/cases/${caseId}`)
   },

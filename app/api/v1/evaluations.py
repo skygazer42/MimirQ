@@ -50,6 +50,7 @@ from app.rag.evaluation.test_generator import (
     generate_questions_from_documents,
 )
 from app.services.dataset_service import DatasetService
+from app.services.regression_case_bundle import export_case_bundle
 
 router = APIRouter()
 
@@ -433,6 +434,32 @@ async def list_ragas_regression_cases(
         .all()
     )
     return {"total": total, "items": items}
+
+
+@router.get("/ragas/regression/cases/export")
+async def export_ragas_regression_cases(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Export regression cases as a dataset-scoped bundle (no internal ids)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    items = (
+        db.query(RagasRegressionCase)
+        .filter(
+            RagasRegressionCase.tenant_id == tenant_id,
+            RagasRegressionCase.dataset_id == dataset_id,
+        )
+        .order_by(RagasRegressionCase.updated_at.desc())
+        .all()
+    )
+
+    return export_case_bundle(items, dataset_id)
 
 
 @router.delete("/ragas/regression/cases/{case_id}", status_code=204)
