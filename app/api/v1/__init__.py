@@ -9,6 +9,7 @@ from app.api.v1 import (
     chat,
     chunk_presets,
     connectors,
+    db_catalog,
     dataset_categories,
     dataset_precheck,
     dataset_tables,
@@ -43,6 +44,7 @@ router.include_router(chat.router, prefix="/chat", tags=["Chat"])
 router.include_router(datasets.router, prefix="/datasets", tags=["Datasets"])
 router.include_router(dataset_precheck.router, prefix="/datasets", tags=["Datasets Precheck"])
 router.include_router(dataset_tables.router, prefix="/datasets", tags=["Dataset Tables (TAG)"])
+router.include_router(db_catalog.router, prefix="/datasets", tags=["DB Catalog"])
 router.include_router(dataset_categories.router, prefix="/dataset-categories", tags=["Dataset Categories"])
 router.include_router(kg.router, prefix="/kg", tags=["Knowledge Graph (KG)"])
 router.include_router(settings.router, prefix="/settings", tags=["Settings"])

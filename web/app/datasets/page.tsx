@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { BarChart3, FileSearch, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, Table2, Trash2 } from 'lucide-react'
+import { BarChart3, Database, FileSearch, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, Table2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -365,6 +365,15 @@ export default function DatasetsPage() {
                       >
                         <Table2 className="w-3.5 h-3.5" />
                         表格 / TAG
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => router.push(`/datasets/${ds.id}/db-catalog`)}
+                      >
+                        <Database className="w-3.5 h-3.5" />
+                        数据库目录
                       </Button>
                       <Button
                         variant="outline"
