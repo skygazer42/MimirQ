@@ -5,6 +5,7 @@ Provides evaluation endpoints for the RAG system, including task creation,
 querying, and results.
 """
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -25,6 +26,7 @@ from app.api.schemas.evaluation import (
 )
 from app.api.schemas.regression import (
     RagasRegressionCaseCreateRequest,
+    RagasRegressionCasePatchRequest,
     RagasRegressionCaseList,
     RagasRegressionCaseOut,
     RagasRegressionItemSchema,
@@ -50,6 +52,145 @@ from app.rag.evaluation.test_generator import (
 from app.services.dataset_service import DatasetService
 
 router = APIRouter()
+
+
+def _finalize_scope_document_ids(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    document_ids: list[UUID],
+) -> list[str]:
+    """Validate and normalize case-scoped document_ids (must be readable and within dataset)."""
+    if not document_ids:
+        return []
+
+    from app.models.document import Document as DBDocument
+    from app.services.document_access import filter_allowed_document_ids
+
+    allowed = set(filter_allowed_document_ids(db, tenant_id, account_id, document_ids))
+    want = {UUID(str(x)) for x in document_ids if x is not None}
+    if want - allowed:
+        raise HTTPException(status_code=403, detail="Some scope documents are not accessible")
+
+    rows = (
+        db.query(DBDocument.id, DBDocument.dataset_id)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(sorted(allowed)))
+        .all()
+    )
+    bad = [str(doc_id) for doc_id, ds_id in rows if ds_id is None or UUID(str(ds_id)) != dataset_id]
+    if bad:
+        raise HTTPException(status_code=400, detail="Some scope documents do not belong to dataset_id")
+
+    return [str(x) for x in sorted(allowed)]
+
+
+def _finalize_reference_sources(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    reference_sources: list[dict] | list[Any],
+) -> list[dict]:
+    """
+    Validate and normalize reference_sources payload for DB storage.
+
+    Security:
+    - Enforces tenant isolation and document ACL checks.
+    Consistency:
+    - Ensures (chunk_id -> document_id -> dataset_id) matches.
+    UX:
+    - Best-effort fill `quote` from chunk content when missing.
+    """
+    # Import lazily to keep module import side-effects minimal.
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
+    from app.services.document_access import filter_allowed_document_ids
+
+    # Coerce to dict payloads (Pydantic models provide model_dump).
+    coerced: list[dict] = []
+    for src in reference_sources or []:
+        if src is None:
+            continue
+        if hasattr(src, "model_dump"):
+            coerced.append(src.model_dump(mode="json"))
+        elif isinstance(src, dict):
+            coerced.append(dict(src))
+
+    doc_ids: list[UUID] = []
+    chunk_ids: list[UUID] = []
+    for src in coerced:
+        try:
+            doc_ids.append(UUID(str(src.get("document_id"))))
+        except Exception:
+            continue
+        try:
+            chunk_ids.append(UUID(str(src.get("chunk_id"))))
+        except Exception:
+            continue
+
+    # ACL: all evidence documents must be readable.
+    allowed_docs = set(filter_allowed_document_ids(db, tenant_id, account_id, doc_ids))
+    if set(doc_ids) - allowed_docs:
+        raise HTTPException(status_code=403, detail="Evidence documents not accessible")
+
+    # Validate chunk ownership + dataset match; pull content for quote fallback.
+    rows = (
+        db.query(
+            DocumentChunk.id,
+            DocumentChunk.document_id,
+            DBDocument.dataset_id,
+            DocumentChunk.content,
+            DocumentChunk.disabled_at,
+        )
+        .join(DBDocument, DBDocument.id == DocumentChunk.document_id)
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.id.in_(chunk_ids),
+            DBDocument.tenant_id == tenant_id,
+        )
+        .all()
+    )
+    row_by_chunk_id = {r[0]: r for r in rows if r and r[0]}
+    if len(row_by_chunk_id) < len(set(chunk_ids)):
+        raise HTTPException(status_code=400, detail="Some evidence chunks were not found")
+
+    out: list[dict] = []
+    for src in coerced:
+        chunk_id_raw = src.get("chunk_id")
+        doc_id_raw = src.get("document_id")
+        if not chunk_id_raw or not doc_id_raw:
+            continue
+        try:
+            chunk_id = UUID(str(chunk_id_raw))
+            doc_id = UUID(str(doc_id_raw))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid evidence chunk_id/document_id")
+
+        row = row_by_chunk_id.get(chunk_id)
+        if not row:
+            raise HTTPException(status_code=400, detail="Evidence chunk not found")
+        _chunk_id, chunk_doc_id, chunk_dataset_id, content, disabled_at = row
+        if disabled_at is not None:
+            raise HTTPException(status_code=400, detail="Evidence chunk is disabled")
+        if UUID(str(chunk_doc_id)) != doc_id:
+            raise HTTPException(status_code=400, detail="Evidence chunk does not belong to document_id")
+        if chunk_dataset_id is None or UUID(str(chunk_dataset_id)) != dataset_id:
+            raise HTTPException(status_code=400, detail="Evidence chunk does not belong to dataset_id")
+
+        payload = dict(src)
+        if not str(payload.get("quote") or "").strip():
+            text = (content or "").strip()
+            if text:
+                payload["quote"] = text[:2000] + ("..." if len(text) > 2000 else "")
+        out.append(payload)
+
+    if not out:
+        raise HTTPException(status_code=400, detail="reference_sources is empty or invalid")
+
+    return out
 
 
 @router.post("/ragas/runs", response_model=RagasRunSchema, status_code=201)
@@ -171,19 +312,97 @@ async def create_ragas_regression_case(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """Create a regression case (question + optional dataset scope)."""
+    """Create a regression case (per-dataset; requires evidence sources)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    reference_sources = _finalize_reference_sources(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=request.dataset_id,
+        reference_sources=request.reference_sources,
+    )
 
     row = RagasRegressionCase(
         tenant_id=tenant_id,
         dataset_id=request.dataset_id,
-        document_ids=[str(x) for x in (request.document_ids or [])],
+        document_ids=_finalize_scope_document_ids(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=request.dataset_id,
+            document_ids=list(request.document_ids or []),
+        ),
         question=request.question,
         expected_answer=request.expected_answer,
+        reference_sources=reference_sources,
         tags=request.tags,
         extra=request.extra,
         created_by=account_id,
     )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/ragas/regression/cases/{case_id}", response_model=RagasRegressionCaseOut)
+async def patch_ragas_regression_case(
+    case_id: UUID,
+    request: RagasRegressionCasePatchRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Patch a regression case (dataset_id is immutable)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    row = (
+        db.query(RagasRegressionCase)
+        .filter(RagasRegressionCase.id == case_id, RagasRegressionCase.tenant_id == tenant_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    ds_id = getattr(row, "dataset_id", None)
+    if ds_id is not None:
+        ds = DatasetService.get_dataset(db, tenant_id, ds_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    fields = set(getattr(request, "model_fields_set", set()) or set())
+    if "question" in fields and request.question is not None:
+        row.question = request.question
+    if "expected_answer" in fields:
+        row.expected_answer = request.expected_answer
+    if "tags" in fields and request.tags is not None:
+        row.tags = request.tags
+    if "extra" in fields and request.extra is not None:
+        row.extra = request.extra
+    if "document_ids" in fields and request.document_ids is not None:
+        if ds_id is None:
+            raise HTTPException(status_code=400, detail="Cannot patch document_ids without dataset_id")
+        row.document_ids = _finalize_scope_document_ids(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=UUID(str(ds_id)),
+            document_ids=list(request.document_ids or []),
+        )
+    if "reference_sources" in fields and request.reference_sources is not None:
+        if ds_id is None:
+            raise HTTPException(status_code=400, detail="Cannot patch reference_sources without dataset_id")
+        row.reference_sources = _finalize_reference_sources(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=UUID(str(ds_id)),
+            reference_sources=request.reference_sources,
+        )
+
     db.add(row)
     db.commit()
     db.refresh(row)
