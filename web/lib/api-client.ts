@@ -147,7 +147,10 @@ import type {
   PromptPreviewResponse,
   RegressionCase,
   RegressionCaseCreate,
+  RegressionCaseBundleV1,
+  RegressionCaseImportResponse,
   RegressionCaseList,
+  RegressionCasePatch,
   TestGenFromDocsRequest,
   TestGenFromConversationsRequest,
   TestGenResponse,
@@ -2389,11 +2392,26 @@ export const evaluationApi = {
     return data
   },
 
+  async exportRegressionCases(params: { dataset_id: string }): Promise<any> {
+    const { data } = await apiClient.get('/evaluations/ragas/regression/cases/export', { params })
+    return data as RegressionCaseBundleV1
+  },
+
+  async importRegressionCases(payload: {
+    dataset_id: string
+    overwrite?: boolean
+    max_items?: number
+    items: any[]
+  }): Promise<RegressionCaseImportResponse> {
+    const { data } = await apiClient.post('/evaluations/ragas/regression/cases/import', payload)
+    return data as RegressionCaseImportResponse
+  },
+
   async deleteRegressionCase(caseId: string): Promise<void> {
     await apiClient.delete(`/evaluations/ragas/regression/cases/${caseId}`)
   },
 
-  async patchRegressionCase(caseId: string, payload: Partial<RegressionCaseCreate>): Promise<RegressionCase> {
+  async patchRegressionCase(caseId: string, payload: RegressionCasePatch): Promise<RegressionCase> {
     const { data } = await apiClient.patch(`/evaluations/ragas/regression/cases/${caseId}`, payload)
     return data
   },
