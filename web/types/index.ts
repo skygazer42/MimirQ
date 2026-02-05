@@ -1897,6 +1897,18 @@ export interface DocumentBatchUploadResponse {
 
 // ==================== RAGAS 回归测试相关类型 ====================
 
+export interface ReferenceSource {
+  document_id: string
+  chunk_id: string
+  page_number?: number
+  start_char?: number
+  end_char?: number
+  doc_pipeline_key?: string
+  pipeline_hash?: string
+  quote?: string
+  label?: string
+}
+
 export interface RegressionCase {
   id: string
   tenant_id: string
@@ -1904,6 +1916,7 @@ export interface RegressionCase {
   document_ids: string[]
   question: string
   expected_answer?: string
+  reference_sources: ReferenceSource[]
   tags: string[]
   extra: Record<string, any>
   created_by?: string
@@ -1916,8 +1929,38 @@ export interface RegressionCaseCreate {
   dataset_id?: string
   document_ids?: string[]
   expected_answer?: string
+  reference_sources?: ReferenceSource[]
   tags?: string[]
   extra?: Record<string, any>
+}
+
+export interface RegressionCasePatch {
+  question?: string
+  document_ids?: string[]
+  expected_answer?: string | null
+  reference_sources?: ReferenceSource[]
+  tags?: string[]
+  extra?: Record<string, any>
+}
+
+export interface RegressionCaseBundleItem {
+  question: string
+  expected_answer?: string | null
+  tags: string[]
+  reference_sources: ReferenceSource[]
+}
+
+export interface RegressionCaseBundleV1 {
+  schema: 'mimirq.regression_cases.v1'
+  dataset_id: string
+  items: RegressionCaseBundleItem[]
+}
+
+export interface RegressionCaseImportResponse {
+  created: number
+  updated: number
+  skipped: number
+  errors: Array<Record<string, any>>
 }
 
 export interface RegressionCaseList {
