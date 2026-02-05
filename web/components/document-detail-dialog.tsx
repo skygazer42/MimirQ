@@ -4,12 +4,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, X } from 'lucide-react'
+import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, Tags, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DocumentTags } from '@/components/documents/document-tags'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
@@ -17,10 +18,12 @@ import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import { TagInput } from '@/components/ui/tag-input'
 import { Textarea } from '@/components/ui/textarea'
 import { documentApi, kgApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import type {
@@ -138,6 +141,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const [accessDialogOpen, setAccessDialogOpen] = useState(false)
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
 
+  const currentTags = useMemo(() => getUserTagsFromDocument(detail || initialDocument), [detail, initialDocument])
+  const [tagsEditing, setTagsEditing] = useState(false)
+  const [tagsDraft, setTagsDraft] = useState<string[]>([])
+  const [tagsError, setTagsError] = useState<string | null>(null)
+  const [isSavingTags, setIsSavingTags] = useState(false)
+
   const canMutateChunks = viewPipelineHash === ACTIVE_PIPELINE_VALUE
 
   const beginEditChunk = useCallback((chunk: DocumentChunk) => {
@@ -150,6 +159,29 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     setEditingChunkId(null)
     setEditingChunkContent('')
   }, [])
+
+  const beginEditTags = useCallback(() => {
+    setTagsError(null)
+    setTagsDraft(currentTags)
+    setTagsEditing(true)
+  }, [currentTags])
+
+  const cancelEditTags = useCallback(() => {
+    setTagsError(null)
+    setTagsDraft([])
+    setTagsEditing(false)
+  }, [])
+
+  const canSaveTags = useMemo(() => {
+    if (!tagsEditing) return false
+    if (isSavingTags) return false
+    const next = normalizeTags(tagsDraft)
+    if (next.length !== currentTags.length) return true
+    for (let i = 0; i < next.length; i += 1) {
+      if (next[i] !== currentTags[i]) return true
+    }
+    return false
+  }, [currentTags, isSavingTags, tagsDraft, tagsEditing])
 
   const saveEditChunk = useCallback(async () => {
     if (!editingChunkId) return
@@ -232,6 +264,26 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       setIsLoadingDoc(false)
     }
   }, [initialDocument.id])
+
+  const saveTags = useCallback(async () => {
+    if (!canSaveTags) return
+    setIsSavingTags(true)
+    setTagsError(null)
+    try {
+      await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(tagsDraft))
+      toast.success('已更新标签')
+      setTagsEditing(false)
+      setTagsDraft([])
+      await loadDetail()
+    } catch (err: any) {
+      console.error('Update document tags failed:', err)
+      const msg = formatApiError(err, '保存标签失败')
+      setTagsError(msg)
+      toast.error(msg)
+    } finally {
+      setIsSavingTags(false)
+    }
+  }, [canSaveTags, initialDocument.id, loadDetail, tagsDraft])
 
   const loadVersions = useCallback(async () => {
     setIsLoadingVersions(true)
@@ -697,6 +749,58 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
               </div>
             </Panel>
           </div>
+
+          <Panel className="rounded-2xl">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
+                  <Tags className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">Tags</div>
+                  <div className="text-xs text-muted-foreground truncate">用于分组与检索过滤（document_user.tags）</div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 justify-end">
+                {tagsEditing ? (
+                  <>
+                    <Button variant="outline" size="sm" onClick={cancelEditTags} disabled={isSavingTags}>
+                      取消
+                    </Button>
+                    <Button size="sm" onClick={() => void saveTags()} disabled={!canSaveTags}>
+                      {isSavingTags ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                      ) : null}
+                      保存
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" size="sm" className="gap-2" onClick={beginEditTags}>
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                    编辑
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {tagsEditing ? (
+                <TagInput value={tagsDraft} onValueChange={setTagsDraft} disabled={isSavingTags} />
+              ) : currentTags.length ? (
+                <DocumentTags tags={currentTags} max={10} />
+              ) : (
+                <div className="text-xs text-muted-foreground">暂无标签（可用于知识库分组、检索过滤与运维标记）</div>
+              )}
+
+              {tagsError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>保存失败</AlertTitle>
+                  <AlertDescription>{tagsError}</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
+          </Panel>
 
           <Panel padding="none" className="flex-1 min-h-0 overflow-hidden rounded-2xl">
             <div className="flex items-center gap-3 border-b border-border/60 bg-background/40 px-4 py-3">
