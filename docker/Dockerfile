@@ -20,6 +20,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    unixodbc-dev \
     && python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
     # Avoid fetching "build dependencies" in isolated envs when network is flaky.
@@ -34,8 +35,17 @@ FROM base AS runtime
 # Runtime tools (healthcheck uses curl in docker-compose)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    ca-certificates \
+    gnupg \
+    apt-transport-https \
+    unixodbc \
     pandoc \
     libreoffice \
+    # SQLServer: install Microsoft ODBC driver (msodbcsql18)
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/microsoft-prod.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
 
 ARG MIMIRQ_BUILD_SHA=""
