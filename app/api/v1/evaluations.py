@@ -52,6 +52,11 @@ from app.rag.evaluation.test_generator import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.regression_case_bundle import export_case_bundle, plan_case_import
+from app.services.regression_run_scope import (
+    DatasetMismatchError,
+    MissingCasesError,
+    validate_case_ids_belong_to_dataset,
+)
 
 router = APIRouter()
 
@@ -592,14 +597,34 @@ async def create_ragas_regression_run(
     """Create a regression evaluation run and execute it in background."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
+    ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    if request.case_ids:
+        rows = (
+            db.query(RagasRegressionCase.id, RagasRegressionCase.dataset_id)
+            .filter(
+                RagasRegressionCase.tenant_id == tenant_id,
+                RagasRegressionCase.id.in_(list(request.case_ids or [])),
+            )
+            .all()
+        )
+        try:
+            validate_case_ids_belong_to_dataset(dataset_id=request.dataset_id, case_ids=list(request.case_ids), rows=rows)
+        except MissingCasesError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DatasetMismatchError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     run = RagasRegressionRun(
         tenant_id=tenant_id,
         account_id=account_id,
+        dataset_id=request.dataset_id,
         status="pending",
         metrics=request.metrics,
         params={
             "case_ids": [str(x) for x in (request.case_ids or [])],
-            "dataset_id": str(request.dataset_id) if request.dataset_id else None,
+            "dataset_id": str(request.dataset_id),
             "skip_empty_contexts": request.skip_empty_contexts,
             "max_cases": request.max_cases,
             "rag_params": {

@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Sequence
 from uuid import UUID
 
-
 REGRESSION_CASE_BUNDLE_SCHEMA_V1 = "mimirq.regression_cases.v1"
 
 
