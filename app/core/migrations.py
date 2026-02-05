@@ -90,6 +90,11 @@ def apply_runtime_migrations(engine) -> None:
             "CREATE INDEX IF NOT EXISTS ix_ragas_regression_runs_tenant_dataset_created_at "
             "ON ragas_regression_runs (tenant_id, dataset_id, created_at);",
 
+            # Regression item meta for audit (abstain + context ids).
+            "ALTER TABLE ragas_regression_items ADD COLUMN IF NOT EXISTS meta JSONB;",
+            "UPDATE ragas_regression_items SET meta = '{}'::jsonb WHERE meta IS NULL;",
+            "ALTER TABLE ragas_regression_items ALTER COLUMN meta SET DEFAULT '{}'::jsonb;",
+
             # Store per-message run metadata (metrics/request_id/route/etc.)
             'ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_metadata JSONB;',
 

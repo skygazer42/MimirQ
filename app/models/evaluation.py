@@ -136,5 +136,6 @@ class RagasRegressionItem(Base):
     retrieved_contexts = Column(JSONB, default=list)  # list[str]
     citations = Column(JSONB, default=list)
     scores = Column(JSONB, default=dict)
+    meta = Column(JSONB, default=dict)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
