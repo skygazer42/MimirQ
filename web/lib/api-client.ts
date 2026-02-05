@@ -98,6 +98,9 @@ import type {
   TableAskRequest,
   TableAskResponse,
   LotusSemFilterRequest,
+  DbCatalogTablesListResponse,
+  DbCatalogTableDetail,
+  DbProfileSnapshotListResponse,
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
@@ -1607,6 +1610,29 @@ export const datasetApi = {
 
   async lotusSemFilter(datasetId: string, tableId: string, body: LotusSemFilterRequest): Promise<TableQueryResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`, body, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
+
+  // ==================== DB Catalog (SQL) ====================
+
+  async listDbCatalogTables(
+    datasetId: string,
+    params?: { skip?: number; limit?: number; engine?: string; q?: string }
+  ): Promise<DbCatalogTablesListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/tables`, { params })
+    return data
+  },
+
+  async getDbCatalogTable(datasetId: string, tableId: string): Promise<DbCatalogTableDetail> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/tables/${encodeURIComponent(tableId)}`)
+    return data
+  },
+
+  async listDbCatalogProfiles(
+    datasetId: string,
+    params: { table_id: string; skip?: number; limit?: number }
+  ): Promise<DbProfileSnapshotListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/profiles`, { params })
     return data
   },
 }
