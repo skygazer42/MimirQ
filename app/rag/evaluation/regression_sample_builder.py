@@ -86,3 +86,16 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     return sample_kwargs, meta
 
+
+def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_meta: dict[str, Any] | None) -> dict[str, Any]:
+    """Prepare a JSON-safe meta payload for RagasRegressionItem storage."""
+    sample = dict(sample_kwargs or {})
+    meta = dict(item_meta or {})
+
+    return {
+        "reference_context_ids": list(sample.get("reference_context_ids") or []),
+        "retrieved_context_ids": list(sample.get("retrieved_context_ids") or []),
+        "abstain_triggered": meta.get("abstain_triggered"),
+        "abstain_reason": meta.get("abstain_reason"),
+        "top_relevance_score": meta.get("top_relevance_score"),
+    }

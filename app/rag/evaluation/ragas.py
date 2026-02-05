@@ -29,7 +29,7 @@ from app.models.evaluation import (
     RagasRegressionRun,
 )
 from app.rag.embedding import create_langchain_embeddings_from_config
-from app.rag.evaluation.regression_sample_builder import build_regression_sample
+from app.rag.evaluation.regression_sample_builder import build_regression_item_meta, build_regression_sample
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 
@@ -694,6 +694,10 @@ def run_regression_ragas_evaluation(
                     retrieved_contexts=item["retrieved_contexts"],
                     citations=item["citations"],
                     scores=scores,
+                    meta=build_regression_item_meta(
+                        sample_kwargs=item.get("sample_kwargs"),
+                        item_meta=item.get("item_meta"),
+                    ),
                 )
             )
 
