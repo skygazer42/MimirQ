@@ -9,18 +9,64 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .base import OrmModel
 
 
+class ReferenceSource(BaseModel):
+    """A human-verified evidence pointer for a regression case."""
+
+    document_id: UUID = Field(..., description="Evidence document id")
+    chunk_id: UUID = Field(..., description="Evidence chunk id")
+
+    # Optional audit/debug fields (best-effort; do not gate correctness).
+    page_number: Optional[int] = Field(default=None, ge=1, description="1-based page number (optional)")
+    start_char: Optional[int] = Field(default=None, ge=0, description="Start character offset (optional)")
+    end_char: Optional[int] = Field(default=None, ge=0, description="End character offset (optional)")
+    doc_pipeline_key: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description="Composite key `${document_id}:${pipeline_hash}` (optional, for audit/debug)",
+    )
+    pipeline_hash: Optional[str] = Field(default=None, max_length=64, description="Chunk pipeline hash (optional)")
+    quote: Optional[str] = Field(
+        default=None,
+        max_length=2000,
+        description="Evidence excerpt (optional; used as fallback when chunk_id becomes stale)",
+    )
+    label: Optional[str] = Field(default=None, max_length=100, description="Human label (optional)")
+
+
 class RagasRegressionCaseCreateRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Question (user_input for regression case)")
-    dataset_id: Optional[UUID] = Field(default=None, description="Dataset ID (optional)")
+    dataset_id: UUID = Field(..., description="Dataset ID (required; regression suite is per-dataset)")
     document_ids: List[UUID] = Field(default_factory=list, description="Document scope (optional, takes priority over dataset_id)")
     expected_answer: Optional[str] = Field(default=None, description="Expected answer (optional, for manual comparison/supervision)")
+    reference_sources: List[ReferenceSource] = Field(
+        ...,
+        min_length=1,
+        description="Human-verified evidence sources (required; at least 1). Each source must include document_id + chunk_id.",
+    )
     tags: List[str] = Field(default_factory=list, description="Tags (optional)")
     extra: Dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
+
+
+class RagasRegressionCasePatchRequest(BaseModel):
+    """Patch fields for an existing regression case."""
+
+    question: Optional[str] = Field(default=None, min_length=1)
+    document_ids: Optional[List[UUID]] = None
+    expected_answer: Optional[str] = Field(default=None, description="Set to null to clear expected_answer")
+    reference_sources: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
+    tags: Optional[List[str]] = None
+    extra: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def _non_empty_patch(self):
+        if not (getattr(self, "model_fields_set", None) or set()):
+            raise ValueError("No fields to patch")
+        return self
 
 
 class RagasRegressionCaseOut(OrmModel):
@@ -30,6 +76,7 @@ class RagasRegressionCaseOut(OrmModel):
     document_ids: List[UUID] = Field(default_factory=list)
     question: str
     expected_answer: Optional[str] = None
+    reference_sources: List[ReferenceSource] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     extra: Dict[str, Any] = Field(default_factory=dict)
     created_by: Optional[str] = None

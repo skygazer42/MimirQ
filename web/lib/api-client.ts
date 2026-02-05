@@ -2393,6 +2393,11 @@ export const evaluationApi = {
     await apiClient.delete(`/evaluations/ragas/regression/cases/${caseId}`)
   },
 
+  async patchRegressionCase(caseId: string, payload: Partial<RegressionCaseCreate>): Promise<RegressionCase> {
+    const { data } = await apiClient.patch(`/evaluations/ragas/regression/cases/${caseId}`, payload)
+    return data
+  },
+
   // ==================== AI 生成测试问题 ====================
 
   async generateFromDocuments(params: TestGenFromDocsRequest): Promise<TestGenResponse> {
