@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .base import OrmModel
 
@@ -50,6 +50,23 @@ class RagasRegressionCaseCreateRequest(BaseModel):
     )
     tags: List[str] = Field(default_factory=list, description="Tags (optional)")
     extra: Dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
+
+
+class RagasRegressionCasePatchRequest(BaseModel):
+    """Patch fields for an existing regression case."""
+
+    question: Optional[str] = Field(default=None, min_length=1)
+    document_ids: Optional[List[UUID]] = None
+    expected_answer: Optional[str] = Field(default=None, description="Set to null to clear expected_answer")
+    reference_sources: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
+    tags: Optional[List[str]] = None
+    extra: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def _non_empty_patch(self):
+        if not (getattr(self, "model_fields_set", None) or set()):
+            raise ValueError("No fields to patch")
+        return self
 
 
 class RagasRegressionCaseOut(OrmModel):
