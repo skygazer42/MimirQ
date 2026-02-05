@@ -362,10 +362,11 @@ def list_connectors() -> list[ConnectorInfo]:
 
 async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
-    Background execution stub for DB catalog connectors.
+    Background execution for DB catalog connectors (MySQL / SQLServer).
 
-    Implemented in Task 5 (runner wiring). For now we fail the run deterministically so the UI
-    can surface "not implemented" rather than leaving it pending forever.
+    Notes:
+    - This first iteration runs in-process (FastAPI BackgroundTasks).
+    - DB network calls are intentionally stubbed inside app.connectors.db.catalog_runner.
     """
     db = SessionLocal()
     try:
@@ -380,15 +381,45 @@ async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by
         if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
             return
 
-        run.status = "failed"
-        run.error_message = "db_catalog_not_implemented"
-        run.finished_at = _now()
+        run.status = "running"
+        run.started_at = _now()
+        run.error_message = None
         run.stats = dict(run.stats or {})
-        run.stats["note"] = "db_catalog executor not implemented yet"
         db.commit()
-    except Exception:
+        with contextlib.suppress(Exception):
+            db.refresh(run)
+
+        from app.connectors.db.catalog_runner import run_catalog_sync
+
+        connector_id = str(run.connector_id or "").strip()
+        cfg_raw = dict(run.config or {})
+        cfg = decrypt_connector_config_secrets(cfg_raw)
+        result = run_catalog_sync(
+            tenant_id=tenant_id,
+            dataset_id=run.dataset_id,
+            connector_id=connector_id,
+            config=dict(cfg or {}),
+        )
+
+        stats = dict(run.stats or {})
+        stats.update({"result": dict(result or {})})
+        run.stats = _finalize_connector_stats(stats)
+        run.status = "completed"
+        run.finished_at = _now()
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
         # Best-effort: avoid raising from background tasks (keep request path stable).
         with contextlib.suppress(Exception):
+            run = (
+                db.query(ConnectorRun)
+                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+                .first()
+            )
+            if run is not None:
+                run.status = "failed"
+                run.finished_at = _now()
+                run.error_message = _safe_error_str(exc)
+                db.commit()
             db.rollback()
     finally:
         db.close()
