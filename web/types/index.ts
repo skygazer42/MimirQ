@@ -2467,3 +2467,54 @@ export interface LotusSemFilterRequest {
   strategy?: string
   max_rows?: number | null
 }
+
+// ==================== DB Catalog (SQL) ====================
+
+export interface DbCatalogColumn {
+  id: string
+  table_id: string
+  ordinal: number
+  name: string
+  data_type?: string | null
+  nullable?: boolean | null
+  comment?: string | null
+  created_at: string
+}
+
+export interface DbCatalogTableSummary {
+  id: string
+  connector_config_id?: string | null
+  engine: string
+  db_name: string
+  schema_name?: string | null
+  table_name: string
+  table_type: string
+  comment?: string | null
+  fingerprint: string
+  last_seen_at?: string | null
+  created_at: string
+  updated_at?: string | null
+}
+
+export interface DbCatalogTableDetail extends DbCatalogTableSummary {
+  columns: DbCatalogColumn[]
+}
+
+export interface DbCatalogTablesListResponse {
+  total: number
+  items: DbCatalogTableSummary[]
+}
+
+export interface DbProfileSnapshot {
+  id: string
+  table_id: string
+  entitlement_hash: string
+  profile: Record<string, any>
+  sample_meta: Record<string, any>
+  created_at: string
+}
+
+export interface DbProfileSnapshotListResponse {
+  total: number
+  items: DbProfileSnapshot[]
+}
