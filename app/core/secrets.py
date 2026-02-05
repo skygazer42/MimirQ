@@ -100,6 +100,9 @@ def redact_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     out: Dict[str, Any] = dict(config)
+    # Common top-level secret fields (e.g. DB connectors).
+    if "password" in out and out.get("password"):
+        out["password"] = "<redacted>"
     auth = out.get("auth")
     if isinstance(auth, dict):
         auth = dict(auth)
@@ -120,6 +123,9 @@ def encrypt_connector_config_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(config, dict):
         return {}
     out: Dict[str, Any] = dict(config)
+    # Common top-level secret fields (e.g. DB connectors).
+    if "password" in out:
+        out["password"] = encrypt_secret(out.get("password"))  # type: ignore[assignment]
     auth = out.get("auth")
     if isinstance(auth, dict):
         auth = dict(auth)
@@ -142,6 +148,9 @@ def decrypt_connector_config_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(config, dict):
         return {}
     out: Dict[str, Any] = dict(config)
+    # Common top-level secret fields (e.g. DB connectors).
+    if "password" in out:
+        out["password"] = decrypt_secret(out.get("password"))  # type: ignore[assignment]
     auth = out.get("auth")
     if isinstance(auth, dict):
         auth = dict(auth)

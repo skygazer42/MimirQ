@@ -299,6 +299,64 @@ class MinioBucketConnectorConfig(BaseModel):
         return self
 
 
+class MySQLCatalogConnectorConfig(BaseModel):
+    """Config for `mysql_catalog` connector (ingest schema/table/column catalog + safe profiling)."""
+
+    host: str = Field(..., max_length=255)
+    port: int = Field(default=3306, ge=1, le=65535)
+    database: str = Field(..., max_length=255, description="Database name")
+    username: str = Field(..., max_length=255)
+    password: str = Field(..., max_length=10_000)
+    # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
+    include_schemas: List[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
+    include_tables: List[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
+    max_tables: int = Field(default=200, ge=1, le=2000)
+    profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "MySQLCatalogConnectorConfig":
+        self.host = str(self.host or "").strip()
+        self.database = str(self.database or "").strip()
+        self.username = str(self.username or "").strip()
+        self.password = str(self.password or "")
+        if not self.host:
+            raise ValueError("host is required")
+        if not self.database:
+            raise ValueError("database is required")
+        if not self.username:
+            raise ValueError("username is required")
+        return self
+
+
+class SQLServerCatalogConnectorConfig(BaseModel):
+    """Config for `sqlserver_catalog` connector (ingest schema/table/column catalog + safe profiling)."""
+
+    host: str = Field(..., max_length=255)
+    port: int = Field(default=1433, ge=1, le=65535)
+    database: str = Field(..., max_length=255, description="Database name")
+    username: str = Field(..., max_length=255)
+    password: str = Field(..., max_length=10_000)
+    # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
+    include_schemas: List[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
+    include_tables: List[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
+    max_tables: int = Field(default=200, ge=1, le=2000)
+    profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "SQLServerCatalogConnectorConfig":
+        self.host = str(self.host or "").strip()
+        self.database = str(self.database or "").strip()
+        self.username = str(self.username or "").strip()
+        self.password = str(self.password or "")
+        if not self.host:
+            raise ValueError("host is required")
+        if not self.database:
+            raise ValueError("database is required")
+        if not self.username:
+            raise ValueError("username is required")
+        return self
+
+
 class ConnectorRunCreateRequest(BaseModel):
     connector_id: ConnectorId = "url_batch"
     dataset_id: Optional[UUID] = None
