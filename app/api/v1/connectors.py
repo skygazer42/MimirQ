@@ -34,7 +34,9 @@ from app.api.schemas.connector import (
     ConnectorRunOut,
     DriveFilesConnectorConfig,
     GitHubRepoConnectorConfig,
+    MySQLCatalogConnectorConfig,
     MinioBucketConnectorConfig,
+    SQLServerCatalogConnectorConfig,
     UrlBatchConnectorConfig,
     WebCrawlConnectorConfig,
 )
@@ -343,7 +345,53 @@ def list_connectors() -> list[ConnectorInfo]:
             description="列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；URL_INGEST 需允许访问 MinIO 端点）",
             supports_incremental=False,
         ),
+        ConnectorInfo(
+            id="sqlserver_catalog",
+            name="SQLServer Catalog 导入",
+            description="从 SQLServer 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
+            supports_incremental=True,
+        ),
+        ConnectorInfo(
+            id="mysql_catalog",
+            name="MySQL Catalog 导入",
+            description="从 MySQL 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
+            supports_incremental=True,
+        ),
     ]
+
+
+async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution stub for DB catalog connectors.
+
+    Implemented in Task 5 (runner wiring). For now we fail the run deterministically so the UI
+    can surface "not implemented" rather than leaving it pending forever.
+    """
+    db = SessionLocal()
+    try:
+        run = (
+            db.query(ConnectorRun)
+            .options(selectinload(ConnectorRun.documents))
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if not run:
+            return
+        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+            return
+
+        run.status = "failed"
+        run.error_message = "db_catalog_not_implemented"
+        run.finished_at = _now()
+        run.stats = dict(run.stats or {})
+        run.stats["note"] = "db_catalog executor not implemented yet"
+        db.commit()
+    except Exception:
+        # Best-effort: avoid raising from background tasks (keep request path stable).
+        with contextlib.suppress(Exception):
+            db.rollback()
+    finally:
+        db.close()
 
 
 async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -1385,13 +1433,18 @@ async def create_connector_run(
 
     Requires dataset write permission.
     """
-    if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+    connector_id = str(payload.connector_id or "").strip()
+    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket"}
+    db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
+
+    if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+    if connector_id in db_catalog_connectors and not bool(getattr(settings, "DB_CATALOG_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
 
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
 
-    connector_id = str(payload.connector_id or "").strip()
     if connector_id == "url_batch":
         cfg = UrlBatchConnectorConfig.model_validate(payload.config or {})
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
@@ -1406,6 +1459,12 @@ async def create_connector_run(
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
     elif connector_id == "minio_bucket":
         cfg = MinioBucketConnectorConfig.model_validate(payload.config or {})
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+    elif connector_id == "mysql_catalog":
+        cfg = MySQLCatalogConnectorConfig.model_validate(payload.config or {})
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+    elif connector_id == "sqlserver_catalog":
+        cfg = SQLServerCatalogConnectorConfig.model_validate(payload.config or {})
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
     else:
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
@@ -1434,6 +1493,8 @@ async def create_connector_run(
         background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "minio_bucket":
         background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
+        background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
 
@@ -1857,6 +1918,13 @@ async def run_connector_config(
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
     connector_id = str(cfg.connector_id or "").strip()
+    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket"}
+    db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
+    if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+    if connector_id in db_catalog_connectors and not bool(getattr(settings, "DB_CATALOG_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
+
     run_cfg = dict(cfg.config or {})
     # Attach connector config state for incremental connectors (best-effort; executor may ignore).
     run_cfg["_state"] = dict(cfg.state or {})
@@ -1887,6 +1955,8 @@ async def run_connector_config(
         background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "minio_bucket":
         background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
+        background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
 
@@ -1958,6 +2028,26 @@ async def scheduled_tick(
         db.commit()
         db.refresh(run)
 
+        url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket"}
+        db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
+
+        if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+            run.status = "failed"
+            run.error_message = "url_ingest_disabled"
+            run.finished_at = now
+            cfg.last_error = "url_ingest_disabled"  # type: ignore[assignment]
+            db.commit()
+            enqueued += 1
+            continue
+        if connector_id in db_catalog_connectors and not bool(getattr(settings, "DB_CATALOG_ENABLED", False)):
+            run.status = "failed"
+            run.error_message = "db_catalog_disabled"
+            run.finished_at = now
+            cfg.last_error = "db_catalog_disabled"  # type: ignore[assignment]
+            db.commit()
+            enqueued += 1
+            continue
+
         if connector_id == "url_batch":
             background_tasks.add_task(_execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         elif connector_id == "web_crawl":
@@ -1968,6 +2058,8 @@ async def scheduled_tick(
             background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         elif connector_id == "minio_bucket":
             background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
+            background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         else:
             # Unknown connector: mark as failed (best-effort) and continue.
             run.status = "failed"
