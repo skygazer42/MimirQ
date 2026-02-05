@@ -69,6 +69,24 @@ class RagasRegressionCasePatchRequest(BaseModel):
         return self
 
 
+class RagasRegressionCaseBundleItem(BaseModel):
+    """Portable regression case payload (no internal ids)."""
+
+    question: str = Field(..., min_length=1)
+    expected_answer: Optional[str] = None
+    reference_sources: List[ReferenceSource] = Field(..., min_length=1)
+    tags: List[str] = Field(default_factory=list)
+
+
+class RagasRegressionCaseImportRequest(BaseModel):
+    """Import a dataset-scoped regression case bundle (upsert by question)."""
+
+    dataset_id: UUID
+    overwrite: bool = False
+    max_items: int = Field(default=500, ge=1, le=2000)
+    items: List[RagasRegressionCaseBundleItem] = Field(..., min_length=1)
+
+
 class RagasRegressionCaseOut(OrmModel):
     id: UUID
     tenant_id: UUID
@@ -91,7 +109,7 @@ class RagasRegressionCaseList(BaseModel):
 
 class RagasRegressionRunCreateRequest(BaseModel):
     case_ids: List[UUID] = Field(default_factory=list, description="Case IDs to run (if empty, select by filter criteria)")
-    dataset_id: Optional[UUID] = Field(default=None, description="Only run cases under this dataset (optional)")
+    dataset_id: UUID = Field(..., description="Run cases under this dataset (required)")
     metrics: List[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
         description="RAGAS metrics list",
@@ -122,6 +140,7 @@ class RagasRegressionRunSchema(OrmModel):
     id: UUID
     tenant_id: UUID
     account_id: Optional[str] = None
+    dataset_id: Optional[UUID] = None
     status: str
     metrics: List[str] = Field(default_factory=list)
     params: Dict[str, Any] = Field(default_factory=dict)

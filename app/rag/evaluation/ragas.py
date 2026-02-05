@@ -29,6 +29,7 @@ from app.models.evaluation import (
     RagasRegressionRun,
 )
 from app.rag.embedding import create_langchain_embeddings_from_config
+from app.rag.evaluation.regression_sample_builder import build_regression_item_meta, build_regression_sample
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 
@@ -225,7 +226,17 @@ def _resolve_metrics(metric_names: List[str]):
     Returns: list[Metric]
     """
     try:
-        from ragas.metrics import Faithfulness, LLMContextPrecisionWithoutReference, ResponseRelevancy
+        from ragas.metrics import (
+            AnswerCorrectness,
+            AnswerSimilarity,
+            ContextPrecision,
+            ContextRecall,
+            Faithfulness,
+            IDBasedContextPrecision,
+            IDBasedContextRecall,
+            LLMContextPrecisionWithoutReference,
+            ResponseRelevancy,
+        )
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError(
             "RAGAS is not installed. Please run: pip install ragas"
@@ -240,7 +251,25 @@ def _resolve_metrics(metric_names: List[str]):
         if key in {"response_relevancy", "answer_relevancy"}:
             resolved.append(ResponseRelevancy())
             continue
-        if key in {"context_precision", "llm_context_precision_without_reference"}:
+        if key in {"answer_similarity"}:
+            resolved.append(AnswerSimilarity())
+            continue
+        if key in {"answer_correctness"}:
+            resolved.append(AnswerCorrectness())
+            continue
+        if key in {"context_recall"}:
+            resolved.append(ContextRecall())
+            continue
+        if key in {"context_precision"}:
+            resolved.append(ContextPrecision())
+            continue
+        if key in {"id_based_context_recall"}:
+            resolved.append(IDBasedContextRecall())
+            continue
+        if key in {"id_based_context_precision"}:
+            resolved.append(IDBasedContextPrecision())
+            continue
+        if key in {"llm_context_precision_without_reference"}:
             resolved.append(LLMContextPrecisionWithoutReference())
             continue
         raise ValueError(f"Unsupported RAGAS metric: {name}")
@@ -587,15 +616,21 @@ def run_regression_ragas_evaluation(
             )
             if skip_empty_contexts and not contexts:
                 continue
-            eval_items.append(
-                {
-                    "case_id": case.id,
-                    "question": case.question,
-                    "response": response,
-                    "retrieved_contexts": contexts,
-                    "citations": citations,
-                }
-            )
+            meta = (graph_result or {}).get("metrics") or {}
+            eval_item: Dict[str, Any] = {
+                "case_id": case.id,
+                "question": case.question,
+                "response": response,
+                "retrieved_contexts": contexts,
+                "citations": citations,
+                "abstain_triggered": bool((graph_result or {}).get("abstain_triggered")),
+                "abstain_reason": (graph_result or {}).get("abstain_reason"),
+                "top_relevance_score": meta.get("top_relevance_score") if isinstance(meta, dict) else None,
+            }
+            sample_kwargs, item_meta = build_regression_sample(case, eval_item)
+            eval_item["sample_kwargs"] = sample_kwargs
+            eval_item["item_meta"] = item_meta
+            eval_items.append(eval_item)
 
         if not eval_items:
             run.status = "failed"
@@ -628,14 +663,7 @@ def run_regression_ragas_evaluation(
         metrics = _resolve_metrics(metric_names)
         metric_keys = [getattr(m, "name", None) or str(m) for m in metrics]
 
-        samples = [
-            SingleTurnSample(
-                user_input=item["question"],
-                response=item["response"],
-                retrieved_contexts=item["retrieved_contexts"],
-            )
-            for item in eval_items
-        ]
+        samples = [SingleTurnSample(**(item.get("sample_kwargs") or {})) for item in eval_items]
         dataset = EvaluationDataset(samples=samples)
         result = evaluate(
             dataset=dataset,
@@ -666,6 +694,10 @@ def run_regression_ragas_evaluation(
                     retrieved_contexts=item["retrieved_contexts"],
                     citations=item["citations"],
                     scores=scores,
+                    meta=build_regression_item_meta(
+                        sample_kwargs=item.get("sample_kwargs"),
+                        item_meta=item.get("item_meta"),
+                    ),
                 )
             )
 
