@@ -2103,6 +2103,7 @@ export default function KnowledgePage() {
                               />
                             </th>
                             <th className="px-6 py-4 font-medium">文档名称</th>
+                            <th className="px-6 py-4 font-medium">标签</th>
                             <th className="px-6 py-4 font-medium">状态</th>
                             <th className="px-6 py-4 font-medium">分块</th>
                             <th className="px-6 py-4 font-medium">大小</th>
@@ -2115,6 +2116,7 @@ export default function KnowledgePage() {
                             const badge = getStatusBadge(doc.status)
                             const fileType = getFileTypeStyle(doc)
                             const TypeIcon = fileType.icon
+                            const userTags = getUserTagsFromDocument(doc)
                             return (
                               <tr key={doc.id} className="hover:bg-muted/20 transition-colors group">
                                 <td className="px-4 py-4 align-top">
@@ -2144,6 +2146,13 @@ export default function KnowledgePage() {
                                       {fileType.label}
                                     </span>
                                   </div>
+                                </td>
+                                <td className="px-6 py-4 align-top">
+                                  {userTags.length ? (
+                                    <DocumentTags tags={userTags} max={3} dense />
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
                                 </td>
                                 <td className="px-6 py-4">
                                   <StatusBadge status={badge.status} label={badge.label} />
