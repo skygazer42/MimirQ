@@ -193,6 +193,9 @@ class Settings(BaseSettings):
     PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD: float = 0.15
     # Optional: ingest documents by fetching a remote URL (connector skeleton).
     URL_INGEST_ENABLED: bool = False
+    # Optional: ingest structured DB metadata (catalog/profiling) from MySQL/SQLServer.
+    # Disabled by default because it requires outbound DB connectivity and careful secrets handling.
+    DB_CATALOG_ENABLED: bool = False
     URL_INGEST_MAX_BYTES: int = 50_000_000
     URL_INGEST_TIMEOUT_SEC: float = 30.0
     # Allowlist (CSV) for outbound URL ingestion. Empty means "allow any public host/port"
