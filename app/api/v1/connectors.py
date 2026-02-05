@@ -390,18 +390,29 @@ async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by
             db.refresh(run)
 
         from app.connectors.db.catalog_runner import run_catalog_sync
+        from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
 
         connector_id = str(run.connector_id or "").strip()
         cfg_raw = dict(run.config or {})
         cfg = decrypt_connector_config_secrets(cfg_raw)
+        stats = dict(run.stats or {})
+        cfg_id = stats.get("config_id")
+        connector_config_id: UUID | None = None
+        try:
+            if cfg_id:
+                connector_config_id = UUID(str(cfg_id))
+        except Exception:
+            connector_config_id = None
+        store = SqlAlchemyCatalogStore(db=db)
         result = run_catalog_sync(
             tenant_id=tenant_id,
             dataset_id=run.dataset_id,
             connector_id=connector_id,
             config=dict(cfg or {}),
+            store=store,
+            connector_config_id=connector_config_id,
         )
 
-        stats = dict(run.stats or {})
         stats.update({"result": dict(result or {})})
         run.stats = _finalize_connector_stats(stats)
         run.status = "completed"
