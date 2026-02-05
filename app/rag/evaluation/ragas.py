@@ -226,7 +226,17 @@ def _resolve_metrics(metric_names: List[str]):
     Returns: list[Metric]
     """
     try:
-        from ragas.metrics import Faithfulness, LLMContextPrecisionWithoutReference, ResponseRelevancy
+        from ragas.metrics import (
+            AnswerCorrectness,
+            AnswerSimilarity,
+            ContextPrecision,
+            ContextRecall,
+            Faithfulness,
+            IDBasedContextPrecision,
+            IDBasedContextRecall,
+            LLMContextPrecisionWithoutReference,
+            ResponseRelevancy,
+        )
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError(
             "RAGAS is not installed. Please run: pip install ragas"
@@ -241,7 +251,25 @@ def _resolve_metrics(metric_names: List[str]):
         if key in {"response_relevancy", "answer_relevancy"}:
             resolved.append(ResponseRelevancy())
             continue
-        if key in {"context_precision", "llm_context_precision_without_reference"}:
+        if key in {"answer_similarity"}:
+            resolved.append(AnswerSimilarity())
+            continue
+        if key in {"answer_correctness"}:
+            resolved.append(AnswerCorrectness())
+            continue
+        if key in {"context_recall"}:
+            resolved.append(ContextRecall())
+            continue
+        if key in {"context_precision"}:
+            resolved.append(ContextPrecision())
+            continue
+        if key in {"id_based_context_recall"}:
+            resolved.append(IDBasedContextRecall())
+            continue
+        if key in {"id_based_context_precision"}:
+            resolved.append(IDBasedContextPrecision())
+            continue
+        if key in {"llm_context_precision_without_reference"}:
             resolved.append(LLMContextPrecisionWithoutReference())
             continue
         raise ValueError(f"Unsupported RAGAS metric: {name}")
