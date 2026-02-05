@@ -69,6 +69,24 @@ class RagasRegressionCasePatchRequest(BaseModel):
         return self
 
 
+class RagasRegressionCaseBundleItem(BaseModel):
+    """Portable regression case payload (no internal ids)."""
+
+    question: str = Field(..., min_length=1)
+    expected_answer: Optional[str] = None
+    reference_sources: List[ReferenceSource] = Field(..., min_length=1)
+    tags: List[str] = Field(default_factory=list)
+
+
+class RagasRegressionCaseImportRequest(BaseModel):
+    """Import a dataset-scoped regression case bundle (upsert by question)."""
+
+    dataset_id: UUID
+    overwrite: bool = False
+    max_items: int = Field(default=500, ge=1, le=2000)
+    items: List[RagasRegressionCaseBundleItem] = Field(..., min_length=1)
+
+
 class RagasRegressionCaseOut(OrmModel):
     id: UUID
     tenant_id: UUID

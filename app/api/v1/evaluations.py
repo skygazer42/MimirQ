@@ -26,6 +26,7 @@ from app.api.schemas.evaluation import (
 )
 from app.api.schemas.regression import (
     RagasRegressionCaseCreateRequest,
+    RagasRegressionCaseImportRequest,
     RagasRegressionCaseList,
     RagasRegressionCaseOut,
     RagasRegressionCasePatchRequest,
@@ -50,7 +51,7 @@ from app.rag.evaluation.test_generator import (
     generate_questions_from_documents,
 )
 from app.services.dataset_service import DatasetService
-from app.services.regression_case_bundle import export_case_bundle
+from app.services.regression_case_bundle import export_case_bundle, plan_case_import
 
 router = APIRouter()
 
@@ -460,6 +461,101 @@ async def export_ragas_regression_cases(
     )
 
     return export_case_bundle(items, dataset_id)
+
+
+@router.post("/ragas/regression/cases/import")
+async def import_ragas_regression_cases(
+    payload: RagasRegressionCaseImportRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Import (upsert) regression cases by (dataset_id + question.strip())."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    existing = (
+        db.query(RagasRegressionCase)
+        .filter(
+            RagasRegressionCase.tenant_id == tenant_id,
+            RagasRegressionCase.dataset_id == payload.dataset_id,
+        )
+        .all()
+    )
+    by_question = {str(getattr(r, "question", "") or "").strip(): r for r in existing if getattr(r, "question", None)}
+
+    plan = plan_case_import(
+        dataset_id=payload.dataset_id,
+        existing_questions=set(by_question.keys()),
+        items=list(payload.items or []),
+        overwrite=bool(payload.overwrite),
+        max_items=int(payload.max_items or 0),
+    )
+
+    created = 0
+    updated = 0
+    skipped = int(plan.get("skipped") or 0)
+    errors: list[dict[str, Any]] = list(plan.get("errors") or [])
+
+    for item in plan.get("create_items") or []:
+        try:
+            reference_sources = _finalize_reference_sources(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=payload.dataset_id,
+                reference_sources=item.get("reference_sources") or [],
+            )
+            row = RagasRegressionCase(
+                tenant_id=tenant_id,
+                dataset_id=payload.dataset_id,
+                question=str(item.get("question") or "").strip(),
+                expected_answer=item.get("expected_answer"),
+                reference_sources=reference_sources,
+                tags=list(item.get("tags") or []),
+                created_by=account_id,
+            )
+            db.add(row)
+            created += 1
+        except HTTPException as exc:
+            skipped += 1
+            errors.append({"question": item.get("question"), "error": exc.detail})
+        except Exception as exc:  # noqa: BLE001
+            skipped += 1
+            errors.append({"question": item.get("question"), "error": str(exc)[:200]})
+
+    for item in plan.get("update_items") or []:
+        question = str(item.get("question") or "").strip()
+        row = by_question.get(question)
+        if row is None:
+            skipped += 1
+            errors.append({"question": question, "error": "Case not found for update"})
+            continue
+        try:
+            reference_sources = _finalize_reference_sources(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=payload.dataset_id,
+                reference_sources=item.get("reference_sources") or [],
+            )
+            row.expected_answer = item.get("expected_answer")
+            row.tags = list(item.get("tags") or [])
+            row.reference_sources = reference_sources
+            db.add(row)
+            updated += 1
+        except HTTPException as exc:
+            skipped += 1
+            errors.append({"question": question, "error": exc.detail})
+        except Exception as exc:  # noqa: BLE001
+            skipped += 1
+            errors.append({"question": question, "error": str(exc)[:200]})
+
+    db.commit()
+
+    return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
 
 
 @router.delete("/ragas/regression/cases/{case_id}", status_code=204)
