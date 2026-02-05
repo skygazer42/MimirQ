@@ -1,10 +1,25 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 from uuid import UUID
 
 
 REGRESSION_CASE_BUNDLE_SCHEMA_V1 = "mimirq.regression_cases.v1"
+
+
+def _coerce_bundle_item(raw: Any) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if hasattr(raw, "model_dump"):
+        return raw.model_dump(mode="json")
+    if isinstance(raw, dict):
+        return dict(raw)
+    return {
+        "question": getattr(raw, "question", None),
+        "expected_answer": getattr(raw, "expected_answer", None),
+        "tags": getattr(raw, "tags", None),
+        "reference_sources": getattr(raw, "reference_sources", None),
+    }
 
 
 def export_case_bundle(cases: Sequence[Any], dataset_id: UUID) -> dict[str, Any]:
@@ -41,3 +56,70 @@ def export_case_bundle(cases: Sequence[Any], dataset_id: UUID) -> dict[str, Any]
         "items": items,
     }
 
+
+def plan_case_import(
+    *,
+    dataset_id: UUID,
+    existing_questions: set[str],
+    items: Sequence[Any],
+    overwrite: bool = False,
+    max_items: int = 500,
+) -> dict[str, Any]:
+    """
+    Plan case upserts using (dataset_id + question.strip()) as a stable key.
+
+    Returns counts plus `create_items`/`update_items` for the API layer.
+    """
+    _ = UUID(str(dataset_id))  # ensure UUID-compatible input
+    cap = max(1, min(2000, int(max_items or 0))) if max_items else 500
+
+    created = 0
+    updated = 0
+    skipped = 0
+    errors: list[dict[str, Any]] = []
+
+    create_items: list[dict[str, Any]] = []
+    update_items: list[dict[str, Any]] = []
+
+    seen: set[str] = set()
+
+    for idx, raw in enumerate(list(items or [])[:cap]):
+        payload = _coerce_bundle_item(raw)
+        question = str(payload.get("question") or "").strip()
+        if not question:
+            skipped += 1
+            errors.append({"index": idx, "error": "question is required"})
+            continue
+
+        if question in seen:
+            skipped += 1
+            errors.append({"index": idx, "question": question, "error": "duplicate question in import batch"})
+            continue
+        seen.add(question)
+
+        payload["question"] = question
+
+        if question in existing_questions:
+            if overwrite:
+                updated += 1
+                update_items.append(payload)
+            else:
+                skipped += 1
+            continue
+
+        created += 1
+        create_items.append(payload)
+
+    # If input is larger than cap, treat remaining items as skipped.
+    if items and len(items) > cap:
+        skipped += len(items) - cap
+        errors.append({"error": "max_items exceeded", "max_items": cap, "ignored": len(items) - cap})
+
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "create_items": create_items,
+        "update_items": update_items,
+    }

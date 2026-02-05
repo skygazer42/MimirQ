@@ -2394,6 +2394,16 @@ export const evaluationApi = {
     return data
   },
 
+  async importRegressionCases(payload: {
+    dataset_id: string
+    overwrite?: boolean
+    max_items?: number
+    items: any[]
+  }): Promise<any> {
+    const { data } = await apiClient.post('/evaluations/ragas/regression/cases/import', payload)
+    return data
+  },
+
   async deleteRegressionCase(caseId: string): Promise<void> {
     await apiClient.delete(`/evaluations/ragas/regression/cases/${caseId}`)
   },
