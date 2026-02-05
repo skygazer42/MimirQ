@@ -29,16 +29,16 @@ def test_import_endpoint_is_registered():
 
 
 def test_import_schema_requires_dataset_id_and_items_and_evidence():
-    RagasRegressionCaseImportRequest = _import_schema_import_request()
+    import_req = _import_schema_import_request()
 
     with pytest.raises(Exception):
-        RagasRegressionCaseImportRequest(items=[])
+        import_req(items=[])
 
     with pytest.raises(Exception):
-        RagasRegressionCaseImportRequest(dataset_id=uuid4(), items=[])
+        import_req(dataset_id=uuid4(), items=[])
 
     with pytest.raises(Exception):
-        RagasRegressionCaseImportRequest(
+        import_req(
             dataset_id=uuid4(),
             items=[{"question": "q", "reference_sources": []}],
         )

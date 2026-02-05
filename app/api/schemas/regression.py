@@ -109,7 +109,7 @@ class RagasRegressionCaseList(BaseModel):
 
 class RagasRegressionRunCreateRequest(BaseModel):
     case_ids: List[UUID] = Field(default_factory=list, description="Case IDs to run (if empty, select by filter criteria)")
-    dataset_id: Optional[UUID] = Field(default=None, description="Only run cases under this dataset (optional)")
+    dataset_id: UUID = Field(..., description="Run cases under this dataset (required)")
     metrics: List[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
         description="RAGAS metrics list",
@@ -140,6 +140,7 @@ class RagasRegressionRunSchema(OrmModel):
     id: UUID
     tenant_id: UUID
     account_id: Optional[str] = None
+    dataset_id: Optional[UUID] = None
     status: str
     metrics: List[str] = Field(default_factory=list)
     params: Dict[str, Any] = Field(default_factory=dict)

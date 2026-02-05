@@ -103,6 +103,7 @@ class RagasRegressionRun(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     account_id = Column(String(255), nullable=True, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
     status = Column(String(20), nullable=False, default="pending")  # pending|running|completed|failed
     metrics = Column(JSONB, default=list)

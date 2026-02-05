@@ -85,6 +85,11 @@ def apply_runtime_migrations(engine) -> None:
             "ALTER TABLE ragas_regression_cases ALTER COLUMN reference_sources SET DEFAULT '[]'::jsonb;",
             "ALTER TABLE ragas_regression_cases ALTER COLUMN reference_sources SET NOT NULL;",
 
+            # Dataset-scoped regression runs (for per-dataset health/report).
+            "ALTER TABLE ragas_regression_runs ADD COLUMN IF NOT EXISTS dataset_id UUID;",
+            "CREATE INDEX IF NOT EXISTS ix_ragas_regression_runs_tenant_dataset_created_at "
+            "ON ragas_regression_runs (tenant_id, dataset_id, created_at);",
+
             # Store per-message run metadata (metrics/request_id/route/etc.)
             'ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_metadata JSONB;',
 
