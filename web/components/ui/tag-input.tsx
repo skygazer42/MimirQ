@@ -25,10 +25,10 @@ export function TagInput({
   maxTagLen?: number
   className?: string
   inputClassName?: string
-}) {
-  const [draft, setDraft] = React.useState('')
+  }) {
+    const [draft, setDraft] = React.useState('')
 
-  const tags = Array.isArray(value) ? value : []
+    const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])
 
   const addTags = React.useCallback(
     (incoming: string[]) => {
@@ -143,4 +143,3 @@ export function TagInput({
     </div>
   )
 }
-
