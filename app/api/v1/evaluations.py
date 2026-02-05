@@ -26,9 +26,9 @@ from app.api.schemas.evaluation import (
 )
 from app.api.schemas.regression import (
     RagasRegressionCaseCreateRequest,
-    RagasRegressionCasePatchRequest,
     RagasRegressionCaseList,
     RagasRegressionCaseOut,
+    RagasRegressionCasePatchRequest,
     RagasRegressionItemSchema,
     RagasRegressionRunCreateRequest,
     RagasRegressionRunDetail,
@@ -167,7 +167,7 @@ def _finalize_reference_sources(
             chunk_id = UUID(str(chunk_id_raw))
             doc_id = UUID(str(doc_id_raw))
         except Exception:
-            raise HTTPException(status_code=400, detail="Invalid evidence chunk_id/document_id")
+            raise HTTPException(status_code=400, detail="Invalid evidence chunk_id/document_id") from None
 
         row = row_by_chunk_id.get(chunk_id)
         if not row:
