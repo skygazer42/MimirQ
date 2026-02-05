@@ -14,11 +14,40 @@ from pydantic import BaseModel, Field
 from .base import OrmModel
 
 
+class ReferenceSource(BaseModel):
+    """A human-verified evidence pointer for a regression case."""
+
+    document_id: UUID = Field(..., description="Evidence document id")
+    chunk_id: UUID = Field(..., description="Evidence chunk id")
+
+    # Optional audit/debug fields (best-effort; do not gate correctness).
+    page_number: Optional[int] = Field(default=None, ge=1, description="1-based page number (optional)")
+    start_char: Optional[int] = Field(default=None, ge=0, description="Start character offset (optional)")
+    end_char: Optional[int] = Field(default=None, ge=0, description="End character offset (optional)")
+    doc_pipeline_key: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description="Composite key `${document_id}:${pipeline_hash}` (optional, for audit/debug)",
+    )
+    pipeline_hash: Optional[str] = Field(default=None, max_length=64, description="Chunk pipeline hash (optional)")
+    quote: Optional[str] = Field(
+        default=None,
+        max_length=2000,
+        description="Evidence excerpt (optional; used as fallback when chunk_id becomes stale)",
+    )
+    label: Optional[str] = Field(default=None, max_length=100, description="Human label (optional)")
+
+
 class RagasRegressionCaseCreateRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Question (user_input for regression case)")
-    dataset_id: Optional[UUID] = Field(default=None, description="Dataset ID (optional)")
+    dataset_id: UUID = Field(..., description="Dataset ID (required; regression suite is per-dataset)")
     document_ids: List[UUID] = Field(default_factory=list, description="Document scope (optional, takes priority over dataset_id)")
     expected_answer: Optional[str] = Field(default=None, description="Expected answer (optional, for manual comparison/supervision)")
+    reference_sources: List[ReferenceSource] = Field(
+        ...,
+        min_length=1,
+        description="Human-verified evidence sources (required; at least 1). Each source must include document_id + chunk_id.",
+    )
     tags: List[str] = Field(default_factory=list, description="Tags (optional)")
     extra: Dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
 
@@ -30,6 +59,7 @@ class RagasRegressionCaseOut(OrmModel):
     document_ids: List[UUID] = Field(default_factory=list)
     question: str
     expected_answer: Optional[str] = None
+    reference_sources: List[ReferenceSource] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     extra: Dict[str, Any] = Field(default_factory=dict)
     created_by: Optional[str] = None
