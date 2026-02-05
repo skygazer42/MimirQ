@@ -77,6 +77,14 @@ def apply_runtime_migrations(engine) -> None:
             *_tenant_id_migrations("ragas_regression_runs", default_tenant),
             *_tenant_id_migrations("ragas_regression_items", default_tenant),
 
+            # =========================
+            # RAGAS regression suite: evidence sources (case-level)
+            # =========================
+            "ALTER TABLE ragas_regression_cases ADD COLUMN IF NOT EXISTS reference_sources JSONB;",
+            "UPDATE ragas_regression_cases SET reference_sources = '[]'::jsonb WHERE reference_sources IS NULL;",
+            "ALTER TABLE ragas_regression_cases ALTER COLUMN reference_sources SET DEFAULT '[]'::jsonb;",
+            "ALTER TABLE ragas_regression_cases ALTER COLUMN reference_sources SET NOT NULL;",
+
             # Store per-message run metadata (metrics/request_id/route/etc.)
             'ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_metadata JSONB;',
 

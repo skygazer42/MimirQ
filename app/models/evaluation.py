@@ -85,6 +85,8 @@ class RagasRegressionCase(Base):
 
     question = Column(Text, nullable=False)
     expected_answer = Column(Text, nullable=True)
+    # Human-verified evidence pointers (document_id + chunk_id + optional audit fields).
+    reference_sources = Column(JSONB, default=list, nullable=False)
     tags = Column(JSONB, default=list)
     extra = Column(JSONB, default=dict)
 
