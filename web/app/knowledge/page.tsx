@@ -56,6 +56,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Panel } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import { DocumentTags } from '@/components/documents/document-tags'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Dialog,
@@ -76,6 +77,7 @@ import { getParserLabel } from '@/lib/parser-options'
 import { toSourcePathPrefix } from '@/lib/document-folders'
 import type { Citation, ConnectorRunOut, Dataset, Document, DocumentAccessMode, DocumentStats } from '@/types'
 import { connectorApi, datasetApi, documentApi, ragApi } from '@/lib/api-client'
+import { getUserTagsFromDocument } from '@/lib/document-user-tags'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
@@ -2679,6 +2681,7 @@ function DocumentCard({
   onToggleSelect: () => void
 }) {
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
+  const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeStyle(doc)
   const TypeIcon = fileType.icon
 
@@ -2732,6 +2735,10 @@ function DocumentCard({
         <h3 className="font-semibold text-foreground line-clamp-2 mb-2 min-h-[2.5rem]" title={doc.filename}>
           {doc.filename}
         </h3>
+
+        {userTags.length ? (
+          <DocumentTags tags={userTags} max={3} dense className="mb-3" />
+        ) : null}
 
         <div className="space-y-2 mt-auto">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
