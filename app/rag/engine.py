@@ -348,7 +348,7 @@ Requirements:
         max_s = max(raw_scores) if raw_scores else 0.0
         rng = (max_s - min_s) if max_s > min_s else 1.0
 
-        fused: List[Document] = []
+        fused_items: list[tuple[str, Document]] = []
         for key, doc in best_docs.items():
             meta = dict(merged_meta.get(key) or {})
             base_score = meta.get("score")
@@ -359,16 +359,30 @@ Requirements:
             meta[f"{meta_prefix}_hits"] = int(hit_counts.get(key, 0) or 0)
             meta[f"{meta_prefix}_fused"] = True
             meta["score"] = (float(score_map.get(key, 0.0) or 0.0) - min_s) / rng
-            fused.append(
+            fused_items.append(
+                (
+                    key,
                 Document(
                     page_content=doc.page_content,
                     metadata=meta,
                     id=getattr(doc, "id", None) or meta.get("chunk_id"),
                 )
+                ),
             )
 
-        fused.sort(key=lambda d: float((d.metadata or {}).get("score", 0.0) or 0.0), reverse=True)
-        return fused
+        # Deterministic tie-breakers are important for replay/regression:
+        # prefer higher hit-count across queries, then higher base score, then doc key.
+        def _sort_key(item: tuple[str, Document]) -> tuple[float, float, int, float, str]:
+            k, d = item
+            m = d.metadata or {}
+            fused_score = float(m.get("score", 0.0) or 0.0)
+            raw = float(m.get(f"{meta_prefix}_rrf_raw", 0.0) or 0.0)
+            hits = int(m.get(f"{meta_prefix}_hits", 0) or 0)
+            base = float(m.get(f"{meta_prefix}_base_score", 0.0) or 0.0)
+            return (-fused_score, -raw, -hits, -base, k)
+
+        fused_items.sort(key=_sort_key)
+        return [d for _k, d in fused_items]
 
     async def stream_chat(
         self,
