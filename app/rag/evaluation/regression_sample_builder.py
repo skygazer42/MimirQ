@@ -62,6 +62,32 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     citations = item.get("citations") or []
     retrieved_context_ids = _dedup_ids(citations, key="chunk_id")
 
+    # Retrieval quality signals (non-LLM):
+    # - recall: fraction of human-verified evidence chunks that were retrieved
+    # - hit@k: whether any evidence chunk appears in the top-k retrieved list
+    ref_set = set(reference_context_ids or [])
+    ret_list = list(retrieved_context_ids or [])
+    ret_set = set(ret_list)
+
+    retrieval_recall: float | None = None
+    retrieval_hit: bool | None = None
+    hit_at_1: bool | None = None
+    hit_at_3: bool | None = None
+    hit_at_5: bool | None = None
+    hit_at_10: bool | None = None
+    if ref_set:
+        hits = len(ref_set & ret_set)
+        retrieval_recall = round(hits / max(1, len(ref_set)), 4)
+        retrieval_hit = bool(hits > 0)
+
+        def _hit_at(k: int) -> bool:
+            return any(cid in ref_set for cid in ret_list[: max(0, int(k or 0))])
+
+        hit_at_1 = _hit_at(1)
+        hit_at_3 = _hit_at(3)
+        hit_at_5 = _hit_at(5)
+        hit_at_10 = _hit_at(10)
+
     top_rel = item.get("top_relevance_score")
     try:
         top_rel_f = float(top_rel) if top_rel is not None else None
@@ -72,6 +98,12 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "abstain_triggered": bool(item.get("abstain_triggered")) if "abstain_triggered" in item else None,
         "abstain_reason": item.get("abstain_reason"),
         "top_relevance_score": top_rel_f,
+        "retrieval_recall": retrieval_recall,
+        "retrieval_hit": retrieval_hit,
+        "retrieval_hit_at_1": hit_at_1,
+        "retrieval_hit_at_3": hit_at_3,
+        "retrieval_hit_at_5": hit_at_5,
+        "retrieval_hit_at_10": hit_at_10,
     }
 
     sample_kwargs = {
@@ -98,4 +130,10 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "abstain_triggered": meta.get("abstain_triggered"),
         "abstain_reason": meta.get("abstain_reason"),
         "top_relevance_score": meta.get("top_relevance_score"),
+        "retrieval_recall": meta.get("retrieval_recall"),
+        "retrieval_hit": meta.get("retrieval_hit"),
+        "retrieval_hit_at_1": meta.get("retrieval_hit_at_1"),
+        "retrieval_hit_at_3": meta.get("retrieval_hit_at_3"),
+        "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
+        "retrieval_hit_at_10": meta.get("retrieval_hit_at_10"),
     }

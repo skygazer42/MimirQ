@@ -170,6 +170,41 @@ def _mean(values: Iterable[float]) -> Optional[float]:
     return sum(vals) / len(vals)
 
 
+def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Compute non-LLM regression gate metrics from per-item meta.
+
+    These are derived from the regression case's human-verified evidence pointers
+    and the system's retrieved citations (chunk_id overlap), so they stay cheap and
+    deterministic (usable even when RAGAS metrics are missing/partial).
+    """
+
+    metas: list[dict[str, Any]] = []
+    for item in eval_items or []:
+        if not isinstance(item, dict):
+            continue
+        meta = item.get("item_meta")
+        metas.append(meta if isinstance(meta, dict) else {})
+
+    def _mean_bool(key: str) -> Optional[float]:
+        vals: list[float] = []
+        for m in metas:
+            v = m.get(key)
+            if v is None:
+                continue
+            vals.append(1.0 if bool(v) else 0.0)
+        return _mean(vals)
+
+    return {
+        "retrieval_recall": _mean(m.get("retrieval_recall") for m in metas),
+        "retrieval_hit_at_1": _mean_bool("retrieval_hit_at_1"),
+        "retrieval_hit_at_3": _mean_bool("retrieval_hit_at_3"),
+        "retrieval_hit_at_5": _mean_bool("retrieval_hit_at_5"),
+        "retrieval_hit_at_10": _mean_bool("retrieval_hit_at_10"),
+        "abstain_rate": _mean_bool("abstain_triggered"),
+    }
+
+
 def _parse_uuid_list(raw_list: Any) -> List[UUID]:
     out: List[UUID] = []
     if not raw_list:
@@ -494,6 +529,7 @@ def run_conversation_ragas_evaluation(
             summary[key] = _mean(row.get(key) for row in result.scores)
         summary["total_tokens"] = getattr(result, "total_tokens", None)
         summary["total_cost"] = getattr(result, "total_cost", None)
+        summary.update(_build_regression_gate_summary(eval_items))
 
         run.status = "completed"
         run.metrics = metric_keys
