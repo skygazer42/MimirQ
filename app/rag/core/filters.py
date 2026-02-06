@@ -46,9 +46,36 @@ def _any_contains(haystack: Any, needle: Any) -> bool:
     if haystack is None:
         return False
     expected = str(needle).lower()
+    if expected == "":
+        # Empty substring would match everything; fail closed.
+        return False
     if isinstance(haystack, (list, tuple, set)):
         return any(expected in str(v).lower() for v in haystack)
     return expected in str(haystack).lower()
+
+
+def _any_startswith(haystack: Any, needle: Any) -> bool:
+    if haystack is None:
+        return False
+    expected = str(needle).lower()
+    if expected == "":
+        # Empty prefix would match everything; fail closed.
+        return False
+    if isinstance(haystack, (list, tuple, set)):
+        return any(str(v).lower().startswith(expected) for v in haystack)
+    return str(haystack).lower().startswith(expected)
+
+
+def _any_endswith(haystack: Any, needle: Any) -> bool:
+    if haystack is None:
+        return False
+    expected = str(needle).lower()
+    if expected == "":
+        # Empty suffix would match everything; fail closed.
+        return False
+    if isinstance(haystack, (list, tuple, set)):
+        return any(str(v).lower().endswith(expected) for v in haystack)
+    return str(haystack).lower().endswith(expected)
 
 
 def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
@@ -82,6 +109,43 @@ def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> 
     for key, condition in filter_spec.items():
         if not isinstance(key, str):
             return False
+
+        # Boolean composition operators at the top-level.
+        if key == "$and":
+            if not isinstance(condition, list) or not condition:
+                return False
+            for item in condition:
+                if not isinstance(item, dict):
+                    return False
+                if not match_metadata_filter(meta, item):
+                    return False
+            continue
+
+        if key == "$or":
+            if not isinstance(condition, list) or not condition:
+                return False
+            any_ok = False
+            for item in condition:
+                if not isinstance(item, dict):
+                    return False
+                if match_metadata_filter(meta, item):
+                    any_ok = True
+                    break
+            if not any_ok:
+                return False
+            continue
+
+        if key == "$not":
+            if not isinstance(condition, dict) or not condition:
+                return False
+            if match_metadata_filter(meta, condition):
+                return False
+            continue
+
+        if key.startswith("$"):
+            # Unknown top-level operator: treat as non-match (safer than silently allowing).
+            return False
+
         meta_value = _get_meta_value(meta, key)
 
         if isinstance(condition, dict):
@@ -119,6 +183,12 @@ def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> 
                 elif op == "$contains":
                     if not _any_contains(meta_value, expected):
                         return False
+                elif op == "$startswith":
+                    if not _any_startswith(meta_value, expected):
+                        return False
+                elif op == "$endswith":
+                    if not _any_endswith(meta_value, expected):
+                        return False
                 else:
                     # Unknown operator: treat as non-match (safer than silently allowing).
                     return False
@@ -130,4 +200,3 @@ def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> 
 
 
 __all__ = ["match_metadata_filter"]
-
