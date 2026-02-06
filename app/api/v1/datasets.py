@@ -885,7 +885,7 @@ def delete_dataset(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
 
-    # Prevent leaving orphaned documents: Document.dataset_id is not a DB FK, so we must enforce this at the API layer.
+    # Prevent deleting non-empty datasets. The DB also enforces tenant-safe dataset references; keep the API check for a friendly 409.
     doc_count = (
         db.query(DBDocument)
         .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)

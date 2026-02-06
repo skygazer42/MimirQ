@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
@@ -26,7 +26,7 @@ class DatasetPrecheckScanRun(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
     requested_by = Column(String(255), nullable=True)
 
@@ -55,7 +55,12 @@ class DatasetPrecheckScanRun(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "dataset_id"],
+            ["datasets.tenant_id", "datasets.id"],
+            name="fk_dataset_precheck_scan_runs_tenant_dataset",
+            ondelete="CASCADE",
+        ),
         Index("ix_dataset_precheck_scan_runs_tenant_dataset_created_at", "tenant_id", "dataset_id", "created_at"),
         Index("ix_dataset_precheck_scan_runs_tenant_status_created_at", "tenant_id", "status", "created_at"),
     )
-

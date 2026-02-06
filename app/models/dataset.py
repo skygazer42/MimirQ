@@ -7,7 +7,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, Enum, ForeignKeyConstraint, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -23,6 +23,12 @@ class DatasetPermissionEnum(str, enum.Enum):
 class Dataset(Base):
     """Knowledge base / dataset"""
     __tablename__ = "datasets"
+    __table_args__ = (
+        # Required for composite FKs: (tenant_id, dataset_id) -> datasets(tenant_id, id).
+        UniqueConstraint("tenant_id", "id", name="uq_datasets_tenant_id_id"),
+        # Avoid confusing duplicates within a tenant.
+        UniqueConstraint("tenant_id", "name", name="uq_datasets_tenant_name"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
@@ -44,12 +50,18 @@ class DatasetPermission(Base):
     """Dataset partial member permissions"""
     __tablename__ = "dataset_permissions"
     __table_args__ = (
-        UniqueConstraint("dataset_id", "account_id", name="uq_dataset_permission_member"),
+        UniqueConstraint("tenant_id", "dataset_id", "account_id", name="uq_dataset_permission_member"),
+        ForeignKeyConstraint(
+            ["tenant_id", "dataset_id"],
+            ["datasets.tenant_id", "datasets.id"],
+            name="fk_dataset_permissions_tenant_dataset",
+            ondelete="CASCADE",
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     account_id = Column(String(255), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
