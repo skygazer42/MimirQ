@@ -1005,7 +1005,11 @@ Requirements:
             }
 
             # Step 1.5: No-retrieval/low-evidence refusal (optional).
-            abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED)
+            #
+            # Strict visible-evidence-only grounding treats missing evidence as non-existent:
+            # abstain is a normal success path (no error).
+            strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False))
+            abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible
             abstain_triggered = False
             abstain_reason: str | None = None
             top_rel = 0.0
@@ -1034,7 +1038,7 @@ Requirements:
                     abstain_reason = "top_relevance_lt_min"
 
             if abstain_triggered:
-                abstain_message = 'Unable to answer this question based on available materials. You can upload additional relevant documents or narrow down your question and try again.'
+                abstain_message = "Unable to answer this question based on the available materials."
 
                 structured_data = None
                 structured_parse_meta = {"ok": False, "method": None, "error": None}
@@ -1140,7 +1144,7 @@ Requirements:
 
             # Step 2: Additional KG event recall (optional).
             kg_context = ""
-            if settings.KG_ENABLED and settings.KG_CHAT_ENABLED and tenant_id and document_ids:
+            if (not strict_visible) and settings.KG_ENABLED and settings.KG_CHAT_ENABLED and tenant_id and document_ids:
                 try:
                     kg_result = kg_result_cached or await kg_search(
                         query=question,
@@ -1328,7 +1332,7 @@ Requirements:
             gen_start = time.time()
             pii_on = bool(pii_redaction_enabled())
 
-            claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False))
+            claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or bool(strict_visible)
             claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
             claim_check_applied = bool(claim_check_configured) and (not structured_output)
             claim_check_removed = 0
