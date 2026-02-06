@@ -442,6 +442,10 @@ class Settings(BaseSettings):
     # Disabled by default because it may delay streaming (answer is buffered for claim-check).
     RAG_CLAIM_CHECK_ENABLED: bool = False
     RAG_CLAIM_CHECK_MAX_CLAIMS: int = 24
+    # Strict grounding: treat missing evidence as non-existent. When enabled:
+    # - Force abstain gate even if RAG_ABSTAIN_ENABLED=false
+    # - Force claim-check (non-structured output) even if RAG_CLAIM_CHECK_ENABLED=false
+    RAG_VISIBLE_EVIDENCE_ONLY_ENABLED: bool = False
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20

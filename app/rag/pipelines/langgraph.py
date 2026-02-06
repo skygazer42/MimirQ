@@ -37,9 +37,11 @@ from app.rag.core.conversation import format_history_text
 from app.rag.core.text import (
     extract_evidence_text,
     guess_retrieval_mode,
+    is_claim_supported,
     normalize_retrieval_mode,
     parse_json_from_text,
     should_rewrite_query,
+    split_into_claims,
 )
 from app.rag.engine import get_rag_engine
 from app.rag.retriever import hybrid_retriever
@@ -629,7 +631,8 @@ def _retrieve_node(state: RAGState) -> RAGState:
         metrics["tag"] = state.get("tag_meta")
 
     # Grounding guard: abstain when evidence is weak/empty.
-    abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED)
+    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False))
+    abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible
     abstain_triggered = False
     abstain_reason: str | None = None
     top_rel = 0.0
@@ -680,7 +683,7 @@ def _generate_node(state: RAGState) -> RAGState:
         engine = get_rag_engine()
         llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
 
-        abstain_message = "Unable to answer this question based on available materials. Please upload additional relevant documents or narrow the question scope before asking again."
+        abstain_message = "Unable to answer this question based on the available materials."
         answer = abstain_message
         if bool(state.get("structured_output")):
             preset_key = (state.get("structured_preset") or "").lower()
@@ -773,6 +776,28 @@ def _generate_node(state: RAGState) -> RAGState:
     if pii_on:
         answer = redact_text(str(answer))
 
+    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False))
+    claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or strict_visible
+    claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
+    claim_check_applied = bool(claim_check_configured) and (not bool(state.get("structured_output")))
+    claim_check_removed = 0
+    claim_check_total = 0
+
+    if claim_check_applied:
+        evidence_text = redact_text(ctx) if pii_on else ctx
+        claims = split_into_claims(str(answer or ""), max_claims=claim_check_max_claims)
+        claim_check_total = len(claims)
+        kept: List[str] = []
+        for c in claims:
+            if is_claim_supported(c, evidence_text):
+                kept.append(c)
+            else:
+                claim_check_removed += 1
+        cleaned = "\n".join(kept).strip()
+        if not cleaned:
+            cleaned = "Unable to answer this question based on the available materials."
+        answer = cleaned
+
     # Append cited images as inline Markdown to the answer (non-structured output only, configurable)
     if not bool(state.get("structured_output")) and bool(settings.SHOW_IMAGE_IN_ANSWER) and settings.IMAGE_APPEND_MAX > 0:
         citations = state.get("citations") or []
@@ -813,6 +838,10 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["context_evidence_min_sentence_chars"] = (
         int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
     )
+    metrics["claim_check_enabled"] = bool(claim_check_applied)
+    metrics["claim_check_removed"] = int(claim_check_removed)
+    metrics["claim_check_total"] = int(claim_check_total)
+    metrics["claim_check_max_claims"] = int(claim_check_max_claims) if claim_check_configured else None
     base = generation_elapsed
     base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
     base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
