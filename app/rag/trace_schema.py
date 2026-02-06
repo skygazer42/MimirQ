@@ -24,6 +24,10 @@ class RagTraceCitation(BaseModel):
     start_char: Optional[int] = None
     end_char: Optional[int] = None
 
+    # Retrieval provenance (PII-safe identifiers only).
+    retrieval_role: Optional[str] = None
+    neighbor_of: Optional[str] = None
+
     # Provenance
     doc_pipeline_key: Optional[str] = None
     pipeline_hash: Optional[str] = None
@@ -56,6 +60,8 @@ class RagTraceRetrievalQuery(BaseModel):
     query_chars: Optional[int] = None
     elapsed_sec: Optional[float] = None
     ok: Optional[bool] = None
+    # Sanitized retriever-side debug counters (no text; no tenant/dataset ids).
+    retriever_debug: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(extra="ignore")
 
@@ -127,4 +133,3 @@ class RagTraceListResponse(BaseModel):
     items: List[RagTrace] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")
-
