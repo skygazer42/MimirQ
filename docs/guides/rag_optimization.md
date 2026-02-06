@@ -66,3 +66,39 @@ MimirQ includes RAGAS evaluation and regression helpers. See:
 - `docs/guides/regression_gate.md`
 - `docs/feature_benchmark.md`
 
+## 7) Metadata Filtering (Scope + Precision)
+
+You can restrict retrieval using `metadata_filter` (chat request `rag_config.metadata_filter`).
+
+Use cases:
+- Filter by page ranges (`page >= 10`)
+- Filter by document/user tags (`document_user.tags in [...]`)
+- Filter by frontmatter fields (`document_frontmatter.author contains "alice"`)
+
+Examples:
+
+```json
+{
+  "page": { "$gte": 10, "$lte": 20 },
+  "document_user.tags": { "$in": ["it", "hr"] }
+}
+```
+
+Notes:
+- Filter keys support dotted paths (e.g. `document_user.tags`).
+- Operators are fail-closed: unknown operators will not match.
+
+## 8) Observability (Replay What Happened)
+
+When debugging quality issues, prefer using the trace/metrics pipeline instead of ad-hoc prints.
+
+Key settings:
+- `ENABLE_METRICS_LOG=true`
+- `METRICS_LOG_PATH=./logs/rag_metrics.jsonl`
+- `METRICS_LOG_INCLUDE_TEXT=false` (recommended: keeps correlation hashes instead of raw question/query)
+
+Common workflow:
+1) Reproduce the bad answer
+2) Inspect the RAG trace (History/Graph UI) to see retrieval mode, timings, citations and refusal reasons
+3) If needed: export feedback → regression case, then gate future changes with the regression suite
+
