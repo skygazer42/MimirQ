@@ -49,6 +49,7 @@ from app.models.connector_config import ConnectorConfig
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentPermissionService
 from app.services.web_crawler import crawl_site
+from app.tasks.queue import enqueue_connector_run, get_queue
 
 router = APIRouter()
 
@@ -587,7 +588,8 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
             return
 
         run.status = "running"
-        run.started_at = _now()
+        if run.started_at is None:
+            run.started_at = _now()
         run.error_message = None
         run.stats = dict(run.stats or {})
         db.commit()
@@ -612,27 +614,54 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
 
         auth_headers = _build_auth_headers(cfg)
 
-        created = 0
-        failed = 0
-        created_doc_ids: list[UUID] = []
+        processed_refs: set[str] = set()
+        for d in (getattr(run, "documents", None) or []):
+            ref = str(getattr(d, "source_ref", "") or "").strip()
+            if ref:
+                processed_refs.add(ref)
 
         stats0 = dict(run.stats or {})
-        stats0.update(
-            {
-                "total_urls": int(len(urls)),
-                "processed_urls": 0,
-                "cursor": 0,
-                "created": 0,
-                "failed": 0,
-                "failed_urls": [],
-                "errors": [],
-                "error_groups": [],
-            }
-        )
+        cursor_raw = stats0.get("cursor", stats0.get("processed_urls", 0))
+        try:
+            cursor0 = max(0, int(cursor_raw or 0))
+        except Exception:
+            cursor0 = 0
+
+        # Resume-friendly defaults: don't reset progress if the run already has stats.
+        stats0.setdefault("total_urls", int(len(urls)))
+        stats0.setdefault("processed_urls", int(cursor0))
+        stats0.setdefault("cursor", int(cursor0))
+        stats0.setdefault("failed_urls", [])
+        stats0.setdefault("errors", [])
+        stats0.setdefault("error_groups", [])
+
+        raw_doc_ids = stats0.get("document_ids")
+        created_doc_ids: list[str] = []
+        if isinstance(raw_doc_ids, list):
+            created_doc_ids = [str(v).strip() for v in raw_doc_ids if str(v).strip()]
+        if not created_doc_ids:
+            created_doc_ids = [str(getattr(d, "document_id", "") or "") for d in (getattr(run, "documents", None) or [])]
+            created_doc_ids = [v for v in created_doc_ids if v]
+        stats0["document_ids"] = created_doc_ids
+
+        def _safe_int(value: object, default: int = 0) -> int:
+            try:
+                return int(value or 0)
+            except Exception:
+                return int(default)
+
+        created = _safe_int(stats0.get("created"), default=len(created_doc_ids))
+        failed = _safe_int(stats0.get("failed"), default=0)
+        stats0.setdefault("created", int(created))
+        stats0.setdefault("failed", int(failed))
+
         run.stats = stats0
         db.commit()
 
-        for idx, url in enumerate(urls):
+        # Iterate from cursor0 but still skip URLs that already have a mapping row.
+        start_idx = max(0, min(int(cursor0), len(urls)))
+        for idx in range(start_idx, len(urls)):
+            url = urls[idx]
             # Observe cancellation from another DB session (best-effort).
             try:
                 db.refresh(run)
@@ -642,6 +671,8 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 break
 
             try:
+                if url in processed_refs:
+                    continue
                 body = UrlUploadRequest(
                     url=url,
                     dataset_id=run.dataset_id,
@@ -685,7 +716,8 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                     )
                 )
                 created += 1
-                created_doc_ids.append(doc.id)
+                created_doc_ids.append(str(doc.id))
+                processed_refs.add(url)
             except Exception as exc:  # noqa: BLE001
                 failed += 1
                 stats = dict(run.stats or {})
@@ -701,7 +733,7 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                         "cursor": int(processed),
                         "created": int(created),
                         "failed": int(failed),
-                        "document_ids": [str(d) for d in created_doc_ids],
+                        "document_ids": list(created_doc_ids),
                     }
                 )
                 run.stats = _finalize_connector_stats(stats)
@@ -1653,7 +1685,21 @@ async def create_connector_run(
     db.commit()
     db.refresh(run)
 
-    # Execute asynchronously after response.
+    # Execute asynchronously after response (prefer queue when enabled).
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        job_id = f"connector:{tenant_id}:{run.id}"
+        task_id = None
+        try:
+            task_id = await enqueue_connector_run(tenant_id=tenant_id, run_id=run.id, requested_by=account_id, job_id=job_id)
+        except Exception:
+            task_id = None
+        if task_id:
+            run.task_id = task_id
+            db.commit()
+            db.refresh(run)
+            return _run_out(run)
+
+    # Fallback: API background tasks.
     if connector_id == "url_batch":
         background_tasks.add_task(_execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "web_crawl":
@@ -1824,6 +1870,19 @@ async def retry_failed_connector_run(
     db.commit()
     db.refresh(new_run)
 
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        job_id = f"connector:{tenant_id}:{new_run.id}"
+        task_id = None
+        try:
+            task_id = await enqueue_connector_run(tenant_id=tenant_id, run_id=new_run.id, requested_by=account_id, job_id=job_id)
+        except Exception:
+            task_id = None
+        if task_id:
+            new_run.task_id = task_id
+            db.commit()
+            db.refresh(new_run)
+            return _run_out(new_run)
+
     background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
     return _run_out(new_run)
 
@@ -1887,12 +1946,25 @@ async def resume_connector_run(
     db.commit()
     db.refresh(new_run)
 
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        job_id = f"connector:{tenant_id}:{new_run.id}"
+        task_id = None
+        try:
+            task_id = await enqueue_connector_run(tenant_id=tenant_id, run_id=new_run.id, requested_by=account_id, job_id=job_id)
+        except Exception:
+            task_id = None
+        if task_id:
+            new_run.task_id = task_id
+            db.commit()
+            db.refresh(new_run)
+            return _run_out(new_run)
+
     background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
     return _run_out(new_run)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=ConnectorRunOut)
-def cancel_connector_run(
+async def cancel_connector_run(
     run_id: UUID,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -1917,6 +1989,22 @@ def cancel_connector_run(
     run.finished_at = _now()
     db.commit()
     db.refresh(run)
+
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and isinstance(getattr(run, "task_id", None), str) and run.task_id:
+        try:
+            from arq.jobs import Job
+        except ImportError:
+            Job = None  # type: ignore[assignment]
+        if Job is not None:
+            try:
+                q = await get_queue()
+            except Exception:
+                q = None
+            if q is not None:
+                queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+                job = Job(str(run.task_id), q, _queue_name=queue_name)
+                with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+                    await job.abort(timeout=0.2)
     return _run_out(run)
 
 
