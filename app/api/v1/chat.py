@@ -319,6 +319,7 @@ async def chat(
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+    allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
@@ -378,6 +379,11 @@ async def chat(
             # Bound dataset scope (or open scope if dataset_id is NULL).
             scope_dataset_id = getattr(conversation, "dataset_id", None)
             allowed_doc_ids = []
+            if scope_dataset_id is None and not allow_open_scope:
+                raise HTTPException(
+                    status_code=400,
+                    detail="dataset_id is required when document_ids is empty",
+                )
 
         if not allow_empty_docs:
             if allowed_doc_ids:
@@ -429,6 +435,11 @@ async def chat(
         else:
             scope_dataset_id = None
             allowed_doc_ids = []
+            if not allow_open_scope:
+                raise HTTPException(
+                    status_code=400,
+                    detail="dataset_id is required when document_ids is empty",
+                )
 
         if not allow_empty_docs:
             if allowed_doc_ids:
@@ -840,6 +851,7 @@ async def stream_chat(
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+    allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
         raise HTTPException(status_code=429, detail="Chat quota exceeded (assistant tokens)")
@@ -896,6 +908,11 @@ async def stream_chat(
         else:
             scope_dataset_id = getattr(conversation, "dataset_id", None)
             allowed_doc_ids = []
+            if scope_dataset_id is None and not allow_open_scope:
+                raise HTTPException(
+                    status_code=400,
+                    detail="dataset_id is required when document_ids is empty",
+                )
 
         if not allow_empty_docs:
             if allowed_doc_ids:
@@ -946,6 +963,11 @@ async def stream_chat(
         else:
             scope_dataset_id = None
             allowed_doc_ids = []
+            if not allow_open_scope:
+                raise HTTPException(
+                    status_code=400,
+                    detail="dataset_id is required when document_ids is empty",
+                )
 
         if not allow_empty_docs:
             if allowed_doc_ids:
