@@ -742,6 +742,11 @@ class Settings(BaseSettings):
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True
+    # Disable tenant-level "open scope" chat retrieval by default.
+    # When false, chat requests must include either:
+    # - explicit `document_ids`, or
+    # - a `dataset_id` (or an existing conversation bound to a dataset).
+    CHAT_ALLOW_OPEN_SCOPE: bool = False
     # Optional: Chat + TAG (Table Store) bridge. When enabled, chat will try to answer table-like
     # questions by running a bounded NL->SQL query over ingested Table Store assets and injecting
     # the result as additional context.
