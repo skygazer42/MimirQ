@@ -80,15 +80,15 @@ class SqlAlchemyCatalogStore(CatalogStore):
                 continue
             try:
                 ordinal = int(getattr(c, "ordinal", 0) or 0)
-            except Exception:
+            except (TypeError, ValueError, OverflowError):
                 ordinal = 0
             row = DbCatalogColumn(
                 table_id=table_id,
                 ordinal=int(ordinal),
                 name=name[:255],
                 data_type=(str(getattr(c, "data_type", "") or "")[:255] if getattr(c, "data_type", None) is not None else None),
-                nullable=(bool(getattr(c, "nullable")) if getattr(c, "nullable", None) is not None else None),
-                comment=(str(getattr(c, "comment")) if getattr(c, "comment", None) is not None else None),
+                nullable=(bool(c.nullable) if getattr(c, "nullable", None) is not None else None),
+                comment=(str(c.comment) if getattr(c, "comment", None) is not None else None),
             )
             self._db.add(row)
             out += 1

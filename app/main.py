@@ -45,14 +45,14 @@ import app.models.chunk_preset  # noqa: F401
 import app.models.connector  # noqa: F401
 import app.models.connector_config  # noqa: F401
 
-# Ensure DB catalog models are registered for metadata creation
-import app.models.db_catalog  # noqa: F401
-
 # Ensure conversation summary models are registered for metadata creation
 import app.models.conversation_summary  # noqa: F401
 
 # Ensure dataset category models are registered for metadata creation
 import app.models.dataset_category  # noqa: F401
+
+# Ensure DB catalog models are registered for metadata creation
+import app.models.db_catalog  # noqa: F401
 
 # Ensure evaluation models are registered for metadata creation
 import app.models.evaluation  # noqa: F401

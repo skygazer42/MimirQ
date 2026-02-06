@@ -72,8 +72,8 @@ from app.api.schemas.document import (
     DocumentStats,
     DocumentStatus,
     DocumentUserMetadataPatchRequest,
-    DocumentVersionList,
     DocumentVersionDiff,
+    DocumentVersionList,
     ManualDocumentCreate,
     ParsedSegment,
 )

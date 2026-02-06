@@ -25,7 +25,7 @@ def _coerce_int(value: Any) -> int | None:
         if value is None:
             return None
         return int(value)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -61,4 +61,3 @@ def sanitize_db_profile_snapshot(profile: Mapping[str, Any] | None, *, min_rows:
     if row_count is not None:
         out["row_count_estimate"] = row_count
     return out
-

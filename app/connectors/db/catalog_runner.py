@@ -219,7 +219,7 @@ def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: Dict[str, An
                     continue
                 try:
                     ordinal = int(c.get("ordinal") or 0)
-                except Exception:
+                except (TypeError, ValueError, OverflowError):
                     ordinal = 0
                 cols.append(
                     {
@@ -312,7 +312,7 @@ def _introspect_sqlserver(*, tenant_id: UUID, dataset_id: UUID, config: Dict[str
                     continue
                 try:
                     ordinal = int(c.get("ordinal") or 0)
-                except Exception:
+                except (TypeError, ValueError, OverflowError):
                     ordinal = 0
                 cols.append(
                     {
@@ -391,7 +391,7 @@ def run_catalog_sync(
                 continue
             try:
                 ordinal = int(c.get("ordinal") or 0)
-            except Exception:
+            except (TypeError, ValueError, OverflowError):
                 ordinal = 0
             cols.append(
                 CatalogColumnInput(
@@ -410,7 +410,7 @@ def run_catalog_sync(
         try:
             if row_count_estimate is not None:
                 profile["row_count_estimate"] = int(row_count_estimate)
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             # Best-effort; skip invalid values.
             pass
         sample_meta: dict[str, Any] = {"strategy": "catalog_sync", "seen_at": seen_at.isoformat()}

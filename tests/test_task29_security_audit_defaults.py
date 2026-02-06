@@ -89,8 +89,9 @@ def test_audit_ensure_admin_allows_auditor(monkeypatch):  # noqa: ANN001
 
 
 def test_audit_ensure_admin_rejects_non_admin(monkeypatch):  # noqa: ANN001
-    import app.api.v1.audit as audit_mod
     from fastapi import HTTPException
+
+    import app.api.v1.audit as audit_mod
 
     class _Member:
         role = "viewer"
