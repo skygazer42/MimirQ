@@ -6,6 +6,9 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+_MAX_FILTER_DEPTH = 8
+_MAX_FILTER_NODES = 200
+
 
 def _get_meta_value(meta: Dict[str, Any], key: str) -> Any:
     """
@@ -101,102 +104,133 @@ def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> 
         {"title": {"$contains": "report"}}  # title contains "report"
         {"document_user.tags": {"$in": ["hr", "it"]}}  # tags overlap
     """
-    if not filter_spec:
-        return True
     if not isinstance(meta, dict):
         return False
+    # Only `None`/`{}` means "no filter". Other invalid shapes must fail closed.
+    if filter_spec is None:
+        return True
+    if isinstance(filter_spec, dict) and not filter_spec:
+        return True
+    if not isinstance(filter_spec, dict):
+        return False
 
-    for key, condition in filter_spec.items():
-        if not isinstance(key, str):
+    budget = [0]
+    invalid = [False]
+
+    def _match(meta0: Dict[str, Any], spec0: Dict[str, Any], *, depth: int) -> bool:
+        if depth > _MAX_FILTER_DEPTH:
+            invalid[0] = True
+            return False
+        if budget[0] > _MAX_FILTER_NODES:
+            invalid[0] = True
             return False
 
-        # Boolean composition operators at the top-level.
-        if key == "$and":
-            if not isinstance(condition, list) or not condition:
+        for key, condition in spec0.items():
+            if not isinstance(key, str):
                 return False
-            for item in condition:
-                if not isinstance(item, dict):
+
+            budget[0] += 1
+            if budget[0] > _MAX_FILTER_NODES:
+                invalid[0] = True
+                return False
+
+            # Boolean composition operators at the top-level.
+            if key == "$and":
+                if not isinstance(condition, list) or not condition:
                     return False
-                if not match_metadata_filter(meta, item):
+                for item in condition:
+                    if not isinstance(item, dict):
+                        return False
+                    if not _match(meta0, item, depth=depth + 1):
+                        if invalid[0]:
+                            return False
+                        return False
+                continue
+
+            if key == "$or":
+                if not isinstance(condition, list) or not condition:
                     return False
-            continue
-
-        if key == "$or":
-            if not isinstance(condition, list) or not condition:
-                return False
-            any_ok = False
-            for item in condition:
-                if not isinstance(item, dict):
+                any_ok = False
+                for item in condition:
+                    if not isinstance(item, dict):
+                        return False
+                    ok = _match(meta0, item, depth=depth + 1)
+                    if invalid[0]:
+                        return False
+                    if ok:
+                        any_ok = True
+                        break
+                if not any_ok:
                     return False
-                if match_metadata_filter(meta, item):
-                    any_ok = True
-                    break
-            if not any_ok:
-                return False
-            continue
+                continue
 
-        if key == "$not":
-            if not isinstance(condition, dict) or not condition:
-                return False
-            if match_metadata_filter(meta, condition):
-                return False
-            continue
-
-        if key.startswith("$"):
-            # Unknown top-level operator: treat as non-match (safer than silently allowing).
-            return False
-
-        meta_value = _get_meta_value(meta, key)
-
-        if isinstance(condition, dict):
-            for op, expected in condition.items():
-                if op == "$exists":
-                    want = bool(expected)
-                    if want and meta_value is None:
-                        return False
-                    if (not want) and meta_value is not None:
-                        return False
-                elif op == "$eq":
-                    if meta_value != expected:
-                        return False
-                elif op == "$ne":
-                    if meta_value == expected:
-                        return False
-                elif op == "$gt":
-                    if meta_value is None or meta_value <= expected:
-                        return False
-                elif op == "$gte":
-                    if meta_value is None or meta_value < expected:
-                        return False
-                elif op == "$lt":
-                    if meta_value is None or meta_value >= expected:
-                        return False
-                elif op == "$lte":
-                    if meta_value is None or meta_value > expected:
-                        return False
-                elif op == "$in":
-                    if not _any_in(meta_value, expected):
-                        return False
-                elif op == "$nin":
-                    if not _any_not_in(meta_value, expected):
-                        return False
-                elif op == "$contains":
-                    if not _any_contains(meta_value, expected):
-                        return False
-                elif op == "$startswith":
-                    if not _any_startswith(meta_value, expected):
-                        return False
-                elif op == "$endswith":
-                    if not _any_endswith(meta_value, expected):
-                        return False
-                else:
-                    # Unknown operator: treat as non-match (safer than silently allowing).
+            if key == "$not":
+                if not isinstance(condition, dict) or not condition:
                     return False
-        else:
-            if meta_value != condition:
+                ok = _match(meta0, condition, depth=depth + 1)
+                if invalid[0]:
+                    return False
+                if ok:
+                    return False
+                continue
+
+            if key.startswith("$"):
+                # Unknown top-level operator: treat as non-match (safer than silently allowing).
                 return False
 
-    return True
+            meta_value = _get_meta_value(meta0, key)
+
+            if isinstance(condition, dict):
+                for op, expected in condition.items():
+                    if op == "$exists":
+                        want = bool(expected)
+                        if want and meta_value is None:
+                            return False
+                        if (not want) and meta_value is not None:
+                            return False
+                    elif op == "$eq":
+                        if meta_value != expected:
+                            return False
+                    elif op == "$ne":
+                        if meta_value == expected:
+                            return False
+                    elif op == "$gt":
+                        if meta_value is None or meta_value <= expected:
+                            return False
+                    elif op == "$gte":
+                        if meta_value is None or meta_value < expected:
+                            return False
+                    elif op == "$lt":
+                        if meta_value is None or meta_value >= expected:
+                            return False
+                    elif op == "$lte":
+                        if meta_value is None or meta_value > expected:
+                            return False
+                    elif op == "$in":
+                        if not _any_in(meta_value, expected):
+                            return False
+                    elif op == "$nin":
+                        if not _any_not_in(meta_value, expected):
+                            return False
+                    elif op == "$contains":
+                        if not _any_contains(meta_value, expected):
+                            return False
+                    elif op == "$startswith":
+                        if not _any_startswith(meta_value, expected):
+                            return False
+                    elif op == "$endswith":
+                        if not _any_endswith(meta_value, expected):
+                            return False
+                    else:
+                        # Unknown operator: treat as non-match (safer than silently allowing).
+                        return False
+            else:
+                if meta_value != condition:
+                    return False
+
+        return True
+
+    return _match(meta, filter_spec, depth=0)
 
 
 __all__ = ["match_metadata_filter"]

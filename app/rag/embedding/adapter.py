@@ -11,8 +11,7 @@ from typing import List, Optional, Tuple
 
 from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
-from app.rag.embedding.utils import current_embedding_space_hash
-from app.rag.embedding.utils import logger
+from app.rag.embedding.utils import current_embedding_space_hash, logger
 
 _redis_client = None
 

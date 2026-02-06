@@ -46,6 +46,9 @@ def test_metadata_filter_contains_list_values() -> None:
 def test_metadata_filter_boolean_composition_and_or_not() -> None:
     meta = {"source": "doc.pdf", "page": 12, "tags": ["a", "b"]}
 
+    # No filter should match everything.
+    assert match_metadata_filter(meta, {})
+
     assert match_metadata_filter(meta, {"$and": [{"source": "doc.pdf"}, {"page": {"$gte": 10}}]})
     assert not match_metadata_filter(meta, {"$and": [{"source": "doc.pdf"}, {"page": {"$lt": 10}}]})
 
@@ -65,6 +68,7 @@ def test_metadata_filter_boolean_composition_and_or_not() -> None:
     assert not match_metadata_filter(meta, {"$and": {"source": "doc.pdf"}})  # type: ignore[arg-type]
     assert not match_metadata_filter(meta, {"$or": "x"})  # type: ignore[arg-type]
     assert not match_metadata_filter(meta, {"$not": []})  # type: ignore[arg-type]
+    assert not match_metadata_filter(meta, [])  # type: ignore[arg-type]
 
 
 def test_metadata_filter_startswith_endswith() -> None:
@@ -77,3 +81,16 @@ def test_metadata_filter_startswith_endswith() -> None:
     assert match_metadata_filter(meta, {"labels": {"$startswith": "ban"}})
     assert match_metadata_filter(meta, {"labels": {"$endswith": "ple"}})
     assert not match_metadata_filter(meta, {"labels": {"$endswith": "durian"}})
+
+
+def test_metadata_filter_guardrails_fail_closed() -> None:
+    meta = {"source": "doc.pdf", "x": 1}
+
+    # Depth guard: extremely deep compositions should fail closed.
+    spec = {"source": "doc.pdf"}
+    for _ in range(32):
+        spec = {"$not": spec}
+    assert not match_metadata_filter(meta, spec)
+
+    # Size guard: extremely large lists should fail closed (even if each clause matches).
+    assert not match_metadata_filter(meta, {"$and": [{"x": 1}] * 256})
