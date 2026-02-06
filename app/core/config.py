@@ -936,10 +936,24 @@ class Settings(BaseSettings):
                 f"SIMILARITY_THRESHOLD ({self.SIMILARITY_THRESHOLD}) must be between 0 and 1"
             )
 
+        if int(getattr(self, "RETRIEVAL_TOP_K", 0) or 0) < 1:
+            raise ValueError(f"RETRIEVAL_TOP_K ({getattr(self, 'RETRIEVAL_TOP_K', None)}) must be >= 1")
+
         if self.RETRIEVAL_MMR_LAMBDA < 0 or self.RETRIEVAL_MMR_LAMBDA > 1:
             raise ValueError(
                 f"RETRIEVAL_MMR_LAMBDA ({self.RETRIEVAL_MMR_LAMBDA}) must be between 0 and 1"
             )
+        if int(getattr(self, "RETRIEVAL_RRF_K", 0) or 0) < 1:
+            raise ValueError(f"RETRIEVAL_RRF_K ({getattr(self, 'RETRIEVAL_RRF_K', None)}) must be >= 1")
+        dedup_thr = float(getattr(self, "RETRIEVAL_DEDUP_JACCARD_THRESHOLD", 0.0) or 0.0)
+        if dedup_thr < 0.0 or dedup_thr > 1.0:
+            raise ValueError(f"RETRIEVAL_DEDUP_JACCARD_THRESHOLD ({dedup_thr}) must be between 0 and 1")
+        if int(getattr(self, "RETRIEVAL_DEDUP_MAX_COMPARE", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_DEDUP_MAX_COMPARE must be >= 0")
+        if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_DOC must be >= 0")
+        if int(getattr(self, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_MIN_DISTINCT_DOCS must be >= 0")
         if int(self.RETRIEVAL_QUERY_PARALLELISM or 0) < 1:
             raise ValueError(
                 f"RETRIEVAL_QUERY_PARALLELISM ({self.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1"

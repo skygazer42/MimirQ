@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import settings
 from app.rag.core.text import normalize_retrieval_mode
@@ -138,6 +138,25 @@ class ChatRAGConfig(BaseModel):
     @classmethod
     def _normalize_retrieval_mode(cls, v: Any) -> str:
         return normalize_retrieval_mode(str(v) if v is not None else None)
+
+    @model_validator(mode="after")
+    def _normalize_channel_weights(self) -> "ChatRAGConfig":
+        """
+        Normalize (vector_weight, keyword_weight) to sum to 1 when enabled.
+
+        This prevents accidental mis-weighting like 0.7/0.7 and makes behavior
+        stable across callers.
+        """
+        if not bool(self.enable_weight_rerank):
+            return self
+        v = float(self.vector_weight or 0.0)
+        k = float(self.keyword_weight or 0.0)
+        total = v + k
+        if total <= 0.0:
+            raise ValueError("vector_weight + keyword_weight must be > 0 when enable_weight_rerank=true")
+        self.vector_weight = v / total
+        self.keyword_weight = k / total
+        return self
 
 class ChatRequest(BaseModel):
     """Chat request."""
