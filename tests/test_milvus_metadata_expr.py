@@ -15,6 +15,10 @@ def test_build_milvus_metadata_expr_string_eq():
     expr = _build_milvus_metadata_expr({"tenant_id": {"$eq": "t1"}})
     assert expr == 'tenant_id == "t1"'
 
+def test_build_milvus_metadata_expr_dataset_id_eq():
+    expr = _build_milvus_metadata_expr({"dataset_id": {"$eq": "d1"}})
+    assert expr == 'dataset_id == "d1"'
+
 
 def test_build_milvus_metadata_expr_numeric_gte():
     expr = _build_milvus_metadata_expr({"page_number": {"$gte": 3}})
@@ -32,4 +36,3 @@ def test_build_milvus_metadata_expr_rejects_bad_field_names():
 
 def test_build_milvus_metadata_expr_unsupported_ops_are_skipped():
     assert _build_milvus_metadata_expr({"tenant_id": {"$contains": "x"}}) is None
-
