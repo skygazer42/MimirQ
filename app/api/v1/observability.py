@@ -44,6 +44,9 @@ class RagMetricsSummaryResponse(BaseModel):
     retrieval_p95_elapsed_sec: float | None = None
     rerank_avg_elapsed_sec: float | None = None
     citations_avg_count: float | None = None
+    retriever_overfetch_count: int = 0
+    retriever_overfetch_avg_ratio: float | None = None
+    retriever_filtered_acl_total: int = 0
     retrieval_mode_counts: Dict[str, int] = {}
     hit_type_counts: Dict[str, int] = {}
     error_counts: Dict[str, int] = {}
