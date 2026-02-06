@@ -73,6 +73,7 @@ from app.api.schemas.document import (
     DocumentStatus,
     DocumentUserMetadataPatchRequest,
     DocumentVersionList,
+    DocumentVersionDiff,
     ManualDocumentCreate,
     ParsedSegment,
 )
@@ -4330,6 +4331,156 @@ async def list_document_versions(
         "active_pipeline_hash": active_hash,
         "pipeline_hash": str(doc_meta.get("pipeline_hash") or "").strip() or None,
         "items": items,
+    }
+
+
+@router.get("/{document_id}/versions/diff", response_model=DocumentVersionDiff)
+async def diff_document_versions(
+    document_id: uuid.UUID,
+    from_pipeline_hash: str = Query(
+        ...,
+        alias="from",
+        max_length=64,
+        description="Source pipeline_hash version (from)",
+    ),
+    to_pipeline_hash: str = Query(
+        ...,
+        alias="to",
+        max_length=64,
+        description="Target pipeline_hash version (to)",
+    ),
+    sample_limit: int = Query(
+        default=50,
+        ge=0,
+        le=200,
+        description="Max hash samples included in added_hashes/removed_hashes",
+    ),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Diff two document pipeline versions by chunk `content_hash` (multiset semantics).
+
+    Notes:
+    - This endpoint never returns chunk text; it is safe for ops/UI debugging.
+    - For legacy chunks without `content_hash`, we fall back to chunk id as a unique signature
+      (so counts remain accurate, but "unchanged" may be underestimated).
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    ds: Dataset | None = None
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+    from_hash = str(from_pipeline_hash or "").strip()
+    to_hash = str(to_pipeline_hash or "").strip()
+    if not from_hash or not to_hash:
+        raise HTTPException(status_code=400, detail="from/to pipeline_hash are required")
+    if len(from_hash) > 64 or len(to_hash) > 64:
+        raise HTTPException(status_code=400, detail="pipeline_hash too long")
+
+    def _load_signatures(pipeline_hash: str) -> list[str]:
+        target_key = f"{document_id}:{pipeline_hash}"
+        rows = None
+        try:
+            rows = (
+                db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+                .filter(
+                    DocumentChunk.tenant_id == tenant_id,
+                    DocumentChunk.document_id == document_id,
+                    DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+                )
+                .execution_options(stream_results=True)
+                .enable_eagerloads(False)
+                .all()
+            )
+        except Exception:
+            # Fallback for non-Postgres JSON operators: scan a bounded set and filter in Python.
+            rows = (
+                db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+                .filter(
+                    DocumentChunk.tenant_id == tenant_id,
+                    DocumentChunk.document_id == document_id,
+                )
+                .execution_options(stream_results=True)
+                .enable_eagerloads(False)
+                .all()
+            )
+
+        out: list[str] = []
+        for cid, meta in (rows or []):
+            m = meta if isinstance(meta, dict) else {}
+            key = str(m.get("doc_pipeline_key") or "").strip()
+            if key != target_key:
+                continue
+            h = str(m.get("content_hash") or "").strip()
+            if not h:
+                h = f"id:{cid}"
+            out.append(h)
+        return out
+
+    from_sigs = _load_signatures(from_hash)
+    if not from_sigs:
+        raise HTTPException(status_code=404, detail="from pipeline version not found (no chunks)")
+    to_sigs = _load_signatures(to_hash)
+    if not to_sigs:
+        raise HTTPException(status_code=404, detail="to pipeline version not found (no chunks)")
+
+    from app.services.document_version_diff_service import content_hash_multiset_diff
+
+    diff = content_hash_multiset_diff(
+        from_hashes=from_sigs,
+        to_hashes=to_sigs,
+        sample_limit=int(sample_limit or 0),
+    )
+
+    # Best-effort provenance snapshots (recorded on ingest completion).
+    doc_meta = dict(document.doc_metadata or {})
+    prov_versions = doc_meta.get("pipeline_provenance_versions") if isinstance(doc_meta.get("pipeline_provenance_versions"), dict) else {}
+    from_prov = prov_versions.get(from_hash) if isinstance(prov_versions, dict) else None
+    to_prov = prov_versions.get(to_hash) if isinstance(prov_versions, dict) else None
+    if not isinstance(from_prov, dict):
+        from_prov = None
+    if not isinstance(to_prov, dict):
+        to_prov = None
+
+    changed_transforms: list[str] = []
+    if isinstance(from_prov, dict) and isinstance(to_prov, dict):
+        ft = from_prov.get("transforms") if isinstance(from_prov.get("transforms"), dict) else {}
+        tt = to_prov.get("transforms") if isinstance(to_prov.get("transforms"), dict) else {}
+        for k in sorted(set(ft.keys()) | set(tt.keys())):
+            a = ft.get(k) if isinstance(ft.get(k), dict) else {}
+            b = tt.get(k) if isinstance(tt.get(k), dict) else {}
+            ha = str(a.get("hash") or "").strip()
+            hb = str(b.get("hash") or "").strip()
+            if ha != hb:
+                changed_transforms.append(str(k)[:64])
+
+    return {
+        "document_id": document_id,
+        "from_pipeline_hash": from_hash,
+        "to_pipeline_hash": to_hash,
+        "from_chunk_count": int(diff.from_chunk_count),
+        "to_chunk_count": int(diff.to_chunk_count),
+        "unchanged_chunks": int(diff.unchanged_chunks),
+        "added_chunks": int(diff.added_chunks),
+        "removed_chunks": int(diff.removed_chunks),
+        "added_hashes": list(diff.added_hashes),
+        "removed_hashes": list(diff.removed_hashes),
+        "from_provenance": from_prov,
+        "to_provenance": to_prov,
+        "changed_transforms": changed_transforms,
     }
 
 

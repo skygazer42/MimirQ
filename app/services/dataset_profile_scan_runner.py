@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
+from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.scorer import score_pdf_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.rag.core.logging import get_logger
@@ -117,6 +118,24 @@ def _ensure_local_path(
     if not path.exists() or not path.is_file():
         raise ValueError("document_file_not_found")
     return path, None
+
+
+def _backfill_parse_quality(meta: dict[str, Any]) -> bool:
+    """Best-effort: attach unified parse quality score when missing."""
+    existing = meta.get("parse_quality")
+    if isinstance(existing, dict) and existing.get("score") is not None:
+        return False
+
+    pdf_quality = meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None
+    text_quality = meta.get("parsed_text_quality") if isinstance(meta.get("parsed_text_quality"), dict) else None
+    if pdf_quality is None and text_quality is None:
+        return False
+
+    meta["parse_quality"] = score_document_parse_quality(
+        pdf_quality=pdf_quality,
+        parsed_text_quality=text_quality,
+    )
+    return True
 
 
 def run_dataset_profile_deep_scan(
@@ -250,6 +269,9 @@ def run_dataset_profile_deep_scan(
                         meta["parsed_text_quality"] = scored
                         changed = True
                         text_backfilled += 1
+
+            if _backfill_parse_quality(meta):
+                changed = True
 
             # Optional file hash (expensive; for exact duplicates).
             if compute_file_hash:

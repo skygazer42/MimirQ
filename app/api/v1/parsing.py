@@ -43,6 +43,8 @@ from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.diagnostics import build_parse_failure_diagnostics
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.factory import parser_factory
+from app.parsing.quality.competition import select_best_parse_attempt
+from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.cli import resolve_cli_command
@@ -143,6 +145,10 @@ def _compute_parsing_quality_gate(
     evidence: dict[str, Any] = {
         "text_quality": text_quality.to_dict(),
     }
+    evidence["parse_quality"] = score_document_parse_quality(
+        pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+        parsed_text_quality=text_quality.to_dict(),
+    )
     if is_pdf:
         evidence["min_content_chars"] = int(min_content_chars)
     if isinstance(pdf_quality, dict) and pdf_quality:
@@ -566,6 +572,18 @@ async def parse_workspace_document(
 
         # Best-effort PDF fallback for auto parsing in workspace (interactive; safe bounded retries).
         fallback_attempts: list[dict[str, Any]] = []
+        attempt_candidates: list[dict[str, Any]] = [
+            {
+                "backend": resolved_backend,
+                "grade": gate.grade,
+                "parse_score": ((gate.evidence or {}).get("parse_quality") or {}).get("score"),
+                "content_chars": ((gate.evidence or {}).get("text_quality") or {}).get("content_chars"),
+                "artifact_docs": artifact_docs,
+                "original_markdown": original_markdown,
+                "markdown": markdown,
+                "gate": gate,
+            }
+        ]
         if file_ext == ".pdf" and requested_backend in {"", "auto"} and gate.grade == "fail" and max_retries > 0:
             candidates = _build_pdf_fallback_candidates()
             filtered = [c for c in candidates if c != (resolved_backend or "").strip().lower()]
@@ -625,20 +643,49 @@ async def parse_workspace_document(
                 )
 
                 attempt: dict[str, Any] = {
-                    "from": resolved_backend,
+                    "from": initial_backend,
                     "to": alt_backend,
                     "quality_before": gate.evidence.get("text_quality"),
                     "quality_after": alt_gate.evidence.get("text_quality"),
+                    "grade_before": gate.grade,
+                    "grade_after": alt_gate.grade,
+                    "parse_score_before": ((gate.evidence or {}).get("parse_quality") or {}).get("score"),
+                    "parse_score_after": ((alt_gate.evidence or {}).get("parse_quality") or {}).get("score"),
                     "accepted": alt_gate.grade != "fail",
                 }
                 fallback_attempts.append(attempt)
 
-                if alt_gate.grade != "fail":
-                    resolved_backend = alt_backend
-                    artifact_docs = alt_parsed.get("documents") if isinstance(alt_parsed, dict) else artifact_docs
-                    original_markdown, markdown = alt_original, alt_markdown
-                    gate = alt_gate
-                    break
+                attempt_candidates.append(
+                    {
+                        "backend": alt_backend,
+                        "grade": alt_gate.grade,
+                        "parse_score": ((alt_gate.evidence or {}).get("parse_quality") or {}).get("score"),
+                        "content_chars": ((alt_gate.evidence or {}).get("text_quality") or {}).get("content_chars"),
+                        "artifact_docs": alt_parsed.get("documents") if isinstance(alt_parsed, dict) else None,
+                        "original_markdown": alt_original,
+                        "markdown": alt_markdown,
+                        "gate": alt_gate,
+                    }
+                )
+
+        if len(attempt_candidates) > 1:
+            try:
+                best = select_best_parse_attempt(attempt_candidates)
+            except Exception:
+                best = attempt_candidates[0]
+
+            selected_backend = str(best.get("backend") or "").strip() or resolved_backend
+            resolved_backend = selected_backend
+            gate = best.get("gate") or gate
+            artifact_docs = best.get("artifact_docs") if best.get("artifact_docs") is not None else artifact_docs
+            original_markdown = str(best.get("original_markdown") or original_markdown)
+            markdown = str(best.get("markdown") or markdown)
+
+            for it in fallback_attempts:
+                try:
+                    it["selected"] = str(it.get("to") or "") == selected_backend
+                except Exception:
+                    it["selected"] = False
 
         if fallback_attempts:
             gate = ParsingQualityGate(
@@ -649,6 +696,7 @@ async def parse_workspace_document(
                     "fallback_attempts": fallback_attempts,
                     "fallback_initial_backend": initial_backend,
                     "fallback_final_backend": resolved_backend,
+                    "fallback_selected_backend": resolved_backend,
                     "fallback_max_retries": int(max_retries),
                 },
             )

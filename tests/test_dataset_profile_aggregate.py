@@ -115,3 +115,29 @@ def test_dataset_profile_aggregate_exact_duplicates():
     summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
     finding_map = {f.key: f.count for f in summary.findings}
     assert finding_map["exact_dup"] == 2
+
+
+def test_dataset_profile_aggregate_parse_low_quality_bucket():
+    dsid = uuid.uuid4()
+    rows = [
+        _row(
+            filename="a.pdf",
+            file_type="pdf",
+            file_size=1200,
+            status="completed",
+            total_characters=0,
+            metadata={"parse_quality": {"score": 0.2}},
+        ),
+        _row(
+            filename="b.md",
+            file_type="md",
+            file_size=200,
+            status="completed",
+            total_characters=100,
+            metadata={"parse_quality": {"score": 0.8}},
+        ),
+    ]
+
+    summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
+    finding_map = {f.key: f.count for f in summary.findings}
+    assert finding_map["parse_low_quality"] == 1

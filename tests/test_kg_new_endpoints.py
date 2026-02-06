@@ -250,7 +250,16 @@ async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
         created_at=None,
         updated_at=None,
     )
-    assoc = SimpleNamespace(weight=0.7, role="subject")
+    assoc = SimpleNamespace(
+        weight=0.7,
+        role="subject",
+        extra_data={
+            "document_id": str(UUID(int=2)),
+            "chunk_id": str(UUID(int=3)),
+            "start_char": 10,
+            "end_char": 20,
+        },
+    )
 
     db = _FakeDB([_FakeQuery(first=ev), _FakeQuery(all_rows=[(assoc, ent)])])
 
@@ -265,6 +274,61 @@ async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
     assert out.entities[0].entity.id == UUID(int=20)
     assert out.entities[0].weight == 0.7
     assert out.entities[0].role == "subject"
+    assert out.entities[0].extra_data.get("chunk_id") == str(UUID(int=3))
+    assert out.entities[0].extra_data.get("start_char") == 10
+    assert out.entities[0].extra_data.get("end_char") == 20
+
+
+@pytest.mark.asyncio
+async def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_graph
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
+
+    ev = SimpleNamespace(id=UUID(int=10), title="t", document_id=UUID(int=2), chunk_id=UUID(int=3))
+    ent = SimpleNamespace(id=UUID(int=20), name="Alice", type="Person", normalized_name="alice")
+    assoc = SimpleNamespace(
+        event_id=UUID(int=10),
+        role="mentions",
+        weight=1.0,
+        extra_data={
+            "document_id": str(UUID(int=2)),
+            "chunk_id": str(UUID(int=3)),
+            "start_char": 10,
+            "end_char": 20,
+        },
+    )
+
+    db = _FakeDB(
+        queries=[
+            _FakeQuery(all_rows=[ev]),  # events
+            _FakeQuery(all_rows=[(UUID(int=10), 1)]),  # event_degree
+            _FakeQuery(all_rows=[(UUID(int=20), 1)]),  # ent_rows
+            _FakeQuery(all_rows=[(assoc, ent)]),  # rows (assoc, ent)
+        ]
+    )
+
+    out = await get_kg_graph(
+        document_ids=None,
+        max_events=10,
+        max_entities=10,
+        max_links=10,
+        include_entity_links=False,
+        min_shared_events=2,
+        max_entity_links=1000,
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=db,
+    )
+
+    assert len(out.links) == 1
+    assert out.links[0].meta.get("kind") == "event_entity"
+    assert out.links[0].meta.get("chunk_id") == str(UUID(int=3))
+    assert out.links[0].meta.get("start_char") == 10
+    assert out.links[0].meta.get("end_char") == 20
 
 
 @pytest.mark.asyncio

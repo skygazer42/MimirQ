@@ -414,6 +414,11 @@ class Settings(BaseSettings):
     RAG_CONTEXT_MAX_TOKENS_PER_CHUNK: int = 0
     RAG_CONTEXT_MAX_TOTAL_TOKENS: int = 0
     RAG_CONTEXT_MAX_KG_TOKENS: int = 0
+    # Optional: inject KG-linked chunks (via KG event chunk_id) into RAG retrieval results.
+    RAG_KG_CHUNK_INJECTION_ENABLED: bool = False
+    RAG_KG_CHUNK_INJECTION_MAX_CHUNKS: int = 5
+    # Optional: route retrieval defaults by question type when `retrieval_mode=auto`.
+    RAG_RECALL_BUCKETS_ENABLED: bool = False
     # Optional: include adjacent chunks around top hits to improve continuity (0 disables).
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).
@@ -433,6 +438,10 @@ class Settings(BaseSettings):
     RAG_ABSTAIN_ENABLED: bool = False
     RAG_ABSTAIN_MIN_CITATIONS: int = 1
     RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE: float = 0.0  # 0 disables
+    # Post-generation grounding guard: verify each claim against evidence and drop unsupported ones.
+    # Disabled by default because it may delay streaming (answer is buffered for claim-check).
+    RAG_CLAIM_CHECK_ENABLED: bool = False
+    RAG_CLAIM_CHECK_MAX_CLAIMS: int = 24
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20

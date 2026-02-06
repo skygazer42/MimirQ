@@ -27,13 +27,14 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.preprocess.file_preprocessor import preprocess_file
+from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies import SeparatorChunker
 from app.rag.core.logging import get_logger
-from app.rag.core.metadata import normalize_image_metadata, normalize_section_metadata
+from app.rag.core.metadata import infer_chunk_structure, normalize_image_metadata, normalize_section_metadata
 from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
 from app.rag.preprocessing.normalization import normalize_text
@@ -642,6 +643,10 @@ class ParsingStage:
             quality = score_parsed_text_quality(joined).to_dict()
             meta = dict(db_document.doc_metadata or {})
             meta["parsed_text_quality"] = quality
+            meta["parse_quality"] = score_document_parse_quality(
+                pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                parsed_text_quality=quality,
+            )
             artifact_stats = compute_parsing_artifact_stats(
                 documents=documents,
                 original_markdown=joined,
@@ -1018,6 +1023,7 @@ class ChunkAssetStage:
 
             content_norm = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
             meta.setdefault("content_len", len(content_norm.strip()))
+            infer_chunk_structure(meta, content_norm)
             if not isinstance(meta.get("content_hash"), str) or not str(meta.get("content_hash") or "").strip():
                 meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
                 meta.setdefault("content_hash_algo", "sha256")
@@ -2335,6 +2341,21 @@ class DocumentProcessorService:
             if completed_pipeline_hash:
                 meta_patch["active_pipeline_hash"] = completed_pipeline_hash
                 meta_patch["active_pipeline_ready"] = True
+                # Best-effort: record per-version pipeline provenance for reproducibility/debug.
+                try:
+                    from app.services.pipeline_provenance_service import (
+                        build_pipeline_version_snapshot,
+                        upsert_pipeline_provenance_version,
+                    )
+
+                    snap = build_pipeline_version_snapshot(meta=meta_patch, pipeline_hash=completed_pipeline_hash)
+                    meta_patch = upsert_pipeline_provenance_version(
+                        meta_patch,
+                        pipeline_hash=completed_pipeline_hash,
+                        snapshot=snap,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.info("Failed to record pipeline provenance (ignored): %s", str(exc)[:200])
 
             await self._update_status(
                 db,

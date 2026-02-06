@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.connectors.db.catalog_runner import CatalogColumnInput, CatalogStore, CatalogTableInput
+from app.connectors.db.profile_privacy import sanitize_db_profile_snapshot
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
 
 
@@ -104,10 +105,11 @@ class SqlAlchemyCatalogStore(CatalogStore):
         profile: dict,
         sample_meta: dict,
     ) -> UUID:
+        safe_profile = sanitize_db_profile_snapshot(profile)
         row = DbProfileSnapshot(
             table_id=table_id,
             entitlement_hash=str(entitlement_hash or "")[:255],
-            profile=dict(profile or {}),
+            profile=dict(safe_profile or {}),
             sample_meta=dict(sample_meta or {}),
         )
         self._db.add(row)

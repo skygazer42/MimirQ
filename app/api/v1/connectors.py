@@ -34,8 +34,8 @@ from app.api.schemas.connector import (
     ConnectorRunOut,
     DriveFilesConnectorConfig,
     GitHubRepoConnectorConfig,
-    MySQLCatalogConnectorConfig,
     MinioBucketConnectorConfig,
+    MySQLCatalogConnectorConfig,
     SQLServerCatalogConnectorConfig,
     UrlBatchConnectorConfig,
     WebCrawlConnectorConfig,
@@ -370,6 +370,8 @@ async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by
     """
     db = SessionLocal()
     try:
+        import time
+
         run = (
             db.query(ConnectorRun)
             .options(selectinload(ConnectorRun.documents))
@@ -404,22 +406,149 @@ async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by
         except Exception:
             connector_config_id = None
         store = SqlAlchemyCatalogStore(db=db)
-        result = run_catalog_sync(
+        from app.services.metrics_logger import metrics_context
+
+        with metrics_context(
             tenant_id=tenant_id,
-            dataset_id=run.dataset_id,
+            account_id=requested_by,
+            dataset_id=str(run.dataset_id),
             connector_id=connector_id,
-            config=dict(cfg or {}),
-            store=store,
-            connector_config_id=connector_config_id,
-        )
+            connector_run_id=str(run_id),
+        ):
+            t0_sync = time.time()
+            result = run_catalog_sync(
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                connector_id=connector_id,
+                config=dict(cfg or {}),
+                store=store,
+                connector_config_id=connector_config_id,
+            )
+            sync_elapsed = time.time() - t0_sync
+
+            try:
+                import app.services.db_catalog_observability as obs
+
+                obs.emit_db_catalog_sync_completed(
+                    tenant_id=str(tenant_id),
+                    dataset_id=str(run.dataset_id),
+                    run_id=str(run_id),
+                    connector_id=connector_id,
+                    elapsed_sec=float(sync_elapsed),
+                    result=dict(result or {}),
+                )
+            except Exception:
+                # Metrics are best-effort; do not affect connector execution.
+                pass
+
+            # Task 7: build digest-only "virtual schema document" so retrieval can
+            # directly hit table/field knowledge (no raw rows).
+            try:
+                from app.services.db_catalog_schema_doc_service import upsert_and_index_virtual_schema_doc
+
+                t0_doc = time.time()
+                schema_doc = upsert_and_index_virtual_schema_doc(
+                    db=db,
+                    tenant_id=tenant_id,
+                    dataset_id=run.dataset_id,
+                    requested_by=requested_by,
+                    connector_run_id=run_id,
+                )
+                doc_elapsed = time.time() - t0_doc
+                if isinstance(schema_doc, dict):
+                    schema_doc.setdefault("elapsed_sec", float(doc_elapsed))
+                    stats["schema_doc"] = schema_doc
+                    try:
+                        import app.services.db_catalog_observability as obs
+
+                        obs.emit_db_catalog_schema_doc_completed(
+                            tenant_id=str(tenant_id),
+                            dataset_id=str(run.dataset_id),
+                            run_id=str(run_id),
+                            connector_id=connector_id,
+                            elapsed_sec=float(doc_elapsed),
+                            document_id=str(schema_doc.get("document_id") or ""),
+                            chunks=int(schema_doc.get("chunks") or 0),
+                            tables=int(schema_doc.get("tables") or 0),
+                            catalog_last_seen_at=(
+                                schema_doc.get("catalog_last_seen_at") if isinstance(schema_doc, dict) else None
+                            ),
+                            catalog_age_sec=(schema_doc.get("catalog_age_sec") if isinstance(schema_doc, dict) else None),
+                        )
+                    except Exception:
+                        pass
+            except Exception as exc:  # noqa: BLE001
+                # Best-effort only: catalog sync success should not depend on indexing infra.
+                stats["schema_doc_error"] = _safe_error_str(exc)
 
         stats.update({"result": dict(result or {})})
+        # Best-effort audit log (do not block connector execution).
+        try:
+            from app.services.audit_log_service import audit_log_event
+
+            schema_doc = stats.get("schema_doc") if isinstance(stats, dict) else None
+            diff = schema_doc.get("schema_diff") if isinstance(schema_doc, dict) else None
+            diff_counts = None
+            if isinstance(diff, dict):
+                diff_counts = {
+                    "tables_added": int(((diff.get("tables_added") or {}) if isinstance(diff.get("tables_added"), dict) else {}).get("count") or 0),
+                    "tables_removed": int(((diff.get("tables_removed") or {}) if isinstance(diff.get("tables_removed"), dict) else {}).get("count") or 0),
+                    "columns_added": int(((diff.get("columns_added") or {}) if isinstance(diff.get("columns_added"), dict) else {}).get("count") or 0),
+                    "columns_removed": int(((diff.get("columns_removed") or {}) if isinstance(diff.get("columns_removed"), dict) else {}).get("count") or 0),
+                    "columns_changed": int(((diff.get("columns_changed") or {}) if isinstance(diff.get("columns_changed"), dict) else {}).get("count") or 0),
+                }
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=requested_by,
+                action="db_catalog.sync.completed",
+                resource_type="connector_run",
+                resource_id=str(run_id),
+                details={
+                    "dataset_id": str(run.dataset_id),
+                    "connector_id": connector_id,
+                    "config_id": (str(stats.get("config_id")) if stats.get("config_id") is not None else None),
+                    "result": dict(result or {}),
+                    "schema_doc_id": (str(schema_doc.get("document_id")) if isinstance(schema_doc, dict) and schema_doc.get("document_id") else None),
+                    "schema_diff_counts": diff_counts,
+                },
+            )
+        except Exception:
+            pass
         run.stats = _finalize_connector_stats(stats)
         run.status = "completed"
         run.finished_at = _now()
         db.commit()
     except Exception as exc:  # noqa: BLE001
         # Best-effort: avoid raising from background tasks (keep request path stable).
+        with contextlib.suppress(Exception):
+            import app.services.db_catalog_observability as obs
+
+            obs.emit_db_catalog_sync_failed(
+                tenant_id=str(tenant_id),
+                dataset_id=str(getattr(run, "dataset_id", "") or ""),
+                run_id=str(run_id),
+                connector_id=str(getattr(run, "connector_id", "") or ""),
+                elapsed_sec=0.0,
+                error=_safe_error_str(exc),
+            )
+        with contextlib.suppress(Exception):
+            from app.services.audit_log_service import audit_log_event
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=requested_by,
+                action="db_catalog.sync.failed",
+                resource_type="connector_run",
+                resource_id=str(run_id),
+                details={
+                    "dataset_id": (str(getattr(run, "dataset_id", "") or "") if run is not None else None),
+                    "connector_id": str(getattr(run, "connector_id", "") or ""),
+                    "error": _safe_error_str(exc),
+                },
+            )
         with contextlib.suppress(Exception):
             run = (
                 db.query(ConnectorRun)

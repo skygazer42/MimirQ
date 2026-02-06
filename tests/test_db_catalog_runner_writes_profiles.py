@@ -49,6 +49,7 @@ def test_run_catalog_sync_writes_table_profile_snapshots(monkeypatch):  # noqa: 
     assert res.get("engine") == "sqlserver"
     assert res.get("tables") == 2
     assert res.get("profiles_written") == 2
+    assert isinstance(res.get("entitlement_hash"), str)
     assert len(store.profile_snapshots) == 2
     assert store.profile_snapshots[0]["profile"].get("row_count_estimate") == 123
-
+    assert res.get("entitlement_hash") == store.profile_snapshots[0]["entitlement_hash"]
