@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, ForeignKeyConstraint, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -22,10 +22,18 @@ class DbCatalogTable(Base):
     """Catalog entry for a DB table or view."""
 
     __tablename__ = "db_catalog_tables"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "dataset_id"],
+            ["datasets.tenant_id", "datasets.id"],
+            name="fk_db_catalog_tables_tenant_dataset",
+            ondelete="CASCADE",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     connector_config_id = Column(
         UUID(as_uuid=True),
         ForeignKey("connector_configs.id", ondelete="SET NULL"),
@@ -93,4 +101,3 @@ class DbProfileSnapshot(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     table = relationship("DbCatalogTable", back_populates="profiles")
-

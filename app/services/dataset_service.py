@@ -78,6 +78,14 @@ class DatasetService:
         if permission != DatasetPermissionEnum.PARTIAL_MEMBERS:
             partial_members = []
 
+        exists = (
+            db.query(Dataset.id)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.name == name)
+            .first()
+        )
+        if exists:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset name already exists")
+
         dataset = Dataset(
             tenant_id=tenant_id,
             name=name,
@@ -107,7 +115,14 @@ class DatasetService:
         member = DatasetService.ensure_member(db, dataset.tenant_id, updater_id)
         DatasetService._assert_edit_role(member)
 
-        if name is not None:
+        if name is not None and name != dataset.name:
+            exists = (
+                db.query(Dataset.id)
+                .filter(Dataset.tenant_id == dataset.tenant_id, Dataset.name == name, Dataset.id != dataset.id)
+                .first()
+            )
+            if exists:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset name already exists")
             dataset.name = name
         if description is not None:
             dataset.description = description

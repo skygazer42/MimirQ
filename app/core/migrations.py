@@ -171,8 +171,60 @@ def apply_runtime_migrations(engine) -> None:
             'ON dataset_permissions (tenant_id, account_id);',
 
             # =========================
+            # Task 28: Dataset isolation DB constraints (tenant-safe)
+            # =========================
+            # Required for composite foreign keys: (tenant_id, dataset_id) -> datasets(tenant_id, id).
+            'CREATE UNIQUE INDEX IF NOT EXISTS ix_datasets_tenant_id_id '
+            'ON datasets (tenant_id, id);',
+            # Keep dataset names unique per tenant for predictable UX and safer references.
+            'CREATE UNIQUE INDEX IF NOT EXISTS ix_datasets_tenant_name '
+            'ON datasets (tenant_id, name);',
+
+            # Composite indexes for common joins/filters.
+            'CREATE INDEX IF NOT EXISTS ix_dataset_permissions_tenant_dataset_id '
+            'ON dataset_permissions (tenant_id, dataset_id);',
+
+            # Composite FKs (best-effort; may fail on legacy inconsistent data).
+            'ALTER TABLE documents '
+            'ADD CONSTRAINT fk_documents_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id);',
+            'ALTER TABLE dataset_permissions '
+            'ADD CONSTRAINT fk_dataset_permissions_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id) ON DELETE CASCADE;',
+            'ALTER TABLE connector_configs '
+            'ADD CONSTRAINT fk_connector_configs_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id) ON DELETE CASCADE;',
+            'ALTER TABLE connector_runs '
+            'ADD CONSTRAINT fk_connector_runs_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id) ON DELETE CASCADE;',
+            'CREATE INDEX IF NOT EXISTS ix_connector_runs_tenant_dataset_id '
+            'ON connector_runs (tenant_id, dataset_id);',
+            'ALTER TABLE db_catalog_tables '
+            'ADD CONSTRAINT fk_db_catalog_tables_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id) ON DELETE CASCADE;',
+            'CREATE INDEX IF NOT EXISTS ix_db_catalog_tables_tenant_dataset_id '
+            'ON db_catalog_tables (tenant_id, dataset_id);',
+            'ALTER TABLE dataset_profile_scan_runs '
+            'ADD CONSTRAINT fk_dataset_profile_scan_runs_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id) ON DELETE CASCADE;',
+            'ALTER TABLE dataset_precheck_scan_runs '
+            'ADD CONSTRAINT fk_dataset_precheck_scan_runs_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id) ON DELETE CASCADE;',
+
+            # =========================
             # Dataset categories (tree) + memberships
             # =========================
+            'CREATE UNIQUE INDEX IF NOT EXISTS ix_dataset_categories_tenant_id_id '
+            'ON dataset_categories (tenant_id, id);',
+            'ALTER TABLE dataset_categories '
+            'ADD CONSTRAINT fk_dataset_categories_tenant_parent '
+            'FOREIGN KEY (tenant_id, parent_id) REFERENCES dataset_categories (tenant_id, id) ON DELETE CASCADE;',
+            'ALTER TABLE dataset_category_memberships '
+            'ADD CONSTRAINT fk_dataset_category_memberships_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id) ON DELETE CASCADE;',
+            'ALTER TABLE dataset_category_memberships '
+            'ADD CONSTRAINT fk_dataset_category_memberships_tenant_category '
+            'FOREIGN KEY (tenant_id, category_id) REFERENCES dataset_categories (tenant_id, id) ON DELETE CASCADE;',
             'CREATE INDEX IF NOT EXISTS ix_dataset_categories_tenant_parent_sort '
             'ON dataset_categories (tenant_id, parent_id, sort_order, created_at);',
             'CREATE INDEX IF NOT EXISTS ix_dataset_categories_tenant_name '
