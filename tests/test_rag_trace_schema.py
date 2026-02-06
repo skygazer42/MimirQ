@@ -38,7 +38,27 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                 "reranker_provider": "cohere",
                 "reranker_top_n": 10,
                 "query_count": 1,
-                "per_query": [{"kind": "main", "query_chars": 12, "elapsed_sec": 0.12, "ok": True}],
+                "per_query": [
+                    {
+                        "kind": "main",
+                        "query_chars": 12,
+                        "elapsed_sec": 0.12,
+                        "ok": True,
+                        "retriever_debug": {
+                            "requested_k": 5,
+                            "search_k": 10,
+                            "overfetch_enabled": True,
+                            "scope": {
+                                "tenant_id": str(tenant_id),
+                                "dataset_id": str(uuid.uuid4()),
+                                "account_id_present": True,
+                                "document_ids_count": 0,
+                                "kind": "open",
+                            },
+                            "enrich_pass1": {"filtered_acl": 2, "output_results": 7},
+                        },
+                    }
+                ],
                 "errors": [],
             },
             "citations": [
@@ -49,6 +69,8 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                     "relevance_score": 0.9,
                     "retrieval_elapsed_sec": 0.12,
                     "rerank_elapsed_sec": 0.45,
+                    "retrieval_role": "main",
+                    "neighbor_of": "chunk-0",
                     "chunk_content": "should-not-leak",
                 }
             ],
@@ -95,6 +117,16 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     assert item.request_id == "req-1"
     assert item.citations_count == 1
     assert item.retrieval.mode == "hybrid"
+    assert item.retrieval.per_query and item.retrieval.per_query[0].retriever_debug is not None
+    assert item.retrieval.per_query[0].retriever_debug.get("requested_k") == 5
+    scope = item.retrieval.per_query[0].retriever_debug.get("scope") or {}
+    assert scope.get("account_id_present") is True
+    assert scope.get("dataset_id_present") is True
+    assert "tenant_id" not in scope
+    assert "dataset_id" not in scope
+
+    assert item.citations and item.citations[0].retrieval_role == "main"
+    assert item.citations and item.citations[0].neighbor_of == "chunk-0"
     assert any(s.key == "retrieve" for s in item.steps)
     assert any(s.key == "rerank" for s in item.steps)
     assert any(s.key == "citations" for s in item.steps)
@@ -120,4 +152,3 @@ def test_list_rag_traces_disabled_returns_empty(monkeypatch):  # noqa: ANN001
     assert res.enabled is False
     assert res.returned == 0
     assert res.items == []
-

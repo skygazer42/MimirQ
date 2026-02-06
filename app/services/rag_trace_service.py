@@ -58,6 +58,94 @@ def _to_bool(v: Any) -> Optional[bool]:
     return None
 
 
+_SAFE_ENRICH_STATS_KEYS = {
+    "input_results",
+    "filtered_orphaned",
+    "filtered_acl",
+    "filtered_dataset",
+    "filtered_not_ready",
+    "filtered_embedding_space",
+    "filtered_pipeline_version",
+    "filtered_metadata_filter",
+    "output_results",
+    "exception",
+}
+
+
+def _safe_enrich_stats(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, Any] = {}
+    for k in _SAFE_ENRICH_STATS_KEYS:
+        if k not in raw:
+            continue
+        if k == "exception":
+            s = (str(raw.get(k) or "")).strip()
+            out[k] = s[:200] if s else None
+            continue
+        out[k] = _to_int(raw.get(k))
+    # Drop empty dicts to keep payload small.
+    out = {k: v for k, v in out.items() if v is not None}
+    return out or None
+
+
+def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
+    """
+    Sanitize retriever-side debug metrics for UI exposure.
+
+    Rules:
+    - Keep counters/booleans only.
+    - Strip tenant/dataset identifiers (present-ness is kept as a boolean).
+    - Keep shapes stable and small.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    out: dict[str, Any] = {}
+
+    for k in (
+        "requested_k",
+        "search_k",
+        "overfetch_multiplier",
+        "overfetch_cap_k",
+        "milvus_expr_max_doc_ids",
+        "hybrid_results",
+        "neighbors_delta",
+        "parent_child_merge_delta",
+        "final_results",
+        "final_docs",
+    ):
+        if k in raw:
+            out[k] = _to_int(raw.get(k))
+
+    for k in ("overfetch_enabled", "milvus_doc_id_pushdown_skipped"):
+        if k in raw:
+            out[k] = _to_bool(raw.get(k))
+
+    scope_raw = raw.get("scope")
+    if isinstance(scope_raw, dict):
+        tenant_present = bool(str(scope_raw.get("tenant_id") or "").strip())
+        dataset_present = bool(str(scope_raw.get("dataset_id") or "").strip())
+        scope: dict[str, Any] = {
+            "account_id_present": _to_bool(scope_raw.get("account_id_present")),
+            "document_ids_count": _to_int(scope_raw.get("document_ids_count")),
+            "kind": (str(scope_raw.get("kind")) if scope_raw.get("kind") is not None else None),
+            "tenant_id_present": tenant_present if tenant_present else None,
+            "dataset_id_present": dataset_present if dataset_present else None,
+        }
+        scope = {k: v for k, v in scope.items() if v is not None}
+        if scope:
+            out["scope"] = scope
+
+    for key in ("enrich_pass1", "enrich_pass2"):
+        stats = _safe_enrich_stats(raw.get(key))
+        if stats:
+            out[key] = stats
+
+    out = {k: v for k, v in out.items() if v is not None}
+    return out or None
+
+
 def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]], bool]:
     """
     Return: (records, truncated)
@@ -113,6 +201,8 @@ _SAFE_CITATION_FIELDS = {
     "page_number",
     "start_char",
     "end_char",
+    "retrieval_role",
+    "neighbor_of",
     "doc_pipeline_key",
     "pipeline_hash",
     "relevance_score",
@@ -148,6 +238,8 @@ def _safe_citations(raw: Any) -> list[RagTraceCitation]:
                 page_number=_to_int(safe.get("page_number")),
                 start_char=_to_int(safe.get("start_char")),
                 end_char=_to_int(safe.get("end_char")),
+                retrieval_role=(str(safe.get("retrieval_role")) if safe.get("retrieval_role") is not None else None),
+                neighbor_of=(str(safe.get("neighbor_of")) if safe.get("neighbor_of") is not None else None),
                 doc_pipeline_key=(str(safe.get("doc_pipeline_key")) if safe.get("doc_pipeline_key") is not None else None),
                 pipeline_hash=(str(safe.get("pipeline_hash")) if safe.get("pipeline_hash") is not None else None),
                 relevance_score=_to_float(safe.get("relevance_score")),
@@ -206,6 +298,7 @@ def normalize_rag_trace_record(record: Dict[str, Any]) -> RagTrace:
                     query_chars=_to_int(q.get("query_chars")),
                     elapsed_sec=_to_float(q.get("elapsed_sec")),
                     ok=_to_bool(q.get("ok")),
+                    retriever_debug=_safe_retriever_debug(q.get("retriever_debug")),
                 )
             )
 
