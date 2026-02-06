@@ -26,6 +26,7 @@ from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.filters import match_metadata_filter
+from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.preprocessing.stopwords import STOPWORDS
@@ -1937,7 +1938,11 @@ class HybridRetriever(BaseRetriever):
         chunk_index = meta.get("chunk_index")
         if doc_id is not None and chunk_index is not None:
             return f"{doc_id}:{chunk_index}"
-        return str(result.get("chunk_id") or chunk_index or hash(result.get("content", "")))
+        cid = result.get("chunk_id") or meta.get("chunk_id")
+        if cid:
+            return str(cid)
+        content = str(result.get("content") or "")
+        return f"content:{stable_hash(content)}"
 
     def _get_doc_id(self, result: Dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
