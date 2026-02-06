@@ -38,7 +38,24 @@ def test_observability_rag_metrics_summary(monkeypatch, tmp_path):  # noqa: ANN0
             "event": "rag_trace",
             "ts_ms": now_ms,
             "tenant_id": str(tenant_id),
-            "retrieval": {"mode": "hybrid", "errors": []},
+            "retrieval": {
+                "mode": "hybrid",
+                "errors": [],
+                "per_query": [
+                    {
+                        "kind": "main",
+                        "query_chars": 12,
+                        "elapsed_sec": 0.12,
+                        "ok": True,
+                        "retriever_debug": {
+                            "requested_k": 5,
+                            "search_k": 20,
+                            "overfetch_enabled": True,
+                            "enrich_pass1": {"filtered_acl": 2, "output_results": 7},
+                        },
+                    }
+                ],
+            },
             "citations": [
                 {"hit_type": "vector", "retrieval_elapsed_sec": 0.12, "rerank_elapsed_sec": 0.0},
                 {"hit_type": "keyword", "retrieval_elapsed_sec": 0.12, "rerank_elapsed_sec": 0.0},
@@ -89,3 +106,7 @@ def test_observability_rag_metrics_summary(monkeypatch, tmp_path):  # noqa: ANN0
     assert (body.get("retrieval_mode_counts") or {}).get("hybrid") == 1
     assert (body.get("hit_type_counts") or {}).get("vector") == 1
     assert (body.get("hit_type_counts") or {}).get("keyword") == 1
+
+    assert body.get("retriever_overfetch_count") == 1
+    assert body.get("retriever_overfetch_avg_ratio") == 4.0
+    assert body.get("retriever_filtered_acl_total") == 2

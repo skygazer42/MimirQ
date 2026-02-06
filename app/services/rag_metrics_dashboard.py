@@ -116,6 +116,9 @@ class RagMetricsSummary:
     retrieval_p95_elapsed_sec: float | None
     rerank_avg_elapsed_sec: float | None
     citations_avg_count: float | None
+    retriever_overfetch_count: int
+    retriever_overfetch_avg_ratio: float | None
+    retriever_filtered_acl_total: int
     retrieval_mode_counts: dict[str, int]
     hit_type_counts: dict[str, int]
     error_counts: dict[str, int]
@@ -175,6 +178,10 @@ def summarize_rag_metrics(
     hit_type_counts: dict[str, int] = defaultdict(int)
     error_counts: dict[str, int] = defaultdict(int)
 
+    overfetch_ratios: list[float] = []
+    overfetch_count = 0
+    filtered_acl_total = 0
+
     # Simple minute-bucket time series.
     bucket: dict[int, dict[str, Any]] = {}
 
@@ -197,6 +204,31 @@ def summarize_rag_metrics(
             mode = retrieval.get("mode")
             if mode:
                 retrieval_mode_counts[str(mode)] += 1
+
+            # Best-effort: retriever debug counters (if present).
+            per_query = retrieval.get("per_query") if isinstance(retrieval, dict) else None
+            if isinstance(per_query, list):
+                for q in per_query:
+                    if not isinstance(q, dict):
+                        continue
+                    dbg = q.get("retriever_debug")
+                    if not isinstance(dbg, dict):
+                        continue
+                    try:
+                        if bool(dbg.get("overfetch_enabled")):
+                            overfetch_count += 1
+                            req = int(dbg.get("requested_k") or 0)
+                            search = int(dbg.get("search_k") or 0)
+                            if req > 0 and search > 0:
+                                overfetch_ratios.append(search / req)
+                    except Exception:
+                        pass
+                    enrich1 = dbg.get("enrich_pass1")
+                    if isinstance(enrich1, dict):
+                        try:
+                            filtered_acl_total += int(enrich1.get("filtered_acl") or 0)
+                        except Exception:
+                            pass
 
             # Citations are already structured for UI; ignore text, only aggregate numeric fields.
             citations = r.get("citations") or []
@@ -267,6 +299,9 @@ def summarize_rag_metrics(
         retrieval_p95_elapsed_sec=_percentile(retrieval_elapsed, 95.0),
         rerank_avg_elapsed_sec=_mean(rerank_elapsed),
         citations_avg_count=_mean(citations_counts),
+        retriever_overfetch_count=int(overfetch_count),
+        retriever_overfetch_avg_ratio=_mean(overfetch_ratios),
+        retriever_filtered_acl_total=int(filtered_acl_total),
         retrieval_mode_counts=dict(retrieval_mode_counts),
         hit_type_counts=dict(hit_type_counts),
         error_counts=dict(error_counts),
