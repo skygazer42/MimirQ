@@ -954,6 +954,17 @@ class Settings(BaseSettings):
         if int(getattr(self, "BM25_CACHE_MAX_TENANTS", 0) or 0) < 0:
             raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
 
+        if int(getattr(self, "EMBEDDING_CACHE_TTL_SEC", 0) or 0) < 0:
+            raise ValueError("EMBEDDING_CACHE_TTL_SEC must be >= 0")
+
+        emb_prefix = (getattr(self, "EMBEDDING_CACHE_PREFIX", "") or "").strip()
+        if not emb_prefix:
+            raise ValueError("EMBEDDING_CACHE_PREFIX must be non-empty")
+        if any(ch.isspace() for ch in emb_prefix):
+            raise ValueError("EMBEDDING_CACHE_PREFIX must not contain whitespace")
+        if self.EMBEDDING_CACHE_PREFIX != emb_prefix:
+            self.EMBEDDING_CACHE_PREFIX = emb_prefix
+
         if int(getattr(self, "CHAT_RESPONSE_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
