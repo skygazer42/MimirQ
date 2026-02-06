@@ -27,6 +27,7 @@ _MILVUS_NUMERIC_FIELDS = frozenset({"chunk_index", "page_number"})
 _MILVUS_STRING_FIELDS = frozenset(
     {
         "tenant_id",
+        "dataset_id",
         "document_id",
         "chunk_id",
         # Versioning / rollback (stable composite key).
@@ -51,6 +52,7 @@ _MILVUS_ALLOWED_FILTER_FIELDS = _MILVUS_NUMERIC_FIELDS | _MILVUS_STRING_FIELDS
 _DOC_VECTOR_METADATA_FIELDS = frozenset(
     {
         "tenant_id",
+        "dataset_id",
         "document_id",
         "chunk_index",
         "chunk_id",

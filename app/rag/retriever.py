@@ -807,6 +807,16 @@ class HybridRetriever(BaseRetriever):
         # - Milvus (document collection) stores a small fixed metadata schema -> only pass supported keys early
         #   to avoid false negatives when users filter on richer DB-only metadata.
         full_metadata_filter = metadata_filter if (metadata_filter and self.metadata_filter_enabled) else None
+        # Dataset scope is a first-class retrieval boundary. Push it down via metadata_filter so:
+        # - vector backends can apply it in their scalar expr/where clauses (when supported)
+        # - BM25 can filter early and avoid "top_k filled by other datasets" trimming losses
+        if self.dataset_id is not None:
+            ds_val = str(self.dataset_id)
+            if isinstance(full_metadata_filter, dict) and full_metadata_filter:
+                full_metadata_filter = dict(full_metadata_filter)
+                full_metadata_filter.setdefault("dataset_id", ds_val)
+            else:
+                full_metadata_filter = {"dataset_id": ds_val}
         bm25_filter: Optional[Dict[str, Any]] = None
         vector_filter: Optional[Dict[str, Any]] = None
         if full_metadata_filter and isinstance(full_metadata_filter, dict):
@@ -819,6 +829,7 @@ class HybridRetriever(BaseRetriever):
             # Keep keys top-level only (no dotted paths) and map common aliases.
             vector_allowed = {
                 "tenant_id",
+                "dataset_id",
                 "document_id",
                 "chunk_id",
                 "chunk_index",
