@@ -46,12 +46,14 @@ from app.core.database import SessionLocal, get_db
 from app.core.secrets import decrypt_connector_config_secrets, encrypt_connector_config_secrets, redact_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.connector_config import ConnectorConfig
+from app.services.security_redaction import redact_connection_info
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentPermissionService
 from app.services.web_crawler import crawl_site
 from app.tasks.queue import enqueue_connector_run, get_queue
 
 router = APIRouter()
+_DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 
 
 def _now() -> datetime:
@@ -159,14 +161,17 @@ def _finalize_connector_stats(stats: dict) -> dict:
 
 def _run_out(run: ConnectorRun) -> ConnectorRunOut:
     docs = getattr(run, "documents", None) or []
+    connector_id = str(getattr(run, "connector_id", "") or "").strip()
+    config = redact_secrets(dict(run.config or {}))
+    config = redact_connection_info(config, enabled=connector_id in _DB_CONNECTOR_IDS)
     return ConnectorRunOut(
         id=run.id,
         tenant_id=run.tenant_id,
         dataset_id=run.dataset_id,
-        connector_id=str(run.connector_id or ""),
+        connector_id=connector_id,
         requested_by=(run.requested_by or None),
         status=str(run.status or "pending"),  # type: ignore[arg-type]
-        config=redact_secrets(dict(run.config or {})),
+        config=config,
         stats=dict(run.stats or {}),
         error_message=(run.error_message or None),
         task_id=(run.task_id or None),
@@ -185,15 +190,18 @@ def _run_out(run: ConnectorRun) -> ConnectorRunOut:
 
 
 def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
+    connector_id = str(cfg.connector_id or "").strip()
+    config = redact_secrets(dict(cfg.config or {}))
+    config = redact_connection_info(config, enabled=connector_id in _DB_CONNECTOR_IDS)
     return ConnectorConfigOut(
         id=cfg.id,
         tenant_id=cfg.tenant_id,
         dataset_id=cfg.dataset_id,
-        connector_id=str(cfg.connector_id or ""),
+        connector_id=connector_id,
         name=str(cfg.name or ""),
         enabled=bool(cfg.enabled),
         schedule_cron=(str(cfg.schedule_cron).strip() if isinstance(cfg.schedule_cron, str) and cfg.schedule_cron.strip() else None),
-        config=redact_secrets(dict(cfg.config or {})),
+        config=config,
         state=dict(cfg.state or {}),
         last_run_at=(cfg.last_run_at or None),
         last_error=(cfg.last_error or None),
