@@ -4,7 +4,7 @@ This file is the “restart point”. Open this after a new window/session to se
 
 **Branch:** `main`  
 **Updated:** 2026-02-06  
-**Next Up:** Task 30 (plan TBD)
+**Next Up:** Task 1 (plan TBD)
 
 ## Checklist (1–30)
 
@@ -37,7 +37,7 @@ This file is the “restart point”. Open this after a new window/session to se
 - [x] 27. 任务队列化（解析/重嵌入/同步：并发上限、取消、断点续跑）
 - [x] 28. 数据集隔离 DB 约束（unique/fk/tenant_id 复合索引）
 - [x] 29. 安全审计默认开启（SQL/连接信息默认隐藏；owner/auditor 脱敏可见）
-- [ ] 30. 线上反馈→用例化（一键转回归用例，含检索轨迹）
+- [x] 30. 线上反馈→用例化（一键转回归用例，含检索轨迹）
 
 ## Pointers
 
@@ -56,3 +56,4 @@ This file is the “restart point”. Open this after a new window/session to se
 - Task 27: `docs/plans/2026-02-06-task27-task-queueing.md`
 - Task 28: `docs/plans/2026-02-06-task28-dataset-isolation-db-constraints.md`
 - Task 29: `docs/plans/2026-02-06-task29-security-audit-defaults.md`
+- Task 30: `docs/plans/2026-02-06-task30-feedback-to-regression-case.md`

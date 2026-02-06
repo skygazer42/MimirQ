@@ -6,6 +6,7 @@ Currently provides minimal loop capability:
 """
 
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -27,6 +28,7 @@ from app.models.evaluation import RagasRegressionCase
 from app.models.feedback import MessageFeedback
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
+from app.services.rag_trace_service import list_rag_traces
 
 router = APIRouter(tags=["Feedback"])
 
@@ -35,6 +37,101 @@ class FeedbackToRegressionCaseRequest(BaseModel):
     include_document_scope: bool = True
     tags: list[str] = []
     extra: dict = {}
+
+
+def _coerce_uuid(value: Any) -> UUID | None:
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return UUID(text)
+    except Exception:
+        return None
+
+
+def _coerce_int(value: Any, *, min_value: int | None = None) -> int | None:
+    try:
+        if value is None:
+            return None
+        out = int(value)
+    except Exception:
+        return None
+    if min_value is not None and out < min_value:
+        return None
+    return out
+
+
+def _extract_reference_sources(citations: Any) -> list[dict]:
+    if not isinstance(citations, list):
+        return []
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for item in citations:
+        if not isinstance(item, dict):
+            continue
+        doc_id = _coerce_uuid(item.get("document_id"))
+        chunk_id = _coerce_uuid(item.get("chunk_id"))
+        if doc_id is None or chunk_id is None:
+            continue
+        key = (str(doc_id), str(chunk_id))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        payload: dict[str, Any] = {
+            "document_id": str(doc_id),
+            "chunk_id": str(chunk_id),
+        }
+        page_number = _coerce_int(item.get("page_number"), min_value=1)
+        if page_number is not None:
+            payload["page_number"] = page_number
+        start_char = _coerce_int(item.get("start_char"), min_value=0)
+        if start_char is not None:
+            payload["start_char"] = start_char
+        end_char = _coerce_int(item.get("end_char"), min_value=0)
+        if end_char is not None:
+            payload["end_char"] = end_char
+        chunk_index = _coerce_int(item.get("chunk_index"), min_value=0)
+        if chunk_index is not None:
+            payload["chunk_index"] = chunk_index
+        for key_name in ("doc_pipeline_key", "pipeline_hash", "quote", "label"):
+            raw = item.get(key_name)
+            if raw is None:
+                continue
+            text = str(raw).strip()
+            if text:
+                payload[key_name] = text[:2000] if key_name == "quote" else text[:128]
+        out.append(payload)
+        if len(out) >= 100:
+            break
+    return out
+
+
+def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request_id: str) -> dict | None:
+    rid = str(request_id or "").strip()
+    if not rid:
+        return None
+    try:
+        traces = list_rag_traces(
+            tenant_id=str(tenant_id),
+            conversation_id=str(conversation_id),
+            limit=100,
+            window_minutes=7 * 24 * 60,
+            max_bytes=10_000_000,
+        )
+    except Exception:
+        return None
+    for item in list(getattr(traces, "items", []) or []):
+        if str(getattr(item, "request_id", "") or "") != rid:
+            continue
+        if hasattr(item, "model_dump"):
+            return item.model_dump(mode="json")
+        if isinstance(item, dict):
+            return dict(item)
+        return None
+    return None
 
 
 @router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED)
@@ -255,6 +352,7 @@ async def create_regression_case_from_feedback(
             dataset_id = UUID(raw_ds.strip())
         except Exception:
             dataset_id = None
+    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
 
     doc_ids: list[str] = []
     if bool(getattr(body, "include_document_scope", True)):
@@ -290,12 +388,21 @@ async def create_regression_case_from_feedback(
     extra.setdefault("message_id", str(fb.message_id))
     extra.setdefault("rating", int(fb.rating))
 
+    reference_sources = _extract_reference_sources(getattr(assistant, "citations", None))
+    trace_payload = _find_trace_by_request_id(tenant_id=tenant_id, conversation_id=conv.id, request_id=request_id)
+    if trace_payload and isinstance(trace_payload, dict):
+        extra["retrieval_trace"] = trace_payload
+        extra["retrieval_trace_request_id"] = request_id
+        if not reference_sources:
+            reference_sources = _extract_reference_sources(trace_payload.get("citations"))
+
     row = RagasRegressionCase(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         document_ids=doc_ids,
         question=question,
         expected_answer=fb.expected_answer,
+        reference_sources=reference_sources,
         tags=cleaned,
         extra=extra,
         created_by=account_id,
