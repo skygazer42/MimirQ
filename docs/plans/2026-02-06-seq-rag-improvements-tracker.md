@@ -2,9 +2,9 @@
 
 This file is the “restart point”. Open this after a new window/session to see what’s done and what’s next.
 
-**Branch:** `feat/db-catalog-schema-doc-obs`  
+**Branch:** `main`  
 **Updated:** 2026-02-06  
-**Next Up:** Task 24 (plan TBD)
+**Next Up:** Task 25 (plan TBD)
 
 ## Checklist (1–30)
 
@@ -31,7 +31,7 @@ This file is the “restart point”. Open this after a new window/session to se
 - [x] 21. 召回策略分桶（按问题类型选 retriever/阈值）
 - [x] 22. 生成前 context compression（保留引用，压缩无关句子/字段）
 - [x] 23. 生成后 claim-check（逐条证据覆盖，不覆盖则删/降级）
-- [ ] 24. 不可见即不存在（只根据引用回答；拒答=成功路径）
+- [x] 24. 不可见即不存在（只根据引用回答；拒答=成功路径）
 - [ ] 25. 文档治理规则包（页眉页脚/免责声明/目录噪声/重复段落处理）
 - [ ] 26. 端到端压测（ingest→retrieve→answer 吞吐 + P95）
 - [ ] 27. 任务队列化（解析/重嵌入/同步：并发上限、取消、断点续跑）
@@ -49,4 +49,5 @@ This file is the “restart point”. Open this after a new window/session to se
 - Task 20: `docs/plans/2026-02-06-task20-kg-assisted-retrieval-filtering.md`
 - Task 21: `docs/plans/2026-02-06-task21-recall-strategy-buckets.md`
 - Task 22: `docs/plans/2026-02-06-task22-context-compression.md`
-- Task 23 (next): `docs/plans/2026-02-06-task23-claim-check.md`
+- Task 23: `docs/plans/2026-02-06-task23-claim-check.md`
+- Task 24: `docs/plans/2026-02-06-task24-visible-evidence-only.md`
