@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
-
-from collections import Counter
 
 
 @dataclass(frozen=True)

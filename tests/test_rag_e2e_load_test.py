@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import math
+import sys
 from pathlib import Path
 
 import httpx
 import pytest
-import sys
 
 
 def _repo_root() -> Path:

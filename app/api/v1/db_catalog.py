@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.connectors.db.profile_privacy import sanitize_db_profile_snapshot
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.db_catalog import (
@@ -25,6 +24,7 @@ from app.api.schemas.db_catalog import (
     DbProfileSnapshotListResponse,
     DbProfileSnapshotOut,
 )
+from app.connectors.db.profile_privacy import sanitize_db_profile_snapshot
 from app.core.database import get_db
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
 from app.services.dataset_service import DatasetService

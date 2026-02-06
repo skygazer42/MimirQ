@@ -46,9 +46,9 @@ from app.core.database import SessionLocal, get_db
 from app.core.secrets import decrypt_connector_config_secrets, encrypt_connector_config_secrets, redact_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.connector_config import ConnectorConfig
-from app.services.security_redaction import redact_connection_info
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentPermissionService
+from app.services.security_redaction import redact_connection_info
 from app.services.web_crawler import crawl_site
 from app.tasks.queue import enqueue_connector_run, get_queue
 
@@ -2000,17 +2000,17 @@ async def cancel_connector_run(
 
     if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and isinstance(getattr(run, "task_id", None), str) and run.task_id:
         try:
-            from arq.jobs import Job
+            from arq.jobs import Job as job_cls
         except ImportError:
-            Job = None  # type: ignore[assignment]
-        if Job is not None:
+            job_cls = None  # type: ignore[assignment]
+        if job_cls is not None:
             try:
                 q = await get_queue()
             except Exception:
                 q = None
             if q is not None:
                 queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-                job = Job(str(run.task_id), q, _queue_name=queue_name)
+                job = job_cls(str(run.task_id), q, _queue_name=queue_name)
                 with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
                     await job.abort(timeout=0.2)
     return _run_out(run)

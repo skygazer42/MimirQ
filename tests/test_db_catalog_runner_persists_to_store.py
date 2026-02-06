@@ -68,7 +68,7 @@ def test_run_catalog_sync_persists_tables_and_columns(monkeypatch):  # noqa: ANN
 
     t0 = store.tables[0]["table"]
     expected_fp = hashlib.sha256("sqlserver|demo|dbo|users".encode("utf-8")).hexdigest()
-    assert getattr(t0, "fingerprint") == expected_fp
+    assert t0.fingerprint == expected_fp
 
     # columns persisted for the first table
     first_table_id = store.tables[0]["id"]
