@@ -11,7 +11,7 @@
 
 **Tech Stack:** Python, settings (`app/core/config.py`), LangChain engine (`app/rag/engine.py`), LangGraph pipeline (`app/rag/pipelines/langgraph.py`), pytest.
 
-**Status:** TODO
+**Status:** DONE (2026-02-06)
 
 ## Task 1: Add strict grounding setting
 
@@ -161,4 +161,3 @@ Run:
 git add app/core/config.py app/rag/core/text.py app/rag/engine.py app/rag/pipelines/langgraph.py tests/test_visible_evidence_only.py docs/plans/2026-02-06-task24-visible-evidence-only.md
 git commit -m "feat(rag): strict visible-evidence-only grounding"
 ```
-
