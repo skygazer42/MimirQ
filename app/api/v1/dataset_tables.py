@@ -7,6 +7,7 @@ that were ingested into the per-document table store.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from uuid import UUID
 
@@ -28,15 +29,63 @@ from app.api.schemas.table_store import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.services.lotus_bridge import lotus_available
 from app.services.lotus_bridge import sem_filter as lotus_sem_filter
+from app.services.security_redaction import redact_sql_literals
 from app.services.table_store import parse_table_id, table_store_path
 from app.services.table_store_service import run_table_query
 from app.services.table_tag_service import generate_answer_from_result, generate_sql_for_table, tag_enabled
 
 router = APIRouter()
+_SQL_VIEW_ROLES = {"owner", "admin", "auditor"}
+
+
+def _can_view_redacted_sql(db: Session, tenant_id: UUID, account_id: str) -> bool:
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = str(getattr(member, "role", "") or "").strip().lower()
+    return role in _SQL_VIEW_ROLES
+
+
+def _short_sql_hash(sql: str) -> str:
+    raw = (sql or "").encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _audit_table_query(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    table_id: str,
+    sql: str,
+) -> None:
+    try:
+        redacted_sql = redact_sql_literals(sql)
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="table.query",
+            resource_type="dataset_table",
+            resource_id=str(table_id),
+            details={
+                "dataset_id": str(dataset_id),
+                "table_id": str(table_id),
+                "sql_hash": _short_sql_hash(sql),
+                "sql_chars": len(str(sql or "")),
+                "sql_redacted": redacted_sql,
+            },
+        )
+    except Exception:
+        return
+    try:
+        db.commit()
+    except Exception:
+        return
 
 
 def _extract_table_assets(
@@ -237,6 +286,7 @@ def query_dataset_table(
     dataset_id: UUID,
     table_id: str,
     body: TableQueryRequest,
+    include_sql: bool = Query(default=False, description="Include redacted SQL for owner/admin/auditor"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -262,7 +312,19 @@ def query_dataset_table(
         max_cols=min(max_cols, int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200)),
         max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
     )
-    return TableQueryResponse(**payload)
+    raw_sql = str(payload.get("sql") or body.sql or "")
+    _audit_table_query(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        table_id=table_id,
+        sql=raw_sql,
+    )
+    show_sql = bool(include_sql) and _can_view_redacted_sql(db, tenant_id, account_id)
+    out_payload = dict(payload)
+    out_payload["sql"] = redact_sql_literals(raw_sql) if show_sql else "<hidden>"
+    return TableQueryResponse(**out_payload)
 
 
 @router.post(
@@ -274,6 +336,7 @@ def ask_dataset_table(
     dataset_id: UUID,
     table_id: str,
     body: TableAskRequest,
+    include_sql: bool = Query(default=False, description="Include redacted SQL for owner/admin/auditor"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -346,10 +409,23 @@ def ask_dataset_table(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"answer_failed: {str(exc)[:200]}") from exc
 
+    raw_sql = str(result.get("sql") or sql or "")
+    _audit_table_query(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        table_id=table_id,
+        sql=raw_sql,
+    )
+    show_sql = bool(include_sql) and _can_view_redacted_sql(db, tenant_id, account_id)
+    redacted_sql = redact_sql_literals(raw_sql) if show_sql else None
+    data_payload = dict(result)
+    data_payload["sql"] = redacted_sql or "<hidden>"
     return TableAskResponse(
         answer=answer,
-        sql=str(result.get("sql") or sql),
-        data=TableQueryResponse(**result),
+        sql=redacted_sql,
+        data=TableQueryResponse(**data_payload),
     )
 
 

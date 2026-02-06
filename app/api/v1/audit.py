@@ -23,7 +23,27 @@ from app.services.dataset_service import DatasetService
 
 router = APIRouter()
 
-_ADMIN_ROLES = {"owner", "admin"}
+_ADMIN_ROLES = {"owner", "admin", "auditor"}
+_SENSITIVE_DETAIL_KEYS = {
+    "sql",
+    "sql_redacted",
+    "connection",
+    "dsn",
+    "uri",
+    "jdbc_url",
+    "connection_string",
+    "host",
+    "hostname",
+    "port",
+    "database",
+    "db",
+    "username",
+    "user",
+    "password",
+    "token",
+    "cookie",
+    "auth",
+}
 
 
 def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
@@ -54,6 +74,21 @@ class AuditLogListResponse(BaseModel):
     items: List[AuditLogOut]
 
 
+def _sanitize_details(details: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
+    if include_sensitive or not isinstance(details, dict):
+        return dict(details or {})
+    out: dict[str, Any] = {}
+    for key, value in (details or {}).items():
+        lowered = str(key or "").strip().lower()
+        if lowered in _SENSITIVE_DETAIL_KEYS:
+            continue
+        if isinstance(value, dict):
+            out[key] = _sanitize_details(value, include_sensitive=False)
+        else:
+            out[key] = value
+    return out
+
+
 @router.get("/logs", response_model=AuditLogListResponse)
 def list_audit_logs(
     skip: int = Query(default=0, ge=0),
@@ -65,6 +100,7 @@ def list_audit_logs(
     request_id: Optional[str] = Query(default=None, max_length=128),
     since: Optional[datetime] = Query(default=None),
     until: Optional[datetime] = Query(default=None),
+    include_sensitive: bool = Query(default=False),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -95,5 +131,9 @@ def list_audit_logs(
         .limit(limit)
         .all()
     )
-    return {"total": total, "items": items}
-
+    payload: list[AuditLogOut] = []
+    for item in items:
+        obj = AuditLogOut.model_validate(item)
+        obj.details = _sanitize_details(dict(obj.details or {}), include_sensitive=bool(include_sensitive))
+        payload.append(obj)
+    return {"total": total, "items": payload}
