@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.document import Document as DBDocument
 from app.parsing.processors.processor import document_processor
 from app.rag.core.logging import get_logger
@@ -35,6 +36,87 @@ logger = get_logger("tasks.jobs")
 async def ping_job(ctx) -> dict:  # noqa: ANN001
     """Queue healthcheck job (for E2E benchmark)."""
     return {"ok": True}
+
+
+async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str) -> dict:  # noqa: ANN001
+    """
+    Connector run job wrapper (sync connector executions).
+
+    Dispatches to the existing connector executors based on connector_id.
+    """
+    t0 = time.perf_counter()
+    tid = UUID(tenant_id)
+    rid = UUID(run_id)
+
+    db = SessionLocal()
+    redis = None
+    sem_key = None
+    lock_key = None
+    lock_val = None
+    try:
+        run = (
+            db.query(DBConnectorRun)
+            .filter(DBConnectorRun.id == rid, DBConnectorRun.tenant_id == tid)
+            .first()
+        )
+        if not run:
+            return {"ok": False, "reason": "run_not_found", "tenant_id": tenant_id, "run_id": run_id}
+
+        connector_id = str(getattr(run, "connector_id", "") or "").strip()
+
+        try:
+            redis = ctx.get("redis") if isinstance(ctx, dict) else None
+        except Exception:  # noqa: BLE001
+            redis = None
+
+        if redis is not None:
+            sem_key = await tenant_acquire(
+                redis,
+                tenant_id=tenant_id,
+                kind="connector",
+                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_CONNECTOR", 0) or 0),
+                ttl_sec=120,
+            )
+
+            lock_key = f"lock:connector:{tenant_id}:{run_id}"
+            lock_val = make_lock_value(requested_by)
+            lock_ttl = 60 * 40  # 40 min
+            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
+            if not acquired:
+                logger.info("Skip connector job due to active lock: %s", lock_key)
+                return {"ok": True, "skipped": "locked", "tenant_id": tenant_id, "run_id": run_id}
+
+        # Worker side dispatch: reuse existing executors.
+        import app.api.v1.connectors as connectors_module
+
+        if connector_id == "url_batch":
+            await connectors_module._execute_url_batch_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
+        elif connector_id == "web_crawl":
+            await connectors_module._execute_web_crawl_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
+        elif connector_id == "github_repo":
+            await connectors_module._execute_github_repo_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
+        elif connector_id == "drive_files":
+            await connectors_module._execute_drive_files_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
+        elif connector_id == "minio_bucket":
+            await connectors_module._execute_minio_bucket_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
+        elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
+            await connectors_module._execute_db_catalog_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
+        else:
+            return {
+                "ok": False,
+                "reason": "unsupported_connector_id",
+                "tenant_id": tenant_id,
+                "run_id": run_id,
+                "connector_id": connector_id,
+            }
+
+        elapsed = time.perf_counter() - t0
+        return {"ok": True, "connector_id": connector_id, "elapsed_sec": round(elapsed, 3)}
+    finally:
+        if redis is not None and lock_key and lock_val:
+            await release_lock(redis, key=lock_key, value=lock_val)
+        await tenant_release(redis, sem_key)
+        db.close()
 
 
 async def process_document_job(ctx, tenant_id: str, document_id: str, requested_by: str) -> dict:  # noqa: ANN001

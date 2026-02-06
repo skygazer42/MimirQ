@@ -4,7 +4,7 @@ This file is the “restart point”. Open this after a new window/session to se
 
 **Branch:** `main`  
 **Updated:** 2026-02-06  
-**Next Up:** Task 27 (plan TBD)
+**Next Up:** Task 28 (plan TBD)
 
 ## Checklist (1–30)
 
@@ -34,7 +34,7 @@ This file is the “restart point”. Open this after a new window/session to se
 - [x] 24. 不可见即不存在（只根据引用回答；拒答=成功路径）
 - [x] 25. 文档治理规则包（页眉页脚/免责声明/目录噪声/重复段落处理）
 - [x] 26. 端到端压测（ingest→retrieve→answer 吞吐 + P95）
-- [ ] 27. 任务队列化（解析/重嵌入/同步：并发上限、取消、断点续跑）
+- [x] 27. 任务队列化（解析/重嵌入/同步：并发上限、取消、断点续跑）
 - [ ] 28. 数据集隔离 DB 约束（unique/fk/tenant_id 复合索引）
 - [ ] 29. 安全审计默认开启（SQL/连接信息默认隐藏；owner/auditor 脱敏可见）
 - [ ] 30. 线上反馈→用例化（一键转回归用例，含检索轨迹）
@@ -53,3 +53,4 @@ This file is the “restart point”. Open this after a new window/session to se
 - Task 24: `docs/plans/2026-02-06-task24-visible-evidence-only.md`
 - Task 25: `docs/plans/2026-02-06-task25-document-governance-rule-packs.md`
 - Task 26: `docs/plans/2026-02-06-task26-e2e-load-test.md`
+- Task 27: `docs/plans/2026-02-06-task27-task-queueing.md`

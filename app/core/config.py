@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # Per-tenant concurrency limit to avoid one tenant exhausting workers (0 = unlimited).
     TASK_TENANT_MAX_CONCURRENCY_DOC: int = 2
     TASK_TENANT_MAX_CONCURRENCY_KG: int = 1
+    TASK_TENANT_MAX_CONCURRENCY_CONNECTOR: int = 1
 
     # Subprocess worker guardrails (parsing backends).
     # 0 disables.
