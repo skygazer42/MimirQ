@@ -12,6 +12,7 @@ import asyncio
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from app.rag.core.hashing import stable_hash
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
@@ -267,7 +268,7 @@ async def create_multi_query_aggregator() -> Callable[[List[Dict[str, Any]]], Aw
         for result in results:
             contexts = result.get("contexts", [])
             for ctx in contexts:
-                ctx_id = ctx.get("chunk_id") or ctx.get("id") or hash(ctx.get("content", ""))
+                ctx_id = ctx.get("chunk_id") or ctx.get("id") or f"content:{stable_hash(str(ctx.get('content') or ''))}"
                 if ctx_id not in seen_ids:
                     seen_ids.add(ctx_id)
                     all_contexts.append(ctx)

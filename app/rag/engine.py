@@ -20,6 +20,7 @@ from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
+from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.core.text import (
     extract_evidence_text,
@@ -239,7 +240,7 @@ Requirements:
         if cid:
             return str(cid)
         content = (doc.page_content or "").strip()
-        return f"content:{hash(content)}"
+        return f"content:{stable_hash(content)}"
 
     @staticmethod
     def _normalize_query_text(text: str) -> str:

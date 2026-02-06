@@ -26,6 +26,7 @@ from langchain_core.messages import (
 )
 
 from app.core.config import settings
+from app.rag.core.hashing import stable_hash
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +322,7 @@ class ShortTermMemoryManager:
             recent_messages = messages[split_point:]
 
             # Get or create summary for old messages
-            cache_key = session_id or str(hash(str(old_messages)))
+            cache_key = session_id or f"msgs:{stable_hash(str(old_messages))}"
             if cache_key not in self._summary_cache:
                 # Create summary synchronously (use async version for async contexts)
                 import asyncio
@@ -370,7 +371,7 @@ class ShortTermMemoryManager:
             old_messages = messages[:split_point]
             recent_messages = messages[split_point:]
 
-            cache_key = session_id or str(hash(str(old_messages)))
+            cache_key = session_id or f"msgs:{stable_hash(str(old_messages))}"
             if cache_key not in self._summary_cache:
                 summary = await summarize_messages(old_messages, self.llm)
                 self._summary_cache[cache_key] = summary
