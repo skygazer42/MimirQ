@@ -11,6 +11,7 @@ from typing import List, Optional, Tuple
 
 from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.embedding.utils import logger
 
 _redis_client = None
@@ -41,11 +42,12 @@ def _invalidate_redis_client() -> None:
 
 
 def _embed_cache_key(text: str) -> str:
-    # Bind model and version (currently provider/model; append explicit version if available).
-    model_key = f"{settings.EMBEDDING_PROVIDER}/{settings.EMBEDDING_MODEL}"
+    # Bind to the current embedding "space" (provider/model/base_url) to avoid serving
+    # incompatible vectors after a model/endpoint change.
+    space = current_embedding_space_hash()
     digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
     prefix = getattr(settings, "EMBEDDING_CACHE_PREFIX", "emb")
-    return f"{prefix}:{model_key}:{digest}"
+    return f"{prefix}:{space}:{digest}"
 
 
 class LangChainEmbeddingsAdapter:
