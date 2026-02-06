@@ -35,5 +35,10 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "abstain_triggered": True,
         "abstain_reason": "citations_lt_min",
         "top_relevance_score": 0.12,
+        "retrieval_recall": None,
+        "retrieval_hit": None,
+        "retrieval_hit_at_1": None,
+        "retrieval_hit_at_3": None,
+        "retrieval_hit_at_5": None,
+        "retrieval_hit_at_10": None,
     }
-
