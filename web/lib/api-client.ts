@@ -28,6 +28,7 @@ import type {
   DocumentBatchAccessUpdateResponse,
   DocumentDuplicateList,
   DocumentVersionList,
+  DocumentVersionDiff,
   ConnectorInfo,
   ConnectorConfigCreateRequest,
   ConnectorConfigListResponse,
@@ -758,6 +759,22 @@ export const documentApi = {
 
   async deleteVersion(documentId: string, pipelineHash: string): Promise<void> {
     await apiClient.delete(`/documents/${documentId}/versions/${encodeURIComponent(pipelineHash)}`)
+  },
+
+  async diffVersions(params: {
+    document_id: string
+    from: string
+    to: string
+    sample_limit?: number
+  }): Promise<DocumentVersionDiff> {
+    const { data } = await apiClient.get(`/documents/${params.document_id}/versions/diff`, {
+      params: {
+        from: params.from,
+        to: params.to,
+        sample_limit: params.sample_limit,
+      },
+    })
+    return data
   },
 
   /**
@@ -1657,7 +1674,7 @@ export const datasetApi = {
 
   async listDbCatalogProfiles(
     datasetId: string,
-    params: { table_id: string; skip?: number; limit?: number }
+    params: { table_id: string; entitlement_hash?: string; skip?: number; limit?: number }
   ): Promise<DbProfileSnapshotListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/profiles`, { params })
     return data

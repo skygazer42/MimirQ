@@ -56,6 +56,73 @@ def _extract_json_array(text: str) -> str | None:
     return text[start : end + 1]
 
 
+def _clamp_int(value: Any, *, min_value: int, max_value: int) -> int | None:
+    try:
+        i = int(value)
+    except Exception:
+        return None
+    return max(min(i, max_value), min_value)
+
+
+def _sanitize_structure(structure: Any) -> dict[str, Any] | None:
+    if not isinstance(structure, dict):
+        return None
+
+    out: dict[str, Any] = {}
+
+    list_info = structure.get("list")
+    if isinstance(list_info, dict):
+        item_count = _clamp_int(list_info.get("item_count"), min_value=0, max_value=10_000)
+        min_level = _clamp_int(list_info.get("min_level"), min_value=0, max_value=50)
+        max_level = _clamp_int(list_info.get("max_level"), min_value=0, max_value=50)
+        list_out: dict[str, Any] = {}
+        if item_count is not None:
+            list_out["item_count"] = item_count
+        if min_level is not None:
+            list_out["min_level"] = min_level
+        if max_level is not None:
+            list_out["max_level"] = max_level
+        if list_out:
+            out["list"] = list_out
+
+    table_info = structure.get("table")
+    if isinstance(table_info, dict):
+        table_out: dict[str, Any] = {}
+        title = table_info.get("title")
+        if isinstance(title, str) and title.strip():
+            table_out["title"] = title.strip()[:200]
+        sheet_name = table_info.get("sheet_name")
+        if isinstance(sheet_name, str) and sheet_name.strip():
+            table_out["sheet_name"] = sheet_name.strip()[:200]
+        if table_out:
+            out["table"] = table_out
+
+    return out or None
+
+
+def _build_candidate_payload(*, cid: str, text: str, meta: dict[str, Any] | None, max_chars: int) -> dict[str, Any] | None:
+    cid_norm = str(cid or "").strip()
+    text_norm = str(text or "").strip()
+    if not cid_norm or not text_norm:
+        return None
+
+    if max_chars and len(text_norm) > max_chars:
+        text_norm = text_norm[:max_chars] + "..."
+
+    payload: dict[str, Any] = {"id": cid_norm, "text": text_norm}
+
+    header_path = (meta or {}).get("header_path")
+    if isinstance(header_path, str) and header_path.strip():
+        payload["header_path"] = header_path.strip()[:200]
+
+    structure = (meta or {}).get("structure")
+    structure_sanitized = _sanitize_structure(structure)
+    if structure_sanitized:
+        payload["structure"] = structure_sanitized
+
+    return payload
+
+
 class LLMReranker(DocumentReranker):
     """LLM reranker (document-level reranking via LLM)."""
 
@@ -142,7 +209,15 @@ candidates(JSON): {candidates}
             if not text:
                 continue
             cid = self._candidate_id(doc, idx)
-            candidates.append({"id": cid, "text": text})
+            meta = doc.metadata or {}
+            candidates.append(
+                {
+                    "id": cid,
+                    "text": text,
+                    "header_path": meta.get("header_path"),
+                    "structure": meta.get("structure"),
+                }
+            )
             id_to_doc[cid] = doc
 
         if not candidates:
@@ -202,11 +277,9 @@ candidates(JSON): {candidates}
         for c in candidates:
             cid = str(c.get("id") or "").strip()
             text = (c.get("text") or "").strip()
-            if not cid or not text:
-                continue
-            if max_chars and len(text) > max_chars:
-                text = text[:max_chars] + "..."
-            payload.append({"id": cid, "text": text})
+            item = _build_candidate_payload(cid=cid, text=text, meta=c, max_chars=max_chars)
+            if item is not None:
+                payload.append(item)
 
         if not payload:
             return LLMRerankResult(ordered_ids=[], score_map={}, elapsed_sec=0.0, model_used=self.model_used)

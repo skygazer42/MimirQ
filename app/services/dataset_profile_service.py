@@ -47,6 +47,7 @@ from app.services.dataset_service import DatasetService
 # Note: must include account_id due to document-level ACL (security trimming).
 _PROFILE_CACHE_TTL_SEC = 3.0
 _profile_cache: dict[tuple, tuple[float, DatasetProfileSummary]] = {}
+_PARSE_QUALITY_LOW_THRESHOLD = 0.35
 
 
 FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
@@ -69,6 +70,11 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "label": "低密度/疑似乱码",
         "severity": "warning",
         "description": "解析结果信息密度偏低，可能影响检索质量。",
+    },
+    "parse_low_quality": {
+        "label": "解析质量偏低",
+        "severity": "warning",
+        "description": "解析质量评分较低（综合 pdf_quality / parsed_text_quality）。建议人工复核或调整解析后端/OCR 路由。",
     },
     "pii": {
         "label": "PII 命中",
@@ -287,6 +293,12 @@ def aggregate_profile_from_rows(
         # Low density flag.
         if _is_low_density(meta_dict, density_threshold=float(density_threshold)):
             finding_counts["low_density"] += 1
+
+        pq = meta_dict.get("parse_quality")
+        if isinstance(pq, dict) and pq.get("score") is not None:
+            score = safe_float(pq.get("score"), default=1.0)
+            if score < float(_PARSE_QUALITY_LOW_THRESHOLD):
+                finding_counts["parse_low_quality"] += 1
 
         # Image-heavy flag.
         if _is_image_heavy(meta_dict, image_threshold=int(image_threshold)):
@@ -518,6 +530,11 @@ def apply_finding_filter(
         # parsed_text_quality.density < threshold
         return query.filter(
             func.coalesce(DBDocument.doc_metadata["parsed_text_quality"]["density"].as_float(), 1.0) < float(density_threshold),
+        )
+
+    if key == "parse_low_quality":
+        return query.filter(
+            func.coalesce(DBDocument.doc_metadata["parse_quality"]["score"].as_float(), 1.0) < float(_PARSE_QUALITY_LOW_THRESHOLD),
         )
 
     if key == "pii":

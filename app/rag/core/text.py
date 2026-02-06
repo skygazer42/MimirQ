@@ -17,6 +17,11 @@ _AUTO_KEYWORD_HINT_RE = re.compile(
     r"(traceback|exception|stack\s*trace|error|http\s*\d{3}|0x[0-9a-f]{4,}|[a-z_][a-z0-9_]{2,}\(|\.\w{1,5}\b|/|\\\\|::)",
     flags=re.IGNORECASE,
 )
+_RECALL_SCHEMA_HINT_RE = re.compile(r"(字段|column|columns|schema|表结构|ddl)", flags=re.IGNORECASE)
+_RECALL_PROCEDURE_HINT_RE = re.compile(r"(如何|怎么|步骤|流程|how\s+to|steps?|procedure)", flags=re.IGNORECASE)
+_RECALL_NUMERIC_HINT_RE = re.compile(r"(多少|总数|count|sum|avg|average|mean|max|min|最大|最小)", flags=re.IGNORECASE)
+_RECALL_POLICY_HINT_RE = re.compile(r"(条例|规定|政策|条款|policy|regulation|compliance|law)", flags=re.IGNORECASE)
+_RECALL_DEFINITION_HINT_RE = re.compile(r"(什么是|是什么|定义|define|meaning|what\s+is)", flags=re.IGNORECASE)
 _QUERY_REWRITE_TRIGGER_RE = re.compile(
     r"(它们?|他(们)?|她(们)?|这个|这(段|部分|些)|那(个)?|上述|上面|前面|之前|刚才|上文|下文|这里|那里|继续|同上|同理)",
     flags=re.IGNORECASE,
@@ -208,6 +213,31 @@ def extract_evidence_text(
     return out
 
 
+def guess_recall_bucket(query: str) -> str:
+    """
+    Heuristic question-type classifier for recall routing.
+
+    Returns one of:
+    - schema | procedure | numeric | policy | definition | general
+    """
+    q = (query or "").strip()
+    if not q:
+        return "general"
+
+    # Order matters: prefer narrower buckets over broad "definition".
+    if _RECALL_SCHEMA_HINT_RE.search(q):
+        return "schema"
+    if _RECALL_POLICY_HINT_RE.search(q):
+        return "policy"
+    if _RECALL_NUMERIC_HINT_RE.search(q):
+        return "numeric"
+    if _RECALL_PROCEDURE_HINT_RE.search(q):
+        return "procedure"
+    if _RECALL_DEFINITION_HINT_RE.search(q):
+        return "definition"
+    return "general"
+
+
 def guess_retrieval_mode(query: str) -> str:
     """
     Heuristic retrieval mode router for `auto`.
@@ -274,3 +304,146 @@ def normalize_retrieval_mode(mode: str | None) -> str:
     if mapped in _VALID_RETRIEVAL_MODES:
         return mapped
     return "hybrid"
+
+
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+\s*[.)])\s+(?P<item>.+?)\s*$")
+_CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
+_CLAIM_UNCERTAINTY_RE = re.compile(
+    r"(unable to answer|cannot determine|can't determine|insufficient evidence|not enough (?:info|information)|unknown|unsure|not sure|"
+    r"证据不足|材料不足|无法(确定|判断|回答)|不确定|未知)",
+    flags=re.IGNORECASE,
+)
+_EN_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+}
+
+
+def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
+    """
+    Split assistant answers into simple atomic claims for post-processing.
+
+    Heuristics:
+    - Sentence-level splitting for paragraphs
+    - Markdown list items become individual claims
+    - Preserve original order, drop empty claims, bound to `max_claims`
+    """
+    max_claims = max(1, int(max_claims or 0))
+    raw = (text or "").strip()
+    if not raw:
+        return []
+
+    claims: list[str] = []
+    paragraph_lines: list[str] = []
+
+    def _flush_paragraph() -> bool:
+        if not paragraph_lines:
+            return False
+        paragraph = " ".join([ln.strip() for ln in paragraph_lines if ln.strip()]).strip()
+        paragraph_lines.clear()
+        if not paragraph:
+            return False
+        for m in _SENTENCE_RE.finditer(paragraph):
+            s = (m.group(0) or "").strip()
+            if not s:
+                continue
+            claims.append(s)
+            if len(claims) >= max_claims:
+                return True
+        return False
+
+    for raw_line in (text or "").splitlines():
+        line = (raw_line or "").strip()
+        if not line:
+            if _flush_paragraph():
+                break
+            continue
+
+        m = _LIST_ITEM_RE.match(raw_line)
+        if m:
+            if _flush_paragraph():
+                break
+            item = (m.group("item") or "").strip()
+            if item:
+                claims.append(item)
+                if len(claims) >= max_claims:
+                    break
+            continue
+
+        paragraph_lines.append(line)
+
+    if len(claims) < max_claims:
+        _flush_paragraph()
+
+    return [c for c in claims if c.strip()][:max_claims]
+
+
+def _claim_token_set(text: str) -> set[str]:
+    tokens: set[str] = set()
+    for m in _CLAIM_TOKEN_RE.finditer(text or ""):
+        t = (m.group(0) or "").strip()
+        if not t:
+            continue
+        if t.isascii():
+            folded = t.casefold()
+            if folded in _EN_STOPWORDS:
+                continue
+            tokens.add(folded)
+        else:
+            tokens.add(t)
+    return tokens
+
+
+def is_claim_supported(claim: str, evidence: str) -> bool:
+    """
+    Deterministic baseline: token-overlap check between a claim and evidence text.
+
+    Notes:
+    - Always keep "uncertainty/insufficient evidence" phrasing (do not delete refusals).
+    - Heuristic only; designed to be safe and bounded.
+    """
+    c = (claim or "").strip()
+    if not c:
+        return True
+
+    if _CLAIM_UNCERTAINTY_RE.search(c):
+        return True
+
+    e = (evidence or "").strip()
+    if not e:
+        return False
+
+    c_tokens = _claim_token_set(c)
+    if not c_tokens:
+        return True
+    e_tokens = _claim_token_set(e)
+    if not e_tokens:
+        return False
+
+    shared = c_tokens.intersection(e_tokens)
+    shared_n = len(shared)
+    if shared_n <= 0:
+        return False
+
+    claim_n = len(c_tokens)
+    if claim_n <= 3:
+        return shared_n >= 1
+    if claim_n <= 8:
+        return shared_n >= 2 or (shared_n / float(claim_n)) >= 0.34
+    return shared_n >= 2 and (shared_n / float(claim_n)) >= 0.2

@@ -776,6 +776,32 @@ class DocumentVersionList(BaseModel):
     items: List[DocumentVersionInfo] = Field(default_factory=list)
 
 
+class DocumentVersionDiff(BaseModel):
+    """Diff summary between two document pipeline versions (keyed by pipeline_hash)."""
+
+    document_id: UUID
+    from_pipeline_hash: str
+    to_pipeline_hash: str
+
+    from_chunk_count: int = 0
+    to_chunk_count: int = 0
+    unchanged_chunks: int = 0
+    added_chunks: int = 0
+    removed_chunks: int = 0
+
+    # Best-effort hash samples for UI/debug (bounded by `sample_limit` in the API).
+    added_hashes: List[str] = Field(default_factory=list)
+    removed_hashes: List[str] = Field(default_factory=list)
+
+    # Best-effort per-version provenance snapshots (when recorded during ingest).
+    from_provenance: Optional[Dict[str, Any]] = None
+    to_provenance: Optional[Dict[str, Any]] = None
+    changed_transforms: List[str] = Field(
+        default_factory=list,
+        description="Transform step ids whose transform hash differs between from/to.",
+    )
+
+
 class DocumentStatus(OrmModel):
     """Document processing status."""
     id: UUID

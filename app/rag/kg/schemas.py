@@ -108,6 +108,12 @@ class KGEventEntityItem(KGBaseModel):
     entity: KGEntityItem
     weight: float = 1.0
     role: Optional[str] = None
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("extra_data", mode="before")
+    @classmethod
+    def _coerce_extra_data(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+        return v or {}
 
 
 class KGEventDetailResponse(BaseModel):

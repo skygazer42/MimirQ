@@ -1,18 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { documentApi } from '@/lib/api-client'
-import type { Document } from '@/types'
+import type { Document, DocumentVersionDiff, DocumentVersionList } from '@/types'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDocumentView } from '@/store/document-view'
 import { formatApiError } from '@/lib/api-errors'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const STAGES = [
   { key: 'queued', label: '排队' },
@@ -51,6 +52,11 @@ export function IngestionDetailDialog({
 }) {
   const { openDocument } = useDocumentView()
   const [isActing, setIsActing] = useState(false)
+  const [diffFrom, setDiffFrom] = useState<string | null>(null)
+  const [diffTo, setDiffTo] = useState<string | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
+  const [diff, setDiff] = useState<DocumentVersionDiff | null>(null)
+  const [diffError, setDiffError] = useState<string | null>(null)
 
   const { data: doc, isLoading, isError, refetch } = useQuery({
     queryKey: ['ingestion-doc-detail', documentId],
@@ -66,6 +72,30 @@ export function IngestionDetailDialog({
       return data.status === 'pending' || data.status === 'processing' ? 2_000 : false
     },
   })
+
+  const {
+    data: versions,
+    isLoading: versionsLoading,
+    isError: versionsError,
+    refetch: refetchVersions,
+  } = useQuery<DocumentVersionList>({
+    queryKey: ['ingestion-doc-versions', documentId],
+    queryFn: async () => {
+      if (!documentId) throw new Error('missing document id')
+      return await documentApi.listVersions(documentId)
+    },
+    enabled: open && Boolean(documentId),
+    staleTime: 3_000,
+  })
+
+  // Default diff selection: active -> current (best-effort).
+  useEffect(() => {
+    if (!versions) return
+    const active = versions.active_pipeline_hash || versions.pipeline_hash || null
+    const current = versions.pipeline_hash || versions.active_pipeline_hash || null
+    if (!diffFrom && active) setDiffFrom(active)
+    if (!diffTo && current) setDiffTo(current)
+  }, [versions, diffFrom, diffTo])
 
   const stageKey = doc ? inferStage(doc) : 'queued'
   const activeIndex = Math.max(0, STAGES.findIndex((s) => s.key === stageKey))
@@ -96,6 +126,26 @@ export function IngestionDetailDialog({
   const canCancel = Boolean(doc && (doc.status === 'pending' || doc.status === 'processing'))
   const canRetry = Boolean(doc && (doc.status === 'failed' || doc.status === 'cancelled' || doc.status === 'quarantined'))
   const canForceRetry = Boolean(doc && doc.status === 'completed')
+
+  const handleDiff = async () => {
+    if (!doc || !diffFrom || !diffTo || diffLoading) return
+    setDiffLoading(true)
+    setDiffError(null)
+    try {
+      const data = await documentApi.diffVersions({
+        document_id: doc.id,
+        from: diffFrom,
+        to: diffTo,
+        sample_limit: 50,
+      })
+      setDiff(data)
+    } catch (err: any) {
+      setDiffError(formatApiError(err, '对比失败'))
+      setDiff(null)
+    } finally {
+      setDiffLoading(false)
+    }
+  }
 
   const handleCancel = async () => {
     if (!doc || isActing) return
@@ -267,6 +317,100 @@ export function IngestionDetailDialog({
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Pipeline Versions Diff */}
+            <div className="rounded-2xl border border-border bg-card shadow-sm p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-foreground">版本对比（Pipeline Diff）</div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                  disabled={versionsLoading}
+                  onClick={() => refetchVersions()}
+                >
+                  {versionsLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
+                  刷新版本
+                </Button>
+              </div>
+
+              {versionsError ? (
+                <div className="mt-3 text-xs text-destructive">加载版本列表失败</div>
+              ) : null}
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <div className="space-y-1">
+                  <div className="text-[11px] font-semibold text-muted-foreground">From</div>
+                  <Select value={diffFrom || ''} onValueChange={(v) => setDiffFrom(v || null)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="选择版本" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(versions?.items || []).map((it) => (
+                        <SelectItem key={it.pipeline_hash} value={it.pipeline_hash}>
+                          {it.pipeline_hash} {it.active ? '（active）' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-[11px] font-semibold text-muted-foreground">To</div>
+                  <Select value={diffTo || ''} onValueChange={(v) => setDiffTo(v || null)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="选择版本" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(versions?.items || []).map((it) => (
+                        <SelectItem key={it.pipeline_hash} value={it.pipeline_hash}>
+                          {it.pipeline_hash} {it.active ? '（active）' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button className="rounded-full" disabled={diffLoading || !diffFrom || !diffTo} onClick={handleDiff}>
+                  {diffLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+                  对比
+                </Button>
+              </div>
+
+              {diffError ? (
+                <div className="mt-3 text-xs text-destructive">{diffError}</div>
+              ) : null}
+
+              {diff ? (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {[
+                    { k: 'From Chunks', v: diff.from_chunk_count },
+                    { k: 'To Chunks', v: diff.to_chunk_count },
+                    { k: 'Unchanged', v: diff.unchanged_chunks },
+                    { k: 'Added', v: diff.added_chunks },
+                    { k: 'Removed', v: diff.removed_chunks },
+                  ].map((x) => (
+                    <div key={x.k} className="rounded-xl border border-border bg-muted/20 p-3">
+                      <div className="text-[10px] font-semibold text-muted-foreground">{x.k}</div>
+                      <div className="mt-1 text-sm font-mono font-bold text-foreground tabular-nums">{String(x.v)}</div>
+                    </div>
+                  ))}
+
+                  {diff.changed_transforms?.length ? (
+                    <div className="md:col-span-5 rounded-xl border border-border bg-background p-3">
+                      <div className="text-[10px] font-semibold text-muted-foreground">Changed Transforms</div>
+                      <div className="mt-2 text-xs font-mono text-foreground break-words">
+                        {diff.changed_transforms.join(', ')}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-3 text-[11px] text-muted-foreground">
+                  说明：对比基于 chunk <span className="font-mono">content_hash</span> 的多重集差异；不会返回切片文本。
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col items-stretch justify-end gap-3 border-t border-border/60 pt-6 sm:flex-row sm:items-center">

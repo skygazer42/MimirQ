@@ -61,6 +61,9 @@ def test_run_catalog_sync_persists_tables_and_columns(monkeypatch):  # noqa: ANN
 
     assert result.get("engine") == "sqlserver"
     assert result.get("tables") == 2
+    ent = result.get("entitlement_hash")
+    assert isinstance(ent, str) and len(ent) == 64
+    assert all(ch in "0123456789abcdef" for ch in ent.lower())
     assert len(store.tables) == 2
 
     t0 = store.tables[0]["table"]
@@ -70,4 +73,3 @@ def test_run_catalog_sync_persists_tables_and_columns(monkeypatch):  # noqa: ANN
     # columns persisted for the first table
     first_table_id = store.tables[0]["id"]
     assert len(store.columns_by_table_id.get(first_table_id) or []) == 2
-

@@ -437,9 +437,9 @@ def run_catalog_sync(
     tables_upserted = 0
     columns_upserted = 0
     profiles_written = 0
+    ent_hash = _entitlement_hash(engine=engine, config=dict(config or {}))
     if store is not None:
         profile_enabled = bool(config.get("profile_enabled")) if "profile_enabled" in (config or {}) else False
-        ent_hash = _entitlement_hash(engine=engine, config=dict(config or {}))
         for t, profile, sample_meta in items:
             table_id = store.upsert_table(
                 tenant_id=tenant_id,
@@ -465,4 +465,5 @@ def run_catalog_sync(
         "tables_upserted": int(tables_upserted),
         "columns_upserted": int(columns_upserted),
         "profiles_written": int(profiles_written),
+        "entitlement_hash": str(ent_hash or ""),
     }

@@ -83,6 +83,22 @@ export interface DocumentVersionList {
   items: DocumentVersionInfo[]
 }
 
+export interface DocumentVersionDiff {
+  document_id: string
+  from_pipeline_hash: string
+  to_pipeline_hash: string
+  from_chunk_count: number
+  to_chunk_count: number
+  unchanged_chunks: number
+  added_chunks: number
+  removed_chunks: number
+  added_hashes: string[]
+  removed_hashes: string[]
+  from_provenance?: Record<string, any> | null
+  to_provenance?: Record<string, any> | null
+  changed_transforms: string[]
+}
+
 export interface DocumentAccessInfo {
   mode: DocumentAccessMode
   owner_id?: string | null
@@ -159,6 +175,30 @@ export interface WebCrawlConnectorConfig {
   access?: DocumentAccessUpdateRequest | null
 }
 
+export interface MySQLCatalogConnectorConfig {
+  host: string
+  port?: number
+  database: string
+  username: string
+  password: string
+  include_schemas?: string[]
+  include_tables?: string[]
+  max_tables?: number
+  profile_enabled?: boolean
+}
+
+export interface SQLServerCatalogConnectorConfig {
+  host: string
+  port?: number
+  database: string
+  username: string
+  password: string
+  include_schemas?: string[]
+  include_tables?: string[]
+  max_tables?: number
+  profile_enabled?: boolean
+}
+
 export type ConnectorRunCreateRequest =
   | {
       connector_id: 'url_batch'
@@ -169,6 +209,16 @@ export type ConnectorRunCreateRequest =
       connector_id: 'web_crawl'
       dataset_id?: string | null
       config: WebCrawlConnectorConfig
+    }
+  | {
+      connector_id: 'mysql_catalog'
+      dataset_id?: string | null
+      config: MySQLCatalogConnectorConfig
+    }
+  | {
+      connector_id: 'sqlserver_catalog'
+      dataset_id?: string | null
+      config: SQLServerCatalogConnectorConfig
     }
 
 export interface ConnectorRunDocumentOut {

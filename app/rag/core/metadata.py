@@ -7,6 +7,7 @@ Goals:
 """
 
 
+import re
 from typing import Any, Dict
 
 
@@ -37,6 +38,96 @@ def normalize_image_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
     if not img_url and image_url:
         meta["img_url"] = image_url
 
+    return meta
+
+
+_LIST_BULLET_RE = re.compile(r"^[-*+•]\s+\S")
+_LIST_ORDERED_RE = re.compile(r"^\d{1,3}[.)]\s+\S")
+
+
+def _leading_indent_level(line: str) -> int:
+    indent = 0
+    for ch in line:
+        if ch == " ":
+            indent += 1
+            continue
+        if ch == "\t":
+            indent += 4
+            continue
+        break
+    return min(indent // 2, 50)
+
+
+def infer_chunk_structure(meta: Dict[str, Any], content: str) -> Dict[str, Any]:
+    """
+    Infer lightweight structure signals for retrieval/reranking.
+
+    Output fields (when present):
+    - structure.list: {item_count, min_level, max_level}
+    - structure.table: {title, sheet_name}
+
+    Design goals:
+    - Best-effort only (no hard failures)
+    - Small and deterministic
+    """
+    if not isinstance(meta, dict):
+        return {}
+
+    structure = meta.get("structure")
+    if isinstance(structure, dict):
+        structure = dict(structure)
+    else:
+        structure = {}
+
+    text = str(content or "")
+    if text:
+        item_count = 0
+        min_level: int | None = None
+        max_level: int | None = None
+        for line in text.splitlines():
+            if not line or not line.strip():
+                continue
+            stripped = line.lstrip(" \t")
+            if not stripped:
+                continue
+            if not (_LIST_BULLET_RE.match(stripped) or _LIST_ORDERED_RE.match(stripped)):
+                continue
+            level = _leading_indent_level(line)
+            item_count += 1
+            min_level = level if min_level is None else min(min_level, level)
+            max_level = level if max_level is None else max(max_level, level)
+            if item_count >= 2000:
+                break
+        if item_count > 0 and min_level is not None and max_level is not None:
+            structure["list"] = {
+                "item_count": int(item_count),
+                "min_level": int(min_level),
+                "max_level": int(max_level),
+            }
+
+    table: dict[str, Any] = {}
+    sheet_name = meta.get("sheet_name")
+    if isinstance(sheet_name, str) and sheet_name.strip():
+        sn = sheet_name.strip()
+        if sn and sn != "_meta":
+            table["sheet_name"] = sn[:200]
+
+    title: str | None = None
+    for key in ("table_title", "table_header", "header_path"):
+        v = meta.get(key)
+        if isinstance(v, str) and v.strip():
+            title = v.strip()
+            break
+    if not title and isinstance(table.get("sheet_name"), str) and str(table.get("sheet_name") or "").strip():
+        title = str(table.get("sheet_name")).strip()
+    if title:
+        table["title"] = title[:200]
+
+    if table:
+        structure["table"] = table
+
+    if structure:
+        meta["structure"] = structure
     return meta
 
 
@@ -77,6 +168,23 @@ def normalize_section_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
         meta["header_path"] = header_context.strip()
         return meta
 
+    minutes_title = meta.get("minutes_section_title")
+    if isinstance(minutes_title, str) and minutes_title.strip():
+        meta["header_path"] = minutes_title.strip()[:200]
+        return meta
+
+    sheet_name = meta.get("sheet_name")
+    if isinstance(sheet_name, str) and sheet_name.strip():
+        sn = sheet_name.strip()
+        if sn and sn != "_meta":
+            meta["header_path"] = sn[:200]
+            return meta
+
+    table_title = meta.get("table_title")
+    if isinstance(table_title, str) and table_title.strip():
+        meta["header_path"] = table_title.strip()[:200]
+        return meta
+
     # LangChain MarkdownHeaderTextSplitter metadata keys: header_1..header_6.
     parts = []
     for i in range(1, 7):
@@ -92,5 +200,4 @@ def normalize_section_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
     return meta
 
 
-__all__ = ["normalize_image_metadata", "normalize_section_metadata"]
-
+__all__ = ["infer_chunk_structure", "normalize_image_metadata", "normalize_section_metadata"]

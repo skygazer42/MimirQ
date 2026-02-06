@@ -112,6 +112,7 @@ async def get_kg_graph(
     from sqlalchemy import func
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+    from app.rag.kg.provenance import build_event_entity_provenance
 
     events = (
         db.query(KgSourceEvent)
@@ -234,13 +235,22 @@ async def get_kg_graph(
         if len(links) >= int(max_links):
             continue
 
+        raw_extra = getattr(assoc, "extra_data", None)
+        edge_meta = {"kind": "event_entity"}
+        edge_meta.update(
+            build_event_entity_provenance(
+                document_id=(raw_extra.get("document_id") if isinstance(raw_extra, dict) else None),
+                chunk_id=(raw_extra.get("chunk_id") if isinstance(raw_extra, dict) else None),
+                references=(raw_extra if isinstance(raw_extra, dict) else None),
+            )
+        )
         links.append(
             {
                 "source": str(assoc.event_id),
                 "target": ent_id,
                 "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
                 "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": {"kind": "event_entity"},
+                "meta": edge_meta,
             }
         )
 
@@ -334,6 +344,7 @@ async def expand_kg_graph(
     from collections import Counter
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+    from app.rag.kg.provenance import build_event_entity_provenance
 
     # Determine node kind: event (scoped by allowed documents) or entity (tenant-scoped).
     center_event = (
@@ -543,13 +554,22 @@ async def expand_kg_graph(
         if len(links) >= int(max_links):
             continue
 
+        raw_extra = getattr(assoc, "extra_data", None)
+        edge_meta = {"kind": "event_entity"}
+        edge_meta.update(
+            build_event_entity_provenance(
+                document_id=(raw_extra.get("document_id") if isinstance(raw_extra, dict) else None),
+                chunk_id=(raw_extra.get("chunk_id") if isinstance(raw_extra, dict) else None),
+                references=(raw_extra if isinstance(raw_extra, dict) else None),
+            )
+        )
         links.append(
             {
                 "source": str(assoc.event_id),
                 "target": ent_id,
                 "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
                 "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": {"kind": "event_entity"},
+                "meta": edge_meta,
             }
         )
 
@@ -922,6 +942,7 @@ async def get_kg_event_detail(
         raise HTTPException(status_code=404, detail="No accessible documents")
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+    from app.rag.kg.provenance import build_event_entity_provenance
 
     ev = (
         db.query(KgSourceEvent)
@@ -946,6 +967,23 @@ async def get_kg_event_detail(
             entity=KGEntityItem.model_validate(ent),
             weight=float(getattr(assoc, "weight", 1.0) or 1.0),
             role=(getattr(assoc, "role", None) or None),
+            extra_data=build_event_entity_provenance(
+                document_id=(
+                    getattr(assoc, "extra_data", None).get("document_id")
+                    if isinstance(getattr(assoc, "extra_data", None), dict)
+                    else getattr(ev, "document_id", None)
+                ),
+                chunk_id=(
+                    getattr(assoc, "extra_data", None).get("chunk_id")
+                    if isinstance(getattr(assoc, "extra_data", None), dict)
+                    else getattr(ev, "chunk_id", None)
+                ),
+                references=(
+                    getattr(assoc, "extra_data", None)
+                    if isinstance(getattr(assoc, "extra_data", None), dict)
+                    else (getattr(ev, "references", None) if isinstance(getattr(ev, "references", None), dict) else None)
+                ),
+            ),
         )
         for assoc, ent in rows
         if ent is not None

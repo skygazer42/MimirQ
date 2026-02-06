@@ -20,7 +20,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { connectorApi, datasetApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 
-import type { Dataset, DbCatalogTableDetail, DbCatalogTableSummary, DbProfileSnapshot } from '@/types'
+import type { ConnectorRunOut, Dataset, DbCatalogTableDetail, DbCatalogTableSummary, DbProfileSnapshot } from '@/types'
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -84,6 +84,25 @@ export default function DatasetDbCatalogPage() {
   const [syncSubmitting, setSyncSubmitting] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
+  const [latestRun, setLatestRun] = useState<ConnectorRunOut | null>(null)
+  const [latestRunLoading, setLatestRunLoading] = useState(false)
+
+  const loadLatestRun = useCallback(async () => {
+    if (!datasetId) return
+    setLatestRunLoading(true)
+    try {
+      const res = await connectorApi.listRuns({ dataset_id: datasetId, limit: 10 })
+      const items = res.items || []
+      const catalog = items.filter((r) => ['mysql_catalog', 'sqlserver_catalog'].includes(String(r.connector_id || '').toLowerCase()))
+      setLatestRun(catalog[0] || null)
+    } catch (_e) {
+      // Likely permission-gated (requires dataset write). Fail closed.
+      setLatestRun(null)
+    } finally {
+      setLatestRunLoading(false)
+    }
+  }, [datasetId])
+
   const loadList = useCallback(async () => {
     if (!datasetId) return
     setIsLoading(true)
@@ -118,9 +137,19 @@ export default function DatasetDbCatalogPage() {
       setDetailLoading(true)
       setLatestProfile(null)
       try {
+        const entitlementHash =
+          typeof (latestRun as any)?.stats?.result?.entitlement_hash === 'string'
+            ? ((latestRun as any).stats.result.entitlement_hash as string)
+            : undefined
+
         const [detailRes, profileRes] = await Promise.allSettled([
           datasetApi.getDbCatalogTable(datasetId, tableId),
-          datasetApi.listDbCatalogProfiles(datasetId, { table_id: tableId, skip: 0, limit: 1 }),
+          datasetApi.listDbCatalogProfiles(datasetId, {
+            table_id: tableId,
+            entitlement_hash: entitlementHash,
+            skip: 0,
+            limit: 1,
+          }),
         ])
 
         if (detailRes.status === 'fulfilled') {
@@ -145,7 +174,7 @@ export default function DatasetDbCatalogPage() {
         setDetailLoading(false)
       }
     },
-    [datasetId]
+    [datasetId, latestRun]
   )
 
   useEffect(() => {
@@ -186,11 +215,13 @@ export default function DatasetDbCatalogPage() {
         config: cfg,
       })
       toast.success(`已创建同步任务：${run.id.slice(0, 8)}`)
+      setLatestRun(run)
       setSyncOpen(false)
       setSyncPassword('')
       // Best-effort: refresh after a short delay (sync runs async).
       window.setTimeout(() => {
         void loadList()
+        void loadLatestRun()
       }, 1500)
     } catch (e: any) {
       console.error('Failed to create DB catalog run', e)
@@ -201,6 +232,7 @@ export default function DatasetDbCatalogPage() {
   }, [
     datasetId,
     loadList,
+    loadLatestRun,
     syncConnectorId,
     syncDatabase,
     syncHost,
@@ -216,6 +248,10 @@ export default function DatasetDbCatalogPage() {
   useEffect(() => {
     loadList()
   }, [loadList])
+
+  useEffect(() => {
+    void loadLatestRun()
+  }, [loadLatestRun])
 
   useEffect(() => {
     if (!selectedId) {
@@ -314,6 +350,178 @@ export default function DatasetDbCatalogPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <Panel className="lg:col-span-4" padding="lg">
             <div className="space-y-4">
+              <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">最近同步</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      需要数据集写权限才可查看运行记录与 diff。
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => void loadLatestRun()}
+                    disabled={latestRunLoading}
+                  >
+                    <RefreshCw className={cn('h-3.5 w-3.5', latestRunLoading && 'animate-spin motion-reduce:animate-none')} />
+                    刷新
+                  </Button>
+                </div>
+
+                {!latestRun ? (
+                  <div className="mt-3 text-xs text-muted-foreground">暂无同步记录（或无权限）。</div>
+                ) : (
+                  <div className="mt-3 space-y-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="font-mono">
+                        {latestRun.status}
+                      </Badge>
+                      <Badge variant="soft" className="font-mono">
+                        {latestRun.connector_id}
+                      </Badge>
+                      <Badge variant="soft" className="font-mono">
+                        run {latestRun.id.slice(0, 8)}
+                      </Badge>
+                    </div>
+
+                    {(() => {
+                      const stats: any = latestRun.stats || {}
+                      const result: any = stats.result || {}
+                      const schemaDoc: any = stats.schema_doc || {}
+                      const diff: any = schemaDoc.schema_diff || {}
+
+                      const ageSecRaw = schemaDoc.catalog_age_sec
+                      const ageSec = typeof ageSecRaw === 'number' && Number.isFinite(ageSecRaw) ? ageSecRaw : null
+                      const ageText =
+                        ageSec === null
+                          ? null
+                          : ageSec < 90
+                            ? `${Math.round(ageSec)}s`
+                            : ageSec < 3600
+                              ? `${Math.round(ageSec / 60)}m`
+                              : `${Math.round(ageSec / 3600)}h`
+
+                      const tables = Number(result.tables ?? schemaDoc.tables ?? 0)
+                      const cols = Number(result.columns_upserted ?? schemaDoc.columns ?? 0)
+                      const profiles = Number(result.profiles_written ?? schemaDoc.tables_with_profiles ?? 0)
+
+                      const ta = Number(diff?.tables_added?.count ?? 0)
+                      const tr = Number(diff?.tables_removed?.count ?? 0)
+                      const ca = Number(diff?.columns_added?.count ?? 0)
+                      const cr = Number(diff?.columns_removed?.count ?? 0)
+                      const cc = Number(diff?.columns_changed?.count ?? 0)
+                      const taItems: string[] = Array.isArray(diff?.tables_added?.items) ? diff.tables_added.items : []
+                      const trItems: string[] = Array.isArray(diff?.tables_removed?.items) ? diff.tables_removed.items : []
+                      const caItems: string[] = Array.isArray(diff?.columns_added?.items) ? diff.columns_added.items : []
+                      const crItems: string[] = Array.isArray(diff?.columns_removed?.items) ? diff.columns_removed.items : []
+                      const ccItems: any[] = Array.isArray(diff?.columns_changed?.items) ? diff.columns_changed.items : []
+
+                      return (
+                        <>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="soft" className="font-mono tabular-nums">
+                              tables: {Number.isFinite(tables) ? tables : 0}
+                            </Badge>
+                            <Badge variant="soft" className="font-mono tabular-nums">
+                              cols: {Number.isFinite(cols) ? cols : 0}
+                            </Badge>
+                            <Badge variant="soft" className="font-mono tabular-nums">
+                              profiles: {Number.isFinite(profiles) ? profiles : 0}
+                            </Badge>
+                            {ageText ? (
+                              <Badge variant="soft" className="font-mono tabular-nums">
+                                freshness: {ageText}
+                              </Badge>
+                            ) : null}
+                          </div>
+
+                          {ta + tr + ca + cr + cc > 0 ? (
+                            <>
+                              <div className="flex flex-wrap gap-2">
+                                <Badge variant={ta > 0 ? 'default' : 'soft'} className="font-mono tabular-nums">
+                                  +tables {ta}
+                                </Badge>
+                                <Badge variant={tr > 0 ? 'destructive' : 'soft'} className="font-mono tabular-nums">
+                                  -tables {tr}
+                                </Badge>
+                                <Badge variant={ca > 0 ? 'default' : 'soft'} className="font-mono tabular-nums">
+                                  +cols {ca}
+                                </Badge>
+                                <Badge variant={cr > 0 ? 'destructive' : 'soft'} className="font-mono tabular-nums">
+                                  -cols {cr}
+                                </Badge>
+                                <Badge variant={cc > 0 ? 'secondary' : 'soft'} className="font-mono tabular-nums">
+                                  ~cols {cc}
+                                </Badge>
+                              </div>
+
+                              {taItems.length || trItems.length || caItems.length || crItems.length || ccItems.length ? (
+                                <details className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+                                  <summary className="cursor-pointer select-none text-xs text-muted-foreground">
+                                    查看 diff 详情（最多展示部分）
+                                  </summary>
+                                  <div className="mt-2 space-y-2 text-[12px]">
+                                    {taItems.length ? (
+                                      <div>
+                                        <div className="font-semibold text-foreground">新增表</div>
+                                        <div className="mt-1 font-mono text-muted-foreground break-words">
+                                          {taItems.join(', ')}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {trItems.length ? (
+                                      <div>
+                                        <div className="font-semibold text-foreground">删除表</div>
+                                        <div className="mt-1 font-mono text-muted-foreground break-words">
+                                          {trItems.join(', ')}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {caItems.length ? (
+                                      <div>
+                                        <div className="font-semibold text-foreground">新增列</div>
+                                        <div className="mt-1 font-mono text-muted-foreground break-words">
+                                          {caItems.join(', ')}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {crItems.length ? (
+                                      <div>
+                                        <div className="font-semibold text-foreground">删除列</div>
+                                        <div className="mt-1 font-mono text-muted-foreground break-words">
+                                          {crItems.join(', ')}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {ccItems.length ? (
+                                      <div>
+                                        <div className="font-semibold text-foreground">变更列</div>
+                                        <div className="mt-1 space-y-1 font-mono text-muted-foreground">
+                                          {ccItems.slice(0, 20).map((it) => {
+                                            const key = `${it?.table || ''}.${it?.column || ''}`
+                                            return (
+                                              <div key={key} className="break-words">
+                                                {key} ({String(it?.old?.data_type || '')} → {String(it?.new?.data_type || '')})
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </details>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <Label className="text-sm">搜索</Label>
                 <Input

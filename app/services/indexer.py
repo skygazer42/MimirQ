@@ -20,6 +20,7 @@ from app.models.document import DocumentChunk
 from app.rag.core.metadata import normalize_image_metadata
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
@@ -547,6 +548,12 @@ class Indexer:
             self._db.add(event_obj)
             db_events.append(event_obj)
 
+            link_extra_data = build_event_entity_provenance(
+                document_id=item.document_id,
+                chunk_id=item.chunk_id,
+                references=item.references,
+            )
+
             for ent in item.entities:
                 name = ent.name.strip()
                 if not name:
@@ -575,6 +582,7 @@ class Indexer:
                         entity=entity_obj,
                         weight=1.0,
                         role=ent.role,
+                        extra_data=(link_extra_data or None),
                     )
                 )
 

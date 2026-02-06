@@ -2208,10 +2208,12 @@ export default function ParsingPage() {
                                 {(() => {
                                   const ev = (activeQualityGate as any)?.evidence || {}
                                   const tq = ev?.text_quality || {}
+                                  const pq = ev?.parse_quality || {}
                                   const pieces: string[] = []
                                   if (activePdfQuality && typeof (activePdfQuality as any)?.score === 'number') {
                                     pieces.push(`pdf_score=${Number((activePdfQuality as any).score).toFixed(3)}`)
                                   }
+                                  if (typeof pq?.score === 'number') pieces.push(`parse_score=${Number(pq.score).toFixed(3)}`)
                                   if (typeof tq?.content_chars === 'number') pieces.push(`content_chars=${tq.content_chars}`)
                                   if (typeof tq?.density === 'number') pieces.push(`density=${Number(tq.density).toFixed(3)}`)
                                   if (typeof tq?.replacement_ratio === 'number') pieces.push(`replacement_ratio=${Number(tq.replacement_ratio).toFixed(3)}`)

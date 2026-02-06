@@ -23,10 +23,13 @@ from app.rag.core.conversation import format_history_text
 from app.rag.core.logging import get_logger
 from app.rag.core.text import (
     extract_evidence_text,
+    guess_recall_bucket,
     guess_retrieval_mode,
+    is_claim_supported,
     normalize_retrieval_mode,
     parse_json_from_text,
     should_rewrite_query,
+    split_into_claims,
 )
 from app.rag.kg.pipeline import kg_search
 from app.rag.retriever import hybrid_retriever
@@ -549,10 +552,19 @@ Requirements:
             mode_req = retrieval_mode or "hybrid"
             mode_used = normalize_retrieval_mode(mode_req)
             mode_auto = False
+            recall_bucket: str | None = None
+            recall_bucket_routing = bool(getattr(settings, "RAG_RECALL_BUCKETS_ENABLED", False))
             mode_norm = (mode_used or "hybrid").lower().strip()
             if mode_norm == "auto":
-                mode_used = guess_retrieval_mode(query_for_retrieval)
                 mode_auto = True
+                if recall_bucket_routing:
+                    recall_bucket = guess_recall_bucket(query_for_retrieval)
+                    if recall_bucket in ("schema", "policy", "definition"):
+                        mode_used = "keyword"
+                    else:
+                        mode_used = guess_retrieval_mode(query_for_retrieval)
+                else:
+                    mode_used = guess_retrieval_mode(query_for_retrieval)
                 mode_norm = mode_used.lower().strip()
             if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
                 mode_used = "hybrid"
@@ -565,6 +577,19 @@ Requirements:
             rerank_on = bool(enable_reranker)
             rerank_provider = reranker_provider or settings.RERANKER_PROVIDER or "llm"
             rerank_top_n = int(reranker_top_n or settings.RERANKER_TOP_N or 20)
+            score_threshold_used = float(score_threshold or 0.0)
+
+            if mode_auto and recall_bucket_routing and recall_bucket:
+                if recall_bucket in ("schema", "policy", "definition"):
+                    score_threshold_used = 0.0
+                    vec_w = 0.2
+                    kw_w = 0.8
+                elif recall_bucket == "procedure":
+                    vec_w = 0.7
+                    kw_w = 0.3
+                elif recall_bucket == "numeric":
+                    vec_w = 0.5
+                    kw_w = 0.5
 
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             multi_query_elapsed = 0.0
@@ -700,7 +725,7 @@ Requirements:
             retriever = hybrid_retriever.model_copy(
                 update={
                     "k": top_k,
-                    "score_threshold": score_threshold,
+                    "score_threshold": score_threshold_used,
                     "alpha": alpha_val,
                     "tenant_id": tenant_id,
                     "account_id": account_id,
@@ -820,6 +845,114 @@ Requirements:
             else:
                 docs = self.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
             docs = docs[: max(0, int(top_k or 0))] if docs else []
+
+            # Optional: KG-assisted retrieval (inject KG-linked chunks as extra candidates).
+            #
+            # This turns KG entity linking (query->events->chunk_id) into structured chunk candidates,
+            # improving precision without replacing the main retriever.
+            kg_result_cached: Dict[str, Any] | None = None
+            kg_chunks_injected = 0
+            try:
+                if (
+                    bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+                    and bool(getattr(settings, "KG_ENABLED", False))
+                    and bool(getattr(settings, "KG_CHAT_ENABLED", False))
+                    and db is not None
+                    and tenant_id is not None
+                    and document_ids
+                ):
+                    kg_result_cached = await kg_search(query=question, tenant_id=tenant_id, document_ids=document_ids)
+                    kg_events = (kg_result_cached or {}).get("events") or []
+                    max_chunks = max(0, int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0)) or 5
+
+                    score_by_chunk: dict[str, float] = {}
+                    chunk_ids: list[UUID] = []
+                    seen_chunk_ids: set[UUID] = set()
+                    for ev in kg_events if isinstance(kg_events, list) else []:
+                        if not isinstance(ev, dict):
+                            continue
+                        cid_raw = ev.get("chunk_id")
+                        if cid_raw is None:
+                            continue
+                        try:
+                            cid = UUID(str(cid_raw))
+                        except Exception:
+                            continue
+                        if cid in seen_chunk_ids:
+                            continue
+                        seen_chunk_ids.add(cid)
+                        chunk_ids.append(cid)
+                        try:
+                            score_by_chunk[str(cid)] = float(ev.get("score", 0.0) or 0.0)
+                        except Exception:
+                            score_by_chunk[str(cid)] = 0.0
+                        if len(chunk_ids) >= max_chunks:
+                            break
+
+                    if chunk_ids:
+                        from app.models.document import DocumentChunk  # noqa: WPS433
+
+                        rows = (
+                            db.query(DocumentChunk)
+                            .filter(
+                                DocumentChunk.tenant_id == tenant_id,
+                                DocumentChunk.document_id.in_(list(document_ids)),
+                                DocumentChunk.id.in_(list(chunk_ids)),
+                            )
+                            .all()
+                        )
+                        chunk_by_id: dict[UUID, Any] = {
+                            ch.id: ch
+                            for ch in (rows or [])
+                            if getattr(ch, "id", None) is not None and getattr(ch, "content", None) is not None
+                        }
+
+                        kg_docs: list[Document] = []
+                        for cid in chunk_ids:
+                            ch = chunk_by_id.get(cid)
+                            if ch is None:
+                                continue
+                            meta = dict(getattr(ch, "doc_metadata", None) or {})
+                            meta["retrieval_role"] = "kg"
+                            meta.setdefault("document_id", str(getattr(ch, "document_id", "") or ""))
+                            meta.setdefault("chunk_id", str(getattr(ch, "id", "") or ""))
+                            meta.setdefault("chunk_index", getattr(ch, "chunk_index", None))
+                            page_number = getattr(ch, "page_number", None)
+                            if page_number is not None:
+                                meta.setdefault("page", int(page_number))
+                                meta.setdefault("page_number", int(page_number))
+                            start_char = getattr(ch, "start_char", None)
+                            end_char = getattr(ch, "end_char", None)
+                            if start_char is not None:
+                                meta.setdefault("start_char", int(start_char))
+                            if end_char is not None:
+                                meta.setdefault("end_char", int(end_char))
+                            if str(cid) in score_by_chunk:
+                                meta.setdefault("retrieval_score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
+                                meta.setdefault("score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
+
+                            kg_docs.append(
+                                Document(
+                                    page_content=str(getattr(ch, "content", None) or ""),
+                                    metadata=meta,
+                                    id=str(cid),
+                                )
+                            )
+
+                        if kg_docs:
+                            seen_keys: set[str] = set()
+                            merged: list[Document] = []
+                            for doc in (kg_docs + (docs or [])):
+                                key = self._doc_key(doc)
+                                if key in seen_keys:
+                                    continue
+                                seen_keys.add(key)
+                                merged.append(doc)
+                            docs = merged
+                            kg_chunks_injected = len(kg_docs)
+            except Exception:
+                kg_result_cached = None
+                kg_chunks_injected = 0
 
             # Optional: TAG bridge - inject bounded table query results as extra context.
             tag_docs: List[Document] = []
@@ -959,6 +1092,8 @@ Requirements:
                             "model_route": model_route,
                             "top_k": top_k,
                             "docs_returned": len(docs),
+                            "kg_chunks_injected": int(kg_chunks_injected or 0),
+                            "recall_bucket": recall_bucket,
                             "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
                             "history_chars": len(history_text or ""),
                             "context_chars": 0,
@@ -1006,26 +1141,31 @@ Requirements:
             # Step 2: Additional KG event recall (optional).
             kg_context = ""
             if settings.KG_ENABLED and settings.KG_CHAT_ENABLED and tenant_id and document_ids:
-                kg_result = await kg_search(
-                    query=question,
-                    tenant_id=tenant_id,
-                    document_ids=document_ids,
-                )
-                events = (kg_result or {}).get("events") or []
-                if events:
-                    parts = []
-                    for idx, ev in enumerate(events[:5], 1):
-                        title = (ev.get("title") or "").strip()
-                        summary = (ev.get("summary") or "").strip()
-                        if len(summary) > 600:
-                            summary = summary[:600] + "..."
-                        parts.append(f"[Event {idx}] {title}\n{summary}")
-                    kg_context = "\n\n".join(parts)
-                    max_kg_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_KG_TOKENS", 0) or 0))
-                    if max_kg_tokens:
-                        kg_context = truncate(kg_context, max_kg_tokens)
-                    elif settings.RAG_CONTEXT_MAX_KG_CHARS > 0 and len(kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS:
-                        kg_context = kg_context[: settings.RAG_CONTEXT_MAX_KG_CHARS] + "..."
+                try:
+                    kg_result = kg_result_cached or await kg_search(
+                        query=question,
+                        tenant_id=tenant_id,
+                        document_ids=document_ids,
+                    )
+                    events = (kg_result or {}).get("events") or []
+                    if events:
+                        parts = []
+                        for idx, ev in enumerate(events[:5], 1):
+                            title = (ev.get("title") or "").strip()
+                            summary = (ev.get("summary") or "").strip()
+                            if len(summary) > 600:
+                                summary = summary[:600] + "..."
+                            parts.append(f"[Event {idx}] {title}\n{summary}")
+                        kg_context = "\n\n".join(parts)
+                        max_kg_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_KG_TOKENS", 0) or 0))
+                        if max_kg_tokens:
+                            kg_context = truncate(kg_context, max_kg_tokens)
+                        elif (
+                            settings.RAG_CONTEXT_MAX_KG_CHARS > 0 and len(kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS
+                        ):
+                            kg_context = kg_context[: settings.RAG_CONTEXT_MAX_KG_CHARS] + "..."
+                except Exception:
+                    kg_context = ""
 
             # Step 3: Build context (document chunks + optional KG events).
             chunk_context = ""
@@ -1057,17 +1197,22 @@ Requirements:
                         role_info = str(retrieval_role)
                     raw_content = (doc.page_content or "").strip()
                     content = raw_content
-                    if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED):
-                        content = extract_evidence_text(
-                            raw_content,
-                            query_for_retrieval,
-                            max_chars=(max_per_chunk_chars if not max_per_chunk_tokens else 0),
-                            max_sentences=settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK,
-                            min_sentence_chars=settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS,
-                        )
-                    elif max_per_chunk_tokens:
+                    evidence_on = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+                    if evidence_on:
+                        try:
+                            content = extract_evidence_text(
+                                raw_content,
+                                query_for_retrieval,
+                                max_chars=(max_per_chunk_chars if not max_per_chunk_tokens else 0),
+                                max_sentences=settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK,
+                                min_sentence_chars=settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS,
+                            )
+                        except Exception:
+                            content = raw_content
+                            evidence_on = False
+                    if (not evidence_on) and max_per_chunk_tokens:
                         content = truncate(content, max_per_chunk_tokens)
-                    elif max_per_chunk_chars and len(content) > max_per_chunk_chars:
+                    elif (not evidence_on) and max_per_chunk_chars and len(content) > max_per_chunk_chars:
                         content = content[:max_per_chunk_chars] + "..."
                     info_parts = [str(source)]
                     if page_info:
@@ -1099,84 +1244,95 @@ Requirements:
                 context_sections.append(f"[Document Chunk Retrieval]\n{chunk_context}")
             context = "\n\n".join(context_sections) if context_sections else "No relevant reference materials found."
 
-            # Optional trace log for debugging/regression replay (guarded by ENABLE_METRICS_LOG).
-            log_metrics(
-                {
-                    "event": "rag_trace",
-                    "conversation_id": str(conversation_id) if conversation_id else None,
-                    "tenant_id": str(tenant_id) if tenant_id else None,
-                    "request_id": request_id,
-                    "question": question,
-                    "query_for_retrieval": query_for_retrieval,
-                    "history_chars": len(history_text or ""),
-                    "history_tokens": num_tokens_from_string(history_text or ""),
-                    "context_chars": len(context or ""),
-                    "context_tokens": num_tokens_from_string(context or ""),
-                    "citations_count": len(citations),
-                    "context_evidence": {
-                        "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
-                        "max_sentences_per_chunk": int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0),
-                        "min_sentence_chars": int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0),
-                    },
-                    "query_expansion": {
-                        "multi_query_enabled": bool(settings.ENABLE_MULTI_QUERY),
-                        "multi_query_used": bool(multi_query_used),
-                        "multi_query_count": len(multi_queries),
-                        "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
-                        "multi_query_model_used": multi_query_model_used,
-                        "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
-                        "multi_query_parse_error": multi_query_parse_meta.get("error"),
-                        "hyde_enabled": bool(settings.ENABLE_HYDE),
-                        "hyde_used": bool(hyde_used),
-                        "hyde_elapsed_sec": round(hyde_elapsed, 3),
-                        "hyde_model_used": hyde_model_used,
-                        "decompose_enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
-                        "decompose_used": bool(decompose_used),
-                        "decompose_count": len(sub_questions),
-                        "decompose_elapsed_sec": round(decompose_elapsed, 3),
-                        "decompose_model_used": decompose_model_used,
-                        "decompose_parse_ok": bool(decompose_parse_meta.get("ok")),
-                        "decompose_parse_error": decompose_parse_meta.get("error"),
-                    },
-                    "retrieval": {
-                        "mode": mode_used,
-                        "requested_mode": mode_req,
-                        "auto_routed": bool(mode_auto),
-                        "top_k": int(top_k) if top_k is not None else None,
-                        "elapsed_sec": round(retrieval_elapsed, 3),
-                        "alpha": alpha_val,
-                        "enable_weight_rerank": weight_rerank,
-                        "vector_weight": vec_w,
-                        "keyword_weight": kw_w,
-                        "mmr_lambda": mmr_lambda_val,
-                        "enable_reranker": rerank_on,
-                        "reranker_provider": rerank_provider,
-                        "reranker_top_n": rerank_top_n,
-                        "query_parallelism": retrieval_parallelism,
-                        "query_count": len(retrieval_plan),
-                        "per_query": retrieval_per_query[:8],
-                        "errors": retrieval_errors[:5],
-                    },
-                    "tag": tag_meta,
-                    "citations": citations[: min(len(citations), int(top_k or 5))],
-                    "prompt": {
-                        "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
-                        "prompt_template_key": selected_prompt_template_key,
-                        "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
-                        "prompt_ab_variant": selected_prompt_ab_variant,
-                    },
-                    "route": {
-                        "model_route": model_route,
-                        "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
-                        "reason": routing_reason,
-                    },
-                }
-            )
+            # Optional trace payload for debugging/regression replay (guarded by ENABLE_METRICS_LOG).
+            # Claim-check stats are attached after generation completes (so we only emit one trace item).
+            rag_trace_payload: Dict[str, Any] = {
+                "event": "rag_trace",
+                "conversation_id": str(conversation_id) if conversation_id else None,
+                "tenant_id": str(tenant_id) if tenant_id else None,
+                "request_id": request_id,
+                "question": question,
+                "query_for_retrieval": query_for_retrieval,
+                "history_chars": len(history_text or ""),
+                "history_tokens": num_tokens_from_string(history_text or ""),
+                "context_chars": len(context or ""),
+                "context_tokens": num_tokens_from_string(context or ""),
+                "citations_count": len(citations),
+                "context_evidence": {
+                    "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
+                    "max_sentences_per_chunk": int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0),
+                    "min_sentence_chars": int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0),
+                },
+                "query_expansion": {
+                    "multi_query_enabled": bool(settings.ENABLE_MULTI_QUERY),
+                    "multi_query_used": bool(multi_query_used),
+                    "multi_query_count": len(multi_queries),
+                    "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
+                    "multi_query_model_used": multi_query_model_used,
+                    "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
+                    "multi_query_parse_error": multi_query_parse_meta.get("error"),
+                    "hyde_enabled": bool(settings.ENABLE_HYDE),
+                    "hyde_used": bool(hyde_used),
+                    "hyde_elapsed_sec": round(hyde_elapsed, 3),
+                    "hyde_model_used": hyde_model_used,
+                    "decompose_enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
+                    "decompose_used": bool(decompose_used),
+                    "decompose_count": len(sub_questions),
+                    "decompose_elapsed_sec": round(decompose_elapsed, 3),
+                    "decompose_model_used": decompose_model_used,
+                    "decompose_parse_ok": bool(decompose_parse_meta.get("ok")),
+                    "decompose_parse_error": decompose_parse_meta.get("error"),
+                },
+                "retrieval": {
+                    "mode": mode_used,
+                    "requested_mode": mode_req,
+                    "auto_routed": bool(mode_auto),
+                    "recall_bucket": recall_bucket,
+                    "top_k": int(top_k) if top_k is not None else None,
+                    "elapsed_sec": round(retrieval_elapsed, 3),
+                    "alpha": alpha_val,
+                    "enable_weight_rerank": weight_rerank,
+                    "vector_weight": vec_w,
+                    "keyword_weight": kw_w,
+                    "mmr_lambda": mmr_lambda_val,
+                    "enable_reranker": rerank_on,
+                    "reranker_provider": rerank_provider,
+                    "reranker_top_n": rerank_top_n,
+                    "query_parallelism": retrieval_parallelism,
+                    "query_count": len(retrieval_plan),
+                    "per_query": retrieval_per_query[:8],
+                    "errors": retrieval_errors[:5],
+                },
+                "kg": {
+                    "chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+                    "chunks_injected": int(kg_chunks_injected or 0),
+                    "used_cached_result": bool(kg_result_cached),
+                },
+                "tag": tag_meta,
+                "citations": citations[: min(len(citations), int(top_k or 5))],
+                "prompt": {
+                    "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
+                    "prompt_template_key": selected_prompt_template_key,
+                    "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
+                    "prompt_ab_variant": selected_prompt_ab_variant,
+                },
+                "route": {
+                    "model_route": model_route,
+                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "reason": routing_reason,
+                },
+            }
 
             # Step 4: Stream answer generation.
             full_response = ""
             gen_start = time.time()
             pii_on = bool(pii_redaction_enabled())
+
+            claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False))
+            claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
+            claim_check_applied = bool(claim_check_configured) and (not structured_output)
+            claim_check_removed = 0
+            claim_check_total = 0
 
             holdback = max(0, int(getattr(settings, "PII_STREAM_HOLDBACK_CHARS", 128) or 128))
             context_for_model = redact_text(context) if pii_on else context
@@ -1184,6 +1340,7 @@ Requirements:
             question_for_model = redact_text(question) if pii_on else question
 
             pending = ""
+            buffered_parts: List[str] | None = [] if claim_check_applied else None
             async for token in chain.astream(
                 {
                     "context": context_for_model,
@@ -1195,6 +1352,10 @@ Requirements:
                 if not token:
                     continue
                 token_text = token if isinstance(token, str) else str(token)
+
+                if buffered_parts is not None:
+                    buffered_parts.append(token_text)
+                    continue
 
                 if not pii_on:
                     full_response += token_text
@@ -1212,11 +1373,29 @@ Requirements:
                     full_response += emit_safe
                     yield {"type": "token", "data": {"content": emit_safe}}
 
-            if pii_on and pending:
+            if buffered_parts is not None:
+                raw_generated = "".join(buffered_parts)
+                full_response = redact_text(raw_generated) if pii_on else raw_generated
+            elif pii_on and pending:
                 emit_safe = redact_text(pending)
                 if emit_safe:
                     full_response += emit_safe
                     yield {"type": "token", "data": {"content": emit_safe}}
+
+            if claim_check_applied:
+                evidence_text = context_for_model
+                claims = split_into_claims(full_response, max_claims=claim_check_max_claims)
+                claim_check_total = len(claims)
+                kept: List[str] = []
+                for c in claims:
+                    if is_claim_supported(c, evidence_text):
+                        kept.append(c)
+                    else:
+                        claim_check_removed += 1
+                cleaned = "\n".join(kept).strip()
+                if not cleaned:
+                    cleaned = "Unable to answer this question based on the available materials."
+                full_response = cleaned
 
             # Step 4.5: Append cited images as inline Markdown (non-structured output only).
             if (
@@ -1245,7 +1424,20 @@ Requirements:
                     images_md = "\n\n".join(images_md_parts) + "\n"
                     images_md_safe = redact_text(images_md) if pii_on else images_md
                     full_response += images_md_safe
-                    yield {"type": "token", "data": {"content": images_md_safe}}
+                    if not claim_check_applied:
+                        yield {"type": "token", "data": {"content": images_md_safe}}
+
+            if claim_check_applied:
+                yield {"type": "token", "data": {"content": full_response}}
+
+            rag_trace_payload["claim_check"] = {
+                "enabled": bool(claim_check_configured),
+                "applied": bool(claim_check_applied),
+                "max_claims": int(claim_check_max_claims),
+                "claims_total": int(claim_check_total),
+                "claims_removed": int(claim_check_removed),
+            }
+            log_metrics(rag_trace_payload)
 
             # Step 5: Send completion signal.
             generation_elapsed = time.time() - gen_start
@@ -1283,6 +1475,8 @@ Requirements:
                         "model_route": model_route,
                         "top_k": top_k,
                         "docs_returned": len(docs),
+                        "kg_chunks_injected": int(kg_chunks_injected or 0),
+                        "recall_bucket": recall_bucket,
                         "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
                         "history_chars": len(history_text or ""),
                         "history_tokens": num_tokens_from_string(history_text or ""),
@@ -1299,6 +1493,10 @@ Requirements:
                         "context_limit_per_chunk_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0),
                         "answer_chars": answer_chars,
                         "answer_tokens": answer_tokens,
+                        "claim_check_enabled": bool(claim_check_applied),
+                        "claim_check_removed": int(claim_check_removed),
+                        "claim_check_total": int(claim_check_total),
+                        "claim_check_max_claims": int(claim_check_max_claims) if claim_check_configured else None,
                         "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                         "context_evidence_max_sentences_per_chunk": (
                             int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)
