@@ -129,6 +129,68 @@ def _build_snippet(text: str, query: str | None, *, max_chars: int = 220) -> tup
     return snippet, matched
 
 
+def _build_snippet_and_span(
+    text: str,
+    query: str | None,
+    *,
+    max_chars: int = 220,
+) -> tuple[str, list[str], int | None, int | None]:
+    """
+    Build a human-friendly snippet for UI and (best-effort) raw span offsets into `text`.
+
+    Offsets are only returned when we find a query-term hit; otherwise offsets are None.
+    """
+    max_chars = max(60, int(max_chars or 0))
+    raw = str(text or "")
+    if not raw.strip():
+        return "", [], None, None
+
+    terms = _extract_query_terms(query or "", max_terms=10) if query else []
+    hit = _find_first_match(raw, terms) if terms else None
+    if hit is None:
+        snippet = _collapse_ws(raw[:max_chars])
+        if len(raw) > max_chars:
+            snippet += "..."
+        return snippet, [], None, None
+
+    idx, _ = hit
+    before = max_chars // 3
+    after = max_chars - before
+    base_start = max(0, idx - before)
+    base_end = min(len(raw), idx + after)
+
+    # Prefer sentence-level windows for readability.
+    start = base_start
+    end = base_end
+    prev = _find_prev_boundary(raw, start=base_start, end=idx)
+    if prev >= 0:
+        start = min(max(base_start, prev + 1), len(raw))
+    nxt = _find_next_boundary(raw, start=idx, end=base_end)
+    if nxt is not None:
+        end = min(max(start, nxt + 1), len(raw))
+
+    snippet_raw = raw[start:end]
+    snippet = _collapse_ws(snippet_raw).strip() or _collapse_ws(raw[base_start:base_end])
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(raw):
+        snippet = snippet + "..."
+
+    matched: list[str] = []
+    snippet_folded = snippet_raw.casefold()
+    for t in terms:
+        if not t:
+            continue
+        if str(t).isascii():
+            if t.casefold() in snippet_folded:
+                matched.append(str(t))
+        else:
+            if str(t) in snippet_raw:
+                matched.append(str(t))
+
+    return snippet, matched, int(start), int(end)
+
+
 def build_citations_from_docs(
     docs: List[Document],
     *,
@@ -170,7 +232,9 @@ def build_citations_from_docs(
         img_url = f"/api/v1/documents/image-url/{img_id}" if img_id else None
 
         chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
-        snippet, matched_terms = _build_snippet(doc.page_content or "", query, max_chars=220)
+        snippet, matched_terms, evidence_start_in_chunk, evidence_end_in_chunk = _build_snippet_and_span(
+            doc.page_content or "", query, max_chars=220
+        )
 
         start_char = meta.get("start_char")
         end_char = meta.get("end_char")
@@ -198,6 +262,16 @@ def build_citations_from_docs(
             "chunk_index": chunk_index,
             "start_char": start_char,
             "end_char": end_char,
+            "evidence_start_char": (
+                (int(start_char) + int(evidence_start_in_chunk))
+                if (start_char is not None and evidence_start_in_chunk is not None)
+                else None
+            ),
+            "evidence_end_char": (
+                (int(start_char) + int(evidence_end_in_chunk))
+                if (start_char is not None and evidence_end_in_chunk is not None)
+                else None
+            ),
             "header_path": meta.get("header_path") or meta.get("header_context"),
             "chunk_strategy": meta.get("chunk_strategy"),
             "chunk_role": meta.get("chunk_role"),

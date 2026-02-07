@@ -24,6 +24,8 @@ class Citation(BaseModel):
     chunk_index: Optional[int] = None
     start_char: Optional[int] = None
     end_char: Optional[int] = None
+    evidence_start_char: Optional[int] = None
+    evidence_end_char: Optional[int] = None
     header_path: Optional[str] = None
     chunk_strategy: Optional[str] = None
     chunk_role: Optional[str] = None
