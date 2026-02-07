@@ -141,18 +141,33 @@ def truncate(string: str, max_len: int) -> str:
 
 
 def estimate_tokens(text: str) -> int:
-    """Fast token estimation (char count / 4).
-
-    Useful for quick estimates without tiktoken overhead.
-    For accurate counts, use num_tokens_from_string().
-
-    Args:
-        text: Text to estimate tokens for
-
-    Returns:
-        Estimated token count
     """
-    return max(1, len(text) // 4)
+    Fast token estimation (heuristic).
+
+    Notes:
+    - Keep legacy behavior for ASCII-only text (~4 chars/token).
+    - For CJK-heavy text, treat CJK-ish characters as ~1 char/token to avoid
+      severe under-estimation (important for token-based guards and previews).
+    """
+    raw = text or ""
+    if not raw:
+        return 0
+
+    if raw.isascii():
+        return max(1, len(raw) // 4)
+
+    cjk = 0
+    for ch in raw:
+        o = ord(ch)
+        if (
+            0x4E00 <= o <= 0x9FFF  # CJK Unified Ideographs
+            or 0x3040 <= o <= 0x30FF  # Hiragana + Katakana
+            or 0xAC00 <= o <= 0xD7AF  # Hangul Syllables
+        ):
+            cjk += 1
+
+    non_cjk = len(raw) - cjk
+    return max(1, cjk + (non_cjk // 4))
 
 
 __all__ = [
