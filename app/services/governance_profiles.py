@@ -285,6 +285,24 @@ def get_builtin_governance_profiles() -> List[BuiltinGovernanceProfile]:
             ),
         ),
         BuiltinGovernanceProfile(
+            key="builtin:chat_exports",
+            name="聊天记录导出（Slack/Teams）",
+            description="适用于 Slack/Teams 等聊天导出：去导出头尾/系统提示，保留消息行边界。",
+            payload=_p(
+                input_formats=["markdown"],
+                pipeline_patch={
+                    "governance_enabled": True,
+                    "governance_remove_toc_lines": False,
+                    "governance_remove_noise_lines": True,
+                    "governance_unwrap_lines": False,
+                    "governance_remove_common_lines": False,
+                    "governance_remove_boilerplate": True,
+                    "governance_rule_packs": ["chat_export_noise"],
+                    "governance_max_blank_lines": 1,
+                },
+            ),
+        ),
+        BuiltinGovernanceProfile(
             key="builtin:metadata_enrich",
             name="元数据增强（frontmatter/语言/关键词）",
             description="适用于需要检索增强的文档：提取/剥离 frontmatter、语言检测、关键词抽取（best-effort）。",

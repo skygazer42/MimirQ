@@ -16,6 +16,7 @@ def test_builtin_governance_profiles_are_valid_and_unique():
     for required in [
         "builtin:code_repo",
         "builtin:structured_data",
+        "builtin:chat_exports",
         "builtin:metadata_enrich",
         "builtin:quality_gate_quarantine",
         "builtin:html_xpath_main",
@@ -27,4 +28,3 @@ def test_builtin_governance_profiles_are_valid_and_unique():
         normalized = validate_and_normalize_payload(p.payload)
         assert normalized.version == "1"
         DocumentPipelineOptions(**(normalized.pipeline_patch or {}))
-
