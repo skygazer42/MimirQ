@@ -1838,9 +1838,17 @@ class HybridRetriever(BaseRetriever):
         # When running in open scope (no explicit document_ids), we may drop candidates due to:
         # - document/dataset ACL (security trimming)
         # - active pipeline version trimming
+        # - metadata filtering (post-enrichment, especially for dotted `document_user.*` keys)
         # Over-fetch to keep enough final results after trimming.
         search_k = requested_k
-        if self.tenant_id and (self.account_id or "").strip() and not (self.document_ids or []):
+        overfetch_enabled = False
+        if not (self.document_ids or []):
+            if self.tenant_id and (self.account_id or "").strip():
+                overfetch_enabled = True
+            if self.metadata_filter_enabled and isinstance(self.metadata_filter, dict) and self.metadata_filter:
+                overfetch_enabled = True
+
+        if overfetch_enabled:
             mult = max(1, int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1))
             if mult > 1:
                 search_k = max(search_k, requested_k * mult)
