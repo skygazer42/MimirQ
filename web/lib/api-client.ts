@@ -172,10 +172,11 @@ import type {
 	  IngestionPolicyRollbackRequest,
 	  IngestionPolicyVersionListResponse,
 	  IngestionPreviewResponse,
-	  RagvizSimilarityCollectionsResponse,
+  RagvizSimilarityCollectionsResponse,
   RagvizSimilarityRequest,
   RagvizSimilarityCalculateResponse,
   RagMetricsSummaryResponse,
+  IndexAuditResponse,
   RagTraceListResponse,
 } from '@/types'
 import type { MetaResponse } from '@/types/backend'
@@ -2287,6 +2288,16 @@ export const metaApi = {
 export const observabilityApi = {
   async getRagMetricsSummary(params: { window_minutes?: number; max_bytes?: number }): Promise<RagMetricsSummaryResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/summary', { params })
+    return data
+  },
+
+  async getIndexAudit(params: {
+    dataset_id: string
+    max_check_ids?: number
+    milvus_list_limit?: number
+    sample_limit?: number
+  }): Promise<IndexAuditResponse> {
+    const { data } = await apiClient.get('/observability/index-audit', { params })
     return data
   },
 }
