@@ -19,6 +19,7 @@ class ReferenceSource(BaseModel):
 
     document_id: UUID = Field(..., description="Evidence document id")
     chunk_id: UUID = Field(..., description="Evidence chunk id")
+    chunk_index: Optional[int] = Field(default=None, ge=0, description="0-based chunk index (optional)")
 
     # Optional audit/debug fields (best-effort; do not gate correctness).
     page_number: Optional[int] = Field(default=None, ge=1, description="1-based page number (optional)")

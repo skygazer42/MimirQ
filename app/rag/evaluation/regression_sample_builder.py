@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 
@@ -38,6 +39,61 @@ def _dedup_ids(raw_items: Any, *, key: str) -> list[str]:
     return out
 
 
+_WS_RE = re.compile(r"\s+")
+
+
+def _collapse_ws(text: Any) -> str:
+    return _WS_RE.sub(" ", str(text or "").strip())
+
+
+def _stable_ref_key(src: Any) -> str | None:
+    d = _coerce_dict(src)
+    dk = str(d.get("doc_pipeline_key") or "").strip()
+    if not dk:
+        return None
+    idx_raw = d.get("chunk_index")
+    try:
+        idx = int(idx_raw) if idx_raw is not None else None
+    except Exception:
+        idx = None
+    if idx is None or idx < 0:
+        return None
+    return f"{dk}:{idx}"
+
+
+def _stable_citation_key(cit: Any) -> str | None:
+    d = _coerce_dict(cit)
+    dk = str(d.get("doc_pipeline_key") or "").strip()
+    if not dk:
+        return None
+    idx_raw = d.get("chunk_index")
+    try:
+        idx = int(idx_raw) if idx_raw is not None else None
+    except Exception:
+        idx = None
+    if idx is None or idx < 0:
+        return None
+    return f"{dk}:{idx}"
+
+
+def _quote_signature(text: Any, *, max_chars: int = 120) -> str | None:
+    """
+    Produce a small, normalized quote signature used for best-effort matching
+    when chunk ids change.
+    """
+    max_chars = max(20, int(max_chars or 0))
+    norm = _collapse_ws(text).casefold()
+    if len(norm) < 24:
+        return None
+    return norm[:max_chars]
+
+
+def _citation_text_for_quote_match(cit: Any) -> str:
+    d = _coerce_dict(cit)
+    # Prefer citation snippet, fall back to retrieved_contexts later if needed.
+    return _collapse_ws(d.get("chunk_content") or d.get("quote") or "").casefold()
+
+
 def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Build kwargs for RAGAS SingleTurnSample plus per-item meta used for audit/gates.
@@ -63,12 +119,82 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     citations = item.get("citations") or []
     retrieved_context_ids = _dedup_ids(citations, key="chunk_id")
 
+    citations_ranked: list[Any] = []
+    seen_cids: set[str] = set()
+    for c in citations or []:
+        d = _coerce_dict(c)
+        cid = str(d.get("chunk_id") or "").strip()
+        if not cid:
+            continue
+        if cid in seen_cids:
+            continue
+        seen_cids.add(cid)
+        citations_ranked.append(c)
+
     # Retrieval quality signals (non-LLM):
-    # - recall: fraction of human-verified evidence chunks that were retrieved
-    # - hit@k: whether any evidence chunk appears in the top-k retrieved list
+    # - recall: fraction of human-verified evidence sources that were matched by retrieval
+    # - hit@k: whether any evidence source appears in the top-k retrieved list
+    # Matching strategy (best-effort):
+    # 1) chunk_id exact match (fast path)
+    # 2) doc_pipeline_key + chunk_index match (version-stable)
+    # 3) quote signature substring match (fallback when ids drift)
     ref_set = set(reference_context_ids or [])
     ret_list = list(retrieved_context_ids or [])
     ret_set = set(ret_list)
+
+    ref_keys: list[str] = []
+    ref_quotes: list[str] = []
+    for src in reference_sources or []:
+        k = _stable_ref_key(src)
+        if k:
+            ref_keys.append(k)
+        qsig = _quote_signature(_coerce_dict(src).get("quote"))
+        if qsig:
+            ref_quotes.append(qsig)
+    ref_key_set = set(ref_keys)
+
+    cit_keys: list[str] = []
+    cit_texts: list[str] = []
+    for c in citations_ranked:
+        ck = _stable_citation_key(c)
+        if ck:
+            cit_keys.append(ck)
+        cit_texts.append(_citation_text_for_quote_match(c))
+    cit_key_set = set(cit_keys)
+    cit_text_joined = "\n".join([t for t in cit_texts if t]) if cit_texts else ""
+
+    def _citation_matches_any_ref(i: int) -> bool:
+        if i < 0 or i >= len(citations_ranked):
+            return False
+        d = _coerce_dict(citations_ranked[i])
+        cid = str(d.get("chunk_id") or "").strip()
+        if cid and cid in ref_set:
+            return True
+
+        ck = _stable_citation_key(d)
+        if ck and ck in ref_key_set:
+            return True
+
+        if ref_quotes:
+            text_i = _citation_text_for_quote_match(d)
+            if text_i:
+                for qsig in ref_quotes:
+                    if qsig and qsig in text_i:
+                        return True
+        return False
+
+    def _ref_source_matched(src: Any) -> bool:
+        d = _coerce_dict(src)
+        cid = str(d.get("chunk_id") or "").strip()
+        if cid and cid in ret_set:
+            return True
+        k = _stable_ref_key(src)
+        if k and k in cit_key_set:
+            return True
+        qsig = _quote_signature(d.get("quote"))
+        if qsig and cit_text_joined and qsig in cit_text_joined:
+            return True
+        return False
 
     retrieval_recall: float | None = None
     retrieval_hit: bool | None = None
@@ -78,37 +204,42 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     hit_at_3: bool | None = None
     hit_at_5: bool | None = None
     hit_at_10: bool | None = None
-    if ref_set:
-        hits = len(ref_set & ret_set)
-        retrieval_recall = round(hits / max(1, len(ref_set)), 4)
-        retrieval_hit = bool(hits > 0)
+    if reference_sources:
+        ref_total = len(list(reference_sources or []))
+        matched_refs = sum(1 for src in (reference_sources or []) if _ref_source_matched(src))
+        retrieval_recall = round(float(matched_refs) / max(1, int(ref_total)), 4)
+        retrieval_hit = bool(matched_refs > 0)
 
-        # MRR: reciprocal rank of the first relevant hit (binary relevance).
+        # Rank-based metrics consider a citation "relevant" if it matches any reference source.
         rank_first: int | None = None
-        for idx, cid in enumerate(ret_list, 1):
-            if cid in ref_set:
-                rank_first = idx
-                break
+        relevance_flags: list[bool] = []
+        for i in range(len(citations_ranked)):
+            rel = _citation_matches_any_ref(i)
+            relevance_flags.append(rel)
+            if rel and rank_first is None:
+                rank_first = i + 1
+
         if rank_first is not None and rank_first > 0:
             retrieval_mrr = round(1.0 / float(rank_first), 4)
         else:
             retrieval_mrr = 0.0
 
-        # NDCG@10: binary relevance. Normalized by best possible ordering of evidence ids.
+        # NDCG@10: binary relevance. Ideal ordering assumes each reference source can be hit by one retrieved item.
         k = 10
         dcg = 0.0
-        for idx, cid in enumerate(ret_list[:k], 1):
-            if cid in ref_set:
+        for idx, rel in enumerate(relevance_flags[:k], 1):
+            if rel:
                 dcg += 1.0 / math.log2(idx + 1)
 
         idcg = 0.0
-        for idx in range(1, min(k, len(ref_set)) + 1):
+        for idx in range(1, min(k, ref_total) + 1):
             idcg += 1.0 / math.log2(idx + 1)
 
         retrieval_ndcg_at_10 = round(dcg / idcg, 4) if idcg > 0.0 else 0.0
 
         def _hit_at(k: int) -> bool:
-            return any(cid in ref_set for cid in ret_list[: max(0, int(k or 0))])
+            kk = max(0, int(k or 0))
+            return any(relevance_flags[:kk]) if kk > 0 else False
 
         hit_at_1 = _hit_at(1)
         hit_at_3 = _hit_at(3)

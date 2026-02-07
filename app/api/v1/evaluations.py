@@ -93,6 +93,52 @@ def _finalize_scope_document_ids(
     return [str(x) for x in sorted(allowed)]
 
 
+def _enrich_reference_source_payload(
+    src: dict,
+    *,
+    chunk_index: int | None,
+    chunk_meta: dict | None,
+    chunk_content: str | None,
+) -> dict:
+    """
+    Best-effort enrichment for reference_sources payloads.
+
+    Motivation:
+    - Regression suites should survive re-ingestion/re-chunking as much as possible.
+    - We store `reference_sources` as JSON, so we can enrich without migrations.
+
+    Rules:
+    - Never override explicitly provided fields.
+    - Fill missing `quote` from chunk content (bounded).
+    - Fill missing versioning fields (`doc_pipeline_key`, `pipeline_hash`) from chunk metadata.
+    - Fill missing `chunk_index` from DB column.
+    """
+    payload = dict(src or {})
+
+    if chunk_index is not None and payload.get("chunk_index") is None:
+        try:
+            payload["chunk_index"] = int(chunk_index)
+        except Exception:
+            pass
+
+    meta = chunk_meta if isinstance(chunk_meta, dict) else {}
+    if not str(payload.get("doc_pipeline_key") or "").strip():
+        v = meta.get("doc_pipeline_key")
+        if isinstance(v, str) and v.strip():
+            payload["doc_pipeline_key"] = v.strip()
+    if not str(payload.get("pipeline_hash") or "").strip():
+        v = meta.get("pipeline_hash")
+        if isinstance(v, str) and v.strip():
+            payload["pipeline_hash"] = v.strip()
+
+    if not str(payload.get("quote") or "").strip():
+        text = (chunk_content or "").strip() if isinstance(chunk_content, str) else ""
+        if text:
+            payload["quote"] = text[:2000] + ("..." if len(text) > 2000 else "")
+
+    return payload
+
+
 def _finalize_reference_sources(
     db: Session,
     *,
@@ -151,6 +197,8 @@ def _finalize_reference_sources(
             DBDocument.dataset_id,
             DocumentChunk.content,
             DocumentChunk.disabled_at,
+            DocumentChunk.chunk_index,
+            DocumentChunk.doc_metadata,
         )
         .join(DBDocument, DBDocument.id == DocumentChunk.document_id)
         .filter(
@@ -179,7 +227,7 @@ def _finalize_reference_sources(
         row = row_by_chunk_id.get(chunk_id)
         if not row:
             raise HTTPException(status_code=400, detail="Evidence chunk not found")
-        _chunk_id, chunk_doc_id, chunk_dataset_id, content, disabled_at = row
+        _chunk_id, chunk_doc_id, chunk_dataset_id, content, disabled_at, chunk_index, chunk_meta = row
         if disabled_at is not None:
             raise HTTPException(status_code=400, detail="Evidence chunk is disabled")
         if UUID(str(chunk_doc_id)) != doc_id:
@@ -187,11 +235,12 @@ def _finalize_reference_sources(
         if chunk_dataset_id is None or UUID(str(chunk_dataset_id)) != dataset_id:
             raise HTTPException(status_code=400, detail="Evidence chunk does not belong to dataset_id")
 
-        payload = dict(src)
-        if not str(payload.get("quote") or "").strip():
-            text = (content or "").strip()
-            if text:
-                payload["quote"] = text[:2000] + ("..." if len(text) > 2000 else "")
+        payload = _enrich_reference_source_payload(
+            dict(src),
+            chunk_index=chunk_index if isinstance(chunk_index, int) else None,
+            chunk_meta=(chunk_meta if isinstance(chunk_meta, dict) else None),
+            chunk_content=(content if isinstance(content, str) else None),
+        )
         out.append(payload)
 
     if not out:
