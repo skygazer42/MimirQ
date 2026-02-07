@@ -114,6 +114,17 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
             "pii_hits": {},
             "secrets_hits": {},
         },
+        {
+            "name": "slack_export.txt",
+            "file_type": "txt",
+            "file_size": 15,
+            "file_mtime": 6,
+            "text_characters": 120,
+            "estimated_text": False,
+            "findings": [],
+            "pii_hits": {},
+            "secrets_hits": {},
+        },
     ]
     jsonl_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
 
@@ -138,9 +149,9 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
             "dataset_id": str(uuid.uuid4()),
             "scan_run_id": str(run_id),
             "generated_at": "2026-01-01T00:00:00Z",
-            "total_files": 5,
-            "total_size_bytes": 60,
-            "by_file_type": {"pdf": 2, "md": 1, "xlsx": 1, "txt": 1},
+            "total_files": 6,
+            "total_size_bytes": 75,
+            "by_file_type": {"pdf": 2, "md": 1, "xlsx": 1, "txt": 2},
             "length_percentiles": {"p90": 20000},
             "pdf_scan": {"scanned": 1, "not_scanned": 0, "unknown": 0},
             "findings": [],
@@ -159,6 +170,11 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
     assert md_rule is not None
     assert md_rule.get("governance_profile_ref") == "builtin:wiki_longform"
     assert md_rule.get("chunk_strategy") == "markdown_header"
+
+    chat_rule = next((r for r in policy.get("rules") or [] if r.get("id") == "chat-exports-txt"), None)
+    assert chat_rule is not None
+    assert chat_rule.get("governance_profile_ref") == "builtin:chat_exports"
+    assert chat_rule.get("chunk_strategy") == "semantic_sentence"
 
     txt_rule = next((r for r in policy.get("rules") or [] if r.get("id") == "text-txt"), None)
     assert txt_rule is not None
