@@ -10,7 +10,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { evaluationApi } from '@/lib/api-client'
 import type { RegressionCase, RegressionCaseCreate } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -27,10 +27,12 @@ import {
   Tag,
   Calendar,
   FileText,
+  Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface TestCaseManagerProps {
   datasetId?: string | null
@@ -53,6 +55,25 @@ export function TestCaseManager({
   const [isCreating, setIsCreating] = useState(false)
   const [newQuestion, setNewQuestion] = useState('')
   const [newExpectedAnswer, setNewExpectedAnswer] = useState('')
+
+  // Evidence Pack import → regression case authoring.
+  const evidenceFileInputRef = useRef<HTMLInputElement>(null)
+  const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false)
+  const [evidencePack, setEvidencePack] = useState<any | null>(null)
+  const [evidenceQuestion, setEvidenceQuestion] = useState('')
+  const [evidenceExpectedAnswer, setEvidenceExpectedAnswer] = useState('')
+  const [evidenceSelectedChunkIds, setEvidenceSelectedChunkIds] = useState<Set<string>>(new Set())
+  const [evidenceCreating, setEvidenceCreating] = useState(false)
+
+  const evidenceCitations = useMemo(() => {
+    const items = evidencePack?.citations
+    return Array.isArray(items) ? items : []
+  }, [evidencePack])
+
+  const evidenceDatasetId = useMemo(() => {
+    const fromPack = typeof evidencePack?.dataset_id === 'string' ? String(evidencePack.dataset_id).trim() : ''
+    return fromPack || (datasetId || '')
+  }, [datasetId, evidencePack])
 
   // 加载用例列表
   const loadCases = async () => {
@@ -167,6 +188,113 @@ export function TestCaseManager({
     }
   }
 
+  const handleChooseEvidencePack = () => {
+    if (!datasetId) {
+      toast.error('请先选择数据集')
+      return
+    }
+    evidenceFileInputRef.current?.click()
+  }
+
+  const handleEvidencePackFile = async (file: File | null) => {
+    if (!file) return
+    try {
+      const raw = await file.text()
+      const parsed = JSON.parse(raw)
+      const citations = Array.isArray(parsed?.citations) ? parsed.citations : []
+      if (!citations.length) {
+        toast.error('Evidence Pack 缺少 citations')
+        return
+      }
+
+      const ds = typeof parsed?.dataset_id === 'string' ? String(parsed.dataset_id).trim() : ''
+      const effectiveDatasetId = ds || (datasetId || '')
+      if (!effectiveDatasetId) {
+        toast.error('Evidence Pack 缺少 dataset_id，且当前未选择数据集')
+        return
+      }
+
+      const q = typeof parsed?.query === 'string' ? parsed.query : ''
+      setEvidencePack(parsed)
+      setEvidenceQuestion(String(q || '').trim())
+      setEvidenceExpectedAnswer('')
+
+      // Default: select the top-1 citation as a starting point (operators can adjust).
+      const firstChunkId = citations?.[0]?.chunk_id
+      setEvidenceSelectedChunkIds(firstChunkId ? new Set([String(firstChunkId)]) : new Set())
+      setEvidenceDialogOpen(true)
+    } catch (err: any) {
+      console.error('Failed to parse Evidence Pack', err)
+      toast.error('Evidence Pack 解析失败（请确认是 JSON 文件）')
+    } finally {
+      // Allow re-selecting the same file.
+      if (evidenceFileInputRef.current) evidenceFileInputRef.current.value = ''
+    }
+  }
+
+  const handleCreateCaseFromEvidencePack = async () => {
+    const ds = (evidenceDatasetId || '').trim()
+    if (!ds) {
+      toast.error('缺少 dataset_id')
+      return
+    }
+    const q = (evidenceQuestion || '').trim()
+    if (!q) {
+      toast.error('请输入问题')
+      return
+    }
+    if (!evidenceSelectedChunkIds.size) {
+      toast.error('请至少选择 1 条证据引用（reference_sources）')
+      return
+    }
+
+    const selected = new Set(Array.from(evidenceSelectedChunkIds || []))
+    const refs = (evidenceCitations || [])
+      .filter((c: any) => selected.has(String(c?.chunk_id || '')))
+      .map((c: any) => ({
+        document_id: c?.document_id,
+        chunk_id: c?.chunk_id,
+        page_number: typeof c?.page_number === 'number' ? c.page_number : undefined,
+        start_char: typeof c?.start_char === 'number' ? c.start_char : undefined,
+        end_char: typeof c?.end_char === 'number' ? c.end_char : undefined,
+        doc_pipeline_key: typeof c?.doc_pipeline_key === 'string' ? c.doc_pipeline_key : undefined,
+        pipeline_hash: typeof c?.pipeline_hash === 'string' ? c.pipeline_hash : undefined,
+        quote: typeof c?.chunk_content === 'string' ? c.chunk_content : undefined,
+        label: 'evidence_pack',
+      }))
+
+    if (!refs.length) {
+      toast.error('选中的证据引用无效（缺少 chunk_id/document_id）')
+      return
+    }
+
+    setEvidenceCreating(true)
+    try {
+      const payload: RegressionCaseCreate = {
+        question: q,
+        dataset_id: ds,
+        expected_answer: evidenceExpectedAnswer?.trim() ? evidenceExpectedAnswer.trim() : undefined,
+        reference_sources: refs as any,
+        tags: ['evidence_pack'],
+        extra: {
+          evidence_pack_exported_at: evidencePack?.exported_at || null,
+          evidence_pack_query_for_retrieval: evidencePack?.query_for_retrieval || null,
+        },
+      }
+      await evaluationApi.createRegressionCase(payload)
+      toast.success('已创建回归用例')
+      setEvidenceDialogOpen(false)
+      setEvidencePack(null)
+      setEvidenceSelectedChunkIds(new Set())
+      await loadCases()
+    } catch (err: any) {
+      console.error('Failed to create case from evidence pack', err)
+      toast.error(formatApiError(err, '创建回归用例失败'))
+    } finally {
+      setEvidenceCreating(false)
+    }
+  }
+
   // 选择用例
   const handleSelectCase = (caseItem: RegressionCase) => {
     setSelectedCase(caseItem)
@@ -218,6 +346,24 @@ export function TestCaseManager({
                 </ConfirmDialog>
               </>
             )}
+            <input
+              ref={evidenceFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => void handleEvidencePackFile(e.target.files?.[0] || null)}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={handleChooseEvidencePack}
+              disabled={!datasetId}
+              title={!datasetId ? '请先选择数据集' : '导入 Evidence Pack JSON'}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              导入 Evidence Pack
+            </Button>
             <Button
               size="sm"
               className="gap-2"
@@ -284,9 +430,127 @@ export function TestCaseManager({
                 取消
               </Button>
             </div>
+            <div className="text-[11px] text-muted-foreground">
+              提示：后端要求每个用例必须提供至少 1 条 <span className="font-mono">reference_sources</span>。
+              推荐通过“导入 Evidence Pack”从检索预览结果中选择证据引用。
+            </div>
           </div>
         </div>
       )}
+
+      <Dialog open={evidenceDialogOpen} onOpenChange={setEvidenceDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Evidence Pack → 回归用例</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 truncate">
+                  dataset_id: <span className="font-mono text-foreground/80">{evidenceDatasetId || '-'}</span>
+                </div>
+                <div className="text-[11px]">
+                  citations: <span className="font-mono text-foreground/80">{evidenceCitations.length}</span>
+                </div>
+              </div>
+              {evidencePack?.exported_at && (
+                <div className="mt-2 text-[11px]">
+                  exported_at: <span className="font-mono text-foreground/80">{String(evidencePack.exported_at)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-1">问题</div>
+                <Textarea
+                  value={evidenceQuestion}
+                  onChange={(e) => setEvidenceQuestion(e.target.value)}
+                  placeholder="问题（将写入 regression case）"
+                  className="min-h-[84px] resize-none"
+                />
+              </div>
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-1">期望答案（可选）</div>
+                <Textarea
+                  value={evidenceExpectedAnswer}
+                  onChange={(e) => setEvidenceExpectedAnswer(e.target.value)}
+                  placeholder="可选：期望答案"
+                  className="min-h-[84px] resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="px-3 py-2 border-b border-border bg-card flex items-center justify-between">
+                <div className="text-xs font-semibold text-foreground">选择 Ground Truth 证据（reference_sources）</div>
+                <div className="text-[11px] text-muted-foreground">
+                  已选 {evidenceSelectedChunkIds.size} / {evidenceCitations.length}
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {(evidenceCitations || []).map((c: any, idx: number) => {
+                  const chunkId = String(c?.chunk_id || '')
+                  const checked = !!chunkId && evidenceSelectedChunkIds.has(chunkId)
+                  const label = String(c?.document_name || c?.document_id || 'Unknown')
+                  const snippet = String(c?.chunk_content || '').slice(0, 180)
+                  return (
+                    <label
+                      key={`${chunkId || idx}`}
+                      className={cn(
+                        'flex items-start gap-3 px-3 py-2 border-b border-border/60 cursor-pointer hover:bg-muted/30',
+                        !chunkId && 'opacity-50 cursor-not-allowed'
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-border"
+                        disabled={!chunkId}
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = new Set(evidenceSelectedChunkIds)
+                          if (e.target.checked) next.add(chunkId)
+                          else next.delete(chunkId)
+                          setEvidenceSelectedChunkIds(next)
+                        }}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-foreground truncate" title={label}>
+                          #{idx + 1} {label}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                          “{snippet}{snippet.length >= 180 ? '…' : ''}”
+                        </div>
+                        <div className="mt-1 text-[11px] text-muted-foreground flex flex-wrap gap-2">
+                          {c?.page_number ? <span>p.{String(c.page_number)}</span> : null}
+                          {chunkId ? <span className="font-mono">chunk:{chunkId.slice(0, 8)}</span> : null}
+                        </div>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setEvidenceDialogOpen(false)} disabled={evidenceCreating}>
+                取消
+              </Button>
+              <Button onClick={() => void handleCreateCaseFromEvidencePack()} disabled={evidenceCreating}>
+                {evidenceCreating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" />
+                    创建中…
+                  </>
+                ) : (
+                  '创建回归用例'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 用例列表 */}
       <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
