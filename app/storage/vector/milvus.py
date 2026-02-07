@@ -158,6 +158,51 @@ def _escape_milvus_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _chunk_in_list_values(
+    values: list[str],
+    *,
+    field: str,
+    max_expr_chars: int,
+    max_items: int,
+) -> list[list[str]]:
+    """
+    Chunk a list of string values for a Milvus `field in ["..."]` expression.
+
+    Constraints:
+    - limit by item count (max_items)
+    - limit by expr length (max_expr_chars) (best-effort; avoid server-side rejects)
+    """
+    safe_field = str(field or "").strip() or "id"
+    cap_chars = max(256, int(max_expr_chars or 0))
+    cap_items = max(1, int(max_items or 0))
+
+    # Overhead: `field in [` + `]`
+    overhead = len(safe_field) + len(' in [""]')
+
+    batches: list[list[str]] = []
+    cur: list[str] = []
+    cur_len = overhead
+    for raw in values or []:
+        v = str(raw)
+        # Each value contributes: quotes + escaped content + comma+space.
+        escaped = _escape_milvus_string(v)
+        item_len = len(escaped) + 4  # quotes + comma/space
+
+        # Start a new batch when adding would exceed either cap.
+        if cur and (len(cur) >= cap_items or (cur_len + item_len) > cap_chars):
+            batches.append(cur)
+            cur = []
+            cur_len = overhead
+
+        cur.append(v)
+        cur_len += item_len
+
+    if cur:
+        batches.append(cur)
+
+    return batches
+
+
 def _milvus_value_expr(field: str, value: Any) -> Optional[str]:
     if field in _MILVUS_NUMERIC_FIELDS:
         try:
@@ -796,6 +841,133 @@ class MilvusVectorStore:
             return int(self._store.col.num_entities)  # type: ignore[union-attr]
         except Exception:
             return 0
+
+    def fetch_existing_ids(
+        self,
+        ids: List[str],
+        *,
+        max_ids_per_query: int = 256,
+        timeout: Optional[float] = None,
+    ) -> set[str]:
+        """
+        Best-effort existence check for a list of vector primary keys.
+
+        Used by index audit / troubleshooting to detect missing vectors when the DB
+        still references a vector_id.
+
+        Notes:
+        - Uses Milvus `query()` with an `id in [...]` expr.
+        - Batches by both item count and expr length to reduce server-side rejects.
+        - Returns an empty set on any failure (audit should degrade gracefully).
+        """
+        raw_ids = [str(x) for x in (ids or []) if isinstance(x, str) and x.strip()]
+        if not raw_ids:
+            return set()
+
+        self._ensure_store()
+        assert self._store is not None
+
+        col = getattr(self._store, "col", None)
+        if col is None or not hasattr(col, "query"):
+            return set()
+
+        primary_field = str(getattr(self._store, "_primary_field", "id") or "id").strip() or "id"
+
+        # De-dup while preserving stable ordering (helps reproducible audits).
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for rid in raw_ids:
+            if rid in seen:
+                continue
+            seen.add(rid)
+            uniq.append(rid)
+
+        existing: set[str] = set()
+        for batch in _chunk_in_list_values(
+            uniq,
+            field=primary_field,
+            max_expr_chars=_MILVUS_EXPR_MAX_CHARS,
+            max_items=int(max_ids_per_query or 0),
+        ):
+            items = [f"\"{_escape_milvus_string(str(x))}\"" for x in batch]
+            if not items:
+                continue
+            expr = f"{primary_field} in [{', '.join(items)}]"
+            try:
+                rows = col.query(expr=expr, output_fields=[primary_field], timeout=timeout)  # type: ignore[call-arg]
+            except Exception:
+                return set()
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                val = row.get(primary_field)
+                if val is None:
+                    continue
+                existing.add(str(val))
+
+        return existing
+
+    def list_ids_by_dataset(
+        self,
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID,
+        limit: int = 2000,
+        offset: int = 0,
+        timeout: Optional[float] = None,
+    ) -> List[str]:
+        """
+        Best-effort listing of vector ids for a dataset.
+
+        This is intentionally bounded (limit/offset) and should only be used for
+        troubleshooting/audits (not hot path retrieval).
+        """
+        self._ensure_store()
+        assert self._store is not None
+
+        col = getattr(self._store, "col", None)
+        if col is None or not hasattr(col, "query"):
+            return []
+
+        primary_field = str(getattr(self._store, "_primary_field", "id") or "id").strip() or "id"
+
+        lim = max(0, int(limit or 0))
+        if lim <= 0:
+            return []
+        off = max(0, int(offset or 0))
+
+        expr = (
+            f'tenant_id == "{_escape_milvus_string(str(tenant_id))}" '
+            f'and dataset_id == "{_escape_milvus_string(str(dataset_id))}"'
+        )
+        if len(expr) > _MILVUS_EXPR_MAX_CHARS:
+            return []
+
+        try:
+            rows = col.query(  # type: ignore[call-arg]
+                expr=expr,
+                output_fields=[primary_field],
+                limit=lim,
+                offset=off,
+                timeout=timeout,
+            )
+        except Exception:
+            return []
+
+        out: list[str] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            v = row.get(primary_field)
+            if v is None:
+                continue
+            out.append(str(v))
+
+        return out
 
 
 # ========= Global instances ==========
