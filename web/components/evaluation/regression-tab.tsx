@@ -9,9 +9,9 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { evaluationApi } from '@/lib/api-client'
-import type { RegressionRunCreate } from '@/types'
+import { useState, useEffect, useMemo } from 'react'
+import { datasetApi, evaluationApi } from '@/lib/api-client'
+import type { Dataset, RegressionRunCreate } from '@/types'
 import { Button } from '@/components/ui/button'
 import { TestCaseManager } from '@/components/test-case-manager'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
@@ -27,6 +27,8 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { formatApiError } from '@/lib/api-errors'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 
 const METRIC_OPTIONS = [
   { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
@@ -38,26 +40,67 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
   const [showGenerationDialog, setShowGenerationDialog] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
+
+  // Dataset scope (required by backend for cases and runs)
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
   
   // 运行配置
   const [metricKeys, setMetricKeys] = useState<string[]>([
     'faithfulness',
     'response_relevancy',
   ])
-  
+  const [retrievalOnly, setRetrievalOnly] = useState(false)
+
   // 运行历史
   const [runs, setRuns] = useState<any[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [runDetail, setRunDetail] = useState<any | null>(null)
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
 
+  const visibleRuns = useMemo(() => {
+    if (!selectedDatasetId) return runs
+    return (runs || []).filter((r) => String(r?.dataset_id || '') === selectedDatasetId)
+  }, [runs, selectedDatasetId])
+
+  // Keep selected run in sync with dataset filtering.
+  useEffect(() => {
+    if (!selectedDatasetId) return
+    if (selectedRunId && visibleRuns.some((r) => r?.id === selectedRunId)) return
+    setSelectedRunId(visibleRuns?.[0]?.id || '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDatasetId, visibleRuns])
+
+  // Load datasets for dataset-scoped regression UX.
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      try {
+        const res = await datasetApi.list({ limit: 200 })
+        if (cancelled) return
+        setDatasets(res.items || [])
+        if (!selectedDatasetId && res.items?.[0]?.id) {
+          setSelectedDatasetId(res.items[0].id)
+        }
+      } catch (e) {
+        // Non-fatal: users can still view existing runs; creating new runs will be blocked.
+        if (!cancelled) console.error('Failed to load datasets', e)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // 加载运行历史
   const loadRuns = async () => {
     try {
       setIsLoadingRuns(true)
       const result = await evaluationApi.listRegressionRuns({ limit: 50 })
-      setRuns(result.items)
-      if (result.items.length > 0 && !selectedRunId) {
+      setRuns(result.items || [])
+      if (!selectedRunId && result.items?.length) {
         setSelectedRunId(result.items[0].id)
       }
     } catch (error) {
@@ -109,6 +152,10 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
 
   // 运行选中的测试
   const handleRunTests = async (caseIds: string[]) => {
+    if (!selectedDatasetId) {
+      toast.error('请先选择数据集')
+      return
+    }
     if (caseIds.length === 0) {
       toast.error('请至少选择一个测试用例')
       return
@@ -118,6 +165,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
     try {
       const params: RegressionRunCreate = {
         case_ids: caseIds,
+        dataset_id: selectedDatasetId,
         metrics: metricKeys,
         skip_empty_contexts: true,
         max_cases: 50,
@@ -186,23 +234,74 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
 
           {/* 指标选择 */}
           <div className="rounded-2xl border border-border bg-card/60 backdrop-blur-sm p-4">
-            <div className="text-xs font-medium text-muted-foreground mb-2">评测指标</div>
-            <div className="flex flex-wrap gap-3">
-              {METRIC_OPTIONS.map((m) => (
-                <label key={m.key} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-border"
-                    checked={metricKeys.includes(m.key)}
-                    onChange={(e) => {
-                      setMetricKeys((prev) =>
-                        e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
-                      )
-                    }}
-                  />
-                  <span className="text-foreground/90">{m.label}</span>
-                </label>
-              ))}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <div className="text-xs font-medium text-muted-foreground">数据集</div>
+                <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId}>
+                  <SelectTrigger className="h-9 rounded-xl">
+                    <SelectValue placeholder="选择数据集" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(datasets || []).map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name || d.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!datasets.length && (
+                  <div className="text-[11px] text-muted-foreground">
+                    未加载到数据集（你仍可查看历史 runs；创建/运行需要先选数据集）
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">仅检索评测（无 LLM / 无 RAGAS）</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">
+                    开启后将使用 `metrics=[]`，只计算 recall/hit@k/MRR/NDCG/abstain_rate。
+                  </div>
+                </div>
+                <Switch
+                  checked={retrievalOnly}
+                  onCheckedChange={(checked) => {
+                    setRetrievalOnly(checked)
+                    if (checked) {
+                      setMetricKeys([])
+                    } else if (!metricKeys.length) {
+                      setMetricKeys(['faithfulness', 'response_relevancy'])
+                    }
+                  }}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-2">评测指标</div>
+                <div className="flex flex-wrap gap-3">
+                  {METRIC_OPTIONS.map((m) => (
+                    <label key={m.key} className={cn("flex items-center gap-2 text-sm", retrievalOnly && "opacity-50")}>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={metricKeys.includes(m.key)}
+                        disabled={retrievalOnly}
+                        onChange={(e) => {
+                          setMetricKeys((prev) =>
+                            e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
+                          )
+                        }}
+                      />
+                      <span className="text-foreground/90">{m.label}</span>
+                    </label>
+                  ))}
+                  {retrievalOnly && (
+                    <div className="text-[11px] text-muted-foreground">
+                      （已切换为检索评测，metrics 为空）
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -225,23 +324,66 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
 
           {/* 指标选择 */}
           <div className="bg-muted/40 rounded-xl p-4">
-            <div className="text-xs font-medium text-muted-foreground mb-2">评测指标</div>
-            <div className="flex flex-wrap gap-2">
-              {METRIC_OPTIONS.map((m) => (
-                <label key={m.key} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-border"
-                    checked={metricKeys.includes(m.key)}
-                    onChange={(e) => {
-                      setMetricKeys((prev) =>
-                        e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
-                      )
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              <div className="lg:col-span-5">
+                <div className="text-xs font-medium text-muted-foreground mb-2">数据集</div>
+                <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="选择数据集" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(datasets || []).map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name || d.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="lg:col-span-7">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground">仅检索评测（无 LLM / 无 RAGAS）</div>
+                    <div className="text-[11px] text-muted-foreground mt-1">
+                      开启后将使用 `metrics=[]`，只计算 recall/hit@k/MRR/NDCG/abstain_rate。
+                    </div>
+                  </div>
+                  <Switch
+                    checked={retrievalOnly}
+                    onCheckedChange={(checked) => {
+                      setRetrievalOnly(checked)
+                      if (checked) {
+                        setMetricKeys([])
+                      } else if (!metricKeys.length) {
+                        setMetricKeys(['faithfulness', 'response_relevancy'])
+                      }
                     }}
                   />
-                  <span className="text-foreground/80">{m.label}</span>
-                </label>
-              ))}
+                </div>
+
+                <div className="text-xs font-medium text-muted-foreground mt-4 mb-2">评测指标</div>
+                <div className="flex flex-wrap gap-2">
+                  {METRIC_OPTIONS.map((m) => (
+                    <label key={m.key} className={cn("flex items-center gap-2 text-sm", retrievalOnly && "opacity-50")}>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={metricKeys.includes(m.key)}
+                        disabled={retrievalOnly}
+                        onChange={(e) => {
+                          setMetricKeys((prev) =>
+                            e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
+                          )
+                        }}
+                      />
+                      <span className="text-foreground/80">{m.label}</span>
+                    </label>
+                  ))}
+                  {retrievalOnly && (
+                    <span className="text-[11px] text-muted-foreground">（metrics 为空）</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </header>
@@ -252,6 +394,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
         {/* 左侧：测试用例管理 */}
         <div className="w-1/3 flex flex-col bg-card rounded-2xl border border-border">
           <TestCaseManager
+            datasetId={selectedDatasetId || null}
             onRunTests={handleRunTests}
             onCaseSelected={(caseId) => {
               // 可以在这里处理用例选中事件
@@ -268,7 +411,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
                 运行历史
               </div>
               <div className="text-xs text-muted-foreground">
-                {runs.length} 次
+                {visibleRuns.length} 次{selectedDatasetId ? '（按数据集过滤）' : ''}
               </div>
             </div>
 	            <div className="max-h-40 overflow-y-auto overscroll-contain no-scrollbar">
@@ -276,12 +419,12 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
 		                <div className="flex items-center justify-center py-8">
 		                  <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
 		                </div>
-		              ) : runs.length === 0 ? (
+		              ) : visibleRuns.length === 0 ? (
 	                <div className="text-center py-8 text-muted-foreground text-sm">
 	                  暂无运行记录
 	                </div>
 	              ) : (
-	                runs.map((run) => (
+	                visibleRuns.map((run) => (
 	                  <button
                     key={run.id}
 	                    onClick={() => setSelectedRunId(run.id)}
