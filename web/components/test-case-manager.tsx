@@ -30,13 +30,16 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { formatApiError } from '@/lib/api-errors'
 
 interface TestCaseManagerProps {
+  datasetId?: string | null
   onRunTests?: (caseIds: string[]) => void
   onCaseSelected?: (caseId: string | null) => void
 }
 
 export function TestCaseManager({
+  datasetId,
   onRunTests,
   onCaseSelected,
 }: TestCaseManagerProps) {
@@ -55,19 +58,23 @@ export function TestCaseManager({
   const loadCases = async () => {
     try {
       setIsLoading(true)
-      const result = await evaluationApi.listRegressionCases({ limit: 100 })
+      const result = await evaluationApi.listRegressionCases({
+        limit: 100,
+        dataset_id: datasetId || undefined,
+      })
       setCases(result.items)
     } catch (error) {
       console.error('加载测试用例失败:', error)
-      toast.error('加载测试用例失败')
+      toast.error(formatApiError(error, '加载测试用例失败'))
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    loadCases()
-  }, [])
+    void loadCases()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId])
 
   // 过滤用例
   const filteredCases = cases.filter((c) =>
@@ -106,7 +113,7 @@ export function TestCaseManager({
       }
     } catch (error) {
       console.error('删除失败:', error)
-      toast.error('删除失败')
+      toast.error(formatApiError(error, '删除失败'))
     }
   }
 
@@ -125,7 +132,7 @@ export function TestCaseManager({
       await loadCases()
     } catch (error) {
       console.error('批量删除失败:', error)
-      toast.error('批量删除失败')
+      toast.error(formatApiError(error, '批量删除失败'))
     }
   }
 
@@ -135,10 +142,15 @@ export function TestCaseManager({
       toast.error('请输入问题')
       return
     }
+    if (!datasetId) {
+      toast.error('请先在右侧选择数据集')
+      return
+    }
 
     try {
       const params: RegressionCaseCreate = {
         question: newQuestion,
+        dataset_id: datasetId,
         expected_answer: newExpectedAnswer || undefined,
         tags: ['manual_created'],
       }
@@ -151,7 +163,7 @@ export function TestCaseManager({
       await loadCases()
     } catch (error) {
       console.error('创建失败:', error)
-      toast.error('创建失败')
+      toast.error(formatApiError(error, '创建失败（需要 dataset_id + reference_sources）'))
     }
   }
 
