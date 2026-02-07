@@ -39,7 +39,7 @@ def test_fetch_existing_ids_returns_subset() -> None:
 
 
 def test_fetch_existing_ids_chunks_expr_to_avoid_server_rejects() -> None:
-    from app.storage.vector.milvus import MilvusVectorStore, _MILVUS_EXPR_MAX_CHARS
+    from app.storage.vector.milvus import _MILVUS_EXPR_MAX_CHARS, MilvusVectorStore
 
     ids = [("x" * 120) + str(i) for i in range(240)]
     store = MilvusVectorStore()
@@ -65,4 +65,3 @@ def test_list_ids_by_dataset_returns_ids() -> None:
         offset=0,
     )
     assert set(out) == {"id1", "id2"}
-

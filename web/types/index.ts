@@ -394,6 +394,23 @@ export interface RagMetricsSummaryResponse {
   timeseries: Record<string, any[]>
 }
 
+export interface IndexAuditResponse {
+  tenant_id: string
+  dataset_id: string
+  vector_backend: string
+
+  active_documents: number
+  active_chunks: number
+
+  vector_id_missing: number
+  vector_ids_checked: number
+  vector_ids_missing_in_backend: number
+  vector_ids_missing_in_backend_sample: string[]
+
+  milvus_ids_sampled: number
+  milvus_orphan_ids_sample: string[]
+}
+
 export interface DocumentUserMetadataPatchRequest {
   patch: Record<string, any>
   replace?: boolean
