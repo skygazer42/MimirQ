@@ -47,6 +47,78 @@ def _headers(args: argparse.Namespace) -> dict[str, str]:
     return h
 
 
+def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
+    """
+    Normalize thresholds into a { metric: { min?: float, max?: float } } mapping.
+
+    Back-compat:
+    - {"faithfulness": 0.7} -> {"faithfulness": {"min": 0.7}}
+
+    New format:
+    - {"abstain_rate": {"max": 0.02}}
+    - {"retrieval_recall": {"min": 0.3, "max": 0.9}}
+    """
+    if not isinstance(raw, dict):
+        return {}
+
+    out: dict[str, dict[str, float]] = {}
+    for k, v in raw.items():
+        metric = str(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[metric] = {"min": float(v)}
+            continue
+
+        if isinstance(v, dict):
+            entry: dict[str, float] = {}
+            if "min" in v:
+                try:
+                    entry["min"] = float(v.get("min"))  # type: ignore[arg-type]
+                except Exception:
+                    pass
+            if "max" in v:
+                try:
+                    entry["max"] = float(v.get("max"))  # type: ignore[arg-type]
+                except Exception:
+                    pass
+            if entry:
+                out[metric] = entry
+            continue
+
+    return out
+
+
+def check_thresholds(
+    *,
+    summary: dict[str, Any],
+    thresholds: dict[str, dict[str, float]],
+) -> tuple[bool, list[str]]:
+    """
+    Evaluate thresholds against a run summary.
+
+    Returns:
+      (ok, failures)
+    """
+    failures: list[str] = []
+    for metric, bounds in (thresholds or {}).items():
+        raw_val = summary.get(metric)
+        try:
+            val = float(raw_val)
+        except Exception:
+            failures.append(f"missing metric '{metric}'")
+            continue
+
+        if "min" in bounds:
+            min_v = bounds.get("min")
+            if min_v is not None and val < float(min_v):
+                failures.append(f"{metric}={val:.4f} < min {float(min_v):.4f}")
+        if "max" in bounds:
+            max_v = bounds.get("max")
+            if max_v is not None and val > float(max_v):
+                failures.append(f"{metric}={val:.4f} > max {float(max_v):.4f}")
+
+    return (len(failures) == 0), failures
+
+
 def _require(cond: bool, msg: str) -> None:
     if cond:
         return
@@ -69,7 +141,12 @@ def main() -> int:
     p.add_argument("--poll-sec", type=float, default=2.0, help="Polling interval seconds (default: %(default)s)")
     p.add_argument("--timeout-sec", type=float, default=600.0, help="Timeout seconds (default: %(default)s)")
 
-    p.add_argument("--thresholds", type=str, default="", help="JSON file mapping metric->min_score (optional)")
+    p.add_argument(
+        "--thresholds",
+        type=str,
+        default="",
+        help="JSON file mapping metric->number (min) or metric->{min,max} (optional)",
+    )
 
     args = p.parse_args()
 
@@ -81,18 +158,14 @@ def main() -> int:
     metrics = [m.strip() for m in str(args.metrics or "").split(",") if m.strip()]
     _require(len(metrics) > 0, "metrics list is empty")
 
-    thresholds: dict[str, float] = {}
+    thresholds: dict[str, dict[str, float]] = {}
     if args.thresholds:
         th_path = Path(args.thresholds)
         _require(th_path.exists(), f"thresholds file not found: {th_path}")
         raw_th = _load_json(th_path)
         if not isinstance(raw_th, dict):
-            _require(False, "thresholds must be a JSON object { metric: min_score }")
-        for k, v in raw_th.items():
-            try:
-                thresholds[str(k)] = float(v)
-            except Exception:
-                continue
+            _require(False, "thresholds must be a JSON object { metric: number | {min,max} }")
+        thresholds = normalize_thresholds(raw_th)
 
     headers = _headers(args)
     _require(bool(headers.get("X-User-ID") or headers.get("Authorization")), "missing auth headers (use --user-id or --bearer)")
@@ -188,7 +261,7 @@ def main() -> int:
             return 0
 
         failed = False
-        for metric, min_score in thresholds.items():
+        for metric, bounds in thresholds.items():
             try:
                 val = float(summary.get(metric))
             except Exception:
@@ -197,11 +270,28 @@ def main() -> int:
                 print(f"[regression_gate] FAIL: missing metric '{metric}'", file=sys.stderr)
                 failed = True
                 continue
-            if val < float(min_score):
-                print(f"[regression_gate] FAIL: {metric}={val:.4f} < {min_score:.4f}", file=sys.stderr)
+
+            min_v = bounds.get("min")
+            max_v = bounds.get("max")
+
+            if min_v is not None and val < float(min_v):
+                print(f"[regression_gate] FAIL: {metric}={val:.4f} < min {float(min_v):.4f}", file=sys.stderr)
                 failed = True
+                continue
+            if max_v is not None and val > float(max_v):
+                print(f"[regression_gate] FAIL: {metric}={val:.4f} > max {float(max_v):.4f}", file=sys.stderr)
+                failed = True
+                continue
+
+            if min_v is not None and max_v is not None:
+                print(f"[regression_gate] OK: {metric}={val:.4f} in [{float(min_v):.4f}, {float(max_v):.4f}]")
+            elif min_v is not None:
+                print(f"[regression_gate] OK: {metric}={val:.4f} >= {float(min_v):.4f}")
+            elif max_v is not None:
+                print(f"[regression_gate] OK: {metric}={val:.4f} <= {float(max_v):.4f}")
             else:
-                print(f"[regression_gate] OK: {metric}={val:.4f} >= {min_score:.4f}")
+                # Should not happen (normalize_thresholds drops empty bounds), but keep it safe.
+                print(f"[regression_gate] OK: {metric}={val:.4f}")
 
         return 1 if failed else 0
 

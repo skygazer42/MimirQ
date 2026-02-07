@@ -56,4 +56,6 @@ python scripts/regression_gate.py \
 > - `retrieval_ndcg_at_10`: [0,1]，NDCG@10（证据在 Top10 的排序质量，越高越好）
 > - `abstain_rate`: [0,1]，拒答率（`abstain_triggered` 的占比；可用于“严格可见证据模式”安全回归）
 >
-> 注意：`scripts/regression_gate.py` 目前只支持 **下限阈值**（metric >= threshold）。如果你想对 `abstain_rate` 做“上限”约束，需要改脚本或添加自定义指标。
+> 注意：`thresholds.json` 支持两种写法：
+> - 简写：`"faithfulness": 0.7`（等价于 `{"min": 0.7}`）
+> - 完整：`"abstain_rate": {"max": 0.02}` / `{"min": 0.3, "max": 0.9}`
