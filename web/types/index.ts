@@ -597,6 +597,8 @@ export interface Citation {
   chunk_index?: number
   start_char?: number
   end_char?: number
+  evidence_start_char?: number
+  evidence_end_char?: number
   header_path?: string
   chunk_strategy?: string
   chunk_role?: string
