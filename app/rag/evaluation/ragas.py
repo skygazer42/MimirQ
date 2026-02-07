@@ -197,6 +197,8 @@ def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str
 
     return {
         "retrieval_recall": _mean(m.get("retrieval_recall") for m in metas),
+        "retrieval_mrr": _mean(m.get("retrieval_mrr") for m in metas),
+        "retrieval_ndcg_at_10": _mean(m.get("retrieval_ndcg_at_10") for m in metas),
         "retrieval_hit_at_1": _mean_bool("retrieval_hit_at_1"),
         "retrieval_hit_at_3": _mean_bool("retrieval_hit_at_3"),
         "retrieval_hit_at_5": _mean_bool("retrieval_hit_at_5"),
