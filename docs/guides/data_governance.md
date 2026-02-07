@@ -18,6 +18,12 @@ For teams, it is often easier to manage governance as reusable **Profiles**:
 - Profiles are **declarative JSON** (no executable code)
 - Built-in profiles are read-only; custom profiles are tenant-scoped
 
+Built-in profile examples:
+- `builtin:kb_default`: knowledge base default (conservative)
+- `builtin:html_web`: web HTML (boilerplate/navigation removal)
+- `builtin:pdf_text`: text-based PDF cleanup
+- `builtin:chat_exports`: chat export cleanup (Slack/Teams)
+
 UI entry:
 
 - `治理配置` → `/data-governance/profiles`
