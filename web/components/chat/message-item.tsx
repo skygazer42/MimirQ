@@ -144,6 +144,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const [rating, setRating] = useState<number | null>(null)
   const [ratingSending, setRatingSending] = useState(false)
   const copyTimerRef = useRef<number | null>(null)
+  const { openDocument } = useDocumentView()
 
   useEffect(() => {
     return () => {
@@ -203,6 +204,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   }, [message.citations, message.id, message.message_metadata])
 
   const metrics = (message.message_metadata || {}) as Record<string, any>
+  const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
   const metricEntries: Array<{ k: string; v: any }> = [
     { k: 'request_id', v: metrics.request_id },
     { k: 'retrieval_mode', v: metrics.retrieval_mode ?? metrics.retrieval_mode_requested },
@@ -219,6 +221,36 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const citationRows = (message.citations || [])
     .slice()
     .sort((a, b) => (Number(b.relevance_score) || 0) - (Number(a.relevance_score) || 0))
+
+  const citationByChunkId = (() => {
+    const map = new Map<string, Citation>()
+    for (const c of message.citations || []) {
+      if (c && typeof c.chunk_id === 'string' && c.chunk_id) {
+        map.set(c.chunk_id, c)
+      }
+    }
+    return map
+  })()
+
+  const citationByDocumentId = (() => {
+    const map = new Map<string, Citation>()
+    for (const c of message.citations || []) {
+      if (c && typeof c.document_id === 'string' && c.document_id && !map.has(c.document_id)) {
+        map.set(c.document_id, c)
+      }
+    }
+    return map
+  })()
+
+  const handleOpenEvidence = useCallback((ev: any) => {
+    const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
+    if (!docId) return
+    const chunkId = typeof ev?.chunk_id === 'string' && ev.chunk_id ? ev.chunk_id : undefined
+    const start = typeof ev?.start_char === 'number' ? ev.start_char : null
+    const end = typeof ev?.end_char === 'number' ? ev.end_char : null
+    const range = start != null && end != null && end > start ? { start, end } : undefined
+    openDocument(docId, chunkId, range)
+  }, [openDocument])
 
   const canRate = (() => {
     if (isUser) return false
@@ -362,7 +394,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                         </div>
                       </div>
 
-                      <div className="md:col-span-7">
+                      <div className="md:col-span-7 space-y-6">
                         <div className="rounded-xl border border-border bg-card overflow-hidden min-h-[300px] flex flex-col">
                           <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center justify-between gap-3">
                             <div className="text-xs font-semibold text-foreground">引用来源</div>
@@ -410,6 +442,107 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                             </div>
                           ) : (
                             <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground text-sm">未记录 citations</div>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card overflow-hidden min-h-[240px] flex flex-col">
+                          <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center justify-between gap-3">
+                            <div className="text-xs font-semibold text-foreground">Claim Evidence</div>
+                            <div className="text-xs text-muted-foreground tabular-nums">
+                              {claimEvidence ? `${claimEvidence.length} 条` : '-'}
+                            </div>
+                          </div>
+
+                          {claimEvidence && claimEvidence.length ? (
+                            <div className="p-4 space-y-3 overflow-auto max-h-72 custom-scrollbar">
+                              {claimEvidence.slice(0, 24).map((item: any, idx: number) => {
+                                const claim = String(item?.claim || '').trim()
+                                const evidence = Array.isArray(item?.evidence) ? item.evidence : []
+                                return (
+                                  <div
+                                    key={`${idx}-${claim.slice(0, 32)}`}
+                                    className="rounded-lg border border-border/60 bg-background/40 p-3"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 text-xs font-semibold text-foreground leading-relaxed line-clamp-3">
+                                        {claim || `Claim #${idx + 1}`}
+                                      </div>
+                                      <div className="flex-shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                                        {evidence.length} 证据
+                                      </div>
+                                    </div>
+
+                                    {evidence.length ? (
+                                      <div className="mt-2 space-y-2">
+                                        {evidence.slice(0, 3).map((ev: any, eidx: number) => {
+                                          const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
+                                          const chunkId = typeof ev?.chunk_id === 'string' ? ev.chunk_id : ''
+                                          const c =
+                                            (chunkId && citationByChunkId.get(chunkId)) ||
+                                            (docId && citationByDocumentId.get(docId))
+
+                                          const score = typeof ev?.score === 'number' ? ev.score : null
+                                          const quote = String(ev?.quote || '').trim()
+                                          const disabled = !docId
+
+                                          return (
+                                            <button
+                                              key={`${eidx}-${docId}-${chunkId}`}
+                                              type="button"
+                                              disabled={disabled}
+                                              aria-label={disabled ? 'Evidence unavailable' : 'Open evidence in document viewer'}
+                                              onClick={() => handleOpenEvidence(ev)}
+                                              className={cn(
+                                                'w-full text-left rounded-md border border-border/50 bg-background/50 px-3 py-2 transition-colors duration-200 motion-reduce:transition-none',
+                                                disabled
+                                                  ? 'opacity-60 cursor-not-allowed'
+                                                  : 'hover:bg-muted/30 hover:border-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60'
+                                              )}
+                                            >
+                                              <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                  <div
+                                                    className="text-[11px] font-semibold text-foreground truncate"
+                                                    title={c?.document_name || docId || 'Unknown'}
+                                                  >
+                                                    {c?.document_name || docId || 'Unknown'}
+                                                  </div>
+                                                  <div className="text-[10px] text-muted-foreground tabular-nums">
+                                                    {c?.page_number != null ? `P.${c.page_number}` : '—'}
+                                                    {typeof ev?.start_char === 'number' && typeof ev?.end_char === 'number'
+                                                      ? ` · ${Math.trunc(ev.start_char)}-${Math.trunc(ev.end_char)}`
+                                                      : ''}
+                                                  </div>
+                                                </div>
+                                                <div className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                                                  {score != null ? score.toFixed(3) : ''}
+                                                </div>
+                                              </div>
+                                              {quote ? (
+                                                <div className="mt-1 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                                                  {quote}
+                                                </div>
+                                              ) : null}
+                                            </button>
+                                          )
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <div className="mt-2 text-xs text-muted-foreground">未找到可见证据。</div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground text-sm text-center">
+                              <div className="max-w-md">
+                                <div className="text-xs font-semibold text-foreground/80">未记录 Claim Evidence</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  提示：开启 “严格可见证据” 或 “claim check” 后会自动生成。
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>

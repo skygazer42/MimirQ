@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
+from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
 from app.rag.core.hashing import stable_hash
@@ -1416,6 +1417,17 @@ Requirements:
                     cleaned = "Unable to answer this question based on the available materials."
                 full_response = cleaned
 
+            claim_evidence: list[dict[str, Any]] = []
+            if not structured_output:
+                try:
+                    claim_evidence = build_claim_evidence_map(
+                        full_response,
+                        evidence_chunks=docs,
+                        max_claims=claim_check_max_claims if claim_check_configured else 24,
+                    )
+                except Exception:
+                    claim_evidence = []
+
             # Step 4.5: Append cited images as inline Markdown (non-structured output only).
             if (
                 not structured_output
@@ -1516,6 +1528,7 @@ Requirements:
                         "claim_check_removed": int(claim_check_removed),
                         "claim_check_total": int(claim_check_total),
                         "claim_check_max_claims": int(claim_check_max_claims) if claim_check_configured else None,
+                        "claim_evidence": claim_evidence,
                         "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                         "context_evidence_max_sentences_per_chunk": (
                             int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)

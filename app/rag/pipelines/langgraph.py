@@ -32,6 +32,7 @@ from app.core.config import settings
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
+from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
 from app.rag.core.text import (
@@ -798,6 +799,17 @@ def _generate_node(state: RAGState) -> RAGState:
             cleaned = "Unable to answer this question based on the available materials."
         answer = cleaned
 
+    claim_evidence: list[dict[str, Any]] = []
+    if not bool(state.get("structured_output")):
+        try:
+            claim_evidence = build_claim_evidence_map(
+                str(answer or ""),
+                evidence_chunks=list(state.get("docs") or []),
+                max_claims=claim_check_max_claims if claim_check_configured else 24,
+            )
+        except Exception:
+            claim_evidence = []
+
     # Append cited images as inline Markdown to the answer (non-structured output only, configurable)
     if not bool(state.get("structured_output")) and bool(settings.SHOW_IMAGE_IN_ANSWER) and settings.IMAGE_APPEND_MAX > 0:
         citations = state.get("citations") or []
@@ -842,6 +854,7 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["claim_check_removed"] = int(claim_check_removed)
     metrics["claim_check_total"] = int(claim_check_total)
     metrics["claim_check_max_claims"] = int(claim_check_max_claims) if claim_check_configured else None
+    metrics["claim_evidence"] = claim_evidence
     base = generation_elapsed
     base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
     base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
