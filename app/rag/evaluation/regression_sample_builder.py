@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -71,6 +72,8 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     retrieval_recall: float | None = None
     retrieval_hit: bool | None = None
+    retrieval_mrr: float | None = None
+    retrieval_ndcg_at_10: float | None = None
     hit_at_1: bool | None = None
     hit_at_3: bool | None = None
     hit_at_5: bool | None = None
@@ -79,6 +82,30 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         hits = len(ref_set & ret_set)
         retrieval_recall = round(hits / max(1, len(ref_set)), 4)
         retrieval_hit = bool(hits > 0)
+
+        # MRR: reciprocal rank of the first relevant hit (binary relevance).
+        rank_first: int | None = None
+        for idx, cid in enumerate(ret_list, 1):
+            if cid in ref_set:
+                rank_first = idx
+                break
+        if rank_first is not None and rank_first > 0:
+            retrieval_mrr = round(1.0 / float(rank_first), 4)
+        else:
+            retrieval_mrr = 0.0
+
+        # NDCG@10: binary relevance. Normalized by best possible ordering of evidence ids.
+        k = 10
+        dcg = 0.0
+        for idx, cid in enumerate(ret_list[:k], 1):
+            if cid in ref_set:
+                dcg += 1.0 / math.log2(idx + 1)
+
+        idcg = 0.0
+        for idx in range(1, min(k, len(ref_set)) + 1):
+            idcg += 1.0 / math.log2(idx + 1)
+
+        retrieval_ndcg_at_10 = round(dcg / idcg, 4) if idcg > 0.0 else 0.0
 
         def _hit_at(k: int) -> bool:
             return any(cid in ref_set for cid in ret_list[: max(0, int(k or 0))])
@@ -100,6 +127,8 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "top_relevance_score": top_rel_f,
         "retrieval_recall": retrieval_recall,
         "retrieval_hit": retrieval_hit,
+        "retrieval_mrr": retrieval_mrr,
+        "retrieval_ndcg_at_10": retrieval_ndcg_at_10,
         "retrieval_hit_at_1": hit_at_1,
         "retrieval_hit_at_3": hit_at_3,
         "retrieval_hit_at_5": hit_at_5,
@@ -132,6 +161,8 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "top_relevance_score": meta.get("top_relevance_score"),
         "retrieval_recall": meta.get("retrieval_recall"),
         "retrieval_hit": meta.get("retrieval_hit"),
+        "retrieval_mrr": meta.get("retrieval_mrr"),
+        "retrieval_ndcg_at_10": meta.get("retrieval_ndcg_at_10"),
         "retrieval_hit_at_1": meta.get("retrieval_hit_at_1"),
         "retrieval_hit_at_3": meta.get("retrieval_hit_at_3"),
         "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
