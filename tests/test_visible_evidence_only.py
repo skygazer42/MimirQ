@@ -141,6 +141,10 @@ async def test_strict_mode_forces_claim_check(monkeypatch: pytest.MonkeyPatch) -
     assert "Sky is blue" in full_response
     assert "Bananas" not in full_response
     assert (done_metrics or {}).get("claim_check_removed") == 1
+    claim_evidence = (done_metrics or {}).get("claim_evidence")
+    assert isinstance(claim_evidence, list) and claim_evidence
+    sky = [x for x in claim_evidence if "Sky is blue" in str(x.get("claim") or "")]
+    assert sky and isinstance(sky[0].get("evidence"), list) and sky[0].get("evidence")
 
 
 def test_langgraph_strict_mode_forces_claim_check(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -182,3 +186,7 @@ def test_langgraph_strict_mode_forces_claim_check(monkeypatch: pytest.MonkeyPatc
     assert "Bananas" not in answer
     metrics = out.get("metrics") or {}
     assert metrics.get("claim_check_removed") == 1
+    claim_evidence = metrics.get("claim_evidence")
+    assert isinstance(claim_evidence, list) and claim_evidence
+    sky = [x for x in claim_evidence if "Sky is blue" in str(x.get("claim") or "")]
+    assert sky and isinstance(sky[0].get("evidence"), list) and sky[0].get("evidence")
