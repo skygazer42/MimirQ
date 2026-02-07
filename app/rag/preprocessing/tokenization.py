@@ -7,6 +7,7 @@ These are used across:
 """
 
 
+import re
 from functools import lru_cache
 from typing import List
 
@@ -22,10 +23,30 @@ def _tokenize_for_bm25_cached(text: str) -> tuple[str, ...]:
     return tuple(_tokenize_for_bm25_impl(text))
 
 
+_ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_+]{1,}")
+
+
+def _tokenize_for_bm25_ascii(text: str) -> List[str]:
+    tokens: List[str] = []
+    for token in _ASCII_TOKEN_RE.findall(text or ""):
+        norm = str(token).strip().casefold()
+        if not norm:
+            continue
+        if norm in STOPWORDS:
+            continue
+        if len(norm) < 2:
+            continue
+        tokens.append(norm)
+    return tokens
+
+
 def _tokenize_for_bm25_impl(text: str) -> List[str]:
     raw = (text or "").strip()
     if not raw:
         return []
+
+    if raw.isascii():
+        return _tokenize_for_bm25_ascii(raw)
 
     tokens: List[str] = []
     for token in jieba.cut_for_search(raw):
