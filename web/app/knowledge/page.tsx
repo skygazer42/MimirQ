@@ -1001,6 +1001,7 @@ export default function KnowledgePage() {
       const res = await ragApi.retrievePreview({
         query: searchQuery.trim(),
         history: [],
+        dataset_id: selectedDatasetId,
         document_ids: [],
       })
       setSearchResults(res.citations || [])
@@ -1012,7 +1013,37 @@ export default function KnowledgePage() {
     } finally {
       setIsSearching(false)
     }
-  }, [searchQuery])
+  }, [searchQuery, selectedDatasetId])
+
+  const handleExportEvidencePack = useCallback(() => {
+    if (!searchResults.length) return
+
+    const exportedAt = new Date().toISOString()
+    const safeTs = exportedAt.replace(/[:.]/g, '-')
+    const ds = selectedDatasetId || 'all'
+    const filename = `evidence-pack-${ds}-${safeTs}.json`
+
+    const payload = {
+      dataset_id: selectedDatasetId || null,
+      query: searchQuery.trim(),
+      query_for_retrieval: searchQueryForRetrieval || searchQuery.trim(),
+      metrics: searchMetrics || null,
+      citations: searchResults,
+      exported_at: exportedAt,
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    try {
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      toast.success('已导出 Evidence Pack')
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }, [searchMetrics, searchQuery, searchQueryForRetrieval, searchResults, selectedDatasetId])
 
   const getStatusBadge = (status: string): { status: StatusBadgeStatus; label: string } => {
     switch (status) {
@@ -2244,9 +2275,20 @@ export default function KnowledgePage() {
 	                  <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4 motion-reduce:animate-none motion-reduce:transition-none">
                     <div className="flex items-center justify-between px-2">
                       <h4 className="text-sm font-semibold text-foreground">召回结果</h4>
-                      <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
-                        Top {searchResults.length}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
+                          onClick={handleExportEvidencePack}
+                        >
+                          <FileStack className="h-3.5 w-3.5" />
+                          导出 Evidence Pack
+                        </Button>
+                        <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                          Top {searchResults.length}
+                        </span>
+                      </div>
                     </div>
 
                     {searchQueryForRetrieval && searchQueryForRetrieval !== searchQuery.trim() && (

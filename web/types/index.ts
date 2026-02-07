@@ -1860,6 +1860,7 @@ export interface KGDeleteResponse {
 export interface RetrievePreviewRequest {
   query: string
   history?: ChatHistoryMessage[]
+  dataset_id?: string
   document_ids?: string[]
   rag_config?: ChatRequest['rag_config']
 }
@@ -1873,6 +1874,7 @@ export interface RetrievePreviewResponse {
 export interface PromptPreviewRequest {
   query: string
   history?: ChatHistoryMessage[]
+  dataset_id?: string
   document_ids?: string[]
   rag_config?: ChatRequest['rag_config']
   structured_output?: boolean
