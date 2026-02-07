@@ -328,6 +328,19 @@ def build_ingestion_policy_suggestion(
     ]
     rules.append(
         _rule(
+            rid="chat-exports-txt",
+            name="聊天导出（Slack/Teams）：TXT（文件名命中）",
+            extensions=[".txt"],
+            filename_regex=r"(?i)(slack|teams|chat|conversation|messages?|export|\u804a\u5929|\u4f1a\u8bdd|\u5bf9\u8bdd)",
+            preprocess_steps=list(common_text_preprocess),
+            parser_backend="auto",
+            chunk_strategy="semantic_sentence",
+            governance_profile_ref="builtin:chat_exports",
+            pipeline_patch=_pii_secrets_patch(enable_pii=("txt" in pii_types), enable_secrets=("txt" in secrets_types)),
+        )
+    )
+    rules.append(
+        _rule(
             rid="markdown-md",
             name="Markdown（按标题分块）",
             extensions=[".md"],
