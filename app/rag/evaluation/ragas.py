@@ -207,6 +207,16 @@ def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str
     }
 
 
+def _merge_summary_with_regression_gate(
+    summary: Dict[str, Any],
+    *,
+    eval_items: list[dict[str, Any]],
+) -> Dict[str, Any]:
+    out = dict(summary or {})
+    out.update(_build_regression_gate_summary(eval_items))
+    return out
+
+
 def _parse_uuid_list(raw_list: Any) -> List[UUID]:
     out: List[UUID] = []
     if not raw_list:
@@ -610,40 +620,78 @@ def run_regression_ragas_evaluation(
             return
 
         eval_items: List[Dict[str, Any]] = []
+        retrieval_only = not bool(metric_names)
         for case in cases:
             scope_doc_ids, scope_dataset_id = _resolve_case_scope(
                 db=db, tenant_id=tenant_id, account_id=account_id, case=case
             )
-            from app.rag.graph import run_rag_graph
+            response: str = ""
+            citations: Any = []
+            graph_result: dict[str, Any] = {}
 
-            graph_result = run_rag_graph(
-                question=case.question,
-                history=[],
-                document_ids=scope_doc_ids,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=scope_dataset_id,
-                top_k=int(rag_params.get("top_k", 5)),
-                score_threshold=float(rag_params.get("score_threshold", 0.7)),
-                retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
-                alpha=float(rag_params.get("alpha", 0.6)),
-                enable_weight_rerank=bool(rag_params.get("enable_weight_rerank", True)),
-                vector_weight=float(rag_params.get("vector_weight", 0.6)),
-                keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
-                mmr_lambda=float(rag_params.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA)),
-                enable_reranker=bool(rag_params.get("enable_reranker", settings.ENABLE_RERANKER)),
-                reranker_provider=rag_params.get("reranker_provider") or settings.RERANKER_PROVIDER,
-                reranker_top_n=int(rag_params.get("reranker_top_n", settings.RERANKER_TOP_N)),
-                structured_output=False,
-                structured_preset=None,
-                prompt_template_id=rag_params.get("prompt_template_id"),
-                prompt_template_key=rag_params.get("prompt_template_key"),
-                prompt_ab_experiment_key=rag_params.get("prompt_ab_experiment_key"),
-                ab_user_key=account_id,
-                db=db,
-            )
-            response = (graph_result or {}).get("answer") or ""
-            citations = (graph_result or {}).get("citations") or []
+            if retrieval_only:
+                from app.rag.pipelines.langgraph import _retrieve_node, build_rag_state
+
+                state = build_rag_state(
+                    question=case.question,
+                    history=[],
+                    document_ids=(scope_doc_ids or None),
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    dataset_id=scope_dataset_id,
+                    top_k=int(rag_params.get("top_k", 5)),
+                    score_threshold=float(rag_params.get("score_threshold", 0.7)),
+                    retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
+                    alpha=float(rag_params.get("alpha", 0.6)),
+                    enable_weight_rerank=bool(rag_params.get("enable_weight_rerank", True)),
+                    vector_weight=float(rag_params.get("vector_weight", 0.6)),
+                    keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
+                    mmr_lambda=float(rag_params.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA)),
+                    enable_reranker=bool(rag_params.get("enable_reranker", settings.ENABLE_RERANKER)),
+                    reranker_provider=rag_params.get("reranker_provider") or settings.RERANKER_PROVIDER,
+                    reranker_top_n=int(rag_params.get("reranker_top_n", settings.RERANKER_TOP_N)),
+                    structured_output=False,
+                    structured_preset=None,
+                    prompt_template_id=rag_params.get("prompt_template_id"),
+                    prompt_template_key=rag_params.get("prompt_template_key"),
+                    prompt_ab_experiment_key=rag_params.get("prompt_ab_experiment_key"),
+                    ab_user_key=account_id,
+                    db=db,
+                )
+                graph_result = _retrieve_node(state) or {}
+                citations = graph_result.get("citations") or []
+                response = ""
+            else:
+                from app.rag.graph import run_rag_graph
+
+                graph_result = run_rag_graph(
+                    question=case.question,
+                    history=[],
+                    document_ids=scope_doc_ids,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    dataset_id=scope_dataset_id,
+                    top_k=int(rag_params.get("top_k", 5)),
+                    score_threshold=float(rag_params.get("score_threshold", 0.7)),
+                    retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
+                    alpha=float(rag_params.get("alpha", 0.6)),
+                    enable_weight_rerank=bool(rag_params.get("enable_weight_rerank", True)),
+                    vector_weight=float(rag_params.get("vector_weight", 0.6)),
+                    keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
+                    mmr_lambda=float(rag_params.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA)),
+                    enable_reranker=bool(rag_params.get("enable_reranker", settings.ENABLE_RERANKER)),
+                    reranker_provider=rag_params.get("reranker_provider") or settings.RERANKER_PROVIDER,
+                    reranker_top_n=int(rag_params.get("reranker_top_n", settings.RERANKER_TOP_N)),
+                    structured_output=False,
+                    structured_preset=None,
+                    prompt_template_id=rag_params.get("prompt_template_id"),
+                    prompt_template_key=rag_params.get("prompt_template_key"),
+                    prompt_ab_experiment_key=rag_params.get("prompt_ab_experiment_key"),
+                    ab_user_key=account_id,
+                    db=db,
+                )
+                response = (graph_result or {}).get("answer") or ""
+                citations = (graph_result or {}).get("citations") or []
             contexts = _extract_contexts(
                 db=db,
                 tenant_id=tenant_id,
@@ -673,6 +721,49 @@ def run_regression_ragas_evaluation(
         if not eval_items:
             run.status = "failed"
             run.error_message = "No evaluatable cases (missing contexts/citations)"
+            run.finished_at = datetime.utcnow()
+            db.commit()
+            return
+
+        # Retrieval-only mode: skip RAGAS imports/evaluation and persist gate-ready results.
+        if retrieval_only:
+            db.query(RagasRegressionItem).filter(
+                RagasRegressionItem.run_id == run_id,
+                RagasRegressionItem.tenant_id == tenant_id,
+            ).delete(synchronize_session=False)
+
+            for item in eval_items:
+                db.add(
+                    RagasRegressionItem(
+                        run_id=run_id,
+                        tenant_id=tenant_id,
+                        case_id=item["case_id"],
+                        question=item["question"],
+                        response=item.get("response") or "",
+                        retrieved_contexts=item["retrieved_contexts"],
+                        citations=item["citations"],
+                        scores={},
+                        meta=build_regression_item_meta(
+                            sample_kwargs=item.get("sample_kwargs"),
+                            item_meta=item.get("item_meta"),
+                        ),
+                    )
+                )
+
+            summary: Dict[str, Any] = {"items": len(eval_items)}
+            summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+
+            run.status = "completed"
+            run.metrics = []
+            run.params = {
+                **(run.params or {}),
+                "requested_metrics": [],
+                "skip_empty_contexts": skip_empty_contexts,
+                "max_cases": max_cases,
+                "rag_params": _json_safe(rag_params),
+                "mode": "retrieval_only",
+            }
+            run.summary = summary
             run.finished_at = datetime.utcnow()
             db.commit()
             return
@@ -744,6 +835,7 @@ def run_regression_ragas_evaluation(
             summary[key] = _mean(row.get(key) for row in result.scores)
         summary["total_tokens"] = getattr(result, "total_tokens", None)
         summary["total_cost"] = getattr(result, "total_cost", None)
+        summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
 
         run.status = "completed"
         run.metrics = metric_keys

@@ -47,6 +47,10 @@ def _headers(args: argparse.Namespace) -> dict[str, str]:
     return h
 
 
+def parse_metrics_list(raw: Any) -> list[str]:
+    return [m.strip() for m in str(raw or "").split(",") if m.strip()]
+
+
 def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
     """
     Normalize thresholds into a { metric: { min?: float, max?: float } } mapping.
@@ -137,7 +141,11 @@ def main() -> int:
     p.add_argument("--skip-import", action="store_true", help="Skip importing the cases file (assumes cases already exist)")
     p.add_argument("--overwrite", action="store_true", help="Overwrite existing cases matched by (question + dataset_id)")
 
-    p.add_argument("--metrics", default="faithfulness,response_relevancy", help="Comma-separated metrics (default: %(default)s)")
+    p.add_argument(
+        "--metrics",
+        default="faithfulness,response_relevancy",
+        help='Comma-separated metrics (default: %(default)s). Use --metrics "" for retrieval-only gate (requires --thresholds).',
+    )
     p.add_argument("--poll-sec", type=float, default=2.0, help="Polling interval seconds (default: %(default)s)")
     p.add_argument("--timeout-sec", type=float, default=600.0, help="Timeout seconds (default: %(default)s)")
 
@@ -155,8 +163,7 @@ def main() -> int:
     items = _coerce_cases(_load_json(cases_path))
     _require(len(items) > 0, "cases file contains no items")
 
-    metrics = [m.strip() for m in str(args.metrics or "").split(",") if m.strip()]
-    _require(len(metrics) > 0, "metrics list is empty")
+    metrics = parse_metrics_list(args.metrics)
 
     thresholds: dict[str, dict[str, float]] = {}
     if args.thresholds:
@@ -166,6 +173,10 @@ def main() -> int:
         if not isinstance(raw_th, dict):
             _require(False, "thresholds must be a JSON object { metric: number | {min,max} }")
         thresholds = normalize_thresholds(raw_th)
+
+    # Allow retrieval-only gate: empty metrics list is okay when thresholds are provided.
+    if not metrics:
+        _require(bool(args.thresholds) and bool(thresholds), "metrics list is empty")
 
     headers = _headers(args)
     _require(bool(headers.get("X-User-ID") or headers.get("Authorization")), "missing auth headers (use --user-id or --bearer)")

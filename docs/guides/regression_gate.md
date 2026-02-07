@@ -35,6 +35,24 @@ python scripts/regression_gate.py \
   --thresholds ./thresholds.json
 ```
 
+## Retrieval-only Gate（不依赖 RAGAS/LLM）
+
+当你只想 gate “检索质量”（Recall@K / MRR / NDCG / abstain_rate），且希望 **不依赖 RAGAS/LLM** 时，可将 `--metrics` 置为空字符串：
+
+```bash
+python scripts/regression_gate.py \
+  --base-url http://localhost:8000/api/v1 \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id test-admin \
+  --cases ./regression_cases.json \
+  --metrics "" \
+  --thresholds ./thresholds.json
+```
+
+说明：
+- `--metrics ""` 会触发后端的 **retrieval-only regression run**（只跑检索，不做生成，不导入/调用 ragas）。
+- 当 metrics 为空时，脚本要求必须提供 `--thresholds`（否则无法 gate）。
+
 `thresholds.json` 示例：
 
 ```json
