@@ -3,7 +3,6 @@ Indexing service implementation.
 
 Provides a unified interface for document chunk and event indexing.
 """
-import asyncio
 import hashlib
 import logging
 import time
@@ -380,136 +379,16 @@ class Indexer:
         """
         Concurrently index document chunks (vector store, PostgreSQL, BM25).
 
-        Args:
-            document_id: Document ID.
-            tenant_id: Tenant ID.
-            chunks: Chunk list.
-            default_source: Default source.
-            commit: Whether to commit DB transaction.
-            options: Indexing options.
-
-        Returns:
-            Persistence result.
+        NOTE: This method is intentionally disabled.
+        The previous implementation used `asyncio.to_thread(...)` while sharing a
+        SQLAlchemy Session (`self._db`) across threads, which is not thread-safe.
+        Prefer:
+        - the synchronous `index_chunks(...)`, or
+        - the task-queue based ingestion pipeline for async processing.
         """
-        dataset_id_str: str | None = None
-        file_type_str: str | None = None
-        embedding_space = current_embedding_space_hash()
-        try:
-            row = (
-                self._db.query(DBDocument.dataset_id, DBDocument.file_type)
-                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
-                .first()
-            )
-            if row:
-                ds_id, ft = row
-                if ds_id is not None:
-                    dataset_id_str = str(ds_id)
-                if ft is not None:
-                    file_type_str = str(ft)
-        except Exception:
-            dataset_id_str = None
-            file_type_str = None
-
-        source = str(default_source or "").strip() or "unknown"
-        total_characters = sum(len(c.content or "") for c in chunks)
-        normalized_chunks: List[ChunkInput] = []
-        vector_docs: List[Dict[str, Any]] = []
-        chunk_ids: List[UUID] = []
-        embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
-        
-        for c in chunks:
-            meta = dict(c.metadata or {})
-            meta.setdefault("index_kind", IndexKind.CHUNK.value)
-            meta.setdefault("tenant_id", str(tenant_id))
-            meta.setdefault("document_id", str(document_id))
-            meta.setdefault("embedding_space_hash", embedding_space)
-            if dataset_id_str:
-                meta.setdefault("dataset_id", dataset_id_str)
-            meta.setdefault("source", source)
-            if file_type_str and not meta.get("file_type"):
-                meta["file_type"] = file_type_str
-            if embedding_prefix_enabled:
-                meta.setdefault("embedding_context_prefix_enabled", True)
-            chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
-            meta["chunk_id"] = str(chunk_id)
-            chunk_ids.append(chunk_id)
-            normalized_chunks.append(
-                ChunkInput(
-                    content=c.content,
-                    metadata=meta,
-                    page_number=c.page_number,
-                    start_char=c.start_char,
-                    end_char=c.end_char,
-                )
-            )
-            embed_text = _build_embedding_text(c.content or "", meta) if embedding_prefix_enabled else (c.content or "")
-            vector_docs.append({"content": embed_text, "metadata": meta})
-        
-        # Run in parallel: vector indexing + PostgreSQL persistence.
-        enable_vectors = self._resolve_chunk_vector_enabled(options)
-        enable_bm25 = self._resolve_bm25_enabled(options)
-        
-        async def index_vectors_async():
-            """Async vector indexing."""
-            return await asyncio.to_thread(
-                self._index_chunk_vectors,
-                vector_docs,
-                document_id=document_id,
-                tenant_id=tenant_id,
-                enable_vectors=enable_vectors,
-            )
-        
-        async def persist_chunks_async():
-            """Persist to PostgreSQL asynchronously."""
-            return await asyncio.to_thread(
-                self._persist_document_chunks,
-                document_id=document_id,
-                tenant_id=tenant_id,
-                chunks=normalized_chunks,
-                vector_ids=[],  # Set later.
-                chunk_ids=chunk_ids,
-                commit=commit,
-            )
-        
-        # Run vector indexing and DB persistence concurrently.
-        vector_ids, db_chunks = await asyncio.gather(
-            index_vectors_async(),
-            persist_chunks_async(),
-            return_exceptions=True
-        )
-        
-        # Handle exceptions.
-        if isinstance(vector_ids, Exception):
-            logger.error(f"Vector indexing failed: {vector_ids}")
-            vector_ids = []
-        
-        if isinstance(db_chunks, Exception):
-            logger.error(f"DB persistence failed: {db_chunks}")
-            raise db_chunks
-        
-        # BM25 index update (independent, non-blocking).
-        async def update_bm25_async():
-            """Async BM25 update."""
-            try:
-                await asyncio.to_thread(
-                    self._update_bm25_for_chunks,
-                    db_chunks=db_chunks,
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    default_source=default_source,
-                    enable_bm25=enable_bm25,
-                )
-            except Exception as exc:
-                logger.warning("Failed to update BM25 index incrementally: %s", exc)
-        
-        # Start BM25 update task (fire-and-forget).
-        asyncio.create_task(update_bm25_async())
-
-        return PersistChunksResult(
-            db_chunks=db_chunks,
-            chunk_ids=[c.id for c in db_chunks],
-            vector_ids=vector_ids,
-            total_characters=total_characters,
+        raise RuntimeError(
+            "Indexer.index_chunks_async is disabled (thread-unsafe SQLAlchemy Session). "
+            "Use index_chunks(...) or the task-queue ingestion pipeline."
         )
 
     def index_events(
