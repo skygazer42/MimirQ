@@ -45,6 +45,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  TestTube2,
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -76,7 +77,7 @@ import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
 import { toSourcePathPrefix } from '@/lib/document-folders'
 import type { Citation, ConnectorRunOut, Dataset, Document, DocumentAccessMode, DocumentStats, IndexAuditResponse } from '@/types'
-import { connectorApi, datasetApi, documentApi, observabilityApi, ragApi } from '@/lib/api-client'
+import { connectorApi, datasetApi, documentApi, evaluationApi, observabilityApi, ragApi } from '@/lib/api-client'
 import { getUserTagsFromDocument } from '@/lib/document-user-tags'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
@@ -399,6 +400,8 @@ export default function KnowledgePage() {
   const [searchMetrics, setSearchMetrics] = useState<Record<string, any> | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const [selectedEvidenceChunkIds, setSelectedEvidenceChunkIds] = useState<string[]>([])
+  const [isCreatingRegressionCase, setIsCreatingRegressionCase] = useState(false)
   const [indexAudit, setIndexAudit] = useState<IndexAuditResponse | null>(null)
   const [indexAuditLoading, setIndexAuditLoading] = useState(false)
   const [indexAuditError, setIndexAuditError] = useState<string | null>(null)
@@ -1000,6 +1003,7 @@ export default function KnowledgePage() {
     setSearchResults([])
     setSearchQueryForRetrieval('')
     setSearchMetrics(null)
+    setSelectedEvidenceChunkIds([])
     try {
       const res = await ragApi.retrievePreview({
         query: searchQuery.trim(),
@@ -1026,12 +1030,29 @@ export default function KnowledgePage() {
     const ds = selectedDatasetId || 'all'
     const filename = `evidence-pack-${ds}-${safeTs}.json`
 
+    const selectedSet = new Set(selectedEvidenceChunkIds || [])
+    const referenceSources = (searchResults || [])
+      .filter((c) => !!c?.chunk_id && selectedSet.has(String(c.chunk_id)))
+      .map((c) => ({
+        document_id: c.document_id,
+        chunk_id: c.chunk_id,
+        page_number: c.page_number ?? null,
+        start_char: c.start_char ?? null,
+        end_char: c.end_char ?? null,
+        doc_pipeline_key: c.doc_pipeline_key ?? null,
+        pipeline_hash: c.pipeline_hash ?? null,
+        quote: c.chunk_content,
+        label: 'ground_truth',
+      }))
+
     const payload = {
       dataset_id: selectedDatasetId || null,
       query: searchQuery.trim(),
       query_for_retrieval: searchQueryForRetrieval || searchQuery.trim(),
       metrics: searchMetrics || null,
       citations: searchResults,
+      reference_sources: referenceSources,
+      selected_chunk_ids: Array.from(selectedSet),
       exported_at: exportedAt,
     }
 
@@ -1046,7 +1067,73 @@ export default function KnowledgePage() {
     } finally {
       URL.revokeObjectURL(url)
     }
-  }, [searchMetrics, searchQuery, searchQueryForRetrieval, searchResults, selectedDatasetId])
+  }, [searchMetrics, searchQuery, searchQueryForRetrieval, searchResults, selectedDatasetId, selectedEvidenceChunkIds])
+
+  const toggleEvidenceSelection = useCallback((chunkId: string) => {
+    const key = String(chunkId || '').trim()
+    if (!key) return
+    setSelectedEvidenceChunkIds((prev) => {
+      const set = new Set(prev || [])
+      if (set.has(key)) set.delete(key)
+      else set.add(key)
+      return Array.from(set)
+    })
+  }, [])
+
+  const handleCreateRegressionCaseFromSelection = useCallback(async () => {
+    if (!selectedDatasetId) {
+      toast.error('请先选择数据集')
+      return
+    }
+    const q = (searchQuery || '').trim()
+    if (!q) {
+      toast.error('请输入问题')
+      return
+    }
+    if (!selectedEvidenceChunkIds.length) {
+      toast.error('请先勾选至少 1 条 Ground Truth 证据')
+      return
+    }
+    const selectedSet = new Set(selectedEvidenceChunkIds || [])
+    const refs = (searchResults || [])
+      .filter((c) => !!c?.chunk_id && selectedSet.has(String(c.chunk_id)))
+      .map((c) => ({
+        document_id: c.document_id,
+        chunk_id: c.chunk_id,
+        page_number: c.page_number ?? null,
+        start_char: c.start_char ?? null,
+        end_char: c.end_char ?? null,
+        doc_pipeline_key: c.doc_pipeline_key ?? null,
+        pipeline_hash: c.pipeline_hash ?? null,
+        quote: c.chunk_content,
+        label: 'ground_truth',
+      }))
+    if (!refs.length) {
+      toast.error('选中的证据引用无效（缺少 chunk_id/document_id）')
+      return
+    }
+
+    setIsCreatingRegressionCase(true)
+    try {
+      await evaluationApi.createRegressionCase({
+        question: q,
+        dataset_id: selectedDatasetId,
+        reference_sources: refs as any,
+        tags: ['from_retrieval_preview'],
+        extra: {
+          query_for_retrieval: searchQueryForRetrieval || q,
+          retrieval_metrics: searchMetrics || null,
+          created_from: 'knowledge.retrieval',
+        },
+      } as any)
+      toast.success('已创建回归用例')
+    } catch (err: any) {
+      console.error('Failed to create regression case from selection', err)
+      toast.error(formatApiError(err, '创建回归用例失败'))
+    } finally {
+      setIsCreatingRegressionCase(false)
+    }
+  }, [searchMetrics, searchQuery, searchQueryForRetrieval, searchResults, selectedDatasetId, selectedEvidenceChunkIds])
 
   const handleRunIndexAudit = useCallback(async () => {
     if (!selectedDatasetId) {
@@ -2302,11 +2389,31 @@ export default function KnowledgePage() {
                           type="button"
                           variant="outline"
                           className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
+                          disabled={isCreatingRegressionCase || selectedEvidenceChunkIds.length === 0 || !selectedDatasetId}
+                          onClick={handleCreateRegressionCaseFromSelection}
+                          title={!selectedDatasetId ? '请先选择数据集' : '用选中的证据创建回归用例'}
+                        >
+                          {isCreatingRegressionCase ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                          ) : (
+                            <TestTube2 className="h-3.5 w-3.5" />
+                          )}
+                          创建回归用例
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
                           onClick={handleExportEvidencePack}
                         >
                           <FileStack className="h-3.5 w-3.5" />
                           导出 Evidence Pack
                         </Button>
+                        {selectedEvidenceChunkIds.length > 0 && (
+                          <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                            已选 {selectedEvidenceChunkIds.length}
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
                           Top {searchResults.length}
                         </span>
@@ -2325,40 +2432,58 @@ export default function KnowledgePage() {
                       </div>
                     )}
 
-	                    {searchResults.map((result, index) => (
-	                      <div
-	                        key={`${result.document_id}-${index}`}
-	                        className="group p-5 bg-card border border-border/60 rounded-xl hover:border-primary/30 hover:shadow-strong/10 relative overflow-hidden transition-colors transition-shadow duration-200 motion-reduce:transition-none"
-	                      >
-                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/80 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-foreground/90 leading-relaxed text-sm mb-3">
-                              {result.chunk_content}
-                            </p>
-                            <div className="flex items-center gap-3 text-xs">
-                              <span className="flex items-center gap-1 text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
-                                <FileIcon className="w-3 h-3" />
-                                {result.document_name}
-                              </span>
-                              <span className="text-muted-foreground/40">|</span>
-                              <span className="font-medium text-primary">
-                                相似度 {(result.relevance_score * 100).toFixed(0)}%
-                              </span>
-                              {typeof result.page_number === 'number' && (
-                                <>
+	                    {searchResults.map((result, index) => {
+                        const chunkId = String((result as any)?.chunk_id || '')
+                        const checked = !!chunkId && selectedEvidenceChunkIds.includes(chunkId)
+                        return (
+                          <div
+                            key={`${result.document_id}-${index}`}
+                            className="group p-5 bg-card border border-border/60 rounded-xl hover:border-primary/30 hover:shadow-strong/10 relative overflow-hidden transition-colors transition-shadow duration-200 motion-reduce:transition-none"
+                          >
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/80 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                            <div className="absolute right-4 top-4">
+                              <label className={cn('flex items-center gap-2 text-xs', !chunkId && 'opacity-50')}>
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-border"
+                                  disabled={!chunkId}
+                                  checked={checked}
+                                  onChange={() => toggleEvidenceSelection(chunkId)}
+                                />
+                                <span className="text-muted-foreground">Ground Truth</span>
+                              </label>
+                            </div>
+
+                            <div className="flex items-start gap-4">
+                              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
+                                {index + 1}
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-foreground/90 leading-relaxed text-sm mb-3">
+                                  {result.chunk_content}
+                                </p>
+                                <div className="flex items-center gap-3 text-xs">
+                                  <span className="flex items-center gap-1 text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
+                                    <FileIcon className="w-3 h-3" />
+                                    {result.document_name}
+                                  </span>
                                   <span className="text-muted-foreground/40">|</span>
-                                  <span className="text-muted-foreground">P.{result.page_number}</span>
-                                </>
-                              )}
+                                  <span className="font-medium text-primary">
+                                    相似度 {(result.relevance_score * 100).toFixed(0)}%
+                                  </span>
+                                  {typeof result.page_number === 'number' && (
+                                    <>
+                                      <span className="text-muted-foreground/40">|</span>
+                                      <span className="text-muted-foreground">P.{result.page_number}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
+                        )
+                      })}
                   </div>
                 )}
               </Panel>
