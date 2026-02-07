@@ -62,6 +62,13 @@ Removes common navigation prompts (line-oriented), e.g.:
 - `Share this`
 - breadcrumb headers like `Home / Docs / ...`
 
+### `chat_export_noise`
+Removes common chat-export boilerplate (Slack/Teams, line-oriented), e.g.:
+- `View in Slack`
+- `Reply in thread`
+- `Jump to message`
+- standalone timestamp/date lines
+
 ### `email_disclaimer`
 Removes common email confidentiality disclaimers (line-oriented), e.g.:
 - `This email ... intended ...`
