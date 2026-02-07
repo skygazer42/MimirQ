@@ -20,6 +20,7 @@ import math
 import re
 from datetime import datetime
 from typing import Any, Dict, Optional
+from uuid import UUID
 
 from app.core.config import settings
 from app.rag.tools.mcp_client import (
@@ -60,9 +61,27 @@ async def search_documents(
     try:
         from app.rag.retriever import hybrid_retriever
 
+        if dataset_id is None or not str(dataset_id).strip():
+            return {
+                "query": query,
+                "count": 0,
+                "results": [],
+                "error": "dataset_id is required",
+            }
+        try:
+            dataset_uuid = UUID(str(dataset_id))
+        except Exception:
+            return {
+                "query": query,
+                "count": 0,
+                "results": [],
+                "error": "dataset_id must be a UUID",
+            }
+
         retriever = hybrid_retriever.model_copy(
             update={
                 "k": int(top_k or 5),
+                "dataset_id": dataset_uuid,
                 "metadata_filter": filter,
             }
         )
