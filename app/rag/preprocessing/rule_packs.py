@@ -46,6 +46,22 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         # Breadcrumb-like headers ("Home / ...", "Home > ...", "Home » ...").
         RegexRule(pattern=r"(?mi)^\s*home\s*(?:/|>|»|\|)\s*\S.+$", repl="", flags=0),
     ],
+    "chat_export_noise": [
+        # Slack/Teams export headers/footers and navigation prompts.
+        RegexRule(pattern=r"(?mi)^\s*(?:slack\s+export|exported\s+from\s+slack)\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*(?:microsoft\s+teams\s+export|exported\s+from\s+microsoft\s+teams)\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*view\s+in\s+(?:slack|teams|microsoft\s+teams)\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*(?:jump|go)\s+to\s+message\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*reply\s+in\s+thread\s*$", repl="", flags=0),
+        # Common system message noise (line-oriented).
+        RegexRule(pattern=r"(?mi)^\s*.*\bhas\s+joined\s+the\s+channel\b.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*.*\bhas\s+left\s+the\s+channel\b.*$", repl="", flags=0),
+        # Timestamp-only lines (keep conservative: only time/date alone on a line).
+        RegexRule(pattern=r"(?mi)^\s*\d{1,2}:\d{2}\s*(?:am|pm)\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*\d{4}-\d{2}-\d{2}\s*$", repl="", flags=0),
+        # Chinese UI strings (best-effort).
+        RegexRule(pattern=r"(?m)^\s*\u5728\s*slack\s*\u4e2d\u67e5\u770b\s*$", repl="", flags=0),  # 在 Slack 中查看
+    ],
     "pdf_watermark": [
         # Watermark-like full-line stamps (keep conservative).
         RegexRule(pattern=r"(?mi)^\s*draft\s*$", repl="", flags=0),
