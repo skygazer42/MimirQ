@@ -47,6 +47,7 @@ from app.rag.core.text import (
     split_into_claims,
 )
 from app.rag.engine import get_rag_engine
+from app.rag.query_expansion import generate_alias_queries
 from app.rag.retriever import hybrid_retriever
 from app.rag.store.factory import get_langgraph_store
 from app.services.prompt_resolver import resolve_prompt_template
@@ -78,6 +79,13 @@ class RAGState(TypedDict, total=False):
     score_threshold: float
     retrieval_mode: str
     retrieval_profile: Optional[str]
+    enable_query_alias_expansion: Optional[bool]
+    query_aliases: Optional[Dict[str, List[str]]]
+    query_alias_max_queries: Optional[int]
+    enable_multi_query: Optional[bool]
+    multi_query_count: Optional[int]
+    multi_query_temperature: Optional[float]
+    multi_query_max_chars: Optional[int]
     alpha: float
     enable_weight_rerank: bool
     vector_weight: float
@@ -347,21 +355,59 @@ def _retrieve_node(state: RAGState) -> RAGState:
 
     retriever = hybrid_retriever.model_copy(update=retriever_update)
     # Query Expansion (Multi-Query / HyDE, optional)
+    alias_elapsed = 0.0
+    alias_used = False
+    alias_meta: Dict[str, Any] = {"enabled": False, "used": False}
+    alias_queries: List[str] = []
+
+    alias_enabled = state.get("enable_query_alias_expansion")
+    aliases = state.get("query_aliases")
+    if alias_enabled is None:
+        # Default behavior: if a dataset provided aliases, apply them unless explicitly disabled.
+        alias_enabled = bool(aliases)
+    if bool(alias_enabled):
+        t0 = time.time()
+        alias_queries, alias_meta = generate_alias_queries(
+            query=query_for_retrieval,
+            aliases=aliases,
+            max_queries=(5 if state.get("query_alias_max_queries") is None else int(state.get("query_alias_max_queries") or 0)),
+        )
+        alias_elapsed = time.time() - t0
+        alias_used = bool(alias_queries)
+
     multi_query_elapsed = 0.0
     multi_query_used = False
     multi_query_model_used = None
     multi_query_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
     multi_queries: List[str] = []
 
-    mq_n = max(0, min(int(settings.MULTI_QUERY_COUNT or 0), 8))
-    mq_max_chars = max(0, int(settings.MULTI_QUERY_MAX_CHARS or 0))
-    if bool(settings.ENABLE_MULTI_QUERY) and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
+    mq_enabled = bool(settings.ENABLE_MULTI_QUERY) if state.get("enable_multi_query") is None else bool(state.get("enable_multi_query"))
+    mq_n = (
+        settings.MULTI_QUERY_COUNT
+        if state.get("multi_query_count") is None
+        else int(state.get("multi_query_count") or 0)
+    )
+    mq_temp = (
+        settings.MULTI_QUERY_TEMPERATURE
+        if state.get("multi_query_temperature") is None
+        else float(state.get("multi_query_temperature") or 0.0)
+    )
+    mq_max_chars = (
+        settings.MULTI_QUERY_MAX_CHARS
+        if state.get("multi_query_max_chars") is None
+        else int(state.get("multi_query_max_chars") or 0)
+    )
+    mq_n = max(0, min(int(mq_n or 0), 8))
+    mq_temp = min(2.0, max(0.0, float(mq_temp or 0.0)))
+    mq_max_chars = max(0, int(mq_max_chars or 0))
+
+    if mq_enabled and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
         mq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
         try:
             mq_chain = (
                 engine.multi_query_prompt  # type: ignore[attr-defined]
-                | mq_llm.bind(temperature=settings.MULTI_QUERY_TEMPERATURE)
+                | mq_llm.bind(temperature=mq_temp)
                 | StrOutputParser()
             )
             mq_start = time.time()
@@ -476,6 +522,8 @@ def _retrieve_node(state: RAGState) -> RAGState:
     decompose_used = bool(sub_questions)
 
     retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
+    for q in alias_queries:
+        retrieval_queries.append(("alias", q))
     for q in multi_queries:
         retrieval_queries.append(("mq", q))
     for q in sub_questions:
@@ -616,7 +664,12 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["rewrite_used"] = bool(rewrite_used)
     metrics["rewrite_elapsed_sec"] = round(rewrite_elapsed, 3)
     metrics["rewrite_model_used"] = rewrite_model_used
-    metrics["multi_query_enabled"] = bool(settings.ENABLE_MULTI_QUERY)
+    metrics["alias_enabled"] = bool(alias_enabled)
+    metrics["alias_used"] = bool(alias_used)
+    metrics["alias_count"] = len(alias_queries)
+    metrics["alias_elapsed_sec"] = round(alias_elapsed, 3)
+    metrics["alias_meta"] = alias_meta
+    metrics["multi_query_enabled"] = bool(mq_enabled)
     metrics["multi_query_used"] = bool(multi_query_used)
     metrics["multi_query_count"] = len(multi_queries)
     metrics["multi_query_elapsed_sec"] = round(multi_query_elapsed, 3)
@@ -1264,6 +1317,13 @@ def build_rag_state(
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
     retrieval_profile: Optional[str] = None,
+    enable_query_alias_expansion: Optional[bool] = None,
+    query_aliases: Optional[Dict[str, List[str]]] = None,
+    query_alias_max_queries: Optional[int] = None,
+    enable_multi_query: Optional[bool] = None,
+    multi_query_count: Optional[int] = None,
+    multi_query_temperature: Optional[float] = None,
+    multi_query_max_chars: Optional[int] = None,
     alpha: float = 0.6,
     enable_weight_rerank: bool = True,
     vector_weight: float = 0.6,
@@ -1374,6 +1434,13 @@ def build_rag_state(
         "score_threshold": score_threshold,
         "retrieval_mode": retrieval_mode,
         "retrieval_profile": retrieval_profile,
+        "enable_query_alias_expansion": enable_query_alias_expansion,
+        "query_aliases": query_aliases,
+        "query_alias_max_queries": query_alias_max_queries,
+        "enable_multi_query": enable_multi_query,
+        "multi_query_count": multi_query_count,
+        "multi_query_temperature": multi_query_temperature,
+        "multi_query_max_chars": multi_query_max_chars,
         "alpha": alpha,
         "enable_weight_rerank": enable_weight_rerank,
         "vector_weight": vector_weight,

@@ -49,3 +49,21 @@ def test_merge_rag_defaults_applies_visible_evidence_only():  # noqa: ANN001
     )
     assert effective.visible_evidence_only is True
     assert set(applied) == {"visible_evidence_only"}
+
+
+def test_merge_rag_defaults_applies_query_expansion_fields():  # noqa: ANN001
+    base = ChatRAGConfig(top_k=5, retrieval_mode="hybrid")
+    raw = {
+        "query_aliases": {"sso": ["single sign-on"]},
+        "enable_multi_query": True,
+        "multi_query_count": 3,
+    }
+    effective, applied = merge_rag_config_with_dataset_defaults(
+        rag_config=base,
+        request_fields_set=set(),
+        raw_dataset_defaults=raw,
+    )
+    assert effective.query_aliases == {"sso": ["single sign-on"]}
+    assert effective.enable_multi_query is True
+    assert effective.multi_query_count == 3
+    assert set(applied) == {"query_aliases", "enable_multi_query", "multi_query_count"}

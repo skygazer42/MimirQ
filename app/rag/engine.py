@@ -36,6 +36,7 @@ from app.rag.core.text import (
     split_into_claims,
 )
 from app.rag.kg.pipeline import kg_search
+from app.rag.query_expansion import generate_alias_queries
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from app.services.prompt_resolver import resolve_prompt_template
@@ -404,6 +405,13 @@ Requirements:
         visible_evidence_only: bool = False,
         retrieval_mode: str = "hybrid",
         retrieval_profile: Optional[str] = None,
+        enable_query_alias_expansion: Optional[bool] = None,
+        query_aliases: Optional[Dict[str, List[str]]] = None,
+        query_alias_max_queries: Optional[int] = None,
+        enable_multi_query: Optional[bool] = None,
+        multi_query_count: Optional[int] = None,
+        multi_query_temperature: Optional[float] = None,
+        multi_query_max_chars: Optional[int] = None,
         alpha: float = 0.6,
         enable_weight_rerank: bool = True,
         vector_weight: float = 0.6,
@@ -618,21 +626,59 @@ Requirements:
                 score_threshold_used = 0.0
 
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
+            alias_elapsed = 0.0
+            alias_used = False
+            alias_meta: Dict[str, Any] = {"enabled": False, "used": False}
+            alias_queries: List[str] = []
+
+            alias_enabled = enable_query_alias_expansion
+            if alias_enabled is None:
+                # Default behavior: if a dataset provided aliases, apply them unless explicitly disabled.
+                alias_enabled = bool(query_aliases)
+            if bool(alias_enabled):
+                t0 = time.time()
+                alias_queries, alias_meta = generate_alias_queries(
+                    query=query_for_retrieval,
+                    aliases=query_aliases,
+                    max_queries=(5 if query_alias_max_queries is None else int(query_alias_max_queries or 0)),
+                )
+                alias_elapsed = time.time() - t0
+                alias_used = bool(alias_queries)
+
             multi_query_elapsed = 0.0
             multi_query_used = False
             multi_query_model_used = None
             multi_query_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
             multi_queries: List[str] = []
 
-            mq_n = max(0, min(int(settings.MULTI_QUERY_COUNT or 0), 8))
-            mq_max_chars = max(0, int(settings.MULTI_QUERY_MAX_CHARS or 0))
-            if bool(settings.ENABLE_MULTI_QUERY) and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
+            mq_enabled = bool(settings.ENABLE_MULTI_QUERY) if enable_multi_query is None else bool(enable_multi_query)
+            mq_n = (
+                settings.MULTI_QUERY_COUNT
+                if multi_query_count is None
+                else int(multi_query_count or 0)
+            )
+            mq_temp = (
+                settings.MULTI_QUERY_TEMPERATURE
+                if multi_query_temperature is None
+                else float(multi_query_temperature or 0.0)
+            )
+            mq_max_chars = (
+                settings.MULTI_QUERY_MAX_CHARS
+                if multi_query_max_chars is None
+                else int(multi_query_max_chars or 0)
+            )
+
+            mq_n = max(0, min(int(mq_n or 0), 8))
+            mq_temp = min(2.0, max(0.0, float(mq_temp or 0.0)))
+            mq_max_chars = max(0, int(mq_max_chars or 0))
+
+            if mq_enabled and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
                 mq_llm = self.models.get("fast") or llm
                 multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
                 try:
                     mq_chain = (
                         self.multi_query_prompt
-                        | mq_llm.bind(temperature=settings.MULTI_QUERY_TEMPERATURE)
+                        | mq_llm.bind(temperature=mq_temp)
                         | StrOutputParser()
                     )
                     mq_start = time.time()
@@ -779,6 +825,8 @@ Requirements:
             retriever = hybrid_retriever.model_copy(update=retriever_update)
 
             retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
+            for q in alias_queries:
+                retrieval_queries.append(("alias", q))
             for q in multi_queries:
                 retrieval_queries.append(("mq", q))
             for q in sub_questions:
@@ -1131,6 +1179,14 @@ Requirements:
                             "model_route": model_route,
                             "top_k": top_k,
                             "docs_returned": len(docs),
+                            "alias_enabled": bool(alias_enabled),
+                            "alias_used": bool(alias_used),
+                            "alias_count": len(alias_queries),
+                            "alias_elapsed_sec": round(alias_elapsed, 3),
+                            "multi_query_enabled": bool(mq_enabled),
+                            "multi_query_used": bool(multi_query_used),
+                            "multi_query_count": len(multi_queries),
+                            "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
                             "kg_chunks_injected": int(kg_chunks_injected or 0),
                             "recall_bucket": recall_bucket,
                             "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
@@ -1306,11 +1362,19 @@ Requirements:
                     "min_sentence_chars": int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0),
                 },
                 "query_expansion": {
-                    "multi_query_enabled": bool(settings.ENABLE_MULTI_QUERY),
+                    "alias_enabled": bool(alias_enabled),
+                    "alias_used": bool(alias_used),
+                    "alias_count": len(alias_queries),
+                    "alias_elapsed_sec": round(alias_elapsed, 3),
+                    "alias_meta": alias_meta,
+                    "multi_query_enabled": bool(mq_enabled),
                     "multi_query_used": bool(multi_query_used),
                     "multi_query_count": len(multi_queries),
+                    "multi_query_count_requested": int(mq_n or 0),
                     "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
                     "multi_query_model_used": multi_query_model_used,
+                    "multi_query_temperature": float(mq_temp or 0.0),
+                    "multi_query_max_chars": int(mq_max_chars or 0),
                     "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
                     "multi_query_parse_error": multi_query_parse_meta.get("error"),
                     "hyde_enabled": bool(settings.ENABLE_HYDE),
@@ -1614,7 +1678,11 @@ Requirements:
                         "rewrite_used": bool(rewrite_used),
                         "rewrite_elapsed_sec": round(rewrite_elapsed, 3),
                         "rewrite_model_used": rewrite_model_used,
-                        "multi_query_enabled": bool(settings.ENABLE_MULTI_QUERY),
+                        "alias_enabled": bool(alias_enabled),
+                        "alias_used": bool(alias_used),
+                        "alias_count": len(alias_queries),
+                        "alias_elapsed_sec": round(alias_elapsed, 3),
+                        "multi_query_enabled": bool(mq_enabled),
                         "multi_query_used": bool(multi_query_used),
                         "multi_query_count": len(multi_queries),
                         "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
