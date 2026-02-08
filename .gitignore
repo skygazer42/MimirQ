@@ -53,6 +53,8 @@ package-lock.json
 # OS
 .DS_Store
 Thumbs.db
+# Windows reserved filenames (can be created via WSL and break tooling on Windows)
+NUL
 
 # Project specific
 uploads/

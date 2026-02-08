@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef } from 'react'
+import type * as React from 'react'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -132,7 +133,7 @@ export function MarkdownRenderer({
   }, [autoScrollToHash, text])
 
   const headingComponent = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
-    const Tag = (`h${level}` as unknown) as keyof JSX.IntrinsicElements
+    const Tag = `h${level}` as keyof React.JSX.IntrinsicElements
     return function Heading({ children, ...props }: any) {
       const idx = headingCursorRef.current
       const heading = headings[idx]

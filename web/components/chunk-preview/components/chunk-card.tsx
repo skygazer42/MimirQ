@@ -4,6 +4,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -41,7 +42,7 @@ function highlightText(text: string, rawQuery?: string) {
   const qLower = query.toLowerCase()
   const lower = text.toLowerCase()
 
-  const out: Array<string | JSX.Element> = []
+  const out: ReactNode[] = []
   let cursor = 0
   let matches = 0
   const MAX_MATCHES = 50

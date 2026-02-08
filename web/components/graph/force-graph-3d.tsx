@@ -46,7 +46,7 @@ interface ForceGraph3DProps {
 
 export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGraph3DProps) {
   const { resolvedTheme } = useTheme()
-  const fgRef = useRef<any>()
+  const fgRef = useRef<any>(null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
