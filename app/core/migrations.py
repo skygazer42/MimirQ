@@ -143,6 +143,19 @@ def apply_runtime_migrations(engine) -> None:
             'ON document_chunks (tenant_id, updated_at);',
             'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_disabled_at '
             'ON document_chunks (tenant_id, disabled_at);',
+
+            # =========================
+            # Retrieval lexical acceleration (persistent sparse fallback)
+            # =========================
+            # Best-effort: pg_trgm requires extension privileges on some managed Postgres.
+            "CREATE EXTENSION IF NOT EXISTS pg_trgm;",
+            # Expression indexes match the query shape in `HybridRetriever._search_lexical_db`.
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_content_fts_active "
+            "ON document_chunks USING GIN (to_tsvector('simple', content)) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_content_trgm_active "
+            "ON document_chunks USING GIN (content gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS parent_id UUID;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS ab_experiment_key VARCHAR(100);',

@@ -407,6 +407,16 @@ class Settings(BaseSettings):
     # Hard cap for the over-fetched k (0 disables).
     RETRIEVAL_OVERFETCH_MAX_K: int = 50
 
+    # Persistent lexical fallback (Postgres FTS / pg_trgm).
+    # Helps reduce false negatives for numbers, codes, and exact phrases.
+    LEXICAL_DB_ENABLED: bool = True
+    LEXICAL_DB_FTS_CONFIG: str = "simple"
+    LEXICAL_DB_TRGM_ENABLED: bool = True
+    # Candidate overfetch inside the lexical channel (applied before metadata trimming).
+    LEXICAL_DB_FETCH_MULTIPLIER: int = 4
+    LEXICAL_DB_MAX_CANDIDATES: int = 200
+    LEXICAL_DB_TRGM_MIN_QUERY_CHARS: int = 3
+
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
     RAG_CONTEXT_MAX_TOTAL_CHARS: int = 12_000
