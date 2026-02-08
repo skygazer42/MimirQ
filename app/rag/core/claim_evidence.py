@@ -14,7 +14,7 @@ Design constraints:
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 from app.rag.core.text import is_claim_supported, split_into_claims
 

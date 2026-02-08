@@ -18,8 +18,8 @@ from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
-from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger

@@ -17,8 +17,10 @@
 
 ### API
 
-- 导出：`GET /api/v1/evaluations/ragas/regression/cases/export`
-- 导入：`POST /api/v1/evaluations/ragas/regression/cases/import`
+- 导出：`GET /api/v1/evaluations/ragas/regression/cases/export?dataset_id=...`
+- 导入：`POST /api/v1/evaluations/ragas/regression/cases/import`（body 需要 `dataset_id` + `items[]`）
+
+> 导出的 bundle schema 为 `mimirq.regression_cases.v1`，包含 `dataset_id` 与 `items[]`。
 
 ## CI Gate 脚本
 
@@ -34,6 +36,11 @@ python scripts/regression_gate.py \
   --cases ./regression_cases.json \
   --thresholds ./thresholds.json
 ```
+
+说明：
+- `--cases` 支持两种格式：
+  - bundle：`{"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}`
+  - legacy：`[{ "dataset_id":"...", ... }, ...]`（每项带 dataset_id；会被自动归并到一个 dataset）
 
 ## Retrieval-only Gate（不依赖 RAGAS/LLM）
 
@@ -77,3 +84,12 @@ python scripts/regression_gate.py \
 > 注意：`thresholds.json` 支持两种写法：
 > - 简写：`"faithfulness": 0.7`（等价于 `{"min": 0.7}`）
 > - 完整：`"abstain_rate": {"max": 0.02}` / `{"min": 0.3, "max": 0.9}`
+
+## Evidence Pack → 回归用例（证据闭环）
+
+如果你希望从“检索预览”直接沉淀可回归的 Ground Truth 证据，推荐使用 Evidence Pack 工作流：
+
+- UI：Knowledge 检索预览勾选证据 → 导出 Evidence Pack → 回归用例库导入创建用例
+- CLI：Evidence Pack JSON → 回归用例 bundle v1 → regression_gate 导入/运行/gate
+
+详见：`docs/guides/evidence_pack_to_regression.md`

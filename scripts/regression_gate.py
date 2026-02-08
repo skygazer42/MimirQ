@@ -28,12 +28,41 @@ def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _coerce_cases(obj: Any) -> list[dict[str, Any]]:
-    if isinstance(obj, list):
-        return [x for x in obj if isinstance(x, dict)]
+def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
+    """
+    Normalize case bundle payloads into: (dataset_id, items[]).
+
+    Supported shapes:
+    - Export bundle v1: {"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}
+    - Minimal bundle: {"dataset_id":"...","items":[...]}
+    - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
+    """
     if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        return [x for x in obj["items"] if isinstance(x, dict)]
-    raise ValueError("cases file must be a JSON array, or an object with { items: [...] }")
+        ds = str(obj.get("dataset_id") or "").strip()
+        if ds:
+            items = [x for x in obj.get("items") if isinstance(x, dict)]  # type: ignore[union-attr]
+            # Defensive: strip accidental dataset_id field inside each item (API expects dataset_id only at top-level).
+            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
+            return ds, cleaned
+        # Fall back: accept bundles that forgot top-level dataset_id but include it per item.
+        return coerce_case_bundle(list(obj.get("items") or []))
+
+    if isinstance(obj, list):
+        items = [x for x in obj if isinstance(x, dict)]
+        dsids = []
+        for it in items:
+            ds = str(it.get("dataset_id") or "").strip()
+            if ds and ds not in dsids:
+                dsids.append(ds)
+        if not dsids:
+            raise ValueError("dataset_id is required in cases bundle")
+        if len(dsids) > 1:
+            raise ValueError("mixed dataset_id in cases bundle")
+        dsid = dsids[0]
+        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
+        return dsid, cleaned
+
+    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
 
 
 def _headers(args: argparse.Namespace) -> dict[str, str]:
@@ -160,7 +189,7 @@ def main() -> int:
 
     cases_path = Path(args.cases)
     _require(cases_path.exists(), f"cases file not found: {cases_path}")
-    items = _coerce_cases(_load_json(cases_path))
+    dataset_id, items = coerce_case_bundle(_load_json(cases_path))
     _require(len(items) > 0, "cases file contains no items")
 
     metrics = parse_metrics_list(args.metrics)
@@ -189,6 +218,7 @@ def main() -> int:
             r = client.post(
                 f"{base}/evaluations/ragas/regression/cases/import",
                 json={
+                    "dataset_id": dataset_id,
                     "overwrite": bool(args.overwrite),
                     "max_items": min(2000, len(items)),
                     "items": items,
@@ -204,14 +234,16 @@ def main() -> int:
         want_keys = set()
         for it in items:
             q = (str(it.get("question") or "")).strip()
-            dsid = it.get("dataset_id") or ""
             if q:
-                want_keys.add(f"{q}\n{dsid}")
+                want_keys.add(f"{q}\n{dataset_id}")
 
         matched_ids: list[str] = []
         skip = 0
         while True:
-            r = client.get(f"{base}/evaluations/ragas/regression/cases", params={"skip": skip, "limit": 200})
+            r = client.get(
+                f"{base}/evaluations/ragas/regression/cases",
+                params={"skip": skip, "limit": 200, "dataset_id": dataset_id},
+            )
             r.raise_for_status()
             data = r.json() or {}
             rows = data.get("items") or []
@@ -235,6 +267,7 @@ def main() -> int:
             f"{base}/evaluations/ragas/regression/runs",
             json={
                 "case_ids": matched_ids,
+                "dataset_id": dataset_id,
                 "metrics": metrics,
                 "skip_empty_contexts": True,
                 "max_cases": min(500, len(matched_ids)),

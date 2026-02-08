@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-
 REGRESSION_CASE_BUNDLE_SCHEMA_V1 = "mimirq.regression_cases.v1"
 
 
