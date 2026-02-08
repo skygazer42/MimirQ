@@ -23,6 +23,9 @@ class DatasetRAGDefaults(BaseModel):
     These defaults are applied when the chat request doesn't explicitly provide the corresponding fields.
     """
 
+    # Optional retrieval preset (applied by ChatRAGConfig validator when merged).
+    retrieval_profile: Optional[str] = None
+
     top_k: Optional[int] = Field(default=None, ge=1, le=100)
     score_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     retrieval_mode: Optional[str] = None  # hybrid | vector | keyword | mmr | auto

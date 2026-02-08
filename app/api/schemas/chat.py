@@ -112,6 +112,11 @@ class HistoryMessage(BaseModel):
 class ChatRAGConfig(BaseModel):
     """RAG parameters specific to the chat endpoint."""
 
+    # Optional retrieval preset (applies internal recall-first overrides).
+    # Supported:
+    # - "recall20": maximize chunk-level Hit@20 (top_k>=20, score_threshold=0.0, etc.)
+    retrieval_profile: Optional[str] = None
+
     top_k: int = Field(default_factory=lambda: settings.RETRIEVAL_TOP_K, ge=1, le=100)
     score_threshold: float = Field(default_factory=lambda: settings.SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     max_tokens: int = Field(default=2000, ge=1, le=200_000)
@@ -168,6 +173,28 @@ class ChatRAGConfig(BaseModel):
         self.vector_weight = v / total
         self.keyword_weight = k / total
         return self
+
+    @model_validator(mode="after")
+    def _apply_retrieval_profile(self) -> "ChatRAGConfig":
+        """
+        Apply retrieval presets by mutating the effective config.
+
+        Note: presets are allowed to override user-provided values. This is intentional: a preset
+        is a contract about retrieval behavior, not just a suggestion.
+        """
+        p = (self.retrieval_profile or "").strip().lower()
+        if not p:
+            self.retrieval_profile = None
+            return self
+
+        if p == "recall20":
+            # Guarantee: at least 20 candidates returned and no similarity threshold filtering.
+            self.top_k = max(int(self.top_k or 0), 20)
+            self.score_threshold = 0.0
+            self.retrieval_profile = "recall20"
+            return self
+
+        raise ValueError("retrieval_profile must be one of: recall20")
 
 class ChatRequest(BaseModel):
     """Chat request."""
