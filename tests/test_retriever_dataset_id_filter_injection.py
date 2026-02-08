@@ -41,6 +41,21 @@ def test_hybrid_search_injects_dataset_id_into_metadata_filter(monkeypatch):  # 
 
     monkeypatch.setattr(r, "_search_bm25", _fake_search_bm25, raising=True)
 
+    def _fake_search_lexical_db(  # noqa: ANN001
+        *,
+        query: str,
+        top_k: int,
+        document_ids,
+        tenant_id,
+        metadata_filter=None,
+    ):
+        captured["lexical_metadata_filter"] = metadata_filter
+        return []
+
+    # New channel: persistent lexical fallback (Postgres FTS/trigram).
+    # Use raising=False for back-compat while the method is being introduced.
+    monkeypatch.setattr(r, "_search_lexical_db", _fake_search_lexical_db, raising=False)
+
     r._hybrid_search(
         query="hello",
         top_k=3,
@@ -54,4 +69,4 @@ def test_hybrid_search_injects_dataset_id_into_metadata_filter(monkeypatch):  # 
     want = {"dataset_id": str(dataset_id)}
     assert captured.get("vector_metadata_filter") == want
     assert captured.get("bm25_metadata_filter") == want
-
+    assert captured.get("lexical_metadata_filter") == want

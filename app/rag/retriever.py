@@ -18,7 +18,7 @@ from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, Callba
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, PrivateAttr
-from sqlalchemy import tuple_
+from sqlalchemy import func, text, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -84,6 +84,8 @@ class HybridRetriever(BaseRetriever):
     # Best-effort debug metrics for the last retrieval call (per retriever instance).
     # Used by debug endpoints / observability to expose trimming/overfetch behavior.
     _last_debug_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    # Cache whether pg_trgm is available for lexical DB search (per retriever instance).
+    _lexical_pg_trgm_available: Optional[bool] = PrivateAttr(default=None)
 
     def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
         if not docs:
@@ -783,6 +785,230 @@ class HybridRetriever(BaseRetriever):
             return []
         return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
 
+    def _search_lexical_db(  # noqa: PLR0915
+        self,
+        *,
+        query: str,
+        top_k: int = 10,
+        document_ids: Optional[List[UUID]] = None,
+        tenant_id: Optional[UUID] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Persistent lexical retrieval backed by the primary Postgres DB.
+
+        Intended as a "last mile" safety net for false negatives (numbers, codes, exact phrases)
+        when dense retrieval or in-memory BM25 miss.
+
+        Implementation:
+        - Full-text search: websearch_to_tsquery + ts_rank_cd (fast with a GIN tsvector index)
+        - Optional: pg_trgm similarity fallback for short / code-like queries (fast with a trigram index)
+
+        Returns dicts with raw `score` values; downstream fusion normalizes.
+        """
+        raw_query = str(query or "").strip()
+        if not raw_query:
+            return []
+        if not bool(getattr(settings, "LEXICAL_DB_ENABLED", True)):
+            return []
+
+        tenant_uuid: Optional[UUID] = tenant_id
+        if tenant_uuid is None:
+            try:
+                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            except Exception:
+                tenant_uuid = None
+        if tenant_uuid is None:
+            return []
+
+        # Best-effort: extract dataset scope from the metadata filter so we can push it down via join.
+        dataset_uuid: Optional[UUID] = None
+        dataset_str: Optional[str] = None
+        if isinstance(metadata_filter, dict):
+            ds_raw = metadata_filter.get("dataset_id")
+            if isinstance(ds_raw, str) and ds_raw.strip():
+                dataset_str = ds_raw.strip()
+                try:
+                    dataset_uuid = UUID(dataset_str)
+                except Exception:
+                    dataset_uuid = None
+
+        # Config knobs (keep safe defaults even if not present in Settings yet).
+        fts_config = str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple").strip() or "simple"
+        fetch_mult = int(getattr(settings, "LEXICAL_DB_FETCH_MULTIPLIER", 4) or 4)
+        fetch_mult = max(1, fetch_mult)
+        fetch_cap = int(getattr(settings, "LEXICAL_DB_MAX_CANDIDATES", 200) or 200)
+        fetch_cap = max(10, fetch_cap)
+        want_trgm = bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True))
+        trgm_min_chars = int(getattr(settings, "LEXICAL_DB_TRGM_MIN_QUERY_CHARS", 3) or 3)
+        trgm_min_chars = max(1, trgm_min_chars)
+
+        limit = max(0, int(top_k or 0))
+        if limit <= 0:
+            return []
+        fetch_k = min(fetch_cap, max(limit, limit * fetch_mult))
+
+        db = SessionLocal()
+        try:
+            bind = db.get_bind()
+            if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+                return []
+
+            def _base_query():
+                q = (
+                    db.query(
+                        DocumentChunk.id,
+                        DocumentChunk.content,
+                        DocumentChunk.doc_metadata,
+                        DocumentChunk.tenant_id,
+                        DocumentChunk.document_id,
+                        DocumentChunk.chunk_index,
+                        DocumentChunk.page_number,
+                    )
+                    .join(DBDocument, DocumentChunk.document_id == DBDocument.id)
+                    .filter(DBDocument.status == "completed")
+                    .filter(DBDocument.archived_at.is_(None))
+                    .filter(DBDocument.disabled_at.is_(None))
+                    .filter(DocumentChunk.disabled_at.is_(None))
+                    .filter(DocumentChunk.tenant_id == tenant_uuid)
+                )
+                if dataset_uuid is not None:
+                    q = q.filter(DBDocument.dataset_id == dataset_uuid)
+                if document_ids:
+                    q = q.filter(DocumentChunk.document_id.in_(document_ids))
+                return q
+
+            results_by_id: Dict[str, Dict[str, Any]] = {}
+
+            # 1) Full-text search (FTS)
+            try:
+                vector = func.to_tsvector(fts_config, DocumentChunk.content)
+                tsq = func.websearch_to_tsquery(fts_config, raw_query)
+                rank = func.ts_rank_cd(vector, tsq).label("fts_rank")
+                q1 = (
+                    _base_query()
+                    .add_columns(rank)
+                    .filter(vector.op("@@")(tsq))
+                    .order_by(rank.desc())
+                    .limit(fetch_k)
+                )
+                for row in q1.all():
+                    try:
+                        (
+                            chunk_id,
+                            content,
+                            doc_metadata,
+                            tenant_uuid_row,
+                            document_uuid_row,
+                            chunk_index,
+                            page_number,
+                            fts_rank,
+                        ) = row
+                    except Exception:
+                        continue
+
+                    cid = str(chunk_id)
+                    meta = dict(doc_metadata or {})
+                    meta.setdefault("tenant_id", str(tenant_uuid_row))
+                    meta.setdefault("document_id", str(document_uuid_row))
+                    meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+                    meta.setdefault("chunk_id", cid)
+                    meta.setdefault("source", meta.get("source", "unknown"))
+                    if dataset_str:
+                        meta.setdefault("dataset_id", dataset_str)
+                    if page_number is not None and not meta.get("page"):
+                        meta["page"] = page_number
+                    meta.setdefault("lexical_method", "fts")
+                    meta.setdefault("lexical_score_raw", float(fts_rank or 0.0))
+
+                    if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
+                        continue
+
+                    results_by_id[cid] = {
+                        "chunk_id": cid,
+                        "content": content or "",
+                        "metadata": meta,
+                        "score": float(fts_rank or 0.0),
+                    }
+            except Exception as exc:
+                logger.debug("Lexical FTS query failed: %s", exc)
+
+            # 2) Trigram fallback (pg_trgm)
+            if want_trgm and len(raw_query) >= trgm_min_chars:
+                pg_trgm_available = self._lexical_pg_trgm_available
+                if pg_trgm_available is None:
+                    try:
+                        row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='pg_trgm' LIMIT 1;")).first()
+                        pg_trgm_available = bool(row)
+                    except Exception:
+                        pg_trgm_available = False
+                    self._lexical_pg_trgm_available = pg_trgm_available
+
+                if pg_trgm_available:
+                    try:
+                        sim = func.similarity(DocumentChunk.content, raw_query).label("trgm_sim")
+                        q2 = (
+                            _base_query()
+                            .add_columns(sim)
+                            .filter(DocumentChunk.content.op("%")(raw_query))
+                            .order_by(sim.desc())
+                            .limit(fetch_k)
+                        )
+                        for row in q2.all():
+                            try:
+                                (
+                                    chunk_id,
+                                    content,
+                                    doc_metadata,
+                                    tenant_uuid_row,
+                                    document_uuid_row,
+                                    chunk_index,
+                                    page_number,
+                                    trgm_sim,
+                                ) = row
+                            except Exception:
+                                continue
+
+                            cid = str(chunk_id)
+                            score = float(trgm_sim or 0.0)
+                            meta = dict(doc_metadata or {})
+                            meta.setdefault("tenant_id", str(tenant_uuid_row))
+                            meta.setdefault("document_id", str(document_uuid_row))
+                            meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+                            meta.setdefault("chunk_id", cid)
+                            meta.setdefault("source", meta.get("source", "unknown"))
+                            if dataset_str:
+                                meta.setdefault("dataset_id", dataset_str)
+                            if page_number is not None and not meta.get("page"):
+                                meta["page"] = page_number
+                            meta.setdefault("lexical_method", "trgm")
+                            meta.setdefault("lexical_score_raw", score)
+
+                            if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
+                                continue
+
+                            existing = results_by_id.get(cid)
+                            if existing is None or float(existing.get("score", 0.0) or 0.0) < score:
+                                results_by_id[cid] = {
+                                    "chunk_id": cid,
+                                    "content": content or "",
+                                    "metadata": meta,
+                                    "score": score,
+                                }
+                    except Exception as exc:
+                        logger.debug("Lexical trigram query failed: %s", exc)
+
+            if not results_by_id:
+                return []
+            merged = list(results_by_id.values())
+            merged.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+            return merged[:limit]
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
     def _hybrid_search(
         self,
         query: str,
@@ -860,6 +1086,8 @@ class HybridRetriever(BaseRetriever):
 
         want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
         want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
+        # Persistent lexical DB search is an additional sparse channel that does not depend on the in-memory BM25 flag.
+        want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr")
         if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             # Enforce the global flag even if a BM25 cache exists; fall back to vector so "keyword"
             # mode doesn't become a hard-fail for users.
@@ -905,6 +1133,21 @@ class HybridRetriever(BaseRetriever):
                 metadata_filter=bm25_filter,
             )
 
+        # 2b) Persistent lexical fallback (Postgres FTS / pg_trgm)
+        lexical_results: List[Dict[str, Any]] = []
+        if want_lexical:
+            try:
+                lexical_results = self._search_lexical_db(
+                    query=query,
+                    top_k=fetch_k,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                    metadata_filter=bm25_filter,
+                )
+            except Exception as exc:
+                logger.warning("Lexical DB search failed: %s", exc)
+                lexical_results = []
+
         # Fallback: when single-channel mode fails, try the other channel.
         if retrieval_mode == "vector" and not vector_results:
             bm25_results = self._search_bm25(
@@ -914,7 +1157,18 @@ class HybridRetriever(BaseRetriever):
                 tenant_id=tenant_id,
                 metadata_filter=bm25_filter,
             )
-        elif retrieval_mode == "keyword" and not bm25_results:
+            try:
+                lexical_results = self._search_lexical_db(
+                    query=query,
+                    top_k=fetch_k,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                    metadata_filter=bm25_filter,
+                )
+            except Exception as exc:
+                logger.warning("Lexical DB search failed: %s", exc)
+                lexical_results = []
+        elif retrieval_mode == "keyword" and not bm25_results and not lexical_results:
             vector_store = get_vector_store()
             try:
                 fallback_kwargs = {
@@ -981,6 +1235,7 @@ class HybridRetriever(BaseRetriever):
         merged_results = self._merge_results(
             vector_results,
             bm25_results,
+            lexical_results,
             alpha=alpha,
             fusion_strategy=self.fusion_strategy,
             rrf_k=self.rrf_k,
@@ -2123,11 +2378,14 @@ class HybridRetriever(BaseRetriever):
         self,
         vector_results: List[Dict[str, Any]],
         bm25_results: List[Dict[str, Any]],
+        lexical_results: Optional[List[Dict[str, Any]]] = None,
         alpha: float = 0.5,
         fusion_strategy: str | None = None,
         rrf_k: int | None = None,
     ) -> List[Dict[str, Any]]:
-        """Merge vector/BM25 results into a single ranked list."""
+        """Merge retrieval channel results into a single ranked list."""
+
+        lexical_results = list(lexical_results or [])
 
         def normalize(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
             if not results:
@@ -2147,14 +2405,21 @@ class HybridRetriever(BaseRetriever):
 
         vector_norm = normalize(vector_results)
         bm25_norm = normalize(bm25_results)
+        lexical_norm = normalize(lexical_results)
 
         fusion = (fusion_strategy or "linear").lower().strip()
         if fusion in ("rrf", "reciprocal_rank_fusion"):
-            v_sorted = sorted(vector_results, key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
-            b_sorted = sorted(bm25_results, key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+            def _rank_sort_key(r: Dict[str, Any]) -> tuple[float, str]:
+                # Deterministic ordering is important for regression replay.
+                return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
+
+            v_sorted = sorted(vector_results, key=_rank_sort_key)
+            b_sorted = sorted(bm25_results, key=_rank_sort_key)
+            l_sorted = sorted(lexical_results, key=_rank_sort_key)
 
             v_rank: Dict[str, int] = {}
             b_rank: Dict[str, int] = {}
+            l_rank: Dict[str, int] = {}
             for idx, r in enumerate(v_sorted, 1):
                 key = self._result_key(r)
                 if key not in v_rank:
@@ -2163,45 +2428,61 @@ class HybridRetriever(BaseRetriever):
                 key = self._result_key(r)
                 if key not in b_rank:
                     b_rank[key] = idx
+            for idx, r in enumerate(l_sorted, 1):
+                key = self._result_key(r)
+                if key not in l_rank:
+                    l_rank[key] = idx
 
             k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
             k0 = max(1, k0)
 
             merged: Dict[str, Dict[str, Any]] = {}
             raw_scores: List[float] = []
-            for key in set(vector_norm.keys()) | set(bm25_norm.keys()):
+            keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()))
+            for key in keys:
                 v_data = vector_norm.get(key, {}).get("data")
                 b_data = bm25_norm.get(key, {}).get("data")
-                data = v_data or b_data
+                l_data = lexical_norm.get(key, {}).get("data")
+                data = v_data or b_data or l_data
                 if not data:
                     continue
 
-                if v_data and b_data:
-                    merged_meta = dict(v_data.get("metadata") or {})
-                    b_meta = b_data.get("metadata") or {}
-                    for mk, mv in b_meta.items():
+                # Merge metadata from all channels (prefer existing non-empty values).
+                merged_meta = dict(data.get("metadata") or {})
+                for src in (v_data, b_data, l_data):
+                    if not src or src is data:
+                        continue
+                    src_meta = src.get("metadata") or {}
+                    for mk, mv in src_meta.items():
                         if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
                             merged_meta[mk] = mv
-                    merged_data = dict(v_data)
-                    merged_data["metadata"] = merged_meta
-                    if not merged_data.get("chunk_id") and b_data.get("chunk_id"):
-                        merged_data["chunk_id"] = b_data.get("chunk_id")
-                    data = merged_data
+                merged_data = dict(data)
+                merged_data["metadata"] = merged_meta
+                if not merged_data.get("chunk_id"):
+                    for src in (v_data, b_data, l_data):
+                        if src and src.get("chunk_id"):
+                            merged_data["chunk_id"] = src.get("chunk_id")
+                            break
+                data = merged_data
 
                 vr = v_rank.get(key)
                 br = b_rank.get(key)
+                lr = l_rank.get(key)
                 rrf_raw = (1.0 / (k0 + vr)) if vr else 0.0
                 rrf_raw += (1.0 / (k0 + br)) if br else 0.0
+                rrf_raw += (1.0 / (k0 + lr)) if lr else 0.0
                 raw_scores.append(float(rrf_raw))
 
                 merged[key] = {
                     **data,
                     "vector_score": float(vector_norm.get(key, {}).get("score", 0.0) or 0.0),
                     "bm25_score": float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "lexical_score": float(lexical_norm.get(key, {}).get("score", 0.0) or 0.0),
                     "rrf_score_raw": float(rrf_raw),
                     "rrf_k": k0,
                     "rrf_rank_vector": vr,
                     "rrf_rank_bm25": br,
+                    "rrf_rank_lexical": lr,
                     "fusion_strategy": "rrf",
                     "score": float(rrf_raw),
                 }
@@ -2214,49 +2495,79 @@ class HybridRetriever(BaseRetriever):
                     raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
                     item["score"] = (raw - min_s) / rng
 
-            return sorted(merged.values(), key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+            def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, str]:
+                return (
+                    -float(item.get("score", 0.0) or 0.0),
+                    -float(item.get("rrf_score_raw", 0.0) or 0.0),
+                    -float(item.get("vector_score", 0.0) or 0.0),
+                    -float(item.get("bm25_score", 0.0) or 0.0),
+                    -float(item.get("lexical_score", 0.0) or 0.0),
+                    self._result_key(item),
+                )
+
+            return sorted(merged.values(), key=_sort_key)
 
         merged: Dict[str, Dict[str, Any]] = {}
-        for key in set(vector_norm.keys()) | set(bm25_norm.keys()):
+        keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()))
+        for key in keys:
             v_score = vector_norm.get(key, {}).get("score", 0.0)
             b_score = bm25_norm.get(key, {}).get("score", 0.0)
+            l_score = lexical_norm.get(key, {}).get("score", 0.0)
             v_data = vector_norm.get(key, {}).get("data")
             b_data = bm25_norm.get(key, {}).get("data")
-            data = v_data or b_data
+            l_data = lexical_norm.get(key, {}).get("data")
+            data = v_data or b_data or l_data
             if not data:
                 continue
 
-            # Merge metadata from both channels (e.g., img_id may only exist in BM25/DB metadata)
-            if v_data and b_data:
-                merged_meta = dict(v_data.get("metadata") or {})
-                b_meta = b_data.get("metadata") or {}
-                for k, v in b_meta.items():
-                    if k not in merged_meta or merged_meta.get(k) in (None, "", [], {}):
-                        merged_meta[k] = v
-                merged_data = dict(v_data)
-                merged_data["metadata"] = merged_meta
-                if not merged_data.get("chunk_id") and b_data.get("chunk_id"):
-                    merged_data["chunk_id"] = b_data.get("chunk_id")
-                data = merged_data
+            # Merge metadata from all channels (e.g., img_id may only exist in BM25/DB metadata).
+            merged_meta = dict(data.get("metadata") or {})
+            for src in (v_data, b_data, l_data):
+                if not src or src is data:
+                    continue
+                src_meta = src.get("metadata") or {}
+                for mk, mv in src_meta.items():
+                    if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
+                        merged_meta[mk] = mv
+            merged_data = dict(data)
+            merged_data["metadata"] = merged_meta
+            if not merged_data.get("chunk_id"):
+                for src in (v_data, b_data, l_data):
+                    if src and src.get("chunk_id"):
+                        merged_data["chunk_id"] = src.get("chunk_id")
+                        break
+            data = merged_data
 
             has_v = key in vector_norm
             has_b = key in bm25_norm
-            if has_v and has_b:
-                fused_score = alpha * float(v_score) + (1 - alpha) * float(b_score)
+            has_l = key in lexical_norm
+            keyword_score = max(float(b_score), float(l_score))
+            if has_v and (has_b or has_l):
+                fused_score = alpha * float(v_score) + (1 - alpha) * float(keyword_score)
             elif has_v:
                 fused_score = float(v_score)
             else:
-                fused_score = float(b_score)
+                fused_score = float(keyword_score)
 
             merged[key] = {
                 **data,
                 "vector_score": float(v_score),
                 "bm25_score": float(b_score),
+                "lexical_score": float(l_score),
                 "fusion_strategy": "linear",
                 "score": fused_score,
             }
 
-        return sorted(merged.values(), key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+        def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, str]:
+            return (
+                -float(item.get("score", 0.0) or 0.0),
+                -float(item.get("vector_score", 0.0) or 0.0),
+                -float(item.get("bm25_score", 0.0) or 0.0),
+                -float(item.get("lexical_score", 0.0) or 0.0),
+                self._result_key(item),
+            )
+
+        return sorted(merged.values(), key=_sort_key)
 
     def _weight_rerank(
         self,
