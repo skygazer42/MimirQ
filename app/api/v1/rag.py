@@ -173,6 +173,168 @@ async def retrieve_preview(
     )
 
 
+class EvidenceRetrieveRequest(BaseModel):
+    """
+    Production retrieval-only endpoint request.
+
+    This is intentionally a small, stable contract for downstream systems that want to
+    answer the question: "Do we have evidence for this query in the corpus?"
+    """
+
+    query: str = Field(min_length=1)
+    history: List[HistoryMessage] = Field(default_factory=list)
+    dataset_id: Optional[UUID] = None
+    document_ids: List[UUID] = Field(default_factory=list)
+    rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
+
+
+class EvidenceRetrieveResponse(BaseModel):
+    query_for_retrieval: str
+    citations: List[Dict[str, Any]]
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    has_evidence: bool = False
+    abstain_triggered: bool = False
+    abstain_reason: Optional[str] = None
+
+
+@router.post("/retrieve", response_model=EvidenceRetrieveResponse)
+async def retrieve_evidence(
+    body: EvidenceRetrieveRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Execute retrieval only (no answer generation) and return evidence chunks.
+
+    Defaults to a recall-first profile when the caller omits rag_config.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    scope_dataset_id: UUID | None = None
+    scope_document_ids: list[UUID] = []
+    if body.document_ids:
+        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
+    elif body.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+        scope_dataset_id = body.dataset_id
+
+    # Optional existence check (keeps behavior consistent with chat).
+    if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+        if scope_document_ids:
+            pass
+        elif scope_dataset_id is not None:
+            from app.models.document import Document as DBDocument
+            from app.services.dataset_profile_service import build_dataset_documents_query
+
+            _ds, q = build_dataset_documents_query(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=scope_dataset_id,
+            )
+            q = q.filter(
+                (DBDocument.status == "completed")
+                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            )
+            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
+            if not exists:
+                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+        else:
+            exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
+            if not exists:
+                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+
+    from app.rag.pipelines.langgraph import (
+        _retrieve_node,  # internal reuse
+        build_rag_state,
+    )
+
+    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    rag_config_provided = "rag_config" in request_fields_set
+
+    effective_rag_config = body.rag_config
+    dataset_rag_defaults_applied_fields: list[str] = []
+    rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
+    if not rag_config_provided:
+        effective_rag_config = ChatRAGConfig(retrieval_profile="recall50")
+        rag_fields_set = set()
+    try:
+        ds_id = None
+        if scope_dataset_id is not None:
+            ds_id = scope_dataset_id
+        elif scope_document_ids:
+            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
+        if ds_id is not None:
+            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
+            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+                rag_config=effective_rag_config,
+                request_fields_set=rag_fields_set,
+                raw_dataset_defaults=raw_defaults,
+            )
+    except Exception:
+        dataset_rag_defaults_applied_fields = []
+
+    state = build_rag_state(
+        question=body.query,
+        history=[m.model_dump() for m in body.history],
+        document_ids=scope_document_ids or None,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=scope_dataset_id,
+        top_k=effective_rag_config.top_k,
+        score_threshold=effective_rag_config.score_threshold,
+        retrieval_mode=effective_rag_config.retrieval_mode,
+        retrieval_profile=effective_rag_config.retrieval_profile,
+        enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
+        query_aliases=effective_rag_config.query_aliases,
+        query_alias_max_queries=effective_rag_config.query_alias_max_queries,
+        enable_multi_query=effective_rag_config.enable_multi_query,
+        multi_query_count=effective_rag_config.multi_query_count,
+        multi_query_temperature=effective_rag_config.multi_query_temperature,
+        multi_query_max_chars=effective_rag_config.multi_query_max_chars,
+        alpha=effective_rag_config.alpha,
+        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+        vector_weight=effective_rag_config.vector_weight,
+        keyword_weight=effective_rag_config.keyword_weight,
+        mmr_lambda=effective_rag_config.mmr_lambda,
+        enable_reranker=effective_rag_config.enable_reranker,
+        reranker_provider=effective_rag_config.reranker_provider,
+        reranker_top_n=effective_rag_config.reranker_top_n,
+        visible_evidence_only=effective_rag_config.visible_evidence_only,
+        ab_user_key=account_id,
+        db=db,
+    )
+
+    result = _retrieve_node(state) or {}
+    citations = result.get("citations") or []
+    metrics = dict(result.get("metrics") or {})
+    query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
+
+    # Ensure minimum fields exist for downstream debugging.
+    metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
+    metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
+    if dataset_rag_defaults_applied_fields:
+        metrics.setdefault("dataset_rag_defaults_applied", True)
+        metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+
+    abstain_triggered = bool(result.get("abstain_triggered") or metrics.get("abstain_triggered") or False)
+    abstain_reason = result.get("abstain_reason") or metrics.get("abstain_reason") or None
+    has_evidence = bool(citations) and not abstain_triggered
+
+    return EvidenceRetrieveResponse(
+        query_for_retrieval=query_for_retrieval,
+        citations=citations,
+        metrics=metrics,
+        has_evidence=has_evidence,
+        abstain_triggered=abstain_triggered,
+        abstain_reason=abstain_reason,
+    )
+
+
 class PromptPreviewRequest(BaseModel):
     query: str = Field(min_length=1)
     history: List[HistoryMessage] = Field(default_factory=list)
