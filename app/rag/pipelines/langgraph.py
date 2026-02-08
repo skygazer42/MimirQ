@@ -36,6 +36,7 @@ from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
 from app.rag.core.text import (
+    build_abstain_followup,
     extract_evidence_text,
     guess_retrieval_mode,
     is_claim_supported,
@@ -666,6 +667,9 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
     metrics["abstain_min_top_relevance_score"] = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
     metrics["top_relevance_score"] = round(float(top_rel or 0.0), 3)
+
+    if bool(abstain_triggered):
+        metrics["abstain_followup"] = build_abstain_followup(reason=abstain_reason, citations=citations)
 
     return {
         **state,
