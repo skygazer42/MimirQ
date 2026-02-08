@@ -19,10 +19,12 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from pydantic import ValidationError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.utils.url_ingest import validate_url_for_ingest
 from app.api.schemas.connector import (
     ConnectorConfigCreateRequest,
     ConnectorConfigListResponse,
@@ -32,6 +34,8 @@ from app.api.schemas.connector import (
     ConnectorRunCreateRequest,
     ConnectorRunListResponse,
     ConnectorRunOut,
+    ConnectorValidateRequest,
+    ConnectorValidateResponse,
     DriveFilesConnectorConfig,
     GitHubRepoConnectorConfig,
     MinioBucketConnectorConfig,
@@ -367,6 +371,153 @@ def list_connectors() -> list[ConnectorInfo]:
             supports_incremental=True,
         ),
     ]
+
+
+def _format_validation_error(exc: ValidationError) -> list[dict[str, Any]]:
+    """
+    Convert Pydantic ValidationError into a JSON-safe, UI-friendly list.
+    """
+    out: list[dict[str, Any]] = []
+    for e in exc.errors() or []:
+        out.append(
+            {
+                "loc": e.get("loc"),
+                "msg": e.get("msg"),
+                "type": e.get("type"),
+            }
+        )
+        if len(out) >= 50:
+            break
+    return out or [{"msg": "invalid config"}]
+
+
+def _validate_connector_schema(connector_id: str, config: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    connector_id = str(connector_id or "").strip()
+    cfg_obj: Any
+    if connector_id == "url_batch":
+        cfg_obj = UrlBatchConnectorConfig.model_validate(config or {})
+    elif connector_id == "web_crawl":
+        cfg_obj = WebCrawlConnectorConfig.model_validate(config or {})
+    elif connector_id == "github_repo":
+        cfg_obj = GitHubRepoConnectorConfig.model_validate(config or {})
+    elif connector_id == "drive_files":
+        cfg_obj = DriveFilesConnectorConfig.model_validate(config or {})
+    elif connector_id == "minio_bucket":
+        cfg_obj = MinioBucketConnectorConfig.model_validate(config or {})
+    elif connector_id == "mysql_catalog":
+        cfg_obj = MySQLCatalogConnectorConfig.model_validate(config or {})
+    elif connector_id == "sqlserver_catalog":
+        cfg_obj = SQLServerCatalogConnectorConfig.model_validate(config or {})
+    else:
+        raise ValueError("Unsupported connector_id")
+
+    cfg_dict = cfg_obj.model_dump(exclude_none=True)
+    return cfg_obj, cfg_dict
+
+
+async def _best_effort_connectivity_checks(*, connector_id: str, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """
+    Run bounded, best-effort connectivity checks.
+
+    These checks are designed to be safe:
+    - No large downloads
+    - No redirects (SSRF defense-in-depth)
+    - Fail-open (warnings) unless schema is invalid
+    """
+    checks: dict[str, Any] = {}
+    warnings: list[dict[str, Any]] = []
+
+    cid = str(connector_id or "").strip()
+    if cid == "url_batch":
+        urls = list(getattr(cfg, "urls", None) or [])
+        checked: list[dict[str, Any]] = []
+        ok = 0
+        for raw in urls[:3]:
+            url = str(raw or "").strip()
+            if not url:
+                continue
+            try:
+                normalized = await validate_url_for_ingest(url)
+                checked.append({"url": url, "ok": True, "normalized_url": normalized})
+                ok += 1
+            except HTTPException as exc:
+                checked.append({"url": url, "ok": False, "error": str(getattr(exc, "detail", "") or "")[:200]})
+                warnings.append({"code": "url_invalid", "url": url, "error": str(getattr(exc, "detail", "") or "")[:200]})
+            except Exception as exc:  # noqa: BLE001
+                checked.append({"url": url, "ok": False, "error": _safe_error_str(exc)})
+                warnings.append({"code": "url_check_error", "url": url, "error": _safe_error_str(exc)})
+        checks["url_ingest"] = {"checked": checked, "ok": ok == len(checked) if checked else True}
+
+    elif cid == "web_crawl":
+        start_urls = list(getattr(cfg, "start_urls", None) or [])
+        checked: list[dict[str, Any]] = []
+        ok = 0
+        for raw in start_urls[:3]:
+            url = str(raw or "").strip()
+            if not url:
+                continue
+            try:
+                normalized = await validate_url_for_ingest(url)
+                checked.append({"url": url, "ok": True, "normalized_url": normalized})
+                ok += 1
+            except HTTPException as exc:
+                checked.append({"url": url, "ok": False, "error": str(getattr(exc, "detail", "") or "")[:200]})
+                warnings.append({"code": "start_url_invalid", "url": url, "error": str(getattr(exc, "detail", "") or "")[:200]})
+            except Exception as exc:  # noqa: BLE001
+                checked.append({"url": url, "ok": False, "error": _safe_error_str(exc)})
+                warnings.append({"code": "start_url_check_error", "url": url, "error": _safe_error_str(exc)})
+        checks["url_ingest"] = {"checked": checked, "ok": ok == len(checked) if checked else True}
+
+    return checks, warnings
+
+
+@router.post("/validate", response_model=ConnectorValidateResponse)
+async def validate_connector_config(
+    payload: ConnectorValidateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Validate connector config (best-effort).
+
+    Returns ok/errors/warnings so UIs can surface issues without throwing hard 4xx/5xx on validation.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    connector_id = str(payload.connector_id or "").strip()
+    errors: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    checks: dict[str, Any] = {}
+
+    cfg_obj: Any | None = None
+    cfg_dict: dict[str, Any] = {}
+    try:
+        cfg_obj, cfg_dict = _validate_connector_schema(connector_id, dict(payload.config or {}))
+        checks["schema"] = {"ok": True}
+    except ValidationError as exc:
+        errors = _format_validation_error(exc)
+        checks["schema"] = {"ok": False}
+    except Exception as exc:  # noqa: BLE001
+        errors = [{"msg": _safe_error_str(exc)}]
+        checks["schema"] = {"ok": False}
+
+    config_out = redact_secrets(dict(cfg_dict or {}))
+    config_out = redact_connection_info(config_out, enabled=connector_id in _DB_CONNECTOR_IDS)
+
+    if not errors and bool(payload.check_connectivity) and cfg_obj is not None:
+        more_checks, more_warnings = await _best_effort_connectivity_checks(connector_id=connector_id, cfg=cfg_obj)
+        checks.update(more_checks)
+        warnings.extend(more_warnings)
+
+    return ConnectorValidateResponse(
+        ok=not bool(errors),
+        connector_id=connector_id,
+        config=config_out,
+        errors=errors,
+        warnings=warnings,
+        checks=checks,
+    )
 
 
 async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:

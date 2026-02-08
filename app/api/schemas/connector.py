@@ -364,6 +364,29 @@ class ConnectorRunCreateRequest(BaseModel):
     config: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ConnectorValidateRequest(BaseModel):
+    """
+    Best-effort connector config validation.
+
+    Notes:
+    - This endpoint is intended for operator UX (pre-flight checks).
+    - Connectivity checks are optional and best-effort; failures are surfaced as warnings.
+    """
+
+    connector_id: ConnectorId = "url_batch"
+    config: Dict[str, Any] = Field(default_factory=dict)
+    check_connectivity: bool = True
+
+
+class ConnectorValidateResponse(BaseModel):
+    ok: bool
+    connector_id: str
+    config: Dict[str, Any] = Field(default_factory=dict)
+    errors: List[Dict[str, Any]] = Field(default_factory=list)
+    warnings: List[Dict[str, Any]] = Field(default_factory=list)
+    checks: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ConnectorRunDocumentOut(BaseModel):
     document_id: UUID
     source_ref: Optional[str] = None
