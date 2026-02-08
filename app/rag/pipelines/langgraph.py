@@ -77,6 +77,7 @@ class RAGState(TypedDict, total=False):
     top_k: int
     score_threshold: float
     retrieval_mode: str
+    retrieval_profile: Optional[str]
     alpha: float
     enable_weight_rerank: bool
     vector_weight: float
@@ -313,26 +314,38 @@ def _retrieve_node(state: RAGState) -> RAGState:
         request_retrieval_mode = "hybrid"
         mode_norm = "hybrid"
 
-    retriever = hybrid_retriever.model_copy(
-        update={
-            "k": state.get("top_k", settings.RETRIEVAL_TOP_K),
-            "score_threshold": state.get("score_threshold", settings.SIMILARITY_THRESHOLD),
-            "alpha": state.get("alpha", 0.6),
-            "retrieval_mode": request_retrieval_mode,
-            "enable_weight_rerank": state.get("enable_weight_rerank", True),
-            "vector_weight": state.get("vector_weight", 0.6),
-            "keyword_weight": state.get("keyword_weight", 0.4),
-            "mmr_lambda": state.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA),
-            "enable_reranker": state.get("enable_reranker", settings.ENABLE_RERANKER),
-            "reranker_provider": state.get("reranker_provider", settings.RERANKER_PROVIDER),
-            "reranker_top_n": state.get("reranker_top_n", settings.RERANKER_TOP_N),
-            "tenant_id": state.get("tenant_id"),
-            "account_id": state.get("account_id"),
-            "dataset_id": state.get("dataset_id"),
-            "document_ids": state.get("document_ids"),
-            "metadata_filter": state.get("metadata_filter"),
-        }
-    )
+    profile_norm = str(state.get("retrieval_profile") or "").strip().lower()
+    retriever_update: Dict[str, Any] = {
+        "k": state.get("top_k", settings.RETRIEVAL_TOP_K),
+        "score_threshold": state.get("score_threshold", settings.SIMILARITY_THRESHOLD),
+        "alpha": state.get("alpha", 0.6),
+        "retrieval_mode": request_retrieval_mode,
+        "enable_weight_rerank": state.get("enable_weight_rerank", True),
+        "vector_weight": state.get("vector_weight", 0.6),
+        "keyword_weight": state.get("keyword_weight", 0.4),
+        "mmr_lambda": state.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA),
+        "enable_reranker": state.get("enable_reranker", settings.ENABLE_RERANKER),
+        "reranker_provider": state.get("reranker_provider", settings.RERANKER_PROVIDER),
+        "reranker_top_n": state.get("reranker_top_n", settings.RERANKER_TOP_N),
+        "tenant_id": state.get("tenant_id"),
+        "account_id": state.get("account_id"),
+        "dataset_id": state.get("dataset_id"),
+        "document_ids": state.get("document_ids"),
+        "metadata_filter": state.get("metadata_filter"),
+    }
+    if profile_norm == "recall20":
+        retriever_update["k"] = max(int(retriever_update.get("k") or 0), 20)
+        retriever_update["score_threshold"] = 0.0
+        # Do not drop candidates due to dedup/diversity heuristics in recall-first mode.
+        retriever_update.update(
+            {
+                "dedup_enabled": False,
+                "max_chunks_per_doc": 0,
+                "min_distinct_docs": 0,
+            }
+        )
+
+    retriever = hybrid_retriever.model_copy(update=retriever_update)
     # Query Expansion (Multi-Query / HyDE, optional)
     multi_query_elapsed = 0.0
     multi_query_used = False
@@ -1250,6 +1263,7 @@ def build_rag_state(
     top_k: int = 5,
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
+    retrieval_profile: Optional[str] = None,
     alpha: float = 0.6,
     enable_weight_rerank: bool = True,
     vector_weight: float = 0.6,
@@ -1338,6 +1352,17 @@ def build_rag_state(
         except Exception:
             pass
 
+    # Retrieval profiles (runtime presets). Allowed to override caller-provided values.
+    profile_norm = str(retrieval_profile or "").strip().lower()
+    if profile_norm == "recall20":
+        top_k = max(int(top_k or 0), 20)
+        score_threshold = 0.0
+        retrieval_profile = "recall20"
+    elif not profile_norm:
+        retrieval_profile = None
+    else:
+        retrieval_profile = profile_norm
+
     return {
         "question": question,
         "history": history or [],
@@ -1348,6 +1373,7 @@ def build_rag_state(
         "top_k": top_k,
         "score_threshold": score_threshold,
         "retrieval_mode": retrieval_mode,
+        "retrieval_profile": retrieval_profile,
         "alpha": alpha,
         "enable_weight_rerank": enable_weight_rerank,
         "vector_weight": vector_weight,
