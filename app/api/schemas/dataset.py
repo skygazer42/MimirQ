@@ -26,6 +26,17 @@ class DatasetRAGDefaults(BaseModel):
     # Optional retrieval preset (applied by ChatRAGConfig validator when merged).
     retrieval_profile: Optional[str] = None
 
+    # Controlled query expansion for recall (optional).
+    enable_query_alias_expansion: Optional[bool] = None
+    query_aliases: Optional[Dict[str, List[str]]] = None
+    query_alias_max_queries: Optional[int] = Field(default=None, ge=0, le=20)
+
+    # Optional: per-dataset overrides for LLM multi-query generation (inherits global settings when None).
+    enable_multi_query: Optional[bool] = None
+    multi_query_count: Optional[int] = Field(default=None, ge=1, le=8)
+    multi_query_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    multi_query_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
+
     top_k: Optional[int] = Field(default=None, ge=1, le=100)
     score_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     retrieval_mode: Optional[str] = None  # hybrid | vector | keyword | mmr | auto

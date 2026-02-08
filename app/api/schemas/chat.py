@@ -117,6 +117,22 @@ class ChatRAGConfig(BaseModel):
     # - "recall20": maximize chunk-level Hit@20 (top_k>=20, score_threshold=0.0, etc.)
     retrieval_profile: Optional[str] = None
 
+    # Controlled query expansion for recall (optional).
+    # - query_aliases: dataset-scoped alias/synonym dictionary.
+    # - enable_query_alias_expansion:
+    #     - True  -> apply aliases when present
+    #     - False -> disable even if aliases exist
+    #     - None  -> default to enabled iff query_aliases is non-empty (dataset defaults can set this)
+    enable_query_alias_expansion: Optional[bool] = None
+    query_aliases: Optional[Dict[str, List[str]]] = None
+    query_alias_max_queries: Optional[int] = Field(default=None, ge=0, le=20)
+
+    # Optional: per-request overrides for LLM multi-query generation (inherits global settings when None).
+    enable_multi_query: Optional[bool] = None
+    multi_query_count: Optional[int] = Field(default=None, ge=1, le=8)
+    multi_query_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    multi_query_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
+
     top_k: int = Field(default_factory=lambda: settings.RETRIEVAL_TOP_K, ge=1, le=100)
     score_threshold: float = Field(default_factory=lambda: settings.SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     max_tokens: int = Field(default=2000, ge=1, le=200_000)
