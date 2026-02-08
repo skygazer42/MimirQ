@@ -24,6 +24,7 @@ from app.rag.core.conversation import format_history_text
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.core.text import (
+    build_abstain_followup,
     extract_evidence_text,
     guess_recall_bucket,
     guess_retrieval_mode,
@@ -1126,6 +1127,7 @@ Requirements:
                             "abstain_enabled": bool(abstain_enabled),
                             "abstain_triggered": True,
                             "abstain_reason": abstain_reason,
+                            "abstain_followup": build_abstain_followup(reason=abstain_reason, citations=citations),
                             "abstain_min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
                             "abstain_min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
                             "top_relevance_score": round(float(top_rel or 0.0), 3),

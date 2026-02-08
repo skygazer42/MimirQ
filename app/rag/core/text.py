@@ -447,3 +447,53 @@ def is_claim_supported(claim: str, evidence: str) -> bool:
     if claim_n <= 8:
         return shared_n >= 2 or (shared_n / float(claim_n)) >= 0.34
     return shared_n >= 2 and (shared_n / float(claim_n)) >= 0.2
+
+
+def build_abstain_followup(
+    *,
+    reason: str | None,
+    citations: list[dict[str, Any]] | None = None,
+    max_options: int = 3,
+) -> dict[str, Any]:
+    """Build deterministic follow-up guidance for abstain responses.
+
+    PII-safety constraints:
+    - Only expose doc identifiers/names (no raw chunk text).
+    - Do not do any extra network/model calls.
+    """
+    max_options = max(0, int(max_options or 0))
+
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for c in (citations or []) if isinstance(citations, list) else []:
+        if not isinstance(c, dict):
+            continue
+        did = c.get("document_id")
+        name = c.get("document_name") or c.get("source")
+        key = str(did or name or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        options.append(
+            {
+                "document_id": str(did) if did is not None else None,
+                "document_name": str(name) if name is not None else None,
+            }
+        )
+        if max_options and len(options) >= max_options:
+            break
+
+    r = str(reason or "").strip()
+    if r == "citations_lt_min":
+        return {
+            "type": "refine_query",
+            "question": "No sufficient evidence was retrieved. Please refine the question or provide more relevant documents.",
+            "options": [],
+        }
+
+    # Default: show related docs (if any) and ask user to narrow scope.
+    return {
+        "type": "select_document" if options else "refine_query",
+        "question": "I found related materials but not enough to answer confidently. Which document should I focus on?",
+        "options": options,
+    }

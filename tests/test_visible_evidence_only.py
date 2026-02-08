@@ -71,6 +71,11 @@ async def test_strict_mode_abstains_when_no_citations(monkeypatch: pytest.Monkey
     full_response = "".join(parts).strip()
     assert full_response == "Unable to answer this question based on the available materials."
     assert (done_metrics or {}).get("generation_elapsed_sec") == 0.0
+    followup = (done_metrics or {}).get("abstain_followup")
+    assert isinstance(followup, dict)
+    assert followup.get("type") == "refine_query"
+    assert isinstance(followup.get("question"), str) and followup.get("question")
+    assert followup.get("options") == []
 
 
 @pytest.mark.asyncio
@@ -190,3 +195,58 @@ def test_langgraph_strict_mode_forces_claim_check(monkeypatch: pytest.MonkeyPatc
     assert isinstance(claim_evidence, list) and claim_evidence
     sky = [x for x in claim_evidence if "Sky is blue" in str(x.get("claim") or "")]
     assert sky and isinstance(sky[0].get("evidence"), list) and sky[0].get("evidence")
+
+
+def test_langgraph_strict_mode_abstain_followup(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.engine as engine_mod
+    import app.rag.pipelines.langgraph as lg_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+
+    # Keep the test deterministic / single-query.
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+
+    # No generation should happen, but keep LLM deterministic anyway.
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "SHOULD_NOT_APPEAR", raising=False)
+
+    monkeypatch.setattr(settings, "RAG_ABSTAIN_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RAG_ABSTAIN_MIN_CITATIONS", 1, raising=False)
+
+    class _EmptyRetriever:
+        _last_debug_metrics = {}
+
+        def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+            return self
+
+        def invoke(self, _q):  # noqa: ANN001
+            return []
+
+    monkeypatch.setattr(lg_mod, "hybrid_retriever", _EmptyRetriever(), raising=True)
+
+    state = {
+        "question": "What is X?",
+        "history": None,
+        "tenant_id": uuid.uuid4(),
+        "document_ids": None,
+        "top_k": 3,
+        "score_threshold": 0.0,
+        "retrieval_mode": "vector",
+        "metrics": {},
+    }
+
+    out = lg_mod._retrieve_node(state)  # type: ignore[arg-type]
+    assert bool(out.get("abstain_triggered")) is True
+    assert out.get("abstain_reason") == "citations_lt_min"
+    metrics = out.get("metrics") or {}
+    followup = metrics.get("abstain_followup")
+    assert isinstance(followup, dict)
+    assert followup.get("type") == "refine_query"
+    assert isinstance(followup.get("question"), str) and followup.get("question")
+    assert followup.get("options") == []
