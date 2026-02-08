@@ -10,6 +10,7 @@ def test_merge_summary_with_regression_gate_includes_retrieval_keys() -> None:
             "item_meta": {
                 "retrieval_recall": 0.5,
                 "retrieval_hit_at_10": True,
+                "retrieval_hit_at_20": True,
                 "abstain_triggered": False,
             }
         }
@@ -21,5 +22,5 @@ def test_merge_summary_with_regression_gate_includes_retrieval_keys() -> None:
     assert out["faithfulness"] == 0.9
     assert out["retrieval_recall"] == 0.5
     assert out["retrieval_hit_at_10"] == 1.0
+    assert out["retrieval_hit_at_20"] == 1.0
     assert out["abstain_rate"] == 0.0
-

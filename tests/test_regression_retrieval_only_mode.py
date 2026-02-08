@@ -95,7 +95,7 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
 
     # Inject deterministic retrieval meta (no ragas needed).
     def _fake_build_regression_sample(_case, _eval_item):
-        return {}, {"retrieval_recall": 1.0, "retrieval_hit_at_10": True, "abstain_triggered": False}
+        return {}, {"retrieval_recall": 1.0, "retrieval_hit_at_10": True, "retrieval_hit_at_20": True, "abstain_triggered": False}
 
     monkeypatch.setattr(mod, "build_regression_sample", _fake_build_regression_sample)
 
@@ -138,5 +138,5 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
     assert run.metrics == []
     assert run.summary.get("retrieval_recall") == 1.0
     assert run.summary.get("retrieval_hit_at_10") == 1.0
+    assert run.summary.get("retrieval_hit_at_20") == 1.0
     assert (run.params or {}).get("mode") == "retrieval_only"
-

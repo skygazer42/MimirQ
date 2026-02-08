@@ -200,10 +200,12 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     retrieval_hit: bool | None = None
     retrieval_mrr: float | None = None
     retrieval_ndcg_at_10: float | None = None
+    retrieval_ndcg_at_20: float | None = None
     hit_at_1: bool | None = None
     hit_at_3: bool | None = None
     hit_at_5: bool | None = None
     hit_at_10: bool | None = None
+    hit_at_20: bool | None = None
     if reference_sources:
         ref_total = len(list(reference_sources or []))
         matched_refs = sum(1 for src in (reference_sources or []) if _ref_source_matched(src))
@@ -224,18 +226,21 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         else:
             retrieval_mrr = 0.0
 
-        # NDCG@10: binary relevance. Ideal ordering assumes each reference source can be hit by one retrieved item.
-        k = 10
-        dcg = 0.0
-        for idx, rel in enumerate(relevance_flags[:k], 1):
-            if rel:
-                dcg += 1.0 / math.log2(idx + 1)
+        # NDCG@K: binary relevance. Ideal ordering assumes each reference source can be hit by one retrieved item.
+        def _ndcg_at(k: int) -> float:
+            kk = max(1, int(k or 0))
+            dcg = 0.0
+            for idx, rel in enumerate(relevance_flags[:kk], 1):
+                if rel:
+                    dcg += 1.0 / math.log2(idx + 1)
 
-        idcg = 0.0
-        for idx in range(1, min(k, ref_total) + 1):
-            idcg += 1.0 / math.log2(idx + 1)
+            idcg = 0.0
+            for idx in range(1, min(kk, ref_total) + 1):
+                idcg += 1.0 / math.log2(idx + 1)
+            return round(dcg / idcg, 4) if idcg > 0.0 else 0.0
 
-        retrieval_ndcg_at_10 = round(dcg / idcg, 4) if idcg > 0.0 else 0.0
+        retrieval_ndcg_at_10 = _ndcg_at(10)
+        retrieval_ndcg_at_20 = _ndcg_at(20)
 
         def _hit_at(k: int) -> bool:
             kk = max(0, int(k or 0))
@@ -245,6 +250,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         hit_at_3 = _hit_at(3)
         hit_at_5 = _hit_at(5)
         hit_at_10 = _hit_at(10)
+        hit_at_20 = _hit_at(20)
 
     top_rel = item.get("top_relevance_score")
     try:
@@ -260,10 +266,12 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "retrieval_hit": retrieval_hit,
         "retrieval_mrr": retrieval_mrr,
         "retrieval_ndcg_at_10": retrieval_ndcg_at_10,
+        "retrieval_ndcg_at_20": retrieval_ndcg_at_20,
         "retrieval_hit_at_1": hit_at_1,
         "retrieval_hit_at_3": hit_at_3,
         "retrieval_hit_at_5": hit_at_5,
         "retrieval_hit_at_10": hit_at_10,
+        "retrieval_hit_at_20": hit_at_20,
     }
 
     sample_kwargs = {
@@ -294,8 +302,10 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit": meta.get("retrieval_hit"),
         "retrieval_mrr": meta.get("retrieval_mrr"),
         "retrieval_ndcg_at_10": meta.get("retrieval_ndcg_at_10"),
+        "retrieval_ndcg_at_20": meta.get("retrieval_ndcg_at_20"),
         "retrieval_hit_at_1": meta.get("retrieval_hit_at_1"),
         "retrieval_hit_at_3": meta.get("retrieval_hit_at_3"),
         "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
         "retrieval_hit_at_10": meta.get("retrieval_hit_at_10"),
+        "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
     }
