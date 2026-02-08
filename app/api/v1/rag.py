@@ -325,6 +325,20 @@ async def retrieve_evidence(
     abstain_reason = result.get("abstain_reason") or metrics.get("abstain_reason") or None
     has_evidence = bool(citations) and not abstain_triggered
 
+    # Optional strictness: if configured, require the top relevance score to clear the threshold.
+    # This is a lightweight guardrail for "does the corpus contain this?" style calls.
+    min_top_rel = float(getattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.0) or 0.0)
+    if has_evidence and min_top_rel > 0.0:
+        top_rel_raw = result.get("top_relevance_score")
+        if top_rel_raw is None:
+            top_rel_raw = metrics.get("top_relevance_score")
+        try:
+            top_rel = float(top_rel_raw) if top_rel_raw is not None else None
+        except Exception:
+            top_rel = None
+        if top_rel is not None and top_rel < min_top_rel:
+            has_evidence = False
+
     return EvidenceRetrieveResponse(
         query_for_retrieval=query_for_retrieval,
         citations=citations,
