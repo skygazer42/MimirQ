@@ -403,6 +403,7 @@ Requirements:
         structured_preset: Optional[str] = None,
         visible_evidence_only: bool = False,
         retrieval_mode: str = "hybrid",
+        retrieval_profile: Optional[str] = None,
         alpha: float = 0.6,
         enable_weight_rerank: bool = True,
         vector_weight: float = 0.6,
@@ -610,6 +611,12 @@ Requirements:
                     vec_w = 0.5
                     kw_w = 0.5
 
+            # Retrieval profiles (runtime presets). These are allowed to override caller-provided values.
+            profile_norm = str(retrieval_profile or "").strip().lower()
+            if profile_norm == "recall20":
+                top_k = max(int(top_k or 0), 20)
+                score_threshold_used = 0.0
+
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             multi_query_elapsed = 0.0
             multi_query_used = False
@@ -741,26 +748,35 @@ Requirements:
 
             # Step 1: Hybrid retrieval (LangChain Retriever).
             yield {"type": "event", "data": {"message": "正在从知识库中检索相关资料..."}}
-            retriever = hybrid_retriever.model_copy(
-                update={
-                    "k": top_k,
-                    "score_threshold": score_threshold_used,
-                    "alpha": alpha_val,
-                    "tenant_id": tenant_id,
-                    "account_id": account_id,
-                    "dataset_id": dataset_id,
-                    "document_ids": document_ids,
-                    "metadata_filter": metadata_filter,
-                    "retrieval_mode": mode_used,
-                    "enable_weight_rerank": weight_rerank,
-                    "vector_weight": vec_w,
-                    "keyword_weight": kw_w,
-                    "mmr_lambda": mmr_lambda_val,
-                    "enable_reranker": rerank_on,
-                    "reranker_provider": rerank_provider,
-                    "reranker_top_n": rerank_top_n,
-                }
-            )
+            retriever_update: Dict[str, Any] = {
+                "k": top_k,
+                "score_threshold": score_threshold_used,
+                "alpha": alpha_val,
+                "tenant_id": tenant_id,
+                "account_id": account_id,
+                "dataset_id": dataset_id,
+                "document_ids": document_ids,
+                "metadata_filter": metadata_filter,
+                "retrieval_mode": mode_used,
+                "enable_weight_rerank": weight_rerank,
+                "vector_weight": vec_w,
+                "keyword_weight": kw_w,
+                "mmr_lambda": mmr_lambda_val,
+                "enable_reranker": rerank_on,
+                "reranker_provider": rerank_provider,
+                "reranker_top_n": rerank_top_n,
+            }
+            if profile_norm == "recall20":
+                # Do not drop candidates due to dedup/diversity heuristics in recall-first mode.
+                retriever_update.update(
+                    {
+                        "dedup_enabled": False,
+                        "max_chunks_per_doc": 0,
+                        "min_distinct_docs": 0,
+                    }
+                )
+
+            retriever = hybrid_retriever.model_copy(update=retriever_update)
 
             retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
             for q in multi_queries:
