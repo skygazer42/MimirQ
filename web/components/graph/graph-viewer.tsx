@@ -46,7 +46,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   layoutMode = 'force'
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const fgRef = useRef<any>()
+  const fgRef = useRef<any>(null)
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
 

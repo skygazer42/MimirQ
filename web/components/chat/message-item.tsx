@@ -84,7 +84,7 @@ const markdownComponents = {
       {children}
     </a>
   ),
-  img: ({ src, alt }: { src?: string; alt?: string }) => {
+  img: ({ src, alt }: { src?: string | Blob; alt?: string }) => {
     const raw = typeof src === 'string' ? src : ''
     const resolved = raw
       ? /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)

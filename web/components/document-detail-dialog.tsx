@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, Tags, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -67,7 +67,7 @@ function highlightText(text: string, query: string) {
   const haystackLower = haystack.toLowerCase()
   const needleLower = needle.toLowerCase()
 
-  const nodes: Array<string | JSX.Element> = []
+  const nodes: ReactNode[] = []
   let cursor = 0
 
   while (cursor < haystack.length) {

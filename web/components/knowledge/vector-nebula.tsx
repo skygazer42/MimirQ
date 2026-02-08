@@ -50,7 +50,7 @@ function generateMockData() {
 
 export function VectorNebula() {
   const { resolvedTheme } = useTheme()
-  const fgRef = useRef<any>()
+  const fgRef = useRef<any>(null)
   const [data, setData] = useState<any>({ nodes: [], links: [] })
 
   useEffect(() => {
