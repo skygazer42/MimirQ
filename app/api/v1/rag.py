@@ -93,10 +93,17 @@ async def retrieve_preview(
     )
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+    #
+    # For this debug endpoint, we default to a recall-first profile when the caller omits rag_config,
+    # so retrieval tuning starts from a "must-recall" baseline.
+    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    rag_config_provided = "rag_config" in request_fields_set
+
     effective_rag_config = body.rag_config
     dataset_rag_defaults_applied_fields: list[str] = []
     rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
-    if "rag_config" not in set(getattr(body, "model_fields_set", set()) or set()):
+    if not rag_config_provided:
+        effective_rag_config = ChatRAGConfig(retrieval_profile="recall20")
         rag_fields_set = set()
     try:
         ds_id = None
@@ -125,6 +132,7 @@ async def retrieve_preview(
         top_k=effective_rag_config.top_k,
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
+        retrieval_profile=effective_rag_config.retrieval_profile,
         alpha=effective_rag_config.alpha,
         enable_weight_rerank=effective_rag_config.enable_weight_rerank,
         vector_weight=effective_rag_config.vector_weight,
@@ -266,6 +274,7 @@ async def prompt_preview(
         top_k=effective_rag_config.top_k,
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
+        retrieval_profile=effective_rag_config.retrieval_profile,
         alpha=effective_rag_config.alpha,
         enable_weight_rerank=effective_rag_config.enable_weight_rerank,
         vector_weight=effective_rag_config.vector_weight,
