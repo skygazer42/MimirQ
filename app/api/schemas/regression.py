@@ -122,7 +122,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     # NOTE: default to 20 so retrieval-only gates can enforce Recall@20/Hit@20 without
     # requiring callers (CI scripts) to pass explicit rag_params.
     top_k: int = Field(default=20, ge=1, le=50)
-    score_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    # NOTE: regression runs default to a recall-friendly threshold so retrieval-only gates
+    # can enforce Hit@20/Recall@20 without requiring callers to pass rag_params.
+    score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
     retrieval_mode: str = Field(default="hybrid", description="hybrid | vector | keyword | mmr")
     alpha: float = Field(default=0.6, ge=0.0, le=1.0)
     enable_weight_rerank: bool = Field(default=True)
