@@ -1418,6 +1418,14 @@ def build_rag_state(
         top_k = max(int(top_k or 0), 20)
         score_threshold = 0.0
         retrieval_profile = "recall20"
+    elif profile_norm == "recall50":
+        top_k = max(int(top_k or 0), 50)
+        score_threshold = 0.0
+        retrieval_profile = "recall50"
+    elif profile_norm == "coverage80":
+        top_k = max(int(top_k or 0), 80)
+        score_threshold = 0.0
+        retrieval_profile = "coverage80"
     elif not profile_norm:
         retrieval_profile = None
     else:

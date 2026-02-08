@@ -114,7 +114,9 @@ class ChatRAGConfig(BaseModel):
 
     # Optional retrieval preset (applies internal recall-first overrides).
     # Supported:
-    # - "recall20": maximize chunk-level Hit@20 (top_k>=20, score_threshold=0.0, etc.)
+    # - "recall20": maximize chunk-level Hit@20 (top_k>=20, score_threshold=0.0)
+    # - "recall50": recall-first for larger corpora (top_k>=50, score_threshold=0.0)
+    # - "coverage80": aggressive recall/coverage preset (top_k>=80, score_threshold=0.0)
     retrieval_profile: Optional[str] = None
 
     # Controlled query expansion for recall (optional).
@@ -210,7 +212,19 @@ class ChatRAGConfig(BaseModel):
             self.retrieval_profile = "recall20"
             return self
 
-        raise ValueError("retrieval_profile must be one of: recall20")
+        if p == "recall50":
+            self.top_k = max(int(self.top_k or 0), 50)
+            self.score_threshold = 0.0
+            self.retrieval_profile = "recall50"
+            return self
+
+        if p == "coverage80":
+            self.top_k = max(int(self.top_k or 0), 80)
+            self.score_threshold = 0.0
+            self.retrieval_profile = "coverage80"
+            return self
+
+        raise ValueError("retrieval_profile must be one of: recall20, recall50, coverage80")
 
 class ChatRequest(BaseModel):
     """Chat request."""
