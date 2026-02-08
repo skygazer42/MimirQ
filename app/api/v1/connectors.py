@@ -24,7 +24,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.api.utils.url_ingest import validate_url_for_ingest
 from app.api.schemas.connector import (
     ConnectorConfigCreateRequest,
     ConnectorConfigListResponse,
@@ -44,6 +43,7 @@ from app.api.schemas.connector import (
     UrlBatchConnectorConfig,
     WebCrawlConnectorConfig,
 )
+from app.api.utils.url_ingest import validate_url_for_ingest
 from app.api.v1.documents import UrlUploadRequest, _ingest_url_upload_request, _resolve_writable_dataset
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db

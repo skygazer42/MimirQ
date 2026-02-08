@@ -32,8 +32,8 @@ from app.core.config import settings
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
-from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
 from app.rag.core.text import (
     extract_evidence_text,

@@ -43,6 +43,14 @@ METRICS_LOG_PATH=./logs/rag_metrics.jsonl
 
 > 说明：该接口为 **best-effort + bounded**（默认只检查/抽样有限数量 id），不会在大数据集上做全量扫描。
 
+## Chat 诊断（引用定位 / Claim Evidence）
+
+除了聚合面板外，单次问答的“证据定位”也可以在 Chat UI 里完成：
+
+- 在 assistant 消息卡片右下角，悬浮可见 `诊断` 图标（BarChart）
+- 诊断面板会展示 `message_metadata` / `citations`，并在严格可见证据模式下展示 `claim_evidence`
+- 引用点击会尽量使用 `evidence_start_char / evidence_end_char` 做 span 级定位高亮（best-effort）
+
 ## 安全注意
 
 - 指标日志可能包含业务文本（例如 trace 里会记录 question/query 等字段）  
