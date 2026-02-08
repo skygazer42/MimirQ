@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 
-**Goal:** Add a production retrieval-only “Evidence API” (no generation) and expand retrieval profiles beyond `recall20` to support high-recall/coverage presets for “does the corpus contain this information?” workflows.
+**Goal:** Add a production retrieval-only "Evidence API" (no generation) and expand retrieval profiles beyond `recall20` to support high-recall / coverage presets for "does the corpus contain this information?" workflows.
 
-**Architecture:** Reuse the existing retrieval core (`app.rag.pipelines.langgraph._retrieve_node`) and request schema (`ChatRAGConfig`). Add additional retrieval profiles as deterministic presets that can override request fields (contract), and expose a stable API response with explicit `has_evidence` + `abstain_triggered` signals for downstream systems.
+**Architecture:** Reuse the existing retrieval core (`app.rag.pipelines.langgraph._retrieve_node`) and request schema (`ChatRAGConfig`). Add retrieval profiles as deterministic presets that override request fields (a contract). Expose a stable response with explicit `has_evidence` + `abstain_triggered` signals for downstream systems.
 
 **Tech Stack:** FastAPI, Pydantic v2, SQLAlchemy, LangChain/LangGraph, pytest.
 
@@ -19,7 +19,7 @@
 
 **Step 1: Write failing tests for new profiles**
 
-Add tests asserting the preset overrides (top_k/threshold and any additional toggles you introduce):
+Add tests asserting the preset overrides (top_k / threshold and any additional toggles you introduce).
 
 Run:
 ```bash
@@ -33,7 +33,7 @@ Implement new values like:
 - `recall50` (top_k >= 50, score_threshold = 0.0)
 - `coverage80` (top_k >= 80, score_threshold = 0.0)
 
-Keep it deterministic and “override allowed” (preset is a contract).
+Keep it deterministic and "override allowed" (preset is a contract).
 
 **Step 3: Verify tests pass**
 
@@ -61,29 +61,26 @@ git commit -m "feat(retrieval): add recall/coverage retrieval profiles"
 
 **Step 1: Write failing endpoint test**
 
-Create a unit test that:
-- Calls the new handler function directly (monkeypatching `build_rag_state` + `_retrieve_node`)
-- Asserts response includes `citations`, `metrics`, `has_evidence`, `abstain_triggered`
-- Asserts default behavior when `rag_config` omitted uses a recall-first profile (e.g., `recall50`)
+Create `tests/test_rag_evidence_endpoint.py` that:
+- Calls `POST /api/v1/rag/retrieve` with `dataset_id` + `query`.
+- Asserts response includes `citations`, `has_evidence`, and abstain fields.
+- Asserts `dataset_id` is applied (no cross-dataset citations).
 
 Run:
 ```bash
 python -m pytest -q tests/test_rag_evidence_endpoint.py
 ```
-Expected: FAIL (endpoint missing).
+Expected: FAIL (route/schema missing).
 
 **Step 2: Implement endpoint**
 
-Add:
-- Request: `query`, `history`, `dataset_id`/`document_ids`, optional `rag_config`
-- Response: `query_for_retrieval`, `citations`, `metrics`, `has_evidence`, `abstain_triggered`, `abstain_reason`
+In `app/api/v1/rag.py`:
+- Add `POST /rag/retrieve` which runs retrieval only (no generation).
+- Return citations + retrieval metrics.
+- Compute `has_evidence` deterministically (e.g., min top score + min count thresholds).
+- Provide explicit abstain signals: `abstain_triggered`, `abstain_reason`.
 
-Implementation guidance:
-- Reuse the existing access control logic from `/retrieve-preview`.
-- Call `build_rag_state(...)` then `_retrieve_node(state)`.
-- Derive `has_evidence` from non-empty citations and `abstain_triggered == False`.
-
-**Step 3: Verify tests pass**
+**Step 3: Verify**
 
 Run:
 ```bash
@@ -95,29 +92,27 @@ Expected: PASS.
 **Step 4: Commit**
 
 ```bash
-git add app/api/v1/rag.py tests/test_rag_evidence_endpoint.py
+git add app/api/v1/rag.py app/api/schemas/chat.py tests/test_rag_evidence_endpoint.py
 git commit -m "feat(api): add retrieval-only evidence endpoint"
 ```
 
 ---
 
-### Task 3: Document The Retrieval-Only Contract
+### Task 3: Documentation + Example Requests
 
 **Files:**
-- Add: `docs/guides/evidence_api.md`
+- Modify: `docs/api.md` (or add new `docs/evidence-api.md`)
 
-**Step 1: Write docs**
+**Step 1: Document request/response**
 
-Include:
-- What “Evidence API” is (retrieval-only)
-- Response contract fields
-- Recommended profile defaults (`recall50`/`coverage80`)
-- How downstream answering systems should use `has_evidence` / `abstain_triggered`
+Add example payloads for:
+- dataset-scoped high recall (`profile=coverage80`)
+- strict recall gate (`profile=recall20`, higher thresholds)
 
 **Step 2: Commit**
 
 ```bash
-git add docs/guides/evidence_api.md
-git commit -m "docs: add evidence api guide"
+git add docs/api.md
+git commit -m "docs: add evidence api usage"
 ```
 

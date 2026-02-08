@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 
-**Goal:** Add a first-class UI workbench to call the retrieval-only Evidence API (`POST /api/v1/rag/retrieve`) and visualize citations + `has_evidence`/abstain signals, optimized for recall debugging and dataset-scoped evidence discovery.
+**Goal:** Add a first-class UI workbench to call the retrieval-only Evidence API (`POST /api/v1/rag/retrieve`) and visualize citations + `has_evidence` / abstain signals, optimized for recall debugging and dataset-scoped evidence discovery.
 
-**Architecture:** Add a new Next.js route under `/knowledge/evidence` rendering an `EvidenceWorkbench` client component. The workbench calls `ragApi.retrieveEvidence(...)` (added to `web/lib/api-client.ts`) and renders: scope controls (dataset), query input, retrieval profile presets, metrics summary, and citation list. Provide an “Export Evidence Pack” JSON download for regression authoring.
+**Architecture:** Add a Next.js route under `/knowledge/evidence` rendering an `EvidenceWorkbench` client component. The workbench calls `ragApi.retrieveEvidence(...)` (added to `web/lib/api-client.ts`) and renders: scope controls (dataset), query input, retrieval profile presets, metrics summary, and citation list. Provide an "Export Evidence Pack" JSON download for regression authoring.
 
 **Tech Stack:** Next.js App Router, React, axios client (`web/lib/api-client.ts`), Tailwind UI primitives, Vitest.
 
@@ -79,9 +79,10 @@ UI sections:
 
 Run:
 ```bash
-pnpm -C web typecheck
-pnpm -C web test
+pnpm -C web dev
 ```
+
+Navigate to `/knowledge/evidence` and run a query for a known dataset.
 
 **Step 4: Commit**
 
