@@ -398,6 +398,9 @@ export default function KnowledgePage() {
   const [searchResults, setSearchResults] = useState<Citation[]>([])
   const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
   const [searchMetrics, setSearchMetrics] = useState<Record<string, any> | null>(null)
+  const [searchHasEvidence, setSearchHasEvidence] = useState<boolean | null>(null)
+  const [searchAbstainTriggered, setSearchAbstainTriggered] = useState<boolean | null>(null)
+  const [searchAbstainReason, setSearchAbstainReason] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [selectedEvidenceChunkIds, setSelectedEvidenceChunkIds] = useState<string[]>([])
@@ -1003,9 +1006,14 @@ export default function KnowledgePage() {
     setSearchResults([])
     setSearchQueryForRetrieval('')
     setSearchMetrics(null)
+    setSearchHasEvidence(null)
+    setSearchAbstainTriggered(null)
+    setSearchAbstainReason(null)
     setSelectedEvidenceChunkIds([])
     try {
-      const res = await ragApi.retrievePreview({
+      // Use the production retrieval-only endpoint so this workbench answers:
+      // "Do we have evidence in the corpus?" (no answer generation).
+      const res = await ragApi.retrieveEvidence({
         query: searchQuery.trim(),
         history: [],
         dataset_id: selectedDatasetId,
@@ -1014,6 +1022,9 @@ export default function KnowledgePage() {
       setSearchResults(res.citations || [])
       setSearchQueryForRetrieval(res.query_for_retrieval || '')
       setSearchMetrics(res.metrics || null)
+      setSearchHasEvidence(Boolean(res.has_evidence))
+      setSearchAbstainTriggered(Boolean(res.abstain_triggered))
+      setSearchAbstainReason(res.abstain_reason ?? null)
     } catch (error: any) {
       console.error('Search failed:', error)
       setSearchError(formatApiError(error, '检索失败，请检查后端服务状态'))
@@ -2423,6 +2434,26 @@ export default function KnowledgePage() {
                     {searchQueryForRetrieval && searchQueryForRetrieval !== searchQuery.trim() && (
                       <div className="px-2 text-xs text-muted-foreground">
                         实际检索 Query：<span className="font-mono">{searchQueryForRetrieval}</span>
+                      </div>
+                    )}
+
+                    {(searchHasEvidence !== null || searchAbstainTriggered !== null) && (
+                      <div className="px-2 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+                        {searchHasEvidence !== null && (
+                          <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                            has_evidence={String(searchHasEvidence)}
+                          </span>
+                        )}
+                        {searchAbstainTriggered !== null && (
+                          <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                            abstain_triggered={String(searchAbstainTriggered)}
+                          </span>
+                        )}
+                        {searchAbstainReason ? (
+                          <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                            abstain_reason={searchAbstainReason}
+                          </span>
+                        ) : null}
                       </div>
                     )}
 

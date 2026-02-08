@@ -1890,6 +1890,14 @@ export interface RetrievePreviewResponse {
   metrics: Record<string, any>
 }
 
+export type EvidenceRetrieveRequest = RetrievePreviewRequest
+
+export interface EvidenceRetrieveResponse extends RetrievePreviewResponse {
+  has_evidence: boolean
+  abstain_triggered: boolean
+  abstain_reason?: string | null
+}
+
 export interface PromptPreviewRequest {
   query: string
   history?: ChatHistoryMessage[]

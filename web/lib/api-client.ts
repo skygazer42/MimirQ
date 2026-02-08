@@ -147,6 +147,8 @@ import type {
   ReadyResponse,
   RetrievePreviewRequest,
   RetrievePreviewResponse,
+  EvidenceRetrieveRequest,
+  EvidenceRetrieveResponse,
   PromptPreviewRequest,
   PromptPreviewResponse,
   RegressionCase,
@@ -1360,6 +1362,11 @@ export const connectorApi = {
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
     const { data } = await apiClient.post('/rag/retrieve-preview', params)
+    return data
+  },
+
+  async retrieveEvidence(params: EvidenceRetrieveRequest): Promise<EvidenceRetrieveResponse> {
+    const { data } = await apiClient.post('/rag/retrieve', params)
     return data
   },
 
