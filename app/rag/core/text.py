@@ -449,6 +449,128 @@ def is_claim_supported(claim: str, evidence: str) -> bool:
     return shared_n >= 2 and (shared_n / float(claim_n)) >= 0.2
 
 
+def scrub_structured_output_visible_evidence_only(
+    data: Any,
+    *,
+    evidence_text: str,
+    max_claims: int = 24,
+    max_depth: int = 6,
+    max_items: int = 500,
+) -> tuple[Any, Dict[str, Any]]:
+    """
+    Best-effort structured-output scrubbing for strict grounding.
+
+    This keeps the JSON shape, but removes unsupported natural-language claims inside string fields.
+    It is deterministic and bounded (no extra model calls).
+
+    Notes:
+    - We intentionally do NOT scrub common identifier/citation keys (UUIDs, ids) because they are
+      not "claims" and would almost always be removed by evidence checks.
+    - We apply a global max_claims budget across all visited string fields to keep it bounded.
+    """
+    max_claims = max(1, int(max_claims or 0))
+    max_depth = max(1, int(max_depth or 0))
+    max_items = max(1, int(max_items or 0))
+
+    # Keys that should not be treated as natural-language claims.
+    skip_keys = {
+        "citations",
+        "document_id",
+        "chunk_id",
+        "page_number",
+        "page",
+        "relevance_score",
+        "retrieval_score",
+        "vector_score",
+        "bm25_score",
+        "keyword_score",
+        "rerank_score",
+        "reranker_provider",
+        "rerank_model_used",
+    }
+
+    meta: Dict[str, Any] = {
+        "strings_scrubbed": 0,
+        "strings_changed": 0,
+        "claims_total": 0,
+        "claims_removed": 0,
+        "max_claims": max_claims,
+        "max_depth": max_depth,
+        "max_items": max_items,
+    }
+
+    remaining_claims = max_claims
+    visited_items = 0
+
+    def _scrub_str(s: str) -> str:
+        nonlocal remaining_claims
+        raw = str(s or "")
+        if not raw.strip():
+            return raw
+        if remaining_claims <= 0:
+            return raw
+
+        claims = split_into_claims(raw, max_claims=remaining_claims)
+        remaining_claims -= len(claims)
+        meta["claims_total"] = int(meta.get("claims_total", 0) or 0) + len(claims)
+
+        kept: list[str] = []
+        removed = 0
+        for c in claims:
+            if is_claim_supported(c, evidence_text):
+                kept.append(c)
+            else:
+                removed += 1
+        if removed:
+            meta["claims_removed"] = int(meta.get("claims_removed", 0) or 0) + removed
+
+        cleaned = "\n".join(kept).strip()
+        return cleaned
+
+    def _walk(obj: Any, *, depth: int, parent_key: str | None) -> Any:
+        nonlocal visited_items
+        if visited_items >= max_items:
+            return obj
+        visited_items += 1
+
+        if depth <= 0:
+            return obj
+
+        if isinstance(obj, dict):
+            out: dict[Any, Any] = {}
+            for k, v in obj.items():
+                ks = str(k)
+                if ks in skip_keys:
+                    out[k] = v
+                    continue
+                out[k] = _walk(v, depth=depth - 1, parent_key=ks)
+            return out
+
+        if isinstance(obj, list):
+            out_list: list[Any] = []
+            for it in obj:
+                v2 = _walk(it, depth=depth - 1, parent_key=parent_key)
+                # Drop empty strings from arrays (common for bullets/qa pairs after scrubbing).
+                if isinstance(v2, str) and not v2.strip():
+                    continue
+                out_list.append(v2)
+            return out_list
+
+        if isinstance(obj, str):
+            meta["strings_scrubbed"] = int(meta.get("strings_scrubbed", 0) or 0) + 1
+            cleaned = _scrub_str(obj)
+            if cleaned != obj:
+                meta["strings_changed"] = int(meta.get("strings_changed", 0) or 0) + 1
+            return cleaned
+
+        return obj
+
+    scrubbed = _walk(data, depth=max_depth, parent_key=None)
+    meta["visited_items"] = visited_items
+    meta["claims_remaining"] = remaining_claims
+    return scrubbed, meta
+
+
 def build_abstain_followup(
     *,
     reason: str | None,

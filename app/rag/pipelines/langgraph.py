@@ -42,6 +42,7 @@ from app.rag.core.text import (
     is_claim_supported,
     normalize_retrieval_mode,
     parse_json_from_text,
+    scrub_structured_output_visible_evidence_only,
     should_rewrite_query,
     split_into_claims,
 )
@@ -633,7 +634,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
         metrics["tag"] = state.get("tag_meta")
 
     # Grounding guard: abstain when evidence is weak/empty.
-    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False))
+    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(state.get("visible_evidence_only"))
     abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible
     abstain_triggered = False
     abstain_reason: str | None = None
@@ -666,6 +667,8 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["abstain_reason"] = abstain_reason
     metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
     metrics["abstain_min_top_relevance_score"] = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+    metrics["visible_evidence_only_enabled"] = bool(strict_visible)
+    metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
     metrics["top_relevance_score"] = round(float(top_rel or 0.0), 3)
 
     if bool(abstain_triggered):
@@ -781,27 +784,67 @@ def _generate_node(state: RAGState) -> RAGState:
     if pii_on:
         answer = redact_text(str(answer))
 
-    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False))
+    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(state.get("visible_evidence_only"))
     claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or strict_visible
     claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
-    claim_check_applied = bool(claim_check_configured) and (not bool(state.get("structured_output")))
+    claim_check_mode = "none"
+    if bool(claim_check_configured):
+        claim_check_mode = "structured" if bool(state.get("structured_output")) else "text"
+    claim_check_applied = claim_check_mode != "none"
     claim_check_removed = 0
     claim_check_total = 0
 
     if claim_check_applied:
         evidence_text = redact_text(ctx) if pii_on else ctx
-        claims = split_into_claims(str(answer or ""), max_claims=claim_check_max_claims)
-        claim_check_total = len(claims)
-        kept: List[str] = []
-        for c in claims:
-            if is_claim_supported(c, evidence_text):
-                kept.append(c)
-            else:
-                claim_check_removed += 1
-        cleaned = "\n".join(kept).strip()
-        if not cleaned:
-            cleaned = "Unable to answer this question based on the available materials."
-        answer = cleaned
+        if claim_check_mode == "text":
+            claims = split_into_claims(str(answer or ""), max_claims=claim_check_max_claims)
+            claim_check_total = len(claims)
+            kept: List[str] = []
+            for c in claims:
+                if is_claim_supported(c, evidence_text):
+                    kept.append(c)
+                else:
+                    claim_check_removed += 1
+            cleaned = "\n".join(kept).strip()
+            if not cleaned:
+                cleaned = "Unable to answer this question based on the available materials."
+            answer = cleaned
+        elif claim_check_mode == "structured":
+            parsed, _meta = parse_json_from_text(str(answer or ""), expected="object")
+            if not isinstance(parsed, dict):
+                # Fail-safe: always return valid JSON when structured_output=true.
+                structured_citations: List[Dict[str, Any]] = []
+                for c in (state.get("citations") or [])[: max(0, int(state.get("top_k") or 0))]:
+                    structured_citations.append(
+                        {
+                            "document_id": c.get("document_id"),
+                            "chunk_id": c.get("chunk_id"),
+                            "page_number": c.get("page_number"),
+                            "relevance_score": c.get("relevance_score"),
+                        }
+                    )
+                parsed = {"answer": "Unable to answer this question based on the available materials.", "citations": structured_citations}
+
+            scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
+                parsed,
+                evidence_text=evidence_text,
+                max_claims=claim_check_max_claims,
+            )
+            if isinstance(scrub_meta, dict):
+                claim_check_total = int(scrub_meta.get("claims_total") or 0)
+                claim_check_removed = int(scrub_meta.get("claims_removed") or 0)
+
+            try:
+                if (
+                    isinstance(scrubbed, dict)
+                    and isinstance(scrubbed.get("answer"), str)
+                    and not str(scrubbed.get("answer") or "").strip()
+                ):
+                    scrubbed["answer"] = "Unable to answer this question based on the available materials."
+            except Exception:
+                pass
+
+            answer = json.dumps(scrubbed, ensure_ascii=False, separators=(",", ":"))
 
     claim_evidence: list[dict[str, Any]] = []
     if not bool(state.get("structured_output")):
@@ -855,10 +898,13 @@ def _generate_node(state: RAGState) -> RAGState:
         int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
     )
     metrics["claim_check_enabled"] = bool(claim_check_applied)
+    metrics["claim_check_mode"] = claim_check_mode
     metrics["claim_check_removed"] = int(claim_check_removed)
     metrics["claim_check_total"] = int(claim_check_total)
     metrics["claim_check_max_claims"] = int(claim_check_max_claims) if claim_check_configured else None
     metrics["claim_evidence"] = claim_evidence
+    metrics["visible_evidence_only_enabled"] = bool(strict_visible)
+    metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
     base = generation_elapsed
     base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
     base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
@@ -1215,6 +1261,7 @@ def build_rag_state(
     metadata_filter: Optional[Dict[str, Any]] = None,
     structured_output: bool = False,
     structured_preset: Optional[str] = None,
+    visible_evidence_only: bool = False,
     prompt_template_id: Optional[UUID] = None,
     prompt_template_key: Optional[str] = None,
     prompt_ab_experiment_key: Optional[str] = None,
@@ -1313,6 +1360,7 @@ def build_rag_state(
         "format_instructions": format_instructions,
         "structured_output": bool(structured_output),
         "structured_preset": structured_preset,
+        "visible_evidence_only": bool(visible_evidence_only),
         "prompt_template_content": prompt_template_content,
         "prompt_template_id": selected_prompt_template_id,
         "prompt_template_key": selected_prompt_template_key,
