@@ -4,8 +4,15 @@ from __future__ import annotations
 def test_tokenize_for_bm25_ascii_identifiers_keep_underscore() -> None:
     from app.rag.preprocessing.tokenization import tokenize_for_bm25
 
-    assert tokenize_for_bm25("user_id") == ["user_id"]
-    assert tokenize_for_bm25("USER_ID") == ["user_id"]
+    tokens = tokenize_for_bm25("user_id")
+    assert "user_id" in tokens
+    assert "user" in tokens
+    assert "id" in tokens
+
+    tokens = tokenize_for_bm25("USER_ID")
+    assert "user_id" in tokens
+    assert "user" in tokens
+    assert "id" in tokens
 
 
 def test_tokenize_for_bm25_english_drops_stopwords() -> None:
@@ -23,4 +30,3 @@ def test_tokenize_for_bm25_cjk_still_non_empty() -> None:
 
     tokens = tokenize_for_bm25("如何配置单点登录？")
     assert tokens
-

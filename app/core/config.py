@@ -494,6 +494,17 @@ class Settings(BaseSettings):
     BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
     # Max cached BM25 indices kept in memory (0 = unlimited). Useful for multi-tenant deployments.
     BM25_CACHE_MAX_TENANTS: int = 32
+    # BM25 tokenization knobs (recall tuning).
+    # These defaults are intentionally "recall-friendly" but still avoid full CJK char-ngram indexing
+    # (which can explode index size in pure-Python BM25 implementations).
+    BM25_TOKENIZE_ASCII_EXPAND_ENABLED: bool = True
+    BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED: bool = True
+    BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED: bool = True
+    # When jieba emits single-character CJK tokens (often OOV), we may add the concatenated term
+    # itself as a token if it's short enough (e.g., entity names).
+    BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS: int = 8
+    # Upper bound for extra fallback tokens added per tokenization call.
+    BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS: int = 128
     # =========================
     # Structured Table Store (TAG)
     # =========================
@@ -972,6 +983,10 @@ class Settings(BaseSettings):
 
         if int(getattr(self, "BM25_CACHE_MAX_TENANTS", 0) or 0) < 0:
             raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
+        if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 0) or 0) < 2:
+            raise ValueError("BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS must be >= 2")
+        if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 0) or 0) < 0:
+            raise ValueError("BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS must be >= 0")
 
         if int(getattr(self, "EMBEDDING_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("EMBEDDING_CACHE_TTL_SEC must be >= 0")
