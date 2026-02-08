@@ -3,7 +3,7 @@
 This file is the “restart point”. Open this after a new window/session to see what’s done and what’s next.
 
 **Branch:** `main`  
-**Updated:** 2026-02-06  
+**Updated:** 2026-02-08  
 **Next Up:** Task 1 (plan TBD)
 
 ## Checklist (1–30)
@@ -41,19 +41,5 @@ This file is the “restart point”. Open this after a new window/session to se
 
 ## Pointers
 
-- Task 9/11/12/13/14: `docs/plans/2026-02-06-db-catalog-virtual-schema-doc-and-observability.md`
-- Task 15: `docs/plans/2026-02-06-pipeline-provenance-and-version-diff.md`
-- Task 16: `docs/plans/2026-02-06-task16-structured-chunk-metadata.md`
-- Task 17: `docs/plans/2026-02-06-task17-table-and-schema-special-chunks.md`
-- Task 19: `docs/plans/2026-02-06-task19-kg-provenance-and-rollback.md`
-- Task 20: `docs/plans/2026-02-06-task20-kg-assisted-retrieval-filtering.md`
-- Task 21: `docs/plans/2026-02-06-task21-recall-strategy-buckets.md`
-- Task 22: `docs/plans/2026-02-06-task22-context-compression.md`
-- Task 23: `docs/plans/2026-02-06-task23-claim-check.md`
-- Task 24: `docs/plans/2026-02-06-task24-visible-evidence-only.md`
-- Task 25: `docs/plans/2026-02-06-task25-document-governance-rule-packs.md`
-- Task 26: `docs/plans/2026-02-06-task26-e2e-load-test.md`
-- Task 27: `docs/plans/2026-02-06-task27-task-queueing.md`
-- Task 28: `docs/plans/2026-02-06-task28-dataset-isolation-db-constraints.md`
-- Task 29: `docs/plans/2026-02-06-task29-security-audit-defaults.md`
-- Task 30: `docs/plans/2026-02-06-task30-feedback-to-regression-case.md`
+- For production docs, prefer `docs/guides/` (RAG optimization, governance, regression gate, observability, etc).
+- Note: completed per-task plan docs were pruned after implementation; refer to git history for details.
