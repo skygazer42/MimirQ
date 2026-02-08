@@ -412,6 +412,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/versions/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Document Versions
+         * @description Diff two document pipeline versions by chunk `content_hash` (multiset semantics).
+         *
+         *     Notes:
+         *     - This endpoint never returns chunk text; it is safe for ops/UI debugging.
+         *     - For legacy chunks without `content_hash`, we fall back to chunk id as a unique signature
+         *       (so counts remain accurate, but "unchanged" may be underestimated).
+         */
+        get: operations["diff_document_versions_api_v1_documents__document_id__versions_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/versions/{pipeline_hash}/activate": {
         parameters: {
             query?: never;
@@ -2229,6 +2254,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset_id}/db-catalog/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List DB catalog tables/views for a dataset */
+        get: operations["list_db_catalog_tables_api_v1_datasets__dataset_id__db_catalog_tables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/db-catalog/tables/{table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get DB catalog table/view detail (includes columns) */
+        get: operations["get_db_catalog_table_api_v1_datasets__dataset_id__db_catalog_tables__table_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/db-catalog/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List safe profile snapshots for a catalog table */
+        get: operations["list_db_catalog_profiles_api_v1_datasets__dataset_id__db_catalog_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dataset-categories/": {
         parameters: {
             query?: never;
@@ -2635,7 +2711,7 @@ export interface paths {
         put?: never;
         /**
          * Create Ragas Regression Case
-         * @description Create a regression case (question + optional dataset scope).
+         * @description Create a regression case (per-dataset; requires evidence sources).
          */
         post: operations["create_ragas_regression_case_api_v1_evaluations_ragas_regression_cases_post"];
         delete?: never;
@@ -2659,6 +2735,50 @@ export interface paths {
          * @description Delete a regression case.
          */
         delete: operations["delete_ragas_regression_case_api_v1_evaluations_ragas_regression_cases__case_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Ragas Regression Case
+         * @description Patch a regression case (dataset_id is immutable).
+         */
+        patch: operations["patch_ragas_regression_case_api_v1_evaluations_ragas_regression_cases__case_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/evaluations/ragas/regression/cases/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Ragas Regression Cases
+         * @description Export regression cases as a dataset-scoped bundle (no internal ids).
+         */
+        get: operations["export_ragas_regression_cases_api_v1_evaluations_ragas_regression_cases_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/ragas/regression/cases/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ragas Regression Cases
+         * @description Import (upsert) regression cases by (dataset_id + question.strip()).
+         */
+        post: operations["import_ragas_regression_cases_api_v1_evaluations_ragas_regression_cases_import_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3410,6 +3530,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connectors/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Connector Config
+         * @description Validate connector config (best-effort).
+         *
+         *     Returns ok/errors/warnings so UIs can surface issues without throwing hard 4xx/5xx on validation.
+         */
+        post: operations["validate_connector_config_api_v1_connectors_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/connectors/runs": {
         parameters: {
             query?: never;
@@ -3629,6 +3771,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rag/retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retrieve Evidence
+         * @description Execute retrieval only (no answer generation) and return evidence chunks.
+         *
+         *     Defaults to a recall-first profile when the caller omits rag_config.
+         */
+        post: operations["retrieve_evidence_api_v1_rag_retrieve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rag/prompt-preview": {
         parameters: {
             query?: never;
@@ -3743,6 +3907,31 @@ export interface paths {
         };
         /** Get Rag Metrics Summary */
         get: operations["get_rag_metrics_summary_api_v1_observability_rag_metrics_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/index-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Index Audit
+         * @description Dataset-scoped index consistency audit (admin-only).
+         *
+         *     This is best-effort and bounded:
+         *     - Detects chunks missing `vector_id` in Postgres.
+         *     - Checks a bounded set of DB `vector_id` values for existence in the vector backend (Milvus).
+         *     - Optionally samples a bounded set of Milvus ids and reports orphans (vectors without active DB chunks).
+         */
+        get: operations["get_index_audit_api_v1_observability_index_audit_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4403,6 +4592,24 @@ export interface components {
          * @description RAG parameters specific to the chat endpoint.
          */
         ChatRAGConfig: {
+            /** Retrieval Profile */
+            retrieval_profile?: string | null;
+            /** Enable Query Alias Expansion */
+            enable_query_alias_expansion?: boolean | null;
+            /** Query Aliases */
+            query_aliases?: {
+                [key: string]: string[];
+            } | null;
+            /** Query Alias Max Queries */
+            query_alias_max_queries?: number | null;
+            /** Enable Multi Query */
+            enable_multi_query?: boolean | null;
+            /** Multi Query Count */
+            multi_query_count?: number | null;
+            /** Multi Query Temperature */
+            multi_query_temperature?: number | null;
+            /** Multi Query Max Chars */
+            multi_query_max_chars?: number | null;
             /** Top K */
             top_k?: number;
             /** Score Threshold */
@@ -4450,6 +4657,11 @@ export interface components {
              * @default false
              */
             use_graph: boolean;
+            /**
+             * Visible Evidence Only
+             * @default false
+             */
+            visible_evidence_only: boolean;
             /** Metadata Filter */
             metadata_filter?: {
                 [key: string]: unknown;
@@ -5023,6 +5235,10 @@ export interface components {
             start_char?: number | null;
             /** End Char */
             end_char?: number | null;
+            /** Evidence Start Char */
+            evidence_start_char?: number | null;
+            /** Evidence End Char */
+            evidence_end_char?: number | null;
             /** Header Path */
             header_path?: string | null;
             /** Chunk Strategy */
@@ -5717,6 +5933,53 @@ export interface components {
             error_message?: string | null;
             /** Stats */
             stats?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ConnectorValidateRequest
+         * @description Best-effort connector config validation.
+         *
+         *     Notes:
+         *     - This endpoint is intended for operator UX (pre-flight checks).
+         *     - Connectivity checks are optional and best-effort; failures are surfaced as warnings.
+         */
+        ConnectorValidateRequest: {
+            /**
+             * Connector Id
+             * @default url_batch
+             */
+            connector_id: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Check Connectivity
+             * @default true
+             */
+            check_connectivity: boolean;
+        };
+        /** ConnectorValidateResponse */
+        ConnectorValidateResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Connector Id */
+            connector_id: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Warnings */
+            warnings?: {
+                [key: string]: unknown;
+            }[];
+            /** Checks */
+            checks?: {
                 [key: string]: unknown;
             };
         };
@@ -7094,6 +7357,24 @@ export interface components {
          *     These defaults are applied when the chat request doesn't explicitly provide the corresponding fields.
          */
         DatasetRAGDefaults: {
+            /** Retrieval Profile */
+            retrieval_profile?: string | null;
+            /** Enable Query Alias Expansion */
+            enable_query_alias_expansion?: boolean | null;
+            /** Query Aliases */
+            query_aliases?: {
+                [key: string]: string[];
+            } | null;
+            /** Query Alias Max Queries */
+            query_alias_max_queries?: number | null;
+            /** Enable Multi Query */
+            enable_multi_query?: boolean | null;
+            /** Multi Query Count */
+            multi_query_count?: number | null;
+            /** Multi Query Temperature */
+            multi_query_temperature?: number | null;
+            /** Multi Query Max Chars */
+            multi_query_max_chars?: number | null;
             /** Top K */
             top_k?: number | null;
             /** Score Threshold */
@@ -7116,6 +7397,8 @@ export interface components {
             reranker_provider?: string | null;
             /** Reranker Top N */
             reranker_top_n?: number | null;
+            /** Visible Evidence Only */
+            visible_evidence_only?: boolean | null;
         };
         /** DatasetReportOut */
         DatasetReportOut: {
@@ -7174,6 +7457,147 @@ export interface components {
             /** Default Prompt Ab Experiment Key */
             default_prompt_ab_experiment_key?: string | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
+        /** DbCatalogColumnOut */
+        DbCatalogColumnOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /**
+             * Ordinal
+             * @default 0
+             */
+            ordinal: number;
+            /** Name */
+            name: string;
+            /** Data Type */
+            data_type?: string | null;
+            /** Nullable */
+            nullable?: boolean | null;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** DbCatalogTableDetailOut */
+        DbCatalogTableDetailOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Connector Config Id */
+            connector_config_id?: string | null;
+            /** Engine */
+            engine: string;
+            /** Db Name */
+            db_name: string;
+            /** Schema Name */
+            schema_name?: string | null;
+            /** Table Name */
+            table_name: string;
+            /** Table Type */
+            table_type: string;
+            /** Comment */
+            comment?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Columns */
+            columns?: components["schemas"]["DbCatalogColumnOut"][];
+        };
+        /** DbCatalogTableSummaryOut */
+        DbCatalogTableSummaryOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Connector Config Id */
+            connector_config_id?: string | null;
+            /** Engine */
+            engine: string;
+            /** Db Name */
+            db_name: string;
+            /** Schema Name */
+            schema_name?: string | null;
+            /** Table Name */
+            table_name: string;
+            /** Table Type */
+            table_type: string;
+            /** Comment */
+            comment?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+        };
+        /** DbCatalogTablesListResponse */
+        DbCatalogTablesListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["DbCatalogTableSummaryOut"][];
+        };
+        /** DbProfileSnapshotListResponse */
+        DbProfileSnapshotListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["DbProfileSnapshotOut"][];
+        };
+        /** DbProfileSnapshotOut */
+        DbProfileSnapshotOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Entitlement Hash */
+            entitlement_hash: string;
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            };
+            /** Sample Meta */
+            sample_meta?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * DocumentAccessInfo
@@ -8375,6 +8799,63 @@ export interface components {
             replace: boolean;
         };
         /**
+         * DocumentVersionDiff
+         * @description Diff summary between two document pipeline versions (keyed by pipeline_hash).
+         */
+        DocumentVersionDiff: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** From Pipeline Hash */
+            from_pipeline_hash: string;
+            /** To Pipeline Hash */
+            to_pipeline_hash: string;
+            /**
+             * From Chunk Count
+             * @default 0
+             */
+            from_chunk_count: number;
+            /**
+             * To Chunk Count
+             * @default 0
+             */
+            to_chunk_count: number;
+            /**
+             * Unchanged Chunks
+             * @default 0
+             */
+            unchanged_chunks: number;
+            /**
+             * Added Chunks
+             * @default 0
+             */
+            added_chunks: number;
+            /**
+             * Removed Chunks
+             * @default 0
+             */
+            removed_chunks: number;
+            /** Added Hashes */
+            added_hashes?: string[];
+            /** Removed Hashes */
+            removed_hashes?: string[];
+            /** From Provenance */
+            from_provenance?: {
+                [key: string]: unknown;
+            } | null;
+            /** To Provenance */
+            to_provenance?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Changed Transforms
+             * @description Transform step ids whose transform hash differs between from/to.
+             */
+            changed_transforms?: string[];
+        };
+        /**
          * DocumentVersionInfo
          * @description A document processing/version entry (keyed by pipeline_hash).
          */
@@ -8503,6 +8984,49 @@ export interface components {
              * @default false
              */
             filter_page_header_footer: boolean;
+        };
+        /**
+         * EvidenceRetrieveRequest
+         * @description Production retrieval-only endpoint request.
+         *
+         *     This is intentionally a small, stable contract for downstream systems that want to
+         *     answer the question: "Do we have evidence for this query in the corpus?"
+         */
+        EvidenceRetrieveRequest: {
+            /** Query */
+            query: string;
+            /** History */
+            history?: components["schemas"]["HistoryMessage"][];
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Document Ids */
+            document_ids?: string[];
+            rag_config?: components["schemas"]["ChatRAGConfig"];
+        };
+        /** EvidenceRetrieveResponse */
+        EvidenceRetrieveResponse: {
+            /** Query For Retrieval */
+            query_for_retrieval: string;
+            /** Citations */
+            citations: {
+                [key: string]: unknown;
+            }[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Has Evidence
+             * @default false
+             */
+            has_evidence: boolean;
+            /**
+             * Abstain Triggered
+             * @default false
+             */
+            abstain_triggered: boolean;
+            /** Abstain Reason */
+            abstain_reason?: string | null;
         };
         /**
          * FeatureFlags
@@ -9066,6 +9590,58 @@ export interface components {
             /** Filename */
             filename: string;
         };
+        /** IndexAuditResponse */
+        IndexAuditResponse: {
+            /** Tenant Id */
+            tenant_id: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /**
+             * Vector Backend
+             * @default
+             */
+            vector_backend: string;
+            /**
+             * Active Documents
+             * @default 0
+             */
+            active_documents: number;
+            /**
+             * Active Chunks
+             * @default 0
+             */
+            active_chunks: number;
+            /**
+             * Vector Id Missing
+             * @default 0
+             */
+            vector_id_missing: number;
+            /**
+             * Vector Ids Checked
+             * @default 0
+             */
+            vector_ids_checked: number;
+            /**
+             * Vector Ids Missing In Backend
+             * @default 0
+             */
+            vector_ids_missing_in_backend: number;
+            /**
+             * Vector Ids Missing In Backend Sample
+             * @default []
+             */
+            vector_ids_missing_in_backend_sample: string[];
+            /**
+             * Milvus Ids Sampled
+             * @default 0
+             */
+            milvus_ids_sampled: number;
+            /**
+             * Milvus Orphan Ids Sample
+             * @default []
+             */
+            milvus_orphan_ids_sample: string[];
+        };
         /** IngestionPolicy */
         "IngestionPolicy-Input": {
             /**
@@ -9400,6 +9976,10 @@ export interface components {
             weight: number;
             /** Role */
             role?: string | null;
+            /** Extra Data */
+            extra_data?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGEventItem
@@ -10809,6 +11389,18 @@ export interface components {
             /** Citations Avg Count */
             citations_avg_count?: number | null;
             /**
+             * Retriever Overfetch Count
+             * @default 0
+             */
+            retriever_overfetch_count: number;
+            /** Retriever Overfetch Avg Ratio */
+            retriever_overfetch_avg_ratio?: number | null;
+            /**
+             * Retriever Filtered Acl Total
+             * @default 0
+             */
+            retriever_filtered_acl_total: number;
+            /**
              * Retrieval Mode Counts
              * @default {}
              */
@@ -10879,6 +11471,10 @@ export interface components {
             start_char?: number | null;
             /** End Char */
             end_char?: number | null;
+            /** Retrieval Role */
+            retrieval_role?: string | null;
+            /** Neighbor Of */
+            neighbor_of?: string | null;
             /** Doc Pipeline Key */
             doc_pipeline_key?: string | null;
             /** Pipeline Hash */
@@ -10983,6 +11579,10 @@ export interface components {
             elapsed_sec?: number | null;
             /** Ok */
             ok?: boolean | null;
+            /** Retriever Debug */
+            retriever_debug?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RagTraceStep */
         RagTraceStep: {
@@ -11038,6 +11638,20 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * RagasRegressionCaseBundleItem
+         * @description Portable regression case payload (no internal ids).
+         */
+        RagasRegressionCaseBundleItem: {
+            /** Question */
+            question: string;
+            /** Expected Answer */
+            expected_answer?: string | null;
+            /** Reference Sources */
+            reference_sources: components["schemas"]["ReferenceSource"][];
+            /** Tags */
+            tags?: string[];
+        };
         /** RagasRegressionCaseCreateRequest */
         RagasRegressionCaseCreateRequest: {
             /**
@@ -11047,9 +11661,10 @@ export interface components {
             question: string;
             /**
              * Dataset Id
-             * @description Dataset ID (optional)
+             * Format: uuid
+             * @description Dataset ID (required; regression suite is per-dataset)
              */
-            dataset_id?: string | null;
+            dataset_id: string;
             /**
              * Document Ids
              * @description Document scope (optional, takes priority over dataset_id)
@@ -11060,6 +11675,11 @@ export interface components {
              * @description Expected answer (optional, for manual comparison/supervision)
              */
             expected_answer?: string | null;
+            /**
+             * Reference Sources
+             * @description Human-verified evidence sources (required; at least 1). Each source must include document_id + chunk_id.
+             */
+            reference_sources: components["schemas"]["ReferenceSource"][];
             /**
              * Tags
              * @description Tags (optional)
@@ -11072,6 +11692,29 @@ export interface components {
             extra?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * RagasRegressionCaseImportRequest
+         * @description Import a dataset-scoped regression case bundle (upsert by question).
+         */
+        RagasRegressionCaseImportRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+            /**
+             * Max Items
+             * @default 500
+             */
+            max_items: number;
+            /** Items */
+            items: components["schemas"]["RagasRegressionCaseBundleItem"][];
         };
         /** RagasRegressionCaseList */
         RagasRegressionCaseList: {
@@ -11100,6 +11743,8 @@ export interface components {
             question: string;
             /** Expected Answer */
             expected_answer?: string | null;
+            /** Reference Sources */
+            reference_sources?: components["schemas"]["ReferenceSource"][];
             /** Tags */
             tags?: string[];
             /** Extra */
@@ -11118,6 +11763,29 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * RagasRegressionCasePatchRequest
+         * @description Patch fields for an existing regression case.
+         */
+        RagasRegressionCasePatchRequest: {
+            /** Question */
+            question?: string | null;
+            /** Document Ids */
+            document_ids?: string[] | null;
+            /**
+             * Expected Answer
+             * @description Set to null to clear expected_answer
+             */
+            expected_answer?: string | null;
+            /** Reference Sources */
+            reference_sources?: components["schemas"]["ReferenceSource"][] | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RagasRegressionItemSchema */
         RagasRegressionItemSchema: {
@@ -11165,9 +11833,10 @@ export interface components {
             case_ids?: string[];
             /**
              * Dataset Id
-             * @description Only run cases under this dataset (optional)
+             * Format: uuid
+             * @description Run cases under this dataset (required)
              */
-            dataset_id?: string | null;
+            dataset_id: string;
             /**
              * Metrics
              * @description RAGAS metrics list
@@ -11187,12 +11856,12 @@ export interface components {
             max_cases: number;
             /**
              * Top K
-             * @default 5
+             * @default 20
              */
             top_k: number;
             /**
              * Score Threshold
-             * @default 0.7
+             * @default 0
              */
             score_threshold: number;
             /**
@@ -11278,6 +11947,8 @@ export interface components {
             tenant_id: string;
             /** Account Id */
             account_id?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Status */
             status: string;
             /** Metrics */
@@ -11410,6 +12081,64 @@ export interface components {
             embedding_cache_enabled: boolean;
             /** Error */
             error?: string | null;
+        };
+        /**
+         * ReferenceSource
+         * @description A human-verified evidence pointer for a regression case.
+         */
+        ReferenceSource: {
+            /**
+             * Document Id
+             * Format: uuid
+             * @description Evidence document id
+             */
+            document_id: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             * @description Evidence chunk id
+             */
+            chunk_id: string;
+            /**
+             * Chunk Index
+             * @description 0-based chunk index (optional)
+             */
+            chunk_index?: number | null;
+            /**
+             * Page Number
+             * @description 1-based page number (optional)
+             */
+            page_number?: number | null;
+            /**
+             * Start Char
+             * @description Start character offset (optional)
+             */
+            start_char?: number | null;
+            /**
+             * End Char
+             * @description End character offset (optional)
+             */
+            end_char?: number | null;
+            /**
+             * Doc Pipeline Key
+             * @description Composite key `${document_id}:${pipeline_hash}` (optional, for audit/debug)
+             */
+            doc_pipeline_key?: string | null;
+            /**
+             * Pipeline Hash
+             * @description Chunk pipeline hash (optional)
+             */
+            pipeline_hash?: string | null;
+            /**
+             * Quote
+             * @description Evidence excerpt (optional; used as fallback when chunk_id becomes stale)
+             */
+            quote?: string | null;
+            /**
+             * Label
+             * @description Human label (optional)
+             */
+            label?: string | null;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -12754,6 +13483,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentVersionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_document_versions_api_v1_documents__document_id__versions_diff_get: {
+        parameters: {
+            query: {
+                /** @description Source pipeline_hash version (from) */
+                from: string;
+                /** @description Target pipeline_hash version (to) */
+                to: string;
+                /** @description Max hash samples included in added_hashes/removed_hashes */
+                sample_limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionDiff"];
                 };
             };
             /** @description Validation Error */
@@ -16594,7 +17365,10 @@ export interface operations {
     };
     query_dataset_table_api_v1_datasets__dataset_id__tables__table_id__query_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include redacted SQL for owner/admin/auditor */
+                include_sql?: boolean;
+            };
             header?: {
                 "x-tenant-id"?: string | null;
                 authorization?: string | null;
@@ -16634,7 +17408,10 @@ export interface operations {
     };
     ask_dataset_table_api_v1_datasets__dataset_id__tables__table_id__ask_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include redacted SQL for owner/admin/auditor */
+                include_sql?: boolean;
+            };
             header?: {
                 "x-tenant-id"?: string | null;
                 authorization?: string | null;
@@ -16699,6 +17476,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableQueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_db_catalog_tables_api_v1_datasets__dataset_id__db_catalog_tables_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                /** @description Filter by engine: mysql|sqlserver */
+                engine?: string | null;
+                /** @description Fuzzy search across db/schema/table names */
+                q?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DbCatalogTablesListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_db_catalog_table_api_v1_datasets__dataset_id__db_catalog_tables__table_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DbCatalogTableDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_db_catalog_profiles_api_v1_datasets__dataset_id__db_catalog_profiles_get: {
+        parameters: {
+            query: {
+                /** @description Catalog table id */
+                table_id: string;
+                /** @description Filter by entitlement hash (stable permission context) */
+                entitlement_hash?: string | null;
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DbProfileSnapshotListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17671,6 +18568,117 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_ragas_regression_case_api_v1_evaluations_ragas_regression_cases__case_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RagasRegressionCasePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagasRegressionCaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_ragas_regression_cases_api_v1_evaluations_ragas_regression_cases_export_get: {
+        parameters: {
+            query: {
+                dataset_id: string;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_ragas_regression_cases_api_v1_evaluations_ragas_regression_cases_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RagasRegressionCaseImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {
@@ -19022,6 +20030,43 @@ export interface operations {
             };
         };
     };
+    validate_connector_config_api_v1_connectors_validate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectorValidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorValidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_connector_runs_api_v1_connectors_runs_get: {
         parameters: {
             query?: {
@@ -19489,6 +20534,43 @@ export interface operations {
             };
         };
     };
+    retrieve_evidence_api_v1_rag_retrieve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceRetrieveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceRetrieveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     prompt_preview_api_v1_rag_prompt_preview_post: {
         parameters: {
             query?: never;
@@ -19749,6 +20831,48 @@ export interface operations {
             };
         };
     };
+    get_index_audit_api_v1_observability_index_audit_get: {
+        parameters: {
+            query: {
+                /** @description Dataset id to audit (required) */
+                dataset_id: string;
+                /** @description Max DB vector_ids to existence-check */
+                max_check_ids?: number;
+                /** @description Max Milvus ids to sample for orphans */
+                milvus_list_limit?: number;
+                /** @description Max sample ids to return per category */
+                sample_limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexAuditResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_audit_logs_api_v1_audit_logs_get: {
         parameters: {
             query?: {
@@ -19761,6 +20885,7 @@ export interface operations {
                 request_id?: string | null;
                 since?: string | null;
                 until?: string | null;
+                include_sensitive?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
