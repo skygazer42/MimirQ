@@ -67,18 +67,19 @@ python scripts/regression_gate.py \
   "faithfulness": 0.7,
   "response_relevancy": 0.7,
   "retrieval_recall": 0.3,
-  "retrieval_hit_at_10": 0.6,
+  "retrieval_hit_at_20": 1.0,
   "abstain_rate": 0.02
 }
 ```
 
-> 说明：回归 run 的默认 top_k/threshold 等参数会跟随系统设置（与 chat 默认一致），除非你在 run 请求里显式覆盖。
+> 说明：回归 run 的默认 top_k/threshold 等参数会跟随 **regression run 的默认值**（可在 run 请求里显式覆盖）。
 >
 > 新增可选指标（run summary 里可见，也可写进 thresholds 里 gate）：
 > - `retrieval_recall`: [0,1]，证据召回率（人工标注 evidence chunk_id 与检索 citations.chunk_id 的重合比例，越高越好）
-> - `retrieval_hit_at_1/3/5/10`: [0,1]，命中率（top-k 里是否命中证据；汇总为命中占比，越高越好）
+> - `retrieval_hit_at_1/3/5/10/20`: [0,1]，命中率（top-k 里是否命中证据；汇总为命中占比，越高越好）
 > - `retrieval_mrr`: [0,1]，MRR（证据第一次出现的平均倒数排名：`1/rank`，越高越好）
 > - `retrieval_ndcg_at_10`: [0,1]，NDCG@10（证据在 Top10 的排序质量，越高越好）
+> - `retrieval_ndcg_at_20`: [0,1]，NDCG@20（证据在 Top20 的排序质量，越高越好）
 > - `abstain_rate`: [0,1]，拒答率（`abstain_triggered` 的占比；可用于“严格可见证据模式”安全回归）
 >
 > 注意：`thresholds.json` 支持两种写法：

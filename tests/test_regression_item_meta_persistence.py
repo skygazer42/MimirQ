@@ -39,8 +39,10 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "retrieval_hit": None,
         "retrieval_mrr": None,
         "retrieval_ndcg_at_10": None,
+        "retrieval_ndcg_at_20": None,
         "retrieval_hit_at_1": None,
         "retrieval_hit_at_3": None,
         "retrieval_hit_at_5": None,
         "retrieval_hit_at_10": None,
+        "retrieval_hit_at_20": None,
     }

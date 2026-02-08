@@ -51,8 +51,10 @@ def test_build_regression_sample_includes_reference_context_ids_and_abstain_meta
         "retrieval_hit": True,
         "retrieval_mrr": 1.0,
         "retrieval_ndcg_at_10": 0.6131,
+        "retrieval_ndcg_at_20": 0.6131,
         "retrieval_hit_at_1": True,
         "retrieval_hit_at_3": True,
         "retrieval_hit_at_5": True,
         "retrieval_hit_at_10": True,
+        "retrieval_hit_at_20": True,
     }
