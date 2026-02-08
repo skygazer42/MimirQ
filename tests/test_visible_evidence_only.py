@@ -152,6 +152,153 @@ async def test_strict_mode_forces_claim_check(monkeypatch: pytest.MonkeyPatch) -
     assert sky and isinstance(sky[0].get("evidence"), list) and sky[0].get("evidence")
 
 
+@pytest.mark.asyncio
+async def test_request_visible_evidence_only_abstains_when_no_citations(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.engine as engine_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+
+    # Keep the test deterministic / single-query.
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+
+    # Use a deterministic fake LLM (should not be called in strict abstain path).
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "SHOULD_NOT_APPEAR", raising=False)
+
+    monkeypatch.setattr(settings, "RAG_ABSTAIN_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_ABSTAIN_MIN_CITATIONS", 1, raising=False)
+
+    class _EmptyRetriever:
+        _last_debug_metrics = {}
+
+        def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+            return self
+
+        def invoke(self, _q):  # noqa: ANN001
+            return []
+
+    monkeypatch.setattr(engine_mod, "hybrid_retriever", _EmptyRetriever(), raising=True)
+
+    rag = engine_mod.get_rag_engine()
+    agen = rag.stream_chat(
+        question="What is X?",
+        history=None,
+        conversation_id=None,
+        tenant_id=uuid.uuid4(),
+        document_ids=None,
+        account_id="u",
+        top_k=3,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        visible_evidence_only=True,
+        db=None,
+    )
+
+    parts: list[str] = []
+    done_metrics = None
+    async for item in agen:
+        if item.get("type") == "token":
+            parts.append(str((item.get("data") or {}).get("content") or ""))
+        if item.get("type") == "done":
+            done_metrics = (item.get("data") or {}).get("metrics") or {}
+            break
+    await agen.aclose()
+
+    full_response = "".join(parts).strip()
+    assert full_response == "Unable to answer this question based on the available materials."
+    assert (done_metrics or {}).get("abstain_triggered") is True
+    assert (done_metrics or {}).get("visible_evidence_only_enabled") is True
+    assert (done_metrics or {}).get("visible_evidence_only_requested") is True
+
+
+@pytest.mark.asyncio
+async def test_request_visible_evidence_only_scrubs_structured_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json as _json
+
+    import app.rag.engine as engine_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+
+    # Keep the test deterministic / single-query.
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+
+    # Structured LLM output: includes one supported and one unsupported claim.
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        settings,
+        "LLM_MOCK_RESPONSE",
+        _json.dumps({"answer": "Sky is blue. Bananas are red.", "citations": []}),
+        raising=False,
+    )
+
+    monkeypatch.setattr(settings, "RAG_CLAIM_CHECK_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False, raising=False)
+
+    from langchain_core.documents import Document
+
+    class _OneDocRetriever:
+        _last_debug_metrics = {}
+
+        def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+            return self
+
+        def invoke(self, _q):  # noqa: ANN001
+            return [
+                Document(
+                    page_content="The sky is blue due to Rayleigh scattering.",
+                    metadata={"source": "doc.txt", "page": 1},
+                    id=str(uuid.uuid4()),
+                )
+            ]
+
+    monkeypatch.setattr(engine_mod, "hybrid_retriever", _OneDocRetriever(), raising=True)
+
+    rag = engine_mod.get_rag_engine()
+    agen = rag.stream_chat(
+        question="Why is the sky blue?",
+        history=None,
+        conversation_id=None,
+        tenant_id=uuid.uuid4(),
+        document_ids=None,
+        account_id="u",
+        top_k=1,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        structured_output=True,
+        structured_preset="summary",
+        visible_evidence_only=True,
+        db=None,
+    )
+
+    parts: list[str] = []
+    done_metrics = None
+    async for item in agen:
+        if item.get("type") == "token":
+            parts.append(str((item.get("data") or {}).get("content") or ""))
+        if item.get("type") == "done":
+            done_metrics = (item.get("data") or {}).get("metrics") or {}
+            break
+    await agen.aclose()
+
+    raw = "".join(parts).strip()
+    payload = _json.loads(raw)
+    assert isinstance(payload, dict)
+    assert "Sky is blue" in str(payload.get("answer") or "")
+    assert "Bananas" not in str(payload.get("answer") or "")
+    assert (done_metrics or {}).get("claim_check_mode") == "structured"
+    assert (done_metrics or {}).get("claim_check_removed") == 1
+
 def test_langgraph_strict_mode_forces_claim_check(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.engine as engine_mod
     import app.rag.pipelines.langgraph as lg_mod

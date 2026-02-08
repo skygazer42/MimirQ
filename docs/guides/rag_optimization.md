@@ -60,6 +60,21 @@ These are off by default and can improve recall on ambiguous or short queries:
 Recommendation:
 - Enable one at a time, measure impact with RAGAS/regression suites before enabling multiple.
 
+## 5.5) Strict Grounding (Visible Evidence Only)
+
+If you want to strongly reduce hallucinations (at the cost of more refusals and potentially buffered streaming),
+enable **visible-evidence-only** mode:
+
+- Per-request (recommended for QA/critical workflows):
+  - `rag_config.visible_evidence_only=true`
+- Per-dataset default:
+  - set dataset `rag_defaults.visible_evidence_only=true`
+
+When enabled, MimirQ will:
+- **Abstain early** when evidence is weak/empty (instead of "best effort" guessing)
+- **Post-check generated claims** against the retrieved evidence and drop unsupported ones
+- Apply the same scrubbing to **structured_output** JSON (keeps JSON parseable)
+
 ## 6) Evaluation (Measure, Don’t Guess)
 
 MimirQ includes RAGAS evaluation and regression helpers. See:
@@ -101,4 +116,3 @@ Common workflow:
 1) Reproduce the bad answer
 2) Inspect the RAG trace (History/Graph UI) to see retrieval mode, timings, citations and refusal reasons
 3) If needed: export feedback → regression case, then gate future changes with the regression suite
-

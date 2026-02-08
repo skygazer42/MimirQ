@@ -37,6 +37,10 @@ class DatasetRAGDefaults(BaseModel):
     reranker_provider: Optional[str] = None
     reranker_top_n: Optional[int] = Field(default=None, ge=1, le=200)
 
+    # Optional strict grounding mode: treat missing evidence as non-existent and abstain early.
+    # Also forces post-generation claim-check (may buffer streaming).
+    visible_evidence_only: Optional[bool] = None
+
     model_config = ConfigDict(extra="ignore")
 
     @field_validator("retrieval_mode", mode="before")

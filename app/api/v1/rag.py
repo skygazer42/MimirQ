@@ -133,6 +133,7 @@ async def retrieve_preview(
         enable_reranker=effective_rag_config.enable_reranker,
         reranker_provider=effective_rag_config.reranker_provider,
         reranker_top_n=effective_rag_config.reranker_top_n,
+        visible_evidence_only=effective_rag_config.visible_evidence_only,
         ab_user_key=account_id,
         db=db,
     )
@@ -273,6 +274,7 @@ async def prompt_preview(
         enable_reranker=effective_rag_config.enable_reranker,
         reranker_provider=effective_rag_config.reranker_provider,
         reranker_top_n=effective_rag_config.reranker_top_n,
+        visible_evidence_only=effective_rag_config.visible_evidence_only,
         structured_output=body.structured_output,
         structured_preset=body.structured_preset,
         prompt_template_id=body.prompt_template_id,

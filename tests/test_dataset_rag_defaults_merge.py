@@ -39,3 +39,13 @@ def test_merge_rag_defaults_ignores_invalid_payload():  # noqa: ANN001
     assert effective.top_k == 5
     assert applied == []
 
+
+def test_merge_rag_defaults_applies_visible_evidence_only():  # noqa: ANN001
+    base = ChatRAGConfig(top_k=5, retrieval_mode="hybrid")
+    effective, applied = merge_rag_config_with_dataset_defaults(
+        rag_config=base,
+        request_fields_set=set(),
+        raw_dataset_defaults={"visible_evidence_only": True},
+    )
+    assert effective.visible_evidence_only is True
+    assert set(applied) == {"visible_evidence_only"}

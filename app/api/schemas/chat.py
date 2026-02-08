@@ -131,6 +131,15 @@ class ChatRAGConfig(BaseModel):
     # LangGraph path toggles
     use_graph: bool = False
 
+    # Grounding/anti-hallucination guardrails (best-effort, optional).
+    # When enabled, the system will:
+    # - Treat missing evidence as "non-existent" and abstain early.
+    # - Force post-generation claim-check (may buffer streaming).
+    #
+    # This is equivalent to enabling settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED,
+    # but scoped to this request (and can be set via dataset rag_defaults).
+    visible_evidence_only: bool = False
+
     # Optional: metadata filter for vector search / retrieval scoping
     metadata_filter: Optional[Dict[str, Any]] = None
 
