@@ -168,6 +168,23 @@ export default function DatasetProfilePage() {
     return (summary?.file_size_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
   }, [summary])
 
+  const pageCountHistogramData = useMemo(() => {
+    return (summary?.page_number_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
+  }, [summary])
+
+  const parseQualityHistogramData = useMemo(() => {
+    return (summary?.parse_quality_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
+  }, [summary])
+
+  const languageMixChartData = useMemo(() => {
+    const m = summary?.language_mix || {}
+    const order = ['zh', 'en', 'mixed', 'unknown']
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name))
+  }, [summary])
+
   const pdfScanData = useMemo(() => {
     const s = summary?.pdf_scan
     if (!s) return []
@@ -194,6 +211,10 @@ export default function DatasetProfilePage() {
       .filter((x) => x.value > 0)
       .sort((a, b) => b.value - a.value)
       .slice(0, 10)
+  }, [summary])
+
+  const parseLowQualityFinding = useMemo(() => {
+    return (summary?.findings || []).find((f) => f.key === 'parse_low_quality') || null
   }, [summary])
 
   const openFinding = useCallback(
@@ -522,6 +543,87 @@ export default function DatasetProfilePage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">页数分布</div>
+              </div>
+              {pageCountHistogramData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={pageCountHistogramData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#14b8a6" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">解析质量分布</div>
+                {parseLowQualityFinding ? (
+                  <Button
+                    variant="outline"
+                    className="h-8 px-2 gap-1 text-xs"
+                    onClick={() => void openFinding(parseLowQualityFinding)}
+                  >
+                    <FileSearch className="w-3.5 h-3.5" />
+                    低质量
+                  </Button>
+                ) : null}
+              </div>
+              {parseQualityHistogramData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={parseQualityHistogramData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">语言分布</div>
+              </div>
+              {languageMixChartData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Tooltip />
+                      <Pie
+                        data={languageMixChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={55}
+                        outerRadius={95}
+                        paddingAngle={2}
+                      >
+                        {languageMixChartData.map((_entry, idx) => (
+                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
             </Panel>
 
             <Panel className="p-5">
