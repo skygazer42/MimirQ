@@ -176,6 +176,14 @@ export default function DatasetProfilePage() {
     return (summary?.parse_quality_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
   }, [summary])
 
+  const chunkCountHistogramData = useMemo(() => {
+    return (summary?.chunk_count_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
+  }, [summary])
+
+  const avgChunkCharsHistogramData = useMemo(() => {
+    return (summary?.avg_chunk_chars_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
+  }, [summary])
+
   const languageMixChartData = useMemo(() => {
     const m = summary?.language_mix || {}
     const order = ['zh', 'en', 'mixed', 'unknown']
@@ -558,6 +566,48 @@ export default function DatasetProfilePage() {
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
                       <Bar dataKey="value" fill="#14b8a6" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">Chunk 数分布（每文档）</div>
+              </div>
+              {chunkCountHistogramData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chunkCountHistogramData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">平均 Chunk 长度（chars/chunk）</div>
+              </div>
+              {avgChunkCharsHistogramData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={avgChunkCharsHistogramData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

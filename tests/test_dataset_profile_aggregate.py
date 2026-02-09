@@ -141,3 +141,27 @@ def test_dataset_profile_aggregate_parse_low_quality_bucket():
     summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
     finding_map = {f.key: f.count for f in summary.findings}
     assert finding_map["parse_low_quality"] == 1
+
+
+def test_dataset_profile_aggregate_chunk_count_and_avg_chunk_distributions():
+    dsid = uuid.uuid4()
+    rows = [
+        _row(filename="a.md", file_type="md", chunk_count=5, total_characters=1000),
+        _row(filename="b.md", file_type="md", chunk_count=10, total_characters=4000),
+        _row(filename="c.md", file_type="md", chunk_count=20, total_characters=10000),
+        _row(filename="d.md", file_type="md", chunk_count=0, total_characters=9999),  # excluded from chunk proxies
+    ]
+
+    summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
+
+    assert summary.chunk_count_percentiles.p50 == 10
+    assert summary.avg_chunk_chars_percentiles.p50 == 400
+
+    cc = {b.label: int(b.count or 0) for b in (summary.chunk_count_histogram or [])}
+    assert cc.get("1-5") == 1
+    assert cc.get("6-10") == 1
+    assert cc.get("11-20") == 1
+
+    avg = {b.label: int(b.count or 0) for b in (summary.avg_chunk_chars_histogram or [])}
+    assert avg.get("200-500") == 2
+    assert avg.get("500-800") == 1

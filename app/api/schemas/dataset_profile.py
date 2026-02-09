@@ -71,6 +71,13 @@ class DatasetProfileSummary(BaseModel):
     length_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
     length_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
+    # Chunking proxies derived from persisted per-document stats (cheap, best-effort).
+    # Note: these are document-level distributions, NOT per-chunk distributions.
+    chunk_count_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    chunk_count_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    avg_chunk_chars_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    avg_chunk_chars_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+
     # Additional distributions (best-effort; may be empty if metadata missing).
     page_number_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
     parse_quality_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)

@@ -2265,6 +2265,10 @@ export interface DatasetProfileSummary {
   file_size_histogram: DatasetProfileHistogramBin[]
   length_percentiles: DatasetProfilePercentiles
   length_histogram: DatasetProfileHistogramBin[]
+  chunk_count_percentiles?: DatasetProfilePercentiles
+  chunk_count_histogram?: DatasetProfileHistogramBin[]
+  avg_chunk_chars_percentiles?: DatasetProfilePercentiles
+  avg_chunk_chars_histogram?: DatasetProfileHistogramBin[]
   page_number_histogram?: DatasetProfileHistogramBin[]
   parse_quality_histogram?: DatasetProfileHistogramBin[]
   language_mix?: Record<string, number>
