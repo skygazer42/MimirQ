@@ -1475,7 +1475,8 @@ def export_dataset_profile_summary(
         account_id=account_id,
         dataset_id=dataset_id,
     )
-    content = json.dumps(summary.model_dump(), ensure_ascii=False, separators=(",", ":"))
+    # Use JSON mode so UUID/datetime serialize correctly.
+    content = json.dumps(summary.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
     safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
     filename = f"{safe}.profile.json"
     return Response(
