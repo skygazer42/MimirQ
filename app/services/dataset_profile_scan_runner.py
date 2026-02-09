@@ -138,6 +138,50 @@ def _backfill_parse_quality(meta: dict[str, Any]) -> bool:
     return True
 
 
+def _backfill_page_count(meta: dict[str, Any], parsed: Optional[dict[str, Any]] = None) -> bool:
+    """
+    Best-effort: persist a stable page_count when missing.
+
+    Notes:
+    - We only copy from already-computed parse artifacts / pdf_quality metadata.
+    - This keeps the real-time profile summary cheap (no chunk scans).
+    """
+    existing = meta.get("page_count")
+    if isinstance(existing, (int, float)) and int(existing) > 0:
+        return False
+
+    src = parsed if isinstance(parsed, dict) else {}
+    page_count = src.get("page_count")
+    if page_count is None:
+        page_count = src.get("page_max")
+    if not isinstance(page_count, (int, float)) or int(page_count) <= 0:
+        return False
+
+    meta["page_count"] = int(page_count)
+    return True
+
+
+def _backfill_language(meta: dict[str, Any]) -> bool:
+    """
+    Best-effort: ensure a stable `language` key exists for profiling charts.
+
+    We do not attempt language detection here (belongs to parsing/governance).
+    """
+    existing = meta.get("language")
+    if isinstance(existing, str) and existing.strip():
+        return False
+
+    enr = meta.get("governance_enrichment")
+    if isinstance(enr, dict):
+        raw = enr.get("language")
+        if isinstance(raw, str) and raw.strip():
+            meta["language"] = raw.strip()
+            return True
+
+    meta["language"] = "unknown"
+    return True
+
+
 def run_dataset_profile_deep_scan(
     db: Session,
     *,
@@ -240,6 +284,9 @@ def run_dataset_profile_deep_scan(
                             with contextlib.suppress(Exception):
                                 temp_path.unlink(missing_ok=True)
 
+            if _backfill_page_count(meta, meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None):
+                changed = True
+
             # Backfill parsed text quality (density/replace chars).
             if backfill_text_quality:
                 if not isinstance(meta.get("parsed_text_quality"), dict) or not meta.get("parsed_text_quality"):
@@ -269,6 +316,9 @@ def run_dataset_profile_deep_scan(
                         meta["parsed_text_quality"] = scored
                         changed = True
                         text_backfilled += 1
+
+            if _backfill_language(meta):
+                changed = True
 
             if _backfill_parse_quality(meta):
                 changed = True
