@@ -2264,6 +2264,9 @@ export interface DatasetProfileSummary {
   file_size_histogram: DatasetProfileHistogramBin[]
   length_percentiles: DatasetProfilePercentiles
   length_histogram: DatasetProfileHistogramBin[]
+  page_number_histogram?: DatasetProfileHistogramBin[]
+  parse_quality_histogram?: DatasetProfileHistogramBin[]
+  language_mix?: Record<string, number>
   pdf_scan: DatasetProfilePdfScanStats
 
   pii_hits_total: Record<string, number>
