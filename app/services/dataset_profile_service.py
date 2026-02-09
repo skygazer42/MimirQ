@@ -33,6 +33,8 @@ from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetPr
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services.dataset_profile_utils import (
+    AVG_CHUNK_CHARS_BINS,
+    CHUNK_COUNT_BINS,
     FILE_SIZE_BINS,
     PAGE_COUNT_BINS,
     TEXT_LENGTH_BINS,
@@ -244,6 +246,8 @@ def aggregate_profile_from_rows(
     total_size = 0
     lengths: List[int] = []
     file_sizes: List[int] = []
+    chunk_counts: List[int] = []
+    avg_chunk_chars: List[int] = []
 
     pdf_scanned = 0
     pdf_not_scanned = 0
@@ -299,6 +303,13 @@ def aggregate_profile_from_rows(
         length_val = safe_int(total_chars, default=0)
         if length_val > 0:
             lengths.append(length_val)
+
+        # Chunking proxies (cheap): chunk_count distribution and avg chars per chunk.
+        chunk_count_val = safe_int(_chunk_count, default=0)
+        if chunk_count_val > 0:
+            chunk_counts.append(int(chunk_count_val))
+            if length_val > 0:
+                avg_chunk_chars.append(int(max(1, length_val // max(1, int(chunk_count_val)))))
 
         meta_dict = meta if isinstance(meta, dict) else {}
 
@@ -388,10 +399,30 @@ def aggregate_profile_from_rows(
         p99=percentile_from_sorted(lengths, 99),
     )
 
+    chunk_counts.sort()
+    chunk_count_percentiles = DatasetProfilePercentiles(
+        p25=percentile_from_sorted(chunk_counts, 25),
+        p50=percentile_from_sorted(chunk_counts, 50),
+        p75=percentile_from_sorted(chunk_counts, 75),
+        p90=percentile_from_sorted(chunk_counts, 90),
+        p99=percentile_from_sorted(chunk_counts, 99),
+    )
+
+    avg_chunk_chars.sort()
+    avg_chunk_chars_percentiles = DatasetProfilePercentiles(
+        p25=percentile_from_sorted(avg_chunk_chars, 25),
+        p50=percentile_from_sorted(avg_chunk_chars, 50),
+        p75=percentile_from_sorted(avg_chunk_chars, 75),
+        p90=percentile_from_sorted(avg_chunk_chars, 90),
+        p99=percentile_from_sorted(avg_chunk_chars, 99),
+    )
+
     # Histograms.
     length_hist = histogram(lengths, TEXT_LENGTH_BINS)
     size_hist = histogram(file_sizes, FILE_SIZE_BINS)
     page_hist = histogram(page_counts, PAGE_COUNT_BINS) if page_counts else []
+    chunk_count_hist = histogram(chunk_counts, CHUNK_COUNT_BINS) if chunk_counts else []
+    avg_chunk_chars_hist = histogram(avg_chunk_chars, AVG_CHUNK_CHARS_BINS) if avg_chunk_chars else []
 
     # Parse quality histogram (0.0-1.0, 10 bins).
     pq_hist: list[dict[str, Any]] = []
@@ -433,6 +464,10 @@ def aggregate_profile_from_rows(
         file_size_histogram=size_hist,
         length_percentiles=percentiles,
         length_histogram=length_hist,
+        chunk_count_percentiles=chunk_count_percentiles,
+        chunk_count_histogram=chunk_count_hist,
+        avg_chunk_chars_percentiles=avg_chunk_chars_percentiles,
+        avg_chunk_chars_histogram=avg_chunk_chars_hist,
         page_number_histogram=page_hist,
         parse_quality_histogram=pq_hist,
         language_mix=language_mix,

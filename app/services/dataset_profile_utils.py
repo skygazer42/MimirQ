@@ -113,3 +113,24 @@ PAGE_COUNT_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("26-50", 26, 51),
     HistogramBinSpec("50+", 51, None),
 ]
+
+# Chunk-level proxies derived from per-document stats:
+# - chunk_count: number of chunks per document
+# - avg_chunk_chars: approximate avg chunk length = total_characters / chunk_count
+CHUNK_COUNT_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("1-5", 1, 6),
+    HistogramBinSpec("6-10", 6, 11),
+    HistogramBinSpec("11-20", 11, 21),
+    HistogramBinSpec("21-50", 21, 51),
+    HistogramBinSpec("51-100", 51, 101),
+    HistogramBinSpec("100+", 101, None),
+]
+
+AVG_CHUNK_CHARS_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("0-200", 0, 200),
+    HistogramBinSpec("200-500", 200, 500),
+    HistogramBinSpec("500-800", 500, 800),
+    HistogramBinSpec("800-1.2k", 800, 1_200),
+    HistogramBinSpec("1.2k-2k", 1_200, 2_000),
+    HistogramBinSpec("2k+", 2_000, None),
+]
