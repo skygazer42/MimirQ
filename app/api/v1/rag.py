@@ -195,6 +195,8 @@ class EvidenceRetrieveResponse(BaseModel):
     has_evidence: bool = False
     abstain_triggered: bool = False
     abstain_reason: Optional[str] = None
+    # Optional: debug payload for query normalization/expansion (best-effort).
+    query_debug: Optional[Dict[str, Any]] = None
 
 
 @router.post("/retrieve", response_model=EvidenceRetrieveResponse)
@@ -313,6 +315,9 @@ async def retrieve_evidence(
     citations = result.get("citations") or []
     metrics = dict(result.get("metrics") or {})
     query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
+    query_debug = result.get("query_debug")
+    if not isinstance(query_debug, dict):
+        query_debug = None
 
     # Ensure minimum fields exist for downstream debugging.
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
@@ -346,6 +351,7 @@ async def retrieve_evidence(
         has_evidence=has_evidence,
         abstain_triggered=abstain_triggered,
         abstain_reason=abstain_reason,
+        query_debug=query_debug,
     )
 
 

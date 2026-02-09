@@ -117,6 +117,8 @@ class RAGState(TypedDict, total=False):
     metrics: Optional[Dict[str, Any]]
     abstain_triggered: Optional[bool]
     abstain_reason: Optional[str]
+    # Optional: best-effort debug payload (query normalization/expansion provenance).
+    query_debug: Optional[Dict[str, Any]]
 
 
 _RAG_TASK_RETRY_POLICY = RetryPolicy(
@@ -375,6 +377,29 @@ def _retrieve_node(state: RAGState) -> RAGState:
         alias_elapsed = time.time() - t0
         alias_used = bool(alias_queries)
 
+    # Deterministic dictionary expansion (bounded, auditable).
+    dict_elapsed = 0.0
+    dict_used = False
+    dict_meta: Dict[str, Any] = {"enabled": False, "used": False}
+    dict_expansions: List[Dict[str, Any]] = []
+    try:
+        from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
+
+        t0 = time.time()
+        dict_expansions, dict_meta = generate_dictionary_expansions(
+            query=query_for_retrieval,
+            rules=load_base_dictionary_rules(),
+            max_expansions_total=5,
+            max_expansions_per_rule=1,
+        )
+        dict_elapsed = time.time() - t0
+        dict_used = bool(dict_expansions)
+    except Exception as exc:  # noqa: BLE001
+        dict_elapsed = 0.0
+        dict_used = False
+        dict_expansions = []
+        dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
+
     multi_query_elapsed = 0.0
     multi_query_used = False
     multi_query_model_used = None
@@ -524,6 +549,10 @@ def _retrieve_node(state: RAGState) -> RAGState:
     retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
     for q in alias_queries:
         retrieval_queries.append(("alias", q))
+    for e in dict_expansions:
+        q = e.get("expanded_text") if isinstance(e, dict) else None
+        if q:
+            retrieval_queries.append(("dict", str(q)))
     for q in multi_queries:
         retrieval_queries.append(("mq", q))
     for q in sub_questions:
@@ -669,6 +698,11 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["alias_count"] = len(alias_queries)
     metrics["alias_elapsed_sec"] = round(alias_elapsed, 3)
     metrics["alias_meta"] = alias_meta
+    metrics["dict_enabled"] = bool(dict_meta.get("enabled"))
+    metrics["dict_used"] = bool(dict_used)
+    metrics["dict_count"] = len(dict_expansions)
+    metrics["dict_elapsed_sec"] = round(dict_elapsed, 3)
+    metrics["dict_meta"] = dict_meta
     metrics["multi_query_enabled"] = bool(mq_enabled)
     metrics["multi_query_used"] = bool(multi_query_used)
     metrics["multi_query_count"] = len(multi_queries)
@@ -740,6 +774,77 @@ def _retrieve_node(state: RAGState) -> RAGState:
     if bool(abstain_triggered):
         metrics["abstain_followup"] = build_abstain_followup(reason=abstain_reason, citations=citations)
 
+    # Best-effort: expose query normalization/expansion provenance for evidence/debug endpoints.
+    query_debug: Dict[str, Any] = {
+        "original": str(state.get("question") or ""),
+        "normalized": None,
+        "expansions": [],
+        "contributions": [],
+    }
+    try:
+        norm_text: str | None = None
+        applied_rules: list[str] = []
+        # Prefer the actual retriever normalization captured for the main query.
+        for item in retrieval_per_query:
+            if item.get("kind") != "main":
+                continue
+            dbg = item.get("retriever_debug")
+            dbg = dbg if isinstance(dbg, dict) else {}
+            qn = dbg.get("query_normalization")
+            qn = qn if isinstance(qn, dict) else {}
+            norm_text = qn.get("normalized") if isinstance(qn.get("normalized"), str) else None
+            ar = qn.get("applied_rules")
+            if isinstance(ar, list):
+                applied_rules = [str(x) for x in ar if x is not None]
+            break
+        if not norm_text:
+            from app.query.normalize import normalize_query
+
+            nq = normalize_query(query_for_retrieval)
+            norm_text = nq.normalized_text
+            applied_rules = list(nq.applied_rules or [])
+        query_debug["normalized"] = norm_text
+        query_debug["applied_rules"] = applied_rules
+    except Exception:
+        query_debug["normalized"] = query_for_retrieval
+        query_debug["applied_rules"] = []
+
+    # Expansions: keep it small and structured for downstream diagnostics.
+    expansions_dbg: List[Dict[str, Any]] = []
+    for q in alias_queries:
+        expansions_dbg.append({"kind": "alias", "expanded_text": q, "source_rule_id": "alias", "weight": 1.0})
+    for e in dict_expansions:
+        if not isinstance(e, dict):
+            continue
+        item = dict(e)
+        item.setdefault("kind", "dict")
+        expansions_dbg.append(item)
+    for q in multi_queries:
+        expansions_dbg.append({"kind": "mq", "expanded_text": q, "source_rule_id": "llm:multi_query", "weight": 1.0})
+    for q in sub_questions:
+        expansions_dbg.append({"kind": "subq", "expanded_text": q, "source_rule_id": "llm:decompose", "weight": 1.0})
+    if hyde_used and hyde_text:
+        expansions_dbg.append({"kind": "hyde", "expanded_text": hyde_text, "source_rule_id": "llm:hyde", "weight": 1.0})
+    query_debug["expansions"] = expansions_dbg[:20]
+
+    # Contributions: how many final citations came from which retrieval path.
+    try:
+        by_role: Dict[str, int] = {}
+        for c in citations:
+            if not isinstance(c, dict):
+                continue
+            role = str(c.get("retrieval_role") or "main").strip() or "main"
+            by_role[role] = by_role.get(role, 0) + 1
+        query_debug["contributions"] = [
+            {"retrieval_role": k, "citations": v}
+            for k, v in sorted(by_role.items(), key=lambda kv: (-kv[1], kv[0]))
+        ]
+    except Exception:
+        query_debug["contributions"] = []
+
+    query_debug["query_for_retrieval"] = query_for_retrieval
+    query_debug["rewrite_used"] = bool(rewrite_used)
+
     return {
         **state,
         "query_for_retrieval": query_for_retrieval,
@@ -748,6 +853,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
         "metrics": metrics,
         "abstain_triggered": bool(abstain_triggered),
         "abstain_reason": abstain_reason,
+        "query_debug": query_debug,
     }
 
 

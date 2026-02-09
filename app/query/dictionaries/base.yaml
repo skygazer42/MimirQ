@@ -1,0 +1,26 @@
+# Base dictionary for deterministic query expansion.
+#
+# This is a small, curated set of common abbreviations / synonyms meant to
+# improve recall without requiring dataset-specific configuration.
+#
+# Format (subset of YAML):
+#   KEY:
+#     - value
+#     - value2
+#
+# Notes:
+# - Expansion is bounded and applies at most one rule per expanded query.
+# - De-duplication is ASCII case-insensitive.
+
+SLO:
+  - service level objective
+  - service-level objective
+  - service level objectives
+
+SSO:
+  - single sign-on
+  - single sign on
+
+LLM:
+  - large language model
+

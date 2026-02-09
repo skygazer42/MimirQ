@@ -645,6 +645,29 @@ Requirements:
                 alias_elapsed = time.time() - t0
                 alias_used = bool(alias_queries)
 
+            # Deterministic dictionary expansion (bounded, auditable).
+            dict_elapsed = 0.0
+            dict_used = False
+            dict_meta: Dict[str, Any] = {"enabled": False, "used": False}
+            dict_expansions: List[Dict[str, Any]] = []
+            try:
+                from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
+
+                t0 = time.time()
+                dict_expansions, dict_meta = generate_dictionary_expansions(
+                    query=query_for_retrieval,
+                    rules=load_base_dictionary_rules(),
+                    max_expansions_total=5,
+                    max_expansions_per_rule=1,
+                )
+                dict_elapsed = time.time() - t0
+                dict_used = bool(dict_expansions)
+            except Exception as exc:  # noqa: BLE001
+                dict_elapsed = 0.0
+                dict_used = False
+                dict_expansions = []
+                dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
+
             multi_query_elapsed = 0.0
             multi_query_used = False
             multi_query_model_used = None
@@ -827,6 +850,10 @@ Requirements:
             retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
             for q in alias_queries:
                 retrieval_queries.append(("alias", q))
+            for e in dict_expansions:
+                q = e.get("expanded_text") if isinstance(e, dict) else None
+                if q:
+                    retrieval_queries.append(("dict", str(q)))
             for q in multi_queries:
                 retrieval_queries.append(("mq", q))
             for q in sub_questions:
@@ -1183,6 +1210,10 @@ Requirements:
                             "alias_used": bool(alias_used),
                             "alias_count": len(alias_queries),
                             "alias_elapsed_sec": round(alias_elapsed, 3),
+                            "dict_enabled": bool(dict_meta.get("enabled")),
+                            "dict_used": bool(dict_used),
+                            "dict_count": len(dict_expansions),
+                            "dict_elapsed_sec": round(dict_elapsed, 3),
                             "multi_query_enabled": bool(mq_enabled),
                             "multi_query_used": bool(multi_query_used),
                             "multi_query_count": len(multi_queries),
@@ -1367,6 +1398,11 @@ Requirements:
                     "alias_count": len(alias_queries),
                     "alias_elapsed_sec": round(alias_elapsed, 3),
                     "alias_meta": alias_meta,
+                    "dict_enabled": bool(dict_meta.get("enabled")),
+                    "dict_used": bool(dict_used),
+                    "dict_count": len(dict_expansions),
+                    "dict_elapsed_sec": round(dict_elapsed, 3),
+                    "dict_meta": dict_meta,
                     "multi_query_enabled": bool(mq_enabled),
                     "multi_query_used": bool(multi_query_used),
                     "multi_query_count": len(multi_queries),
@@ -1682,6 +1718,10 @@ Requirements:
                         "alias_used": bool(alias_used),
                         "alias_count": len(alias_queries),
                         "alias_elapsed_sec": round(alias_elapsed, 3),
+                        "dict_enabled": bool(dict_meta.get("enabled")),
+                        "dict_used": bool(dict_used),
+                        "dict_count": len(dict_expansions),
+                        "dict_elapsed_sec": round(dict_elapsed, 3),
                         "multi_query_enabled": bool(mq_enabled),
                         "multi_query_used": bool(multi_query_used),
                         "multi_query_count": len(multi_queries),
