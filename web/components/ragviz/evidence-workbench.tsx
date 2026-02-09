@@ -1,0 +1,361 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Download, Loader2, Search, X } from 'lucide-react'
+import { toast } from 'sonner'
+
+import type { Citation, Dataset, EvidenceRetrieveResponse } from '@/types'
+import { datasetApi, ragApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Panel } from '@/components/ui/panel'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+
+type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
+
+function downloadJson(filename: string, data: any) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function scoreLabel(c: Citation): string {
+  const raw = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0) as any
+  const n = Number(raw)
+  if (Number.isFinite(n)) return n.toFixed(4)
+  return '0.0000'
+}
+
+function titleForCitation(c: Citation): string {
+  const parts: string[] = []
+  if (c.document_name) parts.push(c.document_name)
+  if (typeof c.page_number === 'number') parts.push(`P.${c.page_number}`)
+  if (typeof c.chunk_index === 'number') parts.push(`#${c.chunk_index}`)
+  return parts.join(' · ') || (c.document_id ? String(c.document_id) : 'Citation')
+}
+
+export function EvidenceWorkbench() {
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [datasetsError, setDatasetsError] = useState<string | null>(null)
+
+  const DATASET_ALL = '__all__'
+  const [datasetScope, setDatasetScope] = useState<string>(DATASET_ALL)
+  const datasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
+
+  const [query, setQuery] = useState('')
+  const [profile, setProfile] = useState<RetrievalProfile>('recall50')
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [result, setResult] = useState<EvidenceRetrieveResponse | null>(null)
+
+  const loadDatasets = useCallback(async () => {
+    setDatasetsLoading(true)
+    setDatasetsError(null)
+    try {
+      const res = await datasetApi.list({ limit: 200 })
+      setDatasets(res.items || [])
+    } catch (e: any) {
+      setDatasetsError(formatApiError(e, '加载数据集失败'))
+    } finally {
+      setDatasetsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadDatasets()
+  }, [loadDatasets])
+
+  const datasetOptions = useMemo(() => {
+    const opts = (datasets || []).map((d) => ({ id: String(d.id), name: d.name || String(d.id) }))
+    opts.sort((a, b) => a.name.localeCompare(b.name))
+    return opts
+  }, [datasets])
+
+  const reset = useCallback(() => {
+    setError(null)
+    setResult(null)
+  }, [])
+
+  const run = useCallback(async () => {
+    const q = query.trim()
+    if (!q) return
+
+    setRunning(true)
+    setError(null)
+    setResult(null)
+
+    try {
+      const res = await ragApi.retrieveEvidence({
+        query: q,
+        history: [],
+        dataset_id: datasetId,
+        document_ids: [],
+        rag_config: {
+          // Use presets so the backend can apply the full recall profile contract (not just top_k).
+          retrieval_profile: profile,
+        },
+      })
+
+      setResult(res || null)
+      if (res?.has_evidence) {
+        toast.success('找到证据')
+      } else if (res?.abstain_triggered) {
+        toast.warning(`已触发 abstain：${res.abstain_reason || 'unknown'}`)
+      } else {
+        toast.message('未找到证据')
+      }
+    } catch (e: any) {
+      setError(formatApiError(e, '检索失败，请检查后端服务状态'))
+    } finally {
+      setRunning(false)
+    }
+  }, [datasetId, profile, query])
+
+  const exportPack = useCallback(() => {
+    if (!result) return
+
+    const exportedAt = new Date().toISOString()
+    const safeTs = exportedAt.replace(/[:.]/g, '-')
+    const ds = datasetId || 'all'
+    const filename = `evidence-pack-${ds}-${safeTs}.json`
+
+    const payload = {
+      version: 1,
+      dataset_id: datasetId || null,
+      query: query.trim(),
+      retrieval_profile: profile,
+      query_for_retrieval: result.query_for_retrieval || query.trim(),
+      has_evidence: Boolean(result.has_evidence),
+      abstain_triggered: Boolean(result.abstain_triggered),
+      abstain_reason: result.abstain_reason ?? null,
+      citations: result.citations || [],
+      metrics: result.metrics || null,
+      exported_at: exportedAt,
+    }
+
+    downloadJson(filename, payload)
+    toast.success('已导出 Evidence Pack')
+  }, [datasetId, profile, query, result])
+
+  const citations: Citation[] = result?.citations || []
+  const metrics = result?.metrics || null
+  const topRel = (metrics as any)?.top_relevance_score
+  const elapsed = (metrics as any)?.retrieval_elapsed_sec
+
+  return (
+    <div className="space-y-4">
+      <Panel className="p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col md:flex-row gap-3 md:items-end">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-muted-foreground mb-1">数据集范围</div>
+              <Select value={datasetScope} onValueChange={(v) => setDatasetScope(String(v))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="选择数据集" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DATASET_ALL}>全部可访问文档</SelectItem>
+                  {datasetOptions.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {datasetsLoading ? (
+                <div className="mt-1 text-[11px] text-muted-foreground">加载数据集中…</div>
+              ) : datasetsError ? (
+                <div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>
+              ) : null}
+            </div>
+
+            <div className="w-full md:w-[220px]">
+              <div className="text-xs text-muted-foreground mb-1">检索 Profile</div>
+              <Select value={profile} onValueChange={(v) => setProfile(v as RetrievalProfile)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="选择 profile" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recall50">recall50 (默认)</SelectItem>
+                  <SelectItem value="coverage80">coverage80</SelectItem>
+                  <SelectItem value="recall20">recall20</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-3 md:items-end">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-muted-foreground mb-1">Query</div>
+              <Textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="输入要检索的 query（只检索，不生成回答）"
+                className="min-h-[44px]"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button type="button" onClick={() => void run()} disabled={!query.trim() || running}>
+                {running ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    检索中…
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <Search className="h-4 w-4" />
+                    检索
+                  </span>
+                )}
+              </Button>
+
+              <Button type="button" variant="outline" onClick={reset} disabled={running && !result && !error}>
+                <span className="inline-flex items-center gap-2">
+                  <X className="h-4 w-4" />
+                  清空
+                </span>
+              </Button>
+
+              <Button type="button" variant="outline" onClick={exportPack} disabled={!result || running}>
+                <span className="inline-flex items-center gap-2">
+                  <Download className="h-4 w-4" />
+                  导出
+                </span>
+              </Button>
+            </div>
+          </div>
+
+          {error ? (
+            <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
+              {error}
+            </div>
+          ) : null}
+        </div>
+      </Panel>
+
+      {result ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Panel className="p-4 lg:col-span-1">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Summary</div>
+                <div className="text-xs text-muted-foreground mt-1">Evidence-only retrieval</div>
+              </div>
+              <div
+                className={cn(
+                  'px-2 py-1 rounded-md text-xs font-mono border',
+                  result.has_evidence
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                    : result.abstain_triggered
+                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300'
+                      : 'bg-muted border-border text-muted-foreground'
+                )}
+                title="has_evidence / abstain"
+              >
+                has_evidence={String(Boolean(result.has_evidence))}
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-muted-foreground">abstain_triggered</div>
+                <div className="font-mono">{String(Boolean(result.abstain_triggered))}</div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-muted-foreground">abstain_reason</div>
+                <div className="font-mono max-w-[220px] truncate" title={String(result.abstain_reason || '')}>
+                  {result.abstain_reason || '-'}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-muted-foreground">top_relevance_score</div>
+                <div className="font-mono">{topRel ?? '-'}</div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-muted-foreground">retrieval_elapsed_sec</div>
+                <div className="font-mono">{elapsed ?? '-'}</div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-muted-foreground">citations</div>
+                <div className="font-mono">{citations.length}</div>
+              </div>
+              <div className="pt-2">
+                <div className="text-muted-foreground text-[11px]">query_for_retrieval</div>
+                <Input readOnly value={result.query_for_retrieval || ''} className="mt-1 font-mono text-[12px]" />
+              </div>
+            </div>
+          </Panel>
+
+          <Panel className="p-4 lg:col-span-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Citations</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {citations.length ? '点击可复制引用（手动）' : '暂无命中'}
+                </div>
+              </div>
+            </div>
+
+            {citations.length ? (
+              <div className="mt-3 space-y-2 max-h-[560px] overflow-auto pr-1">
+                {citations.map((c, idx) => {
+                  const content = String(c.chunk_content || '')
+                  return (
+                    <div
+                      key={`${c.chunk_id || idx}-${idx}`}
+                      className={cn(
+                        'rounded-lg border border-border/60 bg-background/70 px-3 py-2',
+                        'hover:border-primary/20 hover:bg-muted/20 transition-colors'
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium truncate" title={titleForCitation(c)}>
+                            {titleForCitation(c)}
+                          </div>
+                          {c.header_path ? (
+                            <div className="text-[11px] text-muted-foreground truncate" title={String(c.header_path)}>
+                              {c.header_path}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="text-[11px] text-muted-foreground">score</div>
+                          <div className="text-[11px] font-mono">{scoreLabel(c)}</div>
+                        </div>
+                      </div>
+
+                      {content ? (
+                        <pre className="mt-2 text-xs leading-relaxed whitespace-pre-wrap font-mono text-foreground/90 max-h-[180px] overflow-auto">
+                          {content}
+                        </pre>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-muted-foreground">空内容</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-muted-foreground">没有检索到可用的 citations。</div>
+            )}
+          </Panel>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
