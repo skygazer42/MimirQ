@@ -2089,6 +2089,14 @@ class HybridRetriever(BaseRetriever):
         *,
         run_manager: CallbackManagerForRetrieverRun,
     ) -> List[Document]:
+        # Deterministic query normalization applied upstream of all retrieval channels.
+        # Keep the original for debugging/observability (stored in _last_debug_metrics below).
+        from app.query.normalize import normalize_query
+
+        query_norm = normalize_query(query)
+        original_query = query
+        query = query_norm.normalized_text
+
         requested_k = max(1, int(self.k or 0))
         # When running in open scope (no explicit document_ids), we may drop candidates due to:
         # - document/dataset ACL (security trimming)
@@ -2117,6 +2125,11 @@ class HybridRetriever(BaseRetriever):
             "overfetch_enabled": bool(search_k > requested_k),
             "overfetch_multiplier": int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
             "overfetch_cap_k": int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0),
+            "query_normalization": {
+                "original": original_query,
+                "normalized": query,
+                "applied_rules": list(query_norm.applied_rules or []),
+            },
             "scope": {
                 "tenant_id": str(self.tenant_id or ""),
                 "account_id_present": bool((self.account_id or "").strip()),
