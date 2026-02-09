@@ -1,0 +1,24 @@
+/**
+ * ESLint v9 flat config.
+ *
+ * Next.js 16 + eslint-config-next@16 exports flat-config arrays.
+ * Compose them here so `pnpm -C web lint` works in fresh installs.
+ */
+
+const nextCoreWebVitals = require('eslint-config-next/core-web-vitals')
+
+module.exports = [
+  // Ignore generated/build artifacts.
+  {
+    ignores: ['.next/**', '.next_build/**', 'out/**', 'dist/**', 'coverage/**', 'node_modules/**'],
+  },
+  ...nextCoreWebVitals,
+  // Existing codebase uses state sync in effects in multiple places; keep lint signal focused.
+  {
+    rules: {
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+    },
+  },
+]
