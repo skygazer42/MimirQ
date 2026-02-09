@@ -1584,6 +1584,7 @@ export interface ChatRequest {
   prompt_template_key?: string
   prompt_ab_experiment_key?: string
   rag_config?: {
+    retrieval_profile?: string
     top_k?: number
     score_threshold?: number
     max_tokens?: number
