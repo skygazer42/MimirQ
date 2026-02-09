@@ -32,6 +32,7 @@ from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
+from app.rag.chunking.roles import classify_chunk_semantic_role
 from app.rag.chunking.strategies import SeparatorChunker
 from app.rag.core.logging import get_logger
 from app.rag.core.metadata import infer_chunk_structure, normalize_image_metadata, normalize_section_metadata
@@ -1024,6 +1025,15 @@ class ChunkAssetStage:
             content_norm = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
             meta.setdefault("content_len", len(content_norm.strip()))
             infer_chunk_structure(meta, content_norm)
+            # Lightweight semantic role labels (deterministic): helps filtering/reranking.
+            # Keep separate from existing `chunk_role` (parent/child/qa/etc).
+            try:
+                meta.setdefault(
+                    "chunk_semantic_role",
+                    classify_chunk_semantic_role(content=content_norm, meta=meta),
+                )
+            except Exception:
+                pass
             if not isinstance(meta.get("content_hash"), str) or not str(meta.get("content_hash") or "").strip():
                 meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
                 meta.setdefault("content_hash_algo", "sha256")

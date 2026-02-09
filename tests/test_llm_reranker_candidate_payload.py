@@ -6,6 +6,7 @@ def test_build_candidate_payload_includes_header_path_and_structure() -> None:
 
     meta = {
         "header_path": "H1 > H2",
+        "chunk_semantic_role": "policy",
         "structure": {
             "list": {"item_count": 3, "min_level": 0, "max_level": 2},
             "table": {"title": "Orders", "sheet_name": "Sheet 1"},
@@ -15,6 +16,7 @@ def test_build_candidate_payload_includes_header_path_and_structure() -> None:
     assert out is not None
     assert out.get("id") == "c1"
     assert out.get("header_path") == "H1 > H2"
+    assert out.get("chunk_semantic_role") == "policy"
 
     structure = out.get("structure") or {}
     assert isinstance(structure, dict)
@@ -31,4 +33,3 @@ def test_build_candidate_payload_truncates_text_and_header_path() -> None:
     assert out.get("text") == ("y" * 10 + "...")
     assert isinstance(out.get("header_path"), str)
     assert len(str(out.get("header_path") or "")) <= 200
-
