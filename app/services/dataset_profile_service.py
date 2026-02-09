@@ -34,6 +34,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services.dataset_profile_utils import (
     FILE_SIZE_BINS,
+    PAGE_COUNT_BINS,
     TEXT_LENGTH_BINS,
     histogram,
     percentile_from_sorted,
@@ -248,12 +249,40 @@ def aggregate_profile_from_rows(
     pdf_not_scanned = 0
     pdf_unknown = 0
 
+    page_counts: List[int] = []
+    language_counts: Counter[str] = Counter()
+    parse_quality_bins: list[int] = [0 for _ in range(10)]
+
     pii_totals: dict[str, int] = defaultdict(int)
     secrets_totals: dict[str, int] = defaultdict(int)
 
     # Findings counters.
     finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
     sha_counts: Counter[str] = Counter()
+
+    def _normalize_language_bucket(value: object) -> str:
+        s = str(value or "").strip()
+        if not s:
+            return "unknown"
+        lowered = s.lower()
+        if lowered in {"mixed", "multilingual", "multi"}:
+            return "mixed"
+        if any(sep in lowered for sep in (",", ";", "|", "+", "/")):
+            return "mixed"
+        if lowered.startswith("zh"):
+            return "zh"
+        if lowered.startswith("en"):
+            return "en"
+        return "unknown"
+
+    def _extract_language(meta: dict[str, Any]) -> str:
+        # Prefer top-level metadata; fallback to governance enrichment.
+        if isinstance(meta.get("language"), str):
+            return _normalize_language_bucket(meta.get("language"))
+        enr = meta.get("governance_enrichment")
+        if isinstance(enr, dict) and isinstance(enr.get("language"), str):
+            return _normalize_language_bucket(enr.get("language"))
+        return "unknown"
 
     for row in rows:
         _doc_id, filename, file_type, file_size, status, _chunk_count, total_chars, _err, meta = row
@@ -272,6 +301,18 @@ def aggregate_profile_from_rows(
             lengths.append(length_val)
 
         meta_dict = meta if isinstance(meta, dict) else {}
+
+        # Language mix (best-effort).
+        language_counts[_extract_language(meta_dict)] += 1
+
+        # Page count histogram (best-effort; keep it cheap: only use persisted metadata).
+        page_count = safe_int(meta_dict.get("page_count"), default=0)
+        if page_count <= 0:
+            pdf_quality = meta_dict.get("pdf_quality")
+            if isinstance(pdf_quality, dict):
+                page_count = safe_int(pdf_quality.get("page_count"), default=0)
+        if page_count > 0:
+            page_counts.append(int(page_count))
 
         # PDF scan breakdown.
         if ft == "pdf":
@@ -297,6 +338,11 @@ def aggregate_profile_from_rows(
         pq = meta_dict.get("parse_quality")
         if isinstance(pq, dict) and pq.get("score") is not None:
             score = safe_float(pq.get("score"), default=1.0)
+            # Bucket into 10 bins: [0.0-0.1), ... [0.9-1.0]
+            clamped = min(1.0, max(0.0, float(score)))
+            idx = int(clamped * 10.0)
+            idx = 9 if idx >= 10 else idx
+            parse_quality_bins[idx] += 1
             if score < float(_PARSE_QUALITY_LOW_THRESHOLD):
                 finding_counts["parse_low_quality"] += 1
 
@@ -345,6 +391,22 @@ def aggregate_profile_from_rows(
     # Histograms.
     length_hist = histogram(lengths, TEXT_LENGTH_BINS)
     size_hist = histogram(file_sizes, FILE_SIZE_BINS)
+    page_hist = histogram(page_counts, PAGE_COUNT_BINS) if page_counts else []
+
+    # Parse quality histogram (0.0-1.0, 10 bins).
+    pq_hist: list[dict[str, Any]] = []
+    for i, cnt in enumerate(parse_quality_bins):
+        lo = i / 10.0
+        hi = (i + 1) / 10.0
+        pq_hist.append({"label": f"{lo:.1f}-{hi:.1f}", "count": int(cnt)})
+
+    # Stable keys for UI.
+    language_mix = {
+        "zh": int(language_counts.get("zh", 0) or 0),
+        "en": int(language_counts.get("en", 0) or 0),
+        "mixed": int(language_counts.get("mixed", 0) or 0),
+        "unknown": int(language_counts.get("unknown", 0) or 0),
+    }
 
     # Findings list in stable order.
     findings_out: List[DatasetProfileFindingSummary] = []
@@ -371,6 +433,9 @@ def aggregate_profile_from_rows(
         file_size_histogram=size_hist,
         length_percentiles=percentiles,
         length_histogram=length_hist,
+        page_number_histogram=page_hist,
+        parse_quality_histogram=pq_hist,
+        language_mix=language_mix,
         pdf_scan=DatasetProfilePdfScanStats(scanned=pdf_scanned, not_scanned=pdf_not_scanned, unknown=pdf_unknown),
         pii_hits_total={k: int(v) for k, v in pii_totals.items()},
         secrets_hits_total={k: int(v) for k, v in secrets_totals.items()},

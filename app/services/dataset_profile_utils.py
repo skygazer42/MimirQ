@@ -104,3 +104,12 @@ FILE_SIZE_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("5-20MB", 5 * 1024 * 1024, 20 * 1024 * 1024),
     HistogramBinSpec("20MB+", 20 * 1024 * 1024, None),
 ]
+
+PAGE_COUNT_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("1-2", 1, 3),
+    HistogramBinSpec("3-5", 3, 6),
+    HistogramBinSpec("6-10", 6, 11),
+    HistogramBinSpec("11-25", 11, 26),
+    HistogramBinSpec("26-50", 26, 51),
+    HistogramBinSpec("50+", 51, None),
+]
