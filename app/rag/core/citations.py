@@ -275,6 +275,7 @@ def build_citations_from_docs(
             "header_path": meta.get("header_path") or meta.get("header_context"),
             "chunk_strategy": meta.get("chunk_strategy"),
             "chunk_role": meta.get("chunk_role"),
+            "chunk_semantic_role": meta.get("chunk_semantic_role"),
             "retrieval_role": retrieval_role,
             "neighbor_of": neighbor_of,
             # Useful for audit/debug and for versioned retrieval UIs.

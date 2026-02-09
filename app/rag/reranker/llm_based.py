@@ -115,6 +115,10 @@ def _build_candidate_payload(*, cid: str, text: str, meta: dict[str, Any] | None
     if isinstance(header_path, str) and header_path.strip():
         payload["header_path"] = header_path.strip()[:200]
 
+    semantic_role = (meta or {}).get("chunk_semantic_role")
+    if isinstance(semantic_role, str) and semantic_role.strip():
+        payload["chunk_semantic_role"] = semantic_role.strip()[:40]
+
     structure = (meta or {}).get("structure")
     structure_sanitized = _sanitize_structure(structure)
     if structure_sanitized:

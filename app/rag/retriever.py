@@ -1770,6 +1770,7 @@ class HybridRetriever(BaseRetriever):
         for r, doc_uuid, idx, _pk in anchors:
             meta = r.get("metadata") or {}
             anchor_cid = str(r.get("chunk_id") or meta.get("chunk_id") or "")
+            anchor_header_path = str(meta.get("header_path") or meta.get("header_context") or "").strip() or None
 
             # Build a [prev..anchor..next] group in document order.
             if doc_uuid is not None and idx is not None:
@@ -1793,6 +1794,13 @@ class HybridRetriever(BaseRetriever):
                         continue
 
                     stored_meta = dict(ck.doc_metadata or {})
+                    # Respect section boundaries when possible: don't cross header_path changes.
+                    # (Fallback to legacy behavior when either side lacks the field.)
+                    neighbor_header_path = str(
+                        stored_meta.get("header_path") or stored_meta.get("header_context") or ""
+                    ).strip() or None
+                    if anchor_header_path and neighbor_header_path and neighbor_header_path != anchor_header_path:
+                        continue
                     stored_meta.setdefault("tenant_id", str(ck.tenant_id))
                     stored_meta.setdefault("document_id", str(ck.document_id))
                     stored_meta.setdefault("chunk_index", int(ck.chunk_index))
