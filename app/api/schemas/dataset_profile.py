@@ -71,6 +71,11 @@ class DatasetProfileSummary(BaseModel):
     length_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
     length_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
+    # Additional distributions (best-effort; may be empty if metadata missing).
+    page_number_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    parse_quality_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    language_mix: Dict[str, int] = Field(default_factory=dict)
+
     pdf_scan: DatasetProfilePdfScanStats = Field(default_factory=DatasetProfilePdfScanStats)
 
     pii_hits_total: Dict[str, int] = Field(default_factory=dict)
