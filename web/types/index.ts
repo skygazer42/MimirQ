@@ -221,6 +221,21 @@ export type ConnectorRunCreateRequest =
       config: SQLServerCatalogConnectorConfig
     }
 
+export interface ConnectorValidateRequest {
+  connector_id: string
+  config?: Record<string, any>
+  check_connectivity?: boolean
+}
+
+export interface ConnectorValidateResponse {
+  ok: boolean
+  connector_id: string
+  config: Record<string, any>
+  errors: Record<string, any>[]
+  warnings: Record<string, any>[]
+  checks: Record<string, any>
+}
+
 export interface ConnectorRunDocumentOut {
   document_id: string
   source_ref?: string | null

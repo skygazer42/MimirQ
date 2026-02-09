@@ -38,6 +38,8 @@ import type {
   ConnectorRunCreateRequest,
   ConnectorRunListResponse,
   ConnectorRunOut,
+  ConnectorValidateRequest,
+  ConnectorValidateResponse,
   DocumentUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchResponse,
@@ -1288,6 +1290,11 @@ export const chunkPresetApi = {
 export const connectorApi = {
   async listConnectors(): Promise<ConnectorInfo[]> {
     const { data } = await apiClient.get('/connectors')
+    return data
+  },
+
+  async validateConfig(payload: ConnectorValidateRequest): Promise<ConnectorValidateResponse> {
+    const { data } = await apiClient.post('/connectors/validate', payload)
     return data
   },
 
