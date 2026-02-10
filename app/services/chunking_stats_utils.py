@@ -12,7 +12,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Iterable, Optional
 
-from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, histogram
+from app.core.token_utils import estimate_tokens
+from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, CHUNK_TOKEN_BINS, HistogramBinSpec, histogram
 
 
 def _percentile_from_sorted(sorted_values: list[int], p: int) -> int:
@@ -30,6 +31,7 @@ def compute_chunking_stats_from_lengths(
     short_threshold: int = 120,
     duplicate_count: int = 0,
     unit: str = "chars",
+    bins: list[HistogramBinSpec] | None = None,
 ) -> Optional[dict[str, Any]]:
     """
     Compute lightweight chunking stats.
@@ -55,7 +57,7 @@ def compute_chunking_stats_from_lengths(
     total = int(sum(values))
     short = int(sum(1 for n in values if n < int(short_threshold or 0)))
 
-    hist = histogram(values, CHUNK_LENGTH_BINS)
+    hist = histogram(values, list(bins or CHUNK_LENGTH_BINS))
 
     return {
         "unit": str(unit or "chars"),
@@ -108,3 +110,39 @@ def compute_chunking_stats_from_texts(
         unit=unit,
     )
 
+
+def compute_chunking_stats_from_texts_tokens(
+    texts: Iterable[str],
+    *,
+    short_threshold: int = 40,
+) -> Optional[dict[str, Any]]:
+    """
+    Compute token-based chunking stats from raw chunk texts (best-effort).
+
+    Notes:
+    - Uses `estimate_tokens` (fast heuristic) to avoid heavy tokenization costs during ingestion.
+    - Keeps duplicate detection identical to char-based stats (content sha256).
+    """
+    lengths: list[int] = []
+    seen: set[str] = set()
+    dup_count = 0
+
+    for raw in texts:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        lengths.append(int(estimate_tokens(text) or 0))
+
+        digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
+        if digest in seen:
+            dup_count += 1
+        else:
+            seen.add(digest)
+
+    return compute_chunking_stats_from_lengths(
+        lengths,
+        short_threshold=int(short_threshold or 0),
+        duplicate_count=int(dup_count),
+        unit="tokens",
+        bins=CHUNK_TOKEN_BINS,
+    )

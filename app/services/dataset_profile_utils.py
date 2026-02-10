@@ -138,3 +138,14 @@ AVG_CHUNK_CHARS_BINS: List[HistogramBinSpec] = [
 # Chunk length bins (per-chunk distribution). Keep aligned with AVG_CHUNK_CHARS_BINS for now so
 # charts are comparable (doc-level proxy vs real chunk-level).
 CHUNK_LENGTH_BINS: List[HistogramBinSpec] = list(AVG_CHUNK_CHARS_BINS)
+
+# Token-length bins for chunk-level stats (used by chunk preview + ingest-time token stats).
+# Note: This is intentionally coarse; tune later based on real corpora.
+CHUNK_TOKEN_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("0-50", 0, 50),
+    HistogramBinSpec("50-100", 50, 100),
+    HistogramBinSpec("100-200", 100, 200),
+    HistogramBinSpec("200-400", 200, 400),
+    HistogramBinSpec("400-800", 400, 800),
+    HistogramBinSpec("800+", 800, None),
+]
