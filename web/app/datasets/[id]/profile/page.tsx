@@ -92,6 +92,7 @@ export default function DatasetProfilePage() {
   const [scanConfig, setScanConfig] = useState<DatasetProfileScanRunCreateRequest>({
     backfill_pdf_quality: true,
     backfill_text_quality: true,
+    backfill_chunk_stats: true,
     compute_file_hash: false,
     max_documents: null,
   })
@@ -182,6 +183,10 @@ export default function DatasetProfilePage() {
 
   const avgChunkCharsHistogramData = useMemo(() => {
     return (summary?.avg_chunk_chars_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
+  }, [summary])
+
+  const chunkLengthHistogramData = useMemo(() => {
+    return (summary?.chunk_length_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
   }, [summary])
 
   const languageMixChartData = useMemo(() => {
@@ -618,6 +623,27 @@ export default function DatasetProfilePage() {
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">Chunk 长度分布（chunk-level）</div>
+              </div>
+              {chunkLengthHistogramData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chunkLengthHistogramData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#fb7185" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">解析质量分布</div>
                 {parseLowQualityFinding ? (
                   <Button
@@ -764,7 +790,7 @@ export default function DatasetProfilePage() {
                   ) : null}
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">
-                  用于补齐缺失的 pdf_quality / parsed_text_quality；可选计算 file_sha256（用于完全重复）。
+                  用于补齐缺失的 pdf_quality / parsed_text_quality / chunking_stats；可选计算 file_sha256（用于完全重复）。
                 </div>
               </div>
 
@@ -787,6 +813,13 @@ export default function DatasetProfilePage() {
                 <Switch
                   checked={!!scanConfig.backfill_text_quality}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_text_quality: !!v }))}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
+                <Label className="text-sm">补齐 Chunk 分布</Label>
+                <Switch
+                  checked={!!scanConfig.backfill_chunk_stats}
+                  onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_chunk_stats: !!v }))}
                 />
               </div>
               <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
@@ -860,7 +893,7 @@ export default function DatasetProfilePage() {
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">{typeof r.progress === 'number' ? `${r.progress}%` : '-'}</td>
                         <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                          pdf:{r.config?.backfill_pdf_quality === false ? '0' : '1'} · text:{r.config?.backfill_text_quality === false ? '0' : '1'} · sha:{r.config?.compute_file_hash ? '1' : '0'}
+                          pdf:{r.config?.backfill_pdf_quality === false ? '0' : '1'} · text:{r.config?.backfill_text_quality === false ? '0' : '1'} · chunk:{r.config?.backfill_chunk_stats === false ? '0' : '1'} · sha:{r.config?.compute_file_hash ? '1' : '0'}
                         </td>
                         <td className="px-3 py-2 text-xs text-destructive">{r.error_message || ''}</td>
                       </tr>

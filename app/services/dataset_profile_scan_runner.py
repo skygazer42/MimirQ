@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -217,6 +218,7 @@ def run_dataset_profile_deep_scan(
     cfg = dict(getattr(run, "config", None) or {})
     backfill_pdf_quality = bool(cfg.get("backfill_pdf_quality", True))
     backfill_text_quality = bool(cfg.get("backfill_text_quality", True))
+    backfill_chunk_stats = bool(cfg.get("backfill_chunk_stats", True))
     compute_file_hash = bool(cfg.get("compute_file_hash", False))
     max_docs_raw = cfg.get("max_documents")
     max_documents = int(max_docs_raw) if isinstance(max_docs_raw, (int, float)) and int(max_docs_raw) > 0 else None
@@ -244,6 +246,7 @@ def run_dataset_profile_deep_scan(
     updated_docs = 0
     pdf_backfilled = 0
     text_backfilled = 0
+    chunk_stats_backfilled = 0
     hash_backfilled = 0
     errors = 0
 
@@ -323,6 +326,42 @@ def run_dataset_profile_deep_scan(
             if _backfill_parse_quality(meta):
                 changed = True
 
+            # Backfill per-doc chunking stats (length distribution) for dataset profiling.
+            if backfill_chunk_stats:
+                existing = meta.get("chunking_stats")
+                has_hist = False
+                if isinstance(existing, dict):
+                    has_hist = isinstance(existing.get("histogram"), list) and bool(existing.get("histogram"))
+                if not has_hist:
+                    rows = (
+                        db.query(func.length(func.trim(DocumentChunk.content)))
+                        .filter(
+                            DocumentChunk.tenant_id == tenant_id,
+                            DocumentChunk.document_id == doc.id,
+                            DocumentChunk.disabled_at.is_(None),
+                        )
+                        .all()
+                    )
+                    lengths: list[int] = []
+                    for r in rows:
+                        if not r:
+                            continue
+                        try:
+                            n = int(r[0] or 0)
+                        except Exception:
+                            n = 0
+                        if n > 0:
+                            lengths.append(n)
+
+                    if lengths:
+                        from app.services.chunking_stats_utils import compute_chunking_stats_from_lengths
+
+                        stats = compute_chunking_stats_from_lengths(lengths, short_threshold=120, duplicate_count=0)
+                        if stats:
+                            meta["chunking_stats"] = stats
+                            changed = True
+                            chunk_stats_backfilled += 1
+
             # Optional file hash (expensive; for exact duplicates).
             if compute_file_hash:
                 sha = str(meta.get("file_sha256") or "").strip().lower()
@@ -373,6 +412,7 @@ def run_dataset_profile_deep_scan(
         "updated_docs": int(updated_docs),
         "pdf_backfilled": int(pdf_backfilled),
         "text_backfilled": int(text_backfilled),
+        "chunk_stats_backfilled": int(chunk_stats_backfilled),
         "hash_backfilled": int(hash_backfilled),
         "errors": int(errors),
     }

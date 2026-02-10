@@ -2305,6 +2305,8 @@ export interface DatasetProfileSummary {
   chunk_count_histogram?: DatasetProfileHistogramBin[]
   avg_chunk_chars_percentiles?: DatasetProfilePercentiles
   avg_chunk_chars_histogram?: DatasetProfileHistogramBin[]
+  chunk_length_percentiles?: DatasetProfilePercentiles
+  chunk_length_histogram?: DatasetProfileHistogramBin[]
   page_number_histogram?: DatasetProfileHistogramBin[]
   parse_quality_histogram?: DatasetProfileHistogramBin[]
   language_mix?: Record<string, number>
@@ -2340,6 +2342,7 @@ export interface DatasetProfileFindingListResponse {
 export interface DatasetProfileScanRunCreateRequest {
   backfill_pdf_quality?: boolean
   backfill_text_quality?: boolean
+  backfill_chunk_stats?: boolean
   compute_file_hash?: boolean
   max_documents?: number | null
 }

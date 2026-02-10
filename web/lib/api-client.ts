@@ -850,6 +850,7 @@ export const documentApi = {
       pipeline?: DocumentPipelineOptions
       dataset_id?: string
       include_original_text?: boolean
+      include_chunks?: boolean
       original_text_max_chars?: number
       max_chunks?: number
       use_parse_cache?: boolean
@@ -891,6 +892,7 @@ export const documentApi = {
         chunk_size: effectiveChunkSize,
         chunk_overlap: effectiveChunkOverlap,
         include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
+        include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
         original_text_max_chars: typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
         max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
         use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,
@@ -924,6 +926,7 @@ export const documentApi = {
       pipeline?: DocumentPipelineOptions
       dataset_id?: string
       include_original_text?: boolean
+      include_chunks?: boolean
       original_text_max_chars?: number
       max_chunks?: number
       use_parse_cache?: boolean
@@ -971,6 +974,7 @@ export const documentApi = {
         chunk_size: effectiveChunkSize,
         chunk_overlap: effectiveChunkOverlap,
         include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
+        include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
         original_text_max_chars: typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
         max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
         use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,

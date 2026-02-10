@@ -35,6 +35,7 @@ import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import { ChunkPresetPanel } from '@/components/chunk-preview/components/chunk-preset-panel'
+import { ChunkAutoTuneDialog } from '@/components/chunk-preview/components/chunk-auto-tune-dialog'
 import type { Dataset, IngestionPreviewResponse } from '@/types'
 import {
   ResponsiveContainer,
@@ -1228,15 +1229,18 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 <BarChart3 className="w-4 h-4 text-primary" />
                 <h2 className="text-sm font-semibold text-foreground">分析结果</h2>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-[11px]"
-                onClick={() => setShowAdvancedStats((v) => !v)}
-              >
-                {showAdvancedStats ? '收起' : '更多'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <ChunkAutoTuneDialog />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={() => setShowAdvancedStats((v) => !v)}
+                >
+                  {showAdvancedStats ? '收起' : '更多'}
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

@@ -35,6 +35,7 @@ from app.models.document import DocumentPermission
 from app.services.dataset_profile_utils import (
     AVG_CHUNK_CHARS_BINS,
     CHUNK_COUNT_BINS,
+    CHUNK_LENGTH_BINS,
     FILE_SIZE_BINS,
     PAGE_COUNT_BINS,
     TEXT_LENGTH_BINS,
@@ -248,6 +249,8 @@ def aggregate_profile_from_rows(
     file_sizes: List[int] = []
     chunk_counts: List[int] = []
     avg_chunk_chars: List[int] = []
+    chunk_length_bins: list[int] = [0 for _ in range(len(CHUNK_LENGTH_BINS))]
+    chunk_length_total: int = 0
 
     pdf_scanned = 0
     pdf_not_scanned = 0
@@ -288,6 +291,8 @@ def aggregate_profile_from_rows(
             return _normalize_language_bucket(enr.get("language"))
         return "unknown"
 
+    chunk_length_label_to_idx: dict[str, int] = {spec.label: i for i, spec in enumerate(CHUNK_LENGTH_BINS)}
+
     for row in rows:
         _doc_id, filename, file_type, file_size, status, _chunk_count, total_chars, _err, meta = row
         ft = _normalize_file_type(file_type, filename)
@@ -312,6 +317,25 @@ def aggregate_profile_from_rows(
                 avg_chunk_chars.append(int(max(1, length_val // max(1, int(chunk_count_val)))))
 
         meta_dict = meta if isinstance(meta, dict) else {}
+
+        # Per-chunk length distribution (requires ingest-time chunking_stats or deep scan backfill).
+        chunking_stats = meta_dict.get("chunking_stats")
+        if isinstance(chunking_stats, dict):
+            hist = chunking_stats.get("histogram")
+            if isinstance(hist, list) and hist:
+                for b in hist:
+                    if not isinstance(b, dict):
+                        continue
+                    label = str(b.get("label") or "").strip()
+                    if not label:
+                        continue
+                    idx = chunk_length_label_to_idx.get(label)
+                    if idx is None:
+                        continue
+                    cnt = safe_int(b.get("count"), default=0)
+                    if cnt > 0:
+                        chunk_length_bins[idx] += int(cnt)
+                        chunk_length_total += int(cnt)
 
         # Language mix (best-effort).
         language_counts[_extract_language(meta_dict)] += 1
@@ -417,12 +441,55 @@ def aggregate_profile_from_rows(
         p99=percentile_from_sorted(avg_chunk_chars, 99),
     )
 
+    def _pct_from_chunk_length_hist(p: int) -> int:
+        total = int(chunk_length_total or 0)
+        if total <= 0:
+            return 0
+        pp = max(0, min(100, int(p)))
+        target = int((pp / 100.0) * (total - 1))
+        target = max(0, min(total - 1, target))
+        seen = 0
+        for idx, spec in enumerate(CHUNK_LENGTH_BINS):
+            cnt = int(chunk_length_bins[idx] or 0)
+            if cnt <= 0:
+                continue
+            if (seen + cnt) > target:
+                lo = int(spec.min) if spec.min is not None else 0
+                if spec.max is None:
+                    # Open-ended bin; best-effort lower bound.
+                    return lo
+                hi = int(spec.max)
+                if hi <= lo:
+                    return lo
+                # Linear interpolation within the bin.
+                offset = target - seen
+                frac = float(offset) / float(cnt) if cnt > 0 else 0.0
+                return int(round(lo + (hi - lo) * frac))
+            seen += cnt
+        # Fallback to last bin lower bound.
+        last = CHUNK_LENGTH_BINS[-1] if CHUNK_LENGTH_BINS else None
+        if last is None:
+            return 0
+        return int(last.min or 0)
+
+    chunk_length_percentiles = DatasetProfilePercentiles(
+        p25=_pct_from_chunk_length_hist(25),
+        p50=_pct_from_chunk_length_hist(50),
+        p75=_pct_from_chunk_length_hist(75),
+        p90=_pct_from_chunk_length_hist(90),
+        p99=_pct_from_chunk_length_hist(99),
+    )
+
     # Histograms.
     length_hist = histogram(lengths, TEXT_LENGTH_BINS)
     size_hist = histogram(file_sizes, FILE_SIZE_BINS)
     page_hist = histogram(page_counts, PAGE_COUNT_BINS) if page_counts else []
     chunk_count_hist = histogram(chunk_counts, CHUNK_COUNT_BINS) if chunk_counts else []
     avg_chunk_chars_hist = histogram(avg_chunk_chars, AVG_CHUNK_CHARS_BINS) if avg_chunk_chars else []
+    chunk_length_hist: list[dict[str, Any]] = []
+    if int(chunk_length_total or 0) > 0:
+        for spec, cnt in zip(CHUNK_LENGTH_BINS, chunk_length_bins, strict=False):
+            chunk_length_hist.append({"label": spec.label, "min": spec.min, "max": spec.max, "count": int(cnt)})
 
     # Parse quality histogram (0.0-1.0, 10 bins).
     pq_hist: list[dict[str, Any]] = []
@@ -468,6 +535,8 @@ def aggregate_profile_from_rows(
         chunk_count_histogram=chunk_count_hist,
         avg_chunk_chars_percentiles=avg_chunk_chars_percentiles,
         avg_chunk_chars_histogram=avg_chunk_chars_hist,
+        chunk_length_percentiles=chunk_length_percentiles,
+        chunk_length_histogram=chunk_length_hist,
         page_number_histogram=page_hist,
         parse_quality_histogram=pq_hist,
         language_mix=language_mix,

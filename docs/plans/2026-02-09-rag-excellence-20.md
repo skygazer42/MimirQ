@@ -13,7 +13,6 @@
 状态标记：
 - DONE：已具备可用能力 + 有测试/文档支撑
 - PARTIAL：已有底座，但还缺关键产物/指标/可视化/门禁
-- TODO：缺失，需要实现
 
 1) **入库 Run Manifest（全链路运行清单）**（PARTIAL）
    - 现状：Connector 有 `connector_runs`；手动上传/批处理缺统一 run 视角。
@@ -63,12 +62,15 @@
    - 现状：auto/多策略 chunker + chunk preview 已具备。
    - DoD：已有（后续：策略自动推荐与更强的结构化策略）。
 
-13) **切块分布分析（符合要求）**（PARTIAL）
+13) **切块分布分析（符合要求）**（DONE）
    - 已实现（2026-02-09）：Dataset Profile 新增 chunk 代理分布（chunks/doc 与 avg chars/chunk），并在 Profile 页面 + HTML 报告中展示。
-   - TODO：补充“chunk-level 分布”（需要 deep scan 或入库时写入 per-doc chunk_stats）。
+   - 已实现（2026-02-10）：补齐 chunk-level 分布（chunk_length_histogram + percentiles），来源：
+     - 入库时写入 per-doc `chunking_stats.histogram`
+     - 深度扫描支持回填缺失的 `chunking_stats`（可开关）
+     并在 Profile 页面 + HTML 报告中展示。
 
-14) **切块参数自动调优（Auto-tune）**（TODO）
-   - DoD：给定文件/策略/约束（coverage_ratio、overlap_waste、max_chunks 等），自动搜索参数并输出 TopN 推荐 + 对比报告，可一键应用。
+14) **切块参数自动调优（Auto-tune）**（DONE）
+   - 给定文件/策略/约束（coverage_ratio、overlap_waste、max_chunks 等），自动搜索 chunk_size/chunk_overlap 并输出 TopN 推荐 + 对比表，支持一键应用并回到预览验证；支持导出 JSON 报告。
 
 15) **Parent-Child / Neighbor Window**（DONE）
    - 现状：parent_child + neighbor window 已具备，并在 chunk-preview 文档中说明。
@@ -99,4 +101,3 @@
 P0（先补“可观测/可复现”底座）：1 → 6 → 7 → 13（chunk-level）→ 17  
 P1（提效与自动化）：5 → 11 → 14 → 16  
 P2（闭环与运营）：9 → 18（看板化）→ 20（门禁覆盖 KG-aware）
-
