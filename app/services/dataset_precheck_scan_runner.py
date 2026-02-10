@@ -31,6 +31,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.token_utils import estimate_tokens
 from app.core.optional_deps import optional_import
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
@@ -613,6 +614,7 @@ class _FileRecord:
     file_size: int
     file_mtime: int = 0
     text_characters: int = 0
+    text_tokens_est: int = 0
     estimated_text: bool = False
     pdf_scanned: Optional[bool] = None
     pdf_pages: Optional[dict[str, Any]] = None
@@ -1104,12 +1106,15 @@ def run_dataset_precheck_scan(
                         sample_text, estimated_text = _read_text_sample(path, max_bytes=text_max_bytes)
                         # Estimate text length using bytes ratio (rough).
                         if sample_text:
+                            sample_tokens = int(estimate_tokens(sample_text) or 0)
                             if estimated_text and size > 0:
                                 ratio = size / max(1, min(size, text_max_bytes))
                                 rec.text_characters = int(len(sample_text) * ratio)
+                                rec.text_tokens_est = int(sample_tokens * ratio)
                                 rec.estimated_text = True
                             else:
                                 rec.text_characters = int(len(sample_text))
+                                rec.text_tokens_est = int(sample_tokens)
                                 rec.estimated_text = False
                     elif ext == ".pdf":
                         sample_text, estimated_text, page_count, per_page_chars, pdf_err = _pdf_text_sample(
@@ -1122,12 +1127,16 @@ def run_dataset_precheck_scan(
                                 finding_counts["parse_failed"] += 1
                                 errors += 1
                         if sample_text:
+                            sample_tokens = int(estimate_tokens(sample_text) or 0)
                             if estimated_text and page_count > 0:
                                 # Scale by pages (rough).
-                                rec.text_characters = int(len(sample_text) * (page_count / max(1, min(page_count, pdf_sample_pages))))
+                                ratio = page_count / max(1, min(page_count, pdf_sample_pages))
+                                rec.text_characters = int(len(sample_text) * ratio)
+                                rec.text_tokens_est = int(sample_tokens * ratio)
                                 rec.estimated_text = True
                             else:
                                 rec.text_characters = int(len(sample_text))
+                                rec.text_tokens_est = int(sample_tokens)
                                 rec.estimated_text = False
                         # Always attach PDF page breakdown when possible (even if text is empty).
                         if page_count > 0 and per_page_chars:
