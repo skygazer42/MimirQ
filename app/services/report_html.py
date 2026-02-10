@@ -377,6 +377,13 @@ def render_dataset_report_html(
                 "</tr>"
             )
 
+    cqm = report.get("chunk_quality_metrics") if isinstance(report, dict) else None
+    cqmd = cqm if isinstance(cqm, dict) else {}
+    gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
+    coverage_low = int(cqmd.get("coverage_low_documents") or 0)
+    overlap_high = int(cqmd.get("overlap_waste_high_documents") or 0)
+    tokens_missing = int(cqmd.get("token_stats_missing_documents") or 0)
+
     raw_json = json.dumps(report, ensure_ascii=False, indent=2)
 
     html = f"""<!doctype html>
@@ -442,6 +449,17 @@ def render_dataset_report_html(
       <div>
         <h2>格式分布（Top）</h2>
         {_render_bar_table(by_type, total=max(1, total_docs))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>Chunk Quality Gate（文档数）</h2>
+        {_render_bar_table(gate_grades, total=max(1, total_docs))}
+      </div>
+      <div>
+        <h2>Chunk 风险计数（best-effort）</h2>
+        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
       </div>
     </div>
 

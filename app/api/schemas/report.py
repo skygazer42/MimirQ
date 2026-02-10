@@ -52,6 +52,19 @@ class DatasetGovernanceMetricsOut(BaseModel):
     rule_packs_docs: Dict[str, int] = Field(default_factory=dict)
 
 
+class DatasetChunkQualityMetricsOut(BaseModel):
+    """Best-effort chunking quality metrics aggregated from per-document metadata."""
+
+    total_documents: int = 0
+    used_documents: int = 0
+    truncated: bool = False
+
+    gate_grade_docs: Dict[str, int] = Field(default_factory=dict)
+    coverage_low_documents: int = 0
+    overlap_waste_high_documents: int = 0
+    token_stats_missing_documents: int = 0
+
+
 class DatasetReportOut(BaseModel):
     dataset_id: UUID
     dataset_name: Optional[str] = None
@@ -71,3 +84,6 @@ class DatasetReportOut(BaseModel):
 
     # Optional: governance metrics derived from document.metadata.governance_* (best-effort).
     governance_metrics: Optional[DatasetGovernanceMetricsOut] = None
+
+    # Optional: chunking quality metrics derived from document.metadata.chunk_* (best-effort).
+    chunk_quality_metrics: Optional[DatasetChunkQualityMetricsOut] = None
