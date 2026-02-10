@@ -406,6 +406,66 @@ def render_dataset_report_html(
                 continue
             kg_type_items.append((tp, cnt))
 
+    # Optional: latest regression run summary (best-effort).
+    rr = report.get("latest_regression_run") if isinstance(report, dict) else None
+    rrd = rr if isinstance(rr, dict) else {}
+    rr_id = str(rrd.get("run_id") or "").strip()
+    rr_status = str(rrd.get("status") or "").strip()
+    rr_created_at = str(rrd.get("created_at") or "").strip()
+    rr_started_at = str(rrd.get("started_at") or "").strip()
+    rr_finished_at = str(rrd.get("finished_at") or "").strip()
+    rr_metrics = rrd.get("metrics") if isinstance(rrd.get("metrics"), list) else []
+    rr_metrics_str = ", ".join(str(x) for x in rr_metrics if str(x or "").strip())[:200]
+    rr_summary = rrd.get("summary") if isinstance(rrd.get("summary"), dict) else {}
+
+    def _fmt_num(v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, bool):
+            return "1" if v else "0"
+        if isinstance(v, int) and not isinstance(v, bool):
+            return _fmt_int(v)
+        if isinstance(v, float):
+            return f"{v:.4f}"
+        return str(v)
+
+    rr_meta_rows: list[str] = []
+    if rr_id or rr_status or rr_metrics_str or rr_created_at or rr_finished_at:
+        rr_meta_rows = [
+            f"<tr><td class=\"k\">status</td><td class=\"v\">{escape(rr_status or '')}</td><td></td></tr>",
+            f"<tr><td class=\"k\">run_id</td><td class=\"v\">{escape(rr_id or '')}</td><td></td></tr>",
+            f"<tr><td class=\"k\">metrics</td><td class=\"v\">{escape(rr_metrics_str or '')}</td><td></td></tr>",
+            f"<tr><td class=\"k\">created_at</td><td class=\"v\">{escape(rr_created_at or '')}</td><td></td></tr>",
+            f"<tr><td class=\"k\">started_at</td><td class=\"v\">{escape(rr_started_at or '')}</td><td></td></tr>",
+            f"<tr><td class=\"k\">finished_at</td><td class=\"v\">{escape(rr_finished_at or '')}</td><td></td></tr>",
+        ]
+    rr_meta_table = (
+        "<table class=\"bars\"><thead><tr><th>Field</th><th>Value</th><th></th></tr></thead><tbody>"
+        + "".join(rr_meta_rows)
+        + "</tbody></table>"
+        if rr_meta_rows
+        else '<div class="empty">暂无数据</div>'
+    )
+
+    rr_summary_rows: list[str] = []
+    for k, v in sorted((rr_summary or {}).items(), key=lambda kv: str(kv[0] or "")):
+        key = str(k or "").strip()
+        if not key:
+            continue
+        # Objective numbers only: keep numeric/bool values; skip nested dict/list blobs.
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            rr_summary_rows.append(f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(_fmt_num(v))}</td><td></td></tr>")
+        elif isinstance(v, bool):
+            rr_summary_rows.append(f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(_fmt_num(v))}</td><td></td></tr>")
+
+    rr_summary_table = (
+        "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
+        + "".join(rr_summary_rows)
+        + "</tbody></table>"
+        if rr_summary_rows
+        else '<div class="empty">暂无数据</div>'
+    )
+
     raw_json = json.dumps(report, ensure_ascii=False, indent=2)
 
     html = f"""<!doctype html>
@@ -501,6 +561,17 @@ def render_dataset_report_html(
       <div>
         <h2>实体类型（Top）</h2>
         {_render_bar_table(kg_type_items, total=max(1, sum(v for _, v in kg_type_items) if kg_type_items else 1))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>评估（Regression Run）</h2>
+        {rr_meta_table}
+      </div>
+      <div>
+        <h2>评估 Summary</h2>
+        {rr_summary_table}
       </div>
     </div>
 
