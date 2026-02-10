@@ -109,6 +109,33 @@ GET /api/v1/documents/image-url/tenant123:dataset123:doc789:0
 DELETE /api/v1/documents/{document_id}
 ```
 
+## 历史文档回填（img_id）
+
+如果你在已有数据集上 **后续开启** `MINIO_ENABLED=true`，历史 chunks 可能没有 `metadata.img_id`（也就无法在 citations/正文里展示图片）。
+
+推荐做一次批量重处理（reprocess）来回填图片：
+
+```bash
+# 先确保 MinIO 已启用并可连接（/health/ready 里会包含 minio 状态）
+curl -fsS http://localhost:8000/api/v1/health/ready
+
+# Header 模式（本地默认）：用 X-User-ID/X-Tenant-ID
+python scripts/backfill_minio_images.py \
+  --base-url http://localhost:8000 \
+  --auth-mode header \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id demo \
+  --dataset-id <YOUR_DATASET_UUID> \
+  --force
+
+# 只看候选列表（不提交重处理）
+python scripts/backfill_minio_images.py ... --dry-run
+```
+
+说明：
+- 默认只重试“缺少 `documents.metadata.img_ids` 的文档”；如需全量重处理，加 `--all`。
+- 可选加 `--require-image-count`：只重试 `document_analytics_raw.image_count > 0` 的文档（更保守）。
+
 ## 数据结构
 
 ### img_id 格式
@@ -258,7 +285,6 @@ http://localhost:9001
 ### 禁用 MinIO
 
 设置 `MINIO_ENABLED=false`，系统会回退到本地存储（向后兼容）。
-
 
 
 
