@@ -42,6 +42,7 @@ from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_precheck_service import (
     _scan_run_out_from_row,
     get_dataset_for_precheck,
+    list_precheck_files_by_dir_prefix,
     list_precheck_finding_files,
     load_precheck_near_dups_from_row,
     load_precheck_samples_from_row,
@@ -241,6 +242,32 @@ def list_dataset_precheck_finding_files(
         account_id=account_id,
         scan_run_id=scan_run_id,
         finding_key=finding_key,
+        skip=int(skip or 0),
+        limit=int(limit or 50),
+    )
+
+
+@router.get(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/files",
+    response_model=DatasetPrecheckFindingListResponse,
+)
+def list_dataset_precheck_files(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    dir_prefix: str | None = Query(default=None, max_length=1024, description="Optional: directory prefix under scan root"),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    return list_precheck_files_by_dir_prefix(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        account_id=account_id,
+        scan_run_id=scan_run_id,
+        dir_prefix=dir_prefix,
         skip=int(skip or 0),
         limit=int(limit or 50),
     )
