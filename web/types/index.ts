@@ -2040,6 +2040,9 @@ export interface ReferenceSource {
   label?: string
 }
 
+// Alias kept for UI components that use the older naming.
+export type RegressionReferenceSource = ReferenceSource
+
 export interface RegressionCase {
   id: string
   tenant_id: string
