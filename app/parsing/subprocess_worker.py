@@ -85,7 +85,7 @@ def _materialize_images_for_ingest(
         if artifact_root is None:
             artifact_root = Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse" / uuid.uuid4().hex
         images_dir = artifact_root / "images"
-    images_dir.mkdir(parents=True, exist_ok=True)
+        images_dir.mkdir(parents=True, exist_ok=True)
 
     from io import BytesIO
 
@@ -178,7 +178,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             effective_backend = requested
 
-    documents, resolved_backend = parser_factory.parse(
+    documents, resolved_backend, provenance = parser_factory.parse_with_provenance(
         file_path,
         parser_backend=effective_backend,
         dataset_id=str(dataset_id) if dataset_id else None,
@@ -187,6 +187,11 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         pdf_quality=pdf_quality,
         html_xpath=(payload.get("html_xpath") if isinstance(payload.get("html_xpath"), str) else None),
     )
+    if isinstance(provenance, dict):
+        # Echo routing decisions used inside the subprocess for audit/debug.
+        provenance = dict(provenance)
+        provenance.setdefault("payload_requested_backend", str(requested_backend or ""))
+        provenance.setdefault("effective_backend", str(effective_backend or ""))
 
     if mode == "preview":
         # Reuse API helpers to rewrite images into preview-time URLs and drop PIL objects.
@@ -208,6 +213,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         "resolved_backend": resolved_backend,
         "pdf_quality": _jsonable(pdf_quality),
         "documents": _serialize_documents(documents),
+        "provenance": _jsonable(provenance),
     }
 
 

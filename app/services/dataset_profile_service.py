@@ -64,6 +64,11 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "severity": "error",
         "description": "需要人工检查文件/解析器配置，或调整解析后备策略。",
     },
+    "preprocess_failed": {
+        "label": "预处理失败",
+        "severity": "error",
+        "description": "文件级预处理（编码/规范化/HTML 清洗）失败。建议检查文件权限/编码/预处理 steps 配置。",
+    },
     "pdf_scanned": {
         "label": "疑似扫描 PDF",
         "severity": "warning",
@@ -441,6 +446,10 @@ def aggregate_profile_from_rows(
         # Failed docs.
         if st == "failed":
             finding_counts["parse_failed"] += 1
+            # Preprocess failures are a common early-stage failure mode; surface separately.
+            err = str(_err or "")
+            if err.strip().lower().startswith("preprocess_failed"):
+                finding_counts["preprocess_failed"] += 1
 
         # Low density flag.
         if _is_low_density(meta_dict, density_threshold=float(density_threshold)):
@@ -836,6 +845,11 @@ def apply_finding_filter(
 
     if key == "parse_failed":
         return query.filter(DBDocument.status == "failed")
+
+    if key == "preprocess_failed":
+        # error_message starts with "preprocess_failed: ..."
+        err_expr = func.lower(func.coalesce(DBDocument.error_message, ""))
+        return query.filter(DBDocument.status == "failed", err_expr.like("preprocess_failed%"))
 
     if key == "pdf_scanned":
         # metadata->pdf_quality->is_scanned == true

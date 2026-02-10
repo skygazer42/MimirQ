@@ -3,6 +3,7 @@ Document parser factory
 """
 
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
@@ -429,6 +430,150 @@ class ParserFactory:
             meta.setdefault("file_type", file_ext.lstrip("."))
             doc.metadata = meta
         return documents, backend
+
+    def parse_with_provenance(
+        self,
+        file_path: Path,
+        *,
+        parser_backend: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+        document_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        pdf_quality: Optional[dict[str, Any]] = None,
+        html_xpath: Optional[str] = None,
+    ) -> tuple[list[Document], str, dict[str, Any]]:
+        """
+        Parse a file and return a small provenance payload (best-effort).
+
+        Intended for observability/auditing:
+        - records attempted backends (including fallback) with timings
+        - avoids embedding large content or filesystem paths
+        """
+        file_path = Path(file_path)
+        file_ext = file_path.suffix.lower()
+        backend = self.resolve_backend(file_ext, parser_backend)
+
+        attempts: list[dict[str, Any]] = []
+        total_t0 = time.perf_counter()
+
+        def _select_and_parse(selected_backend: str) -> list[Document]:
+            if file_ext == ".pdf":
+                parser = self._get_pdf_parser(selected_backend)
+            elif file_ext in self.PLAIN_TEXT_EXTENSIONS:
+                parser = self.parsers[file_ext]
+            elif file_ext == ".md":
+                parser = self.parsers[".md"]
+            elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
+                if selected_backend in {"deepdoc", "docling"}:
+                    parser = self._get_pdf_parser(selected_backend)
+                elif selected_backend == "markitdown":
+                    parser = self._get_markitdown_parser()
+                elif selected_backend == "pandoc":
+                    parser = self._get_pandoc_parser()
+                elif selected_backend == "excel":
+                    from app.parsing.parsers.excel_parser import ExcelParser
+
+                    parser = ExcelParser()
+                elif selected_backend == "docx":
+                    from app.parsing.parsers.docx_parser import DocxParser
+
+                    parser = DocxParser()
+                elif selected_backend == "pptx":
+                    from app.parsing.parsers.pptx_parser import PptxParser
+
+                    parser = PptxParser()
+                elif selected_backend == "html":
+                    from app.parsing.parsers.html_parser import HtmlParser
+
+                    parser = HtmlParser()
+                elif selected_backend == "csv":
+                    from app.parsing.parsers.csv_parser import CsvParser
+
+                    parser = CsvParser()
+                elif selected_backend == "json":
+                    from app.parsing.parsers.json_parser import JsonParser
+
+                    parser = JsonParser()
+                else:
+                    raise ValueError(f"Unsupported parser backend '{selected_backend}' for {file_ext}")
+            else:
+                raise ValueError(f"Unsupported file type: {file_ext}")
+
+            if selected_backend in {"marker", "paddle_vl", "olmocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+                return parser.parse(
+                    file_path,
+                    dataset_id=dataset_id,
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    pdf_quality=pdf_quality,
+                )
+            if selected_backend == "html":
+                return parser.parse(file_path, html_xpath=html_xpath)  # type: ignore[call-arg]
+            return parser.parse(file_path)
+
+        primary_t0 = time.perf_counter()
+        try:
+            documents = _select_and_parse(backend)
+            attempts.append(
+                {
+                    "backend": backend,
+                    "ok": True,
+                    "elapsed_ms": int(round((time.perf_counter() - primary_t0) * 1000)),
+                    "documents": int(len(documents or [])),
+                }
+            )
+        except Exception as exc:
+            attempts.append(
+                {
+                    "backend": backend,
+                    "ok": False,
+                    "elapsed_ms": int(round((time.perf_counter() - primary_t0) * 1000)),
+                    "error_type": exc.__class__.__name__,
+                    "error_message": str(exc)[:200],
+                }
+            )
+
+            fb_t0 = time.perf_counter()
+            fallback_docs, fallback_backend = self._fallback_parse(
+                file_path=file_path,
+                file_ext=file_ext,
+                requested_backend=backend,
+                error=exc,
+                html_xpath=html_xpath,
+            )
+            fb_elapsed_ms = int(round((time.perf_counter() - fb_t0) * 1000))
+            if fallback_docs is None:
+                raise
+
+            documents = fallback_docs
+            backend = fallback_backend
+            attempts.append(
+                {
+                    "backend": backend,
+                    "ok": True,
+                    "elapsed_ms": int(fb_elapsed_ms),
+                    "documents": int(len(documents or [])),
+                    "fallback_from": attempts[0].get("backend"),
+                }
+            )
+
+        for doc in documents:
+            meta = dict(doc.metadata or {})
+            meta["parser_backend"] = backend
+            meta["source"] = str(file_path.name)
+            meta.setdefault("filename", file_path.name)
+            meta.setdefault("file_type", file_ext.lstrip("."))
+            doc.metadata = meta
+
+        provenance: dict[str, Any] = {
+            "version": "1",
+            "file_type": file_ext.lstrip("."),
+            "requested_backend": str(parser_backend or ""),
+            "resolved_backend": backend,
+            "attempts": attempts,
+            "elapsed_ms": int(round((time.perf_counter() - total_t0) * 1000)),
+        }
+        return documents, backend, provenance
 
     def _fallback_parse(
         self,

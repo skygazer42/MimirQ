@@ -41,6 +41,7 @@ def test_dataset_profile_aggregate_empty():
     # Stable keys exist.
     keys = [f.key for f in summary.findings]
     assert "parse_failed" in keys
+    assert "preprocess_failed" in keys
     assert "pdf_scanned" in keys
 
 
@@ -69,7 +70,7 @@ def test_dataset_profile_aggregate_basic_distributions_and_findings():
             file_size=800,
             status="failed",
             total_characters=200,
-            error_message="parse failed",
+            error_message="preprocess_failed: encoding_error",
             metadata={},
         ),
         _row(
@@ -97,6 +98,7 @@ def test_dataset_profile_aggregate_basic_distributions_and_findings():
     assert finding_map["pdf_scanned"] == 1
     assert finding_map["pdf_unknown"] == 1
     assert finding_map["parse_failed"] == 1
+    assert finding_map["preprocess_failed"] == 1
     assert finding_map["low_density"] == 1
     assert finding_map["pii"] == 1
 
