@@ -84,6 +84,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
     assert "connectors" in body
     assert "folder_tree" in body
     assert "governance_metrics" in body
+    assert "chunk_quality_metrics" in body
     assert body["folder_tree"]["total_documents"] == 3
 
 

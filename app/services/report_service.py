@@ -18,6 +18,7 @@ from app.api.schemas.document_folders import DocumentFolderTreeResponse
 from app.api.schemas.report import (
     ComplianceSummary,
     ConnectorRunSummary,
+    DatasetChunkQualityMetricsOut,
     DatasetGovernanceMetricsOut,
     DatasetReportOut,
     PipelineVersionSummary,
@@ -97,6 +98,64 @@ def _aggregate_governance_metrics(
         dropped_documents_total=int(max(0, dropped_documents_total)),
         drop_reasons_total={k: int(max(0, v)) for k, v in drop_reasons_total.items() if int(v or 0) > 0},
         rule_packs_docs={k: int(max(0, v)) for k, v in rule_packs_docs.items() if int(v or 0) > 0},
+    )
+
+
+def _aggregate_chunk_quality_metrics(
+    *,
+    total_documents: int,
+    metadatas: list[dict],
+    truncated: bool,
+) -> DatasetChunkQualityMetricsOut:
+    gate_grades: dict[str, int] = {}
+    coverage_low = 0
+    overlap_high = 0
+    tokens_missing = 0
+
+    for meta in metadatas:
+        if not isinstance(meta, dict):
+            continue
+
+        gate = meta.get("chunk_quality_gate")
+        grade = "unknown"
+        if isinstance(gate, dict):
+            grade = str(gate.get("grade") or "").strip().lower() or "unknown"
+        gate_grades[grade] = gate_grades.get(grade, 0) + 1
+
+        cov = meta.get("chunk_coverage")
+        if isinstance(cov, dict):
+            try:
+                ratio = float(cov.get("coverage_ratio") or 0.0)
+            except Exception:
+                ratio = 0.0
+            if ratio > 0.0 and ratio < 0.98:
+                coverage_low += 1
+            try:
+                waste = float(cov.get("overlap_waste_ratio") or 0.0)
+            except Exception:
+                waste = 0.0
+            if waste > 0.60:
+                overlap_high += 1
+
+        if not isinstance(meta.get("chunking_stats_tokens"), dict):
+            tokens_missing += 1
+
+    # Stable keys for UI (avoid missing keys on empty datasets).
+    stable = {k: int(gate_grades.get(k, 0) or 0) for k in ("pass", "warn", "fail", "unknown")}
+    # Keep any non-standard grades too (best-effort).
+    for k, v in gate_grades.items():
+        if k in stable:
+            continue
+        stable[str(k)] = int(v or 0)
+
+    return DatasetChunkQualityMetricsOut(
+        total_documents=int(total_documents or 0),
+        used_documents=len([m for m in metadatas if isinstance(m, dict)]),
+        truncated=bool(truncated),
+        gate_grade_docs=stable,
+        coverage_low_documents=int(max(0, coverage_low)),
+        overlap_waste_high_documents=int(max(0, overlap_high)),
+        token_stats_missing_documents=int(max(0, tokens_missing)),
     )
 
 
@@ -212,6 +271,7 @@ class ReportService:
 
         # Governance metrics aggregated from document metadata (best-effort).
         governance_metrics: DatasetGovernanceMetricsOut | None = None
+        chunk_quality_metrics: DatasetChunkQualityMetricsOut | None = None
         try:
             max_docs = 2000
             _dataset, q = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
@@ -233,8 +293,14 @@ class ReportService:
                 metadatas=metas,
                 truncated=truncated,
             )
+            chunk_quality_metrics = _aggregate_chunk_quality_metrics(
+                total_documents=int(getattr(profile, "total_documents", 0) or 0),
+                metadatas=metas,
+                truncated=truncated,
+            )
         except Exception:
             governance_metrics = None
+            chunk_quality_metrics = None
 
         return DatasetReportOut(
             dataset_id=dataset_id,
@@ -248,4 +314,5 @@ class ReportService:
             dataset_metadata=dict(getattr(dataset, "dataset_metadata", None) or {}),
             folder_tree=folder_tree,
             governance_metrics=governance_metrics,
+            chunk_quality_metrics=chunk_quality_metrics,
         )
