@@ -149,3 +149,24 @@ CHUNK_TOKEN_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("400-800", 400, 800),
     HistogramBinSpec("800+", 800, None),
 ]
+
+# Doc-level proxy: average tokens per chunk (derived from ingest-time token stats).
+AVG_CHUNK_TOKENS_BINS: List[HistogramBinSpec] = list(CHUNK_TOKEN_BINS)
+
+# Chunk coverage / overlap waste distributions (percentage points).
+# These are computed from ingest-time `chunk_coverage.*_ratio` values multiplied by 100.
+COVERAGE_PCT_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("0-50%", 0, 50),
+    HistogramBinSpec("50-80%", 50, 80),
+    HistogramBinSpec("80-90%", 80, 90),
+    HistogramBinSpec("90-98%", 90, 98),
+    HistogramBinSpec("98-100%", 98, 101),  # include 100
+]
+
+OVERLAP_WASTE_PCT_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("0-10%", 0, 10),
+    HistogramBinSpec("10-20%", 10, 20),
+    HistogramBinSpec("20-35%", 20, 35),
+    HistogramBinSpec("35-60%", 35, 60),
+    HistogramBinSpec("60%+", 60, None),
+]

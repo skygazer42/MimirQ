@@ -34,9 +34,13 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services.dataset_profile_utils import (
     AVG_CHUNK_CHARS_BINS,
+    AVG_CHUNK_TOKENS_BINS,
     CHUNK_COUNT_BINS,
     CHUNK_LENGTH_BINS,
+    CHUNK_TOKEN_BINS,
+    COVERAGE_PCT_BINS,
     FILE_SIZE_BINS,
+    OVERLAP_WASTE_PCT_BINS,
     PAGE_COUNT_BINS,
     TEXT_LENGTH_BINS,
     histogram,
@@ -94,6 +98,16 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "label": "图片较多",
         "severity": "info",
         "description": "图片密集文档可能更适合走多模态处理或提取 OCR。",
+    },
+    "chunk_coverage_low": {
+        "label": "Chunk 覆盖率偏低",
+        "severity": "warning",
+        "description": "chunk offsets 覆盖率偏低（coverage < 98%），可能存在解析/offsets/拼接链路问题，影响溯源与高亮。",
+    },
+    "chunk_quality_fail": {
+        "label": "Chunk 质量门槛失败",
+        "severity": "warning",
+        "description": "chunk 质量 gate 判定为 fail（例如过多短块/重复/覆盖不足），建议先在 chunk-preview 调参验证。",
     },
     "near_dedup": {
         "label": "近重复内容被丢弃",
@@ -249,8 +263,14 @@ def aggregate_profile_from_rows(
     file_sizes: List[int] = []
     chunk_counts: List[int] = []
     avg_chunk_chars: List[int] = []
+    avg_chunk_tokens: List[int] = []
     chunk_length_bins: list[int] = [0 for _ in range(len(CHUNK_LENGTH_BINS))]
     chunk_length_total: int = 0
+    chunk_token_bins: list[int] = [0 for _ in range(len(CHUNK_TOKEN_BINS))]
+    chunk_token_total: int = 0
+
+    coverage_pcts: List[int] = []
+    overlap_waste_pcts: List[int] = []
 
     pdf_scanned = 0
     pdf_not_scanned = 0
@@ -292,6 +312,7 @@ def aggregate_profile_from_rows(
         return "unknown"
 
     chunk_length_label_to_idx: dict[str, int] = {spec.label: i for i, spec in enumerate(CHUNK_LENGTH_BINS)}
+    chunk_token_label_to_idx: dict[str, int] = {spec.label: i for i, spec in enumerate(CHUNK_TOKEN_BINS)}
 
     for row in rows:
         _doc_id, filename, file_type, file_size, status, _chunk_count, total_chars, _err, meta = row
@@ -336,6 +357,61 @@ def aggregate_profile_from_rows(
                     if cnt > 0:
                         chunk_length_bins[idx] += int(cnt)
                         chunk_length_total += int(cnt)
+
+        # Token-based chunk stats (best-effort; requires ingest-time token stats).
+        chunking_stats_tokens = meta_dict.get("chunking_stats_tokens")
+        if isinstance(chunking_stats_tokens, dict):
+            try:
+                avg_tok = safe_int(chunking_stats_tokens.get("avg"), default=0)
+                if avg_tok <= 0:
+                    tot = safe_int(chunking_stats_tokens.get("total"), default=0)
+                    cnt = safe_int(chunking_stats_tokens.get("count"), default=0)
+                    if tot > 0 and cnt > 0:
+                        avg_tok = int(max(1, tot // max(1, cnt)))
+                if avg_tok > 0:
+                    avg_chunk_tokens.append(int(avg_tok))
+            except Exception:
+                pass
+
+            hist = chunking_stats_tokens.get("histogram")
+            if isinstance(hist, list) and hist:
+                for b in hist:
+                    if not isinstance(b, dict):
+                        continue
+                    label = str(b.get("label") or "").strip()
+                    if not label:
+                        continue
+                    idx = chunk_token_label_to_idx.get(label)
+                    if idx is None:
+                        continue
+                    cnt = safe_int(b.get("count"), default=0)
+                    if cnt > 0:
+                        chunk_token_bins[idx] += int(cnt)
+                        chunk_token_total += int(cnt)
+
+        # Coverage / overlap waste (best-effort; derived from ingest-time chunk offsets).
+        cov = meta_dict.get("chunk_coverage")
+        if isinstance(cov, dict):
+            ratio = safe_float(cov.get("coverage_ratio"), default=-1.0)
+            if ratio >= 0.0:
+                clamped = min(1.0, max(0.0, float(ratio)))
+                pct = int(round(clamped * 100.0))
+                coverage_pcts.append(pct)
+                if clamped < 0.98:
+                    finding_counts["chunk_coverage_low"] += 1
+
+            waste = safe_float(cov.get("overlap_waste_ratio"), default=-1.0)
+            if waste >= 0.0:
+                clamped = min(1.0, max(0.0, float(waste)))
+                pct = int(round(clamped * 100.0))
+                overlap_waste_pcts.append(pct)
+
+        # Chunk quality gate (best-effort).
+        gate = meta_dict.get("chunk_quality_gate")
+        if isinstance(gate, dict):
+            grade = str(gate.get("grade") or "").strip().lower()
+            if grade == "fail":
+                finding_counts["chunk_quality_fail"] += 1
 
         # Language mix (best-effort).
         language_counts[_extract_language(meta_dict)] += 1
@@ -441,6 +517,15 @@ def aggregate_profile_from_rows(
         p99=percentile_from_sorted(avg_chunk_chars, 99),
     )
 
+    avg_chunk_tokens.sort()
+    avg_chunk_tokens_percentiles = DatasetProfilePercentiles(
+        p25=percentile_from_sorted(avg_chunk_tokens, 25),
+        p50=percentile_from_sorted(avg_chunk_tokens, 50),
+        p75=percentile_from_sorted(avg_chunk_tokens, 75),
+        p90=percentile_from_sorted(avg_chunk_tokens, 90),
+        p99=percentile_from_sorted(avg_chunk_tokens, 99),
+    )
+
     def _pct_from_chunk_length_hist(p: int) -> int:
         total = int(chunk_length_total or 0)
         if total <= 0:
@@ -480,16 +565,79 @@ def aggregate_profile_from_rows(
         p99=_pct_from_chunk_length_hist(99),
     )
 
+    def _pct_from_chunk_token_hist(p: int) -> int:
+        total = int(chunk_token_total or 0)
+        if total <= 0:
+            return 0
+        pp = max(0, min(100, int(p)))
+        target = int((pp / 100.0) * (total - 1))
+        target = max(0, min(total - 1, target))
+        seen = 0
+        for idx, spec in enumerate(CHUNK_TOKEN_BINS):
+            cnt = int(chunk_token_bins[idx] or 0)
+            if cnt <= 0:
+                continue
+            if (seen + cnt) > target:
+                lo = int(spec.min) if spec.min is not None else 0
+                if spec.max is None:
+                    return lo
+                hi = int(spec.max)
+                if hi <= lo:
+                    return lo
+                offset = target - seen
+                frac = float(offset) / float(cnt) if cnt > 0 else 0.0
+                return int(round(lo + (hi - lo) * frac))
+            seen += cnt
+        last = CHUNK_TOKEN_BINS[-1] if CHUNK_TOKEN_BINS else None
+        if last is None:
+            return 0
+        return int(last.min or 0)
+
+    chunk_token_percentiles = DatasetProfilePercentiles(
+        p25=_pct_from_chunk_token_hist(25),
+        p50=_pct_from_chunk_token_hist(50),
+        p75=_pct_from_chunk_token_hist(75),
+        p90=_pct_from_chunk_token_hist(90),
+        p99=_pct_from_chunk_token_hist(99),
+    )
+
+    coverage_pcts.sort()
+    chunk_coverage_percentiles = DatasetProfilePercentiles(
+        p25=percentile_from_sorted(coverage_pcts, 25),
+        p50=percentile_from_sorted(coverage_pcts, 50),
+        p75=percentile_from_sorted(coverage_pcts, 75),
+        p90=percentile_from_sorted(coverage_pcts, 90),
+        p99=percentile_from_sorted(coverage_pcts, 99),
+    )
+
+    overlap_waste_pcts.sort()
+    chunk_overlap_waste_percentiles = DatasetProfilePercentiles(
+        p25=percentile_from_sorted(overlap_waste_pcts, 25),
+        p50=percentile_from_sorted(overlap_waste_pcts, 50),
+        p75=percentile_from_sorted(overlap_waste_pcts, 75),
+        p90=percentile_from_sorted(overlap_waste_pcts, 90),
+        p99=percentile_from_sorted(overlap_waste_pcts, 99),
+    )
+
     # Histograms.
     length_hist = histogram(lengths, TEXT_LENGTH_BINS)
     size_hist = histogram(file_sizes, FILE_SIZE_BINS)
     page_hist = histogram(page_counts, PAGE_COUNT_BINS) if page_counts else []
     chunk_count_hist = histogram(chunk_counts, CHUNK_COUNT_BINS) if chunk_counts else []
     avg_chunk_chars_hist = histogram(avg_chunk_chars, AVG_CHUNK_CHARS_BINS) if avg_chunk_chars else []
+    avg_chunk_tokens_hist = histogram(avg_chunk_tokens, AVG_CHUNK_TOKENS_BINS) if avg_chunk_tokens else []
     chunk_length_hist: list[dict[str, Any]] = []
     if int(chunk_length_total or 0) > 0:
         for spec, cnt in zip(CHUNK_LENGTH_BINS, chunk_length_bins, strict=False):
             chunk_length_hist.append({"label": spec.label, "min": spec.min, "max": spec.max, "count": int(cnt)})
+
+    chunk_token_hist: list[dict[str, Any]] = []
+    if int(chunk_token_total or 0) > 0:
+        for spec, cnt in zip(CHUNK_TOKEN_BINS, chunk_token_bins, strict=False):
+            chunk_token_hist.append({"label": spec.label, "min": spec.min, "max": spec.max, "count": int(cnt)})
+
+    coverage_hist = histogram(coverage_pcts, COVERAGE_PCT_BINS) if coverage_pcts else []
+    overlap_waste_hist = histogram(overlap_waste_pcts, OVERLAP_WASTE_PCT_BINS) if overlap_waste_pcts else []
 
     # Parse quality histogram (0.0-1.0, 10 bins).
     pq_hist: list[dict[str, Any]] = []
@@ -537,6 +685,14 @@ def aggregate_profile_from_rows(
         avg_chunk_chars_histogram=avg_chunk_chars_hist,
         chunk_length_percentiles=chunk_length_percentiles,
         chunk_length_histogram=chunk_length_hist,
+        chunk_token_percentiles=chunk_token_percentiles,
+        chunk_token_histogram=chunk_token_hist,
+        avg_chunk_tokens_percentiles=avg_chunk_tokens_percentiles,
+        avg_chunk_tokens_histogram=avg_chunk_tokens_hist,
+        chunk_coverage_percentiles=chunk_coverage_percentiles,
+        chunk_coverage_histogram=coverage_hist,
+        chunk_overlap_waste_percentiles=chunk_overlap_waste_percentiles,
+        chunk_overlap_waste_histogram=overlap_waste_hist,
         page_number_histogram=page_hist,
         parse_quality_histogram=pq_hist,
         language_mix=language_mix,
@@ -715,6 +871,16 @@ def apply_finding_filter(
 
     if key == "image_heavy":
         return query.filter(func.coalesce(DBDocument.doc_metadata["image_count"].as_integer(), 0) >= int(image_threshold))
+
+    if key == "chunk_coverage_low":
+        return query.filter(
+            func.coalesce(DBDocument.doc_metadata["chunk_coverage"]["coverage_ratio"].as_float(), 1.0) < 0.98,
+        )
+
+    if key == "chunk_quality_fail":
+        return query.filter(
+            func.coalesce(DBDocument.doc_metadata["chunk_quality_gate"]["grade"].as_string(), "") == "fail",
+        )
 
     if key == "near_dedup":
         return query.filter(func.coalesce(DBDocument.doc_metadata["near_dedup"]["dropped"].as_integer(), 0) > 0)
