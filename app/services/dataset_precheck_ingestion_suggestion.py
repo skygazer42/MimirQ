@@ -163,6 +163,13 @@ def build_ingestion_policy_suggestion(
     p90 = _safe_int(lp.get("p90"))
     use_longform = p90 >= 20_000
 
+    # Token-based distribution (best-effort): used for conservative chunk_size hints.
+    token_p50 = 0
+    token_p90 = 0
+    tp = summary.get("token_percentiles") if isinstance(summary.get("token_percentiles"), dict) else {}
+    token_p50 = _safe_int(tp.get("p50"))
+    token_p90 = _safe_int(tp.get("p90"))
+
     notes: list[str] = []
     if scanned_pdfs > 0:
         notes.append(f"检测到疑似扫描 PDF：{scanned_pdfs}（建议启用 OCR 相关解析链路，并复核 pdf_unknown/低密度页面）")
@@ -170,6 +177,31 @@ def build_ingestion_policy_suggestion(
         notes.append(f"PDF 类型未知：{unknown_pdfs}（可能为加密/权限/依赖缺失；建议加入人工复核队列）")
     if use_longform:
         notes.append(f"P90 文本长度较长（{p90} chars）：Markdown/长文建议使用 longform 治理预设（去重+裁剪 References）")
+
+    # Conservative chunk_size hint based on token distribution (does not auto-apply patches).
+    if bool(getattr(settings, "PRECHECK_SUGGEST_CHUNK_SIZE", True)) and token_p90 > 0:
+        base_chunk_size = int(getattr(settings, "CHUNK_SIZE", 1000) or 1000)
+        base_chunk_overlap = int(getattr(settings, "CHUNK_OVERLAP", 200) or 200)
+        overlap_ratio = (base_chunk_overlap / base_chunk_size) if base_chunk_size > 0 else 0.2
+
+        suggested_size = int(base_chunk_size)
+        if token_p90 >= 20_000:
+            suggested_size = min(4000, int(round(base_chunk_size * 2.0)))
+        elif token_p90 >= 8_000:
+            suggested_size = min(4000, int(round(base_chunk_size * 1.5)))
+        elif token_p90 <= 800:
+            suggested_size = max(600, int(round(base_chunk_size * 0.8)))
+
+        suggested_overlap = int(round(suggested_size * float(overlap_ratio)))
+        suggested_overlap = max(0, min(1000, suggested_overlap))
+        if suggested_overlap >= suggested_size:
+            suggested_overlap = max(0, suggested_size - 1)
+
+        notes.append(
+            "Token 分布（best-effort）："
+            f"P50~{token_p50}、P90~{token_p90} tokens。"
+            f"可尝试 chunk_size={suggested_size} chars、chunk_overlap={suggested_overlap}（建议先在 chunk-preview 验证分布）"
+        )
     if large_spreadsheets > 0:
         notes.append(f"检测到大表/复杂表格：{large_spreadsheets}（建议优先走 TAG/SQL 方案，而不是硬上纯 RAG）")
     if wide_spreadsheets > 0:

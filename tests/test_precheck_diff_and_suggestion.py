@@ -153,6 +153,7 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
             "total_size_bytes": 75,
             "by_file_type": {"pdf": 2, "md": 1, "xlsx": 1, "txt": 2},
             "length_percentiles": {"p90": 20000},
+            "token_percentiles": {"p50": 1200, "p90": 9000},
             "pdf_scan": {"scanned": 1, "not_scanned": 0, "unknown": 0},
             "findings": [],
         },
@@ -161,6 +162,7 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
     )
 
     suggestion = build_ingestion_policy_suggestion(scan_run, tenant_id=tenant_id, max_names_per_bucket=5)
+    assert any("chunk_size" in str(n) for n in (suggestion.get("notes") or []))
     policy = suggestion["policy"]
     rule_ids = {r["id"] for r in policy.get("rules") or []}
     assert "pdf-default" in rule_ids

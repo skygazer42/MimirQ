@@ -192,6 +192,8 @@ class Settings(BaseSettings):
     PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD: int = 80
     PRECHECK_SPREADSHEET_SHEET_THRESHOLD: int = 5
     PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD: float = 0.15
+    # Whether to include chunk_size hints derived from token distribution in precheck suggestions.
+    PRECHECK_SUGGEST_CHUNK_SIZE: bool = True
     # Optional: ingest documents by fetching a remote URL (connector skeleton).
     URL_INGEST_ENABLED: bool = False
     # Optional: ingest structured DB metadata (catalog/profiling) from MySQL/SQLServer.
