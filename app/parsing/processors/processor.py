@@ -3307,7 +3307,10 @@ class DocumentProcessorService:
 
         from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
         from app.services.chunk_quality_gate import compute_chunk_quality_gate
-        from app.services.chunking_stats_utils import compute_chunking_stats_from_texts, compute_chunking_stats_from_texts_tokens
+        from app.services.chunking_stats_utils import (
+            compute_chunking_stats_from_texts,
+            compute_chunking_stats_from_texts_tokens,
+        )
 
         stats = compute_chunking_stats_from_texts(
             ((c.page_content or "") for c in chunks),
