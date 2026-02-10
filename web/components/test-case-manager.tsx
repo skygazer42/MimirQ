@@ -11,8 +11,8 @@
 'use client'
 
 import { useMemo, useRef, useState, useEffect } from 'react'
-import { evaluationApi } from '@/lib/api-client'
-import type { RegressionCase, RegressionCaseCreate } from '@/types'
+import { evaluationApi, ragApi } from '@/lib/api-client'
+import type { Citation, RegressionCase, RegressionCaseCreate, RegressionReferenceSource } from '@/types'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
@@ -60,6 +60,7 @@ export function TestCaseManager({
   const evidenceFileInputRef = useRef<HTMLInputElement>(null)
   const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false)
   const [evidencePack, setEvidencePack] = useState<any | null>(null)
+  const [evidenceLoading, setEvidenceLoading] = useState(false)
   const [evidenceQuestion, setEvidenceQuestion] = useState('')
   const [evidenceExpectedAnswer, setEvidenceExpectedAnswer] = useState('')
   const [evidenceSelectedChunkIds, setEvidenceSelectedChunkIds] = useState<Set<string>>(new Set())
@@ -67,7 +68,7 @@ export function TestCaseManager({
 
   const evidenceCitations = useMemo(() => {
     const items = evidencePack?.citations
-    return Array.isArray(items) ? items : []
+    return Array.isArray(items) ? (items as Citation[]) : []
   }, [evidencePack])
 
   const evidenceDatasetId = useMemo(() => {
@@ -79,9 +80,13 @@ export function TestCaseManager({
   const loadCases = async () => {
     try {
       setIsLoading(true)
+      if (!datasetId) {
+        setCases([])
+        return
+      }
       const result = await evaluationApi.listRegressionCases({
         limit: 100,
-        dataset_id: datasetId || undefined,
+        dataset_id: datasetId,
       })
       setCases(result.items)
     } catch (error) {
@@ -93,6 +98,9 @@ export function TestCaseManager({
   }
 
   useEffect(() => {
+    setSelectedCaseIds(new Set())
+    setSelectedCase(null)
+    onCaseSelected?.(null)
     void loadCases()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId])
@@ -159,32 +167,51 @@ export function TestCaseManager({
 
   // 创建用例
   const handleCreate = async () => {
-    if (!newQuestion.trim()) {
+    const q = (newQuestion || '').trim()
+    if (!q) {
       toast.error('请输入问题')
       return
     }
     if (!datasetId) {
-      toast.error('请先在右侧选择数据集')
+      toast.error('请先选择数据集')
       return
     }
 
+    setEvidenceLoading(true)
     try {
-      const params: RegressionCaseCreate = {
-        question: newQuestion,
-        dataset_id: datasetId,
-        expected_answer: newExpectedAnswer || undefined,
-        tags: ['manual_created'],
+      const res = await ragApi.retrieveEvidence({ query: q, dataset_id: datasetId })
+      const citations = Array.isArray(res?.citations) ? res.citations : []
+      if (!citations.length) {
+        toast.error('未检索到可用 citations（请检查数据集是否已入库）')
+        return
       }
 
-      await evaluationApi.createRegressionCase(params)
-      toast.success('创建成功')
-      setNewQuestion('')
-      setNewExpectedAnswer('')
-      setIsCreating(false)
-      await loadCases()
+      const exportedAt = new Date().toISOString()
+      setEvidencePack({
+        dataset_id: datasetId,
+        query: q,
+        query_for_retrieval: res?.query_for_retrieval || q,
+        metrics: res?.metrics || null,
+        citations,
+        exported_at: exportedAt,
+        source: 'retrieve_preview',
+        has_evidence: (res as any)?.has_evidence ?? null,
+        abstain_triggered: (res as any)?.abstain_triggered ?? null,
+        abstain_reason: (res as any)?.abstain_reason ?? null,
+      })
+      setEvidenceQuestion(q)
+      setEvidenceExpectedAnswer(newExpectedAnswer || '')
+
+      // Default: select the top-1 citation as a starting point (operators can adjust).
+      const firstChunkId = citations?.[0]?.chunk_id
+      setEvidenceSelectedChunkIds(firstChunkId ? new Set([String(firstChunkId)]) : new Set())
+
+      setEvidenceDialogOpen(true)
     } catch (error) {
-      console.error('创建失败:', error)
-      toast.error(formatApiError(error, '创建失败（需要 dataset_id + reference_sources）'))
+      console.error('检索预览失败:', error)
+      toast.error(formatApiError(error, '检索预览失败'))
+    } finally {
+      setEvidenceLoading(false)
     }
   }
 
@@ -201,7 +228,7 @@ export function TestCaseManager({
     try {
       const raw = await file.text()
       const parsed = JSON.parse(raw)
-      const citations = Array.isArray(parsed?.citations) ? parsed.citations : []
+      const citations = Array.isArray(parsed?.citations) ? (parsed.citations as Citation[]) : []
       if (!citations.length) {
         toast.error('Evidence Pack 缺少 citations')
         return
@@ -215,13 +242,22 @@ export function TestCaseManager({
       }
 
       const q = typeof parsed?.query === 'string' ? parsed.query : ''
-      setEvidencePack(parsed)
+      setEvidencePack({
+        ...parsed,
+        dataset_id: effectiveDatasetId,
+        source: 'evidence_pack',
+      })
       setEvidenceQuestion(String(q || '').trim())
       setEvidenceExpectedAnswer('')
 
-      // Default: select the top-1 citation as a starting point (operators can adjust).
+      const selectedChunkIds = Array.isArray(parsed?.selected_chunk_ids) ? parsed.selected_chunk_ids : []
+      const normalizedSelected = selectedChunkIds.map((x: any) => String(x || '').trim()).filter(Boolean)
+
+      // Default: keep the exported selection (if present), else select top-1 as a starting point.
       const firstChunkId = citations?.[0]?.chunk_id
-      setEvidenceSelectedChunkIds(firstChunkId ? new Set([String(firstChunkId)]) : new Set())
+      setEvidenceSelectedChunkIds(
+        normalizedSelected.length ? new Set(normalizedSelected) : firstChunkId ? new Set([String(firstChunkId)]) : new Set()
+      )
       setEvidenceDialogOpen(true)
     } catch (err: any) {
       console.error('Failed to parse Evidence Pack', err)
@@ -248,20 +284,22 @@ export function TestCaseManager({
       return
     }
 
+    const sourceTag = evidencePack?.source === 'retrieve_preview' ? 'from_retrieval_preview' : 'evidence_pack'
     const selected = new Set(Array.from(evidenceSelectedChunkIds || []))
-    const refs = (evidenceCitations || [])
+    const refs: RegressionReferenceSource[] = (evidenceCitations || [])
       .filter((c: any) => selected.has(String(c?.chunk_id || '')))
       .map((c: any) => ({
-        document_id: c?.document_id,
-        chunk_id: c?.chunk_id,
+        document_id: String(c?.document_id || ''),
+        chunk_id: String(c?.chunk_id || ''),
         page_number: typeof c?.page_number === 'number' ? c.page_number : undefined,
         start_char: typeof c?.start_char === 'number' ? c.start_char : undefined,
         end_char: typeof c?.end_char === 'number' ? c.end_char : undefined,
         doc_pipeline_key: typeof c?.doc_pipeline_key === 'string' ? c.doc_pipeline_key : undefined,
         pipeline_hash: typeof c?.pipeline_hash === 'string' ? c.pipeline_hash : undefined,
         quote: typeof c?.chunk_content === 'string' ? c.chunk_content : undefined,
-        label: 'evidence_pack',
+        label: sourceTag === 'from_retrieval_preview' ? 'ground_truth' : 'evidence_pack',
       }))
+      .filter((r) => !!r.document_id && !!r.chunk_id)
 
     if (!refs.length) {
       toast.error('选中的证据引用无效（缺少 chunk_id/document_id）')
@@ -274,11 +312,17 @@ export function TestCaseManager({
         question: q,
         dataset_id: ds,
         expected_answer: evidenceExpectedAnswer?.trim() ? evidenceExpectedAnswer.trim() : undefined,
-        reference_sources: refs as any,
-        tags: ['evidence_pack'],
+        reference_sources: refs,
+        tags: [sourceTag],
         extra: {
           evidence_pack_exported_at: evidencePack?.exported_at || null,
-          evidence_pack_query_for_retrieval: evidencePack?.query_for_retrieval || null,
+          query_for_retrieval: evidencePack?.query_for_retrieval || null,
+          retrieval_metrics: evidencePack?.metrics || null,
+          has_evidence: evidencePack?.has_evidence ?? null,
+          abstain_triggered: evidencePack?.abstain_triggered ?? null,
+          abstain_reason: evidencePack?.abstain_reason ?? null,
+          created_from:
+            sourceTag === 'from_retrieval_preview' ? 'regression.test_case_manager' : 'regression.evidence_pack_import',
         },
       }
       await evaluationApi.createRegressionCase(payload)
@@ -286,6 +330,9 @@ export function TestCaseManager({
       setEvidenceDialogOpen(false)
       setEvidencePack(null)
       setEvidenceSelectedChunkIds(new Set())
+      setIsCreating(false)
+      setNewQuestion('')
+      setNewExpectedAnswer('')
       await loadCases()
     } catch (err: any) {
       console.error('Failed to create case from evidence pack', err)
@@ -415,8 +462,19 @@ export function TestCaseManager({
               />
             </div>
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={handleCreate}>
-                保存
+              <Button
+                size="sm"
+                onClick={() => void handleCreate()}
+                disabled={evidenceLoading || !datasetId || !newQuestion.trim()}
+              >
+                {evidenceLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" />
+                    检索中…
+                  </>
+                ) : (
+                  '检索预览'
+                )}
               </Button>
               <Button
                 size="sm"
@@ -432,7 +490,7 @@ export function TestCaseManager({
             </div>
             <div className="text-[11px] text-muted-foreground">
               提示：后端要求每个用例必须提供至少 1 条 <span className="font-mono">reference_sources</span>。
-              推荐通过“导入 Evidence Pack”从检索预览结果中选择证据引用。
+              点击“检索预览”或“导入 Evidence Pack”选择 Ground Truth 证据引用后再创建。
             </div>
           </div>
         </div>
@@ -441,7 +499,7 @@ export function TestCaseManager({
       <Dialog open={evidenceDialogOpen} onOpenChange={setEvidenceDialogOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Evidence Pack → 回归用例</DialogTitle>
+            <DialogTitle>证据选择 → 回归用例</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -560,7 +618,7 @@ export function TestCaseManager({
 	          </div>
 	        ) : filteredCases.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            {searchQuery ? '没有找到匹配的用例' : '暂无测试用例'}
+            {!datasetId ? '请先选择数据集' : searchQuery ? '没有找到匹配的用例' : '暂无测试用例'}
           </div>
         ) : (
           <>

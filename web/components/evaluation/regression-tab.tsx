@@ -44,6 +44,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
   // Dataset scope (required by backend for cases and runs)
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
+  const [isLoadingDatasets, setIsLoadingDatasets] = useState(false)
   
   // 运行配置
   const [metricKeys, setMetricKeys] = useState<string[]>([
@@ -75,6 +76,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
   useEffect(() => {
     let cancelled = false
     const run = async () => {
+      setIsLoadingDatasets(true)
       try {
         const res = await datasetApi.list({ limit: 200 })
         if (cancelled) return
@@ -85,6 +87,8 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
       } catch (e) {
         // Non-fatal: users can still view existing runs; creating new runs will be blocked.
         if (!cancelled) console.error('Failed to load datasets', e)
+      } finally {
+        if (!cancelled) setIsLoadingDatasets(false)
       }
     }
     void run()
@@ -166,7 +170,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
       const params: RegressionRunCreate = {
         case_ids: caseIds,
         dataset_id: selectedDatasetId,
-        metrics: metricKeys,
+        metrics: retrievalOnly ? [] : metricKeys,
         skip_empty_contexts: true,
         max_cases: 50,
       }
@@ -237,9 +241,13 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <div className="text-xs font-medium text-muted-foreground">数据集</div>
-                <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId}>
+                <Select
+                  value={selectedDatasetId}
+                  onValueChange={setSelectedDatasetId}
+                  disabled={isLoadingDatasets || !datasets.length}
+                >
                   <SelectTrigger className="h-9 rounded-xl">
-                    <SelectValue placeholder="选择数据集" />
+                    <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '选择数据集'} />
                   </SelectTrigger>
                   <SelectContent>
                     {(datasets || []).map((d) => (
@@ -326,10 +334,14 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
           <div className="bg-muted/40 rounded-xl p-4">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <div className="lg:col-span-5">
-                <div className="text-xs font-medium text-muted-foreground mb-2">数据集</div>
-                <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId}>
+              <div className="text-xs font-medium text-muted-foreground mb-2">数据集</div>
+                <Select
+                  value={selectedDatasetId}
+                  onValueChange={setSelectedDatasetId}
+                  disabled={isLoadingDatasets || !datasets.length}
+                >
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="选择数据集" />
+                    <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '选择数据集'} />
                   </SelectTrigger>
                   <SelectContent>
                     {(datasets || []).map((d) => (
