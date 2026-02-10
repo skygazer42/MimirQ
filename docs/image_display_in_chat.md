@@ -4,6 +4,19 @@
 
 当文档解析（MarkItDown/MinerU/DeepDoc）提取图片并上传到 MinIO 后，这些图片会与文本块关联。在 RAG 对话中，如果检索到包含图片的文本块，图片信息会随 citation 一起返回，前端可以显示这些图片。
 
+## 图片展示策略（当前实现）
+
+为避免“无关图片刷屏”，当前策略是 **只展示检索命中的 citations 里的图片**：
+
+- **命中判定**：`citation.has_image=true` 才视为“可展示图片”。
+  - `has_image` 的来源是 chunk 的 `metadata.img_id`（优先），或从 chunk 内容里反向提取 `/api/v1/documents/image-url/{img_id}`（兼容已替换 URL 的 Markdown/HTML）。
+- **展示位置 1（引用卡片）**：引用卡片里显示缩略图（点击可打开原图/文档定位）。
+- **展示位置 2（回答正文，可选）**：非结构化输出时，后端会把 citations 里的图片 URL 去重后追加到回答末尾（默认最多 3 张）。
+  - 开关：`SHOW_IMAGE_IN_ANSWER=true/false`
+  - 上限：`IMAGE_APPEND_MAX=3`
+
+> 如果你需要“命中段落附近的图片也一起展示”，建议把它做成可选策略（例如基于 header_path/邻居 chunk 额外回查），默认仍保持 citations-only，以保证相关性与可控的响应体积。
+
 ## 后端实现
 
 ### 1. 图片绑定到 Chunk
@@ -334,7 +347,6 @@ MinIO 预签名 URL 有效期 7 天。如果过期：
 - **用户体验**：在对话中看到相关图片，增强理解
 
 启用 `MINIO_ENABLED=true` 后，所有文档解析自动支持图片！
-
 
 
 
