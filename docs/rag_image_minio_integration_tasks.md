@@ -23,7 +23,7 @@
 17. [x] 约定图片展示策略：只显示“命中的 citations 图片”（metadata.img_id 或 chunk 内容含 `/image-url/{img_id}`），并在回答末尾追加去重后的少量图片（默认最多 3 张，可配置）。
 18. [x] 为历史文档做一次“重处理/重入库”（否则旧 chunk 没有 `img_id`）；提供 `scripts/backfill_minio_images.py` 走 `/documents/batch/retry` 批量回填。
 19. [x] 加监控与告警：记录 `MINIO_METRICS_LOG_PATH` JSONL 指标，并提供 `scripts/minio_metrics_report.py` 汇总失败率/延迟与可选 bucket stats。
-20. [ ] 安全与权限：`/api/v1/documents/image-url/{img_id}` 是否需要租户鉴权/签名校验（按你的安全需求决定）。
+20. [x] 安全与权限：`/api/v1/documents/image-url/{img_id}` 在生产环境会要求鉴权（JWT/或 header 模式强制 X-User-ID），并做租户/数据集/文档可读校验；默认不提供“匿名签名访问”。
 
 ## 相关代码入口（便于你定位）
 
