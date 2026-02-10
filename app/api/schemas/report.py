@@ -65,6 +65,21 @@ class DatasetChunkQualityMetricsOut(BaseModel):
     token_stats_missing_documents: int = 0
 
 
+class DatasetKGEntityTypeCount(BaseModel):
+    type: str
+    count: int = 0
+
+
+class DatasetKGStatsOut(BaseModel):
+    """Best-effort Knowledge Graph (KG) metrics scoped by document-level ACL."""
+
+    events: int = 0
+    entities: int = 0
+    links: int = 0
+    entity_types: List[DatasetKGEntityTypeCount] = Field(default_factory=list)
+    updated_at: Optional[datetime] = None
+
+
 class DatasetReportOut(BaseModel):
     dataset_id: UUID
     dataset_name: Optional[str] = None
@@ -87,3 +102,6 @@ class DatasetReportOut(BaseModel):
 
     # Optional: chunking quality metrics derived from document.metadata.chunk_* (best-effort).
     chunk_quality_metrics: Optional[DatasetChunkQualityMetricsOut] = None
+
+    # Optional: KG stats for the dataset, filtered by doc-level ACL (best-effort).
+    kg_stats: Optional[DatasetKGStatsOut] = None
