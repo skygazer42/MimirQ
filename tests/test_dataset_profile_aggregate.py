@@ -202,3 +202,69 @@ def test_dataset_profile_aggregate_chunk_length_distribution_from_chunking_stats
     assert hist.get("0-200") == 2
     assert hist.get("200-500") == 4
     assert hist.get("2k+") == 1
+
+
+def test_dataset_profile_aggregate_chunk_token_distribution_from_chunking_stats_tokens_histogram():
+    dsid = uuid.uuid4()
+    rows = [
+        _row(
+            filename="a.md",
+            file_type="md",
+            metadata={
+                "chunking_stats_tokens": {
+                    "histogram": [
+                        {"label": "0-50", "count": 2},
+                        {"label": "200-400", "count": 1},
+                    ]
+                }
+            },
+        ),
+        _row(
+            filename="b.md",
+            file_type="md",
+            metadata={
+                "chunking_stats_tokens": {
+                    "histogram": [
+                        {"label": "0-50", "count": 1},
+                        {"label": "400-800", "count": 2},
+                        {"label": "800+", "count": 1},
+                    ]
+                }
+            },
+        ),
+    ]
+
+    summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
+
+    hist = {b.label: int(b.count or 0) for b in (summary.chunk_token_histogram or [])}
+    assert hist.get("0-50") == 3
+    assert hist.get("200-400") == 1
+    assert hist.get("400-800") == 2
+    assert hist.get("800+") == 1
+
+
+def test_dataset_profile_aggregate_chunk_coverage_histogram_from_chunk_coverage():
+    dsid = uuid.uuid4()
+    rows = [
+        _row(
+            filename="a.md",
+            file_type="md",
+            metadata={"chunk_coverage": {"coverage_ratio": 0.95, "overlap_waste_ratio": 0.10}},
+        ),
+        _row(
+            filename="b.md",
+            file_type="md",
+            metadata={"chunk_coverage": {"coverage_ratio": 0.99, "overlap_waste_ratio": 0.50}},
+        ),
+    ]
+
+    summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
+
+    cov_hist = {b.label: int(b.count or 0) for b in (summary.chunk_coverage_histogram or [])}
+    assert cov_hist.get("90-98%") == 1
+    assert cov_hist.get("98-100%") == 1
+
+    waste_hist = {b.label: int(b.count or 0) for b in (summary.chunk_overlap_waste_histogram or [])}
+    # 10% waste lands in 10-20% bin due to [min, max) semantics.
+    assert waste_hist.get("10-20%") == 1
+    assert waste_hist.get("35-60%") == 1

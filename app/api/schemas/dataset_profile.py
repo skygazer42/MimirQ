@@ -83,6 +83,19 @@ class DatasetProfileSummary(BaseModel):
     chunk_length_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
     chunk_length_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
+    # Token-based chunk stats (best-effort; derived from per-document `chunking_stats_tokens`).
+    chunk_token_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    chunk_token_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    avg_chunk_tokens_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    avg_chunk_tokens_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+
+    # Chunk coverage / overlap waste (best-effort; derived from per-document `chunk_coverage`).
+    # Note: Percentiles/histograms are expressed in percentage points (0-100).
+    chunk_coverage_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    chunk_coverage_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    chunk_overlap_waste_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    chunk_overlap_waste_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+
     # Additional distributions (best-effort; may be empty if metadata missing).
     page_number_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
     parse_quality_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)

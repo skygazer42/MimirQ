@@ -48,6 +48,14 @@ def test_dataset_profile_export_includes_new_distribution_fields(monkeypatch) ->
     assert "avg_chunk_chars_histogram" in payload
     assert "chunk_length_percentiles" in payload
     assert "chunk_length_histogram" in payload
+    assert "chunk_token_percentiles" in payload
+    assert "chunk_token_histogram" in payload
+    assert "avg_chunk_tokens_percentiles" in payload
+    assert "avg_chunk_tokens_histogram" in payload
+    assert "chunk_coverage_percentiles" in payload
+    assert "chunk_coverage_histogram" in payload
+    assert "chunk_overlap_waste_percentiles" in payload
+    assert "chunk_overlap_waste_histogram" in payload
     assert "page_number_histogram" in payload
     assert "parse_quality_histogram" in payload
     assert "language_mix" in payload
