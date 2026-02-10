@@ -60,6 +60,9 @@ import app.models.evaluation  # noqa: F401
 # Ensure feedback models are registered for metadata creation
 import app.models.feedback  # noqa: F401
 
+# Ensure ingestion run manifest models are registered for metadata creation
+import app.models.ingestion_run  # noqa: F401
+
 # Ensure user models are registered for metadata creation
 import app.models.user  # noqa: F401
 

@@ -19,6 +19,7 @@ from app.api.v1 import (
     feedback,
     governance,
     health,
+    ingestion_runs,
     meta,
     observability,
     parsing,
@@ -54,6 +55,7 @@ router.include_router(prompt_templates.router, prefix="/prompt-templates", tags=
 router.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
 router.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
 router.include_router(connectors.router, prefix="/connectors", tags=["Connectors"])
+router.include_router(ingestion_runs.router, prefix="/ingestion", tags=["Ingestion Runs"])
 router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])
 router.include_router(reports.router, prefix="/reports", tags=["Reports"])

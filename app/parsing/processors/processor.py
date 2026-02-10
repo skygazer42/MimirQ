@@ -1199,6 +1199,26 @@ class DocumentProcessorService:
         try:
             cancel_check = self._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
 
+            stage_durations_ms: dict[str, int] = {}
+
+            def _add_stage_duration(stage: str, elapsed_ms: float) -> None:
+                try:
+                    key = str(stage or "").strip()
+                    if not key:
+                        return
+                    ms = int(round(float(elapsed_ms)))
+                except Exception:
+                    return
+                if ms < 0:
+                    ms = 0
+                stage_durations_ms[key] = int(stage_durations_ms.get(key, 0) or 0) + ms
+
+            def _with_stage_durations(meta: dict[str, Any] | None) -> dict[str, Any]:
+                out = dict(meta or {})
+                if stage_durations_ms:
+                    out["ingest_stage_durations_ms"] = dict(stage_durations_ms)
+                return out
+
             async def raise_if_cancelled(*, force: bool = False) -> None:
                 if await cancel_check(force=force):
                     raise DocumentCancelledError("cancel_requested")
@@ -1255,8 +1275,10 @@ class DocumentProcessorService:
                 preprocess_cfg = ingestion.get("preprocess") if isinstance(ingestion, dict) else None
                 steps = preprocess_cfg.get("steps") if isinstance(preprocess_cfg, dict) else None
                 if isinstance(steps, list) and steps:
+                    t0 = time.perf_counter()
                     with metrics_span("ingest.preprocess", file_ext=file_path.suffix.lower()):
                         result = preprocess_file(input_path=file_path, steps=steps)
+                    _add_stage_duration("preprocess", (time.perf_counter() - t0) * 1000)
                     # Persist a lightweight audit record for debugging/tuning (best-effort).
                     try:
                         next_meta = dict(db_document.doc_metadata or {})
@@ -1330,6 +1352,7 @@ class DocumentProcessorService:
                     try:
                         from app.services.table_store_service import import_table_document
 
+                        t0 = time.perf_counter()
                         assets = import_table_document(
                             tenant_id=tenant_id,
                             dataset_id=db_document.dataset_id,
@@ -1339,9 +1362,11 @@ class DocumentProcessorService:
                             max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
                             sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
                         )
+                        _add_stage_duration("table_import", (time.perf_counter() - t0) * 1000)
                     except Exception as exc:  # noqa: BLE001
                         msg = f"table_import_failed: {(str(exc) or exc.__class__.__name__)[:200]}"
                         logger.warning("Table import failed: %s document_id=%s", msg, document_id)
+                        meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
                         await self._update_status(
                             db,
                             tenant_id,
@@ -1352,6 +1377,7 @@ class DocumentProcessorService:
                             chunk_count=0,
                             total_characters=0,
                             error_message=msg,
+                            doc_metadata=meta_patch,
                         )
                         return {
                             "status": "failed",
@@ -1405,6 +1431,7 @@ class DocumentProcessorService:
                         chunk_count=0,
                         total_characters=0,
                         error_message=None,
+                        doc_metadata=_with_stage_durations(dict(db_document.doc_metadata or {})),
                     )
                     return {
                         "status": "completed",
@@ -1543,6 +1570,7 @@ class DocumentProcessorService:
                 parser_backend_requested=parser_backend,
                 chunk_strategy_requested=chunk_strategy,
             ):
+                t_parse0 = time.perf_counter()
                 parsed = await parsing_stage.run(
                     db=db,
                     db_document=db_document,
@@ -1676,6 +1704,8 @@ class DocumentProcessorService:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Parse fallback failed (ignored): %s", str(exc)[:200])
 
+            _add_stage_duration("parse", (time.perf_counter() - t_parse0) * 1000)
+
             resolved_backend = parsed.resolved_backend
             resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
@@ -1700,6 +1730,7 @@ class DocumentProcessorService:
 
             # Inline image assets (non-ragflow path: documents -> documents).
             if parsed.documents:
+                t0 = time.perf_counter()
                 with metrics_span("ingest.inline_assets"):
                     inline_result = inline_asset_stage.run(
                         documents=parsed.documents,
@@ -1709,6 +1740,7 @@ class DocumentProcessorService:
                         origin_path=file_path,
                         start_index=0,
                     )
+                _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
                 parsed_documents = inline_result.documents
                 for iid in inline_result.uploaded_img_ids:
                     if isinstance(iid, str) and iid.strip():
@@ -1738,14 +1770,19 @@ class DocumentProcessorService:
             merge_small_reduced = 0
             governance_stats: Optional[GovernanceStats] = None
             if parsed.chunks is not None:
+                t0 = time.perf_counter()
                 with metrics_span("ingest.normalize"):
                     parsed_chunks = normalize_stage.run(items=parsed.chunks)
+                _add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
+
+                t0 = time.perf_counter()
                 with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
                     gov = governance_stage.run(
                         items=parsed_chunks,
                         enabled=bool(pipeline_effective.governance_enabled),
                         kwargs=governance_kwargs,
                     )
+                _add_stage_duration("governance", (time.perf_counter() - t0) * 1000)
                 chunks = gov.items
                 governance_stats = gov.stats
 
@@ -1776,6 +1813,7 @@ class DocumentProcessorService:
                     logger.warning("%s document_id=%s", msg, document_id)
                     status = "quarantined" if quarantined else "failed"
                     reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
+                    meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
                     await self._update_status(
                         db,
                         tenant_id,
@@ -1786,6 +1824,7 @@ class DocumentProcessorService:
                         chunk_count=0,
                         total_characters=0,
                         error_message=msg,
+                        doc_metadata=meta_patch,
                     )
                     with contextlib.suppress(Exception):
                         from app.services.audit_log_service import audit_log_event
@@ -1829,15 +1868,19 @@ class DocumentProcessorService:
                         logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
                     self._strip_doc_enrichment_fields(chunks)
             else:
+                t0 = time.perf_counter()
                 with metrics_span("ingest.normalize"):
                     parsed_documents = normalize_stage.run(items=parsed_documents or [])
+                _add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
                 parsed_documents_before_governance = parsed_documents
+                t0 = time.perf_counter()
                 with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
                     gov = governance_stage.run(
                         items=parsed_documents,
                         enabled=bool(pipeline_effective.governance_enabled),
                         kwargs=governance_kwargs,
                     )
+                _add_stage_duration("governance", (time.perf_counter() - t0) * 1000)
                 parsed_documents = gov.items
                 governance_stats = gov.stats
 
@@ -1892,6 +1935,7 @@ class DocumentProcessorService:
                     logger.warning("%s document_id=%s", msg, document_id)
                     status = "quarantined" if quarantined else "failed"
                     reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
+                    meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
                     await self._update_status(
                         db,
                         tenant_id,
@@ -1902,6 +1946,7 @@ class DocumentProcessorService:
                         chunk_count=0,
                         total_characters=0,
                         error_message=msg,
+                        doc_metadata=meta_patch,
                     )
                     with contextlib.suppress(Exception):
                         from app.services.audit_log_service import audit_log_event
@@ -1949,6 +1994,7 @@ class DocumentProcessorService:
                 await raise_if_cancelled()
 
                 await self._update_status(db, tenant_id, document_id, "processing", 33, "chunking")
+                t0 = time.perf_counter()
                 with metrics_span(
                     "ingest.chunking",
                     chunk_strategy=resolved_chunk_strategy,
@@ -1967,12 +2013,14 @@ class DocumentProcessorService:
                     chunks=chunked.chunks,
                     join_separator="\n\n",
                 )
+                _add_stage_duration("chunking", (time.perf_counter() - t0) * 1000)
                 merge_min = max(0, int(getattr(pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
                 merge_small_min_chars = int(merge_min)
                 merge_small_before = len(chunks)
                 merge_small_after = merge_small_before
                 merge_small_reduced = 0
                 if merge_min > 0 and chunks:
+                    t0 = time.perf_counter()
                     with metrics_span("ingest.chunk_merge_small", min_chars=merge_min):
                         merged = _merge_small_chunks_by_min_chars(
                             documents=parsed_documents,
@@ -1980,6 +2028,7 @@ class DocumentProcessorService:
                             min_chars=merge_min,
                             join_separator="\n\n",
                         )
+                    _add_stage_duration("chunk_merge_small", (time.perf_counter() - t0) * 1000)
                     merge_small_after = len(merged)
                     merge_small_reduced = max(0, merge_small_before - merge_small_after)
                     chunks = merged
@@ -2028,8 +2077,10 @@ class DocumentProcessorService:
             dedup_enabled = bool(getattr(settings, "CHUNK_DEDUP_ENABLED", False))
             dedup_dropped = 0
             if dedup_enabled and chunks:
+                t0 = time.perf_counter()
                 with metrics_span("ingest.chunk_dedup", enabled=True):
                     deduped = chunk_dedup_stage.run(chunks=chunks, enabled=True)
+                _add_stage_duration("chunk_dedup", (time.perf_counter() - t0) * 1000)
                 chunks = deduped.chunks
                 dedup_dropped = int(deduped.duplicates_dropped)
                 if int(deduped.duplicates_dropped) > 0:
@@ -2048,6 +2099,7 @@ class DocumentProcessorService:
             # Optional cross-document near-duplicate drop (SimHash bucket index; best-effort).
             near_dedup_dropped = 0
             if bool(getattr(pipeline_effective, "near_dedup_enabled", False)) and chunks:
+                t0 = time.perf_counter()
                 try:
                     threshold = max(0, int(getattr(pipeline_effective, "near_dedup_hamming_threshold", 0) or 0))
                     max_bucket_size = max(0, int(getattr(pipeline_effective, "near_dedup_max_bucket_size", 0) or 0))
@@ -2140,6 +2192,7 @@ class DocumentProcessorService:
                         db.refresh(db_document)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Near-dup stage failed (ignored): %s", str(exc)[:200])
+                _add_stage_duration("near_dedup", (time.perf_counter() - t0) * 1000)
 
             # Guardrail: cap chunk count per document (0 disables).
             max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
@@ -2223,6 +2276,7 @@ class DocumentProcessorService:
                     "Consider lowering CHUNK_MIN_CHARS or checking the parser output."
                 )
                 logger.warning("%s document_id=%s", msg, document_id)
+                meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
                 await self._update_status(
                     db,
                     tenant_id,
@@ -2233,6 +2287,7 @@ class DocumentProcessorService:
                     chunk_count=0,
                     total_characters=0,
                     error_message=msg,
+                    doc_metadata=meta_patch,
                 )
                 return {
                     "status": "failed",
@@ -2256,6 +2311,7 @@ class DocumentProcessorService:
 
             # Chunk-level assets & metadata (image upload/binding).
             await raise_if_cancelled()
+            t0 = time.perf_counter()
             with metrics_span("ingest.chunk_assets"):
                 chunk_asset = chunk_asset_stage.run(
                     chunks=chunks,
@@ -2269,6 +2325,7 @@ class DocumentProcessorService:
                     image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
                     image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
                 )
+            _add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
             chunks = chunk_asset.chunks
             # Ensure stable traceability metadata exists on each chunk (used by citations/filtering).
             pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
@@ -2317,6 +2374,7 @@ class DocumentProcessorService:
 
             await raise_if_cancelled()
 
+            t0 = time.perf_counter()
             with metrics_span(
                 "ingest.index",
                 chunk_count=len(chunks),
@@ -2332,6 +2390,7 @@ class DocumentProcessorService:
                     chunks=chunks,
                     options=index_options,
                 )
+            _add_stage_duration("index", (time.perf_counter() - t0) * 1000)
             chunk_ids = indexed.chunk_ids
             total_chars = indexed.total_characters
             log_metrics(
@@ -2367,6 +2426,7 @@ class DocumentProcessorService:
                 except Exception as exc:  # noqa: BLE001
                     logger.info("Failed to record pipeline provenance (ignored): %s", str(exc)[:200])
 
+            meta_patch = _with_stage_durations(meta_patch)
             await self._update_status(
                 db,
                 tenant_id,
@@ -2490,6 +2550,7 @@ class DocumentProcessorService:
                 0,
                 "cancelled",
                 error_message="cancelled",
+                doc_metadata=_with_stage_durations(dict(getattr(db_document, "doc_metadata", None) or {})),
             )
             return {"status": "cancelled"}
         except asyncio.CancelledError:
@@ -2523,6 +2584,7 @@ class DocumentProcessorService:
                         0,
                         "cancelled",
                         error_message="cancelled",
+                        doc_metadata=_with_stage_durations(dict(getattr(db_document, "doc_metadata", None) or {})),
                     )
                 )
             except Exception:
@@ -2558,7 +2620,8 @@ class DocumentProcessorService:
                 "failed",
                 0,
                 "failed",
-                error_message=str(e)
+                error_message=str(e),
+                doc_metadata=_with_stage_durations(dict(getattr(db_document, "doc_metadata", None) or {})),
             )
             raise
         finally:
@@ -2609,6 +2672,21 @@ class DocumentProcessorService:
 
             db.commit()
             db.refresh(db_doc)
+
+            # Best-effort: update ingestion run manifest (never block ingestion/status updates).
+            try:
+                from app.services.ingestion_run_service import IngestionRunService
+
+                IngestionRunService.on_document_status_update(
+                    db,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    new_status=str(status or ""),
+                    error_message=getattr(db_doc, "error_message", None),
+                    doc_meta=(dict(getattr(db_doc, "doc_metadata", None) or {}) if isinstance(getattr(db_doc, "doc_metadata", None), dict) else None),
+                )
+            except Exception:
+                pass
 
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """Rebuild BM25 index for a specific tenant."""
