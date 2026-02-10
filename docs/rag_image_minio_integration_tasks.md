@@ -16,7 +16,7 @@
 10. [x] 删除文档时优先使用 `documents.metadata.img_ids` 做 MinIO 清理（并兼容逐 chunk 清理）。
 11. [x] 放开 MinerU 本地 ZIP 模式：`MINERU_ENABLED=true` + `MINERU_LOCAL_SERVER_URL=...` 时无需 `MINERU_API_TOKEN`。
 12. [x] MinerU 本地 ZIP 模式解析时传入正确的 `dataset_id/document_id`（用于 MinIO 路径）。
-13. [ ] MarkItDown 若输出“图片文件路径（非 data URI）”，补齐对应图片文件收集与上传逻辑（若你遇到这种格式再做）。
+13. [x] MarkItDown 若输出“图片文件路径（非 data URI）”，补齐对应图片文件收集与上传逻辑（支持 `file://...` 与 `%20` 等转义路径）。
 14. [x] 检索侧补齐：向量检索结果 metadata 裁剪时，回查 DB 补 `img_id/page/source`。
 15. [x] citations 中透出 `img_id/img_url/has_image`（供前端引用卡片展示）。
 16. [x] 回答正文追加图片：当 citations 带图时，在回答末尾追加 Markdown 图片（最多 3 张，避免刷屏）。
