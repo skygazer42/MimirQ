@@ -22,6 +22,7 @@ from app.api.schemas.report import (
     DatasetKGStatsOut,
     DatasetGovernanceMetricsOut,
     DatasetReportOut,
+    DatasetRegressionRunSummaryOut,
     PipelineVersionSummary,
 )
 from app.core.config import settings
@@ -336,6 +337,32 @@ class ReportService:
         except Exception:
             kg_stats = None
 
+        # Latest regression run summary (best-effort; retrieval-only runs are included).
+        latest_regression_run: DatasetRegressionRunSummaryOut | None = None
+        try:
+            from app.models.evaluation import RagasRegressionRun
+
+            row = (
+                db.query(RagasRegressionRun)
+                .filter(RagasRegressionRun.tenant_id == tenant_id, RagasRegressionRun.dataset_id == dataset_id)
+                .order_by(RagasRegressionRun.created_at.desc())
+                .first()
+            )
+            if row is not None:
+                latest_regression_run = DatasetRegressionRunSummaryOut(
+                    run_id=row.id,
+                    status=str(getattr(row, "status", "") or ""),
+                    metrics=list(getattr(row, "metrics", None) or []),
+                    params=dict(getattr(row, "params", None) or {}),
+                    summary=dict(getattr(row, "summary", None) or {}),
+                    error_message=getattr(row, "error_message", None),
+                    created_at=getattr(row, "created_at", None),
+                    started_at=getattr(row, "started_at", None),
+                    finished_at=getattr(row, "finished_at", None),
+                )
+        except Exception:
+            latest_regression_run = None
+
         # Governance metrics aggregated from document metadata (best-effort).
         governance_metrics: DatasetGovernanceMetricsOut | None = None
         chunk_quality_metrics: DatasetChunkQualityMetricsOut | None = None
@@ -383,4 +410,5 @@ class ReportService:
             governance_metrics=governance_metrics,
             chunk_quality_metrics=chunk_quality_metrics,
             kg_stats=kg_stats,
+            latest_regression_run=latest_regression_run,
         )
