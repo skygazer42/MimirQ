@@ -883,7 +883,7 @@ def run_dataset_precheck_scan(
             "dataset_id": str(dataset_id),
             "scan_run_id": str(run.id),
             "generated_at": run.finished_at.isoformat(),
-            "schema": "mimirq.dataset_precheck_summary.v2",
+            "schema_id": "mimirq.dataset_precheck_summary.v2",
             "schema_version": 2,
             "total_files": 0,
             "total_size_bytes": 0,
@@ -1735,7 +1735,7 @@ def run_dataset_precheck_scan(
         "dataset_id": str(dataset_id),
         "scan_run_id": str(run.id),
         "generated_at": _now_utc().isoformat(),
-        "schema": "mimirq.dataset_precheck_summary.v2",
+        "schema_id": "mimirq.dataset_precheck_summary.v2",
         "schema_version": 2,
         # Use processed count (supports cancelled runs with partial artifacts).
         "total_files": int(len(file_sizes)),

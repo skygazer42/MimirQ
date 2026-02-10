@@ -106,7 +106,7 @@ class DatasetPrecheckSummary(BaseModel):
     scan_run_id: UUID
     generated_at: datetime
 
-    schema: str = "mimirq.dataset_precheck_summary.v2"
+    schema_id: str = "mimirq.dataset_precheck_summary.v2"
     schema_version: int = 2
 
     total_files: int = 0

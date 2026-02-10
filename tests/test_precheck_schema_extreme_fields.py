@@ -5,7 +5,7 @@ def test_precheck_summary_schema_includes_extreme_fields() -> None:
     from app.api.schemas.dataset_precheck import DatasetPrecheckSummary
 
     fields = DatasetPrecheckSummary.model_fields
-    assert "schema" in fields
+    assert "schema_id" in fields
     assert "schema_version" in fields
     assert "by_file_type_bytes" in fields
     assert "file_type_stats" in fields
@@ -19,4 +19,3 @@ def test_precheck_file_schema_includes_language_fields() -> None:
     fields = DatasetPrecheckFileOut.model_fields
     assert "language" in fields
     assert "language_confidence" in fields
-

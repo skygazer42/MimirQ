@@ -194,6 +194,48 @@ def _list_finding_from_jsonl(
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
 
 
+def _list_files_from_jsonl(
+    *,
+    jsonl_path: Path,
+    dir_prefix: str | None,
+    skip: int,
+    limit: int,
+) -> DatasetPrecheckFindingListResponse:
+    """
+    List file records under a directory prefix (best-effort).
+
+    `dir_prefix` is a relative path under scan root (uses "/" separators).
+    """
+    raw = str(dir_prefix or "").replace("\\", "/").strip()
+    if raw in {"", ".", "/"}:
+        prefix = ""
+    else:
+        raw = raw.lstrip("/")
+        raw = raw.strip("/")
+        prefix = f"{raw}/" if raw else ""
+
+    skip_n = max(0, int(skip or 0))
+    limit_n = max(1, min(int(limit or 50), 200))
+
+    total = 0
+    items: list[DatasetPrecheckFileOut] = []
+    for obj in _iter_jsonl(jsonl_path):
+        nm = str(obj.get("name") or "").replace("\\", "/").strip()
+        if prefix and not nm.startswith(prefix):
+            continue
+        total += 1
+        if total <= skip_n:
+            continue
+        if len(items) >= limit_n:
+            continue
+        try:
+            items.append(DatasetPrecheckFileOut(**obj))
+        except Exception:
+            continue
+
+    return DatasetPrecheckFindingListResponse(total=int(total), items=items)
+
+
 def load_precheck_samples_from_row(
     row: DBDatasetPrecheckScanRun,
     *,
@@ -368,10 +410,56 @@ def list_precheck_finding_files(
     return _list_finding_from_jsonl(jsonl_path=jsonl_path, finding_key=key, skip=int(skip or 0), limit=int(limit or 50))
 
 
+def list_precheck_files_by_dir_prefix(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+    scan_run_id: UUID,
+    dir_prefix: str | None,
+    skip: int = 0,
+    limit: int = 50,
+) -> DatasetPrecheckFindingListResponse:
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+
+    row = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+
+    artifacts = getattr(row, "artifacts", None)
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
+    if not jsonl_raw:
+        raise HTTPException(status_code=404, detail="Artifacts not available")
+
+    jsonl_path = Path(jsonl_raw)
+    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
+    if not jsonl_path.exists() or not jsonl_path.is_file():
+        raise HTTPException(status_code=404, detail="Artifacts not found")
+
+    return _list_files_from_jsonl(
+        jsonl_path=jsonl_path,
+        dir_prefix=dir_prefix,
+        skip=int(skip or 0),
+        limit=int(limit or 50),
+    )
+
+
 __all__ = [
     "_scan_run_out_from_row",
     "_list_finding_from_jsonl",
     "get_dataset_for_precheck",
     "list_precheck_finding_files",
+    "list_precheck_files_by_dir_prefix",
     "load_precheck_summary_from_row",
 ]
