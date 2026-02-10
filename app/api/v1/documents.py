@@ -1512,243 +1512,70 @@ def _compute_chunk_preview_quality(
 
     Goal: surface actionable signals when tuning chunking.
     """
-    count = int(getattr(stats, "count", 0) or 0) or int(total_chunks or 0)
-    short_count = int(getattr(stats, "short_count", 0) or 0)
-    dup_count = int(getattr(stats, "duplicate_count", 0) or 0)
+    from app.services.chunk_quality_gate import compute_chunk_quality_gate
 
-    covered_chars = int(getattr(stats, "covered_chars", 0) or 0)
-    coverage_ratio = float(getattr(stats, "coverage_ratio", 0.0) or 0.0)
-    waste_ratio = float(getattr(stats, "overlap_waste_ratio", 0.0) or 0.0)
-    gap_count = int(getattr(stats, "gap_count", 0) or 0)
+    stats_dict = {
+        "count": int(getattr(stats, "count", 0) or 0),
+        "short_count": int(getattr(stats, "short_count", 0) or 0),
+        "duplicate_count": int(getattr(stats, "duplicate_count", 0) or 0),
+        "covered_chars": int(getattr(stats, "covered_chars", 0) or 0),
+        "coverage_ratio": float(getattr(stats, "coverage_ratio", 0.0) or 0.0),
+        "overlap_waste_ratio": float(getattr(stats, "overlap_waste_ratio", 0.0) or 0.0),
+        "gap_count": int(getattr(stats, "gap_count", 0) or 0),
+    }
 
+    gate_raw, recs, patches_raw = compute_chunk_quality_gate(
+        stats=stats_dict,
+        total_chunks=int(total_chunks or 0),
+        total_characters=int(total_characters or 0),
+        chunk_size=int(chunk_size or 0),
+        chunk_overlap=int(chunk_overlap or 0),
+        original_text_included=bool(original_text_included),
+        original_text_truncated=bool(original_text_truncated),
+        original_text_max_chars=int(original_text_max_chars or 0),
+    )
+
+    # Convert raw dict payloads into response models (best-effort).
     reason_items: list[ChunkPreviewQualityReason] = []
-    recs: list[str] = []
-    patches: list[ChunkPreviewRecommendationPatch] = []
-
-    def _add_reason(
-        *,
-        code: str,
-        severity: Literal["info", "warning", "error"],
-        message: str,
-        meta: dict[str, Any] | None = None,
-    ) -> None:
+    for r in (gate_raw.get("reason_items") if isinstance(gate_raw, dict) else []) or []:
+        if not isinstance(r, dict):
+            continue
         try:
             reason_items.append(
                 ChunkPreviewQualityReason(
-                    code=str(code)[:80],
-                    severity=severity,
-                    message=str(message)[:200],
-                    meta=dict(meta or {}),
+                    code=str(r.get("code") or "")[:80],
+                    severity=str(r.get("severity") or "info"),  # type: ignore[arg-type]
+                    message=str(r.get("message") or "")[:200],
+                    meta=dict(r.get("meta") or {}),
                 )
             )
         except Exception:
-            # Best-effort: keep the gate robust even if validation fails.
-            return
+            continue
 
-    def _add_patch(
-        *,
-        id: str,
-        title: str,
-        description: str,
-        target: Literal["preview", "pipeline", "perf"],
-        patch: dict[str, Any],
-    ) -> None:
-        if not patch:
-            return
+    patches: list[ChunkPreviewRecommendationPatch] = []
+    for p in (patches_raw or []):
+        if not isinstance(p, dict):
+            continue
         try:
             patches.append(
                 ChunkPreviewRecommendationPatch(
-                    id=str(id)[:80],
-                    title=str(title)[:120],
-                    description=str(description)[:400],
-                    target=target,
-                    patch=patch,
+                    id=str(p.get("id") or "")[:80],
+                    title=str(p.get("title") or "")[:120],
+                    description=str(p.get("description") or "")[:400],
+                    target=str(p.get("target") or "preview"),  # type: ignore[arg-type]
+                    patch=dict(p.get("patch") or {}),
                 )
             )
         except Exception:
-            return
-
-    if count <= 0:
-        _add_reason(code="no_chunks", severity="error", message="no chunks produced")
-        recs.append("Try a different parser_backend or chunk_strategy; check governance drop settings.")
-
-    short_ratio = (short_count / count) if count > 0 else 0.0
-    dup_ratio = (dup_count / count) if count > 0 else 0.0
-
-    # Coverage signals are only meaningful when indices look plausible.
-    if total_characters > 0 and covered_chars > 0:
-        if coverage_ratio < 0.90:
-            _add_reason(
-                code="coverage_lt_90",
-                severity="error",
-                message=f"coverage < 90% ({coverage_ratio:.0%})",
-                meta={"coverage_ratio": coverage_ratio, "gap_count": gap_count},
-            )
-            recs.append("Check parser_backend and governance settings; content may be dropped unexpectedly.")
-        elif coverage_ratio < 0.98 or gap_count > 0:
-            _add_reason(
-                code="coverage_lt_98",
-                severity="warning",
-                message=f"coverage < 98% ({coverage_ratio:.0%})",
-                meta={"coverage_ratio": coverage_ratio, "gap_count": gap_count},
-            )
-            recs.append("Check parser/page metadata; gaps may indicate start_char/page mapping issues.")
-
-    if short_ratio > 0.60:
-        _add_reason(
-            code="too_many_short_chunks",
-            severity="error",
-            message=f"too many short chunks ({short_ratio:.0%})",
-            meta={"short_ratio": short_ratio},
-        )
-        recs.append("Increase chunk_size or use a structure-aware chunk_strategy (outline/markdown_header/etc.).")
-    elif short_ratio > 0.30:
-        _add_reason(
-            code="many_short_chunks",
-            severity="warning",
-            message=f"many short chunks ({short_ratio:.0%})",
-            meta={"short_ratio": short_ratio},
-        )
-        recs.append("Consider increasing chunk_size to reduce fragmentation.")
-
-    if dup_ratio > 0.40:
-        _add_reason(
-            code="too_many_duplicates",
-            severity="error",
-            message=f"too many duplicates ({dup_ratio:.0%})",
-            meta={"duplicate_ratio": dup_ratio},
-        )
-        recs.append("Enable governance_drop_duplicate_paragraphs or near_dedup to reduce repetition.")
-    elif dup_ratio > 0.15:
-        _add_reason(
-            code="many_duplicates",
-            severity="warning",
-            message=f"many duplicates ({dup_ratio:.0%})",
-            meta={"duplicate_ratio": dup_ratio},
-        )
-        recs.append("Consider enabling governance_drop_duplicate_paragraphs / near_dedup.")
-
-    if waste_ratio > 0.60:
-        _add_reason(
-            code="high_overlap_waste",
-            severity="warning",
-            message=f"high overlap waste ({waste_ratio:.0%})",
-            meta={"overlap_waste_ratio": waste_ratio},
-        )
-        recs.append("Reduce chunk_overlap to lower duplicated embedding work.")
-        if int(chunk_overlap or 0) > 0 and int(chunk_size or 0) > 0:
-            target_overlap = int(round(int(chunk_size) * 0.15))
-            target_overlap = max(0, min(1000, target_overlap))
-            if target_overlap >= int(chunk_size):
-                target_overlap = max(0, int(chunk_size) - 1)
-            if target_overlap != int(chunk_overlap):
-                _add_patch(
-                    id="reduce_overlap",
-                    title="Reduce overlap",
-                    description="High overlap waste; reduce chunk_overlap (vector cost control).",
-                    target="preview",
-                    patch={"chunk_overlap": target_overlap},
-                )
-    elif waste_ratio > 0.35:
-        _add_reason(
-            code="overlap_waste",
-            severity="warning",
-            message=f"overlap waste ({waste_ratio:.0%})",
-            meta={"overlap_waste_ratio": waste_ratio},
-        )
-        recs.append("Consider reducing chunk_overlap (enterprise cost control).")
-        if int(chunk_overlap or 0) > 0 and int(chunk_size or 0) > 0:
-            target_overlap = int(round(int(chunk_size) * 0.2))
-            target_overlap = max(0, min(1000, target_overlap))
-            if target_overlap >= int(chunk_size):
-                target_overlap = max(0, int(chunk_size) - 1)
-            if target_overlap != int(chunk_overlap):
-                _add_patch(
-                    id="tune_overlap",
-                    title="Tune overlap",
-                    description="Moderate overlap waste; consider lowering chunk_overlap.",
-                    target="preview",
-                    patch={"chunk_overlap": target_overlap},
-                )
-
-    if int(total_chunks or 0) > 10_000:
-        _add_reason(code="too_many_chunks_gt_10k", severity="warning", message="too many chunks (>10k)")
-        recs.append("Increase chunk_size or switch strategy; very high chunk counts hurt latency and cost.")
-        if int(chunk_size or 0) > 0:
-            target_size = min(4000, int(round(int(chunk_size) * 1.5)))
-            if target_size != int(chunk_size):
-                ratio = (int(chunk_overlap) / int(chunk_size)) if int(chunk_size) > 0 else 0.2
-                target_overlap = int(round(target_size * ratio))
-                target_overlap = max(0, min(1000, min(target_overlap, target_size - 1)))
-                _add_patch(
-                    id="increase_chunk_size",
-                    title="Increase chunk_size",
-                    description="Chunk count is very high; increase chunk_size to reduce indexing and retrieval overhead.",
-                    target="preview",
-                    patch={"chunk_size": target_size, "chunk_overlap": target_overlap},
-                )
-    elif int(total_chunks or 0) > 5_000:
-        _add_reason(code="many_chunks_gt_5k", severity="warning", message="many chunks (>5k)")
-        recs.append("Consider increasing chunk_size to reduce chunk count.")
-        if int(chunk_size or 0) > 0:
-            target_size = min(4000, int(round(int(chunk_size) * 1.25)))
-            if target_size != int(chunk_size):
-                ratio = (int(chunk_overlap) / int(chunk_size)) if int(chunk_size) > 0 else 0.2
-                target_overlap = int(round(target_size * ratio))
-                target_overlap = max(0, min(1000, min(target_overlap, target_size - 1)))
-                _add_patch(
-                    id="increase_chunk_size_light",
-                    title="Increase chunk_size (light)",
-                    description="Chunk count is high; consider increasing chunk_size.",
-                    target="preview",
-                    patch={"chunk_size": target_size, "chunk_overlap": target_overlap},
-                )
-
-    if original_text_truncated and not original_text_included:
-        recs.append("Original text omitted due to size; increase original_text_max_chars if you need precise highlighting.")
-        cur_max = max(0, int(original_text_max_chars or 0))
-        if cur_max and cur_max < 2_000_000:
-            target_max = min(2_000_000, max(cur_max * 2, 120_000))
-            if target_max != cur_max:
-                _add_patch(
-                    id="increase_original_text_max_chars",
-                    title="Increase original_text_max_chars",
-                    description="Original text was omitted; increase the max to enable precise highlighting.",
-                    target="perf",
-                    patch={"original_text_max_chars": int(target_max), "include_original_text": True},
-                )
-
-    # Grade: fail if any error reasons, warn if any reasons, otherwise pass.
-    grade: Literal["pass", "warn", "fail"] = "pass"
-    if any(getattr(item, "severity", None) == "error" for item in reason_items):
-        grade = "fail"
-    elif reason_items:
-        grade = "warn"
-
-    # Deduplicate recommendations while preserving order.
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for r in recs:
-        key = (r or "").strip()
-        if not key or key in seen:
             continue
-        seen.add(key)
-        deduped.append(key)
 
-    # Best-effort extra patch: duplicates -> suggest governance-based dedup.
-    if dup_ratio > 0.15:
-        _add_patch(
-            id="enable_governance_drop_duplicate_paragraphs",
-            title="Enable duplicate paragraph drop",
-            description="Many duplicate chunks; consider enabling governance_drop_duplicate_paragraphs to reduce repetition.",
-            target="pipeline",
-            patch={"governance_enabled": True, "governance_drop_duplicate_paragraphs": True},
-        )
+    grade = str(gate_raw.get("grade") if isinstance(gate_raw, dict) else "pass") or "pass"
+    reasons = gate_raw.get("reasons") if isinstance(gate_raw, dict) else []
+    legacy_reasons = [str(x) for x in reasons] if isinstance(reasons, list) else []
 
-    legacy_reasons = [str(getattr(item, "message", "")) for item in (reason_items or []) if str(getattr(item, "message", "")).strip()]
     return (
         ChunkPreviewQualityGate(grade=grade, reasons=legacy_reasons[:10], reason_items=reason_items[:10]),
-        deduped[:10],
+        list(recs or [])[:10],
         patches[:10],
     )
 
