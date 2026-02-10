@@ -508,6 +508,8 @@ def render_precheck_html(
     total_bytes = int(summary.get("total_size_bytes") or 0)
     p50 = int(((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get("p50") or 0)
     p90 = int(((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get("p90") or 0)
+    tok_p50 = int(((summary.get("token_percentiles") or {}) if isinstance(summary.get("token_percentiles"), dict) else {}).get("p50") or 0)
+    tok_p90 = int(((summary.get("token_percentiles") or {}) if isinstance(summary.get("token_percentiles"), dict) else {}).get("p90") or 0)
 
     pdf = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     pdf_scanned = int(pdf.get("scanned") or 0)
@@ -517,6 +519,30 @@ def render_precheck_html(
     by_type = _as_items(summary.get("by_file_type"), top=12)
     pii = _as_items(summary.get("pii_hits_total"), top=12)
     secrets = _as_items(summary.get("secrets_hits_total"), top=12)
+
+    # Best-effort actionable suggestions (objective signals only).
+    tips: list[str] = []
+    if int(pdf_scanned) > 0:
+        tips.append(f"检测到疑似扫描 PDF：{_fmt_int(pdf_scanned)}（建议启用 OCR 解析链路，并优先复核 pdf_unknown/低密度页面）")
+    if int(tok_p90) > 0:
+        if int(tok_p90) >= 20_000:
+            tips.append(f"P90 文本长度较长（~{_fmt_int(tok_p90)} tokens）：建议提高 chunk_size 或使用结构化 chunk_strategy（markdown_header/outline），入库后用 chunk-preview + gate 验证分布")
+        elif int(tok_p90) >= 5_000:
+            tips.append(f"P90 文本长度偏长（~{_fmt_int(tok_p90)} tokens）：建议检查 chunk_size/overlap，避免 chunk 数过多导致成本/延迟上升")
+    elif int(p90) > 0:
+        tips.append("tokens 分布为空（可能未启用文本抽取或文件类型非文本）；如需成本估算，建议开启 enable_text_extract 并重跑预检")
+    if pii:
+        tips.append("检测到 PII 命中（来自抽样/治理信号）：建议启用治理脱敏/隔离规则（governance_pii_*）并人工复核样本")
+    if secrets:
+        tips.append("检测到 Secrets/Token 命中（来自抽样/治理信号）：建议启用 secrets 脱敏/隔离（governance_secrets_*）并人工复核样本")
+    if not tips:
+        tips.append("暂无显著风险信号；建议先用 chunk-preview 小样本调参，再进行小批量入库验证（可回归）")
+
+    tips_html = (
+        "<div class=\"notes\"><ul>" + "".join(f"<li>{escape(t)}</li>" for t in tips) + "</ul></div>"
+        if tips
+        else '<div class="empty">暂无</div>'
+    )
 
     findings = summary.get("findings") if isinstance(summary.get("findings"), list) else []
     finding_rows: list[tuple[str, int]] = []
@@ -627,6 +653,9 @@ def render_precheck_html(
     table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); width: 90px; }}
     .bar-bg {{ height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }}
     .bar-fill {{ height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }}
+    .notes {{ color: var(--muted); font-size: 13px; line-height: 1.6; }}
+    .notes ul {{ margin: 0; padding-left: 18px; }}
+    .notes li {{ margin: 6px 0; }}
     .footer {{ margin-top: 18px; color: var(--muted); font-size: 12px; }}
     @media (max-width: 980px) {{ .grid {{ grid-template-columns: repeat(2, 1fr); }} .two {{ grid-template-columns: 1fr; }} }}
   </style>
@@ -642,6 +671,8 @@ def render_precheck_html(
       <div class="card"><div class="kpi-label">P50 文本长度（chars）</div><div class="kpi-value">{_fmt_int(p50)}</div></div>
       <div class="card"><div class="kpi-label">P90 文本长度（chars）</div><div class="kpi-value">{_fmt_int(p90)}</div></div>
       <div class="card"><div class="kpi-label">PDF 扫描/文本/未知</div><div class="kpi-value">{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}</div></div>
+      <div class="card"><div class="kpi-label">P50 文本长度（tokens）</div><div class="kpi-value">{_fmt_int(tok_p50)}</div></div>
+      <div class="card"><div class="kpi-label">P90 文本长度（tokens）</div><div class="kpi-value">{_fmt_int(tok_p90)}</div></div>
     </div>
 
     <div class="section">
@@ -655,9 +686,14 @@ def render_precheck_html(
         {_render_histogram(summary.get("length_histogram"))}
       </div>
       <div>
-        <h2>文件大小分布</h2>
-        {_render_histogram(summary.get("file_size_histogram"))}
+        <h2>长度分布（tokens）</h2>
+        {_render_histogram(summary.get("token_histogram"))}
       </div>
+    </div>
+
+    <div class="section">
+      <h2>文件大小分布</h2>
+      {_render_histogram(summary.get("file_size_histogram"))}
     </div>
 
     <div class="section two">
@@ -674,6 +710,11 @@ def render_precheck_html(
     <div class="section">
       <h2>问题清单（可操作）</h2>
       {_render_bar_table(finding_rows, total=max(1, total_files))}
+    </div>
+
+    <div class="section">
+      <h2>入库建议（best-effort）</h2>
+      {tips_html}
     </div>
 
     <div class="section">
