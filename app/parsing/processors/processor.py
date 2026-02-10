@@ -3306,6 +3306,7 @@ class DocumentProcessorService:
             return
 
         from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
+        from app.services.chunk_quality_gate import compute_chunk_quality_gate
         from app.services.chunking_stats_utils import compute_chunking_stats_from_texts, compute_chunking_stats_from_texts_tokens
 
         stats = compute_chunking_stats_from_texts(
@@ -3345,6 +3346,38 @@ class DocumentProcessorService:
             )
 
         metadata = dict(db_doc.doc_metadata or {})
+        # Quality gate (heuristics; same as preview but best-effort here).
+        gate: dict[str, object] | None = None
+        recs: list[str] = []
+        patches: list[dict[str, object]] = []
+        try:
+            effective = metadata.get("pipeline_effective") if isinstance(metadata.get("pipeline_effective"), dict) else {}
+            chunk_size = int(effective.get("chunk_size") or 0)
+            chunk_overlap = int(effective.get("chunk_overlap") or 0)
+            gate_raw, recs_raw, patches_raw = compute_chunk_quality_gate(
+                stats={
+                    "count": int((stats or {}).get("count") or 0) if isinstance(stats, dict) else 0,
+                    "short_count": int((stats or {}).get("short_count") or 0) if isinstance(stats, dict) else 0,
+                    "duplicate_count": int((stats or {}).get("duplicate_count") or 0) if isinstance(stats, dict) else 0,
+                    "covered_chars": int((coverage or {}).get("covered_chars") or 0) if isinstance(coverage, dict) else 0,
+                    "coverage_ratio": float((coverage or {}).get("coverage_ratio") or 0.0) if isinstance(coverage, dict) else 0.0,
+                    "overlap_waste_ratio": float((coverage or {}).get("overlap_waste_ratio") or 0.0) if isinstance(coverage, dict) else 0.0,
+                    "gap_count": int((coverage or {}).get("gap_count") or 0) if isinstance(coverage, dict) else 0,
+                },
+                total_chunks=int(len(chunks)),
+                total_characters=int(getattr(db_doc, "total_characters", 0) or 0),
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                original_text_included=False,
+                original_text_truncated=False,
+                original_text_max_chars=0,
+            )
+            gate = gate_raw if isinstance(gate_raw, dict) else None
+            recs = [str(x) for x in (recs_raw or []) if str(x or "").strip()]
+            patches = [p for p in (patches_raw or []) if isinstance(p, dict)]
+        except Exception:
+            gate = None
+
         if stats:
             metadata["chunking_stats"] = stats
         if token_stats:
@@ -3354,6 +3387,12 @@ class DocumentProcessorService:
             cov = dict(coverage)
             cov["ranges_used"] = int(len(ranges))
             metadata["chunk_coverage"] = cov
+        if gate:
+            metadata["chunk_quality_gate"] = gate
+        if recs:
+            metadata["chunk_quality_recommendations"] = recs[:10]
+        if patches:
+            metadata["chunk_quality_patches"] = patches[:10]
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)
