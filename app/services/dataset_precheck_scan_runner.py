@@ -31,8 +31,8 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.token_utils import estimate_tokens
 from app.core.optional_deps import optional_import
+from app.core.token_utils import estimate_tokens
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches

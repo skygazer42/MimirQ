@@ -19,10 +19,10 @@ from app.api.schemas.report import (
     ComplianceSummary,
     ConnectorRunSummary,
     DatasetChunkQualityMetricsOut,
-    DatasetKGStatsOut,
     DatasetGovernanceMetricsOut,
-    DatasetReportOut,
+    DatasetKGStatsOut,
     DatasetRegressionRunSummaryOut,
+    DatasetReportOut,
     PipelineVersionSummary,
 )
 from app.core.config import settings
