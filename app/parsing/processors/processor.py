@@ -3290,7 +3290,10 @@ class DocumentProcessorService:
         chunks: List[Document],
         short_threshold: int = 120,
     ) -> None:
-        """Persist basic chunking stats (length distribution, duplicates) on the document metadata."""
+        """Persist basic chunking stats (length distribution, duplicates) on the document metadata.
+
+        This is best-effort and should never affect ingestion success.
+        """
         if not chunks:
             return
 
@@ -3302,17 +3305,55 @@ class DocumentProcessorService:
         if not db_doc:
             return
 
-        from app.services.chunking_stats_utils import compute_chunking_stats_from_texts
+        from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
+        from app.services.chunking_stats_utils import compute_chunking_stats_from_texts, compute_chunking_stats_from_texts_tokens
 
         stats = compute_chunking_stats_from_texts(
             ((c.page_content or "") for c in chunks),
             short_threshold=int(short_threshold or 0),
         )
-        if not stats:
-            return
+        token_stats = compute_chunking_stats_from_texts_tokens(((c.page_content or "") for c in chunks))
+
+        # Best-effort chunk coverage metrics (requires offsets).
+        ranges: list[tuple[int, int]] = []
+        for c in chunks:
+            meta = c.metadata if isinstance(c.metadata, dict) else {}
+            raw_s = meta.get("start_char")
+            if raw_s is None:
+                continue
+            try:
+                s = int(raw_s)
+            except Exception:
+                continue
+            raw_e = meta.get("end_char")
+            if raw_e is None:
+                e = s + len(c.page_content or "")
+            else:
+                try:
+                    e = int(raw_e)
+                except Exception:
+                    e = s + len(c.page_content or "")
+            if e <= s:
+                continue
+            ranges.append((s, e))
+
+        coverage: dict[str, float | int] | None = None
+        if ranges and int(getattr(db_doc, "total_characters", 0) or 0) > 0:
+            coverage = compute_chunk_coverage_metrics_from_ranges(
+                ranges,
+                total_characters=int(getattr(db_doc, "total_characters", 0) or 0),
+            )
 
         metadata = dict(db_doc.doc_metadata or {})
-        metadata["chunking_stats"] = stats
+        if stats:
+            metadata["chunking_stats"] = stats
+        if token_stats:
+            metadata["chunking_stats_tokens"] = token_stats
+        if coverage:
+            # Include a small hint for debugging (how many chunk ranges contributed).
+            cov = dict(coverage)
+            cov["ranges_used"] = int(len(ranges))
+            metadata["chunk_coverage"] = cov
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)
