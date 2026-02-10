@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.document_folders import DocumentFolderTreeResponse
@@ -19,10 +19,12 @@ from app.api.schemas.report import (
     ComplianceSummary,
     ConnectorRunSummary,
     DatasetChunkQualityMetricsOut,
+    DatasetKGStatsOut,
     DatasetGovernanceMetricsOut,
     DatasetReportOut,
     PipelineVersionSummary,
 )
+from app.core.config import settings
 from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.document import Document as DBDocument
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
@@ -269,6 +271,71 @@ class ReportService:
         except Exception:
             folder_tree = None
 
+        # KG stats (best-effort; requires KG_ENABLED and enforces doc-level ACL).
+        kg_stats: DatasetKGStatsOut | None = None
+        try:
+            if bool(getattr(settings, "KG_ENABLED", False)):
+                from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+
+                _dataset, q = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+                if pipeline_hash_norm:
+                    active_expr = func.coalesce(
+                        DBDocument.doc_metadata["active_pipeline_hash"].as_string(),
+                        DBDocument.doc_metadata["pipeline_hash"].as_string(),
+                    )
+                    q = q.filter(active_expr == pipeline_hash_norm)
+
+                # Use a subquery to avoid materializing a potentially large doc-id list in Python.
+                doc_ids_subq = q.with_entities(DBDocument.id).subquery()
+                allowed_ids = select(doc_ids_subq.c.id)
+
+                event_count = (
+                    db.query(func.count(KgSourceEvent.id))
+                    .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_ids))
+                    .scalar()
+                    or 0
+                )
+                link_count = (
+                    db.query(func.count(KgEventEntity.id))
+                    .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                    .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_ids))
+                    .scalar()
+                    or 0
+                )
+                entity_count = (
+                    db.query(func.count(func.distinct(KgEventEntity.entity_id)))
+                    .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                    .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_ids))
+                    .scalar()
+                    or 0
+                )
+                updated_at = (
+                    db.query(func.max(KgSourceEvent.updated_at))
+                    .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_ids))
+                    .scalar()
+                )
+
+                type_rows = (
+                    db.query(KgEntity.type, func.count(func.distinct(KgEntity.id)).label("cnt"))
+                    .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+                    .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                    .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_ids))
+                    .group_by(KgEntity.type)
+                    .order_by(func.count(func.distinct(KgEntity.id)).desc(), KgEntity.type.asc())
+                    .limit(50)
+                    .all()
+                )
+
+                kg_stats = DatasetKGStatsOut(
+                    events=int(event_count),
+                    entities=int(entity_count),
+                    links=int(link_count),
+                    entity_types=[{"type": str(t or "unknown"), "count": int(cnt or 0)} for (t, cnt) in type_rows],
+                    updated_at=updated_at,
+                )
+        except Exception:
+            kg_stats = None
+
         # Governance metrics aggregated from document metadata (best-effort).
         governance_metrics: DatasetGovernanceMetricsOut | None = None
         chunk_quality_metrics: DatasetChunkQualityMetricsOut | None = None
@@ -315,4 +382,5 @@ class ReportService:
             folder_tree=folder_tree,
             governance_metrics=governance_metrics,
             chunk_quality_metrics=chunk_quality_metrics,
+            kg_stats=kg_stats,
         )
