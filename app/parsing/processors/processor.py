@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -3463,8 +3464,29 @@ class DocumentProcessorService:
                         continue
                     binary = base64.b64decode(b64_part)
                 else:
+                    # Normalize local refs:
+                    # - MarkItDown (or other converters) may emit `file://...` URLs or percent-escaped paths.
+                    # - Keep `ref` as the replacement key, but resolve/unquote for filesystem access.
+                    resolved_ref = ref
+                    ref_lower = ref.lower()
+                    if ref_lower.startswith("file://"):
+                        parsed = urlparse(ref)
+                        if str(parsed.scheme or "").lower() != "file":
+                            continue
+                        netloc = str(parsed.netloc or "").strip().lower()
+                        if netloc and netloc not in {"localhost", "127.0.0.1"}:
+                            continue
+                        resolved_ref = unquote(str(parsed.path or ""))
+                        if not resolved_ref:
+                            continue
+                        # file:///C:/... -> C:/... (Windows compatibility; safe on POSIX too).
+                        if re.match(r"^/[a-zA-Z]:/", resolved_ref):
+                            resolved_ref = resolved_ref[1:]
+                    else:
+                        resolved_ref = unquote(ref)
+
                     # Local/relative path.
-                    path_obj = Path(ref)
+                    path_obj = Path(resolved_ref)
                     if not path_obj.is_absolute():
                         if not base_dir_resolved:
                             continue
