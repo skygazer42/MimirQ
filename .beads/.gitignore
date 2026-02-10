@@ -7,6 +7,7 @@
 
 # Daemon runtime files
 daemon.lock
+daemon-error
 daemon.log
 daemon.pid
 bd.sock
