@@ -20,7 +20,7 @@
 14. [x] 检索侧补齐：向量检索结果 metadata 裁剪时，回查 DB 补 `img_id/page/source`。
 15. [x] citations 中透出 `img_id/img_url/has_image`（供前端引用卡片展示）。
 16. [x] 回答正文追加图片：当 citations 带图时，在回答末尾追加 Markdown 图片（最多 3 张，避免刷屏）。
-17. [ ] 约定图片展示策略：只显示“命中的图片块”，还是“命中段落里出现图片 URL 的块”。
+17. [x] 约定图片展示策略：只显示“命中的 citations 图片”（metadata.img_id 或 chunk 内容含 `/image-url/{img_id}`），并在回答末尾追加去重后的少量图片（默认最多 3 张，可配置）。
 18. [ ] 为历史文档做一次“重处理/重入库”（否则旧 chunk 没有 `img_id`）。
 19. [ ] 加监控与告警：MinIO put/get 失败率、预签名 URL 失败率、对象数量增长。
 20. [ ] 安全与权限：`/api/v1/documents/image-url/{img_id}` 是否需要租户鉴权/签名校验（按你的安全需求决定）。
