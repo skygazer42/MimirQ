@@ -132,3 +132,47 @@ def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001
     assert res.status_code == 200, res.text
     assert "text/html" in res.headers.get("content-type", "")
     assert "<!doctype html" in res.text.lower()
+
+
+def test_dataset_rag_audit_export_html(monkeypatch):  # noqa: ANN001
+    dataset_id = uuid.uuid4()
+
+    import app.api.v1.reports as reports_module
+    from app.api.schemas.dataset_profile import DatasetProfileSummary
+    from app.api.schemas.report import ComplianceSummary, DatasetReportOut
+
+    dummy_profile = DatasetProfileSummary(
+        dataset_id=dataset_id,
+        generated_at="2026-01-01T00:00:00Z",
+        total_documents=1,
+        by_status={"completed": 1},
+    )
+    dummy_report = DatasetReportOut(
+        dataset_id=dataset_id,
+        dataset_name="Test Dataset",
+        pipeline_hash=None,
+        generated_at="2026-01-01T00:00:00Z",
+        profile=dummy_profile,
+        compliance=ComplianceSummary(quarantined_documents=0, failed_documents=0),
+        pipeline_versions=[],
+        connectors=[],
+        dataset_metadata={},
+    )
+    monkeypatch.setattr(
+        reports_module.ReportService,
+        "build_dataset_report",
+        lambda *_a, **_k: dummy_report,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.include_router(v1_router, prefix="/api/v1")
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html")
+    assert res.status_code == 200, res.text
+    assert "text/html" in res.headers.get("content-type", "")
+    assert "<!doctype html" in res.text.lower()

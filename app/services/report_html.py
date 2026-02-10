@@ -600,6 +600,274 @@ def render_dataset_report_html(
     return html
 
 
+def render_rag_audit_html(
+    *,
+    title: str,
+    dataset_name: str | None,
+    dataset_id: str | None,
+    generated_at: datetime | str | None,
+    report: dict,
+    redact: bool = False,
+) -> str:
+    """
+    Render a one-page RAG audit HTML bundle.
+
+    Goal:
+    - Merge profile + governance + chunk + KG + eval into a single offline-friendly report.
+    - Keep it objective: show numbers and distributions; avoid subjective scoring.
+    """
+    import json
+
+    name = "[REDACTED]" if redact else (dataset_name or "")
+    dsid = "[REDACTED]" if redact else (dataset_id or "")
+    ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
+
+    profile = report.get("profile") if isinstance(report, dict) else None
+    prof = profile if isinstance(profile, dict) else {}
+
+    total_docs = int(prof.get("total_documents") or 0)
+    total_bytes = int(prof.get("total_size_bytes") or 0)
+
+    by_status = _as_items(prof.get("by_status"), top=12)
+    by_type = _as_items(prof.get("by_file_type"), top=12)
+
+    p50 = int(((prof.get("length_percentiles") or {}) if isinstance(prof.get("length_percentiles"), dict) else {}).get("p50") or 0)
+    p90 = int(((prof.get("length_percentiles") or {}) if isinstance(prof.get("length_percentiles"), dict) else {}).get("p90") or 0)
+    chunk_tok_p50 = int(((prof.get("chunk_token_percentiles") or {}) if isinstance(prof.get("chunk_token_percentiles"), dict) else {}).get("p50") or 0)
+    cov_p50 = int(((prof.get("chunk_coverage_percentiles") or {}) if isinstance(prof.get("chunk_coverage_percentiles"), dict) else {}).get("p50") or 0)
+
+    comp = report.get("compliance") if isinstance(report, dict) else None
+    compd = comp if isinstance(comp, dict) else {}
+    quarantined = int(compd.get("quarantined_documents") or 0)
+    failed = int(compd.get("failed_documents") or 0)
+
+    gov = report.get("governance_metrics") if isinstance(report, dict) else None
+    govd = gov if isinstance(gov, dict) else {}
+    drop_reasons = _as_items(govd.get("drop_reasons_total"), top=12)
+    rule_packs = _as_items(govd.get("rule_packs_docs"), top=12)
+
+    cqm = report.get("chunk_quality_metrics") if isinstance(report, dict) else None
+    cqmd = cqm if isinstance(cqm, dict) else {}
+    gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
+    coverage_low = int(cqmd.get("coverage_low_documents") or 0)
+    overlap_high = int(cqmd.get("overlap_waste_high_documents") or 0)
+    tokens_missing = int(cqmd.get("token_stats_missing_documents") or 0)
+
+    kg = report.get("kg_stats") if isinstance(report, dict) else None
+    kgd = kg if isinstance(kg, dict) else {}
+    kg_events = int(kgd.get("events") or 0)
+    kg_entities = int(kgd.get("entities") or 0)
+    kg_links = int(kgd.get("links") or 0)
+    kg_updated_at = str(kgd.get("updated_at") or "").strip()
+    kg_types: list[tuple[str, int]] = []
+    raw_types = kgd.get("entity_types")
+    if isinstance(raw_types, list):
+        for t in raw_types[:50]:
+            if not isinstance(t, dict):
+                continue
+            tp = str(t.get("type") or "").strip() or "unknown"
+            try:
+                cnt = int(t.get("count") or 0)
+            except Exception:
+                cnt = 0
+            if cnt > 0:
+                kg_types.append((tp, cnt))
+
+    rr = report.get("latest_regression_run") if isinstance(report, dict) else None
+    rrd = rr if isinstance(rr, dict) else {}
+    rr_status = str(rrd.get("status") or "").strip()
+    rr_created_at = str(rrd.get("created_at") or "").strip()
+    rr_finished_at = str(rrd.get("finished_at") or "").strip()
+    rr_summary = rrd.get("summary") if isinstance(rrd.get("summary"), dict) else {}
+    rr_summary_items: list[tuple[str, str]] = []
+    for k, v in sorted(rr_summary.items(), key=lambda kv: str(kv[0] or "")):
+        key = str(k or "").strip()
+        if not key:
+            continue
+        if isinstance(v, bool):
+            rr_summary_items.append((key, "1" if v else "0"))
+        elif isinstance(v, int) and not isinstance(v, bool):
+            rr_summary_items.append((key, _fmt_int(v)))
+        elif isinstance(v, float):
+            rr_summary_items.append((key, f"{v:.4f}"))
+
+    rr_summary_rows = [f"<tr><td class=\"k\">{escape(k)}</td><td class=\"v\">{escape(v)}</td><td></td></tr>" for k, v in rr_summary_items[:50]]
+    rr_summary_table = (
+        "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
+        + "".join(rr_summary_rows)
+        + "</tbody></table>"
+        if rr_summary_rows
+        else '<div class="empty">暂无数据</div>'
+    )
+
+    raw_json = json.dumps(report, ensure_ascii=False, indent=2)
+
+    html = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{escape(title)}</title>
+  <style>
+    :root {{
+      --bg: #0b1020;
+      --card: rgba(255,255,255,.06);
+      --muted: rgba(255,255,255,.65);
+      --text: rgba(255,255,255,.92);
+      --border: rgba(255,255,255,.10);
+      --accent: #38bdf8;
+      --accent2: #22c55e;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }}
+    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(34,197,94,.12), transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
+    .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
+    .title {{ font-size: 22px; font-weight: 800; letter-spacing: .2px; }}
+    .sub {{ margin-top: 6px; color: var(--muted); font-size: 13px; }}
+    .grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }}
+    .card {{ border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 12px; }}
+    .kpi-label {{ color: var(--muted); font-size: 12px; }}
+    .kpi-value {{ font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }}
+    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }}
+    .section h2 {{ margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }}
+    .two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
+    .empty {{ color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }}
+    table.bars {{ width: 100%; border-collapse: collapse; }}
+    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
+    table.bars td {{ padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }}
+    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); width: 160px; }}
+    .bar-bg {{ height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }}
+    .bar-fill {{ height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }}
+    pre {{ white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.22); padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; font-family: var(--mono); font-size: 12px; color: var(--text); }}
+    .footer {{ margin-top: 18px; color: var(--muted); font-size: 12px; }}
+    @media (max-width: 980px) {{ .grid {{ grid-template-columns: repeat(2, 1fr); }} .two {{ grid-template-columns: 1fr; }} }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">{escape(title)}</div>
+    <div class="sub">dataset: <span style="font-family:var(--mono)">{escape(name)}</span> · id: <span style="font-family:var(--mono)">{escape(dsid)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
+
+    <div class="grid">
+      <div class="card"><div class="kpi-label">文档总数</div><div class="kpi-value">{_fmt_int(total_docs)}</div></div>
+      <div class="card"><div class="kpi-label">总大小</div><div class="kpi-value">{escape(_fmt_bytes(total_bytes))}</div></div>
+      <div class="card"><div class="kpi-label">隔离（Quarantine）</div><div class="kpi-value">{_fmt_int(quarantined)}</div></div>
+      <div class="card"><div class="kpi-label">失败（Failed）</div><div class="kpi-value">{_fmt_int(failed)}</div></div>
+      <div class="card"><div class="kpi-label">P50 长度（chars）</div><div class="kpi-value">{_fmt_int(p50)}</div></div>
+      <div class="card"><div class="kpi-label">P90 长度（chars）</div><div class="kpi-value">{_fmt_int(p90)}</div></div>
+      <div class="card"><div class="kpi-label">P50 chunk len（tokens）</div><div class="kpi-value">{_fmt_int(chunk_tok_p50)}</div></div>
+      <div class="card"><div class="kpi-label">P50 coverage（%）</div><div class="kpi-value">{_fmt_int(cov_p50)}%</div></div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>状态分布</h2>
+        {_render_bar_table(by_status, total=max(1, total_docs))}
+      </div>
+      <div>
+        <h2>格式分布（Top）</h2>
+        {_render_bar_table(by_type, total=max(1, total_docs))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>长度分布（chars）</h2>
+        {_render_histogram(prof.get("length_histogram"))}
+      </div>
+      <div>
+        <h2>文件大小分布</h2>
+        {_render_histogram(prof.get("file_size_histogram"))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>Chunk Quality Gate（文档数）</h2>
+        {_render_bar_table(gate_grades, total=max(1, total_docs))}
+      </div>
+      <div>
+        <h2>Chunk 风险计数（best-effort）</h2>
+        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>Governance Metrics</h2>
+        <table class="bars">
+          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="k">docs_with_governance</td><td class="v">{_fmt_int(govd.get("docs_with_governance") or 0)}</td><td></td></tr>
+            <tr><td class="k">rules_applied_total</td><td class="v">{_fmt_int(govd.get("rules_applied_total") or 0)}</td><td></td></tr>
+            <tr><td class="k">dropped_documents_total</td><td class="v">{_fmt_int(govd.get("dropped_documents_total") or 0)}</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h2>Drop Reasons（Top）</h2>
+        {_render_bar_table(drop_reasons, total=max(1, sum(v for _, v in drop_reasons) if drop_reasons else 1))}
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Rule Packs（Docs）</h2>
+      {_render_bar_table(rule_packs, total=max(1, total_docs))}
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>Knowledge Graph（KG）</h2>
+        <table class="bars">
+          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
+            <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>
+            <tr><td class="k">links</td><td class="v">{_fmt_int(kg_links)}</td><td></td></tr>
+            <tr><td class="k">updated_at</td><td class="v">{escape(kg_updated_at)}</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h2>实体类型（Top）</h2>
+        {_render_bar_table(kg_types, total=max(1, sum(v for _, v in kg_types) if kg_types else 1))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>评估（Latest Regression Run）</h2>
+        <table class="bars">
+          <thead><tr><th>Field</th><th>Value</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="k">status</td><td class="v">{escape(rr_status)}</td><td></td></tr>
+            <tr><td class="k">created_at</td><td class="v">{escape(rr_created_at)}</td><td></td></tr>
+            <tr><td class="k">finished_at</td><td class="v">{escape(rr_finished_at)}</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h2>评估 Summary</h2>
+        {rr_summary_table}
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Raw JSON（用于审计/分享）</h2>
+      <pre>{escape(raw_json)}</pre>
+    </div>
+
+    <div class="footer">
+      <div>说明：本报告聚合 profile/governance/chunk/KG/eval 的客观指标，用于审计与回归对比。</div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+    return html
+
+
 def render_precheck_html(
     *,
     title: str,
