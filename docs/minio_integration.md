@@ -28,33 +28,32 @@ MINIO_DOCUMENTS_ENABLED=true
 
 ### 2. 启动 MinIO
 
-使用 Docker Compose：
+推荐：使用项目自带 Docker Compose（已包含 `mimirq-minio` 服务）。
 
-```yaml
-services:
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    volumes:
-      - minio_data:/data
-    networks:
-      - mimirq-network
+从仓库根目录运行：
 
-volumes:
-  minio_data:
+```bash
+# 生成本地 env（非破坏性；已存在则跳过）
+make init
+
+# 仅启动依赖（Postgres/Redis/Milvus/MinIO）
+make infra-up
+
+# 或：启动完整后端（API + worker + 依赖）
+# make up
+
+# MinIO 健康检查
+curl -fsS http://localhost:9000/minio/health/live
+
+# 后端 ready 里会包含 minio 状态（MINIO_ENABLED=true 时）
+curl -fsS http://localhost:8000/api/v1/health/ready
 ```
 
-或直接运行：
+如果你需要单独启动 MinIO（不用项目 compose），也可以直接运行：
 
 ```bash
 docker run -d \
-  --name minio \
+  --name mimirq-minio \
   -p 9000:9000 \
   -p 9001:9001 \
   -e "MINIO_ROOT_USER=minioadmin" \
@@ -259,7 +258,6 @@ http://localhost:9001
 ### 禁用 MinIO
 
 设置 `MINIO_ENABLED=false`，系统会回退到本地存储（向后兼容）。
-
 
 
 
