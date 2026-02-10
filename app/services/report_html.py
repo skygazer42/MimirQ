@@ -384,6 +384,28 @@ def render_dataset_report_html(
     overlap_high = int(cqmd.get("overlap_waste_high_documents") or 0)
     tokens_missing = int(cqmd.get("token_stats_missing_documents") or 0)
 
+    # Optional: KG stats (best-effort; may be null when disabled or empty).
+    kg = report.get("kg_stats") if isinstance(report, dict) else None
+    kgd = kg if isinstance(kg, dict) else {}
+    kg_events = int(kgd.get("events") or 0)
+    kg_entities = int(kgd.get("entities") or 0)
+    kg_links = int(kgd.get("links") or 0)
+    kg_updated_at = str(kgd.get("updated_at") or "").strip()
+    kg_type_items: list[tuple[str, int]] = []
+    raw_types = kgd.get("entity_types")
+    if isinstance(raw_types, list):
+        for t in raw_types[:50]:
+            if not isinstance(t, dict):
+                continue
+            tp = str(t.get("type") or "").strip() or "unknown"
+            try:
+                cnt = int(t.get("count") or 0)
+            except Exception:
+                cnt = 0
+            if cnt <= 0:
+                continue
+            kg_type_items.append((tp, cnt))
+
     raw_json = json.dumps(report, ensure_ascii=False, indent=2)
 
     html = f"""<!doctype html>
@@ -460,6 +482,25 @@ def render_dataset_report_html(
       <div>
         <h2>Chunk 风险计数（best-effort）</h2>
         {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>Knowledge Graph（KG）</h2>
+        <table class="bars">
+          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
+            <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>
+            <tr><td class="k">links</td><td class="v">{_fmt_int(kg_links)}</td><td></td></tr>
+            <tr><td class="k">updated_at</td><td class="v">{escape(kg_updated_at or "")}</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h2>实体类型（Top）</h2>
+        {_render_bar_table(kg_type_items, total=max(1, sum(v for _, v in kg_type_items) if kg_type_items else 1))}
       </div>
     </div>
 
