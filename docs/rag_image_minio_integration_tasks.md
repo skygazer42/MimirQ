@@ -4,9 +4,9 @@
 
 ## 任务清单（20）
 
-1. [ ] 准备 MinIO（本地或集群）并确认可访问（endpoint/AK/SK）。
-2. [ ] 在后端 `.env` 配置 `MINIO_ENABLED=true` + `MINIO_ENDPOINT/MINIO_*`。
-3. [ ] 若用 `docker/docker-compose.yml`，把后端服务环境变量补齐 `MINIO_ENDPOINT=minio:9000` 等。
+1. [x] 准备 MinIO（本地或集群）并确认可访问（endpoint/AK/SK）。
+2. [x] 在后端 `.env` 配置 `MINIO_ENABLED=true` + `MINIO_ENDPOINT/MINIO_*`。
+3. [x] 若用 `docker/docker-compose.yml`，把后端服务环境变量补齐 `MINIO_ENDPOINT_DOCKER=mimirq-minio:9000` 等。
 4. [x] 修复/增强 DeepDoc 解析适配：输出“文本 Document + 图片 Document”。
 5. [x] DeepDoc 图片 Document 的 metadata 统一为 `doc_type_kwd=image` + `image=<PIL.Image>`（供后续上传）。
 6. [x] 在切块阶段将 `metadata["image"]` 上传到 MinIO，并写回 `metadata["img_id"]`。
@@ -33,4 +33,3 @@
 - 向量检索 metadata 回查补齐：`app/storage/search/hybrid_retriever.py`
 - 图片 URL API：`app/api/v1/documents.py`
 - 正文渲染（Markdown img）：`web/components/chat-area.tsx`
-
