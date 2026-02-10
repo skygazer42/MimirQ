@@ -274,6 +274,23 @@ http://localhost:9001
 密码：minioadmin
 ```
 
+后端侧也会输出一份 **轻量 JSONL 指标日志**（用于统计 put/presign/delete 失败率与延迟）：
+
+- 路径：`MINIO_METRICS_LOG_PATH`（默认 `./logs/minio_metrics.jsonl`）
+- 记录字段：`op/success/elapsed_ms/object/bucket/ts/error?`
+
+快速汇总（最近 10 分钟）：
+
+```bash
+python scripts/minio_metrics_report.py --since-sec 600 --show-errors
+```
+
+对象数量/体积增长（可选，需要设置 `MINIO_ENDPOINT/MINIO_ACCESS_KEY/MINIO_SECRET_KEY/MINIO_BUCKET_NAME`）：
+
+```bash
+python scripts/minio_metrics_report.py --bucket-stats --prefix images/
+```
+
 ## 迁移
 
 ### 从本地存储迁移到 MinIO
@@ -285,7 +302,6 @@ http://localhost:9001
 ### 禁用 MinIO
 
 设置 `MINIO_ENABLED=false`，系统会回退到本地存储（向后兼容）。
-
 
 
 
