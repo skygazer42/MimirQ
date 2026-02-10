@@ -28,7 +28,8 @@
 ## 运维 / CI
 - [operations.md](./operations.md)：doctor/verify/audit/回归门禁等脚本使用说明。
 
-## 优化清单
-- [optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md](./optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md)：文档解析/清洗/切块 20 项深度优化。
+## 优化与审计
+- [guides/regression_gate.md](./guides/regression_gate.md)：离线评测回归（Retrieval gate / RAGAS / CI）。
+- 数据集报告（HTML/JSON）：`/api/v1/reports/datasets/{dataset_id}`、`/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html`
 
 > 若新增文档，请将其放入上面合适的子目录，如需新增分类可在 `docs/` 下创建新的文件夹。
