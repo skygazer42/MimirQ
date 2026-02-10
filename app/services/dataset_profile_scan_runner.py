@@ -219,6 +219,9 @@ def run_dataset_profile_deep_scan(
     backfill_pdf_quality = bool(cfg.get("backfill_pdf_quality", True))
     backfill_text_quality = bool(cfg.get("backfill_text_quality", True))
     backfill_chunk_stats = bool(cfg.get("backfill_chunk_stats", True))
+    backfill_chunk_token_stats = bool(cfg.get("backfill_chunk_token_stats", False))
+    backfill_chunk_coverage = bool(cfg.get("backfill_chunk_coverage", False))
+    backfill_chunk_quality_gate = bool(cfg.get("backfill_chunk_quality_gate", False))
     compute_file_hash = bool(cfg.get("compute_file_hash", False))
     max_docs_raw = cfg.get("max_documents")
     max_documents = int(max_docs_raw) if isinstance(max_docs_raw, (int, float)) and int(max_docs_raw) > 0 else None
@@ -247,6 +250,9 @@ def run_dataset_profile_deep_scan(
     pdf_backfilled = 0
     text_backfilled = 0
     chunk_stats_backfilled = 0
+    chunk_token_stats_backfilled = 0
+    chunk_coverage_backfilled = 0
+    chunk_quality_gate_backfilled = 0
     hash_backfilled = 0
     errors = 0
 
@@ -362,6 +368,135 @@ def run_dataset_profile_deep_scan(
                             changed = True
                             chunk_stats_backfilled += 1
 
+            # Optional: backfill token-based chunking stats (can be expensive).
+            if backfill_chunk_token_stats:
+                existing = meta.get("chunking_stats_tokens")
+                has_hist = False
+                if isinstance(existing, dict):
+                    has_hist = isinstance(existing.get("histogram"), list) and bool(existing.get("histogram"))
+                if not has_hist:
+                    rows = (
+                        db.query(DocumentChunk.content)
+                        .filter(
+                            DocumentChunk.tenant_id == tenant_id,
+                            DocumentChunk.document_id == doc.id,
+                            DocumentChunk.disabled_at.is_(None),
+                        )
+                        .order_by(DocumentChunk.chunk_index.asc())
+                        .all()
+                    )
+                    texts = [r[0] for r in rows if r and isinstance(r[0], str) and r[0].strip()]
+                    if texts:
+                        from app.services.chunking_stats_utils import compute_chunking_stats_from_texts_tokens
+
+                        stats = compute_chunking_stats_from_texts_tokens(texts)
+                        if stats:
+                            meta["chunking_stats_tokens"] = stats
+                            changed = True
+                            chunk_token_stats_backfilled += 1
+
+            # Optional: backfill chunk coverage metrics (cheap; uses offsets only).
+            if backfill_chunk_coverage:
+                existing = meta.get("chunk_coverage")
+                has_cov = isinstance(existing, dict) and (existing.get("coverage_ratio") is not None)
+                total_chars = int(getattr(doc, "total_characters", 0) or 0)
+                if not has_cov and total_chars > 0:
+                    rows = (
+                        db.query(
+                            DocumentChunk.start_char,
+                            DocumentChunk.end_char,
+                            func.length(DocumentChunk.content),
+                        )
+                        .filter(
+                            DocumentChunk.tenant_id == tenant_id,
+                            DocumentChunk.document_id == doc.id,
+                            DocumentChunk.disabled_at.is_(None),
+                        )
+                        .order_by(DocumentChunk.chunk_index.asc())
+                        .all()
+                    )
+                    ranges: list[tuple[int, int]] = []
+                    for r in rows:
+                        if not r:
+                            continue
+                        s = r[0]
+                        e = r[1]
+                        ln = r[2]
+                        if s is None:
+                            continue
+                        try:
+                            s0 = int(s)
+                        except Exception:
+                            continue
+                        if e is None:
+                            try:
+                                e0 = s0 + int(ln or 0)
+                            except Exception:
+                                e0 = s0
+                        else:
+                            try:
+                                e0 = int(e)
+                            except Exception:
+                                e0 = s0
+                        if e0 > s0:
+                            ranges.append((s0, e0))
+                    if ranges:
+                        from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
+
+                        cov = compute_chunk_coverage_metrics_from_ranges(ranges, total_characters=total_chars)
+                        if cov:
+                            cov2 = dict(cov)
+                            cov2["ranges_used"] = int(len(ranges))
+                            meta["chunk_coverage"] = cov2
+                            changed = True
+                            chunk_coverage_backfilled += 1
+
+            # Optional: backfill chunk quality gate (requires stats/coverage; best-effort).
+            if backfill_chunk_quality_gate:
+                existing = meta.get("chunk_quality_gate")
+                has_gate = isinstance(existing, dict) and isinstance(existing.get("grade"), str) and bool(existing.get("grade"))
+                if not has_gate:
+                    stats = meta.get("chunking_stats") if isinstance(meta.get("chunking_stats"), dict) else {}
+                    cov = meta.get("chunk_coverage") if isinstance(meta.get("chunk_coverage"), dict) else {}
+                    effective = meta.get("pipeline_effective") if isinstance(meta.get("pipeline_effective"), dict) else {}
+                    try:
+                        chunk_size = int(effective.get("chunk_size") or 0)
+                    except Exception:
+                        chunk_size = 0
+                    try:
+                        chunk_overlap = int(effective.get("chunk_overlap") or 0)
+                    except Exception:
+                        chunk_overlap = 0
+                    if stats or cov:
+                        from app.services.chunk_quality_gate import compute_chunk_quality_gate
+
+                        gate, recs, patches = compute_chunk_quality_gate(
+                            stats={
+                                "count": int(stats.get("count") or 0),
+                                "short_count": int(stats.get("short_count") or 0),
+                                "duplicate_count": int(stats.get("duplicate_count") or 0),
+                                "covered_chars": int(cov.get("covered_chars") or 0),
+                                "coverage_ratio": float(cov.get("coverage_ratio") or 0.0),
+                                "overlap_waste_ratio": float(cov.get("overlap_waste_ratio") or 0.0),
+                                "gap_count": int(cov.get("gap_count") or 0),
+                            },
+                            total_chunks=int(getattr(doc, "chunk_count", 0) or 0),
+                            total_characters=int(getattr(doc, "total_characters", 0) or 0),
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap,
+                            original_text_included=False,
+                            original_text_truncated=False,
+                            original_text_max_chars=0,
+                        )
+                        if isinstance(gate, dict) and gate.get("grade"):
+                            meta["chunk_quality_gate"] = gate
+                            if recs:
+                                meta["chunk_quality_recommendations"] = list(recs)[:10]
+                            if patches:
+                                meta["chunk_quality_patches"] = list(patches)[:10]
+                            changed = True
+                            chunk_quality_gate_backfilled += 1
+
             # Optional file hash (expensive; for exact duplicates).
             if compute_file_hash:
                 sha = str(meta.get("file_sha256") or "").strip().lower()
@@ -413,6 +548,9 @@ def run_dataset_profile_deep_scan(
         "pdf_backfilled": int(pdf_backfilled),
         "text_backfilled": int(text_backfilled),
         "chunk_stats_backfilled": int(chunk_stats_backfilled),
+        "chunk_token_stats_backfilled": int(chunk_token_stats_backfilled),
+        "chunk_coverage_backfilled": int(chunk_coverage_backfilled),
+        "chunk_quality_gate_backfilled": int(chunk_quality_gate_backfilled),
         "hash_backfilled": int(hash_backfilled),
         "errors": int(errors),
     }

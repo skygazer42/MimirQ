@@ -137,6 +137,10 @@ class DatasetProfileScanRunCreateRequest(BaseModel):
     backfill_pdf_quality: bool = True
     backfill_text_quality: bool = True
     backfill_chunk_stats: bool = True
+    # Chunk extras are OFF by default (can be expensive; enable explicitly).
+    backfill_chunk_token_stats: bool = False
+    backfill_chunk_coverage: bool = False
+    backfill_chunk_quality_gate: bool = False
     compute_file_hash: bool = False
     # Hard cap for safety; 0/None means no cap.
     max_documents: Optional[int] = Field(default=None, ge=0, le=1_000_000)
