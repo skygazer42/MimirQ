@@ -80,6 +80,20 @@ class DatasetKGStatsOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class DatasetRegressionRunSummaryOut(BaseModel):
+    """Best-effort latest regression run snapshot for the dataset (objective numbers only)."""
+
+    run_id: UUID
+    status: str
+    metrics: List[str] = Field(default_factory=list)
+    params: Dict[str, Any] = Field(default_factory=dict)
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
 class DatasetReportOut(BaseModel):
     dataset_id: UUID
     dataset_name: Optional[str] = None
@@ -105,3 +119,6 @@ class DatasetReportOut(BaseModel):
 
     # Optional: KG stats for the dataset, filtered by doc-level ACL (best-effort).
     kg_stats: Optional[DatasetKGStatsOut] = None
+
+    # Optional: latest regression run summary for the dataset (best-effort).
+    latest_regression_run: Optional[DatasetRegressionRunSummaryOut] = None
