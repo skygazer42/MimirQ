@@ -1218,6 +1218,94 @@ def _compute_chunk_coverage_metrics(
     }
 
 
+def _compute_chunk_coverage_metrics_from_ranges(
+    ranges: list[tuple[int, int]], *, total_characters: int
+) -> dict[str, float | int]:
+    """
+    Compute coverage/overlap signals from chunk start/end ranges.
+
+    Same semantics as `_compute_chunk_coverage_metrics`, but avoids requiring `ChunkPreviewItem`
+    objects when callers only need lightweight stats (e.g. auto-tune).
+    """
+    total = int(total_characters or 0)
+    if total <= 0 or not ranges:
+        return {
+            "sum_chunk_chars": 0,
+            "covered_chars": 0,
+            "coverage_ratio": 0.0,
+            "overlap_waste_ratio": 0.0,
+            "gap_count": 0,
+            "largest_gap": 0,
+        }
+
+    sum_chunk_chars = 0
+    clipped: list[tuple[int, int]] = []
+    for s, e in ranges:
+        try:
+            s0 = int(s)
+            e0 = int(e)
+        except Exception:
+            continue
+        if e0 <= s0:
+            continue
+        # Clip to document range.
+        s2 = max(0, min(total, s0))
+        e2 = max(0, min(total, e0))
+        if e2 <= s2:
+            continue
+        clipped.append((s2, e2))
+        sum_chunk_chars += max(0, e2 - s2)
+
+    if not clipped:
+        return {
+            "sum_chunk_chars": 0,
+            "covered_chars": 0,
+            "coverage_ratio": 0.0,
+            "overlap_waste_ratio": 0.0,
+            "gap_count": 0,
+            "largest_gap": total,
+        }
+
+    clipped.sort(key=lambda x: (x[0], x[1]))
+    covered = 0
+    gap_count = 0
+    largest_gap = 0
+
+    cur_s, cur_e = clipped[0]
+    if cur_s > 0:
+        gap_count += 1
+        largest_gap = max(largest_gap, cur_s)
+
+    for s, e in clipped[1:]:
+        if s > cur_e:
+            covered += cur_e - cur_s
+            gap = s - cur_e
+            gap_count += 1
+            largest_gap = max(largest_gap, gap)
+            cur_s, cur_e = s, e
+        else:
+            cur_e = max(cur_e, e)
+
+    covered += cur_e - cur_s
+    if cur_e < total:
+        gap_count += 1
+        largest_gap = max(largest_gap, total - cur_e)
+
+    sum_chars = int(sum_chunk_chars)
+    covered_chars = int(max(0, covered))
+    coverage_ratio = float(covered_chars / total) if total > 0 else 0.0
+    overlap_waste_ratio = float(max(0, sum_chars - covered_chars) / sum_chars) if sum_chars > 0 else 0.0
+
+    return {
+        "sum_chunk_chars": sum_chars,
+        "covered_chars": covered_chars,
+        "coverage_ratio": coverage_ratio,
+        "overlap_waste_ratio": overlap_waste_ratio,
+        "gap_count": int(gap_count),
+        "largest_gap": int(largest_gap),
+    }
+
+
 def _compute_chunk_length_histogram(
     lengths: list[int],
     *,
@@ -7758,6 +7846,17 @@ async def create_document_with_manual_chunks(
             # Keep active hash in sync for manual documents (single-shot pipeline).
             meta["active_pipeline_hash"] = meta.get("pipeline_hash")
         meta["active_pipeline_ready"] = True
+        # Best-effort: persist chunking stats (used by dataset profiling / audits).
+        try:
+            from app.services.chunking_stats_utils import compute_chunking_stats_from_texts
+
+            stats = compute_chunking_stats_from_texts(
+                (c.content or "") for c in (request.chunks or [])
+            )
+            if stats:
+                meta["chunking_stats"] = stats
+        except Exception:
+            pass
         db_document.doc_metadata = meta
         db.commit()
         db.refresh(db_document)
@@ -7810,6 +7909,7 @@ async def preview_chunking(
     chunk_overlap: int = 200,
     include_original_text: bool = True,
     include_review_signals: bool = Query(default=False),
+    include_chunks: bool = Query(default=True),
     original_text_max_chars: int = 100000,
     max_chunks: int = 0,
     use_parse_cache: bool = Query(default=True),
@@ -8403,6 +8503,7 @@ async def preview_chunking(
         _stats_started = time.perf_counter()
         unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
         chunk_items: List[ChunkPreviewItem] = []
+        chunk_ranges: list[tuple[int, int]] = []
         length_samples: list[int] = []
         total_len = 0
         total_tokens_est = 0
@@ -8445,6 +8546,8 @@ async def preview_chunking(
                     start_idx = int(doc_base) + local
 
             end_idx = start_idx + len(content)
+            if end_idx > start_idx:
+                chunk_ranges.append((start_idx, end_idx))
             tokens_est = 0
             if content:
                 # Token mode uses tiktoken when available; otherwise falls back to rough 4 chars/token.
@@ -8475,16 +8578,17 @@ async def preview_chunking(
                 if isinstance(selected, str) and selected.strip():
                     auto_counts[selected.strip().lower()] += 1
 
-            chunk_items.append(ChunkPreviewItem(
-                index=idx,
-                content=content,
-                length=len(content),
-                tokens_est=tokens_est,
-                start_index=start_idx,
-                end_index=end_idx,
-                page_number=page_num,
-                metadata=chunk.metadata
-            ))
+            if bool(include_chunks) or bool(include_review_signals):
+                chunk_items.append(ChunkPreviewItem(
+                    index=idx,
+                    content=content,
+                    length=len(content),
+                    tokens_est=tokens_est,
+                    start_index=start_idx,
+                    end_index=end_idx,
+                    page_number=page_num,
+                    metadata=chunk.metadata
+                ))
 
         sorted_lengths = sorted(length_samples)
         if sorted_lengths:
@@ -8496,7 +8600,7 @@ async def preview_chunking(
                 pos = max(0, min(len(sorted_lengths) - 1, pos))
                 return int(sorted_lengths[pos] or 0)
 
-            coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+            coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_characters)
             histogram = _compute_chunk_length_histogram(sorted_lengths, unit=unit, target_bins=8)
             stats = ChunkPreviewStats(
                 unit=unit,
@@ -8515,7 +8619,7 @@ async def preview_chunking(
                 **coverage,
             )
         else:
-            coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+            coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_characters)
             stats = ChunkPreviewStats(unit=unit, **coverage)
         stats_duration_ms = int(max(0.0, (time.perf_counter() - _stats_started) * 1000.0))
 
@@ -8593,7 +8697,7 @@ async def preview_chunking(
                 unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
                 strategy_params=strategy_params_out,
             ),
-            chunks=chunk_items,
+            chunks=(chunk_items if bool(include_chunks) else []),
             stats=stats,
             auto_selected_strategy=auto_selected_strategy,
             warnings=warnings_out,
@@ -8659,6 +8763,7 @@ async def preview_chunking_by_sha(
     chunk_overlap: int = 200,
     include_original_text: bool = True,
     include_review_signals: bool = Query(default=False),
+    include_chunks: bool = Query(default=True),
     original_text_max_chars: int = 100000,
     max_chunks: int = 0,
     use_parse_cache: bool = Query(default=True),
@@ -9069,6 +9174,7 @@ async def preview_chunking_by_sha(
     _stats_started = time.perf_counter()
     unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
     chunk_items: List[ChunkPreviewItem] = []
+    chunk_ranges: list[tuple[int, int]] = []
     length_samples: list[int] = []
     total_len = 0
     total_tokens_est = 0
@@ -9107,6 +9213,8 @@ async def preview_chunking_by_sha(
             start_idx = int(doc_base) + local
 
         end_idx = start_idx + len(content)
+        if end_idx > start_idx:
+            chunk_ranges.append((start_idx, end_idx))
         tokens_est = 0
         if content:
             tokens_est = (
@@ -9135,16 +9243,17 @@ async def preview_chunking_by_sha(
             if isinstance(selected, str) and selected.strip():
                 auto_counts[selected.strip().lower()] += 1
 
-        chunk_items.append(ChunkPreviewItem(
-            index=idx,
-            content=content,
-            length=len(content),
-            tokens_est=tokens_est,
-            start_index=start_idx,
-            end_index=end_idx,
-            page_number=page_num,
-            metadata=chunk.metadata
-        ))
+        if bool(include_chunks) or bool(include_review_signals):
+            chunk_items.append(ChunkPreviewItem(
+                index=idx,
+                content=content,
+                length=len(content),
+                tokens_est=tokens_est,
+                start_index=start_idx,
+                end_index=end_idx,
+                page_number=page_num,
+                metadata=chunk.metadata
+            ))
 
     sorted_lengths = sorted(length_samples)
     if sorted_lengths:
@@ -9156,7 +9265,7 @@ async def preview_chunking_by_sha(
             pos = max(0, min(len(sorted_lengths) - 1, pos))
             return int(sorted_lengths[pos] or 0)
 
-        coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+        coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_characters)
         histogram = _compute_chunk_length_histogram(sorted_lengths, unit=unit, target_bins=8)
         stats = ChunkPreviewStats(
             unit=unit,
@@ -9175,7 +9284,7 @@ async def preview_chunking_by_sha(
             **coverage,
         )
     else:
-        coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+        coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_characters)
         stats = ChunkPreviewStats(unit=unit, **coverage)
     stats_duration_ms = int(max(0.0, (time.perf_counter() - _stats_started) * 1000.0))
 
@@ -9248,7 +9357,7 @@ async def preview_chunking_by_sha(
             unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
             strategy_params=strategy_params_out,
         ),
-        chunks=chunk_items,
+        chunks=(chunk_items if bool(include_chunks) else []),
         stats=stats,
         auto_selected_strategy=auto_selected_strategy,
         warnings=warnings_out,

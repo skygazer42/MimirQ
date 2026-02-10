@@ -3301,54 +3301,17 @@ class DocumentProcessorService:
         if not db_doc:
             return
 
-        lengths: list[int] = []
-        seen: set[str] = set()
-        dup_count = 0
-        short_count = 0
+        from app.services.chunking_stats_utils import compute_chunking_stats_from_texts
 
-        for c in chunks:
-            text = (c.page_content or "").strip()
-            if not text:
-                continue
-            n = len(text)
-            lengths.append(n)
-            if n < int(short_threshold or 0):
-                short_count += 1
-            digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
-            if digest in seen:
-                dup_count += 1
-            else:
-                seen.add(digest)
-
-        if not lengths:
+        stats = compute_chunking_stats_from_texts(
+            ((c.page_content or "") for c in chunks),
+            short_threshold=int(short_threshold or 0),
+        )
+        if not stats:
             return
 
-        lengths.sort()
-        total = int(sum(lengths))
-
-        def _pct(p: int) -> int:
-            if not lengths:
-                return 0
-            pp = max(0, min(100, int(p)))
-            pos = int((pp / 100.0) * (len(lengths) - 1))
-            pos = max(0, min(len(lengths) - 1, pos))
-            return int(lengths[pos] or 0)
-
         metadata = dict(db_doc.doc_metadata or {})
-        metadata["chunking_stats"] = {
-            "unit": "chars",
-            "count": int(len(lengths)),
-            "total": total,
-            "min": int(lengths[0]),
-            "max": int(lengths[-1]),
-            "avg": int(round(total / len(lengths))) if lengths else 0,
-            "median": _pct(50),
-            "p10": _pct(10),
-            "p90": _pct(90),
-            "short_threshold": int(short_threshold),
-            "short_count": int(short_count),
-            "duplicate_count": int(dup_count),
-        }
+        metadata["chunking_stats"] = stats
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)

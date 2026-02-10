@@ -134,3 +134,7 @@ AVG_CHUNK_CHARS_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("1.2k-2k", 1_200, 2_000),
     HistogramBinSpec("2k+", 2_000, None),
 ]
+
+# Chunk length bins (per-chunk distribution). Keep aligned with AVG_CHUNK_CHARS_BINS for now so
+# charts are comparable (doc-level proxy vs real chunk-level).
+CHUNK_LENGTH_BINS: List[HistogramBinSpec] = list(AVG_CHUNK_CHARS_BINS)

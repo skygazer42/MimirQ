@@ -165,3 +165,40 @@ def test_dataset_profile_aggregate_chunk_count_and_avg_chunk_distributions():
     avg = {b.label: int(b.count or 0) for b in (summary.avg_chunk_chars_histogram or [])}
     assert avg.get("200-500") == 2
     assert avg.get("500-800") == 1
+
+
+def test_dataset_profile_aggregate_chunk_length_distribution_from_chunking_stats_histogram():
+    dsid = uuid.uuid4()
+    rows = [
+        _row(
+            filename="a.md",
+            file_type="md",
+            metadata={
+                "chunking_stats": {
+                    "histogram": [
+                        {"label": "0-200", "count": 2},
+                        {"label": "200-500", "count": 1},
+                    ]
+                }
+            },
+        ),
+        _row(
+            filename="b.md",
+            file_type="md",
+            metadata={
+                "chunking_stats": {
+                    "histogram": [
+                        {"label": "200-500", "count": 3},
+                        {"label": "2k+", "count": 1},
+                    ]
+                }
+            },
+        ),
+    ]
+
+    summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
+
+    hist = {b.label: int(b.count or 0) for b in (summary.chunk_length_histogram or [])}
+    assert hist.get("0-200") == 2
+    assert hist.get("200-500") == 4
+    assert hist.get("2k+") == 1

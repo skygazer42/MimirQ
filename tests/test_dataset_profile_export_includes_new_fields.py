@@ -46,6 +46,8 @@ def test_dataset_profile_export_includes_new_distribution_fields(monkeypatch) ->
     assert "chunk_count_histogram" in payload
     assert "avg_chunk_chars_percentiles" in payload
     assert "avg_chunk_chars_histogram" in payload
+    assert "chunk_length_percentiles" in payload
+    assert "chunk_length_histogram" in payload
     assert "page_number_histogram" in payload
     assert "parse_quality_histogram" in payload
     assert "language_mix" in payload

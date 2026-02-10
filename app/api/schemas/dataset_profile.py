@@ -78,6 +78,11 @@ class DatasetProfileSummary(BaseModel):
     avg_chunk_chars_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
     avg_chunk_chars_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
+    # Chunk length distribution (per-chunk; best-effort).
+    # This is derived from persisted per-document `chunking_stats.histogram` (ingest-time or deep-scan backfill).
+    chunk_length_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    chunk_length_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+
     # Additional distributions (best-effort; may be empty if metadata missing).
     page_number_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
     parse_quality_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
@@ -118,6 +123,7 @@ class DatasetProfileFindingListResponse(BaseModel):
 class DatasetProfileScanRunCreateRequest(BaseModel):
     backfill_pdf_quality: bool = True
     backfill_text_quality: bool = True
+    backfill_chunk_stats: bool = True
     compute_file_hash: bool = False
     # Hard cap for safety; 0/None means no cap.
     max_documents: Optional[int] = Field(default=None, ge=0, le=1_000_000)

@@ -119,6 +119,7 @@ def render_dataset_profile_html(
     p90 = int(((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get("p90") or 0)
     chunk_p50 = int(((summary.get("chunk_count_percentiles") or {}) if isinstance(summary.get("chunk_count_percentiles"), dict) else {}).get("p50") or 0)
     avg_chunk_p50 = int(((summary.get("avg_chunk_chars_percentiles") or {}) if isinstance(summary.get("avg_chunk_chars_percentiles"), dict) else {}).get("p50") or 0)
+    chunk_len_p50 = int(((summary.get("chunk_length_percentiles") or {}) if isinstance(summary.get("chunk_length_percentiles"), dict) else {}).get("p50") or 0)
 
     pdf = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     pdf_scanned = int(pdf.get("scanned") or 0)
@@ -200,6 +201,7 @@ def render_dataset_profile_html(
       <div class="card"><div class="kpi-label">PDF 扫描/文本/未知</div><div class="kpi-value">{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}</div></div>
       <div class="card"><div class="kpi-label">P50 chunks/doc</div><div class="kpi-value">{_fmt_int(chunk_p50)}</div></div>
       <div class="card"><div class="kpi-label">P50 avg chunk（chars）</div><div class="kpi-value">{_fmt_int(avg_chunk_p50)}</div></div>
+      <div class="card"><div class="kpi-label">P50 chunk len（chars）</div><div class="kpi-value">{_fmt_int(chunk_len_p50)}</div></div>
     </div>
 
     <div class="section">
@@ -249,6 +251,11 @@ def render_dataset_profile_html(
         <h2>Chunk 数分布（每文档）</h2>
         {_render_histogram(summary.get("chunk_count_histogram"))}
       </div>
+    </div>
+
+    <div class="section">
+      <h2>Chunk 长度分布（chars，chunk-level）</h2>
+      {_render_histogram(summary.get("chunk_length_histogram"))}
     </div>
 
     <div class="section">
