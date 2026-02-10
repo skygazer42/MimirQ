@@ -97,6 +97,15 @@ TEXT_LENGTH_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("50k+", 50_000, None),
 ]
 
+# Best-effort token-length bins for precheck reports (rough cost proxy).
+TEXT_TOKEN_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("0-200", 0, 200),
+    HistogramBinSpec("200-1k", 200, 1_000),
+    HistogramBinSpec("1k-5k", 1_000, 5_000),
+    HistogramBinSpec("5k-20k", 5_000, 20_000),
+    HistogramBinSpec("20k+", 20_000, None),
+]
+
 FILE_SIZE_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("0-100KB", 0, 100 * 1024),
     HistogramBinSpec("100KB-1MB", 100 * 1024, 1 * 1024 * 1024),

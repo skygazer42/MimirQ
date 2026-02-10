@@ -40,6 +40,7 @@ from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
 from app.services.dataset_profile_utils import (
     FILE_SIZE_BINS,
     TEXT_LENGTH_BINS,
+    TEXT_TOKEN_BINS,
     histogram,
     percentile_from_sorted,
     safe_int,
@@ -831,6 +832,8 @@ def run_dataset_precheck_scan(
             "file_size_histogram": [],
             "length_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
             "length_histogram": [],
+            "token_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
+            "token_histogram": [],
             "pdf_scan": {"scanned": 0, "not_scanned": 0, "unknown": 0},
             "pdf_detection": {
                 "sample_pages": int(pdf_sample_pages),
@@ -875,6 +878,7 @@ def run_dataset_precheck_scan(
     by_type: dict[str, int] = {}
     file_sizes: list[int] = []
     text_lengths: list[int] = []
+    token_lengths: list[int] = []
     pii_totals: dict[str, int] = {}
     secrets_totals: dict[str, int] = {}
     pdf_scanned = 0
@@ -1050,6 +1054,9 @@ def run_dataset_precheck_scan(
                             tl = int(prev.get("text_characters") or 0)
                             if tl > 0:
                                 text_lengths.append(tl)
+                            tt = int(prev.get("text_tokens_est") or 0)
+                            if tt > 0:
+                                token_lengths.append(tt)
                             # PDF scan counts.
                             pdf_sc = prev.get("pdf_scanned")
                             if pdf_sc is True:
@@ -1339,6 +1346,8 @@ def run_dataset_precheck_scan(
             file_sizes.append(int(rec.file_size or 0))
             if int(rec.text_characters or 0) > 0:
                 text_lengths.append(int(rec.text_characters))
+            if int(rec.text_tokens_est or 0) > 0:
+                token_lengths.append(int(rec.text_tokens_est))
 
             # Write JSONL line.
             jf.write(json.dumps(asdict(rec), ensure_ascii=False, separators=(",", ":")))
@@ -1453,12 +1462,20 @@ def run_dataset_precheck_scan(
     # Histograms + percentiles.
     file_sizes.sort()
     text_lengths.sort()
+    token_lengths.sort()
     percentiles = {
         "p25": percentile_from_sorted(text_lengths, 25),
         "p50": percentile_from_sorted(text_lengths, 50),
         "p75": percentile_from_sorted(text_lengths, 75),
         "p90": percentile_from_sorted(text_lengths, 90),
         "p99": percentile_from_sorted(text_lengths, 99),
+    }
+    token_percentiles = {
+        "p25": percentile_from_sorted(token_lengths, 25),
+        "p50": percentile_from_sorted(token_lengths, 50),
+        "p75": percentile_from_sorted(token_lengths, 75),
+        "p90": percentile_from_sorted(token_lengths, 90),
+        "p99": percentile_from_sorted(token_lengths, 99),
     }
 
     summary = {
@@ -1473,6 +1490,8 @@ def run_dataset_precheck_scan(
         "file_size_histogram": histogram(file_sizes, FILE_SIZE_BINS),
         "length_percentiles": percentiles,
         "length_histogram": histogram(text_lengths, TEXT_LENGTH_BINS),
+        "token_percentiles": token_percentiles,
+        "token_histogram": histogram(token_lengths, TEXT_TOKEN_BINS),
         "pdf_scan": {"scanned": int(pdf_scanned), "not_scanned": int(pdf_not_scanned), "unknown": int(pdf_unknown)},
         "pdf_detection": {
             "sample_pages": int(pdf_sample_pages),

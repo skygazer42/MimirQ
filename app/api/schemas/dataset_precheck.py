@@ -98,6 +98,10 @@ class DatasetPrecheckSummary(BaseModel):
     length_percentiles: DatasetPrecheckPercentiles = Field(default_factory=DatasetPrecheckPercentiles)
     length_histogram: List[DatasetPrecheckHistogramBin] = Field(default_factory=list)
 
+    # Token length based on best-effort extracted text (heuristic).
+    token_percentiles: DatasetPrecheckPercentiles = Field(default_factory=DatasetPrecheckPercentiles)
+    token_histogram: List[DatasetPrecheckHistogramBin] = Field(default_factory=list)
+
     pdf_scan: DatasetPrecheckPdfScanStats = Field(default_factory=DatasetPrecheckPdfScanStats)
     # Echo PDF page-type heuristics used during the scan (best-effort; for transparency).
     pdf_detection: Dict[str, Any] = Field(default_factory=dict)
