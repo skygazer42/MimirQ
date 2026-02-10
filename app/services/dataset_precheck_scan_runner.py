@@ -34,7 +34,9 @@ from app.core.config import settings
 from app.core.optional_deps import optional_import
 from app.core.token_utils import estimate_tokens
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
+from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.rag.core.logging import get_logger
+from app.rag.preprocessing.language import detect_language
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches
 from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
 from app.services.dataset_profile_utils import (
@@ -55,10 +57,45 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "severity": "error",
         "description": "文件无法读取或解析（权限/损坏/依赖缺失）。",
     },
+    "empty_text": {
+        "label": "空文本/未提取到文本（抽样）",
+        "severity": "warning",
+        "description": "抽样未提取到有效文本（可能是二进制/编码异常/内容在文件后部/扫描件）。建议复核解析/OCR 路由。",
+    },
+    "short_text": {
+        "label": "文本过短（抽样）",
+        "severity": "info",
+        "description": "文本长度过短可能导致检索信号不足（也可能是正常短文档）。建议结合业务判断。",
+    },
+    "low_density_text": {
+        "label": "低密度/疑似乱码（抽样）",
+        "severity": "warning",
+        "description": "字符密度偏低（有效字符占比过低），可能是乱码/噪声/解析失败的弱信号。",
+    },
+    "gibberish_text": {
+        "label": "疑似乱码（替换字符/密度极低）",
+        "severity": "warning",
+        "description": "替换字符比例高或密度极低，通常意味着解码/解析质量问题。建议检查编码/OCR/解析器后备策略。",
+    },
     "pdf_scanned": {
         "label": "疑似扫描 PDF",
         "severity": "warning",
         "description": "可能需要 OCR/更强 PDF 解析链路。",
+    },
+    "pdf_mixed": {
+        "label": "PDF 混合页（扫描+文本）",
+        "severity": "info",
+        "description": "同一 PDF 同时包含扫描页与文本页，路由策略可能需要更精细（按页类型处理）。",
+    },
+    "pdf_low_density": {
+        "label": "PDF 低密度页较多",
+        "severity": "warning",
+        "description": "抽样页中低密度页占比较高，可能需要更强解析/OCR，或先做治理清洗。",
+    },
+    "pdf_encrypted": {
+        "label": "PDF 可能加密/受限",
+        "severity": "error",
+        "description": "PDF 可能被加密/受限导致无法提取文本。建议提供解密版或调整解析权限。",
     },
     "pdf_unknown": {
         "label": "PDF 类型未知",
@@ -290,7 +327,14 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
     for fk, items in findings_buckets.items():
         if fk not in {
             "parse_failed",
+            "empty_text",
+            "short_text",
+            "low_density_text",
+            "gibberish_text",
             "pdf_scanned",
+            "pdf_mixed",
+            "pdf_low_density",
+            "pdf_encrypted",
             "pdf_unknown",
             "pii",
             "secrets",
@@ -616,6 +660,8 @@ class _FileRecord:
     file_mtime: int = 0
     text_characters: int = 0
     text_tokens_est: int = 0
+    language: Optional[str] = None
+    language_confidence: Optional[float] = None
     estimated_text: bool = False
     pdf_scanned: Optional[bool] = None
     pdf_pages: Optional[dict[str, Any]] = None
@@ -794,6 +840,17 @@ def run_dataset_precheck_scan(
     if spreadsheet_merged_ratio_threshold > 1.0:
         spreadsheet_merged_ratio_threshold = 1.0
 
+    # Best-effort text quality / language heuristics (for precheck only).
+    language_min_chars = safe_int(getattr(settings, "PRECHECK_LANGUAGE_MIN_CHARS", 40), default=40)
+    text_short_chars_threshold = safe_int(getattr(settings, "PRECHECK_TEXT_SHORT_CHARS_THRESHOLD", 200), default=200)
+    text_density_threshold = float(getattr(settings, "PRECHECK_TEXT_LOW_DENSITY_THRESHOLD", 0.12) or 0.12)
+    text_gibberish_density_threshold = float(getattr(settings, "PRECHECK_TEXT_GIBBERISH_DENSITY_THRESHOLD", 0.06) or 0.06)
+    text_high_replacement_ratio_threshold = float(getattr(settings, "PRECHECK_TEXT_HIGH_REPLACEMENT_RATIO_THRESHOLD", 0.08) or 0.08)
+    pdf_low_density_ratio_threshold = float(getattr(settings, "PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD", 0.3) or 0.3)
+
+    directory_stats_limit = safe_int(getattr(settings, "PRECHECK_DIRECTORY_STATS_LIMIT", 200), default=200)
+    directory_stats_limit = max(0, min(int(directory_stats_limit or 0), 2000))
+
     # Prepare artifact dir and JSONL writer.
     artifact_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads") / str(tenant_id) / "precheck" / str(run.id)
     artifact_root.mkdir(parents=True, exist_ok=True)
@@ -826,9 +883,16 @@ def run_dataset_precheck_scan(
             "dataset_id": str(dataset_id),
             "scan_run_id": str(run.id),
             "generated_at": run.finished_at.isoformat(),
+            "schema": "mimirq.dataset_precheck_summary.v2",
+            "schema_version": 2,
             "total_files": 0,
             "total_size_bytes": 0,
+            "reused_files": 0,
             "by_file_type": {},
+            "by_file_type_bytes": {},
+            "file_type_stats": [],
+            "language_mix": {},
+            "directory_stats": [],
             "file_size_histogram": [],
             "length_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
             "length_histogram": [],
@@ -876,9 +940,12 @@ def run_dataset_precheck_scan(
 
     # Aggregation accumulators.
     by_type: dict[str, int] = {}
+    bytes_by_type: dict[str, int] = {}
     file_sizes: list[int] = []
     text_lengths: list[int] = []
     token_lengths: list[int] = []
+    language_counts: Counter[str] = Counter()
+    directory_stats: dict[str, dict[str, Any]] = {}
     pii_totals: dict[str, int] = {}
     secrets_totals: dict[str, int] = {}
     pdf_scanned = 0
@@ -889,8 +956,8 @@ def run_dataset_precheck_scan(
     # For exact-dup finding: sha256 -> count.
     sha_counts: dict[str, int] = {}
 
-    # For near-dup finding: (display_name, simhash64) pairs.
-    simhash_entries: list[tuple[str, int]] = []
+    # For near-dup finding: (name, simhash64, file_size, text_characters, file_mtime).
+    simhash_entries: list[tuple[str, int, int, int, int]] = []
 
     errors = 0
     reused_files = 0
@@ -994,6 +1061,41 @@ def run_dataset_precheck_scan(
     elif reuse_unchanged_files and redact_paths:
         logger.info("Skip reuse_unchanged_files in redact_paths mode")
 
+    risk_keys: set[str] = {
+        str(k).strip().lower()
+        for k, v in FINDING_KEY_REASONS.items()
+        if str((v or {}).get("severity") or "").strip().lower() in {"warning", "error"}
+    }
+
+    def _normalize_language_bucket(value: object) -> str:
+        s = str(value or "").strip().lower()
+        if s in {"zh", "en", "mixed", "unknown"}:
+            return s
+        return "unknown"
+
+    def _dir_key(name: str) -> str:
+        s = str(name or "").replace("\\", "/").strip()
+        d = os.path.dirname(s)
+        return d if d else "."
+
+    def _update_directory_stats(*, name: str, file_size: int, findings: list[str]) -> None:
+        d = _dir_key(name)
+        entry = directory_stats.get(d)
+        if entry is None:
+            entry = {"path": d, "total_files": 0, "total_size_bytes": 0, "risky_files": 0, "findings": {}}
+            directory_stats[d] = entry
+        entry["total_files"] = int(entry.get("total_files") or 0) + 1
+        entry["total_size_bytes"] = int(entry.get("total_size_bytes") or 0) + int(file_size or 0)
+        fset = {str(x or "").strip().lower() for x in (findings or []) if str(x or "").strip()}
+        if fset and risk_keys and (fset & risk_keys):
+            entry["risky_files"] = int(entry.get("risky_files") or 0) + 1
+        counts = entry.get("findings")
+        if not isinstance(counts, dict):
+            counts = {}
+            entry["findings"] = counts
+        for fk in fset:
+            counts[fk] = int(counts.get(fk, 0) or 0) + 1
+
     # Stream JSONL writes to avoid holding all file records in memory.
     with jsonl_path.open("w", encoding="utf-8") as jf:
         for idx, path in enumerate(candidates, start=1):
@@ -1046,17 +1148,21 @@ def run_dataset_precheck_scan(
                             prev["file_mtime"] = rec.file_mtime
 
                             # Aggregation (best-effort) from previous record.
-                            by_type[str(prev.get("file_type") or rec.file_type or "unknown")] = by_type.get(
-                                str(prev.get("file_type") or rec.file_type or "unknown"),
-                                0,
-                            ) + 1
-                            file_sizes.append(int(prev.get("file_size") or 0))
+                            ft = str(prev.get("file_type") or rec.file_type or "unknown").strip().lower() or "unknown"
+                            by_type[ft] = by_type.get(ft, 0) + 1
+                            bs = int(prev.get("file_size") or 0)
+                            bytes_by_type[ft] = bytes_by_type.get(ft, 0) + int(bs)
+                            file_sizes.append(int(bs))
                             tl = int(prev.get("text_characters") or 0)
                             if tl > 0:
                                 text_lengths.append(tl)
                             tt = int(prev.get("text_tokens_est") or 0)
                             if tt > 0:
                                 token_lengths.append(tt)
+
+                            lang_bucket = _normalize_language_bucket(prev.get("language"))
+                            language_counts[lang_bucket] += 1
+
                             # PDF scan counts.
                             pdf_sc = prev.get("pdf_scanned")
                             if pdf_sc is True:
@@ -1068,10 +1174,12 @@ def run_dataset_precheck_scan(
 
                             # Findings counts.
                             if isinstance(prev_findings, list):
-                                for fk in prev_findings:
-                                    k = str(fk or "").strip().lower()
+                                prev_fset = {str(fk or "").strip().lower() for fk in prev_findings if str(fk or "").strip()}
+                                for k in prev_fset:
                                     if k in finding_counts:
                                         finding_counts[k] += 1
+
+                            _update_directory_stats(name=rec.name, file_size=int(bs), findings=list(prev_findings) if isinstance(prev_findings, list) else [])
 
                             # Totals for pii/secrets.
                             pii_hits = prev.get("pii_hits") if isinstance(prev.get("pii_hits"), dict) else {}
@@ -1092,7 +1200,7 @@ def run_dataset_precheck_scan(
                                 sim_hex = str(prev.get("text_simhash64") or "").strip().lower()
                                 if sim_hex:
                                     try:
-                                        simhash_entries.append((rec.name, int(sim_hex, 16)))
+                                        simhash_entries.append((rec.name, int(sim_hex, 16), int(bs), int(tl), int(prev.get("file_mtime") or 0)))
                                     except Exception:
                                         pass
                             if compute_file_hash:
@@ -1129,6 +1237,11 @@ def run_dataset_precheck_scan(
                         )
                         if pdf_err:
                             rec.error_message = str(pdf_err)[:200]
+                            err_l = str(pdf_err or "").strip().lower()
+                            if ("password" in err_l) or ("encrypt" in err_l) or ("encryption" in err_l):
+                                if "pdf_encrypted" not in rec.findings:
+                                    rec.findings.append("pdf_encrypted")
+                                    finding_counts["pdf_encrypted"] += 1
                             if "parse_failed" not in rec.findings:
                                 rec.findings.append("parse_failed")
                                 finding_counts["parse_failed"] += 1
@@ -1154,6 +1267,51 @@ def run_dataset_precheck_scan(
                                 text_min_chars=int(pdf_text_min_chars),
                             )
 
+                # Text quality / language heuristics (best-effort; based on sampled extracted text).
+                if enable_text_extract:
+                    if ext in TEXTLIKE_EXTS and not (sample_text or "").strip():
+                        if "empty_text" not in rec.findings:
+                            rec.findings.append("empty_text")
+                            finding_counts["empty_text"] += 1
+
+                    if int(rec.text_characters or 0) > 0 and int(text_short_chars_threshold or 0) > 0:
+                        if int(rec.text_characters) < int(text_short_chars_threshold):
+                            if "short_text" not in rec.findings:
+                                rec.findings.append("short_text")
+                                finding_counts["short_text"] += 1
+
+                    if sample_text:
+                        try:
+                            lang = detect_language(sample_text, min_chars=int(language_min_chars or 0))
+                            rec.language = _normalize_language_bucket(getattr(lang, "language", "unknown"))
+                            rec.language_confidence = float(getattr(lang, "confidence", 0.0) or 0.0)
+                        except Exception:
+                            rec.language = "unknown"
+                            rec.language_confidence = 0.0
+
+                        try:
+                            tq = score_parsed_text_quality(sample_text)
+                        except Exception:
+                            tq = None
+
+                        if tq is not None:
+                            if float(getattr(tq, "replacement_ratio", 0.0) or 0.0) >= float(text_high_replacement_ratio_threshold):
+                                if "gibberish_text" not in rec.findings:
+                                    rec.findings.append("gibberish_text")
+                                    finding_counts["gibberish_text"] += 1
+                            if int(getattr(tq, "chars_non_space", 0) or 0) >= 200 and float(getattr(tq, "density", 1.0) or 1.0) < float(
+                                text_density_threshold
+                            ):
+                                if "low_density_text" not in rec.findings:
+                                    rec.findings.append("low_density_text")
+                                    finding_counts["low_density_text"] += 1
+                            if int(getattr(tq, "chars_non_space", 0) or 0) >= 1000 and float(getattr(tq, "density", 1.0) or 1.0) < float(
+                                text_gibberish_density_threshold
+                            ):
+                                if "gibberish_text" not in rec.findings:
+                                    rec.findings.append("gibberish_text")
+                                    finding_counts["gibberish_text"] += 1
+
                 # Optional near-duplicate fingerprint (SimHash over extracted text sample).
                 if enable_near_dup and sample_text:
                     try:
@@ -1162,7 +1320,7 @@ def run_dataset_precheck_scan(
                         sim = 0
                     if sim:
                         rec.text_simhash64 = f"{int(sim) & ((1<<64)-1):016x}"
-                        simhash_entries.append((rec.name, int(sim)))
+                        simhash_entries.append((rec.name, int(sim), int(rec.file_size or 0), int(rec.text_characters or 0), int(rec.file_mtime or 0)))
 
                 # PDF scan detection (transparent heuristics on sampled pages).
                 if enable_pdf_quality and ext == ".pdf":
@@ -1172,6 +1330,7 @@ def run_dataset_precheck_scan(
                     else:
                         breakdown = rec.pdf_pages if isinstance(rec.pdf_pages, dict) else None
                         scan_ratio = float(breakdown.get("scan_ratio") or 0.0) if breakdown else 0.0
+                        low_density_ratio = float(breakdown.get("low_density_ratio") or 0.0) if breakdown else 0.0
                         page_count = int(breakdown.get("page_count") or 0) if breakdown else 0
 
                         if page_count <= 0:
@@ -1188,6 +1347,16 @@ def run_dataset_precheck_scan(
                                 pdf_scanned += 1
                             else:
                                 pdf_not_scanned += 1
+
+                            if breakdown:
+                                scanned_pages = int(breakdown.get("scanned_pages") or 0)
+                                text_pages = int(breakdown.get("text_pages") or 0)
+                                if scanned_pages > 0 and text_pages > 0 and "pdf_mixed" not in rec.findings:
+                                    rec.findings.append("pdf_mixed")
+                                    finding_counts["pdf_mixed"] += 1
+                                if float(low_density_ratio) >= float(pdf_low_density_ratio_threshold) and "pdf_low_density" not in rec.findings:
+                                    rec.findings.append("pdf_low_density")
+                                    finding_counts["pdf_low_density"] += 1
 
                 # Spreadsheet stats (best-effort): large tables are often better served by structured indexing / Text-to-SQL.
                 if ext in {".csv", ".xlsx"}:
@@ -1342,12 +1511,16 @@ def run_dataset_precheck_scan(
                 finding_counts["parse_failed"] += 1
 
             # Aggregation (best-effort).
-            by_type[rec.file_type] = by_type.get(rec.file_type, 0) + 1
+            ft = str(rec.file_type or "unknown").strip().lower() or "unknown"
+            by_type[ft] = by_type.get(ft, 0) + 1
+            bytes_by_type[ft] = bytes_by_type.get(ft, 0) + int(rec.file_size or 0)
             file_sizes.append(int(rec.file_size or 0))
             if int(rec.text_characters or 0) > 0:
                 text_lengths.append(int(rec.text_characters))
             if int(rec.text_tokens_est or 0) > 0:
                 token_lengths.append(int(rec.text_tokens_est))
+            language_counts[_normalize_language_bucket(rec.language)] += 1
+            _update_directory_stats(name=rec.name, file_size=int(rec.file_size or 0), findings=list(rec.findings or []))
 
             # Write JSONL line.
             jf.write(json.dumps(asdict(rec), ensure_ascii=False, separators=(",", ":")))
@@ -1370,8 +1543,8 @@ def run_dataset_precheck_scan(
 
     near_dup_path: Path | None = None
     if enable_near_dup and simhash_entries and near_dup_hamming_threshold > 0 and near_dup_max_pairs > 0:
-        names = [n for n, _h in simhash_entries]
-        hashes = [int(_h) for _n, _h in simhash_entries]
+        names = [n for n, _h, _sz, _tl, _mt in simhash_entries]
+        hashes = [int(_h) for _n, _h, _sz, _tl, _mt in simhash_entries]
         n_total = len(hashes)
 
         # LSH banding to avoid O(N^2) comparisons (4x16-bit bands).
@@ -1431,7 +1604,46 @@ def run_dataset_precheck_scan(
         for root_id, members in groups.items():
             if len(members) < 2:
                 continue
-            clusters.append({"id": str(root_id), "members": [names[i] for i in sorted(members)]})
+
+            # Conservative recommendation: pick a "keep" candidate (max text chars, then size, then mtime),
+            # and ask humans to review the rest (no auto-drop).
+            def _score(idx: int) -> tuple[int, int, int, str]:
+                try:
+                    _nm, _h, _sz, _tl, _mt = simhash_entries[idx]
+                except Exception:
+                    return (0, 0, 0, names[idx])
+                return (int(_tl or 0), int(_sz or 0), int(_mt or 0), str(_nm or ""))
+
+            ordered = sorted(members, key=_score, reverse=True)
+            keep_idx = ordered[0]
+            member_names = [names[i] for i in ordered]
+
+            cluster: dict[str, Any] = {
+                "id": str(root_id),
+                "members": member_names,
+                "keep_candidate": str(names[keep_idx]),
+                "keep_strategy": "max_text_chars_then_size_then_mtime",
+                "review_candidates": member_names[1: min(len(member_names), 21)],
+            }
+            # Keep artifacts reasonably small; include per-member stats when helpful.
+            member_stats: list[dict[str, Any]] = []
+            for i in ordered[: min(50, len(ordered))]:
+                try:
+                    nm, _h, sz, tl, mt = simhash_entries[i]
+                    member_stats.append(
+                        {
+                            "name": str(nm),
+                            "file_size": int(sz or 0),
+                            "text_characters": int(tl or 0),
+                            "file_mtime": int(mt or 0),
+                        }
+                    )
+                except Exception:
+                    continue
+            if member_stats:
+                cluster["member_stats"] = member_stats
+
+            clusters.append(cluster)
 
         clusters.sort(key=lambda c: (-len(c.get("members") or []), str(c.get("id") or "")))
         affected = {m for c in clusters for m in (c.get("members") or [])}
@@ -1478,15 +1690,66 @@ def run_dataset_precheck_scan(
         "p99": percentile_from_sorted(token_lengths, 99),
     }
 
+    file_type_stats: list[dict[str, Any]] = []
+    for ft, cnt in by_type.items():
+        file_type_stats.append(
+            {
+                "file_type": str(ft or "unknown"),
+                "count": int(cnt or 0),
+                "total_size_bytes": int(bytes_by_type.get(str(ft or "unknown"), 0) or 0),
+            }
+        )
+    file_type_stats.sort(key=lambda o: (-int(o.get("count") or 0), -int(o.get("total_size_bytes") or 0), str(o.get("file_type") or "")))
+    if len(file_type_stats) > 500:
+        file_type_stats = file_type_stats[:500]
+
+    lang_mix = {
+        "zh": int(language_counts.get("zh", 0) or 0),
+        "en": int(language_counts.get("en", 0) or 0),
+        "mixed": int(language_counts.get("mixed", 0) or 0),
+        "unknown": int(language_counts.get("unknown", 0) or 0),
+    }
+
+    dir_items: list[dict[str, Any]] = []
+    for d, entry in directory_stats.items():
+        if not isinstance(entry, dict):
+            continue
+        item = {
+            "path": str(entry.get("path") or d or "."),
+            "total_files": int(entry.get("total_files") or 0),
+            "total_size_bytes": int(entry.get("total_size_bytes") or 0),
+            "risky_files": int(entry.get("risky_files") or 0),
+            "findings": entry.get("findings") if isinstance(entry.get("findings"), dict) else {},
+        }
+        # Keep report payload small and predictable.
+        if len(item["path"]) > 512:
+            item["path"] = item["path"][:512]
+        dir_items.append(item)
+    dir_items.sort(key=lambda o: (-int(o.get("risky_files") or 0), -int(o.get("total_files") or 0), str(o.get("path") or "")))
+    if int(directory_stats_limit or 0) > 0:
+        dir_items = dir_items[: int(directory_stats_limit)]
+    else:
+        dir_items = []
+
     summary = {
         "dataset_id": str(dataset_id),
         "scan_run_id": str(run.id),
         "generated_at": _now_utc().isoformat(),
+        "schema": "mimirq.dataset_precheck_summary.v2",
+        "schema_version": 2,
         # Use processed count (supports cancelled runs with partial artifacts).
         "total_files": int(len(file_sizes)),
         "total_size_bytes": int(sum(file_sizes)),
         "reused_files": int(reused_files),
         "by_file_type": {k: int(v) for k, v in sorted(by_type.items(), key=lambda kv: (-kv[1], kv[0]))},
+        "by_file_type_bytes": {
+            k: int(v)
+            for k, v in sorted(bytes_by_type.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
+            if int(v or 0) > 0
+        },
+        "file_type_stats": file_type_stats,
+        "language_mix": lang_mix,
+        "directory_stats": dir_items,
         "file_size_histogram": histogram(file_sizes, FILE_SIZE_BINS),
         "length_percentiles": percentiles,
         "length_histogram": histogram(text_lengths, TEXT_LENGTH_BINS),

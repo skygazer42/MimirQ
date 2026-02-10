@@ -30,7 +30,14 @@ from app.services.dataset_service import DatasetService
 
 FINDING_KEYS: set[str] = {
     "parse_failed",
+    "empty_text",
+    "short_text",
+    "low_density_text",
+    "gibberish_text",
     "pdf_scanned",
+    "pdf_mixed",
+    "pdf_low_density",
+    "pdf_encrypted",
     "pdf_unknown",
     "pii",
     "secrets",

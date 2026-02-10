@@ -897,13 +897,31 @@ def render_precheck_html(
     pdf_unknown = int(pdf.get("unknown") or 0)
 
     by_type = _as_items(summary.get("by_file_type"), top=12)
+    lang = _as_items(summary.get("language_mix"), top=4)
     pii = _as_items(summary.get("pii_hits_total"), top=12)
     secrets = _as_items(summary.get("secrets_hits_total"), top=12)
 
     # Best-effort actionable suggestions (objective signals only).
+    findings = summary.get("findings") if isinstance(summary.get("findings"), list) else []
+    finding_counts: dict[str, int] = {}
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        k = str(f.get("key") or "").strip().lower()
+        if not k:
+            continue
+        try:
+            finding_counts[k] = int(f.get("count") or 0)
+        except Exception:
+            finding_counts[k] = 0
+
     tips: list[str] = []
     if int(pdf_scanned) > 0:
         tips.append(f"检测到疑似扫描 PDF：{_fmt_int(pdf_scanned)}（建议启用 OCR 解析链路，并优先复核 pdf_unknown/低密度页面）")
+    if int(finding_counts.get("gibberish_text", 0) or 0) > 0:
+        tips.append("检测到疑似乱码/编码问题（抽样信号）：建议检查源文件编码、解析器后备策略，并优先启用治理低密度过滤/隔离")
+    if int(finding_counts.get("empty_text", 0) or 0) > 0:
+        tips.append("存在“未提取到文本”的文件：若这些文件需要入库，建议调整解析/路由（PDF 走 OCR、二进制先转换）")
     if int(tok_p90) > 0:
         if int(tok_p90) >= 20_000:
             tips.append(f"P90 文本长度较长（~{_fmt_int(tok_p90)} tokens）：建议提高 chunk_size 或使用结构化 chunk_strategy（markdown_header/outline），入库后用 chunk-preview + gate 验证分布")
@@ -924,7 +942,6 @@ def render_precheck_html(
         else '<div class="empty">暂无</div>'
     )
 
-    findings = summary.get("findings") if isinstance(summary.get("findings"), list) else []
     finding_rows: list[tuple[str, int]] = []
     for f in findings:
         if not isinstance(f, dict):
@@ -938,6 +955,36 @@ def render_precheck_html(
     finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
 
     pdf_det = summary.get("pdf_detection") if isinstance(summary.get("pdf_detection"), dict) else {}
+
+    def _render_dir_table(items: Any, *, max_rows: int = 20) -> str:
+        if redact:
+            return '<div class="empty">已脱敏：目录结构不展示</div>'
+        if not isinstance(items, list) or not items:
+            return '<div class="empty">暂无数据</div>'
+        rows: list[str] = []
+        for obj in items[: max(0, int(max_rows))]:
+            if not isinstance(obj, dict):
+                continue
+            path = escape(str(obj.get("path") or "."))
+            total_files = int(obj.get("total_files") or 0)
+            risky_files = int(obj.get("risky_files") or 0)
+            size_bytes = _fmt_bytes(obj.get("total_size_bytes") or 0)
+            rows.append(
+                "<tr>"
+                f"<td class=\"k\">{path}</td>"
+                f"<td class=\"v\">{_fmt_int(risky_files)}/{_fmt_int(total_files)}</td>"
+                f"<td class=\"v\">{escape(size_bytes)}</td>"
+                "</tr>"
+            )
+        if not rows:
+            return '<div class="empty">暂无数据</div>'
+        return (
+            "<table class=\"bars\">"
+            "<thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead>"
+            "<tbody>"
+            + "".join(rows)
+            + "</tbody></table>"
+        )
 
     # Optional representative sampling section.
     samples_section = ""
@@ -1072,8 +1119,18 @@ def render_precheck_html(
     </div>
 
     <div class="section">
+      <h2>语言分布（抽样）</h2>
+      {_render_bar_table(lang, total=max(1, total_files))}
+    </div>
+
+    <div class="section">
       <h2>文件大小分布</h2>
       {_render_histogram(summary.get("file_size_histogram"))}
+    </div>
+
+    <div class="section">
+      <h2>目录结构（Top 风险聚集区）</h2>
+      {_render_dir_table(summary.get("directory_stats"), max_rows=20)}
     </div>
 
     <div class="section two">
