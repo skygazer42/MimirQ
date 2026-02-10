@@ -120,6 +120,10 @@ def render_dataset_profile_html(
     chunk_p50 = int(((summary.get("chunk_count_percentiles") or {}) if isinstance(summary.get("chunk_count_percentiles"), dict) else {}).get("p50") or 0)
     avg_chunk_p50 = int(((summary.get("avg_chunk_chars_percentiles") or {}) if isinstance(summary.get("avg_chunk_chars_percentiles"), dict) else {}).get("p50") or 0)
     chunk_len_p50 = int(((summary.get("chunk_length_percentiles") or {}) if isinstance(summary.get("chunk_length_percentiles"), dict) else {}).get("p50") or 0)
+    chunk_tok_p50 = int(((summary.get("chunk_token_percentiles") or {}) if isinstance(summary.get("chunk_token_percentiles"), dict) else {}).get("p50") or 0)
+    avg_chunk_tok_p50 = int(((summary.get("avg_chunk_tokens_percentiles") or {}) if isinstance(summary.get("avg_chunk_tokens_percentiles"), dict) else {}).get("p50") or 0)
+    cov_p50 = int(((summary.get("chunk_coverage_percentiles") or {}) if isinstance(summary.get("chunk_coverage_percentiles"), dict) else {}).get("p50") or 0)
+    waste_p50 = int(((summary.get("chunk_overlap_waste_percentiles") or {}) if isinstance(summary.get("chunk_overlap_waste_percentiles"), dict) else {}).get("p50") or 0)
 
     pdf = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     pdf_scanned = int(pdf.get("scanned") or 0)
@@ -202,6 +206,10 @@ def render_dataset_profile_html(
       <div class="card"><div class="kpi-label">P50 chunks/doc</div><div class="kpi-value">{_fmt_int(chunk_p50)}</div></div>
       <div class="card"><div class="kpi-label">P50 avg chunk（chars）</div><div class="kpi-value">{_fmt_int(avg_chunk_p50)}</div></div>
       <div class="card"><div class="kpi-label">P50 chunk len（chars）</div><div class="kpi-value">{_fmt_int(chunk_len_p50)}</div></div>
+      <div class="card"><div class="kpi-label">P50 avg chunk（tokens）</div><div class="kpi-value">{_fmt_int(avg_chunk_tok_p50)}</div></div>
+      <div class="card"><div class="kpi-label">P50 chunk len（tokens）</div><div class="kpi-value">{_fmt_int(chunk_tok_p50)}</div></div>
+      <div class="card"><div class="kpi-label">P50 coverage（%）</div><div class="kpi-value">{_fmt_int(cov_p50)}%</div></div>
+      <div class="card"><div class="kpi-label">P50 overlap waste（%）</div><div class="kpi-value">{_fmt_int(waste_p50)}%</div></div>
     </div>
 
     <div class="section">
@@ -261,6 +269,27 @@ def render_dataset_profile_html(
     <div class="section">
       <h2>平均 Chunk 长度分布（chars/chunk，每文档）</h2>
       {_render_histogram(summary.get("avg_chunk_chars_histogram"))}
+    </div>
+
+    <div class="section">
+      <h2>Chunk 长度分布（tokens，chunk-level）</h2>
+      {_render_histogram(summary.get("chunk_token_histogram"))}
+    </div>
+
+    <div class="section">
+      <h2>平均 Chunk 长度分布（tokens/chunk，每文档）</h2>
+      {_render_histogram(summary.get("avg_chunk_tokens_histogram"))}
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>Chunk coverage 分布（%）</h2>
+        {_render_histogram(summary.get("chunk_coverage_histogram"))}
+      </div>
+      <div>
+        <h2>Overlap waste 分布（%）</h2>
+        {_render_histogram(summary.get("chunk_overlap_waste_histogram"))}
+      </div>
     </div>
 
     <div class="section two">
