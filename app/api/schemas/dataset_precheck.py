@@ -81,16 +81,47 @@ class DatasetPrecheckFindingSummary(BaseModel):
     description: Optional[str] = None
 
 
+class DatasetPrecheckFileTypeStat(BaseModel):
+    file_type: str
+    count: int = 0
+    total_size_bytes: int = 0
+
+
+class DatasetPrecheckDirectoryStat(BaseModel):
+    """
+    Directory-level aggregation over precheck file records (best-effort).
+
+    Note: Only meaningful when scan paths are not redacted (redact_paths=false).
+    """
+
+    path: str
+    total_files: int = 0
+    total_size_bytes: int = 0
+    risky_files: int = 0
+    findings: Dict[str, int] = Field(default_factory=dict)
+
+
 class DatasetPrecheckSummary(BaseModel):
     dataset_id: UUID
     scan_run_id: UUID
     generated_at: datetime
+
+    schema: str = "mimirq.dataset_precheck_summary.v2"
+    schema_version: int = 2
 
     total_files: int = 0
     total_size_bytes: int = 0
     # How many records were reused from a previous scan run (incremental scans).
     reused_files: int = 0
     by_file_type: Dict[str, int] = Field(default_factory=dict)
+    # Total bytes by file type (extension).
+    by_file_type_bytes: Dict[str, int] = Field(default_factory=dict)
+    # Convenient typed breakdown for UI/report rendering.
+    file_type_stats: List[DatasetPrecheckFileTypeStat] = Field(default_factory=list)
+    # Best-effort language/script mix from sampled extracted text.
+    language_mix: Dict[str, int] = Field(default_factory=dict)
+    # Top directory aggregates (path prefix under scan root).
+    directory_stats: List[DatasetPrecheckDirectoryStat] = Field(default_factory=list)
 
     file_size_histogram: List[DatasetPrecheckHistogramBin] = Field(default_factory=list)
 
@@ -121,6 +152,9 @@ class DatasetPrecheckFileOut(BaseModel):
     text_characters: int = 0
     # Best-effort token estimate derived from sampled extracted text (rough cost proxy).
     text_tokens_est: int = 0
+    # Best-effort language bucket from sampled extracted text.
+    language: Optional[str] = None
+    language_confidence: Optional[float] = None
     estimated_text: bool = False
     pdf_scanned: Optional[bool] = None
     pdf_pages: Optional[DatasetPrecheckPdfPageBreakdown] = None

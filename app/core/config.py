@@ -192,6 +192,13 @@ class Settings(BaseSettings):
     PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD: int = 80
     PRECHECK_SPREADSHEET_SHEET_THRESHOLD: int = 5
     PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD: float = 0.15
+    PRECHECK_LANGUAGE_MIN_CHARS: int = 40
+    PRECHECK_TEXT_SHORT_CHARS_THRESHOLD: int = 200
+    PRECHECK_TEXT_LOW_DENSITY_THRESHOLD: float = 0.12
+    PRECHECK_TEXT_GIBBERISH_DENSITY_THRESHOLD: float = 0.06
+    PRECHECK_TEXT_HIGH_REPLACEMENT_RATIO_THRESHOLD: float = 0.08
+    PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD: float = 0.3
+    PRECHECK_DIRECTORY_STATS_LIMIT: int = 200
     # Whether to include chunk_size hints derived from token distribution in precheck suggestions.
     PRECHECK_SUGGEST_CHUNK_SIZE: bool = True
     # Optional: ingest documents by fetching a remote URL (connector skeleton).
