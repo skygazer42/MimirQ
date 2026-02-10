@@ -115,6 +115,8 @@ class DatasetPrecheckFileOut(BaseModel):
     file_size: int
     file_mtime: Optional[int] = None
     text_characters: int = 0
+    # Best-effort token estimate derived from sampled extracted text (rough cost proxy).
+    text_tokens_est: int = 0
     estimated_text: bool = False
     pdf_scanned: Optional[bool] = None
     pdf_pages: Optional[DatasetPrecheckPdfPageBreakdown] = None
