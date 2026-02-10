@@ -38,6 +38,9 @@ import type {
   ConnectorRunCreateRequest,
   ConnectorRunListResponse,
   ConnectorRunOut,
+  IngestionRunCompareResponse,
+  IngestionRunListResponse,
+  IngestionRunOut,
   ConnectorValidateRequest,
   ConnectorValidateResponse,
   DocumentUserMetadataPatchRequest,
@@ -1360,6 +1363,46 @@ export const connectorApi = {
 
   async resumeRun(runId: string): Promise<ConnectorRunOut> {
     const { data } = await apiClient.post(`/connectors/runs/${runId}/resume`)
+    return data
+  },
+}
+
+// ==================== Ingestion Runs API ====================
+
+export const ingestionRunApi = {
+  async listRuns(params?: {
+    skip?: number
+    limit?: number
+    dataset_id?: string
+    status?: string
+    kind?: string
+  }): Promise<IngestionRunListResponse> {
+    const { data } = await apiClient.get('/ingestion/runs', { params })
+    return data
+  },
+
+  async getRun(runId: string): Promise<IngestionRunOut> {
+    const { data } = await apiClient.get(`/ingestion/runs/${runId}`)
+    return data
+  },
+
+  async compareRuns(runId: string, otherRunId: string): Promise<IngestionRunCompareResponse> {
+    const { data } = await apiClient.get(`/ingestion/runs/${runId}/compare/${otherRunId}`)
+    return data
+  },
+
+  async replayRun(runId: string): Promise<IngestionRunOut> {
+    const { data } = await apiClient.post(`/ingestion/runs/${runId}/replay`)
+    return data
+  },
+
+  async exportRunJson(runId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/ingestion/runs/${runId}/export`, { responseType: 'blob' })
+    return data
+  },
+
+  async exportRunHtml(runId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/ingestion/runs/${runId}/export-html`, { responseType: 'blob' })
     return data
   },
 }

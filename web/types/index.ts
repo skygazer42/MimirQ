@@ -264,6 +264,42 @@ export interface ConnectorRunListResponse {
   items: ConnectorRunOut[]
 }
 
+// ==================== Ingestion Runs ====================
+
+export interface IngestionRunDocumentOut {
+  document_id: string
+  status: string
+  source_ref?: string | null
+  created_at?: string | null
+}
+
+export interface IngestionRunOut {
+  id: string
+  tenant_id: string
+  dataset_id?: string | null
+  kind: string
+  requested_by?: string | null
+  status: string
+  config?: Record<string, any>
+  stats?: Record<string, any>
+  error_message?: string | null
+  created_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  documents?: IngestionRunDocumentOut[]
+}
+
+export interface IngestionRunListResponse {
+  total: number
+  items: IngestionRunOut[]
+}
+
+export interface IngestionRunCompareResponse {
+  run_a: IngestionRunOut
+  run_b: IngestionRunOut
+  diff: Record<string, any>
+}
+
 export interface ConnectorConfigCreateRequest {
   connector_id: string
   dataset_id: string

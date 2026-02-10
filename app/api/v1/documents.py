@@ -111,6 +111,7 @@ from app.services.ingestion_policy import (
     parse_ingestion_policy_from_metadata,
     resolve_governance_profile_ref,
 )
+from app.services.ingestion_run_service import IngestionRunService
 from app.services.mineru_service import mineru_service
 from app.services.pipeline_config import (
     build_indexing_options,
@@ -2100,6 +2101,8 @@ async def _ingest_url_upload_request(
     tenant_id: UUID,
     account_id: str,
     db: Session,
+    ingestion_run_id: UUID | None = None,
+    ingestion_kind: str | None = None,
 ) -> DBDocument:
     """
     Shared implementation for URL ingestion.
@@ -2304,7 +2307,33 @@ async def _ingest_url_upload_request(
     if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
         _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
 
-    # 6) Create document record.
+    # 6) Unified ingestion run manifest (best-effort; creates a run when missing).
+    if ingestion_run_id is None:
+        try:
+            ingestion_kind_norm = str(ingestion_kind or "upload_url").strip() or "upload_url"
+            run_cfg = {
+                "source_url": url,
+                "url_final_url": url_final or None,
+                "url_canonical_url": url_canonical,
+                "parser_backend_requested": str(body.parser_backend or "")[:80],
+                "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
+                "parser_backend": str(resolved_parser_backend or "")[:80],
+                "chunk_strategy": str(resolved_chunk_strategy or "")[:80],
+            }
+            ingestion_run = IngestionRunService.create_run(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=getattr(dataset, "id", None),
+                requested_by=account_id,
+                kind=ingestion_kind_norm,
+                config=run_cfg,
+                expected_documents=1,
+            )
+            ingestion_run_id = ingestion_run.id
+        except Exception:
+            ingestion_run_id = None
+
+    # 7) Create document record.
     doc_metadata = {
         "parser_backend": resolved_parser_backend,
         "parser_backend_requested": str(body.parser_backend or "").lower(),
@@ -2328,6 +2357,10 @@ async def _ingest_url_upload_request(
     # Versioning: the first processed pipeline is the active one by default.
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
+    if ingestion_run_id is not None:
+        doc_metadata.setdefault("created_by_run_id", str(ingestion_run_id))
+        doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
+        doc_metadata["last_ingestion_kind"] = str(ingestion_kind or "upload_url")
 
     db_document = DBDocument(
         id=file_id,
@@ -2347,8 +2380,19 @@ async def _ingest_url_upload_request(
     db.add(db_document)
     db.commit()
     db.refresh(db_document)
+    if ingestion_run_id is not None:
+        with contextlib.suppress(Exception):
+            IngestionRunService.add_document(
+                db,
+                tenant_id=tenant_id,
+                run_id=ingestion_run_id,
+                document_id=db_document.id,
+                source_ref=url,
+                initial_status=str(getattr(db_document, "status", "") or "pending"),
+                doc_meta=dict(doc_metadata),
+            )
 
-    # 7) Process document: enqueue if available; otherwise run/attach to background_tasks.
+    # 8) Process document: enqueue if available; otherwise run/attach to background_tasks.
     job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
     task_id = await enqueue_document_processing(
         tenant_id=tenant_id,
@@ -2619,6 +2663,60 @@ async def upload_document(
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
 
+    # Unified ingestion run manifest (best-effort; never blocks uploads).
+    ingestion_run = None
+    try:
+        ingestion_run = IngestionRunService.create_run(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=getattr(dataset, "id", None),
+            requested_by=account_id,
+            kind="upload",
+            config={
+                "filename": str(file.filename or "")[:255],
+                "source_path": (str(source_path)[:1000] if source_path else None),
+                "file_ext": str(file_ext or "")[:16],
+                "parser_backend_requested": str(parser_backend or "")[:80],
+                "chunk_strategy_requested": str(chunk_strategy or "")[:80],
+                "parser_backend": str(resolved_parser_backend or "")[:80],
+                "chunk_strategy": str(resolved_chunk_strategy or "")[:80],
+                "pipeline_hash": str(pipeline_hash or "")[:64],
+                "ingestion_meta": dict(ingestion_meta or {}),
+                "pipeline": (pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None),
+            },
+            expected_documents=1,
+        )
+    except Exception:
+        ingestion_run = None
+
+    def _attach_doc_to_ingestion_run(doc: DBDocument, *, created: bool) -> None:
+        if ingestion_run is None or doc is None:
+            return
+        try:
+            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+            if created and not meta0.get("created_by_run_id"):
+                meta0["created_by_run_id"] = str(ingestion_run.id)
+            meta0["last_ingestion_run_id"] = str(ingestion_run.id)
+            meta0["last_ingestion_kind"] = "upload"
+            doc.doc_metadata = meta0
+            db.commit()
+            db.refresh(doc)
+        except Exception:
+            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+
+        try:
+            IngestionRunService.add_document(
+                db,
+                tenant_id=tenant_id,
+                run_id=ingestion_run.id,
+                document_id=doc.id,
+                source_ref=(source_path or doc.filename),
+                initial_status=str(getattr(doc, "status", "") or "created"),
+                doc_meta=meta0 if isinstance(meta0, dict) else None,
+            )
+        except Exception:
+            return
+
     # Optional: upload deduplication (same file_sha256 + same pipeline_hash within the same dataset).
     if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
         dup = _find_duplicate_document(
@@ -2638,6 +2736,8 @@ async def upload_document(
             # Remove the just-uploaded file to save disk.
             with contextlib.suppress(OSError):
                 file_path.unlink(missing_ok=True)
+            with contextlib.suppress(Exception):
+                _attach_doc_to_ingestion_run(dup, created=False)
             return dup
 
         # Cross-version dedup: same file_sha256 exists in dataset but under a different pipeline_hash.
@@ -2707,6 +2807,8 @@ async def upload_document(
                 db=db,
             )
             db.refresh(dup_any)
+            with contextlib.suppress(Exception):
+                _attach_doc_to_ingestion_run(dup_any, created=False)
             return dup_any
 
     db_document = DBDocument(
@@ -2727,6 +2829,8 @@ async def upload_document(
     db.add(db_document)
     db.commit()
     db.refresh(db_document)
+    with contextlib.suppress(Exception):
+        _attach_doc_to_ingestion_run(db_document, created=True)
 
     # 5. Process document in background: enqueue if available (fallback to BackgroundTasks).
     job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
@@ -2776,6 +2880,7 @@ async def upload_document_from_url(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
+        ingestion_kind="upload_url",
     )
 
 
@@ -2863,6 +2968,26 @@ async def upload_documents_batch(
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
     policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+
+    # Unified ingestion run manifest for the batch (best-effort).
+    ingestion_run = None
+    try:
+        ingestion_run = IngestionRunService.create_run(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=getattr(dataset, "id", None),
+            requested_by=account_id,
+            kind="upload_batch",
+            config={
+                "files": int(len(files or [])),
+                "parser_backend_requested": str(parser_backend or "")[:80],
+                "chunk_strategy_requested": str(chunk_strategy or "")[:80],
+                "pipeline": (pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None),
+            },
+            expected_documents=int(len(files or [])),
+        )
+    except Exception:
+        ingestion_run = None
     # Dataset-level ingestion defaults: apply once for the batch (still allow per-file ingestion-policy overrides).
     dataset_default_pb = None
     dataset_default_cs = None
@@ -3207,6 +3332,33 @@ async def upload_documents_batch(
     
     successful = [r for r in processed_results if r.get("success")]
     failed = [r for r in processed_results if not r.get("success")]
+
+    # Best-effort: attach successful documents to the batch ingestion run.
+    if ingestion_run is not None:
+        for r in successful:
+            doc = r.get("document")
+            if doc is None:
+                continue
+            try:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                meta0["last_ingestion_run_id"] = str(ingestion_run.id)
+                meta0["last_ingestion_kind"] = "upload_batch"
+                doc.doc_metadata = meta0
+                db.commit()
+                db.refresh(doc)
+            except Exception:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+
+            with contextlib.suppress(Exception):
+                IngestionRunService.add_document(
+                    db,
+                    tenant_id=tenant_id,
+                    run_id=ingestion_run.id,
+                    document_id=doc.id,
+                    source_ref=(r.get("source_path") or getattr(doc, "filename", None)),
+                    initial_status=str(getattr(doc, "status", "") or "created"),
+                    doc_meta=meta0 if isinstance(meta0, dict) else None,
+                )
     
     return {
         "total": len(files),

@@ -187,7 +187,7 @@ def load_base_dictionary_rules() -> Dict[str, List[str]]:
     path = Path(__file__).resolve().parent / "dictionaries" / "base.yaml"
     try:
         raw = path.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return {}
     parsed: Dict[str, List[str]] = {}
     current_key: str | None = None
@@ -216,4 +216,3 @@ def load_base_dictionary_rules() -> Dict[str, List[str]]:
             parsed.setdefault(current_key, []).append(val)
 
     return coerce_expansion_rules(parsed)
-
