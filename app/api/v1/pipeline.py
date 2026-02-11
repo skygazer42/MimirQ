@@ -58,6 +58,7 @@ from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.optional_deps import check_dependency
+from app.core.regex_runtime import RegexSubstitutionTimeoutError
 from app.core.regex_safety import RegexRulesValidationError, validate_regex_rules
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
@@ -1474,23 +1475,27 @@ async def clean_preview(
         if body.remove_common_lines
         else None
     )
-    result = clean_markdown(
-        baseline_text,
-        rules=rules,
-        normalize_line_endings=body.normalize_line_endings,
-        trim_trailing_spaces=body.trim_trailing_spaces,
-        collapse_blank_lines=body.collapse_blank_lines,
-        max_blank_lines=body.max_blank_lines,
-        remove_control_chars=body.remove_control_chars,
-        remove_toc_lines=body.remove_toc_lines,
-        remove_noise_lines=body.remove_noise_lines,
-        unwrap_lines=body.unwrap_lines,
-        remove_common_lines=body.remove_common_lines,
-        common_lines=common_lines,
-        unwrap_max_line_length=body.unwrap_max_line_length,
-        noise_min_chars=body.noise_min_chars,
-        noise_ratio_threshold=body.noise_ratio_threshold,
-    )
+    try:
+        result = clean_markdown(
+            baseline_text,
+            rules=rules,
+            regex_timeout_ms=int(getattr(settings, "GOVERNANCE_REGEX_TIMEOUT_MS", 100) or 100),
+            normalize_line_endings=body.normalize_line_endings,
+            trim_trailing_spaces=body.trim_trailing_spaces,
+            collapse_blank_lines=body.collapse_blank_lines,
+            max_blank_lines=body.max_blank_lines,
+            remove_control_chars=body.remove_control_chars,
+            remove_toc_lines=body.remove_toc_lines,
+            remove_noise_lines=body.remove_noise_lines,
+            unwrap_lines=body.unwrap_lines,
+            remove_common_lines=body.remove_common_lines,
+            common_lines=common_lines,
+            unwrap_max_line_length=body.unwrap_max_line_length,
+            noise_min_chars=body.noise_min_chars,
+            noise_ratio_threshold=body.noise_ratio_threshold,
+        )
+    except RegexSubstitutionTimeoutError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
 
     rule_hits = list(getattr(result, "rule_hits", None) or [])
     rule_stats = []

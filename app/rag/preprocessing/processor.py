@@ -7,6 +7,7 @@ from typing import Iterable, List, Optional, Sequence
 
 from langchain_core.documents import Document
 
+from app.core.config import settings
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.cleaning import (
     RegexRule,
@@ -227,6 +228,7 @@ class GovernanceProcessor:
             result = clean_markdown(
                 working_text or "",
                 rules=active_rules,
+                regex_timeout_ms=int(getattr(settings, "GOVERNANCE_REGEX_TIMEOUT_MS", 100) or 100),
                 common_lines=common_lines,
                 remove_toc_lines=remove_toc_lines,
                 remove_noise_lines=remove_noise_lines,

@@ -605,6 +605,8 @@ class Settings(BaseSettings):
     GOVERNANCE_NOISE_RATIO_THRESHOLD: float = 0.2
     GOVERNANCE_COMMON_LINES_MIN_DOCS: int = 3
     GOVERNANCE_COMMON_LINES_MIN_RATIO: float = 0.35
+    # Best-effort runtime guard for governance regex substitutions (ReDoS mitigation).
+    GOVERNANCE_REGEX_TIMEOUT_MS: int = 100
     # Optional governance extensions (safe defaults; can be overridden per-dataset/document pipeline config).
     GOVERNANCE_REMOVE_BOILERPLATE: bool = False
     GOVERNANCE_REMOVE_IMAGES: str = "none"  # none | decorative | all
