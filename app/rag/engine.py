@@ -668,6 +668,94 @@ Requirements:
                 dict_expansions = []
                 dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
 
+            # KG query expansion (entity names, optional).
+            #
+            # Purpose: provide extra retrieval queries derived from KG entity recall
+            # to reduce false negatives, with clear attribution ("kgq").
+            kg_result_cached: Dict[str, Any] | None = None
+            kg_query_expansion_enabled = bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False))
+            kg_query_expansion_used = False
+            kg_query_expansion_elapsed = 0.0
+            kg_query_expansion_error: str | None = None
+            kg_query_expansion_entities_total = 0
+            kg_query_expansion_entities_selected = 0
+            kg_query_expansion_queries: list[str] = []
+            kg_query_expansion_entity_names: list[str] = []
+            try:
+                if (
+                    kg_query_expansion_enabled
+                    and bool(getattr(settings, "KG_ENABLED", False))
+                    and bool(getattr(settings, "KG_CHAT_ENABLED", False))
+                    and tenant_id is not None
+                    and ((document_ids is not None and len(document_ids) > 0) or dataset_id is not None)
+                    and (account_id is not None or dataset_id is None)
+                ):
+                    t0 = time.time()
+                    kg_result_cached = await kg_search(
+                        query=query_for_retrieval,
+                        tenant_id=tenant_id,
+                        document_ids=list(document_ids or []) or None,
+                        dataset_id=(dataset_id if not document_ids else None),
+                        account_id=account_id,
+                    )
+                    kg_query_expansion_elapsed = time.time() - t0
+
+                    entities = (kg_result_cached or {}).get("entities") or []
+                    entities = entities if isinstance(entities, list) else []
+                    kg_query_expansion_entities_total = len(entities)
+
+                    max_entities = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_ENTITIES", 5) or 5))
+                    max_queries = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_QUERIES", 5) or 5))
+                    min_weight = float(getattr(settings, "RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT", 0.15) or 0.15)
+
+                    scored: list[tuple[float, str]] = []
+                    for ent in entities:
+                        if not isinstance(ent, dict):
+                            continue
+                        name = (ent.get("name") or "").strip()
+                        if not name:
+                            continue
+                        try:
+                            w = float(ent.get("weight", 0.0) or 0.0)
+                        except Exception:
+                            w = 0.0
+                        if w < min_weight:
+                            continue
+                        scored.append((w, name))
+
+                    scored.sort(key=lambda x: (-x[0], x[1]))
+                    seen_names: set[str] = set()
+                    base_folded = query_for_retrieval.casefold()
+                    selected_names: list[str] = []
+                    for _w, name in scored:
+                        key = name.casefold() if name.isascii() else name
+                        if key in seen_names:
+                            continue
+                        seen_names.add(key)
+                        if key and (key in base_folded):
+                            continue
+                        selected_names.append(name)
+                        if max_entities > 0 and len(selected_names) >= max_entities:
+                            break
+
+                    kg_query_expansion_entities_selected = len(selected_names)
+                    kg_query_expansion_entity_names = selected_names[: max_queries if max_queries > 0 else len(selected_names)]
+
+                    for name in kg_query_expansion_entity_names:
+                        q = f"{query_for_retrieval} {name}".strip()
+                        if len(q) > 500:
+                            q = q[:500] + "..."
+                        kg_query_expansion_queries.append(q)
+                        if max_queries > 0 and len(kg_query_expansion_queries) >= max_queries:
+                            break
+
+                    kg_query_expansion_used = bool(kg_query_expansion_queries)
+            except Exception as exc:  # noqa: BLE001
+                kg_query_expansion_used = False
+                kg_query_expansion_queries = []
+                kg_query_expansion_entity_names = []
+                kg_query_expansion_error = str(exc)[:200]
+
             multi_query_elapsed = 0.0
             multi_query_used = False
             multi_query_model_used = None
@@ -854,6 +942,8 @@ Requirements:
                 q = e.get("expanded_text") if isinstance(e, dict) else None
                 if q:
                     retrieval_queries.append(("dict", str(q)))
+            for q in kg_query_expansion_queries:
+                retrieval_queries.append(("kgq", q))
             for q in multi_queries:
                 retrieval_queries.append(("mq", q))
             for q in sub_questions:
@@ -960,7 +1050,6 @@ Requirements:
             #
             # This turns KG entity linking (query->events->chunk_id) into structured chunk candidates,
             # improving precision without replacing the main retriever.
-            kg_result_cached: Dict[str, Any] | None = None
             kg_chunks_injected = 0
             try:
                 if (
@@ -971,7 +1060,11 @@ Requirements:
                     and tenant_id is not None
                     and document_ids
                 ):
-                    kg_result_cached = await kg_search(query=question, tenant_id=tenant_id, document_ids=document_ids)
+                    kg_result_cached = kg_result_cached or await kg_search(
+                        query=query_for_retrieval,
+                        tenant_id=tenant_id,
+                        document_ids=document_ids,
+                    )
                     kg_events = (kg_result_cached or {}).get("events") or []
                     max_chunks = max(0, int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0)) or 5
 
@@ -1218,6 +1311,13 @@ Requirements:
                             "multi_query_used": bool(multi_query_used),
                             "multi_query_count": len(multi_queries),
                             "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
+                            "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
+                            "kg_query_expansion_used": bool(kg_query_expansion_used),
+                            "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),
+                            "kg_query_expansion_entities_selected": int(kg_query_expansion_entities_selected),
+                            "kg_query_expansion_query_count": int(len(kg_query_expansion_queries)),
+                            "kg_query_expansion_elapsed_sec": round(float(kg_query_expansion_elapsed), 3),
+                            "kg_query_expansion_error": kg_query_expansion_error,
                             "kg_chunks_injected": int(kg_chunks_injected or 0),
                             "recall_bucket": recall_bucket,
                             "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
@@ -1413,6 +1513,13 @@ Requirements:
                     "multi_query_max_chars": int(mq_max_chars or 0),
                     "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
                     "multi_query_parse_error": multi_query_parse_meta.get("error"),
+                    "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
+                    "kg_query_expansion_used": bool(kg_query_expansion_used),
+                    "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),
+                    "kg_query_expansion_entities_selected": int(kg_query_expansion_entities_selected),
+                    "kg_query_expansion_query_count": int(len(kg_query_expansion_queries)),
+                    "kg_query_expansion_elapsed_sec": round(float(kg_query_expansion_elapsed), 3),
+                    "kg_query_expansion_error": kg_query_expansion_error,
                     "hyde_enabled": bool(settings.ENABLE_HYDE),
                     "hyde_used": bool(hyde_used),
                     "hyde_elapsed_sec": round(hyde_elapsed, 3),
@@ -1730,6 +1837,13 @@ Requirements:
                         "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
                         "multi_query_parse_method": multi_query_parse_meta.get("method"),
                         "multi_query_parse_error": multi_query_parse_meta.get("error"),
+                        "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
+                        "kg_query_expansion_used": bool(kg_query_expansion_used),
+                        "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),
+                        "kg_query_expansion_entities_selected": int(kg_query_expansion_entities_selected),
+                        "kg_query_expansion_query_count": int(len(kg_query_expansion_queries)),
+                        "kg_query_expansion_elapsed_sec": round(float(kg_query_expansion_elapsed), 3),
+                        "kg_query_expansion_error": kg_query_expansion_error,
                         "hyde_enabled": bool(settings.ENABLE_HYDE),
                         "hyde_used": bool(hyde_used),
                         "hyde_elapsed_sec": round(hyde_elapsed, 3),

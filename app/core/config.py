@@ -437,6 +437,11 @@ class Settings(BaseSettings):
     # Optional: inject KG-linked chunks (via KG event chunk_id) into RAG retrieval results.
     RAG_KG_CHUNK_INJECTION_ENABLED: bool = False
     RAG_KG_CHUNK_INJECTION_MAX_CHUNKS: int = 5
+    # Optional: KG-derived query expansion (entity names -> extra retrieval queries).
+    RAG_KG_QUERY_EXPANSION_ENABLED: bool = False
+    RAG_KG_QUERY_EXPANSION_MAX_ENTITIES: int = 5
+    RAG_KG_QUERY_EXPANSION_MAX_QUERIES: int = 5
+    RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT: float = 0.15
     # Optional: route retrieval defaults by question type when `retrieval_mode=auto`.
     RAG_RECALL_BUCKETS_ENABLED: bool = False
     # Optional: include adjacent chunks around top hits to improve continuity (0 disables).

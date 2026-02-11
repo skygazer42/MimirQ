@@ -47,6 +47,7 @@ from app.rag.core.text import (
     split_into_claims,
 )
 from app.rag.engine import get_rag_engine
+from app.rag.kg.pipeline import kg_search
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.retriever import hybrid_retriever
 from app.rag.store.factory import get_langgraph_store
@@ -400,6 +401,115 @@ def _retrieve_node(state: RAGState) -> RAGState:
         dict_expansions = []
         dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
 
+    # KG query expansion (entity names, optional).
+    #
+    # This is intentionally auditable: we only append recalled entity names to the query
+    # and label the retrieval path as "kgq".
+    kg_query_expansion_enabled = bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False))
+    kg_query_expansion_used = False
+    kg_query_expansion_elapsed = 0.0
+    kg_query_expansion_error: str | None = None
+    kg_query_expansion_entities_total = 0
+    kg_query_expansion_entities_selected = 0
+    kg_query_expansion_queries: list[str] = []
+    kg_query_expansion_entity_names: list[str] = []
+    try:
+        tenant_id = state.get("tenant_id")
+        account_id = state.get("account_id")
+        document_ids = state.get("document_ids") or []
+        dataset_id = state.get("dataset_id")
+
+        if (
+            kg_query_expansion_enabled
+            and bool(getattr(settings, "KG_ENABLED", False))
+            and bool(getattr(settings, "KG_CHAT_ENABLED", False))
+            and tenant_id is not None
+            and (document_ids or dataset_id is not None)
+            and (account_id is not None or dataset_id is None)
+        ):
+            import asyncio
+
+            coro = kg_search(
+                query=query_for_retrieval,
+                tenant_id=tenant_id,
+                document_ids=(list(document_ids) or None),
+                dataset_id=(dataset_id if not document_ids else None),
+                account_id=account_id,
+            )
+
+            t0 = time.time()
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                # Running inside an event loop (e.g. FastAPI). Execute in a worker thread.
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    kg_result = pool.submit(asyncio.run, coro).result()
+            elif loop is not None:
+                kg_result = loop.run_until_complete(coro)
+            else:
+                kg_result = asyncio.run(coro)
+
+            kg_query_expansion_elapsed = time.time() - t0
+
+            entities = (kg_result or {}).get("entities") or []
+            entities = entities if isinstance(entities, list) else []
+            kg_query_expansion_entities_total = len(entities)
+
+            max_entities = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_ENTITIES", 5) or 5))
+            max_queries = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_QUERIES", 5) or 5))
+            min_weight = float(getattr(settings, "RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT", 0.15) or 0.15)
+
+            scored: list[tuple[float, str]] = []
+            for ent in entities:
+                if not isinstance(ent, dict):
+                    continue
+                name = (ent.get("name") or "").strip()
+                if not name:
+                    continue
+                try:
+                    w = float(ent.get("weight", 0.0) or 0.0)
+                except Exception:
+                    w = 0.0
+                if w < min_weight:
+                    continue
+                scored.append((w, name))
+
+            scored.sort(key=lambda x: (-x[0], x[1]))
+            seen_names: set[str] = set()
+            base_folded = query_for_retrieval.casefold()
+            selected_names: list[str] = []
+            for _w, name in scored:
+                key = name.casefold() if name.isascii() else name
+                if key in seen_names:
+                    continue
+                seen_names.add(key)
+                if key and (key in base_folded):
+                    continue
+                selected_names.append(name)
+                if max_entities > 0 and len(selected_names) >= max_entities:
+                    break
+
+            kg_query_expansion_entities_selected = len(selected_names)
+            kg_query_expansion_entity_names = selected_names[: max_queries if max_queries > 0 else len(selected_names)]
+
+            for name in kg_query_expansion_entity_names:
+                q = f"{query_for_retrieval} {name}".strip()
+                if len(q) > 500:
+                    q = q[:500] + "..."
+                kg_query_expansion_queries.append(q)
+                if max_queries > 0 and len(kg_query_expansion_queries) >= max_queries:
+                    break
+
+            kg_query_expansion_used = bool(kg_query_expansion_queries)
+    except Exception as exc:  # noqa: BLE001
+        kg_query_expansion_used = False
+        kg_query_expansion_queries = []
+        kg_query_expansion_entity_names = []
+        kg_query_expansion_error = str(exc)[:200]
+
     multi_query_elapsed = 0.0
     multi_query_used = False
     multi_query_model_used = None
@@ -553,6 +663,8 @@ def _retrieve_node(state: RAGState) -> RAGState:
         q = e.get("expanded_text") if isinstance(e, dict) else None
         if q:
             retrieval_queries.append(("dict", str(q)))
+    for q in kg_query_expansion_queries:
+        retrieval_queries.append(("kgq", q))
     for q in multi_queries:
         retrieval_queries.append(("mq", q))
     for q in sub_questions:
@@ -703,6 +815,13 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["dict_count"] = len(dict_expansions)
     metrics["dict_elapsed_sec"] = round(dict_elapsed, 3)
     metrics["dict_meta"] = dict_meta
+    metrics["kg_query_expansion_enabled"] = bool(kg_query_expansion_enabled)
+    metrics["kg_query_expansion_used"] = bool(kg_query_expansion_used)
+    metrics["kg_query_expansion_entities_total"] = int(kg_query_expansion_entities_total)
+    metrics["kg_query_expansion_entities_selected"] = int(kg_query_expansion_entities_selected)
+    metrics["kg_query_expansion_query_count"] = int(len(kg_query_expansion_queries))
+    metrics["kg_query_expansion_elapsed_sec"] = round(float(kg_query_expansion_elapsed), 3)
+    metrics["kg_query_expansion_error"] = kg_query_expansion_error
     metrics["multi_query_enabled"] = bool(mq_enabled)
     metrics["multi_query_used"] = bool(multi_query_used)
     metrics["multi_query_count"] = len(multi_queries)
@@ -823,6 +942,15 @@ def _retrieve_node(state: RAGState) -> RAGState:
         item = dict(e)
         item.setdefault("kind", "dict")
         expansions_dbg.append(item)
+    for q in kg_query_expansion_queries:
+        expansions_dbg.append(
+            {
+                "kind": "kgq",
+                "expanded_text": q,
+                "source_rule_id": "kg:entity_name",
+                "weight": 1.0,
+            }
+        )
     for q in multi_queries:
         expansions_dbg.append({"kind": "mq", "expanded_text": q, "source_rule_id": "llm:multi_query", "weight": 1.0})
     for q in sub_questions:

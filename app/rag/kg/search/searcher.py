@@ -144,6 +144,7 @@ class KGSearcher:
         if config.return_type == ReturnType.EVENT:
             return {
                 "events": rerank_result.items,
+                "entities": list(expand_result.key_final or []),
                 "clues": combined_clues,
                 "stats": stats,
                 "query": {"original": config.query},
@@ -151,6 +152,7 @@ class KGSearcher:
 
         return {
             "events": rerank_result.items,
+            "entities": list(expand_result.key_final or []),
             "clues": combined_clues,
             "stats": stats,
         }
