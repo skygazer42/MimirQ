@@ -68,6 +68,7 @@ def test_retrieval_regression_slo_gate_hit_at_20_and_recall(monkeypatch: pytest.
     doc_b = _mk_uuid("doc:b")
     doc_c = _mk_uuid("doc:c")
     doc_d = _mk_uuid("doc:d")
+    doc_e = _mk_uuid("doc:e")
 
     chunks: list[Document] = []
     # High-signal target chunks (evidence).
@@ -125,6 +126,15 @@ def test_retrieval_regression_slo_gate_hit_at_20_and_recall(monkeypatch: pytest.
             content="中文: 量子纠缠是量子力学中的重要概念。检索需要支持中文分词与 OOV bigram 兜底。",
         )
     )
+    chunks.append(
+        _mk_chunk(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=doc_e,
+            chunk_index=0,
+            content="API endpoints: POST /api/v1/rag/retrieve (evidence-only) and POST /api/v1/rag/retrieve-preview (debug).",
+        )
+    )
 
     # Add distractors (keep corpus > top_k to make hit@k meaningful).
     for i in range(2, 30):
@@ -180,6 +190,7 @@ def test_retrieval_regression_slo_gate_hit_at_20_and_recall(monkeypatch: pytest.
         {"question": "normalize 12_345 to 12345", "reference_sources": [_ref(chunks[4])]},
         {"question": "1,234 normalization", "reference_sources": [_ref(chunks[4])]},
         {"question": "量子纠缠", "reference_sources": [_ref(chunks[5])]},
+        {"question": "POST /api/v1/rag/retrieve-preview", "reference_sources": [_ref(chunks[6])]},
     ]
 
     eval_items: list[dict] = []

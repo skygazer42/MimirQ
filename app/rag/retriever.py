@@ -84,6 +84,9 @@ class HybridRetriever(BaseRetriever):
     # Best-effort debug metrics for the last retrieval call (per retriever instance).
     # Used by debug endpoints / observability to expose trimming/overfetch behavior.
     _last_debug_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    # Per-query retrieval channel metrics (vector/BM25/lexical DB) for attribution/debugging.
+    # Populated by `_hybrid_search` and embedded into `_last_debug_metrics` by `_get_relevant_documents`.
+    _last_channel_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
     # Cache whether pg_trgm is available for lexical DB search (per retriever instance).
     _lexical_pg_trgm_available: Optional[bool] = PrivateAttr(default=None)
 
@@ -1231,6 +1234,42 @@ class HybridRetriever(BaseRetriever):
                 meta["chunk_id"] = mapped
                 r["metadata"] = meta
 
+        # Per-query channel metrics (best-effort): used by evidence/debug endpoints.
+        try:
+            lexical_methods: Counter[str] = Counter()
+            for r in lexical_results:
+                meta = r.get("metadata") or {}
+                m = str(meta.get("lexical_method") or "unknown").strip().lower() or "unknown"
+                lexical_methods[m] += 1
+
+            self._last_channel_metrics = {
+                "retrieval_mode": retrieval_mode,
+                "fusion_strategy": str(self.fusion_strategy or ""),
+                "rrf_k": int(self.rrf_k or 0),
+                "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+                "vector": {
+                    "enabled": bool(want_vector),
+                    "candidates": len(vector_results or []),
+                    "filter_applied": bool(vector_filter),
+                },
+                "bm25": {
+                    "enabled": bool(want_bm25),
+                    "candidates": len(bm25_results or []),
+                    "index_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+                    "filter_applied": bool(bm25_filter),
+                },
+                "lexical_db": {
+                    "enabled": bool(want_lexical) and bool(getattr(settings, "LEXICAL_DB_ENABLED", True)),
+                    "candidates": len(lexical_results or []),
+                    "fts_config": str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple"),
+                    "trgm_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)),
+                    "pg_trgm_available": self._lexical_pg_trgm_available,
+                    "methods": dict(lexical_methods),
+                },
+            }
+        except Exception:
+            self._last_channel_metrics = {}
+
         # 3) Score normalization + linear merge
         merged_results = self._merge_results(
             vector_results,
@@ -1241,7 +1280,19 @@ class HybridRetriever(BaseRetriever):
             rrf_k=self.rrf_k,
         )
 
+        try:
+            if isinstance(self._last_channel_metrics, dict):
+                self._last_channel_metrics["merged_pre_dedup"] = len(merged_results or [])
+        except Exception:
+            pass
+
         merged_results = self._deduplicate_results(merged_results)
+
+        try:
+            if isinstance(self._last_channel_metrics, dict):
+                self._last_channel_metrics["merged_post_dedup"] = len(merged_results or [])
+        except Exception:
+            pass
 
         # 4) Reranking strategy
         if retrieval_mode == "mmr" and merged_results:
@@ -1322,7 +1373,41 @@ class HybridRetriever(BaseRetriever):
                             meta.setdefault("reranker_error", str(exc)[:200])
                             doc["metadata"] = meta
 
+        # Channel attribution (best-effort): count how many final candidates are supported by each channel.
+        try:
+            if isinstance(self._last_channel_metrics, dict):
+                self._last_channel_metrics["merged_post_rerank"] = len(merged_results or [])
+                attribution = {"vector": 0, "bm25": 0, "lexical_db": 0, "multi": 0}
+                for doc in merged_results or []:
+                    has_v = float(doc.get("vector_score", 0.0) or 0.0) > 0.0
+                    has_b = float(doc.get("bm25_score", 0.0) or 0.0) > 0.0
+                    has_l = float(doc.get("lexical_score", 0.0) or 0.0) > 0.0
+                    n = int(has_v) + int(has_b) + int(has_l)
+                    if has_v:
+                        attribution["vector"] += 1
+                    if has_b:
+                        attribution["bm25"] += 1
+                    if has_l:
+                        attribution["lexical_db"] += 1
+                    if n > 1:
+                        attribution["multi"] += 1
+                self._last_channel_metrics["attribution"] = attribution
+        except Exception:
+            pass
+
+        before_diversity = len(merged_results or [])
         merged_results = self._apply_document_diversity(merged_results, top_k=top_k)
+        after_diversity = len(merged_results or [])
+        try:
+            if isinstance(self._last_channel_metrics, dict):
+                self._last_channel_metrics["diversity"] = {
+                    "before": int(before_diversity),
+                    "after": int(after_diversity),
+                    "dropped": int(max(0, before_diversity - after_diversity)),
+                }
+                self._last_channel_metrics["returned_top_k"] = int(min(int(top_k or 0), after_diversity))
+        except Exception:
+            pass
         return merged_results[:top_k]
 
     # ---- LangChain Retriever API ----
@@ -2178,6 +2263,10 @@ class HybridRetriever(BaseRetriever):
             metadata_filter=self.metadata_filter,
         )
         debug["hybrid_results"] = len(results or [])
+        try:
+            debug["channels"] = dict(self._last_channel_metrics or {})
+        except Exception:
+            debug["channels"] = {}
         enrich1: Dict[str, Any] = {}
         results = self._enrich_results_with_db_metadata(results, stats=enrich1)
         debug["enrich_pass1"] = enrich1

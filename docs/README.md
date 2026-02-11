@@ -9,6 +9,7 @@
 ## 使用指南
 - [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：当前纯 LangChain RAG 架构说明与迁移记录。
 - [guides/rag_optimization.md](./guides/rag_optimization.md)：检索效果与回答质量优化方案。
+- [guides/lexical_fallback.md](./guides/lexical_fallback.md)：Lexical fallback（Postgres FTS + pg_trgm）配置、索引与可观测性。
 - [guides/knowledge_graph.md](./guides/knowledge_graph.md)：知识图谱（KG）的开启、抽取、可视化与导出。
 - [guides/chunk_preview.md](./guides/chunk_preview.md)：切块预览页（chunk preview）的使用说明、参数建议与快捷键。
 - [guides/milvus_guide.md](./guides/milvus_guide.md)：Milvus 的部署、调优与常见问题。
