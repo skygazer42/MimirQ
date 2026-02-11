@@ -456,6 +456,17 @@ def render_dataset_report_html(
     kg_events = int(kgd.get("events") or 0)
     kg_entities = int(kgd.get("entities") or 0)
     kg_links = int(kgd.get("links") or 0)
+    kg_events_with_chunk = int(kgd.get("events_with_chunk_id") or 0)
+    kg_events_with_page = int(kgd.get("events_with_page_ref") or 0)
+    kg_links_with_prov = int(kgd.get("links_with_provenance") or 0)
+    kg_links_with_page = int(kgd.get("links_with_page_ref") or 0)
+    kg_docs_extracted = int(kgd.get("documents_with_kg_extracted_at") or 0)
+    kg_docs_with_events = int(kgd.get("documents_with_kg_events") or 0)
+    kg_event_count_from_docs = int(kgd.get("event_count_from_documents") or 0)
+    kg_skipped_chunks = int(kgd.get("skipped_chunks_total") or 0)
+    kg_skipped_short = int(kgd.get("skipped_short_chunks_total") or 0)
+    kg_failed_chunks = int(kgd.get("failed_chunks_total") or 0)
+    kg_retry_chunks = int(kgd.get("retry_chunks_total") or 0)
     kg_updated_at = str(kgd.get("updated_at") or "").strip()
     kg_type_items: list[tuple[str, int]] = []
     raw_types = kgd.get("entity_types")
@@ -471,6 +482,45 @@ def render_dataset_report_html(
             if cnt <= 0:
                 continue
             kg_type_items.append((tp, cnt))
+
+    # Optional: KG drilldown (top docs by event_count). Render only when not redacting.
+    kg_top_docs = kgd.get("top_documents") if isinstance(kgd.get("top_documents"), list) else []
+    kg_doc_rows: list[str] = []
+    if not redact and isinstance(kg_top_docs, list):
+        for r in kg_top_docs[:10]:
+            if not isinstance(r, dict):
+                continue
+            did = str(r.get("document_id") or "").strip()
+            if not did:
+                continue
+            src = str(r.get("source") or "").strip()
+            try:
+                evc = int(r.get("event_count") or 0)
+            except Exception:
+                evc = 0
+            try:
+                sk = int(r.get("skipped_chunks") or 0)
+            except Exception:
+                sk = 0
+            try:
+                fs = int(r.get("failed_chunks") or 0)
+            except Exception:
+                fs = 0
+            kg_doc_rows.append(
+                "<tr>"
+                f"<td class=\"k\">{escape(src or did[:8])}</td>"
+                f"<td class=\"v\">{_fmt_int(evc)}</td>"
+                f"<td class=\"v\">{_fmt_int(sk)}</td>"
+                f"<td class=\"v\">{_fmt_int(fs)}</td>"
+                "</tr>"
+            )
+    kg_top_docs_table = (
+        "<table class=\"bars\"><thead><tr><th>doc</th><th>events</th><th>skipped</th><th>failed</th></tr></thead><tbody>"
+        + "".join(kg_doc_rows)
+        + "</tbody></table>"
+        if kg_doc_rows
+        else '<div class="empty">暂无数据</div>'
+    )
 
     # Optional: latest regression run summary (best-effort).
     rr = report.get("latest_regression_run") if isinstance(report, dict) else None
@@ -531,6 +581,56 @@ def render_dataset_report_html(
         if rr_summary_rows
         else '<div class="empty">暂无数据</div>'
     )
+
+    # Optional: retrieval-only slicing summary (nested dict) for deeper diagnostics.
+    rr_slices = rr_summary.get("retrieval_slices") if isinstance(rr_summary.get("retrieval_slices"), dict) else {}
+
+    def _render_rr_slice_table(dim: str) -> str:
+        obj = rr_slices.get(dim) if isinstance(rr_slices.get(dim), dict) else {}
+        buckets = obj.get("buckets") if isinstance(obj.get("buckets"), list) else []
+        rows: list[str] = []
+        for b in buckets[:10]:
+            if not isinstance(b, dict):
+                continue
+            key = str(b.get("key") or "").strip()
+            if not key:
+                continue
+            try:
+                items = int(b.get("items") or 0)
+            except Exception:
+                items = 0
+            rows.append(
+                "<tr>"
+                f"<td class=\\\"k\\\">{escape(key)}</td>"
+                f"<td class=\\\"v\\\">{_fmt_int(items)}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_recall')))}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_hit_at_20')))}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_mrr')))}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('abstain_rate')))}</td>"
+                "</tr>"
+            )
+        return (
+            "<table class=\\\"bars\\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
+            + "".join(rows)
+            + "</tbody></table>"
+            if rows
+            else '<div class=\"empty\">暂无数据</div>'
+        )
+
+    rr_slices_section = ""
+    if rr_slices:
+        rr_slices_section = (
+            "<div class=\\\"section\\\">"
+            "<h2>Retrieval Slices（file_type / language / directory）</h2>"
+            "<div class=\\\"two\\\">"
+            f"<div><h2>file_type</h2>{_render_rr_slice_table('file_type')}</div>"
+            f"<div><h2>language</h2>{_render_rr_slice_table('language')}</div>"
+            "</div>"
+            "<div style=\\\"margin-top:12px\\\"><h2>directory</h2>"
+            f"{_render_rr_slice_table('directory')}"
+            "</div>"
+            "</div>"
+        )
 
     raw_json = json.dumps(report, ensure_ascii=False, indent=2)
 
@@ -637,6 +737,17 @@ def render_dataset_report_html(
             <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
             <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>
             <tr><td class="k">links</td><td class="v">{_fmt_int(kg_links)}</td><td></td></tr>
+            <tr><td class="k">events_with_chunk_id</td><td class="v">{_fmt_int(kg_events_with_chunk)}</td><td></td></tr>
+            <tr><td class="k">events_with_page_ref</td><td class="v">{_fmt_int(kg_events_with_page)}</td><td></td></tr>
+            <tr><td class="k">links_with_provenance</td><td class="v">{_fmt_int(kg_links_with_prov)}</td><td></td></tr>
+            <tr><td class="k">links_with_page_ref</td><td class="v">{_fmt_int(kg_links_with_page)}</td><td></td></tr>
+            <tr><td class="k">documents_with_kg_extracted_at</td><td class="v">{_fmt_int(kg_docs_extracted)}</td><td></td></tr>
+            <tr><td class="k">documents_with_kg_events</td><td class="v">{_fmt_int(kg_docs_with_events)}</td><td></td></tr>
+            <tr><td class="k">event_count_from_documents</td><td class="v">{_fmt_int(kg_event_count_from_docs)}</td><td></td></tr>
+            <tr><td class="k">skipped_chunks_total</td><td class="v">{_fmt_int(kg_skipped_chunks)}</td><td></td></tr>
+            <tr><td class="k">skipped_short_chunks_total</td><td class="v">{_fmt_int(kg_skipped_short)}</td><td></td></tr>
+            <tr><td class="k">failed_chunks_total</td><td class="v">{_fmt_int(kg_failed_chunks)}</td><td></td></tr>
+            <tr><td class="k">retry_chunks_total</td><td class="v">{_fmt_int(kg_retry_chunks)}</td><td></td></tr>
             <tr><td class="k">updated_at</td><td class="v">{escape(kg_updated_at or "")}</td><td></td></tr>
           </tbody>
         </table>
@@ -645,6 +756,11 @@ def render_dataset_report_html(
         <h2>实体类型（Top）</h2>
         {_render_bar_table(kg_type_items, total=max(1, sum(v for _, v in kg_type_items) if kg_type_items else 1))}
       </div>
+    </div>
+
+    <div class="section">
+      <h2>KG Drilldown（Top Documents）</h2>
+      {kg_top_docs_table}
     </div>
 
     <div class="section two">
@@ -657,6 +773,8 @@ def render_dataset_report_html(
         {rr_summary_table}
       </div>
     </div>
+
+    {rr_slices_section}
 
     <div class="section">
       <h2>Pipeline 版本分布</h2>
@@ -741,6 +859,17 @@ def render_rag_audit_html(
     kg_events = int(kgd.get("events") or 0)
     kg_entities = int(kgd.get("entities") or 0)
     kg_links = int(kgd.get("links") or 0)
+    kg_events_with_chunk = int(kgd.get("events_with_chunk_id") or 0)
+    kg_events_with_page = int(kgd.get("events_with_page_ref") or 0)
+    kg_links_with_prov = int(kgd.get("links_with_provenance") or 0)
+    kg_links_with_page = int(kgd.get("links_with_page_ref") or 0)
+    kg_docs_extracted = int(kgd.get("documents_with_kg_extracted_at") or 0)
+    kg_docs_with_events = int(kgd.get("documents_with_kg_events") or 0)
+    kg_event_count_from_docs = int(kgd.get("event_count_from_documents") or 0)
+    kg_skipped_chunks = int(kgd.get("skipped_chunks_total") or 0)
+    kg_skipped_short = int(kgd.get("skipped_short_chunks_total") or 0)
+    kg_failed_chunks = int(kgd.get("failed_chunks_total") or 0)
+    kg_retry_chunks = int(kgd.get("retry_chunks_total") or 0)
     kg_updated_at = str(kgd.get("updated_at") or "").strip()
     kg_types: list[tuple[str, int]] = []
     raw_types = kgd.get("entity_types")
@@ -755,6 +884,35 @@ def render_rag_audit_html(
                 cnt = 0
             if cnt > 0:
                 kg_types.append((tp, cnt))
+
+    kg_top_docs = kgd.get("top_documents") if isinstance(kgd.get("top_documents"), list) else []
+    kg_doc_rows: list[str] = []
+    if not redact and isinstance(kg_top_docs, list):
+        for r in kg_top_docs[:10]:
+            if not isinstance(r, dict):
+                continue
+            did = str(r.get("document_id") or "").strip()
+            if not did:
+                continue
+            src = str(r.get("source") or "").strip()
+            try:
+                evc = int(r.get("event_count") or 0)
+            except Exception:
+                evc = 0
+            kg_doc_rows.append(
+                "<tr>"
+                f"<td class=\\\"k\\\">{escape(src or did[:8])}</td>"
+                f"<td class=\\\"v\\\">{_fmt_int(evc)}</td>"
+                "<td></td>"
+                "</tr>"
+            )
+    kg_top_docs_table = (
+        "<table class=\\\"bars\\\"><thead><tr><th>doc</th><th>events</th><th></th></tr></thead><tbody>"
+        + "".join(kg_doc_rows)
+        + "</tbody></table>"
+        if kg_doc_rows
+        else '<div class="empty">暂无数据</div>'
+    )
 
     rr = report.get("latest_regression_run") if isinstance(report, dict) else None
     rrd = rr if isinstance(rr, dict) else {}
@@ -782,6 +940,66 @@ def render_rag_audit_html(
         if rr_summary_rows
         else '<div class="empty">暂无数据</div>'
     )
+
+    rr_slices = rr_summary.get("retrieval_slices") if isinstance(rr_summary.get("retrieval_slices"), dict) else {}
+
+    def _fmt_num(v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, bool):
+            return "1" if v else "0"
+        if isinstance(v, int) and not isinstance(v, bool):
+            return _fmt_int(v)
+        if isinstance(v, float):
+            return f"{v:.4f}"
+        return str(v)
+
+    def _render_rr_slice_table(dim: str) -> str:
+        obj = rr_slices.get(dim) if isinstance(rr_slices.get(dim), dict) else {}
+        buckets = obj.get("buckets") if isinstance(obj.get("buckets"), list) else []
+        rows: list[str] = []
+        for b in buckets[:10]:
+            if not isinstance(b, dict):
+                continue
+            key = str(b.get("key") or "").strip()
+            if not key:
+                continue
+            try:
+                items = int(b.get("items") or 0)
+            except Exception:
+                items = 0
+            rows.append(
+                "<tr>"
+                f"<td class=\\\"k\\\">{escape(key)}</td>"
+                f"<td class=\\\"v\\\">{_fmt_int(items)}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_recall')))}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_hit_at_20')))}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_mrr')))}</td>"
+                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('abstain_rate')))}</td>"
+                "</tr>"
+            )
+        return (
+            "<table class=\\\"bars\\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
+            + "".join(rows)
+            + "</tbody></table>"
+            if rows
+            else '<div class=\"empty\">暂无数据</div>'
+        )
+
+    rr_slices_section = ""
+    if rr_slices:
+        rr_slices_section = (
+            "<div class=\\\"section\\\">"
+            "<h2>Retrieval Slices（file_type / language / directory）</h2>"
+            "<div class=\\\"two\\\">"
+            f"<div><h2>file_type</h2>{_render_rr_slice_table('file_type')}</div>"
+            f"<div><h2>language</h2>{_render_rr_slice_table('language')}</div>"
+            "</div>"
+            "<div style=\\\"margin-top:12px\\\"><h2>directory</h2>"
+            f"{_render_rr_slice_table('directory')}"
+            "</div>"
+            "</div>"
+        )
 
     raw_json = json.dumps(report, ensure_ascii=False, indent=2)
 
@@ -908,6 +1126,17 @@ def render_rag_audit_html(
             <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
             <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>
             <tr><td class="k">links</td><td class="v">{_fmt_int(kg_links)}</td><td></td></tr>
+            <tr><td class="k">events_with_chunk_id</td><td class="v">{_fmt_int(kg_events_with_chunk)}</td><td></td></tr>
+            <tr><td class="k">events_with_page_ref</td><td class="v">{_fmt_int(kg_events_with_page)}</td><td></td></tr>
+            <tr><td class="k">links_with_provenance</td><td class="v">{_fmt_int(kg_links_with_prov)}</td><td></td></tr>
+            <tr><td class="k">links_with_page_ref</td><td class="v">{_fmt_int(kg_links_with_page)}</td><td></td></tr>
+            <tr><td class="k">documents_with_kg_extracted_at</td><td class="v">{_fmt_int(kg_docs_extracted)}</td><td></td></tr>
+            <tr><td class="k">documents_with_kg_events</td><td class="v">{_fmt_int(kg_docs_with_events)}</td><td></td></tr>
+            <tr><td class="k">event_count_from_documents</td><td class="v">{_fmt_int(kg_event_count_from_docs)}</td><td></td></tr>
+            <tr><td class="k">skipped_chunks_total</td><td class="v">{_fmt_int(kg_skipped_chunks)}</td><td></td></tr>
+            <tr><td class="k">skipped_short_chunks_total</td><td class="v">{_fmt_int(kg_skipped_short)}</td><td></td></tr>
+            <tr><td class="k">failed_chunks_total</td><td class="v">{_fmt_int(kg_failed_chunks)}</td><td></td></tr>
+            <tr><td class="k">retry_chunks_total</td><td class="v">{_fmt_int(kg_retry_chunks)}</td><td></td></tr>
             <tr><td class="k">updated_at</td><td class="v">{escape(kg_updated_at)}</td><td></td></tr>
           </tbody>
         </table>
@@ -916,6 +1145,11 @@ def render_rag_audit_html(
         <h2>实体类型（Top）</h2>
         {_render_bar_table(kg_types, total=max(1, sum(v for _, v in kg_types) if kg_types else 1))}
       </div>
+    </div>
+
+    <div class="section">
+      <h2>KG Drilldown（Top Documents）</h2>
+      {kg_top_docs_table}
     </div>
 
     <div class="section two">
@@ -935,6 +1169,8 @@ def render_rag_audit_html(
         {rr_summary_table}
       </div>
     </div>
+
+    {rr_slices_section}
 
     <div class="section">
       <h2>Raw JSON（用于审计/分享）</h2>

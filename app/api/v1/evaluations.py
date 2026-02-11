@@ -8,7 +8,7 @@ querying, and results.
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -33,6 +33,7 @@ from app.api.schemas.regression import (
     RagasRegressionItemSchema,
     RagasRegressionRunCreateRequest,
     RagasRegressionRunDetail,
+    RagasRegressionRunDiffResponse,
     RagasRegressionRunList,
     RagasRegressionRunSchema,
 )
@@ -52,6 +53,8 @@ from app.rag.evaluation.test_generator import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.regression_case_bundle import export_case_bundle, plan_case_import
+from app.services.regression_run_diff import diff_regression_run_summaries
+from app.services.regression_run_diff_html import render_regression_run_diff_html
 from app.services.regression_run_scope import (
     DatasetMismatchError,
     MissingCasesError,
@@ -786,6 +789,90 @@ async def get_ragas_regression_run(
             items_out.append(payload)
 
     return {"run": run, "items": items_out}
+
+
+@router.get("/ragas/regression/runs/{run_id}/diff", response_model=RagasRegressionRunDiffResponse)
+async def diff_ragas_regression_runs(
+    run_id: UUID,
+    base_run_id: UUID = Query(..., description="Base run id to compare against"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Diff two regression runs (objective numbers + retrieval slices only)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    base = (
+        db.query(RagasRegressionRun)
+        .filter(RagasRegressionRun.id == base_run_id, RagasRegressionRun.tenant_id == tenant_id)
+        .first()
+    )
+    if base is None:
+        raise HTTPException(status_code=404, detail="Base run not found")
+
+    target = (
+        db.query(RagasRegressionRun)
+        .filter(RagasRegressionRun.id == run_id, RagasRegressionRun.tenant_id == tenant_id)
+        .first()
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Target run not found")
+
+    base_summary = getattr(base, "summary", None)
+    base_summary = base_summary if isinstance(base_summary, dict) else {}
+    target_summary = getattr(target, "summary", None)
+    target_summary = target_summary if isinstance(target_summary, dict) else {}
+    if not base_summary or not target_summary:
+        raise HTTPException(status_code=404, detail="Summary not available")
+
+    diff = diff_regression_run_summaries(
+        base_run_id=base_run_id,
+        target_run_id=run_id,
+        base_summary=base_summary,
+        target_summary=target_summary,
+        max_slice_buckets=40,
+    )
+    diff["base_params"] = dict(getattr(base, "params", None) or {})
+    diff["target_params"] = dict(getattr(target, "params", None) or {})
+    return RagasRegressionRunDiffResponse(**diff)
+
+
+@router.get("/ragas/regression/runs/{run_id}/diff/export-html")
+async def export_ragas_regression_run_diff_html(
+    run_id: UUID,
+    base_run_id: UUID = Query(..., description="Base run id to compare against"),
+    redact: bool = Query(default=True, description="Whether to redact run ids for sharing"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    # Reuse the JSON diff logic (single source of truth).
+    payload = await diff_ragas_regression_runs(
+        run_id=run_id,
+        base_run_id=base_run_id,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+    diff = payload.model_dump(mode="json")
+
+    html = render_regression_run_diff_html(
+        title="MimirQ · Regression Run Diff（Before vs After）",
+        base_run_id=str(base_run_id),
+        target_run_id=str(run_id),
+        generated_at=diff.get("generated_at"),
+        diff=diff,
+        redact=bool(redact),
+    )
+
+    filename = f"regression_diff.{str(run_id)[:8]}.html"
+    return Response(
+        content=html,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/ragas/test-gen/from-documents", response_model=TestGenResponse)
