@@ -23,6 +23,7 @@ from app.api.schemas.dataset_profile import (
     DatasetProfileDocumentOut,
     DatasetProfileFindingListResponse,
     DatasetProfileFindingSummary,
+    DatasetProfileParsingProvenanceStats,
     DatasetProfilePdfScanStats,
     DatasetProfilePercentiles,
     DatasetProfileScanRunSummary,
@@ -285,6 +286,12 @@ def aggregate_profile_from_rows(
     language_counts: Counter[str] = Counter()
     parse_quality_bins: list[int] = [0 for _ in range(10)]
 
+    # Parsing provenance/routing (best-effort; derived from metadata.parse_provenance).
+    provenance_docs = 0
+    provenance_by_backend: Counter[str] = Counter()
+    provenance_fallback_docs = 0
+    provenance_elapsed_ms: List[int] = []
+
     pii_totals: dict[str, int] = defaultdict(int)
     secrets_totals: dict[str, int] = defaultdict(int)
 
@@ -343,6 +350,24 @@ def aggregate_profile_from_rows(
                 avg_chunk_chars.append(int(max(1, length_val // max(1, int(chunk_count_val)))))
 
         meta_dict = meta if isinstance(meta, dict) else {}
+
+        # Parse provenance/routing stats (best-effort).
+        prov = meta_dict.get("parse_provenance")
+        if isinstance(prov, dict) and prov:
+            provenance_docs += 1
+            backend = str(prov.get("resolved_backend") or "").strip() or "unknown"
+            provenance_by_backend[backend] += 1
+
+            elapsed = safe_int(prov.get("elapsed_ms"), default=0)
+            if elapsed > 0:
+                provenance_elapsed_ms.append(int(elapsed))
+
+            # Fallback detection: multiple attempts with initial failure.
+            attempts = prov.get("attempts")
+            if isinstance(attempts, list) and len(attempts) >= 2:
+                first = attempts[0] if attempts else None
+                if isinstance(first, dict) and first.get("ok") is False:
+                    provenance_fallback_docs += 1
 
         # Per-chunk length distribution (requires ingest-time chunking_stats or deep scan backfill).
         chunking_stats = meta_dict.get("chunking_stats")
@@ -535,6 +560,15 @@ def aggregate_profile_from_rows(
         p99=percentile_from_sorted(avg_chunk_tokens, 99),
     )
 
+    provenance_elapsed_ms.sort()
+    provenance_elapsed_percentiles = DatasetProfilePercentiles(
+        p25=percentile_from_sorted(provenance_elapsed_ms, 25),
+        p50=percentile_from_sorted(provenance_elapsed_ms, 50),
+        p75=percentile_from_sorted(provenance_elapsed_ms, 75),
+        p90=percentile_from_sorted(provenance_elapsed_ms, 90),
+        p99=percentile_from_sorted(provenance_elapsed_ms, 99),
+    )
+
     def _pct_from_chunk_length_hist(p: int) -> int:
         total = int(chunk_length_total or 0)
         if total <= 0:
@@ -706,6 +740,12 @@ def aggregate_profile_from_rows(
         parse_quality_histogram=pq_hist,
         language_mix=language_mix,
         pdf_scan=DatasetProfilePdfScanStats(scanned=pdf_scanned, not_scanned=pdf_not_scanned, unknown=pdf_unknown),
+        parsing_provenance=DatasetProfileParsingProvenanceStats(
+            docs_with_provenance=int(provenance_docs),
+            by_resolved_backend={k: int(v) for k, v in provenance_by_backend.items()},
+            fallback_docs=int(provenance_fallback_docs),
+            elapsed_ms_percentiles=provenance_elapsed_percentiles,
+        ),
         pii_hits_total={k: int(v) for k, v in pii_totals.items()},
         secrets_hits_total={k: int(v) for k, v in secrets_totals.items()},
         findings=findings_out,

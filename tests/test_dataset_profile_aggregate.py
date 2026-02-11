@@ -43,6 +43,7 @@ def test_dataset_profile_aggregate_empty():
     assert "parse_failed" in keys
     assert "preprocess_failed" in keys
     assert "pdf_scanned" in keys
+    assert summary.parsing_provenance.docs_with_provenance == 0
 
 
 def test_dataset_profile_aggregate_basic_distributions_and_findings():
@@ -54,7 +55,15 @@ def test_dataset_profile_aggregate_basic_distributions_and_findings():
             file_size=1200,
             status="completed",
             total_characters=0,
-            metadata={"pdf_quality": {"is_scanned": True}, "parsed_text_quality": {"density": 0.2}},
+            metadata={
+                "pdf_quality": {"is_scanned": True},
+                "parsed_text_quality": {"density": 0.2},
+                "parse_provenance": {
+                    "resolved_backend": "basic",
+                    "elapsed_ms": 12,
+                    "attempts": [{"backend": "basic", "ok": True, "elapsed_ms": 12}],
+                },
+            },
         ),
         _row(
             filename="b.pdf",
@@ -62,7 +71,17 @@ def test_dataset_profile_aggregate_basic_distributions_and_findings():
             file_size=2200,
             status="completed",
             total_characters=1000,
-            metadata={"parsed_text_quality": {"density": 0.05}},  # low density
+            metadata={
+                "parsed_text_quality": {"density": 0.05},  # low density
+                "parse_provenance": {
+                    "resolved_backend": "basic",
+                    "elapsed_ms": 120,
+                    "attempts": [
+                        {"backend": "olmocr", "ok": False, "elapsed_ms": 80, "error_type": "RuntimeError"},
+                        {"backend": "basic", "ok": True, "elapsed_ms": 40, "fallback_from": "olmocr"},
+                    ],
+                },
+            },
         ),
         _row(
             filename="c.docx",
@@ -104,6 +123,10 @@ def test_dataset_profile_aggregate_basic_distributions_and_findings():
 
     # Percentiles should reflect [200, 500, 1000] (0 length excluded)
     assert summary.length_percentiles.p50 == 500
+
+    assert summary.parsing_provenance.docs_with_provenance == 2
+    assert summary.parsing_provenance.by_resolved_backend.get("basic") == 2
+    assert summary.parsing_provenance.fallback_docs == 1
 
 
 def test_dataset_profile_aggregate_exact_duplicates():
