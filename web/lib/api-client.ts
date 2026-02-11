@@ -154,6 +154,16 @@ import type {
   RetrievePreviewResponse,
   EvidenceRetrieveRequest,
   EvidenceRetrieveResponse,
+  EvidenceItem,
+  EvidenceItemCreate,
+  EvidenceItemList,
+  EvidenceItemPatch,
+  EvidenceSuite,
+  EvidenceSuiteCreate,
+  EvidenceSuiteExportV1,
+  EvidenceSuiteList,
+  EvidenceSuitePatch,
+  EvidenceSuiteSyncRegressionResponse,
   PromptPreviewRequest,
   PromptPreviewResponse,
   RegressionCase,
@@ -185,6 +195,7 @@ import type {
   RagMetricsSummaryResponse,
   IndexAuditResponse,
   RagTraceListResponse,
+  RagasRegressionRunDiffResponse,
 } from '@/types'
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
@@ -1430,6 +1441,78 @@ export const ragApi = {
   },
 }
 
+// ==================== Evidence Workbench (Ground Truth) ====================
+
+export const evidenceApi = {
+  async createSuite(payload: EvidenceSuiteCreate): Promise<EvidenceSuite> {
+    const { data } = await apiClient.post('/evidence/suites', payload)
+    return data
+  },
+
+  async listSuites(params?: {
+    skip?: number
+    limit?: number
+    dataset_id?: string
+    include_archived?: boolean
+  }): Promise<EvidenceSuiteList> {
+    const { data } = await apiClient.get('/evidence/suites', { params })
+    return data
+  },
+
+  async getSuite(suiteId: string): Promise<EvidenceSuite> {
+    const { data } = await apiClient.get(`/evidence/suites/${suiteId}`)
+    return data
+  },
+
+  async patchSuite(suiteId: string, payload: EvidenceSuitePatch): Promise<EvidenceSuite> {
+    const { data } = await apiClient.patch(`/evidence/suites/${suiteId}`, payload)
+    return data
+  },
+
+  async createItem(suiteId: string, payload: EvidenceItemCreate): Promise<EvidenceItem> {
+    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/items`, { ...payload, suite_id: suiteId })
+    return data
+  },
+
+  async listItems(
+    suiteId: string,
+    params?: { skip?: number; limit?: number; status?: string }
+  ): Promise<EvidenceItemList> {
+    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/items`, { params })
+    return data
+  },
+
+  async patchItem(itemId: string, payload: EvidenceItemPatch): Promise<EvidenceItem> {
+    const { data } = await apiClient.patch(`/evidence/items/${itemId}`, payload)
+    return data
+  },
+
+  async reviewItem(itemId: string): Promise<EvidenceItem> {
+    const { data } = await apiClient.post(`/evidence/items/${itemId}/review`)
+    return data
+  },
+
+  async approveItem(itemId: string): Promise<EvidenceItem> {
+    const { data } = await apiClient.post(`/evidence/items/${itemId}/approve`)
+    return data
+  },
+
+  async archiveItem(itemId: string): Promise<EvidenceItem> {
+    const { data } = await apiClient.post(`/evidence/items/${itemId}/archive`)
+    return data
+  },
+
+  async syncSuiteToRegression(suiteId: string): Promise<EvidenceSuiteSyncRegressionResponse> {
+    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/sync-regression`)
+    return data
+  },
+
+  async exportSuite(suiteId: string, params?: { include_archived_items?: boolean }): Promise<EvidenceSuiteExportV1> {
+    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/export`, { params })
+    return data
+  },
+}
+
 // ==================== 数据集 API ====================
 
 export const datasetApi = {
@@ -1614,6 +1697,15 @@ export const datasetApi = {
     return data
   },
 
+  async listPrecheckFiles(
+    datasetId: string,
+    scanRunId: string,
+    params?: { dir_prefix?: string; skip?: number; limit?: number }
+  ): Promise<DatasetPrecheckFindingListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/files`, { params })
+    return data
+  },
+
   async listPrecheckFinding(
     datasetId: string,
     scanRunId: string,
@@ -1795,6 +1887,14 @@ export const reportApi = {
     params?: { pipeline_hash?: string; connector_runs_limit?: number; redact?: boolean }
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/reports/datasets/${datasetId}/export-html`, { params, responseType: 'blob' })
+    return data as Blob
+  },
+
+  async exportDatasetRagAuditHtml(
+    datasetId: string,
+    params?: { pipeline_hash?: string; connector_runs_limit?: number; redact?: boolean }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/reports/datasets/${datasetId}/rag-audit/export-html`, { params, responseType: 'blob' })
     return data as Blob
   },
 }
@@ -2566,6 +2666,19 @@ export const evaluationApi = {
       params,
     })
     return data
+  },
+
+  async diffRegressionRuns(runId: string, params: { base_run_id: string }): Promise<RagasRegressionRunDiffResponse> {
+    const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff`, { params })
+    return data
+  },
+
+  async exportRegressionRunDiffHtml(
+    runId: string,
+    params: { base_run_id: string; redact?: boolean }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff/export-html`, { params, responseType: 'blob' })
+    return data as Blob
   },
 }
 

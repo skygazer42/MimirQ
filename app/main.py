@@ -57,6 +57,9 @@ import app.models.db_catalog  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
 import app.models.evaluation  # noqa: F401
 
+# Ensure evidence suite models are registered for metadata creation
+import app.models.evidence  # noqa: F401
+
 # Ensure feedback models are registered for metadata creation
 import app.models.feedback  # noqa: F401
 

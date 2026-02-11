@@ -7,6 +7,7 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
 from app.models.document import Document, DocumentChunk
 from app.models.evaluation import RagasEvaluationItem, RagasEvaluationRun
+from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.governance_profile import GovernanceProfile
 from app.models.prompt_template import PromptTemplate
 from app.models.tenant import Tenant, TenantMember
@@ -30,6 +31,8 @@ __all__ = [
     "KgEntity",
     "KgSourceEvent",
     "KgEventEntity",
+    "EvidenceSuite",
+    "EvidenceItem",
     "RagasEvaluationRun",
     "RagasEvaluationItem",
     "GovernanceProfile",

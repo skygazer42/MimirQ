@@ -16,6 +16,7 @@ from app.api.v1 import (
     db_catalog,
     documents,
     evaluations,
+    evidence,
     feedback,
     governance,
     health,
@@ -48,6 +49,7 @@ router.include_router(dataset_tables.router, prefix="/datasets", tags=["Dataset 
 router.include_router(db_catalog.router, prefix="/datasets", tags=["DB Catalog"])
 router.include_router(dataset_categories.router, prefix="/dataset-categories", tags=["Dataset Categories"])
 router.include_router(kg.router, prefix="/kg", tags=["Knowledge Graph (KG)"])
+router.include_router(evidence.router, prefix="/evidence", tags=["Evidence Workbench"])
 router.include_router(settings.router, prefix="/settings", tags=["Settings"])
 router.include_router(governance.router, prefix="/governance", tags=["Governance"])
 router.include_router(evaluations.router, prefix="/evaluations", tags=["Evaluations"])
