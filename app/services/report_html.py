@@ -926,6 +926,10 @@ def render_rag_audit_html(
     except Exception:
         ga_char_reduction_ratio = 0.0
     ga_char_reduction_ratio = max(0.0, min(1.0, ga_char_reduction_ratio))
+    pct0 = ga.get("char_reduction_pct_percentiles") if isinstance(ga.get("char_reduction_pct_percentiles"), dict) else {}
+    ga_char_reduction_p50 = int(pct0.get("p50") or 0)
+    ga_char_reduction_p90 = int(pct0.get("p90") or 0)
+    ga_char_reduction_p99 = int(pct0.get("p99") or 0)
     ga_docs_changed = int(ga.get("docs_changed") or 0)
     ga_docs_dropped = int(ga.get("docs_dropped") or 0)
 
@@ -960,6 +964,9 @@ def render_rag_audit_html(
             f"<tr><td class=\\\"k\\\">original_chars_total</td><td class=\\\"v\\\">{_fmt_int(ga_orig_chars)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">cleaned_chars_total</td><td class=\\\"v\\\">{_fmt_int(ga_clean_chars)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">char_reduction_ratio</td><td class=\\\"v\\\">{escape(ratio_str)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">char_reduction_pct_p50</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p50)}%')}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">char_reduction_pct_p90</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p90)}%')}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">char_reduction_pct_p99</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p99)}%')}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">paragraphs_dropped_total</td><td class=\\\"v\\\">{_fmt_int(ga_paras_dropped)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">references_removed_lines_total</td><td class=\\\"v\\\">{_fmt_int(ga_refs_removed)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">urls_changed_total</td><td class=\\\"v\\\">{_fmt_int(ga_urls_changed)}</td><td></td></tr>"

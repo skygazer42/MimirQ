@@ -30,6 +30,7 @@ from app.core.config import settings
 from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.document import Document as DBDocument
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
+from app.services.dataset_profile_utils import HistogramBinSpec, histogram, percentile_from_sorted
 from app.services.dataset_service import DatasetService
 from app.services.document_folders import build_document_folder_tree
 
@@ -137,6 +138,7 @@ def _aggregate_governance_audit(
     persisted_truncated_docs = 0
     orig_chars_total = 0
     clean_chars_total = 0
+    reduction_pcts: list[int] = []
 
     for meta in metadatas:
         if not isinstance(meta, dict):
@@ -192,11 +194,41 @@ def _aggregate_governance_audit(
                 clean_chars_total += cln_raw_len
                 if bool(orig.get("truncated")) or bool(cln.get("truncated")):
                     persisted_truncated_docs += 1
+                try:
+                    ratio_doc = float((orig_raw_len - cln_raw_len) / float(orig_raw_len))
+                except Exception:
+                    ratio_doc = 0.0
+                ratio_doc = max(0.0, min(1.0, ratio_doc))
+                # Express distributions in percentage points (0-100), aligned with DatasetProfile percentiles.
+                reduction_pcts.append(int(round(ratio_doc * 100.0)))
 
     ratio = 0.0
     if orig_chars_total > 0 and clean_chars_total >= 0:
         ratio = float((orig_chars_total - clean_chars_total) / float(orig_chars_total))
         ratio = max(0.0, min(1.0, ratio))
+
+    pct_percentiles: dict[str, int] = {}
+    pct_hist: list[dict] = []
+    if reduction_pcts:
+        reduction_pcts_sorted = sorted(reduction_pcts)
+        pct_percentiles = {
+            "p25": percentile_from_sorted(reduction_pcts_sorted, 25),
+            "p50": percentile_from_sorted(reduction_pcts_sorted, 50),
+            "p75": percentile_from_sorted(reduction_pcts_sorted, 75),
+            "p90": percentile_from_sorted(reduction_pcts_sorted, 90),
+            "p99": percentile_from_sorted(reduction_pcts_sorted, 99),
+        }
+        pct_hist = histogram(
+            reduction_pcts_sorted,
+            bins=[
+                HistogramBinSpec("0-5%", 0, 5),
+                HistogramBinSpec("5-15%", 5, 15),
+                HistogramBinSpec("15-30%", 15, 30),
+                HistogramBinSpec("30-50%", 30, 50),
+                HistogramBinSpec("50-80%", 50, 80),
+                HistogramBinSpec("80%+", 80, None),
+            ],
+        )
 
     return DatasetGovernanceAuditOut(
         total_documents=int(total_documents or 0),
@@ -207,6 +239,8 @@ def _aggregate_governance_audit(
         original_chars_total=int(max(0, orig_chars_total)),
         cleaned_chars_total=int(max(0, clean_chars_total)),
         char_reduction_ratio=float(ratio),
+        char_reduction_pct_percentiles=pct_percentiles,
+        char_reduction_pct_histogram=pct_hist,
         docs_changed=int(max(0, docs_changed)),
         docs_dropped=int(max(0, docs_dropped)),
         paragraphs_dropped_total=int(max(0, paras_dropped)),

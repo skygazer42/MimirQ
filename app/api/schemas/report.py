@@ -8,7 +8,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.api.schemas.dataset_profile import DatasetProfileSummary
+from app.api.schemas.dataset_profile import (
+    DatasetProfileHistogramBin,
+    DatasetProfilePercentiles,
+    DatasetProfileSummary,
+)
 from app.api.schemas.document_folders import DocumentFolderTreeResponse
 
 
@@ -84,6 +88,10 @@ class DatasetGovernanceAuditOut(BaseModel):
     cleaned_chars_total: int = 0
     # (original - cleaned) / original across docs_with_parsed_content_persisted.
     char_reduction_ratio: float = 0.0
+    # Distribution of per-document char reduction (percentage points, 0-100).
+    # Only computed when parsed_content_persisted metadata is available.
+    char_reduction_pct_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    char_reduction_pct_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Doc-level outcomes derived from governance_* document metadata (best-effort).
     docs_changed: int = 0
