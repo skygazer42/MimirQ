@@ -63,10 +63,14 @@ class KGEngine:
         tenant_id: Optional[UUID] = None,
         *,
         document_ids: Optional[List[UUID]] = None,
+        dataset_id: Optional[UUID] = None,
+        account_id: Optional[str] = None,
     ) -> Dict:
         config = SearchConfig(
             query=query,
             tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
             document_ids=document_ids,
+            dataset_id=dataset_id,
+            account_id=account_id,
         )
         return await self.searcher.search(config)

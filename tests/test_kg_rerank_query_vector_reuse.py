@@ -35,7 +35,7 @@ async def test_rrf_uses_provided_query_vector(monkeypatch: pytest.MonkeyPatch) -
         def __init__(self, _session):  # noqa: ANN001
             return
 
-        def get_events_by_ids(self, _ids, *, tenant_id=None, document_ids=None):  # noqa: ANN001
+        def get_events_by_ids(self, _ids, *, tenant_id=None, document_ids=None, **_k):  # noqa: ANN001
             return [_Ev(UUID(int=1))]
 
     monkeypatch.setattr(rrf_mod, "EventRepository", _FakeEventRepo, raising=True)
@@ -48,4 +48,3 @@ async def test_rrf_uses_provided_query_vector(monkeypatch: pytest.MonkeyPatch) -
         query_vector=[0.0],
     )
     assert out["events"]
-

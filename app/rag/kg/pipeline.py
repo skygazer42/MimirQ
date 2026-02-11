@@ -55,6 +55,14 @@ async def kg_search(
     query: str,
     tenant_id: Optional[UUID] = None,
     document_ids: Optional[List[UUID]] = None,
+    dataset_id: Optional[UUID] = None,
+    account_id: Optional[str] = None,
 ) -> Dict:
     engine = _load_engine()
-    return await engine.search(query=query, tenant_id=tenant_id, document_ids=document_ids)
+    return await engine.search(
+        query=query,
+        tenant_id=tenant_id,
+        document_ids=document_ids,
+        dataset_id=dataset_id,
+        account_id=account_id,
+    )

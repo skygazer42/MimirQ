@@ -143,6 +143,80 @@ class EventRepository:
         collection = resolve_collection_name("kg_events")
         self._milvus = get_milvus_adapter(collection_name=collection, vector_field="embedding")
 
+    def _allowed_document_ids_subquery_for_dataset(self, *, tenant_id: UUID, dataset_id: UUID, account_id: str):
+        """
+        Return a SQL subquery selecting document ids within dataset that `account_id` can read.
+
+        Notes:
+        - Enforces dataset permission + document-level ACL (security trimming).
+        - Uses the shared semantics in dataset_profile_service to stay consistent with chat/retrieval.
+        """
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+        from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
+
+        _ds, q = build_dataset_documents_query(
+            self.session,
+            tenant_id=tenant_id,
+            account_id=str(account_id or "").strip(),
+            dataset_id=dataset_id,
+        )
+        return q.with_entities(DBDocument.id).subquery()
+
+    def filter_event_ids_in_dataset(
+        self,
+        event_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID,
+        account_id: str,
+    ) -> set[UUID]:
+        ids = _as_uuid_list(event_ids)
+        if not ids:
+            return set()
+        allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        stmt = (
+            select(KgSourceEvent.id)
+            .where(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.id.in_(ids),
+                KgSourceEvent.document_id.in_(select(allowed_docs.c.id)),
+            )
+            .distinct()
+        )
+        return set(self.session.execute(stmt).scalars().all())
+
+    def filter_entity_ids_in_dataset(
+        self,
+        entity_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID,
+        account_id: str,
+    ) -> set[UUID]:
+        ids = _as_uuid_list(entity_ids)
+        if not ids:
+            return set()
+        allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        stmt = (
+            select(KgEventEntity.entity_id)
+            .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+            .where(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.document_id.in_(select(allowed_docs.c.id)),
+                KgEventEntity.entity_id.in_(ids),
+            )
+            .distinct()
+        )
+        return set(self.session.execute(stmt).scalars().all())
+
     def link_event_entities(
         self,
         links: List[KgEventEntity],
@@ -157,6 +231,8 @@ class EventRepository:
         *,
         tenant_id: UUID | None = None,
         document_ids: Optional[List[UUID]] = None,
+        dataset_id: UUID | None = None,
+        account_id: str | None = None,
     ) -> List[KgSourceEvent]:
         id_list = _as_uuid_list(ids)
         if not id_list:
@@ -166,6 +242,17 @@ class EventRepository:
             stmt = stmt.where(KgSourceEvent.tenant_id == tenant_id)
         if document_ids:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
+        elif dataset_id is not None:
+            if tenant_id is None:
+                raise ValueError("tenant_id is required when dataset_id is provided")
+            if not account_id:
+                raise ValueError("account_id is required when dataset_id is provided")
+            allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                account_id=account_id,
+            )
+            stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
         return self.session.execute(stmt).scalars().all()
 
     def get_events_with_entities(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> List[KgSourceEvent]:
@@ -191,6 +278,8 @@ class EventRepository:
         tenant_id,
         k: int = 20,
         document_ids: Optional[List[UUID]] = None,
+        dataset_id: UUID | None = None,
+        account_id: str | None = None,
     ) -> List[dict]:
         expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         if document_ids:
@@ -212,7 +301,25 @@ class EventRepository:
                     "document_id": meta.get("document_id"),
                 }
             )
-        return formatted
+        if document_ids or dataset_id is None:
+            return formatted
+
+        # Dataset-scoped search: post-filter vector hits via SQL to enforce ACL without enumerating doc ids.
+        if not account_id:
+            raise ValueError("account_id is required when dataset_id is provided")
+        try:
+            candidate_event_ids = [item.get("event_id") for item in formatted if item.get("event_id")]
+            allowed_event_ids = self.filter_event_ids_in_dataset(
+                candidate_event_ids,
+                tenant_id=UUID(str(tenant_id)),
+                dataset_id=dataset_id,
+                account_id=account_id,
+            )
+            allowed_strs = {str(eid) for eid in allowed_event_ids}
+            return [item for item in formatted if str(item.get("event_id")) in allowed_strs]
+        except Exception:
+            # Best-effort: if filtering fails, fall back to raw vector hits (caller can still filter later).
+            return formatted
 
     def search_events_by_entities(
         self,
@@ -220,6 +327,8 @@ class EventRepository:
         tenant_id,
         limit: int = 50,
         document_ids: Optional[List[UUID]] = None,
+        dataset_id: UUID | None = None,
+        account_id: str | None = None,
     ) -> List[UUID]:
         ids = _as_uuid_list(entity_ids)
         if not ids:
@@ -238,6 +347,15 @@ class EventRepository:
         )
         if document_ids:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
+        elif dataset_id is not None:
+            if not account_id:
+                raise ValueError("account_id is required when dataset_id is provided")
+            allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+                tenant_id=UUID(str(tenant_id)),
+                dataset_id=dataset_id,
+                account_id=account_id,
+            )
+            stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
         rows = self.session.execute(stmt).all()
         return [row[0] for row in rows]
 
@@ -315,6 +433,8 @@ class EventRepository:
         tenant_id,
         limit: int = 50,
         document_ids: Optional[List[UUID]] = None,
+        dataset_id: UUID | None = None,
+        account_id: str | None = None,
     ) -> List[KgSourceEvent]:
         ids = _as_uuid_list(entity_ids)
         if not ids:
@@ -330,6 +450,15 @@ class EventRepository:
         )
         if document_ids:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
+        elif dataset_id is not None:
+            if not account_id:
+                raise ValueError("account_id is required when dataset_id is provided")
+            allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+                tenant_id=UUID(str(tenant_id)),
+                dataset_id=dataset_id,
+                account_id=account_id,
+            )
+            stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
         return self.session.execute(stmt).scalars().all()
 
 

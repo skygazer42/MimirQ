@@ -57,6 +57,9 @@ class RerankConfig(KGBaseModel):
 class SearchConfig(KGBaseModel):
     query: str
     tenant_id: Optional[UUID] = None
+    dataset_id: Optional[UUID] = None
+    # Dataset-scoped searches require account_id to enforce document-level ACL (security trimming).
+    account_id: Optional[str] = None
     document_ids: Optional[List[UUID]] = None
     return_type: ReturnType = ReturnType.EVENT
     recall: RecallConfig = RecallConfig()
