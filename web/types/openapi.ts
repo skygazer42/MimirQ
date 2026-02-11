@@ -6701,6 +6701,113 @@ export interface components {
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
+         * DatasetGovernanceAuditOut
+         * @description Dataset-level governance audit (best-effort).
+         *
+         *     Focus: quantify *effects* of governance cleaning, so users can tune profiles/rule packs
+         *     based on objective signals (not subjective scoring).
+         */
+        DatasetGovernanceAuditOut: {
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /**
+             * Used Documents
+             * @default 0
+             */
+            used_documents: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Docs With Parsed Content Persisted
+             * @default 0
+             */
+            docs_with_parsed_content_persisted: number;
+            /**
+             * Parsed Content Truncated Docs
+             * @default 0
+             */
+            parsed_content_truncated_docs: number;
+            /**
+             * Original Chars Total
+             * @default 0
+             */
+            original_chars_total: number;
+            /**
+             * Cleaned Chars Total
+             * @default 0
+             */
+            cleaned_chars_total: number;
+            /**
+             * Char Reduction Ratio
+             * @default 0
+             */
+            char_reduction_ratio: number;
+            char_reduction_pct_percentiles?: components["schemas"]["DatasetProfilePercentiles"];
+            /** Char Reduction Pct Histogram */
+            char_reduction_pct_histogram?: components["schemas"]["DatasetProfileHistogramBin"][];
+            /**
+             * Docs Changed
+             * @default 0
+             */
+            docs_changed: number;
+            /**
+             * Docs Dropped
+             * @default 0
+             */
+            docs_dropped: number;
+            /**
+             * Paragraphs Dropped Total
+             * @default 0
+             */
+            paragraphs_dropped_total: number;
+            /**
+             * References Removed Lines Total
+             * @default 0
+             */
+            references_removed_lines_total: number;
+            /**
+             * Urls Changed Total
+             * @default 0
+             */
+            urls_changed_total: number;
+            /**
+             * Boilerplate Removed Sections Total
+             * @default 0
+             */
+            boilerplate_removed_sections_total: number;
+            /**
+             * Boilerplate Removed Lines Total
+             * @default 0
+             */
+            boilerplate_removed_lines_total: number;
+            /**
+             * Images Removed Total
+             * @default 0
+             */
+            images_removed_total: number;
+            /**
+             * Tables Normalized Total
+             * @default 0
+             */
+            tables_normalized_total: number;
+            /**
+             * Table Rows Changed Total
+             * @default 0
+             */
+            table_rows_changed_total: number;
+            /**
+             * Code Lines Stripped Total
+             * @default 0
+             */
+            code_lines_stripped_total: number;
+        };
+        /**
          * DatasetGovernanceMetricsOut
          * @description Best-effort governance metrics aggregated from per-document metadata.
          */
@@ -8174,9 +8281,14 @@ export interface components {
             };
             folder_tree?: components["schemas"]["DocumentFolderTreeResponse"] | null;
             governance_metrics?: components["schemas"]["DatasetGovernanceMetricsOut"] | null;
+            governance_audit?: components["schemas"]["DatasetGovernanceAuditOut"] | null;
             chunk_quality_metrics?: components["schemas"]["DatasetChunkQualityMetricsOut"] | null;
             kg_stats?: components["schemas"]["DatasetKGStatsOut"] | null;
             latest_regression_run?: components["schemas"]["DatasetRegressionRunSummaryOut"] | null;
+            /** Precheck Summary */
+            precheck_summary?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** DatasetTablesListResponse */
         DatasetTablesListResponse: {

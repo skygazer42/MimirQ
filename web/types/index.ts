@@ -1430,6 +1430,8 @@ export interface DatasetGovernanceAudit {
   original_chars_total: number
   cleaned_chars_total: number
   char_reduction_ratio: number
+  char_reduction_pct_percentiles: DatasetProfilePercentiles
+  char_reduction_pct_histogram: DatasetProfileHistogramBin[]
   docs_changed: number
   docs_dropped: number
   paragraphs_dropped_total: number
