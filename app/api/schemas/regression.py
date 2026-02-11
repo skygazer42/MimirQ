@@ -176,3 +176,33 @@ class RagasRegressionRunDetail(BaseModel):
 class RagasRegressionRunList(BaseModel):
     total: int
     items: List[RagasRegressionRunSchema]
+
+
+class RegressionRunMetricDiff(BaseModel):
+    key: str
+    before: Any = None
+    after: Any = None
+    delta: Optional[float] = None
+
+
+class RegressionRunSliceBucketDiff(BaseModel):
+    key: str
+    items_before: int = 0
+    items_after: int = 0
+    metrics: List[RegressionRunMetricDiff] = Field(default_factory=list)
+
+
+class RegressionRunSliceDiff(BaseModel):
+    truncated_before: bool = False
+    truncated_after: bool = False
+    buckets: List[RegressionRunSliceBucketDiff] = Field(default_factory=list)
+
+
+class RagasRegressionRunDiffResponse(BaseModel):
+    base_run_id: UUID
+    target_run_id: UUID
+    generated_at: datetime
+    base_params: Dict[str, Any] = Field(default_factory=dict)
+    target_params: Dict[str, Any] = Field(default_factory=dict)
+    metric_diffs: List[RegressionRunMetricDiff] = Field(default_factory=list)
+    slice_diffs: Dict[str, RegressionRunSliceDiff] = Field(default_factory=dict)

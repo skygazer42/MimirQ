@@ -295,6 +295,10 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
     return {
         "reference_context_ids": list(sample.get("reference_context_ids") or []),
         "retrieved_context_ids": list(sample.get("retrieved_context_ids") or []),
+        # Slice keys for report slicing (best-effort; derived from evidence document metadata).
+        "slice_file_type": meta.get("slice_file_type"),
+        "slice_language": meta.get("slice_language"),
+        "slice_directory": meta.get("slice_directory"),
         "abstain_triggered": meta.get("abstain_triggered"),
         "abstain_reason": meta.get("abstain_reason"),
         "top_relevance_score": meta.get("top_relevance_score"),

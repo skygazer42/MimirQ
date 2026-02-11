@@ -186,6 +186,16 @@ def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str
         meta = item.get("item_meta")
         metas.append(meta if isinstance(meta, dict) else {})
 
+    return _build_retrieval_metrics_summary(metas)
+
+
+def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Compute retrieval-only metrics from a list of item_meta dicts.
+
+    These stay cheap/deterministic (usable when RAGAS metrics are missing/partial).
+    """
+
     def _mean_bool(key: str) -> Optional[float]:
         vals: list[float] = []
         for m in metas:
@@ -209,6 +219,53 @@ def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str
     }
 
 
+def _build_regression_slice_summaries(
+    eval_items: list[dict[str, Any]],
+    *,
+    max_buckets: int = 20,
+) -> dict[str, Any]:
+    """
+    Slice retrieval-only metrics by stable buckets (file_type/language/directory).
+
+    Returns a JSON-safe dict meant for report exports (bounded).
+    """
+    max_buckets = max(0, min(int(max_buckets or 0), 200))
+
+    metas: list[dict[str, Any]] = []
+    for item in eval_items or []:
+        if not isinstance(item, dict):
+            continue
+        meta = item.get("item_meta")
+        metas.append(meta if isinstance(meta, dict) else {})
+
+    def _bucketize(*, key: str) -> dict[str, Any]:
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for m in metas:
+            raw = m.get(key)
+            b = str(raw or "").strip().lower() or "unknown"
+            if len(b) > 80:
+                b = b[:80]
+            groups.setdefault(b, []).append(m)
+
+        rows: list[dict[str, Any]] = []
+        for bucket, items in groups.items():
+            summary = _build_retrieval_metrics_summary(items)
+            rows.append({"key": bucket, "items": int(len(items)), **summary})
+
+        rows.sort(key=lambda o: (-int(o.get("items") or 0), str(o.get("key") or "")))
+        truncated = False
+        if max_buckets > 0 and len(rows) > max_buckets:
+            rows = rows[:max_buckets]
+            truncated = True
+        return {"buckets": rows, "truncated": bool(truncated)}
+
+    return {
+        "file_type": _bucketize(key="slice_file_type"),
+        "language": _bucketize(key="slice_language"),
+        "directory": _bucketize(key="slice_directory"),
+    }
+
+
 def _merge_summary_with_regression_gate(
     summary: Dict[str, Any],
     *,
@@ -216,6 +273,7 @@ def _merge_summary_with_regression_gate(
 ) -> Dict[str, Any]:
     out = dict(summary or {})
     out.update(_build_regression_gate_summary(eval_items))
+    out["retrieval_slices"] = _build_regression_slice_summaries(eval_items)
     return out
 
 
@@ -621,6 +679,103 @@ def run_regression_ragas_evaluation(
             db.commit()
             return
 
+        # Best-effort slice attributes for report slicing (derived from evidence documents).
+        #
+        # We map each case -> bucket keys using its reference_sources[].document_id.
+        # These are used for "retrieval-only" slicing metrics, and are safe to compute
+        # even when RAGAS metrics are disabled/unavailable.
+        def _normalize_language_bucket(value: object) -> str:
+            s = str(value or "").strip()
+            if not s:
+                return "unknown"
+            lowered = s.lower()
+            if lowered in {"mixed", "multilingual", "multi"}:
+                return "mixed"
+            if any(sep in lowered for sep in (",", ";", "|", "+", "/")):
+                return "mixed"
+            if lowered.startswith("zh"):
+                return "zh"
+            if lowered.startswith("en"):
+                return "en"
+            return "unknown"
+
+        def _dir_bucket_from_source_path(value: object) -> str:
+            raw = str(value or "").replace("\\", "/").strip()
+            if not raw or raw in {".", "/"}:
+                return "root"
+            raw = raw.lstrip("/")
+            head = raw.split("/", 1)[0].strip()
+            return head or "root"
+
+        evidence_doc_ids: set[UUID] = set()
+        case_to_evidence_docs: dict[UUID, list[UUID]] = {}
+        for case in cases:
+            doc_ids: list[UUID] = []
+            seen: set[UUID] = set()
+            for src in getattr(case, "reference_sources", None) or []:
+                raw = None
+                if isinstance(src, dict):
+                    raw = src.get("document_id")
+                else:
+                    raw = getattr(src, "document_id", None)
+                if not raw:
+                    continue
+                try:
+                    did = UUID(str(raw))
+                except Exception:
+                    continue
+                if did in seen:
+                    continue
+                seen.add(did)
+                doc_ids.append(did)
+                evidence_doc_ids.add(did)
+            if doc_ids:
+                case_to_evidence_docs[case.id] = doc_ids
+
+        doc_attr: dict[UUID, dict[str, str]] = {}
+        if evidence_doc_ids:
+            rows = (
+                db.query(DBDocument.id, DBDocument.file_type, DBDocument.doc_metadata)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(evidence_doc_ids)))
+                .all()
+            )
+            for doc_id, file_type, meta in rows:
+                meta_dict = meta if isinstance(meta, dict) else {}
+                # language: prefer top-level; fallback to governance_enrichment.
+                lang = "unknown"
+                if isinstance(meta_dict.get("language"), str):
+                    lang = _normalize_language_bucket(meta_dict.get("language"))
+                else:
+                    enr = meta_dict.get("governance_enrichment")
+                    if isinstance(enr, dict) and isinstance(enr.get("language"), str):
+                        lang = _normalize_language_bucket(enr.get("language"))
+
+                source_path = meta_dict.get("source_path")
+                dir_bucket = _dir_bucket_from_source_path(source_path)
+                ft = str(file_type or "").strip().lower() or "unknown"
+                doc_attr[doc_id] = {"file_type": ft, "language": lang, "directory": dir_bucket}
+
+        case_slice_meta: dict[UUID, dict[str, str]] = {}
+        for case in cases:
+            docs = case_to_evidence_docs.get(case.id) or []
+            fts = {doc_attr.get(d, {}).get("file_type", "unknown") for d in docs}
+            langs = {doc_attr.get(d, {}).get("language", "unknown") for d in docs}
+            dirs = {doc_attr.get(d, {}).get("directory", "root") for d in docs}
+
+            def _stable_bucket(values: set[str], *, default: str) -> str:
+                cleaned = {str(v or "").strip().lower() for v in values if str(v or "").strip()}
+                if not cleaned:
+                    return default
+                if len(cleaned) == 1:
+                    return next(iter(cleaned))
+                return "mixed"
+
+            case_slice_meta[case.id] = {
+                "slice_file_type": _stable_bucket(fts, default="unknown"),
+                "slice_language": _stable_bucket(langs, default="unknown"),
+                "slice_directory": _stable_bucket(dirs, default="root"),
+            }
+
         eval_items: List[Dict[str, Any]] = []
         retrieval_only = not bool(metric_names)
         for case in cases:
@@ -717,7 +872,10 @@ def run_regression_ragas_evaluation(
             }
             sample_kwargs, item_meta = build_regression_sample(case, eval_item)
             eval_item["sample_kwargs"] = sample_kwargs
-            eval_item["item_meta"] = item_meta
+            # Attach slice keys for report slicing (best-effort).
+            merged_meta = dict(item_meta or {})
+            merged_meta.update(case_slice_meta.get(case.id) or {})
+            eval_item["item_meta"] = merged_meta
             eval_items.append(eval_item)
 
         if not eval_items:

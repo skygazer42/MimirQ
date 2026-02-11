@@ -342,6 +342,54 @@ class ReportService:
                     .scalar()
                     or 0
                 )
+                events_with_document_id = int(event_count or 0)  # document_id is used in the filter above.
+                events_with_chunk_id = (
+                    db.query(func.count(KgSourceEvent.id))
+                    .filter(
+                        KgSourceEvent.tenant_id == tenant_id,
+                        KgSourceEvent.document_id.in_(allowed_ids),
+                        KgSourceEvent.chunk_id.isnot(None),
+                    )
+                    .scalar()
+                    or 0
+                )
+                # Best-effort: page provenance is stored in event.references["page"] for PDF chunks.
+                events_with_page_ref = 0
+                try:
+                    page_expr = KgSourceEvent.references["page"].as_integer()  # type: ignore[index]
+                    events_with_page_ref = (
+                        db.query(func.count(KgSourceEvent.id))
+                        .filter(
+                            KgSourceEvent.tenant_id == tenant_id,
+                            KgSourceEvent.document_id.in_(allowed_ids),
+                            page_expr.isnot(None),
+                            page_expr > 0,
+                        )
+                        .scalar()
+                        or 0
+                    )
+                except Exception:
+                    try:
+                        # Fallback: sample up to 5k rows and count in Python.
+                        ref_rows = (
+                            db.query(KgSourceEvent.references)
+                            .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_ids))
+                            .limit(5000)
+                            .all()
+                        )
+                        cnt = 0
+                        for (refs,) in ref_rows:
+                            if not isinstance(refs, dict):
+                                continue
+                            try:
+                                if int(refs.get("page") or 0) > 0:
+                                    cnt += 1
+                            except Exception:
+                                continue
+                        events_with_page_ref = int(cnt)
+                    except Exception:
+                        events_with_page_ref = 0
+
                 link_count = (
                     db.query(func.count(KgEventEntity.id))
                     .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
@@ -349,6 +397,55 @@ class ReportService:
                     .scalar()
                     or 0
                 )
+                links_with_provenance = (
+                    db.query(func.count(KgEventEntity.id))
+                    .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                    .filter(
+                        KgSourceEvent.tenant_id == tenant_id,
+                        KgSourceEvent.document_id.in_(allowed_ids),
+                        KgEventEntity.extra_data.isnot(None),
+                    )
+                    .scalar()
+                    or 0
+                )
+                links_with_page_ref = 0
+                try:
+                    page_expr2 = KgEventEntity.extra_data["page"].as_integer()  # type: ignore[index]
+                    links_with_page_ref = (
+                        db.query(func.count(KgEventEntity.id))
+                        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                        .filter(
+                            KgSourceEvent.tenant_id == tenant_id,
+                            KgSourceEvent.document_id.in_(allowed_ids),
+                            page_expr2.isnot(None),
+                            page_expr2 > 0,
+                        )
+                        .scalar()
+                        or 0
+                    )
+                except Exception:
+                    try:
+                        # Fallback: sample up to 5k join rows and count in Python.
+                        extra_rows = (
+                            db.query(KgEventEntity.extra_data)
+                            .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                            .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_ids))
+                            .limit(5000)
+                            .all()
+                        )
+                        cnt2 = 0
+                        for (extra,) in extra_rows:
+                            if not isinstance(extra, dict):
+                                continue
+                            try:
+                                if int(extra.get("page") or 0) > 0:
+                                    cnt2 += 1
+                            except Exception:
+                                continue
+                        links_with_page_ref = int(cnt2)
+                    except Exception:
+                        links_with_page_ref = 0
+
                 entity_count = (
                     db.query(func.count(func.distinct(KgEventEntity.entity_id)))
                     .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
@@ -373,10 +470,92 @@ class ReportService:
                     .all()
                 )
 
+                # Incremental / extraction audit signals (best-effort; derived from document metadata).
+                documents_with_kg_extracted_at = 0
+                documents_with_kg_events = 0
+                event_count_from_documents = 0
+                skipped_chunks_total = 0
+                skipped_short_chunks_total = 0
+                failed_chunks_total = 0
+                retry_chunks_total = 0
+                top_docs: list[dict] = []
+                try:
+                    docs_with_extract = q.filter(DBDocument.doc_metadata["kg_extracted_at"].as_string().isnot(None))
+                    documents_with_kg_extracted_at = int(docs_with_extract.count())
+
+                    kg_ev_expr = func.coalesce(DBDocument.doc_metadata["kg_event_count"].as_integer(), 0)
+                    documents_with_kg_events = int(q.filter(kg_ev_expr > 0).count())
+                    event_count_from_documents = int((q.with_entities(func.coalesce(func.sum(kg_ev_expr), 0)).scalar() or 0))
+
+                    skipped_expr = func.coalesce(DBDocument.doc_metadata["kg_skipped_chunks"].as_integer(), 0)
+                    skipped_short_expr = func.coalesce(DBDocument.doc_metadata["kg_skipped_short_chunks"].as_integer(), 0)
+                    failed_expr = func.coalesce(DBDocument.doc_metadata["kg_failed_chunks"].as_integer(), 0)
+                    retry_expr = func.coalesce(DBDocument.doc_metadata["kg_retry_chunks"].as_integer(), 0)
+
+                    skipped_chunks_total = int((q.with_entities(func.coalesce(func.sum(skipped_expr), 0)).scalar() or 0))
+                    skipped_short_chunks_total = int((q.with_entities(func.coalesce(func.sum(skipped_short_expr), 0)).scalar() or 0))
+                    failed_chunks_total = int((q.with_entities(func.coalesce(func.sum(failed_expr), 0)).scalar() or 0))
+                    retry_chunks_total = int((q.with_entities(func.coalesce(func.sum(retry_expr), 0)).scalar() or 0))
+
+                    top_rows = (
+                        q.with_entities(
+                            DBDocument.id.label("document_id"),
+                            DBDocument.doc_metadata["source"].as_string().label("source"),
+                            kg_ev_expr.label("event_count"),
+                            skipped_expr.label("skipped_chunks"),
+                            skipped_short_expr.label("skipped_short_chunks"),
+                            failed_expr.label("failed_chunks"),
+                            retry_expr.label("retry_chunks"),
+                        )
+                        .order_by(kg_ev_expr.desc(), DBDocument.updated_at.desc())
+                        .limit(20)
+                        .all()
+                    )
+                    for r in top_rows:
+                        try:
+                            doc_id = getattr(r, "document_id", None)
+                            if not doc_id:
+                                continue
+                            top_docs.append(
+                                {
+                                    "document_id": doc_id,
+                                    "source": getattr(r, "source", None),
+                                    "event_count": int(getattr(r, "event_count", 0) or 0),
+                                    "skipped_chunks": int(getattr(r, "skipped_chunks", 0) or 0),
+                                    "skipped_short_chunks": int(getattr(r, "skipped_short_chunks", 0) or 0),
+                                    "failed_chunks": int(getattr(r, "failed_chunks", 0) or 0),
+                                    "retry_chunks": int(getattr(r, "retry_chunks", 0) or 0),
+                                }
+                            )
+                        except Exception:
+                            continue
+                except Exception:
+                    documents_with_kg_extracted_at = 0
+                    documents_with_kg_events = 0
+                    event_count_from_documents = 0
+                    skipped_chunks_total = 0
+                    skipped_short_chunks_total = 0
+                    failed_chunks_total = 0
+                    retry_chunks_total = 0
+                    top_docs = []
+
                 kg_stats = DatasetKGStatsOut(
                     events=int(event_count),
                     entities=int(entity_count),
                     links=int(link_count),
+                    events_with_document_id=int(events_with_document_id),
+                    events_with_chunk_id=int(events_with_chunk_id),
+                    events_with_page_ref=int(events_with_page_ref),
+                    links_with_provenance=int(links_with_provenance),
+                    links_with_page_ref=int(links_with_page_ref),
+                    documents_with_kg_extracted_at=int(documents_with_kg_extracted_at),
+                    documents_with_kg_events=int(documents_with_kg_events),
+                    event_count_from_documents=int(event_count_from_documents),
+                    skipped_chunks_total=int(skipped_chunks_total),
+                    skipped_short_chunks_total=int(skipped_short_chunks_total),
+                    failed_chunks_total=int(failed_chunks_total),
+                    retry_chunks_total=int(retry_chunks_total),
+                    top_documents=top_docs,
                     entity_types=[{"type": str(t or "unknown"), "count": int(cnt or 0)} for (t, cnt) in type_rows],
                     updated_at=updated_at,
                 )

@@ -70,12 +70,42 @@ class DatasetKGEntityTypeCount(BaseModel):
     count: int = 0
 
 
+class DatasetKGTopDocumentOut(BaseModel):
+    """Best-effort KG drilldown row scoped by document-level ACL."""
+
+    document_id: UUID
+    source: Optional[str] = None
+    event_count: int = 0
+    skipped_chunks: int = 0
+    skipped_short_chunks: int = 0
+    failed_chunks: int = 0
+    retry_chunks: int = 0
+
+
 class DatasetKGStatsOut(BaseModel):
     """Best-effort Knowledge Graph (KG) metrics scoped by document-level ACL."""
 
     events: int = 0
     entities: int = 0
     links: int = 0
+    # Traceability / completeness (best-effort).
+    events_with_document_id: int = 0
+    events_with_chunk_id: int = 0
+    events_with_page_ref: int = 0
+    links_with_provenance: int = 0
+    links_with_page_ref: int = 0
+
+    # Incremental / extraction audit (best-effort; derived from document metadata).
+    documents_with_kg_extracted_at: int = 0
+    documents_with_kg_events: int = 0
+    event_count_from_documents: int = 0
+    skipped_chunks_total: int = 0
+    skipped_short_chunks_total: int = 0
+    failed_chunks_total: int = 0
+    retry_chunks_total: int = 0
+
+    # Optional drilldowns (bounded).
+    top_documents: List[DatasetKGTopDocumentOut] = Field(default_factory=list)
     entity_types: List[DatasetKGEntityTypeCount] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 

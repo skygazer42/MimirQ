@@ -32,6 +32,9 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
     assert meta == {
         "reference_context_ids": ["ref-1", "ref-2"],
         "retrieved_context_ids": ["got-1"],
+        "slice_file_type": None,
+        "slice_language": None,
+        "slice_directory": None,
         "abstain_triggered": True,
         "abstain_reason": "citations_lt_min",
         "top_relevance_score": 0.12,
