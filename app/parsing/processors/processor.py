@@ -3072,6 +3072,50 @@ class DocumentProcessorService:
         if isinstance(secrets_hits, dict) and secrets_hits:
             metadata["governance_secrets_hits"] = {str(k): int(v) for k, v in secrets_hits.items()}
 
+        # Persist richer "effects" counters for dataset-level governance audit (best-effort).
+        effects_map = {
+            "governance_frontmatter_docs": getattr(stats, "frontmatter_docs", 0),
+            "governance_frontmatter_stripped_docs": getattr(stats, "frontmatter_stripped_docs", 0),
+            "governance_paragraphs_dropped": getattr(stats, "paragraphs_dropped", 0),
+            "governance_references_removed_lines": getattr(stats, "references_removed_lines", 0),
+            "governance_urls_changed": getattr(stats, "urls_changed", 0),
+            "governance_boilerplate_removed_sections": getattr(stats, "boilerplate_removed_sections", 0),
+            "governance_boilerplate_removed_lines": getattr(stats, "boilerplate_removed_lines", 0),
+            "governance_images_removed": getattr(stats, "images_removed", 0),
+            "governance_tables_normalized": getattr(stats, "tables_normalized", 0),
+            "governance_table_rows_changed": getattr(stats, "table_rows_changed", 0),
+            "governance_code_blocks_changed": getattr(stats, "code_blocks_changed", 0),
+            "governance_code_lines_stripped": getattr(stats, "code_lines_stripped", 0),
+            "governance_keywords_docs": getattr(stats, "keywords_docs", 0),
+            "governance_keywords_total": getattr(stats, "keywords_total", 0),
+            "governance_titles_docs": getattr(stats, "titles_docs", 0),
+            "governance_tags_docs": getattr(stats, "tags_docs", 0),
+        }
+        for k, raw in effects_map.items():
+            try:
+                n = int(raw or 0)
+            except Exception:
+                n = 0
+            if n > 0:
+                metadata[k] = n
+
+        langs = getattr(stats, "languages", None)
+        if isinstance(langs, dict) and langs:
+            out: dict[str, int] = {}
+            for lk, lv in langs.items():
+                if lk is None:
+                    continue
+                key = str(lk).strip()
+                if not key:
+                    continue
+                try:
+                    out[key] = int(lv or 0)
+                except Exception:
+                    out[key] = 0
+            if any(v > 0 for v in out.values()):
+                # Keep small; caller can still use governance_enrichment.language for a canonical single value.
+                metadata["governance_languages"] = {k: v for k, v in out.items() if v > 0}
+
         if rule_packs:
             cleaned: list[str] = []
             seen: set[str] = set()

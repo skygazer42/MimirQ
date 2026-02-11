@@ -114,7 +114,7 @@ def _scrub_report_for_redaction(report: Any) -> dict:
     safe: dict[str, Any] = {"redacted": True}
 
     # Keep core aggregate sections (numeric summaries).
-    for key in ("profile", "compliance", "governance_metrics", "chunk_quality_metrics", "pipeline_versions"):
+    for key in ("profile", "compliance", "governance_metrics", "governance_audit", "chunk_quality_metrics", "pipeline_versions"):
         if key in report:
             safe[key] = report.get(key)
 
@@ -912,6 +912,67 @@ def render_rag_audit_html(
     drop_reasons = _as_items(govd.get("drop_reasons_total"), top=12)
     rule_packs = _as_items(govd.get("rule_packs_docs"), top=12)
 
+    # Optional: governance audit snapshot (effects/impact metrics).
+    ga0 = report.get("governance_audit") if isinstance(report, dict) else None
+    ga = ga0 if isinstance(ga0, dict) else {}
+    ga_used_docs = int(ga.get("used_documents") or 0)
+    ga_truncated = bool(ga.get("truncated") or False)
+    ga_persisted_docs = int(ga.get("docs_with_parsed_content_persisted") or 0)
+    ga_persisted_trunc_docs = int(ga.get("parsed_content_truncated_docs") or 0)
+    ga_orig_chars = int(ga.get("original_chars_total") or 0)
+    ga_clean_chars = int(ga.get("cleaned_chars_total") or 0)
+    try:
+        ga_char_reduction_ratio = float(ga.get("char_reduction_ratio") or 0.0)
+    except Exception:
+        ga_char_reduction_ratio = 0.0
+    ga_char_reduction_ratio = max(0.0, min(1.0, ga_char_reduction_ratio))
+    ga_docs_changed = int(ga.get("docs_changed") or 0)
+    ga_docs_dropped = int(ga.get("docs_dropped") or 0)
+
+    ga_paras_dropped = int(ga.get("paragraphs_dropped_total") or 0)
+    ga_refs_removed = int(ga.get("references_removed_lines_total") or 0)
+    ga_urls_changed = int(ga.get("urls_changed_total") or 0)
+    ga_boiler_sections = int(ga.get("boilerplate_removed_sections_total") or 0)
+    ga_boiler_lines = int(ga.get("boilerplate_removed_lines_total") or 0)
+    ga_images_removed = int(ga.get("images_removed_total") or 0)
+    ga_tables_norm = int(ga.get("tables_normalized_total") or 0)
+    ga_table_rows_changed = int(ga.get("table_rows_changed_total") or 0)
+    ga_code_lines_stripped = int(ga.get("code_lines_stripped_total") or 0)
+
+    governance_audit_section = ""
+    if isinstance(ga0, dict) and ga0:
+        ratio_str = f"{ga_char_reduction_ratio:.2f} ({ga_char_reduction_ratio * 100.0:.1f}%)"
+        audit_note = ""
+        if ga_used_docs > 0:
+            audit_note = f"<div class=\\\"sub\\\" style=\\\"margin-top:6px\\\">sample: {escape(_fmt_int(ga_used_docs))}{' (truncated)' if ga_truncated else ''}</div>"
+
+        governance_audit_section = (
+            "<div class=\\\"section\\\">"
+            "<h2>Governance Audit（治理效果）</h2>"
+            f"{audit_note}"
+            "<table class=\\\"bars\\\">"
+            "<thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>"
+            "<tbody>"
+            f"<tr><td class=\\\"k\\\">docs_changed</td><td class=\\\"v\\\">{_fmt_int(ga_docs_changed)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">docs_dropped</td><td class=\\\"v\\\">{_fmt_int(ga_docs_dropped)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">docs_with_parsed_content_persisted</td><td class=\\\"v\\\">{_fmt_int(ga_persisted_docs)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">parsed_content_truncated_docs</td><td class=\\\"v\\\">{_fmt_int(ga_persisted_trunc_docs)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">original_chars_total</td><td class=\\\"v\\\">{_fmt_int(ga_orig_chars)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">cleaned_chars_total</td><td class=\\\"v\\\">{_fmt_int(ga_clean_chars)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">char_reduction_ratio</td><td class=\\\"v\\\">{escape(ratio_str)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">paragraphs_dropped_total</td><td class=\\\"v\\\">{_fmt_int(ga_paras_dropped)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">references_removed_lines_total</td><td class=\\\"v\\\">{_fmt_int(ga_refs_removed)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">urls_changed_total</td><td class=\\\"v\\\">{_fmt_int(ga_urls_changed)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">boilerplate_removed_sections_total</td><td class=\\\"v\\\">{_fmt_int(ga_boiler_sections)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">boilerplate_removed_lines_total</td><td class=\\\"v\\\">{_fmt_int(ga_boiler_lines)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">images_removed_total</td><td class=\\\"v\\\">{_fmt_int(ga_images_removed)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">tables_normalized_total</td><td class=\\\"v\\\">{_fmt_int(ga_tables_norm)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">table_rows_changed_total</td><td class=\\\"v\\\">{_fmt_int(ga_table_rows_changed)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">code_lines_stripped_total</td><td class=\\\"v\\\">{_fmt_int(ga_code_lines_stripped)}</td><td></td></tr>"
+            "</tbody></table>"
+            "</div>"
+        )
+
     cqm = report.get("chunk_quality_metrics") if isinstance(report, dict) else None
     cqmd = cqm if isinstance(cqm, dict) else {}
     gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
@@ -1285,6 +1346,8 @@ def render_rag_audit_html(
       <h2>Rule Packs（Docs）</h2>
       {_render_bar_table(rule_packs, total=max(1, total_docs))}
     </div>
+
+    {governance_audit_section}
 
     <div class="section two">
       <div>
