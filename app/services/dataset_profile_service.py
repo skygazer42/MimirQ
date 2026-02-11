@@ -28,6 +28,7 @@ from app.api.schemas.dataset_profile import (
     DatasetProfilePercentiles,
     DatasetProfileScanRunSummary,
     DatasetProfileSummary,
+    DatasetProfileTargetCheck,
 )
 from app.models.dataset import Dataset
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
@@ -711,6 +712,146 @@ def aggregate_profile_from_rows(
             )
         )
 
+    # Chunk target checks (best-effort; objective signals + suggestions).
+    chunk_targets_out: List[DatasetProfileTargetCheck] = []
+    try:
+        # Token distribution objectives (requires chunking_stats_tokens histogram).
+        if int(chunk_token_total or 0) <= 0:
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_tokens_missing",
+                    label="Chunk tokens 统计缺失",
+                    status="warn",
+                    observed={"chunk_token_total": int(chunk_token_total or 0)},
+                    target={},
+                    message="缺少 chunking_stats_tokens，无法进行 token 分布目标检查。",
+                    suggestions=["开启 token stats（入库/深度扫描 backfill_chunk_token_stats）后再评估。"],
+                )
+            )
+        else:
+            # P50 chunk token length target range (tunable default).
+            tok_p50 = int(getattr(chunk_token_percentiles, "p50", 0) or 0)
+            tok_target_min = 200
+            tok_target_max = 400
+            if tok_p50 <= 0:
+                status = "warn"
+            elif tok_p50 < 100 or tok_p50 > 800:
+                status = "fail"
+            elif tok_p50 < tok_target_min or tok_p50 > tok_target_max:
+                status = "warn"
+            else:
+                status = "pass"
+
+            suggestions: list[str] = []
+            if tok_p50 > 0 and tok_p50 < tok_target_min:
+                suggestions.append("提高 chunk_size 或使用结构感知 chunk_strategy（markdown_header/outline）以减少碎片化。")
+            if tok_p50 > tok_target_max:
+                suggestions.append("降低 chunk_size 或提高切分粒度，避免 chunk 过长影响召回与延迟/成本。")
+
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_token_p50_range",
+                    label="Chunk token P50 目标范围",
+                    status=status,  # type: ignore[arg-type]
+                    observed={"p50": tok_p50},
+                    target={"p50_min": tok_target_min, "p50_max": tok_target_max},
+                    message=f"P50={tok_p50}（目标 {tok_target_min}-{tok_target_max}）",
+                    suggestions=suggestions,
+                )
+            )
+
+            # Short/long chunk ratio checks from histogram bins.
+            short_cnt = 0
+            for label in ("0-50", "50-100"):
+                idx = chunk_token_label_to_idx.get(label)
+                if idx is not None:
+                    short_cnt += int(chunk_token_bins[idx] or 0)
+            long_cnt = 0
+            idx_long = chunk_token_label_to_idx.get("800+")
+            if idx_long is not None:
+                long_cnt = int(chunk_token_bins[idx_long] or 0)
+            total_cnt = int(chunk_token_total or 0)
+            short_pct = int(round((short_cnt / total_cnt) * 100.0)) if total_cnt > 0 else 0
+            long_pct = int(round((long_cnt / total_cnt) * 100.0)) if total_cnt > 0 else 0
+
+            def _pct_status(pct: int, *, warn: int, fail: int) -> str:
+                if pct >= int(fail):
+                    return "fail"
+                if pct >= int(warn):
+                    return "warn"
+                return "pass"
+
+            short_status = _pct_status(short_pct, warn=20, fail=35)
+            long_status = _pct_status(long_pct, warn=10, fail=20)
+
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_token_short_ratio",
+                    label="短 Chunk 比例（<=100 tokens）",
+                    status=short_status,  # type: ignore[arg-type]
+                    observed={"short_chunks": short_cnt, "total_chunks": total_cnt, "short_pct": short_pct},
+                    target={"short_pct_warn": 20, "short_pct_fail": 35},
+                    message=f"{short_pct}%（目标 < 20%）",
+                    suggestions=[
+                        "若短 chunk 过多：提高 chunk_size/降低切分强度，或使用结构切分避免碎片化。",
+                    ]
+                    if short_status != "pass"
+                    else [],
+                )
+            )
+
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_token_long_ratio",
+                    label="长 Chunk 比例（>=800 tokens）",
+                    status=long_status,  # type: ignore[arg-type]
+                    observed={"long_chunks": long_cnt, "total_chunks": total_cnt, "long_pct": long_pct},
+                    target={"long_pct_warn": 10, "long_pct_fail": 20},
+                    message=f"{long_pct}%（目标 < 10%）",
+                    suggestions=[
+                        "若长 chunk 过多：降低 chunk_size 或使用结构切分（markdown_header/outline）提升覆盖与召回稳定性。",
+                    ]
+                    if long_status != "pass"
+                    else [],
+                )
+            )
+
+        # Overlap waste objective (requires chunk_coverage metrics).
+        if not overlap_waste_pcts:
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_overlap_waste_missing",
+                    label="Overlap waste 统计缺失",
+                    status="warn",
+                    observed={},
+                    target={},
+                    message="缺少 chunk_coverage / overlap_waste 数据，无法评估 overlap 成本。",
+                    suggestions=["开启 backfill_chunk_coverage 或在入库时持久化 chunk offsets。"],
+                )
+            )
+        else:
+            waste_p50 = int(getattr(chunk_overlap_waste_percentiles, "p50", 0) or 0)
+            waste_warn = 35
+            waste_fail = 60
+            waste_status = "pass"
+            if waste_p50 >= int(waste_fail):
+                waste_status = "fail"
+            elif waste_p50 >= int(waste_warn):
+                waste_status = "warn"
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_overlap_waste_p50",
+                    label="Overlap waste P50（%）",
+                    status=waste_status,  # type: ignore[arg-type]
+                    observed={"p50": waste_p50},
+                    target={"p50_warn": waste_warn, "p50_fail": waste_fail},
+                    message=f"P50={waste_p50}%（目标 < {waste_warn}%）",
+                    suggestions=["降低 chunk_overlap 可减少重复 embedding 计算与成本。"] if waste_status != "pass" else [],
+                )
+            )
+    except Exception:
+        chunk_targets_out = []
+
     now = datetime.now(timezone.utc)
     return DatasetProfileSummary(
         dataset_id=dataset_id,
@@ -749,6 +890,7 @@ def aggregate_profile_from_rows(
         pii_hits_total={k: int(v) for k, v in pii_totals.items()},
         secrets_hits_total={k: int(v) for k, v in secrets_totals.items()},
         findings=findings_out,
+        chunk_targets=chunk_targets_out,
         latest_scan_run=latest_scan_run,
     )
 
