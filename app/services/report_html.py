@@ -919,6 +919,8 @@ def render_rag_audit_html(
     ga_truncated = bool(ga.get("truncated") or False)
     ga_persisted_docs = int(ga.get("docs_with_parsed_content_persisted") or 0)
     ga_persisted_trunc_docs = int(ga.get("parsed_content_truncated_docs") or 0)
+    ga_char_stats_docs = int(ga.get("docs_with_char_stats") or ga_persisted_docs or 0)
+    ga_quality_docs = int(ga.get("docs_with_governance_quality") or 0)
     ga_orig_chars = int(ga.get("original_chars_total") or 0)
     ga_clean_chars = int(ga.get("cleaned_chars_total") or 0)
     try:
@@ -930,6 +932,14 @@ def render_rag_audit_html(
     ga_char_reduction_p50 = int(pct0.get("p50") or 0)
     ga_char_reduction_p90 = int(pct0.get("p90") or 0)
     ga_char_reduction_p99 = int(pct0.get("p99") or 0)
+
+    dens0 = ga.get("density_pct_percentiles") if isinstance(ga.get("density_pct_percentiles"), dict) else {}
+    ga_density_p50 = int(dens0.get("p50") or 0)
+    ga_density_p90 = int(dens0.get("p90") or 0)
+
+    head0 = ga.get("heading_ratio_pct_percentiles") if isinstance(ga.get("heading_ratio_pct_percentiles"), dict) else {}
+    ga_heading_p50 = int(head0.get("p50") or 0)
+    ga_heading_p90 = int(head0.get("p90") or 0)
     ga_docs_changed = int(ga.get("docs_changed") or 0)
     ga_docs_dropped = int(ga.get("docs_dropped") or 0)
 
@@ -959,6 +969,7 @@ def render_rag_audit_html(
             "<tbody>"
             f"<tr><td class=\\\"k\\\">docs_changed</td><td class=\\\"v\\\">{_fmt_int(ga_docs_changed)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">docs_dropped</td><td class=\\\"v\\\">{_fmt_int(ga_docs_dropped)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">docs_with_char_stats</td><td class=\\\"v\\\">{_fmt_int(ga_char_stats_docs)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">docs_with_parsed_content_persisted</td><td class=\\\"v\\\">{_fmt_int(ga_persisted_docs)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">parsed_content_truncated_docs</td><td class=\\\"v\\\">{_fmt_int(ga_persisted_trunc_docs)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">original_chars_total</td><td class=\\\"v\\\">{_fmt_int(ga_orig_chars)}</td><td></td></tr>"
@@ -967,6 +978,11 @@ def render_rag_audit_html(
             f"<tr><td class=\\\"k\\\">char_reduction_pct_p50</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p50)}%')}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">char_reduction_pct_p90</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p90)}%')}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">char_reduction_pct_p99</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p99)}%')}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">docs_with_governance_quality</td><td class=\\\"v\\\">{_fmt_int(ga_quality_docs)}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">density_pct_p50</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_density_p50)}%')}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">density_pct_p90</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_density_p90)}%')}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">heading_ratio_pct_p50</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_heading_p50)}%')}</td><td></td></tr>"
+            f"<tr><td class=\\\"k\\\">heading_ratio_pct_p90</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_heading_p90)}%')}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">paragraphs_dropped_total</td><td class=\\\"v\\\">{_fmt_int(ga_paras_dropped)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">references_removed_lines_total</td><td class=\\\"v\\\">{_fmt_int(ga_refs_removed)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">urls_changed_total</td><td class=\\\"v\\\">{_fmt_int(ga_urls_changed)}</td><td></td></tr>"

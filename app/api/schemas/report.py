@@ -84,18 +84,27 @@ class DatasetGovernanceAuditOut(BaseModel):
     # How many documents have persist_parsed_content metadata available (best-effort).
     docs_with_parsed_content_persisted: int = 0
     parsed_content_truncated_docs: int = 0
+    # How many documents have (persisted or lightweight) governance char stats available.
+    docs_with_char_stats: int = 0
     original_chars_total: int = 0
     cleaned_chars_total: int = 0
-    # (original - cleaned) / original across docs_with_parsed_content_persisted.
+    # (original - cleaned) / original across docs_with_char_stats (persisted or lightweight).
     char_reduction_ratio: float = 0.0
     # Distribution of per-document char reduction (percentage points, 0-100).
-    # Only computed when parsed_content_persisted metadata is available.
+    # Computed from either persist_parsed_content stats OR lightweight governance_char_stats (best-effort).
     char_reduction_pct_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
     char_reduction_pct_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Doc-level outcomes derived from governance_* document metadata (best-effort).
     docs_changed: int = 0
     docs_dropped: int = 0
+
+    # Optional governance quality metrics (best-effort; derived from document.metadata.governance_quality).
+    docs_with_governance_quality: int = 0
+    density_pct_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    density_pct_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    heading_ratio_pct_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+    heading_ratio_pct_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Aggregated effect counters (best-effort; only present when recorded by ingestion pipeline).
     paragraphs_dropped_total: int = 0

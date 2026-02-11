@@ -1427,6 +1427,7 @@ export interface DatasetGovernanceAudit {
   truncated: boolean
   docs_with_parsed_content_persisted: number
   parsed_content_truncated_docs: number
+  docs_with_char_stats: number
   original_chars_total: number
   cleaned_chars_total: number
   char_reduction_ratio: number
@@ -1434,6 +1435,11 @@ export interface DatasetGovernanceAudit {
   char_reduction_pct_histogram: DatasetProfileHistogramBin[]
   docs_changed: number
   docs_dropped: number
+  docs_with_governance_quality: number
+  density_pct_percentiles: DatasetProfilePercentiles
+  density_pct_histogram: DatasetProfileHistogramBin[]
+  heading_ratio_pct_percentiles: DatasetProfilePercentiles
+  heading_ratio_pct_histogram: DatasetProfileHistogramBin[]
   paragraphs_dropped_total: number
   references_removed_lines_total: number
   urls_changed_total: number

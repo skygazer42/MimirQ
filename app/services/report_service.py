@@ -136,9 +136,14 @@ def _aggregate_governance_audit(
 
     persisted_docs = 0
     persisted_truncated_docs = 0
+    char_stats_docs = 0
     orig_chars_total = 0
     clean_chars_total = 0
     reduction_pcts: list[int] = []
+
+    quality_docs = 0
+    density_pcts: list[int] = []
+    heading_ratio_pcts: list[int] = []
 
     for meta in metadatas:
         if not isinstance(meta, dict):
@@ -175,7 +180,11 @@ def _aggregate_governance_audit(
 
         code_lines_stripped += _add_int("governance_code_lines_stripped")
 
+        # Char reduction stats:
+        # Prefer persist_parsed_content (raw_len from persisted markdown), fallback to lightweight
+        # governance_char_stats (privacy-safe; does not store markdown).
         persisted = meta.get("parsed_content_persisted")
+        recorded_char_stats = False
         if isinstance(persisted, dict):
             orig = persisted.get("original") if isinstance(persisted.get("original"), dict) else {}
             cln = persisted.get("cleaned") if isinstance(persisted.get("cleaned"), dict) else {}
@@ -190,6 +199,7 @@ def _aggregate_governance_audit(
 
             if orig_raw_len > 0 and cln_raw_len >= 0:
                 persisted_docs += 1
+                char_stats_docs += 1
                 orig_chars_total += orig_raw_len
                 clean_chars_total += cln_raw_len
                 if bool(orig.get("truncated")) or bool(cln.get("truncated")):
@@ -201,6 +211,55 @@ def _aggregate_governance_audit(
                 ratio_doc = max(0.0, min(1.0, ratio_doc))
                 # Express distributions in percentage points (0-100), aligned with DatasetProfile percentiles.
                 reduction_pcts.append(int(round(ratio_doc * 100.0)))
+                recorded_char_stats = True
+
+        if not recorded_char_stats:
+            stats = meta.get("governance_char_stats")
+            if isinstance(stats, dict):
+                try:
+                    orig_raw_len = int(stats.get("original_chars") or 0)
+                except Exception:
+                    orig_raw_len = 0
+                try:
+                    cln_raw_len = int(stats.get("cleaned_chars") or 0)
+                except Exception:
+                    cln_raw_len = 0
+
+                if orig_raw_len > 0 and cln_raw_len >= 0:
+                    char_stats_docs += 1
+                    orig_chars_total += orig_raw_len
+                    clean_chars_total += cln_raw_len
+                    try:
+                        ratio_doc = float((orig_raw_len - cln_raw_len) / float(orig_raw_len))
+                    except Exception:
+                        ratio_doc = 0.0
+                    ratio_doc = max(0.0, min(1.0, ratio_doc))
+                    reduction_pcts.append(int(round(ratio_doc * 100.0)))
+
+        # Governance quality metrics (best-effort; only present on newer ingestion runs).
+        quality = meta.get("governance_quality")
+        if isinstance(quality, dict):
+            try:
+                density = float(quality.get("density") or 0.0)
+            except Exception:
+                density = 0.0
+            try:
+                heading_ratio = float(quality.get("heading_ratio") or 0.0)
+            except Exception:
+                heading_ratio = 0.0
+
+            if density < 0.0:
+                density = 0.0
+            if density > 1.0:
+                density = 1.0
+            if heading_ratio < 0.0:
+                heading_ratio = 0.0
+            if heading_ratio > 1.0:
+                heading_ratio = 1.0
+
+            quality_docs += 1
+            density_pcts.append(int(round(density * 100.0)))
+            heading_ratio_pcts.append(int(round(heading_ratio * 100.0)))
 
     ratio = 0.0
     if orig_chars_total > 0 and clean_chars_total >= 0:
@@ -230,12 +289,59 @@ def _aggregate_governance_audit(
             ],
         )
 
+    density_percentiles: dict[str, int] = {}
+    density_hist: list[dict] = []
+    if density_pcts:
+        density_sorted = sorted(density_pcts)
+        density_percentiles = {
+            "p25": percentile_from_sorted(density_sorted, 25),
+            "p50": percentile_from_sorted(density_sorted, 50),
+            "p75": percentile_from_sorted(density_sorted, 75),
+            "p90": percentile_from_sorted(density_sorted, 90),
+            "p99": percentile_from_sorted(density_sorted, 99),
+        }
+        density_hist = histogram(
+            density_sorted,
+            bins=[
+                HistogramBinSpec("0-5%", 0, 5),
+                HistogramBinSpec("5-12%", 5, 12),
+                HistogramBinSpec("12-20%", 12, 20),
+                HistogramBinSpec("20-35%", 20, 35),
+                HistogramBinSpec("35-50%", 35, 50),
+                HistogramBinSpec("50%+", 50, None),
+            ],
+        )
+
+    heading_percentiles: dict[str, int] = {}
+    heading_hist: list[dict] = []
+    if heading_ratio_pcts:
+        heading_sorted = sorted(heading_ratio_pcts)
+        heading_percentiles = {
+            "p25": percentile_from_sorted(heading_sorted, 25),
+            "p50": percentile_from_sorted(heading_sorted, 50),
+            "p75": percentile_from_sorted(heading_sorted, 75),
+            "p90": percentile_from_sorted(heading_sorted, 90),
+            "p99": percentile_from_sorted(heading_sorted, 99),
+        }
+        heading_hist = histogram(
+            heading_sorted,
+            bins=[
+                HistogramBinSpec("0-25%", 0, 25),
+                HistogramBinSpec("25-50%", 25, 50),
+                HistogramBinSpec("50-75%", 50, 75),
+                HistogramBinSpec("75-85%", 75, 85),
+                HistogramBinSpec("85-95%", 85, 95),
+                HistogramBinSpec("95%+", 95, None),
+            ],
+        )
+
     return DatasetGovernanceAuditOut(
         total_documents=int(total_documents or 0),
         used_documents=int(used),
         truncated=bool(truncated),
         docs_with_parsed_content_persisted=int(persisted_docs),
         parsed_content_truncated_docs=int(persisted_truncated_docs),
+        docs_with_char_stats=int(char_stats_docs),
         original_chars_total=int(max(0, orig_chars_total)),
         cleaned_chars_total=int(max(0, clean_chars_total)),
         char_reduction_ratio=float(ratio),
@@ -243,6 +349,11 @@ def _aggregate_governance_audit(
         char_reduction_pct_histogram=pct_hist,
         docs_changed=int(max(0, docs_changed)),
         docs_dropped=int(max(0, docs_dropped)),
+        docs_with_governance_quality=int(max(0, quality_docs)),
+        density_pct_percentiles=density_percentiles,
+        density_pct_histogram=density_hist,
+        heading_ratio_pct_percentiles=heading_percentiles,
+        heading_ratio_pct_histogram=heading_hist,
         paragraphs_dropped_total=int(max(0, paras_dropped)),
         references_removed_lines_total=int(max(0, refs_removed)),
         urls_changed_total=int(max(0, urls_changed)),

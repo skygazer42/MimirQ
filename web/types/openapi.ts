@@ -6734,6 +6734,11 @@ export interface components {
              */
             parsed_content_truncated_docs: number;
             /**
+             * Docs With Char Stats
+             * @default 0
+             */
+            docs_with_char_stats: number;
+            /**
              * Original Chars Total
              * @default 0
              */
@@ -6761,6 +6766,17 @@ export interface components {
              * @default 0
              */
             docs_dropped: number;
+            /**
+             * Docs With Governance Quality
+             * @default 0
+             */
+            docs_with_governance_quality: number;
+            density_pct_percentiles?: components["schemas"]["DatasetProfilePercentiles"];
+            /** Density Pct Histogram */
+            density_pct_histogram?: components["schemas"]["DatasetProfileHistogramBin"][];
+            heading_ratio_pct_percentiles?: components["schemas"]["DatasetProfilePercentiles"];
+            /** Heading Ratio Pct Histogram */
+            heading_ratio_pct_histogram?: components["schemas"]["DatasetProfileHistogramBin"][];
             /**
              * Paragraphs Dropped Total
              * @default 0
