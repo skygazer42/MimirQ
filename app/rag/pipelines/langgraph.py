@@ -780,6 +780,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
         "normalized": None,
         "expansions": [],
         "contributions": [],
+        "channels": None,
     }
     try:
         norm_text: str | None = None
@@ -790,6 +791,9 @@ def _retrieve_node(state: RAGState) -> RAGState:
                 continue
             dbg = item.get("retriever_debug")
             dbg = dbg if isinstance(dbg, dict) else {}
+            ch = dbg.get("channels")
+            if isinstance(ch, dict):
+                query_debug["channels"] = ch
             qn = dbg.get("query_normalization")
             qn = qn if isinstance(qn, dict) else {}
             norm_text = qn.get("normalized") if isinstance(qn.get("normalized"), str) else None
