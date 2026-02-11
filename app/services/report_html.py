@@ -100,6 +100,68 @@ def _render_histogram(bins: Any) -> str:
     return _render_bar_table(rows, total=total)
 
 
+def _scrub_report_for_redaction(report: Any) -> dict:
+    """
+    Best-effort scrubber for `redact=True` HTML exports.
+
+    Goal: prevent leaking dataset identity / paths / internal IDs via the embedded Raw JSON block.
+    We keep objective, aggregate metrics that are already rendered elsewhere in the HTML.
+    """
+
+    if not isinstance(report, dict):
+        return {"redacted": True}
+
+    safe: dict[str, Any] = {"redacted": True}
+
+    # Keep core aggregate sections (numeric summaries).
+    for key in ("profile", "compliance", "governance_metrics", "chunk_quality_metrics", "pipeline_versions"):
+        if key in report:
+            safe[key] = report.get(key)
+
+    # KG: keep counts/types but remove drilldown rows (may contain sources/paths).
+    kg = report.get("kg_stats")
+    if isinstance(kg, dict):
+        kg_safe = dict(kg)
+        if "top_documents" in kg_safe:
+            kg_safe["top_documents"] = []
+        safe["kg_stats"] = kg_safe
+
+    # Eval: keep summary, but drop directory slicing (paths).
+    rr = report.get("latest_regression_run")
+    if isinstance(rr, dict):
+        rr_safe = dict(rr)
+        summ = rr_safe.get("summary")
+        if isinstance(summ, dict):
+            summ_safe = dict(summ)
+            rs = summ_safe.get("retrieval_slices")
+            if isinstance(rs, dict) and "directory" in rs:
+                rs_safe = dict(rs)
+                rs_safe["directory"] = {"redacted": True}
+                summ_safe["retrieval_slices"] = rs_safe
+            rr_safe["summary"] = summ_safe
+        safe["latest_regression_run"] = rr_safe
+
+    # Precheck: keep distributions but remove IDs + directory structure.
+    pre = report.get("precheck_summary")
+    if isinstance(pre, dict):
+        pre_safe = dict(pre)
+        if "dataset_id" in pre_safe:
+            pre_safe["dataset_id"] = "[REDACTED]"
+        if "scan_run_id" in pre_safe:
+            pre_safe["scan_run_id"] = "[REDACTED]"
+        if "directory_stats" in pre_safe:
+            pre_safe["directory_stats"] = []
+        safe["precheck_summary"] = pre_safe
+
+    # Always redact dataset identity fields if present.
+    if "dataset_name" in report:
+        safe["dataset_name"] = "[REDACTED]"
+    if "dataset_id" in report:
+        safe["dataset_id"] = "[REDACTED]"
+
+    return safe
+
+
 def render_dataset_profile_html(
     *,
     title: str,
@@ -586,6 +648,8 @@ def render_dataset_report_html(
     rr_slices = rr_summary.get("retrieval_slices") if isinstance(rr_summary.get("retrieval_slices"), dict) else {}
 
     def _render_rr_slice_table(dim: str) -> str:
+        if redact and dim == "directory":
+            return '<div class="empty">已脱敏：directory 不展示</div>'
         obj = rr_slices.get(dim) if isinstance(rr_slices.get(dim), dict) else {}
         buckets = obj.get("buckets") if isinstance(obj.get("buckets"), list) else []
         rows: list[str] = []
@@ -632,7 +696,8 @@ def render_dataset_report_html(
             "</div>"
         )
 
-    raw_json = json.dumps(report, ensure_ascii=False, indent=2)
+    raw_payload = _scrub_report_for_redaction(report) if redact else report
+    raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
     html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -854,6 +919,105 @@ def render_rag_audit_html(
     overlap_high = int(cqmd.get("overlap_waste_high_documents") or 0)
     tokens_missing = int(cqmd.get("token_stats_missing_documents") or 0)
 
+    # Optional: latest precheck summary snapshot (before ingestion).
+    precheck_summary = report.get("precheck_summary") if isinstance(report, dict) else None
+    pre = precheck_summary if isinstance(precheck_summary, dict) else {}
+    pre_total_files = int(pre.get("total_files") or 0)
+    pre_total_bytes = int(pre.get("total_size_bytes") or 0)
+    pre_scan_run_id = "[REDACTED]" if redact else str(pre.get("scan_run_id") or "").strip()
+    pre_generated_at = str(pre.get("generated_at") or "").strip()
+    pre_by_type = _as_items(pre.get("by_file_type"), top=12)
+    pre_lang = _as_items(pre.get("language_mix"), top=4)
+    pre_pii = _as_items(pre.get("pii_hits_total"), top=12)
+    pre_secrets = _as_items(pre.get("secrets_hits_total"), top=12)
+
+    pdf0 = pre.get("pdf_scan") if isinstance(pre.get("pdf_scan"), dict) else {}
+    pre_pdf_scanned = int(pdf0.get("scanned") or 0)
+    pre_pdf_text = int(pdf0.get("not_scanned") or 0)
+    pre_pdf_unknown = int(pdf0.get("unknown") or 0)
+
+    pre_findings = pre.get("findings") if isinstance(pre.get("findings"), list) else []
+    pre_finding_rows: list[tuple[str, int]] = []
+    for f in pre_findings:
+        if not isinstance(f, dict):
+            continue
+        key = str(f.get("label") or f.get("key") or "").strip() or "unknown"
+        try:
+            cnt = int(f.get("count") or 0)
+        except Exception:
+            cnt = 0
+        if cnt > 0:
+            pre_finding_rows.append((key, cnt))
+    pre_finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
+
+    def _render_pre_dir_table(items: Any, *, max_rows: int = 20) -> str:
+        if redact:
+            return '<div class="empty">已脱敏：目录结构不展示</div>'
+        if not isinstance(items, list) or not items:
+            return '<div class="empty">暂无数据</div>'
+        rows: list[str] = []
+        for obj in items[: max(0, int(max_rows))]:
+            if not isinstance(obj, dict):
+                continue
+            path = escape(str(obj.get("path") or "."))
+            total_files = int(obj.get("total_files") or 0)
+            risky_files = int(obj.get("risky_files") or 0)
+            size_bytes = _fmt_bytes(obj.get("total_size_bytes") or 0)
+            rows.append(
+                "<tr>"
+                f"<td class=\"k\">{path}</td>"
+                f"<td class=\"v\">{_fmt_int(risky_files)}/{_fmt_int(total_files)}</td>"
+                f"<td class=\"v\">{escape(size_bytes)}</td>"
+                "</tr>"
+            )
+        if not rows:
+            return '<div class="empty">暂无数据</div>'
+        return (
+            "<table class=\"bars\">"
+            "<thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead>"
+            "<tbody>"
+            + "".join(rows)
+            + "</tbody></table>"
+        )
+
+    precheck_section = ""
+    if isinstance(precheck_summary, dict) and precheck_summary:
+        pre_meta = (
+            "<table class=\"bars\">"
+            "<thead><tr><th>Field</th><th>Value</th><th></th></tr></thead>"
+            "<tbody>"
+            f"<tr><td class=\"k\">scan_run_id</td><td class=\"v\">{escape(pre_scan_run_id)}</td><td></td></tr>"
+            f"<tr><td class=\"k\">generated_at</td><td class=\"v\">{escape(pre_generated_at)}</td><td></td></tr>"
+            f"<tr><td class=\"k\">total_files</td><td class=\"v\">{_fmt_int(pre_total_files)}</td><td></td></tr>"
+            f"<tr><td class=\"k\">total_size</td><td class=\"v\">{escape(_fmt_bytes(pre_total_bytes))}</td><td></td></tr>"
+            f"<tr><td class=\"k\">pdf_scan (scanned/text/unknown)</td><td class=\"v\">{_fmt_int(pre_pdf_scanned)}/{_fmt_int(pre_pdf_text)}/{_fmt_int(pre_pdf_unknown)}</td><td></td></tr>"
+            "</tbody></table>"
+        )
+        precheck_section = (
+            "<div class=\"section\">"
+            "<h2>Precheck（入库前摸底）</h2>"
+            "<div class=\"two\">"
+            f"<div><h2>概览</h2>{pre_meta}</div>"
+            f"<div><h2>格式分布（Top）</h2>{_render_bar_table(pre_by_type, total=max(1, pre_total_files))}</div>"
+            "</div>"
+            "<div class=\"two\" style=\"margin-top:12px\">"
+            f"<div><h2>文件大小分布</h2>{_render_histogram(pre.get('file_size_histogram'))}</div>"
+            f"<div><h2>长度分布（tokens）</h2>{_render_histogram(pre.get('token_histogram'))}</div>"
+            "</div>"
+            "<div class=\"two\" style=\"margin-top:12px\">"
+            f"<div><h2>语言分布（抽样）</h2>{_render_bar_table(pre_lang, total=max(1, pre_total_files))}</div>"
+            f"<div><h2>问题清单（可操作）</h2>{_render_bar_table(pre_finding_rows[:12], total=max(1, pre_total_files))}</div>"
+            "</div>"
+            "<div class=\"two\" style=\"margin-top:12px\">"
+            f"<div><h2>PII 命中（次数）</h2>{_render_bar_table(pre_pii, total=max(1, sum(v for _, v in pre_pii) if pre_pii else 1))}</div>"
+            f"<div><h2>Secrets/Token 命中（次数）</h2>{_render_bar_table(pre_secrets, total=max(1, sum(v for _, v in pre_secrets) if pre_secrets else 1))}</div>"
+            "</div>"
+            "<div style=\"margin-top:12px\">"
+            f"<h2>目录结构（Top 风险聚集区）</h2>{_render_pre_dir_table(pre.get('directory_stats'), max_rows=20)}"
+            "</div>"
+            "</div>"
+        )
+
     kg = report.get("kg_stats") if isinstance(report, dict) else None
     kgd = kg if isinstance(kg, dict) else {}
     kg_events = int(kgd.get("events") or 0)
@@ -955,6 +1119,8 @@ def render_rag_audit_html(
         return str(v)
 
     def _render_rr_slice_table(dim: str) -> str:
+        if redact and dim == "directory":
+            return '<div class="empty">已脱敏：directory 不展示</div>'
         obj = rr_slices.get(dim) if isinstance(rr_slices.get(dim), dict) else {}
         buckets = obj.get("buckets") if isinstance(obj.get("buckets"), list) else []
         rows: list[str] = []
@@ -1001,7 +1167,8 @@ def render_rag_audit_html(
             "</div>"
         )
 
-    raw_json = json.dumps(report, ensure_ascii=False, indent=2)
+    raw_payload = _scrub_report_for_redaction(report) if redact else report
+    raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
     html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -1082,6 +1249,8 @@ def render_rag_audit_html(
         {_render_histogram(prof.get("file_size_histogram"))}
       </div>
     </div>
+
+    {precheck_section}
 
     <div class="section two">
       <div>

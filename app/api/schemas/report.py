@@ -154,3 +154,9 @@ class DatasetReportOut(BaseModel):
 
     # Optional: latest regression run summary for the dataset (best-effort).
     latest_regression_run: Optional[DatasetRegressionRunSummaryOut] = None
+
+    # Optional: latest precheck summary snapshot for the dataset (best-effort).
+    #
+    # This is the "before ingestion" scan output (local folder scan) and is intended
+    # to be used by offline HTML exports (RAG audit) and report center drill-down.
+    precheck_summary: Optional[Dict[str, Any]] = None

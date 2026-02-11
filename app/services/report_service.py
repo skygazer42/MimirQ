@@ -621,6 +621,30 @@ class ReportService:
             governance_metrics = None
             chunk_quality_metrics = None
 
+        # Optional: latest dataset precheck summary snapshot (best-effort).
+        # Precheck runs are "before ingestion" scans over a local folder; we embed the latest
+        # completed summary so RAG audit exports can show input distribution signals.
+        precheck_summary: dict | None = None
+        try:
+            from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
+
+            row = (
+                db.query(DBDatasetPrecheckScanRun)
+                .filter(
+                    DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                    DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+                    DBDatasetPrecheckScanRun.status == "completed",
+                )
+                .order_by(DBDatasetPrecheckScanRun.created_at.desc())
+                .first()
+            )
+            if row is not None:
+                raw = getattr(row, "summary", None)
+                if isinstance(raw, dict) and raw:
+                    precheck_summary = dict(raw)
+        except Exception:
+            precheck_summary = None
+
         return DatasetReportOut(
             dataset_id=dataset_id,
             dataset_name=str(getattr(dataset, "name", "") or "") or None,
@@ -637,4 +661,5 @@ class ReportService:
             chunk_quality_metrics=chunk_quality_metrics,
             kg_stats=kg_stats,
             latest_regression_run=latest_regression_run,
+            precheck_summary=precheck_summary,
         )
