@@ -2102,6 +2102,117 @@ export interface RegressionCaseList {
   items: RegressionCase[]
 }
 
+// ==================== Evidence Workbench（Ground Truth 证据库） ====================
+
+export type EvidenceItemStatus = 'draft' | 'reviewed' | 'approved' | 'archived'
+
+export interface EvidenceSuite {
+  id: string
+  tenant_id: string
+  dataset_id: string
+  name: string
+  description?: string | null
+  tags: string[]
+  config: Record<string, any>
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+  archived_at?: string | null
+  item_counts?: Record<string, number> | null
+}
+
+export interface EvidenceSuiteCreate {
+  dataset_id: string
+  name: string
+  description?: string | null
+  tags?: string[]
+  config?: Record<string, any>
+}
+
+export interface EvidenceSuitePatch {
+  name?: string
+  description?: string | null
+  tags?: string[] | null
+  config?: Record<string, any> | null
+  archived_at?: string | null
+}
+
+export interface EvidenceSuiteList {
+  total: number
+  items: EvidenceSuite[]
+}
+
+export interface EvidenceItem {
+  id: string
+  tenant_id: string
+  dataset_id: string
+  suite_id: string
+  status: EvidenceItemStatus
+
+  query: string
+  expected_answer?: string | null
+  reference_sources: ReferenceSource[]
+  retrieval_snapshot: Record<string, any>
+  rag_config_snapshot: Record<string, any>
+  notes?: string | null
+
+  regression_case_id?: string | null
+
+  created_by?: string | null
+  reviewed_by?: string | null
+  approved_by?: string | null
+  archived_by?: string | null
+
+  reviewed_at?: string | null
+  approved_at?: string | null
+  archived_at?: string | null
+
+  created_at: string
+  updated_at: string
+}
+
+export interface EvidenceItemCreate {
+  suite_id: string
+  dataset_id: string
+  query: string
+  expected_answer?: string | null
+  reference_sources: ReferenceSource[]
+  retrieval_snapshot?: Record<string, any>
+  rag_config_snapshot?: Record<string, any>
+  notes?: string | null
+}
+
+export interface EvidenceItemPatch {
+  query?: string
+  expected_answer?: string | null
+  reference_sources?: ReferenceSource[]
+  retrieval_snapshot?: Record<string, any>
+  rag_config_snapshot?: Record<string, any>
+  notes?: string | null
+}
+
+export interface EvidenceItemList {
+  total: number
+  items: EvidenceItem[]
+}
+
+export interface EvidenceSuiteSyncRegressionResponse {
+  suite_id: string
+  dataset_id: string
+  created: number
+  updated: number
+  skipped: number
+  errors: Array<Record<string, any>>
+}
+
+export interface EvidenceSuiteExportV1 {
+  schema: string
+  exported_at: string
+  dataset_id: string
+  suite: Record<string, any>
+  items: Array<Record<string, any>>
+}
+
 export interface GeneratedQuestion {
   question: string
   expected_answer?: string
@@ -2189,6 +2300,36 @@ export interface RegressionItem {
 export interface RegressionRunDetail {
   run: RegressionRun
   items: RegressionItem[]
+}
+
+export interface RegressionRunMetricDiff {
+  key: string
+  before?: any
+  after?: any
+  delta?: number | null
+}
+
+export interface RegressionRunSliceBucketDiff {
+  key: string
+  items_before: number
+  items_after: number
+  metrics: RegressionRunMetricDiff[]
+}
+
+export interface RegressionRunSliceDiff {
+  truncated_before: boolean
+  truncated_after: boolean
+  buckets: RegressionRunSliceBucketDiff[]
+}
+
+export interface RagasRegressionRunDiffResponse {
+  base_run_id: string
+  target_run_id: string
+  generated_at: string
+  base_params: Record<string, any>
+  target_params: Record<string, any>
+  metric_diffs: RegressionRunMetricDiff[]
+  slice_diffs: Record<string, RegressionRunSliceDiff>
 }
 
 // ==================== RAGViz（相似度热力图） ====================
