@@ -188,6 +188,7 @@ export default function ReportsCenterPage() {
   const connectorRuns = report?.connectors || []
   const folderTree = report?.folder_tree || null
   const governance = report?.governance_metrics || null
+  const governanceAudit = report?.governance_audit || null
 
   const flatFolders = useMemo(() => {
     const root = folderTree?.root
@@ -261,6 +262,37 @@ export default function ReportsCenterPage() {
       .slice(0, 12)
   }, [governance?.rule_packs_docs])
 
+  const govAuditReductionPct = useMemo(() => {
+    const ratio = Number(governanceAudit?.char_reduction_ratio || 0)
+    if (!Number.isFinite(ratio) || ratio <= 0) return 0
+    return Math.round(ratio * 1000) / 10
+  }, [governanceAudit?.char_reduction_ratio])
+
+  const govAuditCharData = useMemo(() => {
+    if (!governanceAudit) return []
+    return [
+      { name: 'original_chars_total', value: Number(governanceAudit.original_chars_total || 0) },
+      { name: 'cleaned_chars_total', value: Number(governanceAudit.cleaned_chars_total || 0) },
+    ]
+  }, [governanceAudit])
+
+  const govAuditEffectsData = useMemo(() => {
+    if (!governanceAudit) return []
+    const items = [
+      { name: '段落去重（dropped）', value: Number(governanceAudit.paragraphs_dropped_total || 0) },
+      { name: '裁剪 References（lines）', value: Number(governanceAudit.references_removed_lines_total || 0) },
+      { name: 'URL 规范化（changed）', value: Number(governanceAudit.urls_changed_total || 0) },
+      { name: '去样板（lines）', value: Number(governanceAudit.boilerplate_removed_lines_total || 0) },
+      { name: '移除图片（count）', value: Number(governanceAudit.images_removed_total || 0) },
+      { name: '表格规范化（tables）', value: Number(governanceAudit.tables_normalized_total || 0) },
+      { name: '代码行号移除（lines）', value: Number(governanceAudit.code_lines_stripped_total || 0) },
+    ]
+    return items
+      .filter((x) => x.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12)
+  }, [governanceAudit])
+
   const handleExportChartsJson = useCallback(() => {
     if (!datasetId || !report) return
     const safe = sanitizeFilename(selectedDataset?.name || report.dataset_name || 'dataset')
@@ -272,8 +304,11 @@ export default function ReportsCenterPage() {
       pipeline_hash: report.pipeline_hash || null,
       governance: {
         metrics: report.governance_metrics || null,
+        audit: report.governance_audit || null,
         drop_reasons_top: dropReasonsData,
         rule_packs_top: rulePacksData,
+        audit_chars: govAuditCharData,
+        audit_effects_top: govAuditEffectsData,
       },
       folders: {
         query: folderQuery,
@@ -293,6 +328,8 @@ export default function ReportsCenterPage() {
     dropReasonsData,
     folderBarData,
     folderQuery,
+    govAuditCharData,
+    govAuditEffectsData,
     pipelineHash,
     report,
     rulePacksData,
@@ -518,6 +555,87 @@ export default function ReportsCenterPage() {
               ) : (
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
                   <div className="text-sm text-muted-foreground">暂无治理指标（后端未返回 governance_metrics）</div>
+                </div>
+              )}
+
+              {governanceAudit ? (
+                <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-foreground">治理效果（Audit）</div>
+                      <div className="text-xs text-muted-foreground">
+                        采样 {governanceAudit.used_documents}/{governanceAudit.total_documents}
+                        {governanceAudit.truncated ? '（已截断）' : ''} · parsed content persisted: {governanceAudit.docs_with_parsed_content_persisted}/{governanceAudit.used_documents}
+                      </div>
+                    </div>
+                    <Badge variant={governanceAudit.truncated ? 'soft' : 'outline'} className="text-xs">
+                      char_reduction: {govAuditReductionPct}%
+                    </Badge>
+                  </div>
+
+                  <StatsGrid className="md:grid-cols-4">
+                    <StatCard icon={BarChart3} label="字符缩减" value={`${govAuditReductionPct}%`} color="cyan" />
+                    <StatCard icon={RefreshCw} label="变更文档（docs）" value={String(governanceAudit.docs_changed || 0)} color="teal" />
+                    <StatCard icon={ShieldAlert} label="过滤/隔离（docs）" value={String(governanceAudit.docs_dropped || 0)} color="amber" />
+                    <StatCard
+                      icon={FileText}
+                      label="parsed content truncated（docs）"
+                      value={String(governanceAudit.parsed_content_truncated_docs || 0)}
+                      color="gray"
+                    />
+                  </StatsGrid>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="text-sm font-semibold text-foreground mb-2">Chars（Original vs Cleaned）</div>
+                      {govAuditCharData.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">暂无数据</div>
+                      ) : (
+                        <div className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={govAuditCharData} margin={{ left: 16, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                                {govAuditCharData.map((_, idx) => (
+                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="text-sm font-semibold text-foreground mb-2">Effects（Top）</div>
+                      {govAuditEffectsData.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">暂无数据</div>
+                      ) : (
+                        <div className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={govAuditEffectsData} layout="vertical" margin={{ left: 130, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                              <XAxis type="number" />
+                              <YAxis type="category" dataKey="name" width={120} />
+                              <Tooltip />
+                              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                                {govAuditEffectsData.map((_, idx) => (
+                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/60 bg-card/40 p-4">
+                  <div className="text-sm text-muted-foreground">暂无治理效果（后端未返回 governance_audit）</div>
                 </div>
               )}
 

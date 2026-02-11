@@ -1421,6 +1421,28 @@ export interface DatasetGovernanceMetrics {
   rule_packs_docs: Record<string, number>
 }
 
+export interface DatasetGovernanceAudit {
+  total_documents: number
+  used_documents: number
+  truncated: boolean
+  docs_with_parsed_content_persisted: number
+  parsed_content_truncated_docs: number
+  original_chars_total: number
+  cleaned_chars_total: number
+  char_reduction_ratio: number
+  docs_changed: number
+  docs_dropped: number
+  paragraphs_dropped_total: number
+  references_removed_lines_total: number
+  urls_changed_total: number
+  boilerplate_removed_sections_total: number
+  boilerplate_removed_lines_total: number
+  images_removed_total: number
+  tables_normalized_total: number
+  table_rows_changed_total: number
+  code_lines_stripped_total: number
+}
+
 export interface DatasetReport {
   dataset_id: string
   dataset_name?: string | null
@@ -1433,6 +1455,7 @@ export interface DatasetReport {
   dataset_metadata: Record<string, any>
   folder_tree?: DocumentFolderTreeResponse | null
   governance_metrics?: DatasetGovernanceMetrics | null
+  governance_audit?: DatasetGovernanceAudit | null
 }
 
 export interface DatasetConfigBundle {
