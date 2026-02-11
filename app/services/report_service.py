@@ -218,6 +218,52 @@ class ReportService:
         except Exception:
             pipeline_versions = []
 
+        # Best-effort config/provenance snapshots per pipeline_hash version (for reproducibility/debug).
+        pipeline_snapshots: dict[str, dict] = {}
+        try:
+            # Keep it bounded: only include snapshots for the top-N pipeline versions in this report.
+            targets = [str(v.pipeline_hash or "").strip() for v in (pipeline_versions or [])]
+            targets = [t for t in targets if t and t != "unknown"][:10]
+            target_set = set(targets)
+            if target_set:
+                from app.services.pipeline_provenance_service import build_pipeline_version_snapshot
+
+                _dataset, q = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+                if pipeline_hash_norm:
+                    active_expr = func.coalesce(
+                        DBDocument.doc_metadata["active_pipeline_hash"].as_string(),
+                        DBDocument.doc_metadata["pipeline_hash"].as_string(),
+                    )
+                    q = q.filter(active_expr == pipeline_hash_norm)
+
+                active_expr = func.coalesce(
+                    DBDocument.doc_metadata["active_pipeline_hash"].as_string(),
+                    DBDocument.doc_metadata["pipeline_hash"].as_string(),
+                    "unknown",
+                )
+                rows = (
+                    q.with_entities(active_expr.label("ph"), DBDocument.doc_metadata)
+                    .order_by(DBDocument.updated_at.desc())
+                    .limit(2000)
+                    .all()
+                )
+                for ph_raw, meta in rows:
+                    ph = str(ph_raw or "unknown")[:64]
+                    if ph not in target_set or ph in pipeline_snapshots:
+                        continue
+                    meta_dict = meta if isinstance(meta, dict) else {}
+                    versions = meta_dict.get("pipeline_provenance_versions")
+                    snap = versions.get(ph) if isinstance(versions, dict) else None
+                    if isinstance(snap, dict) and snap:
+                        pipeline_snapshots[ph] = dict(snap)
+                    else:
+                        pipeline_snapshots[ph] = build_pipeline_version_snapshot(meta=meta_dict, pipeline_hash=ph)
+
+                    if len(pipeline_snapshots) >= len(target_set):
+                        break
+        except Exception:
+            pipeline_snapshots = {}
+
         # Recent connector runs (best-effort).
         connectors: list[ConnectorRunSummary] = []
         try:
@@ -404,6 +450,7 @@ class ReportService:
             profile=profile,
             compliance=compliance,
             pipeline_versions=pipeline_versions,
+            pipeline_snapshots=pipeline_snapshots,
             connectors=connectors,
             dataset_metadata=dict(getattr(dataset, "dataset_metadata", None) or {}),
             folder_tree=folder_tree,

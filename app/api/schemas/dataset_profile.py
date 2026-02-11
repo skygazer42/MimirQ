@@ -36,6 +36,19 @@ class DatasetProfilePdfScanStats(BaseModel):
     unknown: int = 0
 
 
+class DatasetProfileParsingProvenanceStats(BaseModel):
+    """
+    Best-effort parse routing/provenance aggregation.
+
+    Populated from per-document metadata.parse_provenance (when available).
+    """
+
+    docs_with_provenance: int = 0
+    by_resolved_backend: Dict[str, int] = Field(default_factory=dict)
+    fallback_docs: int = 0
+    elapsed_ms_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
+
+
 class DatasetProfileFindingSummary(BaseModel):
     key: str
     label: str
@@ -102,6 +115,7 @@ class DatasetProfileSummary(BaseModel):
     language_mix: Dict[str, int] = Field(default_factory=dict)
 
     pdf_scan: DatasetProfilePdfScanStats = Field(default_factory=DatasetProfilePdfScanStats)
+    parsing_provenance: DatasetProfileParsingProvenanceStats = Field(default_factory=DatasetProfileParsingProvenanceStats)
 
     pii_hits_total: Dict[str, int] = Field(default_factory=dict)
     secrets_hits_total: Dict[str, int] = Field(default_factory=dict)

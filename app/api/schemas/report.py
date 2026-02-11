@@ -103,6 +103,8 @@ class DatasetReportOut(BaseModel):
     profile: DatasetProfileSummary
     compliance: ComplianceSummary
     pipeline_versions: List[PipelineVersionSummary] = Field(default_factory=list)
+    # Best-effort per-pipeline version provenance snapshots (keyed by pipeline_hash).
+    pipeline_snapshots: Dict[str, Any] = Field(default_factory=dict)
     connectors: List[ConnectorRunSummary] = Field(default_factory=list)
 
     # A snapshot of dataset-level config (best-effort), useful for sharing.

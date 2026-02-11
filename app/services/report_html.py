@@ -343,6 +343,44 @@ def render_dataset_report_html(
     by_status = _as_items(prof.get("by_status"), top=12)
     by_type = _as_items(prof.get("by_file_type"), top=12)
 
+    # Actionable findings (best-effort; derived from profile.findings).
+    findings = prof.get("findings") if isinstance(prof.get("findings"), list) else []
+    finding_rows: list[tuple[str, int]] = []
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        key = str(f.get("label") or f.get("key") or "").strip() or "unknown"
+        try:
+            cnt = int(f.get("count") or 0)
+        except Exception:
+            cnt = 0
+        if cnt <= 0:
+            continue
+        finding_rows.append((key, cnt))
+    finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
+
+    # Parsing provenance/routing (best-effort; derived from profile.parsing_provenance).
+    prov = prof.get("parsing_provenance") if isinstance(prof.get("parsing_provenance"), dict) else {}
+    prov_docs = int(prov.get("docs_with_provenance") or 0)
+    prov_fallback_docs = int(prov.get("fallback_docs") or 0)
+    prov_by_backend = _as_items(prov.get("by_resolved_backend"), top=12)
+    prov_elapsed = prov.get("elapsed_ms_percentiles") if isinstance(prov.get("elapsed_ms_percentiles"), dict) else {}
+    prov_elapsed_p50 = int(prov_elapsed.get("p50") or 0)
+    prov_elapsed_p90 = int(prov_elapsed.get("p90") or 0)
+    prov_meta_rows = [
+        ("docs_with_provenance", prov_docs),
+        ("fallback_docs", prov_fallback_docs),
+        ("p50_elapsed_ms", prov_elapsed_p50),
+        ("p90_elapsed_ms", prov_elapsed_p90),
+    ]
+    prov_meta_table = (
+        "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
+        + "".join(f'<tr><td class="k">{escape(str(k))}</td><td class="v">{_fmt_int(v)}</td><td></td></tr>' for k, v in prov_meta_rows)
+        + "</tbody></table>"
+        if prov_meta_rows
+        else '<div class="empty">暂无数据</div>'
+    )
+
     comp = report.get("compliance") if isinstance(report, dict) else None
     compd = comp if isinstance(comp, dict) else {}
     quarantined = int(compd.get("quarantined_documents") or 0)
@@ -523,22 +561,34 @@ def render_dataset_report_html(
       <div class="card"><div class="kpi-label">Pipeline Filter</div><div class="kpi-value">{escape(str(report.get("pipeline_hash") or "all"))}</div></div>
     </div>
 
-    <div class="section two">
-      <div>
-        <h2>状态分布</h2>
-        {_render_bar_table(by_status, total=max(1, total_docs))}
-      </div>
-      <div>
-        <h2>格式分布（Top）</h2>
-        {_render_bar_table(by_type, total=max(1, total_docs))}
-      </div>
-    </div>
+	    <div class="section two">
+	      <div>
+	        <h2>状态分布</h2>
+	        {_render_bar_table(by_status, total=max(1, total_docs))}
+	      </div>
+	      <div>
+	        <h2>格式分布（Top）</h2>
+	        {_render_bar_table(by_type, total=max(1, total_docs))}
+	      </div>
+	    </div>
 
-    <div class="section two">
-      <div>
-        <h2>Chunk Quality Gate（文档数）</h2>
-        {_render_bar_table(gate_grades, total=max(1, total_docs))}
-      </div>
+	    <div class="section two">
+	      <div>
+	        <h2>问题清单（可操作）</h2>
+	        {_render_bar_table(finding_rows, total=max(1, total_docs))}
+	      </div>
+	      <div>
+	        <h2>Parsing / Routing（Docs）</h2>
+	        {_render_bar_table(prov_by_backend, total=max(1, prov_docs))}
+	        <div style="margin-top:10px">{prov_meta_table}</div>
+	      </div>
+	    </div>
+
+	    <div class="section two">
+	      <div>
+	        <h2>Chunk Quality Gate（文档数）</h2>
+	        {_render_bar_table(gate_grades, total=max(1, total_docs))}
+	      </div>
       <div>
         <h2>Chunk 风险计数（best-effort）</h2>
         {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
@@ -760,22 +810,22 @@ def render_rag_audit_html(
       <div class="card"><div class="kpi-label">P50 coverage（%）</div><div class="kpi-value">{_fmt_int(cov_p50)}%</div></div>
     </div>
 
-    <div class="section two">
-      <div>
-        <h2>状态分布</h2>
-        {_render_bar_table(by_status, total=max(1, total_docs))}
-      </div>
-      <div>
-        <h2>格式分布（Top）</h2>
-        {_render_bar_table(by_type, total=max(1, total_docs))}
-      </div>
-    </div>
+	    <div class="section two">
+	      <div>
+	        <h2>状态分布</h2>
+	        {_render_bar_table(by_status, total=max(1, total_docs))}
+	      </div>
+	      <div>
+	        <h2>格式分布（Top）</h2>
+	        {_render_bar_table(by_type, total=max(1, total_docs))}
+	      </div>
+	    </div>
 
-    <div class="section two">
-      <div>
-        <h2>长度分布（chars）</h2>
-        {_render_histogram(prof.get("length_histogram"))}
-      </div>
+		    <div class="section two">
+		      <div>
+		        <h2>长度分布（chars）</h2>
+		        {_render_histogram(prof.get("length_histogram"))}
+	      </div>
       <div>
         <h2>文件大小分布</h2>
         {_render_histogram(prof.get("file_size_histogram"))}

@@ -639,6 +639,18 @@ class ParsingStage:
             if isinstance(item, dict)
         ]
 
+        # Persist parse provenance for audit/debug (best-effort).
+        try:
+            prov = parsed.get("provenance") if isinstance(parsed, dict) else None
+            if isinstance(prov, dict) and prov:
+                meta = dict(db_document.doc_metadata or {})
+                meta["parse_provenance"] = prov
+                db_document.doc_metadata = meta
+                db.commit()
+                db.refresh(db_document)
+        except Exception:
+            pass
+
         # Attach lightweight parsed-text quality metrics for observability/tuning.
         try:
             joined = "\n\n".join([(d.page_content or "") for d in documents])
