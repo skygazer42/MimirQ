@@ -282,6 +282,18 @@ export default function ReportsCenterPage() {
     return bins.map((b) => ({ name: String(b.label || ''), value: Number(b.count || 0) }))
   }, [governanceAudit])
 
+  const govAuditDensityHistData = useMemo(() => {
+    if (!governanceAudit) return []
+    const bins = governanceAudit.density_pct_histogram || []
+    return bins.map((b) => ({ name: String(b.label || ''), value: Number(b.count || 0) }))
+  }, [governanceAudit])
+
+  const govAuditHeadingRatioHistData = useMemo(() => {
+    if (!governanceAudit) return []
+    const bins = governanceAudit.heading_ratio_pct_histogram || []
+    return bins.map((b) => ({ name: String(b.label || ''), value: Number(b.count || 0) }))
+  }, [governanceAudit])
+
   const govAuditEffectsData = useMemo(() => {
     if (!governanceAudit) return []
     const items = [
@@ -315,6 +327,8 @@ export default function ReportsCenterPage() {
         rule_packs_top: rulePacksData,
         audit_chars: govAuditCharData,
         audit_reduction_histogram: govAuditReductionHistData,
+        audit_density_histogram: govAuditDensityHistData,
+        audit_heading_ratio_histogram: govAuditHeadingRatioHistData,
         audit_effects_top: govAuditEffectsData,
       },
       folders: {
@@ -336,7 +350,9 @@ export default function ReportsCenterPage() {
     folderBarData,
     folderQuery,
     govAuditCharData,
+    govAuditDensityHistData,
     govAuditReductionHistData,
+    govAuditHeadingRatioHistData,
     govAuditEffectsData,
     pipelineHash,
     report,
@@ -573,7 +589,8 @@ export default function ReportsCenterPage() {
                       <div className="text-sm font-semibold text-foreground">治理效果（Audit）</div>
                       <div className="text-xs text-muted-foreground">
                         采样 {governanceAudit.used_documents}/{governanceAudit.total_documents}
-                        {governanceAudit.truncated ? '（已截断）' : ''} · parsed content persisted: {governanceAudit.docs_with_parsed_content_persisted}/{governanceAudit.used_documents}
+                        {governanceAudit.truncated ? '（已截断）' : ''} · char stats: {governanceAudit.docs_with_char_stats}/{governanceAudit.used_documents} · parsed markdown persisted:{' '}
+                        {governanceAudit.docs_with_parsed_content_persisted}/{governanceAudit.used_documents}
                         {' · '}reduction p50/p90/p99: {governanceAudit.char_reduction_pct_percentiles?.p50 || 0}%/{governanceAudit.char_reduction_pct_percentiles?.p90 || 0}%/
                         {governanceAudit.char_reduction_pct_percentiles?.p99 || 0}%
                       </div>
@@ -597,7 +614,8 @@ export default function ReportsCenterPage() {
                       color="cyan"
                     />
                     <StatCard icon={BarChart3} label="字符缩减" value={`${govAuditReductionPct}%`} color="teal" />
-                    <StatCard icon={Layers} label="parsed content persisted（docs）" value={String(governanceAudit.docs_with_parsed_content_persisted || 0)} color="gray" />
+                    <StatCard icon={Layers} label="char stats（docs）" value={String(governanceAudit.docs_with_char_stats || 0)} color="gray" />
+                    <StatCard icon={FileSearch} label="parsed markdown persisted（docs）" value={String(governanceAudit.docs_with_parsed_content_persisted || 0)} color="gray" />
                     <StatCard icon={RefreshCw} label="变更文档（docs）" value={String(governanceAudit.docs_changed || 0)} color="teal" />
                     <StatCard icon={ShieldAlert} label="过滤/隔离（docs）" value={String(governanceAudit.docs_dropped || 0)} color="amber" />
                   </StatsGrid>
@@ -640,6 +658,54 @@ export default function ReportsCenterPage() {
                               <Tooltip />
                               <Bar dataKey="value" radius={[0, 6, 6, 0]}>
                                 {govAuditEffectsData.map((_, idx) => (
+                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="text-sm font-semibold text-foreground mb-2">Alnum/CJK Density Distribution（%）</div>
+                      {govAuditDensityHistData.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">暂无数据</div>
+                      ) : (
+                        <div className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={govAuditDensityHistData} margin={{ left: 16, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                                {govAuditDensityHistData.map((_, idx) => (
+                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="text-sm font-semibold text-foreground mb-2">Outline Ratio Distribution（%）</div>
+                      {govAuditHeadingRatioHistData.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">暂无数据</div>
+                      ) : (
+                        <div className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={govAuditHeadingRatioHistData} margin={{ left: 16, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                                {govAuditHeadingRatioHistData.map((_, idx) => (
                                   <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                                 ))}
                               </Bar>

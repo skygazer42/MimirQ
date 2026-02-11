@@ -1782,6 +1782,7 @@ class DocumentProcessorService:
             merge_small_after = 0
             merge_small_reduced = 0
             governance_stats: Optional[GovernanceStats] = None
+            governance_audit_patch: dict[str, Any] | None = None
             if parsed.chunks is not None:
                 t0 = time.perf_counter()
                 with metrics_span("ingest.normalize"):
@@ -1799,6 +1800,16 @@ class DocumentProcessorService:
                 chunks = gov.items
                 governance_stats = gov.stats
 
+                if bool(pipeline_effective.governance_enabled):
+                    try:
+                        governance_audit_patch = self._build_governance_audit_metadata_patch(
+                            before_items=parsed_chunks,
+                            after_items=chunks,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to record governance audit metadata: %s", str(exc)[:200])
+                        governance_audit_patch = None
+
                 if (
                     bool(pipeline_effective.governance_enabled)
                     and governance_stats is not None
@@ -1811,6 +1822,7 @@ class DocumentProcessorService:
                         document_id,
                         governance_stats,
                         rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+                        audit_patch=governance_audit_patch,
                     )
                     quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
@@ -1900,6 +1912,16 @@ class DocumentProcessorService:
                 # Ensure stable per-doc indices so we can rebase chunk offsets into joined-text coordinates.
                 _ensure_ingest_page_indices(parsed_documents)
 
+                if bool(pipeline_effective.governance_enabled):
+                    try:
+                        governance_audit_patch = self._build_governance_audit_metadata_patch(
+                            before_items=parsed_documents_before_governance,
+                            after_items=parsed_documents,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to record governance audit metadata: %s", str(exc)[:200])
+                        governance_audit_patch = None
+
                 # Optional: persist parsed markdown (raw+clean) for audit/debug.
                 if bool(getattr(pipeline_effective, "persist_parsed_content", False)):
                     try:
@@ -1933,6 +1955,7 @@ class DocumentProcessorService:
                         document_id,
                         governance_stats,
                         rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+                        audit_patch=governance_audit_patch,
                     )
                     quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
@@ -2279,6 +2302,7 @@ class DocumentProcessorService:
                     document_id,
                     governance_stats,
                     rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+                    audit_patch=governance_audit_patch,
                 )
 
             await raise_if_cancelled()
@@ -3038,6 +3062,112 @@ class DocumentProcessorService:
             "cleaned": {"raw_len": int(clean_raw_len), "stored_len": int(clean_stored_len), "truncated": bool(clean_is_trunc)},
         }
 
+    def _build_governance_audit_metadata_patch(
+        self,
+        *,
+        before_items: list[Document] | None,
+        after_items: list[Document] | None,
+    ) -> dict[str, Any]:
+        """
+        Build lightweight governance audit metadata (privacy-safe).
+
+        This is intentionally small and derived from:
+        - char counts (before/after governance)
+        - governance quality metrics (density / outline ratio)
+        """
+
+        before = list(before_items or [])
+        after = list(after_items or [])
+
+        original_chars = sum(len(d.page_content or "") for d in before)
+        cleaned_chars = sum(len(d.page_content or "") for d in after)
+
+        reduction_pct = 0
+        if original_chars > 0 and cleaned_chars >= 0:
+            try:
+                ratio = float((original_chars - cleaned_chars) / float(original_chars))
+            except Exception:
+                ratio = 0.0
+            ratio = max(0.0, min(1.0, ratio))
+            reduction_pct = int(round(ratio * 100.0))
+
+        patch: dict[str, Any] = {
+            "governance_char_stats": {
+                "original_chars": int(max(0, original_chars)),
+                "cleaned_chars": int(max(0, cleaned_chars)),
+                "reduction_pct": int(max(0, min(100, reduction_pct))),
+            }
+        }
+
+        # Prefer post-governance text for quality metrics; fallback to pre-governance when fully dropped.
+        source_items = after if after else before
+        if not source_items:
+            return patch
+
+        chars_non_space = 0
+        chars_alnum_cjk = 0
+        lines_total = 0
+        lines_outline = 0
+        content_chars = 0
+
+        def _safe_int(raw: object) -> int:
+            try:
+                if raw is None:
+                    return 0
+                if isinstance(raw, bool):
+                    return 0
+                return int(raw)  # type: ignore[arg-type]
+            except Exception:
+                return 0
+
+        # Fast path: consume per-item governance_quality metrics when present (already computed by governance stage).
+        # Fallback: recompute via shared quality_filters helpers (best-effort).
+        from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
+
+        for d in source_items:
+            meta = d.metadata if isinstance(getattr(d, "metadata", None), dict) else {}
+            q = meta.get("governance_quality")
+            if isinstance(q, dict):
+                chars_non_space += _safe_int(q.get("chars_non_space"))
+                chars_alnum_cjk += _safe_int(q.get("chars_alnum_cjk"))
+                lines_total += _safe_int(q.get("lines_total"))
+                lines_outline += _safe_int(q.get("lines_outline"))
+                content_chars += _safe_int(q.get("content_chars"))
+                continue
+
+            text = d.page_content or ""
+            try:
+                dm = drop_if_low_density(text, threshold=-1.0).metrics or {}
+            except Exception:
+                dm = {}
+            try:
+                om = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
+            except Exception:
+                om = {}
+
+            chars_non_space += _safe_int(dm.get("chars_non_space"))
+            chars_alnum_cjk += _safe_int(dm.get("chars_alnum_cjk"))
+            lines_total += _safe_int(om.get("lines_total"))
+            lines_outline += _safe_int(om.get("lines_outline"))
+            content_chars += _safe_int(om.get("content_chars"))
+
+        density = float(chars_alnum_cjk / max(1, chars_non_space)) if chars_non_space > 0 else 0.0
+        heading_ratio = float(lines_outline / max(1, lines_total)) if lines_total > 0 else 0.0
+        density = max(0.0, min(1.0, density))
+        heading_ratio = max(0.0, min(1.0, heading_ratio))
+
+        patch["governance_quality"] = {
+            "density": round(float(density), 6),
+            "chars_non_space": int(max(0, chars_non_space)),
+            "chars_alnum_cjk": int(max(0, chars_alnum_cjk)),
+            "heading_ratio": round(float(heading_ratio), 6),
+            "lines_total": int(max(0, lines_total)),
+            "lines_outline": int(max(0, lines_outline)),
+            "content_chars": int(max(0, content_chars)),
+        }
+        patch["governance_quality_source"] = "cleaned" if after else "pre_governance"
+        return patch
+
     def _record_governance_metadata(
         self,
         db: Session,
@@ -3045,6 +3175,7 @@ class DocumentProcessorService:
         document_id: UUID,
         stats: GovernanceStats,
         rule_packs: list[str] | None = None,
+        audit_patch: dict[str, Any] | None = None,
     ) -> None:
         """Persist governance stats on the document metadata."""
         db_doc = db.query(DBDocument).filter(
@@ -3131,6 +3262,9 @@ class DocumentProcessorService:
                     break
             if cleaned:
                 metadata["governance_rule_packs"] = cleaned
+
+        if isinstance(audit_patch, dict) and audit_patch:
+            metadata.update(audit_patch)
 
         db_doc.doc_metadata = metadata
         db.commit()
@@ -3250,6 +3384,8 @@ class DocumentProcessorService:
             "document_tags",
             "document_keywords",
             "document_keywords_provider",
+            # Stored at document-level; avoid duplicating into every chunk metadata.
+            "governance_quality",
         }
         for d in items:
             meta = dict(d.metadata or {})
