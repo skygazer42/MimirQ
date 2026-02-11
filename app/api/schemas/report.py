@@ -65,6 +65,45 @@ class DatasetChunkQualityMetricsOut(BaseModel):
     token_stats_missing_documents: int = 0
 
 
+class DatasetGovernanceAuditOut(BaseModel):
+    """
+    Dataset-level governance audit (best-effort).
+
+    Focus: quantify *effects* of governance cleaning, so users can tune profiles/rule packs
+    based on objective signals (not subjective scoring).
+    """
+
+    total_documents: int = 0
+    used_documents: int = 0
+    truncated: bool = False
+
+    # How many documents have persist_parsed_content metadata available (best-effort).
+    docs_with_parsed_content_persisted: int = 0
+    parsed_content_truncated_docs: int = 0
+    original_chars_total: int = 0
+    cleaned_chars_total: int = 0
+    # (original - cleaned) / original across docs_with_parsed_content_persisted.
+    char_reduction_ratio: float = 0.0
+
+    # Doc-level outcomes derived from governance_* document metadata (best-effort).
+    docs_changed: int = 0
+    docs_dropped: int = 0
+
+    # Aggregated effect counters (best-effort; only present when recorded by ingestion pipeline).
+    paragraphs_dropped_total: int = 0
+    references_removed_lines_total: int = 0
+    urls_changed_total: int = 0
+
+    boilerplate_removed_sections_total: int = 0
+    boilerplate_removed_lines_total: int = 0
+    images_removed_total: int = 0
+
+    tables_normalized_total: int = 0
+    table_rows_changed_total: int = 0
+
+    code_lines_stripped_total: int = 0
+
+
 class DatasetKGEntityTypeCount(BaseModel):
     type: str
     count: int = 0
@@ -145,6 +184,9 @@ class DatasetReportOut(BaseModel):
 
     # Optional: governance metrics derived from document.metadata.governance_* (best-effort).
     governance_metrics: Optional[DatasetGovernanceMetricsOut] = None
+
+    # Optional: governance audit (effects + impact metrics; best-effort).
+    governance_audit: Optional[DatasetGovernanceAuditOut] = None
 
     # Optional: chunking quality metrics derived from document.metadata.chunk_* (best-effort).
     chunk_quality_metrics: Optional[DatasetChunkQualityMetricsOut] = None

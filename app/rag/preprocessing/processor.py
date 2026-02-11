@@ -52,6 +52,13 @@ class GovernanceStats:
     paragraphs_dropped: int = 0
     references_removed_lines: int = 0
     urls_changed: int = 0
+    boilerplate_removed_sections: int = 0
+    boilerplate_removed_lines: int = 0
+    images_removed: int = 0
+    tables_normalized: int = 0
+    table_rows_changed: int = 0
+    code_blocks_changed: int = 0
+    code_lines_stripped: int = 0
     keywords_docs: int = 0
     keywords_total: int = 0
     languages: dict[str, int] = field(default_factory=dict)
@@ -146,6 +153,13 @@ class GovernanceProcessor:
         paragraphs_dropped_total = 0
         references_removed_total = 0
         urls_changed_total = 0
+        boilerplate_removed_sections_total = 0
+        boilerplate_removed_lines_total = 0
+        images_removed_total = 0
+        tables_normalized_total = 0
+        table_rows_changed_total = 0
+        code_blocks_changed_total = 0
+        code_lines_stripped_total = 0
         keywords_docs = 0
         keywords_total = 0
         languages: dict[str, int] = {}
@@ -252,6 +266,8 @@ class GovernanceProcessor:
                 table_count = int(tbl.tables or 0)
                 table_rows_changed = int(tbl.rows_changed or 0)
                 changed_any = changed_any or bool(tbl.changed)
+                tables_normalized_total += int(table_count or 0)
+                table_rows_changed_total += int(table_rows_changed or 0)
 
             code_blocks_changed = 0
             code_lines_stripped = 0
@@ -261,12 +277,16 @@ class GovernanceProcessor:
                 code_blocks_changed = int(code.blocks_changed or 0)
                 code_lines_stripped = int(code.lines_stripped or 0)
                 changed_any = changed_any or bool(code.changed)
+                code_blocks_changed_total += int(code_blocks_changed or 0)
+                code_lines_stripped_total += int(code_lines_stripped or 0)
 
             boilerplate = None
             if remove_boilerplate:
                 boilerplate = remove_markdown_boilerplate(text)
                 text = boilerplate.text
                 changed_any = changed_any or bool(boilerplate.changed)
+                boilerplate_removed_sections_total += int(getattr(boilerplate, "removed_sections", 0) or 0)
+                boilerplate_removed_lines_total += int(getattr(boilerplate, "removed_lines", 0) or 0)
 
             images_removed = 0
             if str(remove_images or "none").strip().lower() in {"decorative", "all"}:
@@ -274,6 +294,7 @@ class GovernanceProcessor:
                 text = img.text
                 images_removed = int(img.removed or 0)
                 changed_any = changed_any or bool(img.changed)
+                images_removed_total += int(images_removed or 0)
 
             pii_hits: dict[str, int] = {}
             if pii_anonymize:
@@ -494,6 +515,13 @@ class GovernanceProcessor:
                 paragraphs_dropped=int(paragraphs_dropped_total),
                 references_removed_lines=int(references_removed_total),
                 urls_changed=int(urls_changed_total),
+                boilerplate_removed_sections=int(boilerplate_removed_sections_total),
+                boilerplate_removed_lines=int(boilerplate_removed_lines_total),
+                images_removed=int(images_removed_total),
+                tables_normalized=int(tables_normalized_total),
+                table_rows_changed=int(table_rows_changed_total),
+                code_blocks_changed=int(code_blocks_changed_total),
+                code_lines_stripped=int(code_lines_stripped_total),
                 keywords_docs=int(keywords_docs),
                 keywords_total=int(keywords_total),
                 languages=languages,
@@ -514,6 +542,13 @@ class GovernanceProcessor:
             paragraphs_dropped=int(paragraphs_dropped_total),
             references_removed_lines=int(references_removed_total),
             urls_changed=int(urls_changed_total),
+            boilerplate_removed_sections=int(boilerplate_removed_sections_total),
+            boilerplate_removed_lines=int(boilerplate_removed_lines_total),
+            images_removed=int(images_removed_total),
+            tables_normalized=int(tables_normalized_total),
+            table_rows_changed=int(table_rows_changed_total),
+            code_blocks_changed=int(code_blocks_changed_total),
+            code_lines_stripped=int(code_lines_stripped_total),
             keywords_docs=int(keywords_docs),
             keywords_total=int(keywords_total),
             languages=languages,

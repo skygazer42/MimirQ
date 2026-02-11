@@ -19,6 +19,7 @@ from app.api.schemas.report import (
     ComplianceSummary,
     ConnectorRunSummary,
     DatasetChunkQualityMetricsOut,
+    DatasetGovernanceAuditOut,
     DatasetGovernanceMetricsOut,
     DatasetKGStatsOut,
     DatasetRegressionRunSummaryOut,
@@ -101,6 +102,122 @@ def _aggregate_governance_metrics(
         dropped_documents_total=int(max(0, dropped_documents_total)),
         drop_reasons_total={k: int(max(0, v)) for k, v in drop_reasons_total.items() if int(v or 0) > 0},
         rule_packs_docs={k: int(max(0, v)) for k, v in rule_packs_docs.items() if int(v or 0) > 0},
+    )
+
+
+def _aggregate_governance_audit(
+    *,
+    total_documents: int,
+    metadatas: list[dict],
+    truncated: bool,
+) -> DatasetGovernanceAuditOut:
+    """
+    Aggregate governance *effects* metrics from document-level metadata (best-effort).
+
+    Notes:
+    - Uses only already-persisted document metadata; does not scan full text.
+    - Some counters require newer ingestion runs (keys may be missing on legacy docs).
+    """
+
+    used = len([m for m in metadatas if isinstance(m, dict)])
+    docs_changed = 0
+    docs_dropped = 0
+
+    paras_dropped = 0
+    refs_removed = 0
+    urls_changed = 0
+    boiler_sections = 0
+    boiler_lines = 0
+    images_removed = 0
+    tables_norm = 0
+    table_rows_changed = 0
+    code_lines_stripped = 0
+
+    persisted_docs = 0
+    persisted_truncated_docs = 0
+    orig_chars_total = 0
+    clean_chars_total = 0
+
+    for meta in metadatas:
+        if not isinstance(meta, dict):
+            continue
+
+        try:
+            if int(meta.get("governance_changed_documents") or 0) > 0:
+                docs_changed += 1
+        except Exception:
+            pass
+        try:
+            if int(meta.get("governance_dropped_documents") or 0) > 0:
+                docs_dropped += 1
+        except Exception:
+            pass
+
+        def _add_int(key: str) -> int:
+            raw = meta.get(key)
+            try:
+                return int(raw or 0)
+            except Exception:
+                return 0
+
+        paras_dropped += _add_int("governance_paragraphs_dropped")
+        refs_removed += _add_int("governance_references_removed_lines")
+        urls_changed += _add_int("governance_urls_changed")
+
+        boiler_sections += _add_int("governance_boilerplate_removed_sections")
+        boiler_lines += _add_int("governance_boilerplate_removed_lines")
+        images_removed += _add_int("governance_images_removed")
+
+        tables_norm += _add_int("governance_tables_normalized")
+        table_rows_changed += _add_int("governance_table_rows_changed")
+
+        code_lines_stripped += _add_int("governance_code_lines_stripped")
+
+        persisted = meta.get("parsed_content_persisted")
+        if isinstance(persisted, dict):
+            orig = persisted.get("original") if isinstance(persisted.get("original"), dict) else {}
+            cln = persisted.get("cleaned") if isinstance(persisted.get("cleaned"), dict) else {}
+            try:
+                orig_raw_len = int(orig.get("raw_len") or 0)
+            except Exception:
+                orig_raw_len = 0
+            try:
+                cln_raw_len = int(cln.get("raw_len") or 0)
+            except Exception:
+                cln_raw_len = 0
+
+            if orig_raw_len > 0 and cln_raw_len >= 0:
+                persisted_docs += 1
+                orig_chars_total += orig_raw_len
+                clean_chars_total += cln_raw_len
+                if bool(orig.get("truncated")) or bool(cln.get("truncated")):
+                    persisted_truncated_docs += 1
+
+    ratio = 0.0
+    if orig_chars_total > 0 and clean_chars_total >= 0:
+        ratio = float((orig_chars_total - clean_chars_total) / float(orig_chars_total))
+        ratio = max(0.0, min(1.0, ratio))
+
+    return DatasetGovernanceAuditOut(
+        total_documents=int(total_documents or 0),
+        used_documents=int(used),
+        truncated=bool(truncated),
+        docs_with_parsed_content_persisted=int(persisted_docs),
+        parsed_content_truncated_docs=int(persisted_truncated_docs),
+        original_chars_total=int(max(0, orig_chars_total)),
+        cleaned_chars_total=int(max(0, clean_chars_total)),
+        char_reduction_ratio=float(ratio),
+        docs_changed=int(max(0, docs_changed)),
+        docs_dropped=int(max(0, docs_dropped)),
+        paragraphs_dropped_total=int(max(0, paras_dropped)),
+        references_removed_lines_total=int(max(0, refs_removed)),
+        urls_changed_total=int(max(0, urls_changed)),
+        boilerplate_removed_sections_total=int(max(0, boiler_sections)),
+        boilerplate_removed_lines_total=int(max(0, boiler_lines)),
+        images_removed_total=int(max(0, images_removed)),
+        tables_normalized_total=int(max(0, tables_norm)),
+        table_rows_changed_total=int(max(0, table_rows_changed)),
+        code_lines_stripped_total=int(max(0, code_lines_stripped)),
     )
 
 
@@ -590,6 +707,7 @@ class ReportService:
 
         # Governance metrics aggregated from document metadata (best-effort).
         governance_metrics: DatasetGovernanceMetricsOut | None = None
+        governance_audit: DatasetGovernanceAuditOut | None = None
         chunk_quality_metrics: DatasetChunkQualityMetricsOut | None = None
         try:
             max_docs = 2000
@@ -612,6 +730,11 @@ class ReportService:
                 metadatas=metas,
                 truncated=truncated,
             )
+            governance_audit = _aggregate_governance_audit(
+                total_documents=int(getattr(profile, "total_documents", 0) or 0),
+                metadatas=metas,
+                truncated=truncated,
+            )
             chunk_quality_metrics = _aggregate_chunk_quality_metrics(
                 total_documents=int(getattr(profile, "total_documents", 0) or 0),
                 metadatas=metas,
@@ -619,6 +742,7 @@ class ReportService:
             )
         except Exception:
             governance_metrics = None
+            governance_audit = None
             chunk_quality_metrics = None
 
         # Optional: latest dataset precheck summary snapshot (best-effort).
@@ -658,6 +782,7 @@ class ReportService:
             dataset_metadata=dict(getattr(dataset, "dataset_metadata", None) or {}),
             folder_tree=folder_tree,
             governance_metrics=governance_metrics,
+            governance_audit=governance_audit,
             chunk_quality_metrics=chunk_quality_metrics,
             kg_stats=kg_stats,
             latest_regression_run=latest_regression_run,
