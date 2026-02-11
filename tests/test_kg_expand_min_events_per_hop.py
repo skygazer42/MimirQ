@@ -48,7 +48,7 @@ async def test_expand_stops_when_new_events_below_min_events_per_hop(monkeypatch
         def __init__(self, _session):  # noqa: ANN001
             return
 
-        def find_events_by_entities(self, _entity_ids, tenant_id, limit=50, document_ids=None):  # noqa: ANN001
+        def find_events_by_entities(self, _entity_ids, tenant_id, limit=50, document_ids=None, **_k):  # noqa: ANN001
             calls["find"] += 1
             assert tenant_id
             assert limit > 0

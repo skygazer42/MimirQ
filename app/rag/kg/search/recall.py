@@ -45,29 +45,42 @@ class RecallSearcher:
                 tenant_id=tenant_id,
                 k=config.recall.vector_candidates,
             )
-            if config.document_ids and raw_entities:
+            if raw_entities and (config.document_ids or config.dataset_id):
                 # Prevent cross-document leakage within tenant: only keep entities that appear
-                # in events scoped by the requested documents.
+                # in events scoped by the requested documents or dataset.
                 from uuid import UUID
 
                 candidate_ids = [e.get("entity_id") or e.get("id") for e in raw_entities]
-                allowed_entity_ids = event_repo.filter_entity_ids_in_documents(
-                    candidate_ids,
-                    tenant_id=tenant_id,
-                    document_ids=config.document_ids,
-                )
-                filtered_entities: List[dict] = []
-                for ent in raw_entities:
-                    ent_id = ent.get("entity_id") or ent.get("id")
-                    if ent_id is None:
-                        continue
-                    try:
-                        ent_uuid = UUID(str(ent_id))
-                    except Exception:
-                        continue
-                    if ent_uuid in allowed_entity_ids:
-                        filtered_entities.append(ent)
-                raw_entities = filtered_entities
+                allowed_entity_ids: set[UUID] | None = None
+                if config.document_ids:
+                    allowed_entity_ids = event_repo.filter_entity_ids_in_documents(
+                        candidate_ids,
+                        tenant_id=tenant_id,
+                        document_ids=config.document_ids,
+                    )
+                elif config.dataset_id:
+                    if not config.account_id:
+                        raise ValueError("account_id is required for dataset-scoped KG search")
+                    allowed_entity_ids = event_repo.filter_entity_ids_in_dataset(
+                        candidate_ids,
+                        tenant_id=tenant_id,
+                        dataset_id=config.dataset_id,
+                        account_id=config.account_id,
+                    )
+
+                if allowed_entity_ids is not None:
+                    filtered_entities: List[dict] = []
+                    for ent in raw_entities:
+                        ent_id = ent.get("entity_id") or ent.get("id")
+                        if ent_id is None:
+                            continue
+                        try:
+                            ent_uuid = UUID(str(ent_id))
+                        except Exception:
+                            continue
+                        if ent_uuid in allowed_entity_ids:
+                            filtered_entities.append(ent)
+                    raw_entities = filtered_entities
             key_query_related = [
                 e for e in raw_entities if e.get("similarity", 0.0) >= config.recall.entity_similarity_threshold
             ][: config.recall.max_entities]
@@ -97,6 +110,8 @@ class RecallSearcher:
                 tenant_id=tenant_id,
                 limit=config.recall.vector_candidates * 2,
                 document_ids=config.document_ids,
+                dataset_id=config.dataset_id,
+                account_id=config.account_id,
             )
             event_ids_from_entities = list(event_ids_from_entities)[: config.rerank.max_key_recall_results]
 
@@ -106,6 +121,8 @@ class RecallSearcher:
                 tenant_id=tenant_id,
                 k=config.recall.vector_candidates,
                 document_ids=config.document_ids,
+                dataset_id=config.dataset_id,
+                account_id=config.account_id,
             )
             event_query_related = [
                 item
@@ -134,6 +151,8 @@ class RecallSearcher:
                 merged_event_ids,
                 tenant_id=tenant_id,
                 document_ids=config.document_ids,
+                dataset_id=config.dataset_id,
+                account_id=config.account_id,
             )
             merged_event_ids = [str(ev.id) for ev in events_detail]
             assoc_map = event_repo.get_event_entities(merged_event_ids, tenant_id=tenant_id)

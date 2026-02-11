@@ -1245,21 +1245,31 @@ async def run_kg_search(
     if payload.tenant_id and payload.tenant_id != tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id mismatch")
 
-    if not payload.document_ids:
-        raise HTTPException(status_code=400, detail="document_ids are required for KG search")
+    allowed_doc_ids: list[UUID] | None = None
+    scope_dataset_id: UUID | None = None
 
-    allowed_doc_ids = _resolve_allowed_documents(
-        document_ids=payload.document_ids,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        db=db,
-    )
+    if payload.document_ids:
+        allowed_doc_ids = _resolve_allowed_documents(
+            document_ids=payload.document_ids,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            db=db,
+        )
+    elif payload.dataset_id:
+        # Enterprise semantics: allow dataset-scoped search without enumerating all document_ids.
+        ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+        scope_dataset_id = payload.dataset_id
+    else:
+        raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")
 
     try:
         result = await kg_search(
             query=payload.query,
             tenant_id=tenant_id,
             document_ids=allowed_doc_ids,
+            dataset_id=scope_dataset_id,
+            account_id=account_id,
         )
     except (asyncio.TimeoutError, TimeoutError) as exc:
         raise HTTPException(status_code=504, detail="KG search timed out") from exc

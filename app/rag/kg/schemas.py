@@ -25,6 +25,7 @@ class KGSearchRequest(BaseModel):
 
     query: str = Field(..., min_length=1, max_length=2048, description="Natural language query")
     tenant_id: Optional[UUID] = None
+    dataset_id: Optional[UUID] = None
     # Note: document_ids limit is enforced server-side via settings.KG_API_MAX_DOCUMENT_IDS.
     document_ids: Optional[List[UUID]] = Field(default=None)
 

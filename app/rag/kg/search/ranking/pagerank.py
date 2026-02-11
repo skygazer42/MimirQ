@@ -25,7 +25,13 @@ class RerankPageRankSearcher:
         session = get_session()
         try:
             repo = EventRepository(session)
-            events = repo.get_events_by_ids(event_ids, tenant_id=config.tenant_id, document_ids=config.document_ids)
+            events = repo.get_events_by_ids(
+                event_ids,
+                tenant_id=config.tenant_id,
+                document_ids=config.document_ids,
+                dataset_id=config.dataset_id,
+                account_id=config.account_id,
+            )
             if not events:
                 return {"events": [], "clues": [], "stats": {}}
 

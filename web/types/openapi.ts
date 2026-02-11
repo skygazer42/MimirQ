@@ -11196,6 +11196,8 @@ export interface components {
             query: string;
             /** Tenant Id */
             tenant_id?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Document Ids */
             document_ids?: string[] | null;
         };

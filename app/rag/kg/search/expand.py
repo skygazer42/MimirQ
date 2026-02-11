@@ -66,6 +66,8 @@ class ExpandSearcher:
                     tenant_id=tenant_id,
                     limit=limit,
                     document_ids=config.document_ids,
+                    dataset_id=config.dataset_id,
+                    account_id=config.account_id,
                 )
                 new_event_ids: List[str] = []
                 for ev in events:
