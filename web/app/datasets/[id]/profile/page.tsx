@@ -79,6 +79,14 @@ function findingBadgeVariant(sev: string): 'secondary' | 'outline' | 'soft' | 'd
   return 'outline'
 }
 
+function targetBadgeVariant(status: string): 'secondary' | 'outline' | 'soft' | 'destructive' {
+  const s = String(status || '').toLowerCase()
+  if (s === 'fail') return 'destructive'
+  if (s === 'warn') return 'soft'
+  if (s === 'pass') return 'outline'
+  return 'secondary'
+}
+
 export default function DatasetProfilePage() {
   const router = useRouter()
   const params = useParams()
@@ -87,7 +95,8 @@ export default function DatasetProfilePage() {
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [summary, setSummary] = useState<DatasetProfileSummary | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
+  const [isExportingJson, setIsExportingJson] = useState(false)
+  const [isExportingHtml, setIsExportingHtml] = useState(false)
 
   const [scanConfig, setScanConfig] = useState<DatasetProfileScanRunCreateRequest>({
     backfill_pdf_quality: true,
@@ -226,6 +235,19 @@ export default function DatasetProfilePage() {
       .slice(0, 10)
   }, [summary])
 
+  const parsingBackendChartData = useMemo(() => {
+    const m = summary?.parsing_provenance?.by_resolved_backend || {}
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+  }, [summary])
+
+  const chunkTargets = useMemo(() => {
+    return (summary?.chunk_targets || []).slice()
+  }, [summary])
+
   const parseLowQualityFinding = useMemo(() => {
     return (summary?.findings || []).find((f) => f.key === 'parse_low_quality') || null
   }, [summary])
@@ -324,7 +346,7 @@ export default function DatasetProfilePage() {
 
   const exportJson = useCallback(async () => {
     if (!datasetId) return
-    setIsExporting(true)
+    setIsExportingJson(true)
     try {
       const blob = await datasetApi.exportProfileSummary(datasetId)
       const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
@@ -334,7 +356,23 @@ export default function DatasetProfilePage() {
       console.error('Failed to export profile', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
-      setIsExporting(false)
+      setIsExportingJson(false)
+    }
+  }, [datasetId, dataset?.name])
+
+  const exportHtml = useCallback(async () => {
+    if (!datasetId) return
+    setIsExportingHtml(true)
+    try {
+      const blob = await datasetApi.exportProfileHtml(datasetId, { redact: true })
+      const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      downloadBlob(blob, `${safe}.profile.html`)
+      toast.success('已导出 HTML 报告')
+    } catch (e: any) {
+      console.error('Failed to export profile html', e)
+      toast.error(formatApiError(e, '导出失败'))
+    } finally {
+      setIsExportingHtml(false)
     }
   }, [datasetId, dataset?.name])
 
@@ -441,10 +479,19 @@ export default function DatasetProfilePage() {
               variant="outline"
               className="gap-2"
               onClick={() => void exportJson()}
-              disabled={isExporting || !summary}
+              disabled={isExportingJson || !summary}
             >
-              {isExporting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
-              导出
+              {isExportingJson ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
+              导出 JSON
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => void exportHtml()}
+              disabled={isExportingHtml || !summary}
+            >
+              {isExportingHtml ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
+              导出 HTML
             </Button>
           </div>
         }
@@ -642,6 +689,54 @@ export default function DatasetProfilePage() {
               )}
             </Panel>
 
+            <Panel className="p-5 lg:col-span-2">
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="font-semibold">Chunk Targets（分布目标检查）</div>
+                <div className="text-xs text-muted-foreground">
+                  objective checks · suggestions
+                </div>
+              </div>
+
+              {chunkTargets.length ? (
+                <div className="space-y-3">
+                  {chunkTargets.map((t, idx) => (
+                    <div
+                      key={String((t as any).key || (t as any).label || idx)}
+                      className="rounded-xl border border-border/60 bg-card/40 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{String(t.label || t.key || '')}</div>
+                          {t.message ? (
+                            <div className="mt-1 text-sm text-muted-foreground text-pretty">
+                              {String(t.message)}
+                            </div>
+                          ) : null}
+                        </div>
+                        <Badge variant={targetBadgeVariant(String((t as any).status || ''))} className="font-mono text-xs">
+                          {String((t as any).status || '')}
+                        </Badge>
+                      </div>
+
+                      {Array.isArray((t as any).suggestions) && (t as any).suggestions.length ? (
+                        <ul className="mt-2 pl-5 list-disc text-sm text-muted-foreground">
+                          {(t as any).suggestions.slice(0, 6).map((s: any, idx: number) => (
+                            <li key={idx} className="text-pretty">
+                              {String(s)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-10 text-center text-muted-foreground">
+                  暂无数据（可运行深度扫描补齐 chunk token/coverage 等指标）
+                </div>
+              )}
+            </Panel>
+
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">解析质量分布</div>
@@ -671,6 +766,55 @@ export default function DatasetProfilePage() {
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">Parsing provenance / 路由</div>
+              </div>
+
+              {parsingBackendChartData.length ? (
+                <div className="h-[220px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={parsingBackendChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[220px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">docs_with_provenance</div>
+                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                    {Number(summary?.parsing_provenance?.docs_with_provenance || 0)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">fallback_docs</div>
+                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                    {Number(summary?.parsing_provenance?.fallback_docs || 0)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">p50_elapsed_ms</div>
+                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                    {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p50 || 0)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">p90_elapsed_ms</div>
+                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                    {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p90 || 0)}
+                  </div>
+                </div>
+              </div>
             </Panel>
 
             <Panel className="p-5">
@@ -985,20 +1129,14 @@ export default function DatasetProfilePage() {
                   <Button
                     variant="outline"
                     className="gap-2"
-                    onClick={async () => {
-                      if (!datasetId) return
-                      try {
-                        const blob = await datasetApi.exportProfileHtml(datasetId, { redact: true })
-                        const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
-                        downloadBlob(blob, `${safe}.profile.html`)
-                        toast.success('已导出 HTML 报告')
-                      } catch (e: any) {
-                        toast.error(formatApiError(e, '导出失败'))
-                      }
-                    }}
-                    disabled={!summary}
+                    onClick={() => void exportHtml()}
+                    disabled={!summary || isExportingHtml}
                   >
-                    <Download className="w-4 h-4" />
+                    {isExportingHtml ? (
+                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
                     导出 HTML
                   </Button>
                 </div>

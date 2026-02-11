@@ -31,6 +31,9 @@
 
 ## 优化与审计
 - [guides/regression_gate.md](./guides/regression_gate.md)：离线评测回归（Retrieval gate / RAGAS / CI）。
-- 数据集报告（HTML/JSON）：`/api/v1/reports/datasets/{dataset_id}`、`/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html`
+- 数据画像（Web）：`/datasets/{id}/profile`（入库后画像）
+- 预检扫描（Web）：`/datasets/{id}/precheck`（入库前摸底）
+- 报告中心（Web）：`/reports`（数据集报告 / RAG Audit 导出）
+- 数据集报告（API）：`/api/v1/reports/datasets/{dataset_id}`、`/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html`
 
 > 若新增文档，请将其放入上面合适的子目录，如需新增分类可在 `docs/` 下创建新的文件夹。

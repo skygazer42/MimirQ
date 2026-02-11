@@ -51,6 +51,7 @@ export default function ReportsCenterPage() {
   const [isLoadingReport, setIsLoadingReport] = useState(false)
   const [isExportingJson, setIsExportingJson] = useState(false)
   const [isExportingHtml, setIsExportingHtml] = useState(false)
+  const [isExportingRagAuditHtml, setIsExportingRagAuditHtml] = useState(false)
 
   const [report, setReport] = useState<DatasetReport | null>(null)
   const [folderQuery, setFolderQuery] = useState<string>('')
@@ -156,6 +157,26 @@ export default function ReportsCenterPage() {
       toast.error(formatApiError(e, '导出 HTML 报告失败'))
     } finally {
       setIsExportingHtml(false)
+    }
+  }, [connectorRunsLimit, datasetId, pipelineHash, redact, selectedDataset?.name])
+
+  const handleExportRagAuditHtml = useCallback(async () => {
+    if (!datasetId) return
+    setIsExportingRagAuditHtml(true)
+    try {
+      const blob = await reportApi.exportDatasetRagAuditHtml(datasetId, {
+        pipeline_hash: pipelineHash.trim() || undefined,
+        connector_runs_limit: connectorRunsLimit,
+        redact,
+      })
+      const safe = sanitizeFilename(selectedDataset?.name || 'dataset')
+      const suffix = pipelineHash.trim() ? `.${pipelineHash.trim().slice(0, 8)}` : ''
+      downloadBlob(blob, `${safe}.rag_audit${suffix}.html`)
+    } catch (e: any) {
+      console.error('Export rag audit html failed', e)
+      toast.error(formatApiError(e, '导出 RAG Audit 报告失败'))
+    } finally {
+      setIsExportingRagAuditHtml(false)
     }
   }, [connectorRunsLimit, datasetId, pipelineHash, redact, selectedDataset?.name])
 
@@ -379,6 +400,19 @@ export default function ReportsCenterPage() {
                   <span className="ml-2">导出 Charts</span>
                 </Button>
                 <Button
+                  onClick={() => void handleExportRagAuditHtml()}
+                  disabled={!datasetId || isExportingRagAuditHtml}
+                  aria-label="导出 RAG Audit 报告"
+                >
+                  {isExportingRagAuditHtml ? (
+                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">导出 RAG Audit</span>
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => void handleExportHtml()}
                   disabled={!datasetId || isExportingHtml}
                   aria-label="导出 HTML 报告"

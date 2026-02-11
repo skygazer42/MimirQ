@@ -2414,6 +2414,25 @@ export interface DatasetProfilePdfScanStats {
   unknown: number
 }
 
+export interface DatasetProfileParsingProvenanceStats {
+  docs_with_provenance: number
+  by_resolved_backend: Record<string, number>
+  fallback_docs: number
+  elapsed_ms_percentiles: DatasetProfilePercentiles
+}
+
+export type DatasetProfileTargetCheckStatus = 'pass' | 'warn' | 'fail'
+
+export interface DatasetProfileTargetCheck {
+  key: string
+  label: string
+  status: DatasetProfileTargetCheckStatus
+  observed: Record<string, any>
+  target: Record<string, any>
+  message?: string | null
+  suggestions: string[]
+}
+
 export interface DatasetProfileFindingSummary {
   key: string
   label: string
@@ -2452,15 +2471,25 @@ export interface DatasetProfileSummary {
   avg_chunk_chars_histogram?: DatasetProfileHistogramBin[]
   chunk_length_percentiles?: DatasetProfilePercentiles
   chunk_length_histogram?: DatasetProfileHistogramBin[]
+  chunk_token_percentiles?: DatasetProfilePercentiles
+  chunk_token_histogram?: DatasetProfileHistogramBin[]
+  avg_chunk_tokens_percentiles?: DatasetProfilePercentiles
+  avg_chunk_tokens_histogram?: DatasetProfileHistogramBin[]
+  chunk_coverage_percentiles?: DatasetProfilePercentiles
+  chunk_coverage_histogram?: DatasetProfileHistogramBin[]
+  chunk_overlap_waste_percentiles?: DatasetProfilePercentiles
+  chunk_overlap_waste_histogram?: DatasetProfileHistogramBin[]
   page_number_histogram?: DatasetProfileHistogramBin[]
   parse_quality_histogram?: DatasetProfileHistogramBin[]
   language_mix?: Record<string, number>
   pdf_scan: DatasetProfilePdfScanStats
+  parsing_provenance?: DatasetProfileParsingProvenanceStats
 
   pii_hits_total: Record<string, number>
   secrets_hits_total: Record<string, number>
 
   findings: DatasetProfileFindingSummary[]
+  chunk_targets?: DatasetProfileTargetCheck[]
   latest_scan_run?: DatasetProfileScanRunSummary | null
 }
 
