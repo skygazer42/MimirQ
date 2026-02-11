@@ -381,6 +381,34 @@ def render_dataset_report_html(
         else '<div class="empty">暂无数据</div>'
     )
 
+    # Chunk target checks (best-effort; derived from profile.chunk_targets).
+    chunk_targets = prof.get("chunk_targets") if isinstance(prof.get("chunk_targets"), list) else []
+    ct_rows: list[str] = []
+    for t in chunk_targets:
+        if not isinstance(t, dict):
+            continue
+        label = str(t.get("label") or t.get("key") or "").strip() or "unknown"
+        status = str(t.get("status") or "").strip() or "unknown"
+        msg = str(t.get("message") or "").strip()
+        sugg_raw = t.get("suggestions")
+        sugg_list = sugg_raw if isinstance(sugg_raw, list) else []
+        suggestions = "; ".join([str(s).strip() for s in sugg_list if str(s).strip()])[:500]
+        ct_rows.append(
+            "<tr>"
+            f"<td class=\"k\">{escape(label)}</td>"
+            f"<td class=\"v\">{escape(status)}</td>"
+            f"<td class=\"v\">{escape(msg)}</td>"
+            f"<td class=\"v\">{escape(suggestions)}</td>"
+            "</tr>"
+        )
+    chunk_targets_table = (
+        "<table class=\"bars\"><thead><tr><th>Check</th><th>Status</th><th>Message</th><th>Suggestions</th></tr></thead><tbody>"
+        + "".join(ct_rows)
+        + "</tbody></table>"
+        if ct_rows
+        else '<div class="empty">暂无数据</div>'
+    )
+
     comp = report.get("compliance") if isinstance(report, dict) else None
     compd = comp if isinstance(comp, dict) else {}
     quarantined = int(compd.get("quarantined_documents") or 0)
@@ -589,17 +617,22 @@ def render_dataset_report_html(
 	        <h2>Chunk Quality Gate（文档数）</h2>
 	        {_render_bar_table(gate_grades, total=max(1, total_docs))}
 	      </div>
-      <div>
-        <h2>Chunk 风险计数（best-effort）</h2>
-        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
-      </div>
-    </div>
+	      <div>
+	        <h2>Chunk 风险计数（best-effort）</h2>
+	        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
+	      </div>
+	    </div>
 
-    <div class="section two">
-      <div>
-        <h2>Knowledge Graph（KG）</h2>
-        <table class="bars">
-          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
+	    <div class="section">
+	      <h2>Chunk Targets（分布目标检查）</h2>
+	      {chunk_targets_table}
+	    </div>
+
+	    <div class="section two">
+	      <div>
+	        <h2>Knowledge Graph（KG）</h2>
+	        <table class="bars">
+	          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
           <tbody>
             <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
             <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>

@@ -142,6 +142,17 @@ def test_dataset_profile_aggregate_exact_duplicates():
     assert finding_map["exact_dup"] == 2
 
 
+def test_dataset_profile_aggregate_chunk_targets_missing_stats_are_reported():
+    dsid = uuid.uuid4()
+    rows = [
+        _row(filename="a.md", file_type="md", status="completed", total_characters=100, metadata={}),
+    ]
+    summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
+    keys = [c.key for c in (summary.chunk_targets or [])]
+    assert "chunk_tokens_missing" in keys
+    assert "chunk_overlap_waste_missing" in keys
+
+
 def test_dataset_profile_aggregate_parse_low_quality_bucket():
     dsid = uuid.uuid4()
     rows = [

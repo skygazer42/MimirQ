@@ -49,6 +49,24 @@ class DatasetProfileParsingProvenanceStats(BaseModel):
     elapsed_ms_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
 
 
+class DatasetProfileTargetCheck(BaseModel):
+    """
+    Best-effort target checks for tuning (objective signals + suggestions).
+
+    Designed to be stable for UI/report rendering:
+    - status is one of pass/warn/fail
+    - observed/target are JSON-safe dicts for drill-down
+    """
+
+    key: str
+    label: str
+    status: Literal["pass", "warn", "fail"] = "pass"
+    observed: Dict[str, Any] = Field(default_factory=dict)
+    target: Dict[str, Any] = Field(default_factory=dict)
+    message: Optional[str] = None
+    suggestions: List[str] = Field(default_factory=list)
+
+
 class DatasetProfileFindingSummary(BaseModel):
     key: str
     label: str
@@ -122,6 +140,9 @@ class DatasetProfileSummary(BaseModel):
 
     # Actionable buckets.
     findings: List[DatasetProfileFindingSummary] = Field(default_factory=list)
+
+    # Target checks for chunk tuning (best-effort; may be empty when stats missing).
+    chunk_targets: List[DatasetProfileTargetCheck] = Field(default_factory=list)
 
     # Best-effort last deep scan run metadata (may be None).
     latest_scan_run: Optional[DatasetProfileScanRunSummary] = None
