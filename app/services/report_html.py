@@ -685,13 +685,18 @@ def render_dataset_report_html(
     if rr_slices:
         rr_slices_section = (
             "<div class=\\\"section\\\">"
-            "<h2>Retrieval Slices（file_type / language / directory）</h2>"
+            "<h2>Retrieval Slices</h2>"
             "<div class=\\\"two\\\">"
             f"<div><h2>file_type</h2>{_render_rr_slice_table('file_type')}</div>"
             f"<div><h2>language</h2>{_render_rr_slice_table('language')}</div>"
             "</div>"
-            "<div style=\\\"margin-top:12px\\\"><h2>directory</h2>"
-            f"{_render_rr_slice_table('directory')}"
+            "<div class=\\\"two\\\" style=\\\"margin-top:12px\\\">"
+            f"<div><h2>hit_type</h2>{_render_rr_slice_table('hit_type')}</div>"
+            f"<div><h2>quality</h2>{_render_rr_slice_table('quality')}</div>"
+            "</div>"
+            "<div class=\\\"two\\\" style=\\\"margin-top:12px\\\">"
+            f"<div><h2>pipeline_hash</h2>{_render_rr_slice_table('pipeline_hash')}</div>"
+            f"<div><h2>directory</h2>{_render_rr_slice_table('directory')}</div>"
             "</div>"
             "</div>"
         )
