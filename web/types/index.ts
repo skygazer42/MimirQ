@@ -2260,6 +2260,134 @@ export interface EvidenceItemImportResponse {
   errors: Array<Record<string, any>>
 }
 
+export interface EvidenceCoverageBucket {
+  key: string
+  items: number
+  references: number
+}
+
+export interface EvidenceCoverageHeatmap {
+  x: string[]
+  y: string[]
+  z: number[][]
+  metric: string
+}
+
+export interface EvidenceSuiteCoverage {
+  language: EvidenceCoverageBucket[]
+  file_type: EvidenceCoverageBucket[]
+  quality_bucket: EvidenceCoverageBucket[]
+  channel: EvidenceCoverageBucket[]
+  heatmaps: Record<string, EvidenceCoverageHeatmap>
+}
+
+export interface EvidenceThroughputWindow {
+  created: number
+  reviewed: number
+  approved: number
+}
+
+export interface EvidenceLeadTimeStats {
+  count: number
+  p50_sec?: number | null
+  p90_sec?: number | null
+  mean_sec?: number | null
+}
+
+export interface EvidenceSuiteThroughput {
+  window_days: number
+  last_window: EvidenceThroughputWindow
+  draft_to_reviewed: EvidenceLeadTimeStats
+  reviewed_to_approved: EvidenceLeadTimeStats
+  draft_to_approved: EvidenceLeadTimeStats
+}
+
+export interface EvidenceSuiteDashboard {
+  generated_at: string
+  suite_id: string
+  dataset_id: string
+  item_counts: Record<string, number>
+  coverage: EvidenceSuiteCoverage
+  throughput: EvidenceSuiteThroughput
+}
+
+export interface EvidenceDriftSliceBucket {
+  total: number
+  ok: number
+  drift: number
+  drift_rate: number
+  reasons: Record<string, number>
+}
+
+export interface EvidenceReferenceDriftDetail {
+  suite_id: string
+  item_id: string
+  item_status: string
+  dataset_id: string
+  document_id: string
+  chunk_id: string
+  reason: string
+  expected: Record<string, any>
+  observed: Record<string, any>
+  slice: Record<string, string>
+}
+
+export interface EvidenceReferenceDriftAudit {
+  generated_at: string
+  dataset_id: string
+  suite_id?: string | null
+
+  total_items: number
+  total_references: number
+  ok_references: number
+  drift_references: number
+  drift_rate: number
+
+  reasons: Record<string, number>
+  slices: Record<string, Record<string, EvidenceDriftSliceBucket>>
+
+  details_truncated: boolean
+  drifted_references: EvidenceReferenceDriftDetail[]
+}
+
+export interface EvidenceReferenceRepairRequest {
+  apply?: boolean
+  allow_approved?: boolean
+  include_archived_items?: boolean
+  max_items?: number
+  max_refs_per_item?: number
+  max_changes?: number
+}
+
+export interface EvidenceReferenceRepairChange {
+  suite_id: string
+  item_id: string
+  item_status: string
+  document_id: string
+  chunk_id_before: string
+  chunk_id_after?: string | null
+  reason: string
+  repaired: boolean
+  method?: string | null
+  meta: Record<string, any>
+}
+
+export interface EvidenceReferenceRepairResponse {
+  suite_id: string
+  dataset_id: string
+  applied: boolean
+
+  scanned_items: number
+  scanned_references: number
+  drifted_references: number
+  repaired_references: number
+  skipped_approved_items: number
+  skipped_archived_items: number
+
+  changes_truncated: boolean
+  changes: EvidenceReferenceRepairChange[]
+}
+
 export interface GeneratedQuestion {
   question: string
   expected_answer?: string

@@ -21,11 +21,12 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.evidence import (
     EvidenceItemCreateRequest,
-    EvidenceItemList,
     EvidenceItemImportResponse,
+    EvidenceItemList,
     EvidenceItemOut,
     EvidenceItemPatchRequest,
     EvidenceSuiteCreateRequest,
+    EvidenceSuiteDashboardOut,
     EvidenceSuiteExportV1,
     EvidenceSuiteList,
     EvidenceSuiteOut,
@@ -813,6 +814,87 @@ async def get_evidence_suite(
     out = EvidenceSuiteOut.model_validate(row).model_dump()
     out["item_counts"] = counts.get(str(row.id)) or {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
     return out
+
+
+@router.get("/suites/{suite_id}/dashboard", response_model=EvidenceSuiteDashboardOut)
+async def get_evidence_suite_dashboard(
+    suite_id: UUID,
+    include_archived_items: bool = False,
+    top_n: int = Query(default=12, ge=1, le=50),
+    heatmap_top_n: int = Query(default=8, ge=2, le=20),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Suite-level dashboard: status counts + slice coverage + throughput metrics.
+
+    Coverage is derived from reference_sources by resolving referenced documents.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    # Counts: include archived so the dashboard matches suite list badges.
+    counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[suite_id])
+    item_counts = counts.get(str(suite_id)) or {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
+
+    q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
+    if not include_archived_items:
+        q = q.filter(EvidenceItem.status != "archived")
+    items = q.order_by(EvidenceItem.updated_at.desc()).limit(10_000).all()
+
+    # Resolve document slice metadata (language/file_type/quality bucket).
+    doc_ids: set[UUID] = set()
+    for it in items:
+        refs = it.reference_sources if isinstance(getattr(it, "reference_sources", None), list) else []
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            try:
+                doc_ids.add(UUID(str(ref.get("document_id"))))
+            except Exception:
+                continue
+
+    doc_map: dict[UUID, dict[str, Any]] = {}
+    if doc_ids:
+        doc_rows = (
+            db.query(DBDocument.id, DBDocument.file_type, DBDocument.doc_metadata)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(sorted(doc_ids)))
+            .all()
+        )
+        for did, ft, meta in doc_rows:
+            if did is None:
+                continue
+            doc_map[did] = {
+                "id": did,
+                "file_type": str(ft or "").strip().lower() or "unknown",
+                "metadata": meta if isinstance(meta, dict) else {},
+            }
+
+    from app.services.evidence_dashboard import compute_suite_coverage, compute_suite_throughput  # noqa: WPS433
+
+    now = _now_utc()
+    throughput = compute_suite_throughput(items, now=now, window_days=7)
+    coverage = compute_suite_coverage(items, documents=doc_map, top_n=int(top_n), heatmap_top_n=int(heatmap_top_n))
+
+    return EvidenceSuiteDashboardOut(
+        generated_at=now,
+        suite_id=suite_id,
+        dataset_id=suite.dataset_id,
+        item_counts=item_counts,
+        coverage=coverage,
+        throughput=throughput,
+    )
 
 
 @router.patch("/suites/{suite_id}", response_model=EvidenceSuiteOut)

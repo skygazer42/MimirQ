@@ -157,3 +157,54 @@ class EvidenceItemImportResponse(BaseModel):
     created: int = 0
     skipped: int = 0
     errors: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class EvidenceCoverageBucket(BaseModel):
+    key: str
+    items: int = 0
+    references: int = 0
+
+
+class EvidenceCoverageHeatmap(BaseModel):
+    x: List[str] = Field(default_factory=list)
+    y: List[str] = Field(default_factory=list)
+    z: List[List[int]] = Field(default_factory=list)
+    metric: str = "items"
+
+
+class EvidenceSuiteCoverage(BaseModel):
+    language: List[EvidenceCoverageBucket] = Field(default_factory=list)
+    file_type: List[EvidenceCoverageBucket] = Field(default_factory=list)
+    quality_bucket: List[EvidenceCoverageBucket] = Field(default_factory=list)
+    channel: List[EvidenceCoverageBucket] = Field(default_factory=list)
+    heatmaps: Dict[str, EvidenceCoverageHeatmap] = Field(default_factory=dict)
+
+
+class EvidenceThroughputWindow(BaseModel):
+    created: int = 0
+    reviewed: int = 0
+    approved: int = 0
+
+
+class EvidenceLeadTimeStats(BaseModel):
+    count: int = 0
+    p50_sec: Optional[float] = None
+    p90_sec: Optional[float] = None
+    mean_sec: Optional[float] = None
+
+
+class EvidenceSuiteThroughput(BaseModel):
+    window_days: int = 7
+    last_window: EvidenceThroughputWindow = Field(default_factory=EvidenceThroughputWindow)
+    draft_to_reviewed: EvidenceLeadTimeStats = Field(default_factory=EvidenceLeadTimeStats)
+    reviewed_to_approved: EvidenceLeadTimeStats = Field(default_factory=EvidenceLeadTimeStats)
+    draft_to_approved: EvidenceLeadTimeStats = Field(default_factory=EvidenceLeadTimeStats)
+
+
+class EvidenceSuiteDashboardOut(BaseModel):
+    generated_at: datetime
+    suite_id: UUID
+    dataset_id: UUID
+    item_counts: Dict[str, int] = Field(default_factory=dict)
+    coverage: EvidenceSuiteCoverage = Field(default_factory=EvidenceSuiteCoverage)
+    throughput: EvidenceSuiteThroughput = Field(default_factory=EvidenceSuiteThroughput)
