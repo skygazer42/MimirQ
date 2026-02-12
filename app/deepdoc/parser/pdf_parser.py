@@ -1315,8 +1315,9 @@ class RAGFlowPdfParser:
             need_image, zoomin, return_html, False)
         return self.__filterout_scraps(deepcopy(self.boxes), zoomin), tbls
 
-    def remove_tag(self, txt):
-        return re.sub(r"@@[\t0-9.-]+?##", "", txt)
+    @staticmethod
+    def remove_tag(txt):
+        return re.sub(r"@@[\t0-9.-]+?##", "", txt or "")
 
     def crop(self, text, ZM=3, need_position=False):
         # Crop corresponding regions from images based on @@...## tags in text
@@ -1446,11 +1447,13 @@ class PlainParser:
         return [(line, "") for line in lines], []
 
     def crop(self, ck, need_position):
-        raise NotImplementedError
+        if need_position:
+            return None, None
+        return None
 
     @staticmethod
     def remove_tag(txt):
-        raise NotImplementedError
+        return txt or ""
 
 
 # Uses Vision Language Model (e.g., GPT-4V, BLIP-2, Qwen-VL, etc.) to directly analyze PDF page image content and extract document info, rather than traditional character-level, table structure, OCR approaches.

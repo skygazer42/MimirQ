@@ -1,15 +1,44 @@
 """
-Ragflow chunkers package.
-Provides document chunking functionality from ragflow.
+RAGFlow chunkers package.
+
+Important: keep imports lazy.
+
+Some chunkers depend on optional parsers/vision helpers and historically had circular
+imports (e.g. book -> chunkers -> book). This module exposes a stable API without
+importing all chunkers eagerly.
 """
 
-from app.third_party.ragflow.chunkers.book import chunk as book_chunk
-from app.third_party.ragflow.chunkers.email import chunk as email_chunk
-from app.third_party.ragflow.chunkers.laws import chunk as laws_chunk
-from app.third_party.ragflow.chunkers.naive import chunk as naive_chunk
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any, Callable
 
 
-def get_chunker(strategy: str):
+def _load_chunker(name: str) -> Callable[..., Any]:
+    mod = import_module(f"app.third_party.ragflow.chunkers.{name}")
+    fn = getattr(mod, "chunk", None)
+    if fn is None:
+        raise ImportError(f"ragflow chunker '{name}' does not export chunk()")
+    return fn
+
+
+def naive_chunk(*args: Any, **kwargs: Any):  # noqa: ANN201
+    return _load_chunker("naive")(*args, **kwargs)
+
+
+def book_chunk(*args: Any, **kwargs: Any):  # noqa: ANN201
+    return _load_chunker("book")(*args, **kwargs)
+
+
+def laws_chunk(*args: Any, **kwargs: Any):  # noqa: ANN201
+    return _load_chunker("laws")(*args, **kwargs)
+
+
+def email_chunk(*args: Any, **kwargs: Any):  # noqa: ANN201
+    return _load_chunker("email")(*args, **kwargs)
+
+
+def get_chunker(strategy: str) -> Callable[..., Any]:
     """Get the chunker function for a given strategy.
 
     Args:
@@ -21,23 +50,24 @@ def get_chunker(strategy: str):
     Raises:
         ValueError: If strategy not supported
     """
-    chunkers = {
-        'naive': naive_chunk,
-        'book': book_chunk,
-        'laws': laws_chunk,
-        'email': email_chunk,
-    }
+    strat = str(strategy or "").strip().lower()
+    if strat == "naive":
+        return _load_chunker("naive")
+    if strat == "book":
+        return _load_chunker("book")
+    if strat == "laws":
+        return _load_chunker("laws")
+    if strat == "email":
+        return _load_chunker("email")
 
-    if strategy not in chunkers:
-        raise ValueError(f"Unknown chunker strategy: {strategy}")
-
-    return chunkers[strategy]
+    raise ValueError(f"Unknown chunker strategy: {strategy}")
 
 
 __all__ = [
-    'naive_chunk',
-    'book_chunk',
-    'laws_chunk',
-    'email_chunk',
-    'get_chunker',
+    "naive_chunk",
+    "book_chunk",
+    "laws_chunk",
+    "email_chunk",
+    "get_chunker",
 ]
+

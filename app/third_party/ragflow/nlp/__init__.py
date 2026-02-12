@@ -21,12 +21,47 @@ import re
 from collections import Counter
 
 import chardet
-import roman_numbers as r
-from cn2an import cn2an
 from PIL import Image
-from word2number import w2n
 
 from app.third_party.ragflow.common.token_utils import num_tokens_from_string
+
+try:
+    from word2number import w2n
+except Exception:  # noqa: BLE001
+    w2n = None
+
+try:
+    from cn2an import cn2an
+except Exception:  # noqa: BLE001
+    cn2an = None
+
+
+def _roman_to_int(text: str) -> int:
+    """
+    Minimal Roman numeral parser (I/V/X/L/C/D/M).
+
+    Upstream RAGFlow depends on `roman_numbers`, which isn't a hard dependency here.
+    Keep this small and local so the chunking pipeline remains importable.
+    """
+    raw = str(text or "").strip().upper()
+    raw = re.sub(r"[^IVXLCDM]", "", raw)
+    if not raw:
+        raise ValueError("not_roman")
+    values = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+    total = 0
+    prev = 0
+    for ch in reversed(raw):
+        val = values.get(ch)
+        if val is None:
+            raise ValueError("not_roman")
+        if val < prev:
+            total -= val
+        else:
+            total += val
+            prev = val
+    if total <= 0:
+        raise ValueError("not_roman")
+    return total
 
 __all__ = ['rag_tokenizer']
 
@@ -136,13 +171,17 @@ def index_int(index_str):
         res = int(index_str)
     except ValueError:
         try:
+            if w2n is None:
+                raise ValueError("word2number_not_installed")
             res = w2n.word_to_num(index_str)
-        except ValueError:
+        except Exception:
             try:
+                if cn2an is None:
+                    raise ValueError("cn2an_not_installed")
                 res = cn2an(index_str)
-            except ValueError:
+            except Exception:
                 try:
-                    res = r.number(index_str)
+                    res = _roman_to_int(index_str)
                 except ValueError:
                     return -1
     return res

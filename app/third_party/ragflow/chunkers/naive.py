@@ -33,12 +33,10 @@ from app.deepdoc.parser import (
     ExcelParser,
     HtmlParser,
     JsonParser,
-    MarkdownElementExtractor,
     MarkdownParser,
     PdfParser,
     TxtParser,
 )
-from app.deepdoc.parser.docling_parser import DoclingParser
 from app.deepdoc.parser.figure_parser import (
     VisionFigureParser,
     vision_figure_parser_docx_wrapper,
@@ -48,18 +46,6 @@ from app.deepdoc.parser.mineru_parser import MinerUParser
 from app.deepdoc.parser.pdf_parser import PlainParser, VisionParser
 from app.third_party.ragflow.common.constants import LLMType
 from app.third_party.ragflow.common.token_utils import num_tokens_from_string
-from app.third_party.ragflow.stubs.file_utils import (
-    extract_embed_file,
-    extract_html,
-    extract_links_from_docx,
-    extract_links_from_pdf,
-)
-from app.third_party.ragflow.stubs.llm_service import LLMBundle
-
-try:
-    from app.deepdoc.parser.tcadp_parser import TCADPParser
-except ImportError:  # pragma: no cover
-    TCADPParser = None
 from app.third_party.ragflow.nlp import (
     attach_media_context,
     concat_img,
@@ -72,6 +58,13 @@ from app.third_party.ragflow.nlp import (
     tokenize_chunks_with_images,
     tokenize_table,
 )
+from app.third_party.ragflow.stubs.file_utils import (
+    extract_embed_file,
+    extract_html,
+    extract_links_from_docx,
+    extract_links_from_pdf,
+)
+from app.third_party.ragflow.stubs.llm_service import LLMBundle
 
 
 def by_deepdoc(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
@@ -115,6 +108,12 @@ def by_mineru(filename, binary=None, from_page=0, to_page=100000, lang="Chinese"
 
 
 def by_docling(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
+    try:
+        from app.deepdoc.parser.docling_parser import DoclingParser
+    except Exception:  # noqa: BLE001
+        callback(-1, "Docling parser dependency missing. Please install docling.")
+        return None, None, None
+
     pdf_parser = DoclingParser()
     parse_method = kwargs.get("parse_method", "raw")
 
@@ -134,7 +133,9 @@ def by_docling(filename, binary=None, from_page=0, to_page=100000, lang="Chinese
 
 
 def by_tcadp(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
-    if TCADPParser is None:
+    try:
+        from app.deepdoc.parser.tcadp_parser import TCADPParser
+    except Exception:  # noqa: BLE001
         callback(-1, "TCADP parser dependency missing. Please install/enable Tencent Cloud SDK (lkeap).")
         return None, None, None
 
@@ -158,8 +159,21 @@ def by_plaintext(filename, binary=None, from_page=0, to_page=100000, callback=No
     if kwargs.get("layout_recognizer", "") == "Plain Text":
         pdf_parser = PlainParser()
     else:
-        vision_model = LLMBundle(kwargs["tenant_id"], LLMType.IMAGE2TEXT, llm_name=kwargs.get("layout_recognizer", ""), lang=kwargs.get("lang", "Chinese"))
-        pdf_parser = VisionParser(vision_model=vision_model, **kwargs)
+        # Vision parsing requires ragflow-internal LLM services which are stubbed in this repo.
+        # Fail soft to plaintext parsing so RAGFlow chunking remains usable out of the box.
+        layout_name = str(kwargs.get("layout_recognizer", "") or "").strip()
+        try:
+            vision_model = LLMBundle(
+                kwargs["tenant_id"],
+                LLMType.IMAGE2TEXT,
+                llm_name=layout_name,
+                lang=kwargs.get("lang", "Chinese"),
+            )
+            pdf_parser = VisionParser(vision_model=vision_model, **kwargs)
+        except Exception as exc:
+            if callback:
+                callback(-1, f"Vision layout_recognizer '{layout_name}' unavailable; falling back to Plain Text. ({exc})")
+            pdf_parser = PlainParser()
 
     sections, tables = pdf_parser(
         filename if not binary else binary,
@@ -598,9 +612,21 @@ class Markdown(MarkdownParser):
         remainder, tables = self.extract_tables_and_remainder(f'{txt}\n', separate_tables=separate_tables)
         # To eliminate duplicate tables in chunking result, uncomment code below and set separate_tables to True in line 410.
         # extractor = MarkdownElementExtractor(remainder)
-        extractor = MarkdownElementExtractor(txt)
         image_refs = self.extract_image_urls_with_lines(txt)
-        element_sections = extractor.extract_elements(delimiter, include_meta=True)
+        try:
+            from app.deepdoc.parser import MarkdownElementExtractor  # type: ignore[attr-defined]
+        except ImportError:  # pragma: no cover
+            MarkdownElementExtractor = None
+
+        if MarkdownElementExtractor is None:
+            # Fallback: keep the whole markdown document as a single section.
+            lines = txt.splitlines()
+            element_sections = [
+                {"content": txt, "start_line": 0, "end_line": max(0, len(lines) - 1)}
+            ]
+        else:
+            extractor = MarkdownElementExtractor(txt)
+            element_sections = extractor.extract_elements(delimiter, include_meta=True)
 
         sections = []
         section_images = []
@@ -769,7 +795,9 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
         # Check if tcadp_parser is selected for spreadsheet files
         layout_recognizer = parser_config.get("layout_recognize", "DeepDOC")
         if layout_recognizer == "TCADP Parser":
-            if TCADPParser is None:
+            try:
+                from app.deepdoc.parser.tcadp_parser import TCADPParser
+            except Exception:  # noqa: BLE001
                 callback(-1, "TCADP parser dependency missing. Please install/enable Tencent Cloud SDK (lkeap).")
                 return res
 

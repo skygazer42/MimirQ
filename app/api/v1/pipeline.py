@@ -633,7 +633,7 @@ async def get_pipeline_capabilities(
                     notes = f"llama-index-core not installed: {err}"
         elif s in chunker_factory.RAGFLOW_STRATEGIES:
             available = True
-            notes = "RAGFlow integrated pipeline (parse+chunk)."
+            notes = "RAGFlow integrated pipeline (parse+chunk). Vision-based enrichment is best-effort and may be disabled without extra dependencies."
         elif s == "markdown":
             available = True
             notes = "Alias of markdown_header."
