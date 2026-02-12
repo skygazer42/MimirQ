@@ -520,6 +520,7 @@ class ParserFactory:
                     "ok": True,
                     "elapsed_ms": int(round((time.perf_counter() - primary_t0) * 1000)),
                     "documents": int(len(documents or [])),
+                    "selected": True,
                 }
             )
         except Exception as exc:
@@ -530,6 +531,7 @@ class ParserFactory:
                     "elapsed_ms": int(round((time.perf_counter() - primary_t0) * 1000)),
                     "error_type": exc.__class__.__name__,
                     "error_message": str(exc)[:200],
+                    "selected": False,
                 }
             )
 
@@ -554,6 +556,7 @@ class ParserFactory:
                     "elapsed_ms": int(fb_elapsed_ms),
                     "documents": int(len(documents or [])),
                     "fallback_from": attempts[0].get("backend"),
+                    "selected": True,
                 }
             )
 
@@ -566,7 +569,7 @@ class ParserFactory:
             doc.metadata = meta
 
         provenance: dict[str, Any] = {
-            "version": "1",
+            "version": "2",
             "file_type": file_ext.lstrip("."),
             "requested_backend": str(parser_backend or ""),
             "resolved_backend": backend,
