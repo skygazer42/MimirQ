@@ -178,3 +178,26 @@ class VisionFigureParser:
         self._assemble()
 
         return self.assembled
+
+
+def vision_figure_parser_pdf_wrapper(*, tbls, callback=None, **kwargs):  # noqa: ANN001, ANN201
+    """
+    Best-effort wrapper used by the integrated RAGFlow pipeline.
+
+    Upstream RAGFlow can optionally use a vision-language model to enrich extracted
+    table/figure data. This repository ships without the ragflow-internal LLM bundle,
+    so we default to a safe no-op and return the parsed tables/figures unchanged.
+    """
+    _ = (callback, kwargs)
+    return tbls
+
+
+def vision_figure_parser_docx_wrapper(*, sections, tbls, callback=None, **kwargs):  # noqa: ANN001, ANN201
+    """
+    Best-effort wrapper used by the integrated RAGFlow pipeline for DOCX files.
+
+    See vision_figure_parser_pdf_wrapper() for rationale; we keep this as a no-op to
+    avoid hard failures when vision-based enrichment isn't available.
+    """
+    _ = (sections, callback, kwargs)
+    return tbls
