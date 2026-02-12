@@ -27,6 +27,7 @@ from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.services.dataset_precheck_service import _assert_artifact_path_under_tenant, _list_finding_from_jsonl
 from app.services.ingestion_policy import validate_and_normalize_ingestion_policy
+from app.services.ingestion_policy_diff import diff_ingestion_policies
 
 
 def _now_utc() -> datetime:
@@ -118,6 +119,7 @@ def build_ingestion_policy_suggestion(
     scan_run: DBDatasetPrecheckScanRun,
     *,
     tenant_id: UUID,
+    before_policy: IngestionPolicy | None = None,
     max_names_per_bucket: int = 50,
 ) -> dict[str, Any]:
     """
@@ -399,6 +401,7 @@ def build_ingestion_policy_suggestion(
     # Normalize via the shared validator (also enforces regex safety/allowlists).
     model = IngestionPolicy(version="1", rules=[IngestionRule(**r) for r in rules])
     normalized = validate_and_normalize_ingestion_policy(model)
+    policy_diff = diff_ingestion_policies(before_policy, normalized)
 
     # Manual-review buckets (bounded name lists).
     buckets = []
@@ -448,7 +451,9 @@ def build_ingestion_policy_suggestion(
 
     return {
         "generated_at": _now_utc().isoformat(),
+        "before_policy": before_policy.model_dump() if before_policy is not None else None,
         "policy": normalized.model_dump(),
+        "policy_diff": policy_diff,
         "notes": notes,
         "manual_review": buckets,
     }

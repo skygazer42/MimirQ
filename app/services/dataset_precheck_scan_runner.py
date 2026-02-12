@@ -39,6 +39,8 @@ from app.rag.core.logging import get_logger
 from app.rag.preprocessing.language import detect_language
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches
 from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
+from app.services.dataset_precheck_near_dup_summary import summarize_near_dup_payload
+from app.services.dataset_precheck_risk_buckets import risk_buckets_for_file
 from app.services.dataset_profile_utils import (
     FILE_SIZE_BINS,
     TEXT_LENGTH_BINS,
@@ -883,8 +885,8 @@ def run_dataset_precheck_scan(
             "dataset_id": str(dataset_id),
             "scan_run_id": str(run.id),
             "generated_at": run.finished_at.isoformat(),
-            "schema_id": "mimirq.dataset_precheck_summary.v2",
-            "schema_version": 2,
+            "schema_id": "mimirq.dataset_precheck_summary.v3",
+            "schema_version": 3,
             "total_files": 0,
             "total_size_bytes": 0,
             "reused_files": 0,
@@ -905,6 +907,8 @@ def run_dataset_precheck_scan(
                 "text_min_chars_per_page": int(pdf_text_min_chars),
                 "scan_ratio_threshold": float(pdf_scan_ratio_threshold),
             },
+            "risk_buckets": {},
+            "near_dup_summary": summarize_near_dup_payload(None),
             "pii_hits_total": {},
             "secrets_hits_total": {},
             "findings": [
@@ -952,6 +956,7 @@ def run_dataset_precheck_scan(
     pdf_not_scanned = 0
     pdf_unknown = 0
     finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
+    risk_bucket_counts: dict[str, int] = {}
 
     # For exact-dup finding: sha256 -> count.
     sha_counts: dict[str, int] = {}
@@ -1178,6 +1183,13 @@ def run_dataset_precheck_scan(
                                 for k in prev_fset:
                                     if k in finding_counts:
                                         finding_counts[k] += 1
+
+                            # Risk buckets (v3).
+                            try:
+                                for b in risk_buckets_for_file(file_type=ft, findings=prev_findings):
+                                    risk_bucket_counts[b] = int(risk_bucket_counts.get(b, 0) or 0) + 1
+                            except Exception:
+                                pass
 
                             _update_directory_stats(name=rec.name, file_size=int(bs), findings=list(prev_findings) if isinstance(prev_findings, list) else [])
 
@@ -1522,6 +1534,13 @@ def run_dataset_precheck_scan(
             language_counts[_normalize_language_bucket(rec.language)] += 1
             _update_directory_stats(name=rec.name, file_size=int(rec.file_size or 0), findings=list(rec.findings or []))
 
+            # Risk buckets (v3).
+            try:
+                for b in risk_buckets_for_file(file_type=ft, findings=rec.findings):
+                    risk_bucket_counts[b] = int(risk_bucket_counts.get(b, 0) or 0) + 1
+            except Exception:
+                pass
+
             # Write JSONL line.
             jf.write(json.dumps(asdict(rec), ensure_ascii=False, separators=(",", ":")))
             jf.write("\n")
@@ -1541,6 +1560,7 @@ def run_dataset_precheck_scan(
         if dup_total > 0:
             finding_counts["exact_dup"] = int(dup_total)
 
+    near_dup_payload: dict[str, Any] | None = None
     near_dup_path: Path | None = None
     if enable_near_dup and simhash_entries and near_dup_hamming_threshold > 0 and near_dup_max_pairs > 0:
         names = [n for n, _h, _sz, _tl, _mt in simhash_entries]
@@ -1731,12 +1751,14 @@ def run_dataset_precheck_scan(
     else:
         dir_items = []
 
+    near_dup_summary = summarize_near_dup_payload(near_dup_payload)
+
     summary = {
         "dataset_id": str(dataset_id),
         "scan_run_id": str(run.id),
         "generated_at": _now_utc().isoformat(),
-        "schema_id": "mimirq.dataset_precheck_summary.v2",
-        "schema_version": 2,
+        "schema_id": "mimirq.dataset_precheck_summary.v3",
+        "schema_version": 3,
         # Use processed count (supports cancelled runs with partial artifacts).
         "total_files": int(len(file_sizes)),
         "total_size_bytes": int(sum(file_sizes)),
@@ -1762,6 +1784,15 @@ def run_dataset_precheck_scan(
             "text_min_chars_per_page": int(pdf_text_min_chars),
             "scan_ratio_threshold": float(pdf_scan_ratio_threshold),
         },
+        "risk_buckets": {
+            k: int(v)
+            for k, v in sorted(
+                risk_bucket_counts.items(),
+                key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")),
+            )
+            if int(v or 0) > 0
+        },
+        "near_dup_summary": near_dup_summary,
         "pii_hits_total": {k: int(v) for k, v in pii_totals.items()},
         "secrets_hits_total": {k: int(v) for k, v in secrets_totals.items()},
         "findings": [

@@ -56,6 +56,20 @@ class DatasetPrecheckPdfPageBreakdown(BaseModel):
     low_density_ratio: float = 0.0
 
 
+class DatasetPrecheckNearDupSummary(BaseModel):
+    """
+    Compact near-duplicate stats summary (for reports/dashboards).
+    """
+
+    enabled: bool = False
+    threshold: int = 0
+    pairs: int = 0
+    clusters: int = 0
+    affected_files: int = 0
+    largest_cluster_size: int = 0
+    keep_candidates_sample: List[str] = Field(default_factory=list)
+
+
 class DatasetPrecheckSpreadsheetStats(BaseModel):
     row_count: int = 0
     col_count: int = 0
@@ -106,8 +120,8 @@ class DatasetPrecheckSummary(BaseModel):
     scan_run_id: UUID
     generated_at: datetime
 
-    schema_id: str = "mimirq.dataset_precheck_summary.v2"
-    schema_version: int = 2
+    schema_id: str = "mimirq.dataset_precheck_summary.v3"
+    schema_version: int = 3
 
     total_files: int = 0
     total_size_bytes: int = 0
@@ -136,6 +150,11 @@ class DatasetPrecheckSummary(BaseModel):
     pdf_scan: DatasetPrecheckPdfScanStats = Field(default_factory=DatasetPrecheckPdfScanStats)
     # Echo PDF page-type heuristics used during the scan (best-effort; for transparency).
     pdf_detection: Dict[str, Any] = Field(default_factory=dict)
+
+    # Higher-level, explainable buckets for report dashboards.
+    risk_buckets: Dict[str, int] = Field(default_factory=dict)
+    # Compact near-dup summary (full artifact lives in near_dups.json).
+    near_dup_summary: DatasetPrecheckNearDupSummary = Field(default_factory=DatasetPrecheckNearDupSummary)
 
     pii_hits_total: Dict[str, int] = Field(default_factory=dict)
     secrets_hits_total: Dict[str, int] = Field(default_factory=dict)
@@ -325,6 +344,8 @@ class DatasetPrecheckIngestionSuggestionResponse(BaseModel):
     """
 
     generated_at: datetime
+    before_policy: Optional[IngestionPolicy] = None
     policy: IngestionPolicy
+    policy_diff: Dict[str, Any] = Field(default_factory=dict)
     notes: List[str] = Field(default_factory=list)
     manual_review: List[DatasetPrecheckManualReviewBucket] = Field(default_factory=list)
