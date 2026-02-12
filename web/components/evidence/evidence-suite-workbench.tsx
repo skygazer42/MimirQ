@@ -7,6 +7,7 @@ import { BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCh
 import type { Citation, Dataset, EvidenceItem, EvidenceItemCreate, EvidenceItemStatus, EvidenceSuite, EvidenceSuiteDashboard, ReferenceSource } from '@/types'
 import { datasetApi, evidenceApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { extractEvidenceNeedles, rankEvidenceCitations } from '@/lib/evidence-suggestions'
 import { cn } from '@/lib/utils'
 
 import { Badge } from '@/components/ui/badge'
@@ -106,6 +107,8 @@ function formatDurationSec(sec: unknown): string {
   const days = hours / 24
   return `${days.toFixed(1)}d`
 }
+
+const EMPTY_CITATIONS: Citation[] = []
 
 export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId: string }) {
   const datasetId = asDatasetId(datasetIdRaw)
@@ -593,8 +596,32 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     }
   }, [selectedSuite?.item_counts])
 
-  const retrieveCitations: Citation[] = (retrieveRes?.citations || []) as Citation[]
-  const importCitations: Citation[] = (importPack?.citations || []) as Citation[]
+  const retrieveCitations = useMemo(() => ((retrieveRes?.citations as Citation[] | undefined) ?? EMPTY_CITATIONS), [retrieveRes])
+  const importCitations = useMemo(() => ((importPack?.citations as Citation[] | undefined) ?? EMPTY_CITATIONS), [importPack])
+
+  const expectedNeedles = useMemo(() => extractEvidenceNeedles(newExpected), [newExpected])
+  const retrieveRanked = useMemo(() => rankEvidenceCitations(retrieveCitations, expectedNeedles), [expectedNeedles, retrieveCitations])
+  const suggestedRetrieveChunkIds = useMemo(() => {
+    const out: string[] = []
+    for (const r of retrieveRanked || []) {
+      if (r.score <= 0) continue
+      const chunkId = String(r.citation.chunk_id || '')
+      if (!chunkId) continue
+      out.push(chunkId)
+      if (out.length >= 8) break
+    }
+    return out
+  }, [retrieveRanked])
+
+  const applyRetrieveSuggestions = useCallback(() => {
+    if (!suggestedRetrieveChunkIds.length) return
+    setSelectedChunkIds((prev) => {
+      const next = new Set(prev || [])
+      for (const cid of suggestedRetrieveChunkIds) next.add(cid)
+      return Array.from(next)
+    })
+    toast.success(`selected ${suggestedRetrieveChunkIds.length} suggested chunks`)
+  }, [suggestedRetrieveChunkIds])
 
   return (
     <div className="space-y-4">
@@ -1455,6 +1482,15 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                     运行检索
                   </Button>
 
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={applyRetrieveSuggestions}
+                    disabled={retrieving || !retrieveRes || suggestedRetrieveChunkIds.length === 0}
+                  >
+                    Suggest ({suggestedRetrieveChunkIds.length})
+                  </Button>
+
                   <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
                     已选 {selectedChunkIds.length}
                   </div>
@@ -1462,12 +1498,26 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
                 {retrieveError ? <div className="text-xs text-destructive text-pretty">{retrieveError}</div> : null}
 
+                {expectedNeedles.length ? (
+                  <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                    <span className="font-mono">needles:</span>
+                    {expectedNeedles.slice(0, 10).map((n) => (
+                      <Badge key={`needle:${n}`} variant="secondary" className="text-[10px] font-mono">
+                        {n}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+
                 <Panel className="p-3">
                   <ScrollArea className="h-[320px] pr-2">
                     <div className="space-y-2">
                       {retrieveRes ? (
-                        retrieveCitations.length ? (
-                          retrieveCitations.map((c) => {
+                        retrieveRanked.length ? (
+                          retrieveRanked.map((r) => {
+                            const c = r.citation
+                            const assistScore = r.score
+                            const hits = r.hits || []
                             const chunkId = String(c.chunk_id || '')
                             const checked = !!chunkId && selectedChunkIds.includes(chunkId)
                             return (
@@ -1491,19 +1541,35 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                                           {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
                                         </div>
                                       </div>
-                                      {chunkId ? (
-                                        <Badge variant="outline" className="font-mono text-[10px]">
-                                          {chunkId.slice(0, 8)}
-                                        </Badge>
-                                      ) : (
-                                        <Badge variant="destructive" className="font-mono text-[10px]">
-                                          missing chunk_id
-                                        </Badge>
-                                      )}
+                                      <div className="flex items-center gap-2">
+                                        {assistScore > 0 ? (
+                                          <Badge variant="secondary" className="font-mono text-[10px] tabular-nums">
+                                            hit {assistScore}
+                                          </Badge>
+                                        ) : null}
+                                        {chunkId ? (
+                                          <Badge variant="outline" className="font-mono text-[10px]">
+                                            {chunkId.slice(0, 8)}
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="destructive" className="font-mono text-[10px]">
+                                            missing chunk_id
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </div>
                                     <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
                                       {c.chunk_content}
                                     </div>
+                                    {hits.length ? (
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        {hits.slice(0, 4).map((h) => (
+                                          <Badge key={`hit:${chunkId || String(c.document_id)}:${h}`} variant="outline" className="text-[10px] font-mono">
+                                            {h}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 </div>
                               </div>
