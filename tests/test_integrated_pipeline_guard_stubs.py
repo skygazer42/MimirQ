@@ -48,7 +48,7 @@ def test_integrated_llmbundle_disabled_raises(monkeypatch):
     try:
         LLMBundle("t", LLMType.IMAGE2TEXT)
     except NotImplementedError as exc:
-        assert "VISION_LLM_ENABLED" in str(exc)
+        assert "MIMIRQ_VISION_LLM_ENABLED" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected NotImplementedError when VISION_LLM_ENABLED=false")
 
