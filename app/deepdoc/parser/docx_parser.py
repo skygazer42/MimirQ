@@ -24,7 +24,7 @@ from docx import Document
 from ..src.model import rag_tokenizer
 
 
-class RAGFlowDocxParser:
+class IntegratedPipelineDocxParser:
 
     def __extract_table_content(self, tb):
         df = []
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     import sys
 
     # 2. Initialize the parser
-    parser = RAGFlowDocxParser()
+    parser = IntegratedPipelineDocxParser()
     # 3. Provide docx file path
     docx_path = "/data/Langagent/deepdoc/data/exmaple.docx"
     if len(sys.argv) > 1:

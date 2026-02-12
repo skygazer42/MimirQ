@@ -169,11 +169,11 @@ class ChunkerFactory:
     - maven_pom: Maven POM dependency/plugin aware chunking
     - terraform_plan: Terraform plan output block-aware chunking
 
-    RAGFlow strategies (handled separately):
-    - ragflow_naive: General-purpose chunking
-    - ragflow_book: Book format chunking
-    - ragflow_laws: Legal document chunking
-    - ragflow_email: Email format chunking
+    Integrated pipeline strategies (handled separately):
+    - integrated_naive: General-purpose chunking
+    - integrated_book: Book format chunking
+    - integrated_laws: Legal document chunking
+    - integrated_email: Email format chunking
     """
 
     SUPPORTED_STRATEGIES = {
@@ -254,23 +254,23 @@ class ChunkerFactory:
         "terraform_plan": TerraformPlanChunker,
     }
 
-    RAGFLOW_STRATEGIES = {
-        "ragflow_naive",
-        "ragflow_book",
-        "ragflow_laws",
-        "ragflow_email",
+    INTEGRATED_PIPELINE_STRATEGIES = {
+        "integrated_naive",
+        "integrated_book",
+        "integrated_laws",
+        "integrated_email",
     }
 
     STRATEGY_ALIASES = {
-        # RAGFlow presets
-        "ragflow": "ragflow_naive",
-        "naive": "ragflow_naive",
-        "book": "ragflow_book",
-        "law": "ragflow_laws",
-        "laws": "ragflow_laws",
-        "legal": "ragflow_laws",
-        "email": "ragflow_email",
-        "mail": "ragflow_email",
+        # Integrated pipeline presets
+        "integrated": "integrated_naive",
+        "naive": "integrated_naive",
+        "book": "integrated_book",
+        "law": "integrated_laws",
+        "laws": "integrated_laws",
+        "legal": "integrated_laws",
+        "email": "integrated_email",
+        "mail": "integrated_email",
         # Local presets
         "faq": "qa_pairs",
         "qa": "qa_pairs",
@@ -481,11 +481,11 @@ class ChunkerFactory:
         if normalized in self.STRATEGY_ALIASES:
             normalized = self.STRATEGY_ALIASES[normalized]
 
-        if normalized in self.RAGFLOW_STRATEGIES:
+        if normalized in self.INTEGRATED_PIPELINE_STRATEGIES:
             return normalized
 
         if normalized not in self.SUPPORTED_STRATEGIES:
-            all_strategies = sorted(self.SUPPORTED_STRATEGIES) + sorted(self.RAGFLOW_STRATEGIES)
+            all_strategies = sorted(self.SUPPORTED_STRATEGIES) + sorted(self.INTEGRATED_PIPELINE_STRATEGIES)
             raise ValueError(
                 f"Unsupported chunk strategy '{strategy}'. "
                 f"Supported strategies: {all_strategies}"
@@ -517,14 +517,14 @@ class ChunkerFactory:
             BaseChunker instance.
 
         Raises:
-            ValueError: If strategy is RAGFlow-based (requires different handling).
+            ValueError: If strategy is Integrated pipeline-based (requires different handling).
         """
         resolved = self.resolve_strategy(strategy)
 
-        if resolved in self.RAGFLOW_STRATEGIES:
+        if resolved in self.INTEGRATED_PIPELINE_STRATEGIES:
             raise ValueError(
-                f"Chunk strategy '{resolved}' is handled by the RAGFlow pipeline. "
-                f"Use 'chunk_file' from app.rag.chunking.ragflow.bridge instead."
+                f"Chunk strategy '{resolved}' is handled by the integrated parse+chunk pipeline. "
+                f"Use 'chunk_file' from app.rag.chunking.integrated_pipeline.bridge instead."
             )
 
         chunker_cls = self.SUPPORTED_STRATEGIES[resolved]
@@ -563,11 +563,11 @@ class ChunkerFactory:
 
         return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
-    def is_ragflow_strategy(self, strategy: Optional[str]) -> bool:
-        """Check if the strategy requires RAGFlow pipeline."""
+    def is_integrated_pipeline_strategy(self, strategy: Optional[str]) -> bool:
+        """Check if the strategy requires the integrated parse+chunk pipeline."""
         try:
             resolved = self.resolve_strategy(strategy)
-            return resolved in self.RAGFLOW_STRATEGIES
+            return resolved in self.INTEGRATED_PIPELINE_STRATEGIES
         except ValueError:
             return False
 

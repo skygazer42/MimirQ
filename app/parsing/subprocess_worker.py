@@ -217,7 +217,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _ragflow_chunk(payload: dict[str, Any]) -> dict[str, Any]:
+def _integrated_chunk(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = _as_uuid(payload["tenant_id"])
     file_path = Path(str(payload["file_path"]))
     strategy = str(payload["strategy"])
@@ -225,7 +225,7 @@ def _ragflow_chunk(payload: dict[str, Any]) -> dict[str, Any]:
 
     from app.parsing.processors.processor import document_processor
 
-    documents = document_processor._ragflow_chunk_file(file_path, strategy)
+    documents = document_processor._integrated_chunk_file(file_path, strategy)
 
     if mode == "preview":
         from app.api.v1.documents import _materialize_extracted_images_for_preview
@@ -285,8 +285,8 @@ def main() -> int:
 
         if action == "parse_documents":
             data = _parse_documents(payload)
-        elif action == "ragflow_chunk":
-            data = _ragflow_chunk(payload)
+        elif action == "integrated_chunk":
+            data = _integrated_chunk(payload)
         elif action == "pipeline_parse_preview":
             data = _pipeline_parse_preview(payload)
         elif action == "sleep":

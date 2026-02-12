@@ -135,7 +135,7 @@ export function OriginalPreviewMonaco(props: {
       const color = disabled
         ? 'rgba(148,163,184,0.35)'
         : isChild
-          ? 'rgba(59,130,246,0.65)' // child (Dify uses blue)
+          ? 'rgba(59,130,246,0.65)' // child highlight
           : 'rgba(148,163,184,0.45)' // parent/others
 
       return {

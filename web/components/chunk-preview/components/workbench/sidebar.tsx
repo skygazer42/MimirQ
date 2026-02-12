@@ -103,14 +103,14 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
   const isTokenStrategy = strategyForUi === 'langchain_token'
   const isSentenceStrategy = strategyForUi === 'llama_index'
   const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
-  const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
+  const isIntegratedPipelineStrategy = strategyForUi.startsWith('integrated_')
   const isSeparatorStrategy = strategyForUi === 'separator'
   const isParentChildStrategy = strategyForUi === 'parent_child'
   const statsUnitLabel = isTokenStrategy ? 'tok' : 'chars'
 
-  const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
+  const hideChunkSizeControl = isSentenceStrategy || isIntegratedPipelineStrategy
   const showOverlapControl =
-    !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && !isSeparatorStrategy
+    !isSentenceStrategy && !isIntegratedPipelineStrategy && !isHierarchicalStrategy && !isSeparatorStrategy
 
   const chunkSizeMin = isTokenStrategy ? 50 : 100
   const chunkSizeMax = isTokenStrategy ? 2000 : 4000

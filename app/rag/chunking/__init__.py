@@ -7,8 +7,8 @@ Standard Chunkers (pure splitting, no parsing):
 - chunker_factory: Factory for creating chunker instances
 - strategies: LangChain-based and custom chunking algorithms
 
-RAGFlow Pipeline (integrated parsing + chunking):
-- ragflow: Full document processing pipeline from RAGFlow
+Integrated pipeline (integrated parsing + chunking):
+- integrated: Full document processing pipeline (parse + chunk)
 
 Utilities:
 - hierarchical_chunk_markdown: Two-level paragraph/sentence chunking
@@ -19,9 +19,9 @@ Usage:
     chunker = chunker_factory.get_chunker("langchain_recursive", 1000, 200)
     chunks = chunker.split_documents(documents)
 
-    # RAGFlow pipeline (for raw files)
-    from app.rag.chunking.ragflow import chunk_file
-    chunks = chunk_file(path, strategy="ragflow_naive")
+    # Integrated pipeline (for raw files; parse + chunk in one pass)
+    from app.rag.chunking.integrated_pipeline import chunk_file
+    chunks = chunk_file(path, strategy="integrated_naive")
 
     # Hierarchical markdown chunking
     from app.rag.chunking import hierarchical_chunk_markdown
@@ -31,14 +31,14 @@ from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
 
 
-def ragflow_chunk_file(*args, **kwargs):
-    """Backward compatible entrypoint for RAGFlow pipeline (lazy import)."""
-    from app.rag.chunking.ragflow.bridge import chunk_file
+def integrated_chunk_file(*args, **kwargs):
+    """Backward compatible entrypoint for integrated parse+chunk (lazy import)."""
+    from app.rag.chunking.integrated_pipeline.bridge import chunk_file
 
     return chunk_file(*args, **kwargs)
 
 __all__ = [
     "chunker_factory",
     "hierarchical_chunk_markdown",
-    "ragflow_chunk_file",
+    "integrated_chunk_file",
 ]

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * RAGFlow 风格的解析器下拉选择组件
+ * Integrated pipeline 风格的解析器下拉选择组件
  * 带图标、描述和徽章的下拉菜单
  */
 import { useState, useRef, useEffect } from 'react'

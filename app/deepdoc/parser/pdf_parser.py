@@ -153,7 +153,7 @@ def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):
     return ""
 
 
-class RAGFlowPdfParser:
+class IntegratedPipelinePdfParser:
     def __init__(self, **kwargs):
         """
         If you have trouble downloading HuggingFace models, -_^ this might help!!
@@ -183,7 +183,7 @@ class RAGFlowPdfParser:
                 if torch.cuda.is_available():
                     self.updown_cnt_mdl.set_param({"device": "cuda"})  # Use GPU acceleration if CUDA is available
             except Exception:
-                logging.exception("RAGFlowPdfParser __init__")
+                logging.exception("IntegratedPipelinePdfParser __init__")
         try:
             # Try to load local model; if failed, download model snapshot from HuggingFace
             model_dir = get_default_resource_dir()
@@ -1193,7 +1193,7 @@ class RAGFlowPdfParser:
 
                 self.total_page = len(pdfplumber_pdf.pages)
         except Exception:
-            logging.exception("RAGFlowPdfParser __images__")
+            logging.exception("IntegratedPipelinePdfParser __images__")
         finally:
             if pdfplumber_pdf is not None:
                 pdfplumber_pdf.close()
@@ -1457,7 +1457,7 @@ class PlainParser:
 
 
 # Uses Vision Language Model (e.g., GPT-4V, BLIP-2, Qwen-VL, etc.) to directly analyze PDF page image content and extract document info, rather than traditional character-level, table structure, OCR approaches.
-class VisionParser(RAGFlowPdfParser):
+class VisionParser(IntegratedPipelinePdfParser):
     def __init__(self, vision_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.vision_model = vision_model
@@ -1505,7 +1505,7 @@ class VisionParser(RAGFlowPdfParser):
 
 
 if __name__ == "__main__":
-    parser = RAGFlowPdfParser()
+    parser = IntegratedPipelinePdfParser()
     pdf_path = "/data/Langagent/deepdoc/data/picture.pdf"
 
     text_blocks, tables_and_figures = parser(pdf_path)

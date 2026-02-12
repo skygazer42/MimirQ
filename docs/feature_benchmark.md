@@ -14,8 +14,8 @@
 - **Pinecone / 各类向量数据库**：通过 metadata filtering / server-side filtering 支持权限裁剪、分片、租户隔离等。
 
 ### 开源项目（代表性）
-- **RAGFlow**：全链路 RAG/知识库工作台，包含解析、分块、向量检索、聊天等模块化能力。
-- **Dify**：面向应用构建与知识库的产品化体验（含分隔符切块、工作流等）。
+- **端到端开源知识库/RAG 工作台**：覆盖解析、分块、检索、聊天等模块化能力。
+- **低代码/工作流型知识库构建工具**：强调可配置 chunking、知识库管理、流程编排等能力。
 - **Haystack / LangChain / LlamaIndex**：偏工程框架（pipeline、chunking、retrieval、eval、observability），例如 LlamaIndex 的层级切分与 AutoMergingRetriever 思路。
 - **Flowise / Langflow**：可视化编排（agent、RAG、工具调用），强调“可配置、可观察、可迭代”。
 - **AnythingLLM / OpenWebUI**：更偏“自托管应用”，突出本地化/隐私/易用性（连接器、chunk 参数、轻量管理）。
@@ -95,8 +95,6 @@ MimirQ 现状：
 - OpenSearch：Field-level security（FLS）https://docs.opensearch.org/latest/security/access-control/field-level-security/
 
 开源/产品化平台（连接器 / 切块能力）：
-- RAGFlow：Chunk templates（内置分块模板与策略说明）https://ragflow.io/docs/dev/chunk_templates
-- Dify：Chunk settings（知识库切块参数与策略）https://docs.dify.ai/guides/knowledge-base/chunk-settings
 - AnythingLLM：Authenticated website scraping（网页连接器/抓取）https://docs.anythingllm.com/agent/agents/agent-tools/authenticated-website-scraping
 - Open WebUI：RAG（知识库/RAG 集成说明）https://docs.openwebui.com/tutorial/rag/
 - Langflow：Components & Visual Workflows（可视化编排/组件）https://docs.langflow.org/components

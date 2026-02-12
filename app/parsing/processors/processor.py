@@ -498,10 +498,10 @@ class ParsingStage:
         html_xpath: Optional[str] = None,
     ) -> ParseResult:
         # IMPORTANT: resolve strategy first so defaults (e.g. DEFAULT_CHUNK_STRATEGY)
-        # are honored consistently (including ragflow_* strategies).
+        # are honored consistently (including integrated_* strategies).
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-        if resolved_chunk_strategy in self._svc.RAGFLOW_STRATEGIES:
-            resolved_backend = "ragflow"
+        if resolved_chunk_strategy in self._svc.INTEGRATED_PIPELINE_STRATEGIES:
+            resolved_backend = "integrated"
             self._svc._record_processing_metadata(
                 db,
                 tenant_id,
@@ -513,7 +513,7 @@ class ParsingStage:
                 Path(settings.UPLOAD_DIR)
                 / str(tenant_id)
                 / ".mimirq_parse"
-                / f"{str(document_id)}-ragflow-{uuid.uuid4().hex}"
+                / f"{str(document_id)}-integrated-{uuid.uuid4().hex}"
             )
             cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
 
@@ -524,7 +524,7 @@ class ParsingStage:
                 result = await run_subprocess_worker(
                     tenant_id=tenant_id,
                     payload={
-                        "action": "ragflow_chunk",
+                        "action": "integrated_chunk",
                         "tenant_id": str(tenant_id),
                         "file_path": str(file_path),
                         "strategy": resolved_chunk_strategy,
@@ -547,7 +547,7 @@ class ParsingStage:
                     pass
                 raise
             except SubprocessWorkerError as exc:
-                raise RuntimeError(f"Ragflow parsing failed: {str(exc)[:200]}") from exc
+                raise RuntimeError(f"Integrated pipeline parsing failed: {str(exc)[:200]}") from exc
 
             chunks = [
                 Document(
@@ -1140,7 +1140,7 @@ class DocumentProcessorService:
         pass
 
     # Preset strategies (parse + chunk directly).
-    RAGFLOW_STRATEGIES = {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
+    INTEGRATED_PIPELINE_STRATEGIES = {"integrated_naive", "integrated_book", "integrated_laws", "integrated_email"}
 
     def _build_cancel_check(
         self,
@@ -1840,14 +1840,14 @@ class DocumentProcessorService:
                     artifact_dir = (doc.metadata or {}).get("artifact_dir")
                     if isinstance(artifact_dir, str) and artifact_dir.strip():
                         artifact_dirs.add(artifact_dir.strip())
-            # Also collect artifact directories from ragflow chunks (subprocess image materialization).
+            # Also collect artifact directories from integrated chunks (subprocess image materialization).
             if parsed.chunks:
                 for doc in parsed.chunks:
                     artifact_dir = (doc.metadata or {}).get("artifact_dir")
                     if isinstance(artifact_dir, str) and artifact_dir.strip():
                         artifact_dirs.add(artifact_dir.strip())
 
-            # Inline image assets (non-ragflow path: documents -> documents).
+            # Inline image assets (non-integrated path: documents -> documents).
             if parsed.documents:
                 t0 = time.perf_counter()
                 with metrics_span("ingest.inline_assets"):
@@ -1882,7 +1882,7 @@ class DocumentProcessorService:
 
             await raise_if_cancelled()
 
-            # Governance: normalize/clean documents or ragflow chunks.
+            # Governance: normalize/clean documents or integrated chunks.
             merge_small_min_chars = 0
             merge_small_before = 0
             merge_small_after = 0
@@ -3977,14 +3977,14 @@ class DocumentProcessorService:
 
         return markdown_text, new_ids, idx
 
-    def _ragflow_chunk_file(self, file_path: Path, strategy: str):
+    def _integrated_chunk_file(self, file_path: Path, strategy: str):
         """
-        Use ragflow presets (naive/book/laws/email) to parse and chunk directly.
+        Use integrated presets (naive/book/laws/email) to parse and chunk directly.
         Returns a list of LangChain Documents.
         """
         from langchain_core.documents import Document
 
-        from app.rag.chunking.ragflow import chunk_file
+        from app.rag.chunking.integrated_pipeline import chunk_file
 
         chunks_dict = chunk_file(file_path, strategy=strategy)  # type: ignore[arg-type]
 
@@ -4030,7 +4030,7 @@ class DocumentProcessorService:
         raw_image = None
         b64_data = None
 
-        # ragflow may place PIL.Image/bytes in metadata["image"].
+        # integrated may place PIL.Image/bytes in metadata["image"].
         # Only upload for real image chunks (doc_type_kwd == "image").
         val = metadata.get("image")
         if val is not None:

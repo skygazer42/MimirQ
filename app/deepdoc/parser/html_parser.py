@@ -67,7 +67,7 @@ def get_encoding(file):
         return tmp['encoding']
 
 
-class RAGFlowHtmlParser:
+class IntegratedPipelineHtmlParser:
     def __call__(self, fnm, binary=None):
         txt = ""
         if binary:
