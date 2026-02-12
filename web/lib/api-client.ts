@@ -157,6 +157,7 @@ import type {
   EvidenceRetrieveResponse,
   EvidenceItem,
   EvidenceItemCreate,
+  EvidenceItemImportResponse,
   EvidenceItemList,
   EvidenceItemPatch,
   EvidenceSuite,
@@ -1510,6 +1511,20 @@ export const evidenceApi = {
 
   async exportSuite(suiteId: string, params?: { include_archived_items?: boolean }): Promise<EvidenceSuiteExportV1> {
     const { data } = await apiClient.get(`/evidence/suites/${suiteId}/export`, { params })
+    return data
+  },
+
+  async importItems(
+    suiteId: string,
+    file: File,
+    params?: { max_items?: number }
+  ): Promise<EvidenceItemImportResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/items/import`, formData, {
+      params,
+      timeout: API_LONG_TIMEOUT_MS,
+    })
     return data
   },
 }

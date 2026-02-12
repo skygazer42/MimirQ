@@ -68,6 +68,8 @@ class EvidenceItem(Base):
 
     query = Column(Text, nullable=False)
     expected_answer = Column(Text, nullable=True)
+    tags = Column(JSONB, default=list, nullable=False)
+    source_metadata = Column(JSONB, default=dict, nullable=False)
     reference_sources = Column(JSONB, default=list, nullable=False)
 
     # Best-effort reproducibility snapshot (retrieval preview output + metrics).
@@ -90,4 +92,3 @@ class EvidenceItem(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     suite = relationship("EvidenceSuite", back_populates="items")
-

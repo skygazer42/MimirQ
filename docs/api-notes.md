@@ -69,4 +69,3 @@ It performs retrieval only (no answer generation) and returns `citations` plus e
 ```
 
 See also: `docs/guides/evidence_api.md`.
-

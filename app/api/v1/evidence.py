@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.evidence import (
     EvidenceItemCreateRequest,
     EvidenceItemList,
+    EvidenceItemImportResponse,
     EvidenceItemOut,
     EvidenceItemPatchRequest,
     EvidenceSuiteCreateRequest,
@@ -1004,6 +1005,8 @@ async def create_evidence_item(
         status="draft",
         query=payload.query,
         expected_answer=payload.expected_answer,
+        tags=list(payload.tags or []),
+        source_metadata=dict(payload.source_metadata or {}),
         reference_sources=reference_sources,
         retrieval_snapshot=dict(payload.retrieval_snapshot or {}),
         rag_config_snapshot=dict(payload.rag_config_snapshot or {}),
@@ -1014,6 +1017,100 @@ async def create_evidence_item(
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.post("/suites/{suite_id}/items/import", response_model=EvidenceItemImportResponse)
+async def import_evidence_items(
+    suite_id: UUID,
+    file: UploadFile = File(...),
+    max_items: int = Query(default=2000, ge=1, le=10_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Import QA/FAQ rows (CSV/JSONL) as draft EvidenceItems.
+
+    Notes:
+    - Imported items are created in `draft` status.
+    - reference_sources starts empty; users can later label evidence and progress review/approve.
+    - Dedupes by query (query.strip(), whitespace-collapsed) within the suite.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    if suite.archived_at is not None:
+        raise HTTPException(status_code=400, detail="Suite is archived")
+
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    max_bytes = 5 * 1024 * 1024
+    raw = await file.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=400, detail="import file too large (max 5MB)")
+
+    from app.services.evidence_item_import import parse_qa_faq_import_bytes, plan_evidence_item_import  # noqa: WPS433
+
+    try:
+        items, parse_errors = parse_qa_faq_import_bytes(raw=raw, filename=getattr(file, "filename", None), max_items=int(max_items))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
+
+    def _norm(s: Any) -> str:
+        return " ".join(str(s or "").strip().split())
+
+    existing_rows = (
+        db.query(EvidenceItem.query)
+        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
+        .all()
+    )
+    existing = {_norm(r[0]) for r in existing_rows if r and r[0] is not None}
+
+    plan = plan_evidence_item_import(existing_queries=existing, items=items, max_items=int(max_items))
+    created = 0
+    skipped = int(plan.get("skipped") or 0) + int(len(parse_errors))
+    errors: list[dict[str, Any]] = list(parse_errors or []) + list(plan.get("errors") or [])
+
+    for payload in plan.get("create_items") or []:
+        try:
+            row = EvidenceItem(
+                tenant_id=tenant_id,
+                dataset_id=suite.dataset_id,
+                suite_id=suite.id,
+                status="draft",
+                query=str(payload.get("query") or "").strip(),
+                expected_answer=payload.get("expected_answer"),
+                reference_sources=[],
+                retrieval_snapshot={"created_from": "qa_faq_import"},
+                rag_config_snapshot={},
+                notes=None,
+                tags=list(payload.get("tags") or []),
+                source_metadata=dict(payload.get("source_metadata") or {}),
+                created_by=account_id,
+            )
+            db.add(row)
+            created += 1
+        except Exception as exc:  # noqa: BLE001
+            skipped += 1
+            errors.append({"query": payload.get("query"), "error": str(exc)[:200]})
+
+    db.commit()
+
+    return EvidenceItemImportResponse(
+        suite_id=suite_id,
+        dataset_id=suite.dataset_id,
+        parsed=int(len(items)),
+        created=int(created),
+        skipped=int(skipped),
+        errors=errors,
+    )
 
 
 @router.get("/suites/{suite_id}/items", response_model=EvidenceItemList)
@@ -1088,6 +1185,10 @@ async def patch_evidence_item(
         row.query = payload.query
     if "expected_answer" in fields:
         row.expected_answer = payload.expected_answer
+    if "tags" in fields and payload.tags is not None:
+        row.tags = list(payload.tags or [])
+    if "source_metadata" in fields and payload.source_metadata is not None:
+        row.source_metadata = dict(payload.source_metadata or {})
     if "notes" in fields:
         row.notes = payload.notes
     if "retrieval_snapshot" in fields and payload.retrieval_snapshot is not None:
@@ -1140,6 +1241,9 @@ async def review_evidence_item(
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
     _ensure_status(row, expected="draft")
+    refs = row.reference_sources if isinstance(getattr(row, "reference_sources", None), list) else []
+    if not refs:
+        raise HTTPException(status_code=400, detail="Cannot review item without reference_sources")
     row.status = "reviewed"
     row.reviewed_by = account_id
     row.reviewed_at = _now_utc()
@@ -1179,6 +1283,9 @@ async def approve_evidence_item(
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
     _ensure_status(row, expected="reviewed")
+    refs = row.reference_sources if isinstance(getattr(row, "reference_sources", None), list) else []
+    if not refs:
+        raise HTTPException(status_code=400, detail="Cannot approve item without reference_sources")
     row.status = "approved"
     row.approved_by = account_id
     row.approved_at = _now_utc()
@@ -1405,6 +1512,8 @@ async def export_evidence_suite(
                 "status": it.status,
                 "query": it.query,
                 "expected_answer": it.expected_answer,
+                "tags": list(getattr(it, "tags", []) or []),
+                "source_metadata": dict(getattr(it, "source_metadata", {}) or {}),
                 "reference_sources": it.reference_sources,
                 "retrieval_snapshot": it.retrieval_snapshot or {},
                 "rag_config_snapshot": it.rag_config_snapshot or {},

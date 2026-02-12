@@ -146,6 +146,9 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
   const [importSelectedChunkIds, setImportSelectedChunkIds] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  const [importingQAFaq, setImportingQAFaq] = useState(false)
+  const qaFaqInputRef = useRef<HTMLInputElement | null>(null)
+
   const [creatingItem, setCreatingItem] = useState(false)
 
   const filteredSuites = useMemo(() => {
@@ -440,6 +443,34 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     selectedSuite,
     selectedSuiteId,
   ])
+
+  const handleImportQAFaq = useCallback(
+    async (file: File) => {
+      if (!selectedSuite?.id) return
+
+      const name = String(file?.name || '').toLowerCase()
+      if (!name.endsWith('.csv') && !name.endsWith('.jsonl')) {
+        toast.error('只支持导入 .csv / .jsonl')
+        return
+      }
+
+      setImportingQAFaq(true)
+      try {
+        const res = await evidenceApi.importItems(String(selectedSuite.id), file)
+        toast.success(
+          `导入完成：parsed=${res.parsed} created=${res.created} skipped=${res.skipped} errors=${(res.errors || []).length}`
+        )
+        void loadItems()
+        void loadSuites()
+      } catch (e: any) {
+        toast.error(formatApiError(e, '导入失败'))
+      } finally {
+        setImportingQAFaq(false)
+        if (qaFaqInputRef.current) qaFaqInputRef.current.value = ''
+      }
+    },
+    [loadItems, loadSuites, selectedSuite]
+  )
 
   const handleExportSuite = useCallback(async () => {
     if (!selectedSuite?.id) return
@@ -763,6 +794,16 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <input
+                ref={qaFaqInputRef}
+                type="file"
+                accept=".csv,.jsonl,text/csv,application/x-ndjson"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void handleImportQAFaq(f)
+                }}
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -772,6 +813,21 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
               >
                 <Download className="size-4" aria-hidden="true" />
                 导出 Suite
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => qaFaqInputRef.current?.click()}
+                disabled={!selectedSuite?.id || importingQAFaq}
+              >
+                {importingQAFaq ? (
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                ) : (
+                  <FileUp className="size-4" aria-hidden="true" />
+                )}
+                导入 QA/FAQ
               </Button>
 
               <AlertDialog>
@@ -886,6 +942,32 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                   <div className="text-xs font-medium text-muted-foreground mb-1">Expected Answer (optional)</div>
                   <Panel className="p-3">
                     <div className="text-sm whitespace-pre-wrap text-pretty">{selectedItem.expected_answer}</div>
+                  </Panel>
+                </div>
+              ) : null}
+
+              {Array.isArray((selectedItem as any).tags) && (selectedItem as any).tags.length ? (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Tags</div>
+                  <div className="flex flex-wrap gap-2">
+                    {((selectedItem as any).tags as string[]).map((t) => (
+                      <Badge key={t} variant="outline" className="font-mono text-[10px]">
+                        {t}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {selectedItem && selectedItem.source_metadata && Object.keys(selectedItem.source_metadata).length ? (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Source Metadata</div>
+                  <Panel className="p-3">
+                    <ScrollArea className="h-[180px] pr-2">
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-words text-muted-foreground">
+                        {JSON.stringify(selectedItem.source_metadata, null, 2)}
+                      </pre>
+                    </ScrollArea>
                   </Panel>
                 </div>
               ) : null}
@@ -1235,4 +1317,3 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     </div>
   )
 }
-

@@ -70,6 +70,8 @@ class EvidenceItemCreateRequest(BaseModel):
     dataset_id: UUID
     query: str = Field(..., min_length=1)
     expected_answer: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    source_metadata: Dict[str, Any] = Field(default_factory=dict)
     reference_sources: List[ReferenceSource] = Field(..., min_length=1)
 
     # Best-effort snapshots for reproducibility/audit.
@@ -81,6 +83,8 @@ class EvidenceItemCreateRequest(BaseModel):
 class EvidenceItemPatchRequest(BaseModel):
     query: Optional[str] = Field(default=None, min_length=1)
     expected_answer: Optional[str] = None
+    tags: Optional[List[str]] = None
+    source_metadata: Optional[Dict[str, Any]] = None
     reference_sources: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
     retrieval_snapshot: Optional[Dict[str, Any]] = None
     rag_config_snapshot: Optional[Dict[str, Any]] = None
@@ -102,6 +106,8 @@ class EvidenceItemOut(OrmModel):
 
     query: str
     expected_answer: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    source_metadata: Dict[str, Any] = Field(default_factory=dict)
     reference_sources: List[ReferenceSource] = Field(default_factory=list)
     retrieval_snapshot: Dict[str, Any] = Field(default_factory=dict)
     rag_config_snapshot: Dict[str, Any] = Field(default_factory=dict)
@@ -143,3 +149,11 @@ class EvidenceSuiteExportV1(BaseModel):
     suite: Dict[str, Any]
     items: List[Dict[str, Any]]
 
+
+class EvidenceItemImportResponse(BaseModel):
+    suite_id: UUID
+    dataset_id: UUID
+    parsed: int = 0
+    created: int = 0
+    skipped: int = 0
+    errors: List[Dict[str, Any]] = Field(default_factory=list)
