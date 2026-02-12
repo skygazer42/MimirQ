@@ -645,9 +645,9 @@ async def get_pipeline_capabilities(
             if vision_enabled and vision_key_ok:
                 notes = f"Integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
             elif vision_enabled and not vision_key_ok:
-                notes = "Integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set VISION_LLM_API_KEY or LLM_API_KEY)."
+                notes = "Integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set MIMIRQ_VISION_LLM_API_KEY or LLM_API_KEY)."
             else:
-                notes = "Integrated pipeline (parse+chunk). Vision enrichment disabled by default (set VISION_LLM_ENABLED=true to enable)."
+                notes = "Integrated pipeline (parse+chunk). Vision enrichment disabled by default (set MIMIRQ_VISION_LLM_ENABLED=true to enable)."
         elif s == "markdown":
             available = True
             notes = "Alias of markdown_header."

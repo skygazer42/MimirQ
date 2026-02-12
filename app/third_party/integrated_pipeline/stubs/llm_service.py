@@ -76,7 +76,7 @@ class LLMBundle:
 
         if not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
             raise NotImplementedError(
-                "Vision enrichment is disabled. Set VISION_LLM_ENABLED=true to enable image-to-text parsing."
+                "Vision enrichment is disabled. Set MIMIRQ_VISION_LLM_ENABLED=true to enable image-to-text parsing."
             )
 
         api_key = (getattr(settings, "VISION_LLM_API_KEY", "") or "").strip() or (
@@ -91,15 +91,15 @@ class LLMBundle:
 
         if not api_key:
             raise NotImplementedError(
-                "Vision enrichment requires an API key. Set VISION_LLM_API_KEY (or LLM_API_KEY)."
+                "Vision enrichment requires an API key. Set MIMIRQ_VISION_LLM_API_KEY (or LLM_API_KEY)."
             )
         if not api_base:
             raise NotImplementedError(
-                "Vision enrichment requires an API base. Set VISION_LLM_API_BASE (or LLM_API_BASE)."
+                "Vision enrichment requires an API base. Set MIMIRQ_VISION_LLM_API_BASE (or LLM_API_BASE)."
             )
         if not model:
             raise NotImplementedError(
-                "Vision enrichment requires a model. Set VISION_LLM_MODEL (or pass llm_name)."
+                "Vision enrichment requires a model. Set MIMIRQ_VISION_LLM_MODEL (or pass llm_name)."
             )
 
         self._api_url = _chat_completions_url(api_base)
