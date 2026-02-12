@@ -55,3 +55,132 @@ def test_check_thresholds_enforces_min_and_max() -> None:
     assert ok is False
     assert any("abstain_rate" in str(msg) for msg in (failures or []))
 
+
+def test_parse_thresholds_config_supports_structured_format_with_slices() -> None:
+    mod = _load_module()
+
+    metrics, slices = mod.parse_thresholds_config(  # type: ignore[attr-defined]
+        {
+            "schema": "mimirq.thresholds.v2",
+            "dataset_id": "00000000-0000-0000-0000-000000000000",
+            "metrics": {"faithfulness": 0.7, "abstain_rate": {"max": 0.02}},
+            "slices": {
+                "file_type": {
+                    "pdf": {"retrieval_recall": {"min": 0.3}},
+                }
+            },
+        }
+    )
+    assert metrics["faithfulness"] == {"min": 0.7}
+    assert metrics["abstain_rate"] == {"max": 0.02}
+    assert slices["file_type"]["pdf"]["retrieval_recall"] == {"min": 0.3}
+
+
+def test_check_thresholds_enforces_slice_thresholds() -> None:
+    mod = _load_module()
+
+    metrics, slices = mod.parse_thresholds_config(  # type: ignore[attr-defined]
+        {
+            "metrics": {"retrieval_recall": {"min": 0.5}},
+            "slices": {
+                "file_type": {"pdf": {"retrieval_recall": {"min": 0.8}}},
+            },
+        }
+    )
+
+    ok, failures = mod.check_thresholds(  # type: ignore[attr-defined]
+        summary={
+            "retrieval_recall": 0.9,
+            "retrieval_slices": {
+                "file_type": {
+                    "buckets": [
+                        {"key": "pdf", "items": 10, "retrieval_recall": 0.7},
+                    ]
+                }
+            },
+        },
+        thresholds=metrics,
+        slice_thresholds=slices,
+    )
+    assert ok is False
+    assert any("slice[file_type=pdf]" in str(msg) for msg in (failures or []))
+
+
+def test_generate_thresholds_from_summary_includes_top_and_slice_bounds() -> None:
+    mod = _load_module()
+
+    cfg = mod.generate_thresholds_from_summary(  # type: ignore[attr-defined]
+        dataset_id="d",
+        summary={
+            "items": 10,
+            "retrieval_recall": 0.8,
+            "abstain_rate": 0.1,
+            "retrieval_slices": {
+                "file_type": {
+                    "buckets": [
+                        {"key": "pdf", "items": 10, "retrieval_recall": 0.8, "abstain_rate": 0.1},
+                        {"key": "md", "items": 1, "retrieval_recall": 1.0, "abstain_rate": 0.0},
+                    ]
+                }
+            },
+        },
+        metrics=["retrieval_recall", "abstain_rate"],
+        slice_dims=["file_type"],
+        slice_metrics=["retrieval_recall", "abstain_rate"],
+        rel_drop=0.10,
+        abs_slack=0.02,
+        min_slice_items=5,
+    )
+    assert cfg["schema"] == "mimirq.thresholds.v2"
+    assert cfg["dataset_id"] == "d"
+    assert cfg["metrics"]["retrieval_recall"]["min"] == 0.72
+    assert cfg["metrics"]["abstain_rate"]["max"] == 0.12
+    # Only include buckets with enough items.
+    assert "pdf" in cfg["slices"]["file_type"]
+    assert "md" not in cfg["slices"]["file_type"]
+
+
+def test_empty_metrics_is_allowed_for_threshold_generation_without_gate() -> None:
+    mod = _load_module()
+
+    assert mod.is_empty_metrics_allowed(  # type: ignore[attr-defined]
+        metrics=[],
+        thresholds={},
+        slice_thresholds={},
+        thresholds_file_provided=False,
+        generate_thresholds_out="out.json",
+    )
+
+    assert (
+        mod.is_empty_metrics_allowed(  # type: ignore[attr-defined]
+            metrics=[],
+            thresholds={},
+            slice_thresholds={},
+            thresholds_file_provided=False,
+            generate_thresholds_out="",
+        )
+        is False
+    )
+
+    assert mod.is_empty_metrics_allowed(  # type: ignore[attr-defined]
+        metrics=[],
+        thresholds={"retrieval_recall": {"min": 0.3}},
+        slice_thresholds={},
+        thresholds_file_provided=True,
+        generate_thresholds_out="",
+    )
+
+
+def test_format_unified_diff_includes_headers_and_changes() -> None:
+    mod = _load_module()
+
+    diff = mod.format_unified_diff(  # type: ignore[attr-defined]
+        "a\n",
+        "b\n",
+        fromfile="old.json",
+        tofile="new.json",
+    )
+    assert "--- old.json" in diff
+    assert "+++ new.json" in diff
+    assert "-a" in diff
+    assert "+b" in diff
