@@ -37,6 +37,23 @@ def get_selected_pipeline_hash(doc_metadata: Mapping[str, Any] | None, pipeline_
     return get_active_pipeline_hash(doc_metadata)
 
 
+def should_preserve_existing_versions(doc_metadata: Mapping[str, Any] | None) -> bool:
+    """
+    Return True when a document already has an "active" completed pipeline version,
+    and the current `pipeline_hash` points at a different (in-progress) version.
+
+    This is used to avoid clobbering active-version stats/indexes during retries.
+    """
+    meta = doc_metadata or {}
+    if not bool(meta.get("active_pipeline_ready")):
+        return False
+    active_hash = str(meta.get("active_pipeline_hash") or "").strip()
+    current_hash = str(meta.get("pipeline_hash") or "").strip()
+    if not active_hash or not current_hash:
+        return False
+    return active_hash != current_hash
+
+
 def build_doc_pipeline_key(document_id: UUID, pipeline_hash: str) -> str:
     """Build a stable doc_pipeline_key for a document version."""
     return f"{document_id}:{pipeline_hash}"
@@ -62,4 +79,3 @@ def resolve_doc_pipeline_key(
     if not selected:
         return None
     return build_doc_pipeline_key(document_id, selected)
-
