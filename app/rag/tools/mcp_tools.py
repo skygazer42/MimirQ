@@ -15,11 +15,12 @@ Usage:
 
 
 import ast
+import contextlib
 import logging
 import math
 import re
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Optional
 from uuid import UUID
 
 from app.core.config import settings
@@ -33,6 +34,40 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
+
+@contextlib.contextmanager
+def _db_session() -> Iterator[Any]:
+    # Helper kept at module scope so unit tests can monkeypatch it.
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def _document_permission_exists(
+    db: Any,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    account_id: str,
+) -> bool:
+    from app.models.document import DocumentPermission
+
+    if not account_id:
+        return False
+    exists = (
+        db.query(DocumentPermission)
+        .filter(
+            DocumentPermission.tenant_id == tenant_id,
+            DocumentPermission.document_id == document_id,
+            DocumentPermission.account_id == account_id,
+        )
+        .first()
+    )
+    return bool(exists)
 
 
 # ============================================================================
@@ -93,6 +128,9 @@ async def search_documents(
             metadata = doc.metadata if hasattr(doc, "metadata") else doc.get("metadata", {})
             results.append({
                 "content": content[:500] + "..." if len(content) > 500 else content,
+                "document_id": metadata.get("document_id"),
+                "chunk_id": metadata.get("chunk_id") or metadata.get("id"),
+                "page": metadata.get("page"),
                 "source": metadata.get("source", "unknown"),
                 "score": metadata.get("score", 0),
             })
@@ -115,6 +153,10 @@ async def search_documents(
 async def get_document_content(
     document_id: str,
     page: Optional[int] = None,
+    *,
+    dataset_id: Optional[str] = None,
+    account_id: Optional[str] = None,
+    max_chars: int = 50_000,
 ) -> Dict[str, Any]:
     """
     Get full content of a document.
@@ -127,11 +169,192 @@ async def get_document_content(
         Document content
     """
     try:
-        # This is a placeholder - actual implementation depends on storage
+        from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
+        from app.models.document import Document as DBDocument
+        from app.models.document import DocumentChunk
+
+        if dataset_id is None or not str(dataset_id).strip():
+            return {
+                "document_id": document_id,
+                "content": "",
+                "page": page,
+                "error": "dataset_id is required",
+            }
+        try:
+            ds_uuid = UUID(str(dataset_id))
+        except Exception:
+            return {
+                "document_id": document_id,
+                "content": "",
+                "page": page,
+                "error": "dataset_id must be a UUID",
+            }
+
+        try:
+            doc_uuid = UUID(str(document_id))
+        except Exception:
+            return {
+                "document_id": document_id,
+                "content": "",
+                "page": page,
+                "error": "document_id must be a UUID",
+            }
+
+        try:
+            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+        except Exception:
+            # Should never happen; keep the failure explicit.
+            return {
+                "document_id": document_id,
+                "content": "",
+                "page": page,
+                "error": "DEFAULT_TENANT_ID is invalid",
+            }
+
+        max_chars = int(max_chars or 0)
+        if max_chars <= 0:
+            max_chars = 50_000
+        max_chars = max(1_000, min(max_chars, 500_000))
+
+        with _db_session() as db:
+            document = (
+                db.query(DBDocument)
+                .filter(
+                    DBDocument.id == doc_uuid,
+                    DBDocument.tenant_id == tenant_uuid,
+                    DBDocument.disabled_at.is_(None),
+                )
+                .first()
+            )
+            if not document:
+                return {
+                    "document_id": document_id,
+                    "content": "",
+                    "page": page,
+                    "error": "Document not found",
+                }
+
+            # Fail closed: the caller must operate within the dataset scope they searched.
+            if getattr(document, "dataset_id", None) != ds_uuid:
+                return {
+                    "document_id": document_id,
+                    "content": "",
+                    "page": page,
+                    "error": "Document not found",
+                }
+
+            # Best-effort document-level ACL trimming when account_id is provided.
+            mode = str(getattr(document, "access_mode", "") or "").strip().lower()
+            owner = str(getattr(document, "owner_id", "") or "").strip()
+            if account_id:
+                actor = str(account_id or "").strip()
+                if mode and mode not in {"inherit", "all_team_members"}:
+                    if owner and owner == actor:
+                        pass
+                    elif mode == "only_me":
+                        return {
+                            "document_id": document_id,
+                            "content": "",
+                            "page": page,
+                            "error": "No document access",
+                        }
+                    elif mode == "partial_members":
+                        if not _document_permission_exists(
+                            db,
+                            tenant_id=tenant_uuid,
+                            document_id=doc_uuid,
+                            account_id=actor,
+                        ):
+                            return {
+                                "document_id": document_id,
+                                "content": "",
+                                "page": page,
+                                "error": "No document access",
+                            }
+                    else:
+                        return {
+                            "document_id": document_id,
+                            "content": "",
+                            "page": page,
+                            "error": "No document access",
+                        }
+
+            # Scope to active pipeline version when available; fall back to legacy chunks if absent.
+            active_hash = get_active_pipeline_hash(getattr(document, "doc_metadata", None))
+            active_key = build_doc_pipeline_key(doc_uuid, active_hash) if active_hash else None
+
+            q = (
+                db.query(DocumentChunk)
+                .filter(
+                    DocumentChunk.tenant_id == tenant_uuid,
+                    DocumentChunk.document_id == doc_uuid,
+                    DocumentChunk.disabled_at.is_(None),
+                )
+                .order_by(DocumentChunk.chunk_index.asc(), DocumentChunk.id.asc())
+            )
+            if active_key:
+                q_active = q.filter(
+                    DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key  # type: ignore[attr-defined]
+                )
+                chunks = q_active.all()
+                if not chunks:
+                    chunks = q.all()
+            else:
+                chunks = q.all()
+
+            if page is not None:
+                try:
+                    page_int = int(page)
+                except Exception:
+                    return {
+                        "document_id": document_id,
+                        "content": "",
+                        "page": page,
+                        "error": "page must be an integer",
+                    }
+                chunks = [c for c in chunks if int(getattr(c, "page_number", -1) or -1) == page_int]
+
+            # Assemble content with a hard cap to avoid exploding tool payload size.
+            parts: list[str] = []
+            total = 0
+            truncated = False
+            returned_chunks = 0
+            pages: list[int] = []
+            for c in chunks:
+                text = str(getattr(c, "content", "") or "")
+                if not text.strip():
+                    continue
+                sep = "\n\n" if parts else ""
+                remaining = max_chars - total - len(sep)
+                if remaining <= 0:
+                    truncated = True
+                    break
+                if len(text) > remaining:
+                    parts.append(sep + text[:remaining])
+                    total += len(sep) + remaining
+                    truncated = True
+                    returned_chunks += 1
+                    if getattr(c, "page_number", None) is not None:
+                        pages.append(int(c.page_number))
+                    break
+                parts.append(sep + text)
+                total += len(sep) + len(text)
+                returned_chunks += 1
+                if getattr(c, "page_number", None) is not None:
+                    pages.append(int(c.page_number))
+
+            content = "".join(parts)
         return {
             "document_id": document_id,
-            "content": "Document content retrieval not implemented",
+            "dataset_id": str(ds_uuid),
+            "filename": str(getattr(document, "filename", "") or ""),
+            "file_type": str(getattr(document, "file_type", "") or ""),
             "page": page,
+            "chunk_count": int(len(chunks)),
+            "returned_chunks": int(returned_chunks),
+            "pages": sorted(set(pages)),
+            "truncated": bool(truncated),
+            "content": content,
         }
     except Exception as e:
         logger.error("Failed to get document: %s", e)
@@ -616,6 +839,21 @@ def register_default_tools(registry: Optional[MCPToolRegistry] = None) -> MCPToo
         parameters=[
             ToolParameter(name="query", type="string", description="Search query", required=True),
             ToolParameter(name="top_k", type="integer", description="Number of results", default=5),
+            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
+            ToolParameter(name="filter", type="object", description="Optional metadata filter", default=None),
+        ],
+    )
+
+    registry.register(
+        name="get_document_content",
+        func=get_document_content,
+        description="Get full content of a document (assembled from chunks)",
+        parameters=[
+            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
+            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
+            ToolParameter(name="page", type="integer", description="Optional page number", default=None),
+            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+            ToolParameter(name="max_chars", type="integer", description="Max characters to return", default=50000),
         ],
     )
 
@@ -669,7 +907,7 @@ def register_default_tools(registry: Optional[MCPToolRegistry] = None) -> MCPToo
         ],
     )
 
-    logger.info("Registered %d default tools", 6)
+    logger.info("Registered %d default tools", 7)
     return registry
 
 
