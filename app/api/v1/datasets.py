@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.dataset import (
+    DatasetChunkTargetsV2,
     DatasetCloneRequest,
     DatasetConfigBundle,
     DatasetConfigExport,
@@ -136,6 +137,23 @@ def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, 
     ab_key = str(raw_ab).strip() if isinstance(raw_ab, str) and raw_ab.strip() else None
 
     return prompt_id, prompt_key, ab_key
+
+
+def _dataset_chunk_targets_v2_out(ds: Dataset) -> DatasetChunkTargetsV2 | None:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None
+    raw = meta.get("chunk_targets_v2")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        parsed = DatasetChunkTargetsV2(**raw)
+    except Exception:
+        return None
+    # Hide empty objects for cleaner API responses.
+    if not parsed.model_dump(exclude_none=True):
+        return None
+    return parsed
 
 
 @router.get("/{dataset_id}/ingestion/stats", response_model=DatasetIngestionStats)
@@ -310,6 +328,15 @@ def create_dataset(
             meta.pop("default_prompt_ab_experiment_key", None)
         changed = True
 
+    # 5) Chunk target spec (best-effort; used by profiling/auto-tune).
+    if payload.chunk_targets_v2 is not None:
+        data = payload.chunk_targets_v2.model_dump(exclude_none=True)
+        if data:
+            meta["chunk_targets_v2"] = data
+        else:
+            meta.pop("chunk_targets_v2", None)
+        changed = True
+
     if changed:
         dataset.dataset_metadata = meta
         db.commit()
@@ -321,6 +348,7 @@ def create_dataset(
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
+    chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
 
     # Best-effort audit log (commit separately; never block response).
     audit_log_event(
@@ -355,6 +383,7 @@ def create_dataset(
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(dataset),
     )
 
@@ -427,6 +456,7 @@ def list_datasets(
             partial_list = partial_member_map.get(ds.id, [])
         default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
         prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
+        chunk_targets_v2 = _dataset_chunk_targets_v2_out(ds)
         results.append(DatasetOut(
             id=ds.id,
             tenant_id=ds.tenant_id,
@@ -441,6 +471,7 @@ def list_datasets(
             default_prompt_template_id=prompt_template_id,
             default_prompt_template_key=prompt_template_key,
             default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+            chunk_targets_v2=chunk_targets_v2,
             pipeline=_dataset_pipeline_out(ds),
         ))
     return {"total": total, "items": results}
@@ -460,6 +491,7 @@ def get_dataset(
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
+    chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
     return DatasetOut(
         id=dataset.id,
         tenant_id=dataset.tenant_id,
@@ -474,6 +506,7 @@ def get_dataset(
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(dataset),
     )
 
@@ -584,6 +617,14 @@ def update_dataset(
             meta.pop("default_prompt_ab_experiment_key", None)
         changed = True
 
+    if payload.chunk_targets_v2 is not None:
+        data = payload.chunk_targets_v2.model_dump(exclude_none=True)
+        if data:
+            meta["chunk_targets_v2"] = data
+        else:
+            meta.pop("chunk_targets_v2", None)
+        changed = True
+
     if changed:
         updated.dataset_metadata = meta
         db.commit()
@@ -595,6 +636,7 @@ def update_dataset(
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(updated)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(updated)
+    chunk_targets_v2 = _dataset_chunk_targets_v2_out(updated)
 
     audit_log_event(
         db,
@@ -628,6 +670,7 @@ def update_dataset(
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(updated),
     )
 
@@ -650,6 +693,7 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        chunk_targets_v2=_dataset_chunk_targets_v2_out(ds),
         pipeline=_dataset_pipeline_out(ds),
         ingestion_policy=ingestion_policy,
     )
@@ -759,6 +803,17 @@ def import_dataset_config(
             meta.pop("default_prompt_ab_experiment_key", None)
         changed = True
 
+    if replace or cfg.chunk_targets_v2 is not None:
+        if cfg.chunk_targets_v2 is not None:
+            data = cfg.chunk_targets_v2.model_dump(exclude_none=True)
+            if data:
+                meta["chunk_targets_v2"] = data
+            else:
+                meta.pop("chunk_targets_v2", None)
+        else:
+            meta.pop("chunk_targets_v2", None)
+        changed = True
+
     # Ingestion policy
     if replace or cfg.ingestion_policy is not None:
         if cfg.ingestion_policy is not None:
@@ -791,6 +846,7 @@ def import_dataset_config(
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
+    chunk_targets_v2 = _dataset_chunk_targets_v2_out(ds)
 
     return DatasetOut(
         id=ds.id,
@@ -806,6 +862,7 @@ def import_dataset_config(
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(ds),
     )
 
@@ -861,6 +918,7 @@ def clone_dataset(
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(created)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(created)
+    chunk_targets_v2 = _dataset_chunk_targets_v2_out(created)
 
     return DatasetOut(
         id=created.id,
@@ -876,6 +934,7 @@ def clone_dataset(
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(created),
     )
 

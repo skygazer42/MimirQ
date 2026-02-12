@@ -120,6 +120,27 @@ def test_documents_chunk_preview_returns_tokens_est_and_original_text_flags(monk
     assert isinstance(body["chunks"][0].get("tokens_est"), int)
 
 
+def test_documents_chunk_preview_returns_token_stats_when_chunks_omitted(monkeypatch):  # noqa: ANN001
+    client = _build_client(monkeypatch)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200&include_chunks=false",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+
+    # include_chunks=false should keep payload small but still return token distribution stats.
+    assert body.get("chunks") == []
+    tok = body.get("chunking_stats_tokens")
+    assert isinstance(tok, dict)
+    assert tok.get("unit") == "tokens"
+    assert isinstance(tok.get("median"), int)
+    hist = tok.get("histogram")
+    assert isinstance(hist, list) and hist
+
+
 def test_documents_chunk_preview_omits_original_text_when_too_large(monkeypatch):  # noqa: ANN001
     client = _build_client(monkeypatch)
 

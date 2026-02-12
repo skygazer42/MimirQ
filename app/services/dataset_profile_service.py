@@ -345,6 +345,7 @@ def aggregate_profile_from_rows(
     *,
     dataset_id: UUID,
     rows: Iterable[tuple],
+    dataset_metadata: dict[str, Any] | None = None,
     latest_scan_run: DatasetProfileScanRunSummary | None = None,
     density_threshold: float = 0.12,
     image_threshold: int = 8,
@@ -787,6 +788,46 @@ def aggregate_profile_from_rows(
         )
 
     # Chunk target checks (best-effort; objective signals + suggestions).
+    # v2: allow per-dataset overrides via datasets.metadata["chunk_targets_v2"].
+    cfg = dataset_metadata if isinstance(dataset_metadata, dict) else {}
+    raw_targets = cfg.get("chunk_targets_v2")
+    targets = raw_targets if isinstance(raw_targets, dict) else {}
+
+    def _clamp_int(v: object, *, default: int, lo: int, hi: int) -> int:
+        try:
+            if v is None or isinstance(v, bool):
+                return int(default)
+            n = int(v)
+        except Exception:
+            n = int(default)
+        return int(max(lo, min(hi, n)))
+
+    tok_target_min = _clamp_int(targets.get("token_p50_min"), default=200, lo=0, hi=4000)
+    tok_target_max = _clamp_int(targets.get("token_p50_max"), default=400, lo=0, hi=4000)
+    if tok_target_max and tok_target_min and tok_target_min > tok_target_max:
+        tok_target_min, tok_target_max = tok_target_max, tok_target_min
+
+    short_warn = _clamp_int(targets.get("short_pct_warn"), default=20, lo=0, hi=100)
+    short_fail = _clamp_int(targets.get("short_pct_fail"), default=35, lo=0, hi=100)
+    if short_warn > short_fail:
+        short_warn, short_fail = short_fail, short_warn
+
+    long_warn = _clamp_int(targets.get("long_pct_warn"), default=10, lo=0, hi=100)
+    long_fail = _clamp_int(targets.get("long_pct_fail"), default=20, lo=0, hi=100)
+    if long_warn > long_fail:
+        long_warn, long_fail = long_fail, long_warn
+
+    waste_warn = _clamp_int(targets.get("overlap_waste_p50_warn"), default=35, lo=0, hi=100)
+    waste_fail = _clamp_int(targets.get("overlap_waste_p50_fail"), default=60, lo=0, hi=100)
+    if waste_warn > waste_fail:
+        waste_warn, waste_fail = waste_fail, waste_warn
+
+    cov_warn = _clamp_int(targets.get("coverage_p50_warn"), default=98, lo=0, hi=100)
+    cov_fail = _clamp_int(targets.get("coverage_p50_fail"), default=90, lo=0, hi=100)
+    # Coverage is "higher is better": fail threshold should be <= warn threshold.
+    if cov_fail > cov_warn:
+        cov_fail = cov_warn
+
     chunk_targets_out: List[DatasetProfileTargetCheck] = []
     try:
         # Token distribution objectives (requires chunking_stats_tokens histogram).
@@ -805,8 +846,6 @@ def aggregate_profile_from_rows(
         else:
             # P50 chunk token length target range (tunable default).
             tok_p50 = int(getattr(chunk_token_percentiles, "p50", 0) or 0)
-            tok_target_min = 200
-            tok_target_max = 400
             if tok_p50 <= 0:
                 status = "warn"
             elif tok_p50 < 100 or tok_p50 > 800:
@@ -855,8 +894,8 @@ def aggregate_profile_from_rows(
                     return "warn"
                 return "pass"
 
-            short_status = _pct_status(short_pct, warn=20, fail=35)
-            long_status = _pct_status(long_pct, warn=10, fail=20)
+            short_status = _pct_status(short_pct, warn=short_warn, fail=short_fail)
+            long_status = _pct_status(long_pct, warn=long_warn, fail=long_fail)
 
             chunk_targets_out.append(
                 DatasetProfileTargetCheck(
@@ -864,8 +903,8 @@ def aggregate_profile_from_rows(
                     label="短 Chunk 比例（<=100 tokens）",
                     status=short_status,  # type: ignore[arg-type]
                     observed={"short_chunks": short_cnt, "total_chunks": total_cnt, "short_pct": short_pct},
-                    target={"short_pct_warn": 20, "short_pct_fail": 35},
-                    message=f"{short_pct}%（目标 < 20%）",
+                    target={"short_pct_warn": short_warn, "short_pct_fail": short_fail},
+                    message=f"{short_pct}%（目标 < {short_warn}%）",
                     suggestions=[
                         "若短 chunk 过多：提高 chunk_size/降低切分强度，或使用结构切分避免碎片化。",
                     ]
@@ -880,12 +919,50 @@ def aggregate_profile_from_rows(
                     label="长 Chunk 比例（>=800 tokens）",
                     status=long_status,  # type: ignore[arg-type]
                     observed={"long_chunks": long_cnt, "total_chunks": total_cnt, "long_pct": long_pct},
-                    target={"long_pct_warn": 10, "long_pct_fail": 20},
-                    message=f"{long_pct}%（目标 < 10%）",
+                    target={"long_pct_warn": long_warn, "long_pct_fail": long_fail},
+                    message=f"{long_pct}%（目标 < {long_warn}%）",
                     suggestions=[
                         "若长 chunk 过多：降低 chunk_size 或使用结构切分（markdown_header/outline）提升覆盖与召回稳定性。",
                     ]
                     if long_status != "pass"
+                    else [],
+                )
+            )
+
+        # Coverage objective (requires chunk_coverage metrics).
+        if not coverage_pcts:
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_coverage_missing",
+                    label="Coverage 统计缺失",
+                    status="warn",
+                    observed={},
+                    target={},
+                    message="缺少 chunk_coverage / coverage 数据，无法评估 offsets 覆盖率。",
+                    suggestions=["开启 backfill_chunk_coverage 或在入库时持久化 chunk offsets。"],
+                )
+            )
+        else:
+            cov_p50 = int(getattr(chunk_coverage_percentiles, "p50", 0) or 0)
+            cov_status = "pass"
+            if cov_p50 <= 0:
+                cov_status = "warn"
+            elif cov_p50 < int(cov_fail):
+                cov_status = "fail"
+            elif cov_p50 < int(cov_warn):
+                cov_status = "warn"
+            chunk_targets_out.append(
+                DatasetProfileTargetCheck(
+                    key="chunk_coverage_p50",
+                    label="Coverage P50（%）",
+                    status=cov_status,  # type: ignore[arg-type]
+                    observed={"p50": cov_p50},
+                    target={"p50_warn": cov_warn, "p50_fail": cov_fail},
+                    message=f"P50={cov_p50}%（目标 >= {cov_warn}%）",
+                    suggestions=[
+                        "若 coverage 偏低：检查 parser_backend 输出与 offsets rebasing（page_index/start_char）是否一致。",
+                    ]
+                    if cov_status != "pass"
                     else [],
                 )
             )
@@ -905,8 +982,6 @@ def aggregate_profile_from_rows(
             )
         else:
             waste_p50 = int(getattr(chunk_overlap_waste_percentiles, "p50", 0) or 0)
-            waste_warn = 35
-            waste_fail = 60
             waste_status = "pass"
             if waste_p50 >= int(waste_fail):
                 waste_status = "fail"
@@ -988,7 +1063,8 @@ def compute_dataset_profile_summary(
     - This is designed to be reasonably fast; it only uses persisted document stats/metadata.
     - Heavy re-parsing / hashing is done in deep scan jobs.
     """
-    _dataset, query = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+    dataset, query = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+    dataset_meta = dict(getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
 
     # Optional pipeline version filter: use active_pipeline_hash when present (fallback to pipeline_hash).
     pipeline_hash_norm = str(pipeline_hash or "").strip() or None
@@ -1070,6 +1146,7 @@ def compute_dataset_profile_summary(
     summary = aggregate_profile_from_rows(
         dataset_id=dataset_id,
         rows=rows,
+        dataset_metadata=dataset_meta,
         latest_scan_run=latest_run,
         density_threshold=float(density_threshold),
         image_threshold=int(image_threshold),
