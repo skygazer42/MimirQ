@@ -85,6 +85,18 @@ def apply_runtime_migrations(engine) -> None:
             "ALTER TABLE ragas_regression_cases ALTER COLUMN reference_sources SET DEFAULT '[]'::jsonb;",
             "ALTER TABLE ragas_regression_cases ALTER COLUMN reference_sources SET NOT NULL;",
 
+            # =========================
+            # EvidenceSuite: import metadata on draft items
+            # =========================
+            "ALTER TABLE evidence_items ADD COLUMN IF NOT EXISTS tags JSONB;",
+            "UPDATE evidence_items SET tags = '[]'::jsonb WHERE tags IS NULL;",
+            "ALTER TABLE evidence_items ALTER COLUMN tags SET DEFAULT '[]'::jsonb;",
+            "ALTER TABLE evidence_items ALTER COLUMN tags SET NOT NULL;",
+            "ALTER TABLE evidence_items ADD COLUMN IF NOT EXISTS source_metadata JSONB;",
+            "UPDATE evidence_items SET source_metadata = '{}'::jsonb WHERE source_metadata IS NULL;",
+            "ALTER TABLE evidence_items ALTER COLUMN source_metadata SET DEFAULT '{}'::jsonb;",
+            "ALTER TABLE evidence_items ALTER COLUMN source_metadata SET NOT NULL;",
+
             # Dataset-scoped regression runs (for per-dataset health/report).
             "ALTER TABLE ragas_regression_runs ADD COLUMN IF NOT EXISTS dataset_id UUID;",
             "CREATE INDEX IF NOT EXISTS ix_ragas_regression_runs_tenant_dataset_created_at "

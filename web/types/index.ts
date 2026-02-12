@@ -2183,6 +2183,8 @@ export interface EvidenceItem {
 
   query: string
   expected_answer?: string | null
+  tags: string[]
+  source_metadata: Record<string, any>
   reference_sources: ReferenceSource[]
   retrieval_snapshot: Record<string, any>
   rag_config_snapshot: Record<string, any>
@@ -2208,6 +2210,8 @@ export interface EvidenceItemCreate {
   dataset_id: string
   query: string
   expected_answer?: string | null
+  tags?: string[]
+  source_metadata?: Record<string, any>
   reference_sources: ReferenceSource[]
   retrieval_snapshot?: Record<string, any>
   rag_config_snapshot?: Record<string, any>
@@ -2217,6 +2221,8 @@ export interface EvidenceItemCreate {
 export interface EvidenceItemPatch {
   query?: string
   expected_answer?: string | null
+  tags?: string[] | null
+  source_metadata?: Record<string, any> | null
   reference_sources?: ReferenceSource[]
   retrieval_snapshot?: Record<string, any>
   rag_config_snapshot?: Record<string, any>
@@ -2243,6 +2249,15 @@ export interface EvidenceSuiteExportV1 {
   dataset_id: string
   suite: Record<string, any>
   items: Array<Record<string, any>>
+}
+
+export interface EvidenceItemImportResponse {
+  suite_id: string
+  dataset_id: string
+  parsed: number
+  created: number
+  skipped: number
+  errors: Array<Record<string, any>>
 }
 
 export interface GeneratedQuestion {
