@@ -160,9 +160,13 @@ import type {
   EvidenceItemImportResponse,
   EvidenceItemList,
   EvidenceItemPatch,
+  EvidenceReferenceDriftAudit,
+  EvidenceReferenceRepairRequest,
+  EvidenceReferenceRepairResponse,
   EvidenceSuite,
   EvidenceSuiteCreate,
   EvidenceSuiteExportV1,
+  EvidenceSuiteDashboard,
   EvidenceSuiteList,
   EvidenceSuitePatch,
   EvidenceSuiteSyncRegressionResponse,
@@ -1466,6 +1470,50 @@ export const evidenceApi = {
     return data
   },
 
+  async getSuiteDashboard(
+    suiteId: string,
+    params?: { include_archived_items?: boolean; top_n?: number; heatmap_top_n?: number }
+  ): Promise<EvidenceSuiteDashboard> {
+    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/dashboard`, { params })
+    return data
+  },
+
+  async getSuiteDriftAudit(
+    suiteId: string,
+    params?: {
+      include_archived_items?: boolean
+      include_details?: boolean
+      details_limit?: number
+      slice_top_n?: number
+    }
+  ): Promise<EvidenceReferenceDriftAudit> {
+    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/drift-audit`, { params })
+    return data
+  },
+
+  async getDatasetDriftAudit(
+    datasetId: string,
+    params?: {
+      include_archived_items?: boolean
+      include_details?: boolean
+      details_limit?: number
+      slice_top_n?: number
+    }
+  ): Promise<EvidenceReferenceDriftAudit> {
+    const { data } = await apiClient.get(`/evidence/datasets/${datasetId}/drift-audit`, { params })
+    return data
+  },
+
+  async repairSuiteReferenceSources(
+    suiteId: string,
+    payload: EvidenceReferenceRepairRequest
+  ): Promise<EvidenceReferenceRepairResponse> {
+    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/repair-reference-sources`, payload, {
+      timeout: API_LONG_TIMEOUT_MS,
+    })
+    return data
+  },
+
   async patchSuite(suiteId: string, payload: EvidenceSuitePatch): Promise<EvidenceSuite> {
     const { data } = await apiClient.patch(`/evidence/suites/${suiteId}`, payload)
     return data
@@ -1926,6 +1974,14 @@ export const reportApi = {
     params?: { pipeline_hash?: string; connector_runs_limit?: number; redact?: boolean }
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/reports/datasets/${datasetId}/rag-audit/export-html`, { params, responseType: 'blob' })
+    return data as Blob
+  },
+
+  async exportDatasetReportBundleZip(
+    datasetId: string,
+    params?: { pipeline_hash?: string; connector_runs_limit?: number; redact?: boolean }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/reports/datasets/${datasetId}/export-bundle`, { params, responseType: 'blob' })
     return data as Blob
   },
 }

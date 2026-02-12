@@ -7,7 +7,6 @@ import os
 import re
 from typing import Any, Iterable, Sequence
 
-
 _QUERY_KEYS = ("query", "question", "q")
 _EXPECTED_ANSWER_KEYS = ("expected_answer", "expected", "answer", "expectedAnswer", "expected_answer_text")
 _TAGS_KEYS = ("tags", "tag")
