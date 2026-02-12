@@ -48,6 +48,7 @@ from app.services.dataset_precheck_service import (
     load_precheck_samples_from_row,
     load_precheck_summary_from_row,
 )
+from app.services.ingestion_policy import parse_ingestion_policy_from_metadata
 from app.services.report_html import render_precheck_html
 from app.tasks.queue import enqueue_dataset_precheck_scan
 
@@ -503,7 +504,8 @@ def get_dataset_precheck_ingestion_policy_suggestion(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+    dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+    before_policy = parse_ingestion_policy_from_metadata(dict(getattr(dataset, "dataset_metadata", None) or {}))
     row = (
         db.query(DBDatasetPrecheckScanRun)
         .filter(
@@ -518,6 +520,7 @@ def get_dataset_precheck_ingestion_policy_suggestion(
     suggestion = build_ingestion_policy_suggestion(
         row,
         tenant_id=tenant_id,
+        before_policy=before_policy,
         max_names_per_bucket=int(max_names_per_bucket or 0),
     )
     return DatasetPrecheckIngestionSuggestionResponse(**suggestion)
