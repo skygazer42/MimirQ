@@ -30,6 +30,10 @@ def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def write_json_file(path: Path, obj: Any) -> None:
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
     """
     Normalize case bundle payloads into: (dataset_id, items[]).
@@ -76,6 +80,55 @@ def _headers(args: argparse.Namespace) -> dict[str, str]:
     if args.bearer:
         h["Authorization"] = f"Bearer {args.bearer}"
     return h
+
+
+_RUN_OVERRIDE_KEYS: tuple[str, ...] = (
+    # Aligned with app/api/schemas/regression.py:RagasRegressionRunCreateRequest
+    "top_k",
+    "score_threshold",
+    "retrieval_mode",
+    "alpha",
+    "enable_weight_rerank",
+    "vector_weight",
+    "keyword_weight",
+    "mmr_lambda",
+    "enable_reranker",
+    "reranker_provider",
+    "reranker_top_n",
+    "prompt_template_id",
+    "prompt_template_key",
+    "prompt_ab_experiment_key",
+)
+
+
+def build_run_create_request_payload(
+    *,
+    case_ids: list[str],
+    dataset_id: str,
+    metrics: list[str],
+    max_cases: int,
+    retrieval_overrides: dict[str, Any] | None = None,
+    skip_empty_contexts: bool = True,
+) -> dict[str, Any]:
+    """
+    Build a request body for POST /evaluations/ragas/regression/runs.
+
+    Keeps behavior stable and testable, and avoids sprinkling run-param wiring across call sites.
+    """
+    payload: dict[str, Any] = {
+        "case_ids": list(case_ids or []),
+        "dataset_id": dataset_id,
+        "metrics": list(metrics or []),
+        "skip_empty_contexts": bool(skip_empty_contexts),
+        "max_cases": int(max_cases),
+    }
+
+    overrides = retrieval_overrides if isinstance(retrieval_overrides, dict) else {}
+    for key in _RUN_OVERRIDE_KEYS:
+        if key in overrides and overrides.get(key) is not None:
+            payload[key] = overrides.get(key)
+
+    return payload
 
 
 def parse_metrics_list(raw: Any) -> list[str]:
@@ -452,6 +505,23 @@ def main() -> int:
         help="Thresholds JSON file (v1 flat or v2 structured) (optional)",
     )
 
+    # Optional: retrieval config overrides for the regression run request.
+    p.add_argument("--top-k", type=int, default=None, help="Override retrieval top_k for this run (optional)")
+    p.add_argument("--score-threshold", type=float, default=None, help="Override retrieval score_threshold for this run (optional)")
+    p.add_argument(
+        "--retrieval-mode",
+        type=str,
+        default="",
+        help="Override retrieval_mode for this run: hybrid|vector|keyword|mmr (optional)",
+    )
+
+    # Optional: persist run detail JSON for CI artifacts.
+    p.add_argument(
+        "--out-run-json",
+        default="",
+        help="Write the final run detail JSON (includes summary + retrieval_slices) to a file (optional)",
+    )
+
     # Optional: generate structured thresholds (v2) from the run summary.
     p.add_argument(
         "--generate-thresholds-out",
@@ -570,16 +640,26 @@ def main() -> int:
         _require(len(matched_ids) > 0, "no matching cases found after import/list")
         print(f"[regression_gate] matched cases: {len(matched_ids)}/{len(want_keys)}")
 
-        # Start regression run (defaults follow system settings unless explicitly overridden).
+        overrides: dict[str, Any] = {}
+        if args.top_k is not None:
+            overrides["top_k"] = int(args.top_k)
+        if args.score_threshold is not None:
+            overrides["score_threshold"] = float(args.score_threshold)
+        if str(args.retrieval_mode or "").strip():
+            overrides["retrieval_mode"] = str(args.retrieval_mode).strip()
+
+        # Start regression run (defaults follow API schema unless explicitly overridden).
+        run_payload = build_run_create_request_payload(
+            case_ids=matched_ids,
+            dataset_id=dataset_id,
+            metrics=metrics,
+            skip_empty_contexts=True,
+            max_cases=min(500, len(matched_ids)),
+            retrieval_overrides=overrides,
+        )
         r = client.post(
             f"{base}/evaluations/ragas/regression/runs",
-            json={
-                "case_ids": matched_ids,
-                "dataset_id": dataset_id,
-                "metrics": metrics,
-                "skip_empty_contexts": True,
-                "max_cases": min(500, len(matched_ids)),
-            },
+            json=run_payload,
         )
         r.raise_for_status()
         run = r.json() or {}
@@ -605,6 +685,16 @@ def main() -> int:
             err = (detail.get("run") or {}).get("error_message") if isinstance(detail, dict) else None
             print(f"[regression_gate] ERROR: run status={status} error={err}", file=sys.stderr)
             return 1
+
+        if args.out_run_json:
+            out_path = str(args.out_run_json or "").strip()
+            if out_path == "-":
+                sys.stdout.write(json.dumps(detail, ensure_ascii=False, indent=2) + "\n")
+            else:
+                pth = Path(out_path)
+                pth.parent.mkdir(parents=True, exist_ok=True)
+                write_json_file(pth, detail)
+                print(f"[regression_gate] wrote run detail: {pth}")
 
         print(f"[regression_gate] run completed. summary keys={list(summary.keys())}")
 

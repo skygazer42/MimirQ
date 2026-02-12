@@ -42,6 +42,18 @@ python scripts/regression_gate.py \
   - bundle：`{"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}`
   - legacy：`[{ "dataset_id":"...", ... }, ...]`（每项带 dataset_id；会被自动归并到一个 dataset）
 
+### 常用参数：检索配置覆盖（retrieval-only/CI 友好）
+
+回归 run 支持覆盖检索参数（用于 CI 里强制走 keyword/固定 top_k 等）：
+
+- `--retrieval-mode`：`hybrid|vector|keyword|mmr`
+- `--top-k`：覆盖 `top_k`
+- `--score-threshold`：覆盖 `score_threshold`
+
+另外，CI 里常需要把 run 的详细 JSON 作为 artifact 保存，可用：
+
+- `--out-run-json path/to/run.detail.json`：写出最终 run detail（包含 `summary` + `retrieval_slices`）
+
 ## Retrieval-only Gate（不依赖 RAGAS/LLM）
 
 当你只想 gate “检索质量”（Recall@K / MRR / NDCG / abstain_rate），且希望 **不依赖 RAGAS/LLM** 时，可将 `--metrics` 置为空字符串：
@@ -148,3 +160,42 @@ python scripts/regression_gate.py \
 - CLI：Evidence Pack JSON → 回归用例 bundle v1 → regression_gate 导入/运行/gate
 
 详见：`docs/guides/evidence_pack_to_regression.md`
+
+## CI 集成（Retrieval-only Gate in PR）
+
+仓库内置了一个极小的、确定性的 fixture，用于在 PR 中做 retrieval-only gate（不依赖 RAGAS/LLM）：
+
+- Fixture：`ci/retrieval_regression_fixture.v1.json`
+- 阈值：`ci/retrieval_thresholds.v2.json`
+- GitHub Actions：`.github/workflows/ci.yml` 的 `retrieval-regression-gate` job
+
+本地复现（示例）：
+
+```bash
+# 1) 准备 Postgres（示例连接串；按你的环境修改）
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mimirq"
+
+# 2) Seed fixture（同时导出 regression cases bundle）
+mkdir -p artifacts
+python scripts/seed_ci_retrieval_regression.py \
+  --fixture ci/retrieval_regression_fixture.v1.json \
+  --out-cases artifacts/regression_cases.json
+
+# 3) 启动后端（禁用外部依赖；使用 faiss 让 /health/ready 通过）
+ENV=ci AUTH_MODE=header DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000 \
+VECTOR_BACKEND=faiss TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
+LEXICAL_DB_TRGM_ENABLED=false ENABLE_RERANKER=false BM25_INDEX_ENABLED=false \
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# 4) 运行 gate（写出 run detail + 生成候选阈值）
+python scripts/regression_gate.py \
+  --base-url http://localhost:8000/api/v1 \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id ci-bot \
+  --cases artifacts/regression_cases.json \
+  --metrics "" \
+  --thresholds ci/retrieval_thresholds.v2.json \
+  --retrieval-mode keyword \
+  --out-run-json artifacts/run.detail.json \
+  --generate-thresholds-out artifacts/thresholds.generated.json
+```
