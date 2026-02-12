@@ -74,41 +74,41 @@ class LLMBundle:
                 f"LLMBundle only supports {LLMType.IMAGE2TEXT} in this project; got: {llm_type}"
             )
 
-        if not bool(getattr(settings, "RAGFLOW_VISION_ENABLED", False)):
+        if not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
             raise NotImplementedError(
-                "RAGFlow vision is disabled. Set RAGFLOW_VISION_ENABLED=true to enable vision parsing."
+                "Vision enrichment is disabled. Set VISION_LLM_ENABLED=true to enable image-to-text parsing."
             )
 
-        api_key = (getattr(settings, "RAGFLOW_VISION_API_KEY", "") or "").strip() or (
+        api_key = (getattr(settings, "VISION_LLM_API_KEY", "") or "").strip() or (
             getattr(settings, "LLM_API_KEY", "") or ""
         ).strip()
-        api_base = (getattr(settings, "RAGFLOW_VISION_API_BASE", "") or "").strip() or (
+        api_base = (getattr(settings, "VISION_LLM_API_BASE", "") or "").strip() or (
             getattr(settings, "LLM_API_BASE", "") or ""
         ).strip()
 
         # RAGFlow passes llm_name for user-selected layout recognizer model; treat as model override.
-        model = (self.kwargs.get("llm_name") or getattr(settings, "RAGFLOW_VISION_MODEL", "") or "").strip()
+        model = (self.kwargs.get("llm_name") or getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
 
         if not api_key:
             raise NotImplementedError(
-                "RAGFlow vision requires an API key. Set RAGFLOW_VISION_API_KEY (or LLM_API_KEY)."
+                "Vision enrichment requires an API key. Set VISION_LLM_API_KEY (or LLM_API_KEY)."
             )
         if not api_base:
             raise NotImplementedError(
-                "RAGFlow vision requires an API base. Set RAGFLOW_VISION_API_BASE (or LLM_API_BASE)."
+                "Vision enrichment requires an API base. Set VISION_LLM_API_BASE (or LLM_API_BASE)."
             )
         if not model:
             raise NotImplementedError(
-                "RAGFlow vision requires a model. Set RAGFLOW_VISION_MODEL (or pass llm_name)."
+                "Vision enrichment requires a model. Set VISION_LLM_MODEL (or pass llm_name)."
             )
 
         self._api_url = _chat_completions_url(api_base)
         self._api_key = api_key
         self._model = model
 
-        self._timeout_sec = float(getattr(settings, "RAGFLOW_VISION_TIMEOUT_SEC", 120) or 120)
-        self._max_tokens = int(getattr(settings, "RAGFLOW_VISION_MAX_TOKENS", 4096) or 4096)
-        self._temperature = float(getattr(settings, "RAGFLOW_VISION_TEMPERATURE", 0.0) or 0.0)
+        self._timeout_sec = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
+        self._max_tokens = int(getattr(settings, "VISION_LLM_MAX_TOKENS", 4096) or 4096)
+        self._temperature = float(getattr(settings, "VISION_LLM_TEMPERATURE", 0.0) or 0.0)
 
         self._session = requests.Session()
         self._headers = {

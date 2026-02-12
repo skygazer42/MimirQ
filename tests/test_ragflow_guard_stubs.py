@@ -43,14 +43,14 @@ def test_ragflow_llmbundle_disabled_raises(monkeypatch):
     from app.third_party.ragflow.common.constants import LLMType
     from app.third_party.ragflow.stubs.llm_service import LLMBundle
 
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_ENABLED", False, raising=False)
 
     try:
         LLMBundle("t", LLMType.IMAGE2TEXT)
     except NotImplementedError as exc:
-        assert "RAGFLOW_VISION_ENABLED" in str(exc)
+        assert "VISION_LLM_ENABLED" in str(exc)
     else:  # pragma: no cover
-        raise AssertionError("Expected NotImplementedError when RAGFLOW_VISION_ENABLED=false")
+        raise AssertionError("Expected NotImplementedError when VISION_LLM_ENABLED=false")
 
 
 def test_ragflow_llmbundle_configured_calls_openai_compatible(monkeypatch):
@@ -58,13 +58,13 @@ def test_ragflow_llmbundle_configured_calls_openai_compatible(monkeypatch):
     from app.third_party.ragflow.common.constants import LLMType
     import app.third_party.ragflow.stubs.llm_service as llm_mod
 
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_API_KEY", "k-test", raising=False)
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_API_BASE", "https://example.com/v1", raising=False)
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_MODEL", "gpt-4o-mini", raising=False)
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_TIMEOUT_SEC", 12, raising=False)
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_MAX_TOKENS", 1234, raising=False)
-    monkeypatch.setattr(settings, "RAGFLOW_VISION_TEMPERATURE", 0.0, raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_API_KEY", "k-test", raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_API_BASE", "https://example.com/v1", raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_MODEL", "gpt-4o-mini", raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_TIMEOUT_SEC", 12, raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_MAX_TOKENS", 1234, raising=False)
+    monkeypatch.setattr(settings, "VISION_LLM_TEMPERATURE", 0.0, raising=False)
 
     calls = []
 
