@@ -431,8 +431,46 @@ class FAISSVectorStore(BaseVectorStore):
         tenant_id: Optional[UUID],
         metadata_filter: Dict[str, Any],
     ) -> None:
-        # FAISS wrapper doesn't support metadata-where deletes reliably; fail closed.
-        raise NotImplementedError("Selective delete is not supported for FAISS backend")
+        """
+        Best-effort selective delete for FAISS.
+
+        LangChain's FAISS wrapper supports delete-by-id (docstore keys), but does not provide
+        a stable "where" API. We implement selective delete by scanning the in-memory docstore
+        metadata for matches and deleting those doc IDs.
+        """
+        if not metadata_filter or not isinstance(metadata_filter, dict):
+            return self.delete_by_document_id(document_id, tenant_id=tenant_id)
+
+        key, store = self._get_store(tenant_id)
+        if store is None:
+            return
+
+        target = str(document_id)
+        ids_to_delete: list[str] = []
+        try:
+            for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
+                meta = getattr(doc, "metadata", None) or {}
+                if str(meta.get("document_id") or "") != target:
+                    continue
+                if _match_metadata_filter(meta, metadata_filter):
+                    ids_to_delete.append(str(doc_id))
+        except Exception:
+            ids_to_delete = []
+
+        if not ids_to_delete:
+            return
+
+        if not hasattr(store, "delete"):
+            raise NotImplementedError("Selective delete is not supported for FAISS backend")
+        try:
+            store.delete(ids_to_delete)
+        except Exception as exc:
+            raise NotImplementedError("Selective delete is not supported for FAISS backend") from exc
+
+        # Persist (overwrite save) if enabled.
+        if self.persist_path:
+            os.makedirs(self.persist_path, exist_ok=True)
+            store.save_local(self.persist_path, index_name=key)
 
 
 class ChromaVectorStore(BaseVectorStore):
@@ -541,9 +579,33 @@ class ChromaVectorStore(BaseVectorStore):
         tenant_id: Optional[UUID],
         metadata_filter: Dict[str, Any],
     ) -> None:
-        # The underlying Chroma where spec is not compatible with our generic filter syntax.
-        # Avoid surprising deletes; callers should fall back to full delete or rebuild.
-        raise NotImplementedError("Selective delete is not supported for Chroma backend")
+        if not metadata_filter or not isinstance(metadata_filter, dict):
+            return self.delete_by_document_id(document_id, tenant_id=tenant_id)
+
+        _, store = self._get_store(tenant_id)
+        target = str(document_id)
+
+        # Chroma's where spec isn't compatible with our generic filter syntax.
+        # Instead: fetch all rows for this document_id (which is cheap for typical local-dev usage),
+        # then filter in Python with our matcher and delete by explicit IDs.
+        try:
+            collection = store._collection  # type: ignore[attr-defined]
+            # Note: Chroma's `include` does not accept "ids" (they are always returned).
+            got = collection.get(where={"document_id": target}, include=["metadatas"])
+            ids = got.get("ids") or []
+            metas = got.get("metadatas") or []
+            ids_to_delete: list[str] = []
+            for cid, meta in zip(ids, metas, strict=False):
+                if not isinstance(meta, dict):
+                    continue
+                if _match_metadata_filter(meta, metadata_filter):
+                    ids_to_delete.append(str(cid))
+            if not ids_to_delete:
+                return
+            collection.delete(ids=ids_to_delete)
+            store.persist()
+        except Exception as exc:
+            raise NotImplementedError("Selective delete is not supported for Chroma backend") from exc
 
 
 _VECTOR_STORE_SINGLETONS: Dict[str, BaseVectorStore] = {}
