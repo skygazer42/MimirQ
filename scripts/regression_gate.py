@@ -27,7 +27,8 @@ import httpx
 
 
 def _load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def write_json_file(path: Path, obj: Any) -> None:
