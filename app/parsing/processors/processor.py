@@ -38,6 +38,7 @@ from app.rag.chunking.strategies import SeparatorChunker
 from app.rag.core.logging import get_logger
 from app.rag.core.metadata import infer_chunk_structure, normalize_image_metadata, normalize_section_metadata
 from app.rag.kg.pipeline import extract_events
+from app.rag.preprocessing.markdown_canonical import canonicalize_markdown
 from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.preprocessing.processor import GovernanceStats, governance_processor
@@ -782,10 +783,21 @@ class NormalizeStage:
         for doc in items:
             raw = doc.page_content or ""
             normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
+            canon = canonicalize_markdown(normalized)
             meta = dict(doc.metadata or {})
             meta["text_normalized"] = True
             meta["text_normalized_changed"] = bool(normalized != raw)
-            out.append(Document(page_content=normalized, metadata=meta, id=getattr(doc, "id", None)))
+            meta["markdown_canonicalized"] = True
+            meta["markdown_canonical_changed"] = bool(canon.changed)
+            meta["markdown_canonical_stats"] = {
+                "headings_changed": int(canon.headings_changed),
+                "list_markers_changed": int(canon.list_markers_changed),
+                "ordered_list_markers_changed": int(canon.ordered_list_markers_changed),
+                "code_fences_changed": int(canon.code_fences_changed),
+                "tables": int(canon.tables),
+                "table_rows_changed": int(canon.table_rows_changed),
+            }
+            out.append(Document(page_content=canon.text, metadata=meta, id=getattr(doc, "id", None)))
         return out
 
 
