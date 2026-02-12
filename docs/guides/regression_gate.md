@@ -58,7 +58,9 @@ python scripts/regression_gate.py \
 
 说明：
 - `--metrics ""` 会触发后端的 **retrieval-only regression run**（只跑检索，不做生成，不导入/调用 ragas）。
-- 当 metrics 为空时，脚本要求必须提供 `--thresholds`（否则无法 gate）。
+- 当 metrics 为空时：
+  - 若你要 **gate**，必须提供 `--thresholds`
+  - 若你要 **生成阈值（baseline workflow）**，必须提供 `--generate-thresholds-out`
 
 `thresholds.json` 示例：
 
@@ -85,6 +87,58 @@ python scripts/regression_gate.py \
 > 注意：`thresholds.json` 支持两种写法：
 > - 简写：`"faithfulness": 0.7`（等价于 `{"min": 0.7}`）
 > - 完整：`"abstain_rate": {"max": 0.02}` / `{"min": 0.3, "max": 0.9}`
+
+## 阈值文件 v2（支持切片 gate）
+
+当你需要对某些 slice 单独设更严格/更宽松的阈值（例如：`file_type=pdf`、`quality=high`），推荐使用结构化阈值文件：
+
+```json
+{
+  "schema": "mimirq.thresholds.v2",
+  "dataset_id": "00000000-0000-0000-0000-000000000000",
+  "metrics": {
+    "retrieval_recall": { "min": 0.3 },
+    "abstain_rate": { "max": 0.02 }
+  },
+  "slices": {
+    "file_type": {
+      "pdf": { "retrieval_recall": { "min": 0.25 } }
+    },
+    "quality": {
+      "high": { "retrieval_recall": { "min": 0.4 } }
+    }
+  }
+}
+```
+
+说明：
+- `metrics` 为全局阈值（top-level summary metrics）。
+- `slices` 为按维度/桶（bucket）细分的阈值；bucket key 会自动做 lowercase 归一化。
+- 若阈值文件中带 `dataset_id`，脚本会校验其与 `--cases` 的 dataset_id 一致，防止串用。
+
+## 从基线 run 生成阈值（baseline generator）
+
+你可以用一次 regression run 的 summary 直接生成 `mimirq.thresholds.v2`（包含 top-level + per-slice），用于后续 CI gate：
+
+```bash
+python scripts/regression_gate.py \
+  --base-url http://localhost:8000/api/v1 \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id test-admin \
+  --cases ./regression_cases.json \
+  --metrics "" \
+  --generate-thresholds-out ./thresholds.v2.json
+```
+
+常用可调参数：
+- `--gen-metrics`：生成哪些 top-level metrics（默认是检索相关 + abstain_rate）
+- `--gen-slice-dims`：生成哪些切片维度（默认：`file_type,language,hit_type,quality`）
+- `--gen-slice-metrics`：切片里生成哪些指标
+- `--gen-rel-drop / --gen-abs-slack`：阈值松弛（相对/绝对），越大越宽松
+- `--gen-min-slice-items`：slice bucket 最少样本数（低于该值会跳过，避免小样本误导）
+
+安全更新（diff preview + guardrail）：
+- 若 `--generate-thresholds-out` 目标文件已存在，脚本会先打印 unified diff，然后拒绝覆盖（除非加 `--gen-force`）。
 
 ## Evidence Pack → 回归用例（证据闭环）
 

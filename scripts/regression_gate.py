@@ -15,7 +15,9 @@ Auth:
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -120,10 +122,114 @@ def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
     return out
 
 
+def normalize_slice_thresholds(raw: Any) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
+    """
+    Normalize per-slice thresholds into a mapping:
+      { dim: { bucket_key: { metric: {min?: float, max?: float} } } }
+
+    Expected input shape:
+      {
+        "file_type": {
+          "pdf": {"retrieval_recall": {"min": 0.3}},
+          "md": {"abstain_rate": {"max": 0.02}}
+        },
+        "language": { ... }
+      }
+    """
+    if not isinstance(raw, dict):
+        return {}
+
+    out: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
+    for dim_raw, buckets_raw in raw.items():
+        dim = str(dim_raw or "").strip()
+        if not dim:
+            continue
+        if not isinstance(buckets_raw, dict):
+            continue
+
+        dim_out: dict[str, dict[str, dict[str, float]]] = {}
+        for bucket_raw, th_raw in buckets_raw.items():
+            bucket = str(bucket_raw or "").strip().lower()
+            if not bucket:
+                continue
+            th = normalize_thresholds(th_raw)
+            if th:
+                dim_out[bucket] = th
+
+        if dim_out:
+            out[dim] = dim_out
+
+    return out
+
+
+def parse_thresholds_config(
+    raw: Any,
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, dict[str, dict[str, float]]]]]:
+    """
+    Parse a thresholds JSON payload into:
+      (top_level_thresholds, per_slice_thresholds).
+
+    Supported formats:
+      - Legacy (v1): {"retrieval_recall": 0.3, "abstain_rate": {"max": 0.02}}
+      - Structured (v2):
+        {
+          "schema": "mimirq.thresholds.v2",
+          "dataset_id": "...",
+          "metrics": { ... legacy thresholds ... },
+          "slices": { ... per-slice thresholds ... }
+        }
+    """
+    if not isinstance(raw, dict):
+        return {}, {}
+
+    if "metrics" in raw or "slices" in raw:
+        metrics = normalize_thresholds(raw.get("metrics") or {})
+        slices = normalize_slice_thresholds(raw.get("slices") or {})
+        return metrics, slices
+
+    return normalize_thresholds(raw), {}
+
+
+def is_empty_metrics_allowed(
+    *,
+    metrics: list[str],
+    thresholds: dict[str, dict[str, float]] | None,
+    slice_thresholds: dict[str, dict[str, dict[str, dict[str, float]]]] | None,
+    thresholds_file_provided: bool,
+    generate_thresholds_out: str,
+) -> bool:
+    """
+    The API supports a retrieval-only regression run by sending an empty metrics list.
+
+    Empty metrics are allowed when:
+    - we are gating (thresholds are provided), OR
+    - we are generating thresholds from this run (baseline workflow).
+    """
+    if metrics:
+        return True
+    if str(generate_thresholds_out or "").strip():
+        return True
+    if bool(thresholds_file_provided) and (bool(thresholds) or bool(slice_thresholds)):
+        return True
+    return False
+
+
+def format_unified_diff(old_text: str, new_text: str, *, fromfile: str, tofile: str) -> str:
+    """
+    Return a unified diff string (empty when identical).
+
+    Kept as a tiny helper so it can be unit-tested without invoking the CLI/network.
+    """
+    old_lines = str(old_text or "").splitlines(keepends=True)
+    new_lines = str(new_text or "").splitlines(keepends=True)
+    return "".join(difflib.unified_diff(old_lines, new_lines, fromfile=str(fromfile), tofile=str(tofile)))
+
+
 def check_thresholds(
     *,
     summary: dict[str, Any],
     thresholds: dict[str, dict[str, float]],
+    slice_thresholds: dict[str, dict[str, dict[str, dict[str, float]]]] | None = None,
 ) -> tuple[bool, list[str]]:
     """
     Evaluate thresholds against a run summary.
@@ -132,24 +238,185 @@ def check_thresholds(
       (ok, failures)
     """
     failures: list[str] = []
-    for metric, bounds in (thresholds or {}).items():
-        raw_val = summary.get(metric)
+
+    def _check_one(*, name: str, raw_val: Any, bounds: dict[str, float]) -> None:
         try:
             val = float(raw_val)
         except Exception:
-            failures.append(f"missing metric '{metric}'")
-            continue
+            failures.append(f"missing metric '{name}'")
+            return
 
         if "min" in bounds:
             min_v = bounds.get("min")
             if min_v is not None and val < float(min_v):
-                failures.append(f"{metric}={val:.4f} < min {float(min_v):.4f}")
+                failures.append(f"{name}={val:.4f} < min {float(min_v):.4f}")
         if "max" in bounds:
             max_v = bounds.get("max")
             if max_v is not None and val > float(max_v):
-                failures.append(f"{metric}={val:.4f} > max {float(max_v):.4f}")
+                failures.append(f"{name}={val:.4f} > max {float(max_v):.4f}")
+
+    for metric, bounds in (thresholds or {}).items():
+        _check_one(name=metric, raw_val=summary.get(metric), bounds=bounds)
+
+    # Optional: enforce per-slice thresholds against summary["retrieval_slices"][dim].buckets[].{metric}.
+    rs = summary.get("retrieval_slices") if isinstance(summary, dict) else None
+    rs_dict = rs if isinstance(rs, dict) else {}
+    for dim, bucket_map in (slice_thresholds or {}).items():
+        dim_key = str(dim or "").strip()
+        if not dim_key:
+            continue
+
+        dim_obj = rs_dict.get(dim_key)
+        if not isinstance(dim_obj, dict):
+            failures.append(f"missing slice dim '{dim_key}'")
+            continue
+
+        buckets = dim_obj.get("buckets")
+        if not isinstance(buckets, list):
+            failures.append(f"missing slice buckets '{dim_key}.buckets'")
+            continue
+
+        by_key: dict[str, dict[str, Any]] = {}
+        for b in buckets:
+            if not isinstance(b, dict):
+                continue
+            k = str(b.get("key") or "").strip().lower()
+            if not k:
+                continue
+            by_key.setdefault(k, b)
+
+        for bucket_key, bucket_thresholds in (bucket_map or {}).items():
+            bkey = str(bucket_key or "").strip().lower()
+            if not bkey:
+                continue
+            bucket = by_key.get(bkey)
+            if not isinstance(bucket, dict):
+                failures.append(f"missing slice bucket '{dim_key}={bkey}'")
+                continue
+            for metric, bounds in (bucket_thresholds or {}).items():
+                _check_one(name=f"slice[{dim_key}={bkey}].{metric}", raw_val=bucket.get(metric), bounds=bounds)
 
     return (len(failures) == 0), failures
+
+
+def _coerce_float(raw: Any) -> float | None:
+    try:
+        v = float(raw)
+    except Exception:
+        return None
+    if math.isnan(v):
+        return None
+    return v
+
+
+def _clamp01(v: float) -> float:
+    return max(0.0, min(1.0, float(v)))
+
+
+def _as_bounds(metric: str, *, baseline: float, rel_drop: float, abs_slack: float) -> dict[str, float]:
+    metric_key = str(metric or "").strip().lower()
+    baseline = _clamp01(float(baseline))
+    rel = abs(float(rel_drop or 0.0))
+    slack = max(abs(float(abs_slack or 0.0)), rel * baseline)
+
+    if metric_key == "abstain_rate":
+        return {"max": round(_clamp01(baseline + slack), 4)}
+
+    return {"min": round(_clamp01(baseline - slack), 4)}
+
+
+def generate_thresholds_from_summary(
+    *,
+    dataset_id: str,
+    summary: dict[str, Any],
+    metrics: list[str] | None = None,
+    slice_dims: list[str] | None = None,
+    slice_metrics: list[str] | None = None,
+    rel_drop: float = 0.05,
+    abs_slack: float = 0.02,
+    min_slice_items: int = 5,
+) -> dict[str, Any]:
+    """
+    Generate a structured thresholds config from a baseline run summary.
+
+    Guardrails:
+    - Skips metrics with missing/non-numeric values.
+    - Skips slice buckets with items < min_slice_items.
+    - Clamps thresholds to [0, 1].
+    """
+    ds = str(dataset_id or "").strip()
+    if not ds:
+        raise ValueError("dataset_id is required")
+    summ = summary if isinstance(summary, dict) else {}
+
+    metrics = list(metrics or [])
+    slice_dims = list(slice_dims or [])
+    slice_metrics = list(slice_metrics or [])
+    min_slice_items = max(0, int(min_slice_items or 0))
+
+    metrics_out: dict[str, dict[str, float]] = {}
+    for m in metrics:
+        key = str(m or "").strip()
+        if not key:
+            continue
+        v = _coerce_float(summ.get(key))
+        if v is None:
+            continue
+        metrics_out[key] = _as_bounds(key, baseline=float(v), rel_drop=rel_drop, abs_slack=abs_slack)
+
+    slices_out: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
+    rs = summ.get("retrieval_slices") if isinstance(summ.get("retrieval_slices"), dict) else {}
+    for dim in slice_dims:
+        dim_key = str(dim or "").strip()
+        if not dim_key:
+            continue
+        dim_obj = rs.get(dim_key) if isinstance(rs, dict) else None
+        if not isinstance(dim_obj, dict):
+            continue
+        buckets = dim_obj.get("buckets")
+        if not isinstance(buckets, list):
+            continue
+
+        dim_out: dict[str, dict[str, dict[str, float]]] = {}
+        for b in buckets:
+            if not isinstance(b, dict):
+                continue
+            bkey = str(b.get("key") or "").strip().lower()
+            if not bkey:
+                continue
+            try:
+                items = int(b.get("items") or 0)
+            except Exception:
+                items = 0
+            if items < min_slice_items:
+                continue
+
+            bth: dict[str, dict[str, float]] = {}
+            for m in slice_metrics:
+                key = str(m or "").strip()
+                if not key:
+                    continue
+                v = _coerce_float(b.get(key))
+                if v is None:
+                    continue
+                bth[key] = _as_bounds(key, baseline=float(v), rel_drop=rel_drop, abs_slack=abs_slack)
+            if bth:
+                dim_out[bkey] = bth
+
+        if dim_out:
+            slices_out[dim_key] = dim_out
+
+    return {
+        "schema": "mimirq.thresholds.v2",
+        "dataset_id": ds,
+        "options": {
+            "rel_drop": float(rel_drop),
+            "abs_slack": float(abs_slack),
+            "min_slice_items": int(min_slice_items),
+        },
+        "metrics": metrics_out,
+        "slices": slices_out,
+    }
 
 
 def _require(cond: bool, msg: str) -> None:
@@ -173,7 +440,7 @@ def main() -> int:
     p.add_argument(
         "--metrics",
         default="faithfulness,response_relevancy",
-        help='Comma-separated metrics (default: %(default)s). Use --metrics "" for retrieval-only gate (requires --thresholds).',
+        help='Comma-separated metrics (default: %(default)s). Use --metrics "" for retrieval-only runs (requires --thresholds for gating, or --generate-thresholds-out for baseline generation).',
     )
     p.add_argument("--poll-sec", type=float, default=2.0, help="Polling interval seconds (default: %(default)s)")
     p.add_argument("--timeout-sec", type=float, default=600.0, help="Timeout seconds (default: %(default)s)")
@@ -182,8 +449,34 @@ def main() -> int:
         "--thresholds",
         type=str,
         default="",
-        help="JSON file mapping metric->number (min) or metric->{min,max} (optional)",
+        help="Thresholds JSON file (v1 flat or v2 structured) (optional)",
     )
+
+    # Optional: generate structured thresholds (v2) from the run summary.
+    p.add_argument(
+        "--generate-thresholds-out",
+        default="",
+        help="Write generated thresholds (v2) from this run summary to a JSON file (optional; use '-' for stdout)",
+    )
+    p.add_argument(
+        "--gen-metrics",
+        default="retrieval_recall,retrieval_hit_at_20,retrieval_mrr,retrieval_ndcg_at_20,abstain_rate",
+        help="Comma-separated top-level metrics to generate thresholds for (default: %(default)s)",
+    )
+    p.add_argument(
+        "--gen-slice-dims",
+        default="file_type,language,hit_type,quality",
+        help="Comma-separated slice dims to generate per-slice thresholds for (default: %(default)s)",
+    )
+    p.add_argument(
+        "--gen-slice-metrics",
+        default="retrieval_recall,retrieval_hit_at_20,abstain_rate",
+        help="Comma-separated slice metrics to generate thresholds for (default: %(default)s)",
+    )
+    p.add_argument("--gen-rel-drop", type=float, default=0.05, help="Relative slack (default: %(default)s)")
+    p.add_argument("--gen-abs-slack", type=float, default=0.02, help="Absolute slack (default: %(default)s)")
+    p.add_argument("--gen-min-slice-items", type=int, default=5, help="Min items per slice bucket (default: %(default)s)")
+    p.add_argument("--gen-force", action="store_true", help="Overwrite --generate-thresholds-out if it exists")
 
     args = p.parse_args()
 
@@ -195,17 +488,32 @@ def main() -> int:
     metrics = parse_metrics_list(args.metrics)
 
     thresholds: dict[str, dict[str, float]] = {}
+    slice_thresholds: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
     if args.thresholds:
         th_path = Path(args.thresholds)
         _require(th_path.exists(), f"thresholds file not found: {th_path}")
         raw_th = _load_json(th_path)
         if not isinstance(raw_th, dict):
-            _require(False, "thresholds must be a JSON object { metric: number | {min,max} }")
-        thresholds = normalize_thresholds(raw_th)
+            _require(False, "thresholds must be a JSON object")
+        thresholds, slice_thresholds = parse_thresholds_config(raw_th)
+
+        # Optional dataset_id guardrail (helps avoid applying thresholds from another dataset by accident).
+        th_ds = str(raw_th.get("dataset_id") or "").strip()
+        if th_ds and th_ds != dataset_id:
+            _require(False, f"thresholds dataset_id mismatch (expected {dataset_id}, got {th_ds})")
 
     # Allow retrieval-only gate: empty metrics list is okay when thresholds are provided.
     if not metrics:
-        _require(bool(args.thresholds) and bool(thresholds), "metrics list is empty")
+        _require(
+            is_empty_metrics_allowed(
+                metrics=metrics,
+                thresholds=thresholds,
+                slice_thresholds=slice_thresholds,
+                thresholds_file_provided=bool(args.thresholds),
+                generate_thresholds_out=str(args.generate_thresholds_out or ""),
+            ),
+            "metrics list is empty (set --thresholds for gating or --generate-thresholds-out for baseline generation)",
+        )
 
     headers = _headers(args)
     _require(bool(headers.get("X-User-ID") or headers.get("Authorization")), "missing auth headers (use --user-id or --bearer)")
@@ -300,44 +608,46 @@ def main() -> int:
 
         print(f"[regression_gate] run completed. summary keys={list(summary.keys())}")
 
-        if not thresholds:
+        # Optional: emit generated thresholds from this run summary.
+        if args.generate_thresholds_out:
+            out_path = str(args.generate_thresholds_out or "").strip()
+            gen_cfg = generate_thresholds_from_summary(
+                dataset_id=dataset_id,
+                summary=summary,
+                metrics=parse_metrics_list(args.gen_metrics),
+                slice_dims=parse_metrics_list(args.gen_slice_dims),
+                slice_metrics=parse_metrics_list(args.gen_slice_metrics),
+                rel_drop=float(args.gen_rel_drop),
+                abs_slack=float(args.gen_abs_slack),
+                min_slice_items=int(args.gen_min_slice_items),
+            )
+            out_json = json.dumps(gen_cfg, ensure_ascii=False, indent=2) + "\n"
+            if out_path == "-":
+                sys.stdout.write(out_json)
+            else:
+                pth = Path(out_path)
+                if pth.exists():
+                    old = pth.read_text(encoding="utf-8")
+                    diff = format_unified_diff(old, out_json, fromfile=str(pth), tofile=f"{pth} (generated)")
+                    if diff:
+                        print("[regression_gate] thresholds diff (existing -> generated):")
+                        sys.stdout.write(diff)
+                    if not bool(args.gen_force):
+                        _require(False, f"thresholds output already exists: {pth} (use --gen-force to overwrite)")
+                pth.write_text(out_json, encoding="utf-8")
+                print(f"[regression_gate] wrote generated thresholds: {pth}")
+
+        if not thresholds and not slice_thresholds:
             print("[regression_gate] no thresholds set; PASS")
             return 0
 
-        failed = False
-        for metric, bounds in thresholds.items():
-            try:
-                val = float(summary.get(metric))
-            except Exception:
-                val = None
-            if val is None:
-                print(f"[regression_gate] FAIL: missing metric '{metric}'", file=sys.stderr)
-                failed = True
-                continue
-
-            min_v = bounds.get("min")
-            max_v = bounds.get("max")
-
-            if min_v is not None and val < float(min_v):
-                print(f"[regression_gate] FAIL: {metric}={val:.4f} < min {float(min_v):.4f}", file=sys.stderr)
-                failed = True
-                continue
-            if max_v is not None and val > float(max_v):
-                print(f"[regression_gate] FAIL: {metric}={val:.4f} > max {float(max_v):.4f}", file=sys.stderr)
-                failed = True
-                continue
-
-            if min_v is not None and max_v is not None:
-                print(f"[regression_gate] OK: {metric}={val:.4f} in [{float(min_v):.4f}, {float(max_v):.4f}]")
-            elif min_v is not None:
-                print(f"[regression_gate] OK: {metric}={val:.4f} >= {float(min_v):.4f}")
-            elif max_v is not None:
-                print(f"[regression_gate] OK: {metric}={val:.4f} <= {float(max_v):.4f}")
-            else:
-                # Should not happen (normalize_thresholds drops empty bounds), but keep it safe.
-                print(f"[regression_gate] OK: {metric}={val:.4f}")
-
-        return 1 if failed else 0
+        ok, failures = check_thresholds(summary=summary, thresholds=thresholds, slice_thresholds=slice_thresholds)
+        if ok:
+            print("[regression_gate] thresholds: PASS")
+            return 0
+        for msg in failures or []:
+            print(f"[regression_gate] FAIL: {msg}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
