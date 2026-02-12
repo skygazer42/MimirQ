@@ -195,6 +195,8 @@ def render_dataset_profile_html(
     by_type = _as_items(summary.get("by_file_type"), top=12)
     by_status = _as_items(summary.get("by_status"), top=12)
     lang = _as_items(summary.get("language_mix"), top=12)
+    dirs = [] if redact else _as_items(summary.get("by_directory"), top=12)
+    qual = _as_items(summary.get("by_quality_bucket"), top=12)
     pii = _as_items(summary.get("pii_hits_total"), top=12)
     secrets = _as_items(summary.get("secrets_hits_total"), top=12)
 
@@ -320,6 +322,17 @@ def render_dataset_profile_html(
       <div>
         <h2>Chunk 数分布（每文档）</h2>
         {_render_histogram(summary.get("chunk_count_histogram"))}
+      </div>
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>目录分布（Top-level）</h2>
+        {_render_bar_table(dirs, total=max(1, total_docs))}
+      </div>
+      <div>
+        <h2>质量桶分布</h2>
+        {_render_bar_table(qual, total=max(1, total_docs))}
       </div>
     </div>
 

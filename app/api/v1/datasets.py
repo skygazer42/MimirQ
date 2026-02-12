@@ -30,6 +30,7 @@ from app.api.schemas.dataset import (
 from app.api.schemas.dataset_category import DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse
 from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
 from app.api.schemas.dataset_profile import (
+    DatasetProfileDocumentListResponse,
     DatasetProfileFindingListResponse,
     DatasetProfileScanRunCreateRequest,
     DatasetProfileScanRunListResponse,
@@ -57,7 +58,11 @@ from app.rag.chunking import chunker_factory
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
-from app.services.dataset_profile_service import compute_dataset_profile_summary, list_finding_documents
+from app.services.dataset_profile_service import (
+    compute_dataset_profile_summary,
+    list_bucket_documents,
+    list_finding_documents,
+)
 from app.services.dataset_service import DatasetPermissionService, DatasetService
 from app.services.ingestion_policy import (
     export_policy_json,
@@ -1341,6 +1346,36 @@ def list_dataset_profile_finding_documents(
             finding_key=finding_key,
             skip=int(skip or 0),
             limit=int(limit or 50),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
+
+
+@router.get("/{dataset_id}/profile/buckets/documents", response_model=DatasetProfileDocumentListResponse)
+def list_dataset_profile_bucket_documents(
+    dataset_id: UUID,
+    dimension: str = Query(..., max_length=40),
+    bucket: str = Query(..., max_length=200),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    include_preview: bool = Query(default=True),
+    preview_max_chars: int = Query(default=360, ge=80, le=2000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    try:
+        return list_bucket_documents(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            dimension=dimension,
+            bucket=bucket,
+            skip=int(skip or 0),
+            limit=int(limit or 50),
+            include_preview=bool(include_preview),
+            preview_max_chars=int(preview_max_chars or 0),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc

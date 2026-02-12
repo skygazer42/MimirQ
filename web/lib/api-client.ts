@@ -84,6 +84,7 @@ import type {
   DatasetConfigImportRequest,
   DatasetCloneRequest,
   DatasetProfileSummary,
+  DatasetProfileDocumentListResponse,
   DatasetProfileFindingListResponse,
   DatasetProfileScanRunCreateRequest,
   DatasetProfileScanRunListResponse,
@@ -1641,6 +1642,21 @@ export const datasetApi = {
     params?: { skip?: number; limit?: number }
   ): Promise<DatasetProfileFindingListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/profile/findings/${findingKey}`, { params })
+    return data
+  },
+
+  async listProfileBucketDocuments(
+    datasetId: string,
+    params: {
+      dimension: 'file_type' | 'language' | 'directory' | 'quality_bucket'
+      bucket: string
+      skip?: number
+      limit?: number
+      include_preview?: boolean
+      preview_max_chars?: number
+    }
+  ): Promise<DatasetProfileDocumentListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/buckets/documents`, { params })
     return data
   },
 

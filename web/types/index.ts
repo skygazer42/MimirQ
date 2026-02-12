@@ -2492,6 +2492,8 @@ export interface DatasetProfileSummary {
   total_size_bytes: number
   by_status: Record<string, number>
   by_file_type: Record<string, number>
+  by_directory?: Record<string, number>
+  by_quality_bucket?: Record<string, number>
 
   file_size_histogram: DatasetProfileHistogramBin[]
   length_percentiles: DatasetProfilePercentiles
@@ -2537,9 +2539,16 @@ export interface DatasetProfileDocumentOut {
   updated_at?: string | null
   error_message?: string | null
   metadata: Record<string, any>
+  preview?: string | null
+  preview_truncated?: boolean
 }
 
 export interface DatasetProfileFindingListResponse {
+  total: number
+  items: DatasetProfileDocumentOut[]
+}
+
+export interface DatasetProfileDocumentListResponse {
   total: number
   items: DatasetProfileDocumentOut[]
 }

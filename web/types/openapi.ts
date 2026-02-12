@@ -1856,6 +1856,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset_id}/profile/buckets/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Profile Bucket Documents */
+        get: operations["list_dataset_profile_bucket_documents_api_v1_datasets__dataset_id__profile_buckets_documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/{dataset_id}/profile/scan-runs": {
         parameters: {
             query?: never;
@@ -7800,6 +7817,16 @@ export interface components {
             /** Findings */
             findings?: components["schemas"]["DatasetPrecheckFindingSummary"][];
         };
+        /**
+         * DatasetProfileDocumentListResponse
+         * @description Generic document list response used by profile drilldowns (not just findings).
+         */
+        DatasetProfileDocumentListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["DatasetProfileDocumentOut"][];
+        };
         /** DatasetProfileDocumentOut */
         DatasetProfileDocumentOut: {
             /**
@@ -7837,6 +7864,13 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+            /** Preview */
+            preview?: string | null;
+            /**
+             * Preview Truncated
+             * @default false
+             */
+            preview_truncated: boolean;
         };
         /** DatasetProfileFindingListResponse */
         DatasetProfileFindingListResponse: {
@@ -8100,6 +8134,14 @@ export interface components {
             };
             /** By File Type */
             by_file_type?: {
+                [key: string]: number;
+            };
+            /** By Directory */
+            by_directory?: {
+                [key: string]: number;
+            };
+            /** By Quality Bucket */
+            by_quality_bucket?: {
                 [key: string]: number;
             };
             /** File Size Histogram */
@@ -17811,6 +17853,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatasetProfileFindingListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_profile_bucket_documents_api_v1_datasets__dataset_id__profile_buckets_documents_get: {
+        parameters: {
+            query: {
+                dimension: string;
+                bucket: string;
+                skip?: number;
+                limit?: number;
+                include_preview?: boolean;
+                preview_max_chars?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetProfileDocumentListResponse"];
                 };
             };
             /** @description Validation Error */

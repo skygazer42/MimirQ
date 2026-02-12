@@ -95,6 +95,9 @@ class DatasetProfileSummary(BaseModel):
     total_size_bytes: int = 0
     by_status: Dict[str, int] = Field(default_factory=dict)
     by_file_type: Dict[str, int] = Field(default_factory=dict)
+    # Stable "slice" distributions (align with eval slicing).
+    by_directory: Dict[str, int] = Field(default_factory=dict)
+    by_quality_bucket: Dict[str, int] = Field(default_factory=dict)
 
     file_size_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
 
@@ -161,9 +164,21 @@ class DatasetProfileDocumentOut(BaseModel):
     updated_at: Optional[datetime] = None
     error_message: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    # Optional PII-safe preview snippet (used by bucket drilldowns / reports).
+    preview: Optional[str] = None
+    preview_truncated: bool = False
 
 
 class DatasetProfileFindingListResponse(BaseModel):
+    total: int
+    items: List[DatasetProfileDocumentOut] = Field(default_factory=list)
+
+
+class DatasetProfileDocumentListResponse(BaseModel):
+    """
+    Generic document list response used by profile drilldowns (not just findings).
+    """
+
     total: int
     items: List[DatasetProfileDocumentOut] = Field(default_factory=list)
 
