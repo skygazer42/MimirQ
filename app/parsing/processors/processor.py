@@ -1734,6 +1734,100 @@ class DocumentProcessorService:
             resolved_backend = parsed.resolved_backend
             resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
+            # Parse quality gate: if fallback is enabled but we still don't have enough signal,
+            # route to failed/quarantined instead of indexing garbage.
+            #
+            # This is intentionally conservative and currently scoped to PDF+auto, matching the
+            # parse_fallback behavior/knobs.
+            if (
+                bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
+                and file_path.suffix.lower() == ".pdf"
+                and (str(parser_backend or "").strip().lower() in {"", "auto"})
+                and parsed.documents is not None
+            ):
+                try:
+                    min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
+                    if min_chars > 0:
+                        joined_final = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
+                        q_final = score_parsed_text_quality(joined_final)
+                        final_chars = int(getattr(q_final, "content_chars", 0) or 0)
+
+                        # If parse_fallback attempted other backends, ensure the stored quality reflects
+                        # the final selected parse result (not a rejected candidate attempt).
+                        meta = dict(db_document.doc_metadata or {})
+                        attempted = bool(meta.get("parse_fallback"))
+                        if attempted or final_chars < min_chars:
+                            meta["parsed_text_quality"] = q_final.to_dict()
+                            with contextlib.suppress(Exception):
+                                meta["parse_quality"] = score_document_parse_quality(
+                                    pdf_quality=(meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None),
+                                    parsed_text_quality=(meta.get("parsed_text_quality") if isinstance(meta.get("parsed_text_quality"), dict) else None),
+                                )
+                            db_document.doc_metadata = meta
+                            db.commit()
+                            db.refresh(db_document)
+
+                        if final_chars < min_chars:
+                            quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
+                            status = "quarantined" if quarantined else "failed"
+                            reason = "quarantined_by_parse_quality" if quarantined else "dropped_by_parse_quality"
+                            msg = (
+                                f"Document {'quarantined' if quarantined else 'failed'} by parse quality gate "
+                                f"(content_chars={final_chars} < min_content_chars={int(min_chars)}). "
+                                "Consider enabling OCR/backends or lowering parse_fallback_min_content_chars."
+                            )
+                            logger.warning("%s document_id=%s", msg, document_id)
+                            meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
+
+                            from app.core.pipeline_versions import should_preserve_existing_versions
+
+                            update_kwargs: dict[str, Any] = {
+                                "error_message": msg,
+                                "doc_metadata": meta_patch,
+                            }
+                            if not should_preserve_existing_versions(meta_patch):
+                                update_kwargs["chunk_count"] = 0
+                                update_kwargs["total_characters"] = 0
+
+                            await self._update_status(
+                                db,
+                                tenant_id,
+                                document_id,
+                                status,
+                                0,
+                                status,
+                                **update_kwargs,
+                            )
+                            with contextlib.suppress(Exception):
+                                from app.services.audit_log_service import audit_log_event
+
+                                audit_log_event(
+                                    db,
+                                    tenant_id=tenant_id,
+                                    actor_id=(getattr(db_document, "owner_id", None) or None),
+                                    action=("document.quarantine" if quarantined else "document.parse_drop"),
+                                    resource_type="document",
+                                    resource_id=str(document_id),
+                                    details={
+                                        "reason": reason,
+                                        "parse_fallback_min_content_chars": int(min_chars),
+                                        "parsed_content_chars": int(final_chars),
+                                        "parser_backend": str(resolved_backend or ""),
+                                    },
+                                )
+                                db.commit()
+
+                            return {
+                                "status": status,
+                                "reason": reason,
+                                "chunk_count": 0,
+                                "total_characters": 0,
+                                "parser_backend": resolved_backend,
+                                "chunk_strategy": resolved_chunk_strategy,
+                            }
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Parse quality gate failed (ignored): %s", str(exc)[:200])
+
             # Collect images uploaded by the parser (e.g., MinerU ZIP mode returns images).
             if parsed.documents:
                 for doc in parsed.documents:
@@ -1851,6 +1945,16 @@ class DocumentProcessorService:
                     status = "quarantined" if quarantined else "failed"
                     reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
                     meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
+                    from app.core.pipeline_versions import should_preserve_existing_versions
+
+                    update_kwargs: dict[str, Any] = {
+                        "error_message": msg,
+                        "doc_metadata": meta_patch,
+                    }
+                    # When reprocessing a document, keep the currently-active version's stats visible.
+                    if not should_preserve_existing_versions(meta_patch):
+                        update_kwargs["chunk_count"] = 0
+                        update_kwargs["total_characters"] = 0
                     await self._update_status(
                         db,
                         tenant_id,
@@ -1858,10 +1962,7 @@ class DocumentProcessorService:
                         status,
                         0,
                         status,
-                        chunk_count=0,
-                        total_characters=0,
-                        error_message=msg,
-                        doc_metadata=meta_patch,
+                        **update_kwargs,
                     )
                     with contextlib.suppress(Exception):
                         from app.services.audit_log_service import audit_log_event
@@ -1984,6 +2085,16 @@ class DocumentProcessorService:
                     status = "quarantined" if quarantined else "failed"
                     reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
                     meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
+                    from app.core.pipeline_versions import should_preserve_existing_versions
+
+                    update_kwargs: dict[str, Any] = {
+                        "error_message": msg,
+                        "doc_metadata": meta_patch,
+                    }
+                    # When reprocessing a document, keep the currently-active version's stats visible.
+                    if not should_preserve_existing_versions(meta_patch):
+                        update_kwargs["chunk_count"] = 0
+                        update_kwargs["total_characters"] = 0
                     await self._update_status(
                         db,
                         tenant_id,
@@ -1991,10 +2102,7 @@ class DocumentProcessorService:
                         status,
                         0,
                         status,
-                        chunk_count=0,
-                        total_characters=0,
-                        error_message=msg,
-                        doc_metadata=meta_patch,
+                        **update_kwargs,
                     )
                     with contextlib.suppress(Exception):
                         from app.services.audit_log_service import audit_log_event

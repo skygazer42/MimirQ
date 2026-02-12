@@ -158,5 +158,7 @@ apply the same XPath extraction logic.
 ## Related Ingestion Options (Non-governance)
 These options are not part of the governance stage, but often used together in production:
 - `parse_fallback_enabled`: For PDF with `parser_backend=auto`, retry parsing with a different backend when output quality is low.
+  - If the final output is still below `parse_fallback_min_content_chars`, the document will be dropped from indexing
+    (failed by default, or quarantined when `governance_quarantine_on_drop=true`) for manual review.
 - `persist_parsed_content`: Persist parsed markdown (raw + cleaned) to `document_parsed_contents` for audit/debug.
 - `near_dedup_enabled`: Cross-document near-duplicate chunk dropping (SimHash; best-effort, per-tenant per-dataset).

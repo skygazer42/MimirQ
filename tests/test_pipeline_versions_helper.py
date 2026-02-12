@@ -7,6 +7,7 @@ from app.core.pipeline_versions import (
     get_active_pipeline_hash,
     get_selected_pipeline_hash,
     resolve_doc_pipeline_key,
+    should_preserve_existing_versions,
 )
 
 
@@ -58,3 +59,15 @@ def test_resolve_doc_pipeline_key_none_when_no_hash_available():
     doc_id = uuid.uuid4()
     assert resolve_doc_pipeline_key(doc_id, {}, None, all_versions=False) is None
 
+
+def test_should_preserve_existing_versions_true_when_active_ready_and_hash_differs():
+    meta = {"active_pipeline_ready": True, "active_pipeline_hash": "old", "pipeline_hash": "new"}
+    assert should_preserve_existing_versions(meta) is True
+
+
+def test_should_preserve_existing_versions_false_when_not_active_ready_or_hash_missing_or_equal():
+    assert should_preserve_existing_versions({"active_pipeline_ready": False, "active_pipeline_hash": "a", "pipeline_hash": "b"}) is False
+    assert should_preserve_existing_versions({"active_pipeline_ready": True, "active_pipeline_hash": "", "pipeline_hash": "b"}) is False
+    assert should_preserve_existing_versions({"active_pipeline_ready": True, "active_pipeline_hash": "a", "pipeline_hash": ""}) is False
+    assert should_preserve_existing_versions({"active_pipeline_ready": True, "active_pipeline_hash": "same", "pipeline_hash": "same"}) is False
+    assert should_preserve_existing_versions(None) is False

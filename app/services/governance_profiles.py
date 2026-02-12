@@ -343,6 +343,10 @@ def get_builtin_governance_profiles() -> List[BuiltinGovernanceProfile]:
                     "governance_drop_low_density": True,
                     "governance_drop_low_density_threshold": 0.12,
                     "governance_quarantine_on_drop": True,
+                    # Parse quality gate (PDF+auto): retry alternative backends; quarantine when still low-signal.
+                    "parse_fallback_enabled": True,
+                    "parse_fallback_min_content_chars": 120,
+                    "parse_fallback_max_retries": 1,
                 },
             ),
         ),
