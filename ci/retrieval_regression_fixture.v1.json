@@ -1,0 +1,103 @@
+{
+  "schema": "mimirq.ci_retrieval_regression_fixture.v1",
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "account_id": "ci-bot",
+  "dataset": {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "name": "CI Retrieval Regression Fixture",
+    "description": "Tiny deterministic fixture dataset for retrieval-only regression gate in CI."
+  },
+  "documents": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "filename": "ci_fixture_doc1.md",
+      "file_type": "md",
+      "doc_metadata": {
+        "source_path": "handbook/ci_fixture_doc1.md",
+        "language": "en",
+        "active_pipeline_hash": "ci-fixture-v1",
+        "governance_quality": {
+          "density": 0.2,
+          "heading_ratio": 0.1,
+          "content_chars": 800
+        }
+      },
+      "chunks": [
+        {
+          "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001",
+          "chunk_index": 0,
+          "content": "CI Retrieval Fixture (Doc1)\\n\\nQ: What is CITOKENALPHA9B7C3E?\\nA: CITOKENALPHA9B7C3E is a CI retrieval regression token used to validate lexical retrieval.\\n",
+          "page_number": 1
+        },
+        {
+          "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0002",
+          "chunk_index": 1,
+          "content": "CI Retrieval Fixture (Doc1)\\n\\nThis chunk is filler text for slice coverage.\\n",
+          "page_number": 1
+        }
+      ]
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "filename": "ci_fixture_doc2.pdf",
+      "file_type": "pdf",
+      "doc_metadata": {
+        "source_path": "policies/ci_fixture_doc2.pdf",
+        "language": "zh",
+        "active_pipeline_hash": "ci-fixture-v1",
+        "governance_quality": {
+          "density": 0.05,
+          "heading_ratio": 0.2,
+          "content_chars": 800
+        }
+      },
+      "chunks": [
+        {
+          "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0001",
+          "chunk_index": 0,
+          "content": "CI Retrieval Fixture (Doc2)\\n\\nQ: What is CITOKENGAMMA2F4D8A?\\nA: CITOKENGAMMA2F4D8A is a second CI retrieval regression token.\\n",
+          "page_number": 1
+        },
+        {
+          "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002",
+          "chunk_index": 1,
+          "content": "CI Retrieval Fixture (Doc2)\\n\\nThis chunk is filler text for slice coverage.\\n",
+          "page_number": 1
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "question": "What is CITOKENALPHA9B7C3E?",
+      "expected_answer": "CITOKENALPHA9B7C3E is a CI retrieval regression token.",
+      "reference_sources": [
+        {
+          "document_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "chunk_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001",
+          "chunk_index": 0,
+          "page_number": 1,
+          "quote": "CITOKENALPHA9B7C3E is a CI retrieval regression token used to validate lexical retrieval.",
+          "label": "alpha_token"
+        }
+      ],
+      "tags": ["ci", "token_alpha"]
+    },
+    {
+      "question": "What is CITOKENGAMMA2F4D8A?",
+      "expected_answer": "CITOKENGAMMA2F4D8A is a CI retrieval regression token.",
+      "reference_sources": [
+        {
+          "document_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          "chunk_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0001",
+          "chunk_index": 0,
+          "page_number": 1,
+          "quote": "CITOKENGAMMA2F4D8A is a second CI retrieval regression token.",
+          "label": "gamma_token"
+        }
+      ],
+      "tags": ["ci", "token_gamma"]
+    }
+  ]
+}
+
