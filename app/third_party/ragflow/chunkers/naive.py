@@ -164,7 +164,7 @@ def by_plaintext(filename, binary=None, from_page=0, to_page=100000, callback=No
         layout_name = str(kwargs.get("layout_recognizer", "") or "").strip()
         try:
             vision_model = LLMBundle(
-                kwargs["tenant_id"],
+                str(kwargs.get("tenant_id", "") or ""),
                 LLMType.IMAGE2TEXT,
                 llm_name=layout_name,
                 lang=kwargs.get("lang", "Chinese"),
@@ -854,7 +854,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
         is_markdown = True
 
         try:
-            vision_model = LLMBundle(kwargs["tenant_id"], LLMType.IMAGE2TEXT)
+            vision_model = LLMBundle(str(kwargs.get("tenant_id", "") or ""), LLMType.IMAGE2TEXT)
             callback(0.2, "Visual model detected. Attempting to enhance figure extraction...")
         except Exception:
             vision_model = None

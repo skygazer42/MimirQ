@@ -185,19 +185,65 @@ def vision_figure_parser_pdf_wrapper(*, tbls, callback=None, **kwargs):  # noqa:
     Best-effort wrapper used by the integrated RAGFlow pipeline.
 
     Upstream RAGFlow can optionally use a vision-language model to enrich extracted
-    table/figure data. This repository ships without the ragflow-internal LLM bundle,
-    so we default to a safe no-op and return the parsed tables/figures unchanged.
+    table/figure data.
+
+    In MimirQ we support this as an optional feature behind `.env` flags.
+    When not configured, this remains a safe no-op (returns tbls unchanged).
     """
-    _ = (callback, kwargs)
-    return tbls
+
+    if not tbls or not isinstance(tbls, list):
+        return tbls
+
+    # Avoid hard failures for non-image table representations.
+    has_image = False
+    try:
+        for item in tbls:
+            if isinstance(item, Image.Image):
+                has_image = True
+                break
+            if isinstance(item, tuple) and item:
+                head = item[0]
+                if isinstance(head, Image.Image):
+                    has_image = True
+                    break
+                if isinstance(head, tuple) and head and isinstance(head[0], Image.Image):
+                    has_image = True
+                    break
+    except Exception:
+        has_image = False
+
+    if not has_image:
+        return tbls
+
+    try:
+        from app.third_party.ragflow.common.constants import LLMType
+        from app.third_party.ragflow.stubs.llm_service import LLMBundle
+    except Exception as exc:  # pragma: no cover
+        if callback:
+            callback(-1, f"Vision enrichment import failed; using parsed tables unchanged. ({exc})")
+        return tbls
+
+    try:
+        vision_model = LLMBundle(str(kwargs.get("tenant_id", "") or ""), LLMType.IMAGE2TEXT)
+    except Exception as exc:
+        if callback:
+            callback(-1, f"Vision enrichment unavailable; using parsed tables unchanged. ({exc})")
+        return tbls
+
+    try:
+        parser = VisionFigureParser(vision_model, tbls, **kwargs)
+        return parser(callback=callback)
+    except Exception as exc:
+        if callback:
+            callback(-1, f"Vision enrichment failed; using parsed tables unchanged. ({exc})")
+        return tbls
 
 
 def vision_figure_parser_docx_wrapper(*, sections, tbls, callback=None, **kwargs):  # noqa: ANN001, ANN201
     """
     Best-effort wrapper used by the integrated RAGFlow pipeline for DOCX files.
 
-    See vision_figure_parser_pdf_wrapper() for rationale; we keep this as a no-op to
-    avoid hard failures when vision-based enrichment isn't available.
+    See vision_figure_parser_pdf_wrapper() for rationale.
     """
-    _ = (sections, callback, kwargs)
-    return tbls
+    _ = sections
+    return vision_figure_parser_pdf_wrapper(tbls=tbls, callback=callback, **kwargs)

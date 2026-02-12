@@ -688,6 +688,17 @@ class Settings(BaseSettings):
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False
+    # RAGFlow vision LLM (optional): used by ragflow_* chunkers for vision parsing/enrichment.
+    # Disabled by default to keep out-of-the-box behavior (fallback to plaintext).
+    RAGFLOW_VISION_ENABLED: bool = False
+    # Optional: use a dedicated API key/base for vision calls; falls back to LLM_API_KEY/LLM_API_BASE when empty.
+    RAGFLOW_VISION_API_KEY: str = ""
+    RAGFLOW_VISION_API_BASE: str = ""
+    # OpenAI-compatible vision model id, e.g. "gpt-4o-mini".
+    RAGFLOW_VISION_MODEL: str = "gpt-4o-mini"
+    RAGFLOW_VISION_TIMEOUT_SEC: int = 120
+    RAGFLOW_VISION_MAX_TOKENS: int = 4096
+    RAGFLOW_VISION_TEMPERATURE: float = 0.0
     MARKITDOWN_ENABLED: bool = False
     # Pandoc Office/HTML -> Markdown parser (optional; requires system pandoc)
     PANDOC_ENABLED: bool = False

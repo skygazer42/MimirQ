@@ -633,7 +633,21 @@ async def get_pipeline_capabilities(
                     notes = f"llama-index-core not installed: {err}"
         elif s in chunker_factory.RAGFLOW_STRATEGIES:
             available = True
-            notes = "RAGFlow integrated pipeline (parse+chunk). Vision-based enrichment is best-effort and may be disabled without extra dependencies."
+            vision_enabled = bool(getattr(settings, "RAGFLOW_VISION_ENABLED", False))
+            vision_key_ok = bool(
+                (
+                    (getattr(settings, "RAGFLOW_VISION_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "")
+                    .strip()
+                )
+            )
+            vision_model = (getattr(settings, "RAGFLOW_VISION_MODEL", "") or "").strip()
+
+            if vision_enabled and vision_key_ok:
+                notes = f"RAGFlow integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
+            elif vision_enabled and not vision_key_ok:
+                notes = "RAGFlow integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set RAGFLOW_VISION_API_KEY or LLM_API_KEY)."
+            else:
+                notes = "RAGFlow integrated pipeline (parse+chunk). Vision enrichment disabled by default (set RAGFLOW_VISION_ENABLED=true to enable)."
         elif s == "markdown":
             available = True
             notes = "Alias of markdown_header."
