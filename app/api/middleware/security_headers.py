@@ -2,7 +2,7 @@
 Security headers middleware.
 
 This is a lightweight, backend-only hardening layer inspired by common SaaS
-knowledge-base products (Dify/RAGFlow/FastGPT style deployments):
+knowledge-base deployments:
 - Prevent MIME sniffing
 - Reduce clickjacking risk
 - Keep referrer data minimal by default
@@ -40,4 +40,3 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Referrer-Policy"] = self.referrer_policy
 
         return response
-

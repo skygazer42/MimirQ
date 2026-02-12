@@ -1,6 +1,6 @@
 """
 Text splitter implementations.
-Integrated from third_party/dify/splitter/text_splitter.py
+Integrated from an upstream splitter implementation (vendored for stability).
 """
 
 import copy

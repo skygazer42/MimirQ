@@ -2219,7 +2219,7 @@ async def _ingest_url_upload_request(
         document_metadata={},
         request_overrides=pipeline_options,
     )
-    if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
+    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
         _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
 
     # 6) Unified ingestion run manifest (best-effort; creates a run when missing).
@@ -2528,7 +2528,7 @@ async def upload_document(
         document_metadata={},
         request_overrides=pipeline_options,
     )
-    if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
+    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
         _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
 
     # 3. Save file.
@@ -3046,7 +3046,7 @@ async def upload_documents_batch(
                     document_metadata={},
                     request_overrides=pipeline_options,
                 )
-                if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
+                if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
                     _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
                 
                 # Permission check (already done outside semaphore).
@@ -8000,14 +8000,14 @@ async def preview_chunking(
             "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
         }
 
-        # Ragflow preset uses a separate branch (self-parse + chunk).
-        if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
+        # Integrated pipeline strategies use a separate branch (self-parse + chunk).
+        if resolved_chunk_strategy in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
             parse_duration_ms = None
-            _ragflow_started = time.perf_counter()
+            _integrated_started = time.perf_counter()
             result = await run_subprocess_worker(
                 tenant_id=tenant_id,
                 payload={
-                    "action": "ragflow_chunk",
+                    "action": "integrated_chunk",
                     "tenant_id": str(tenant_id),
                     "file_path": str(temp_path),
                     "strategy": resolved_chunk_strategy,
@@ -8016,7 +8016,7 @@ async def preview_chunking(
                 disconnect_check=request.is_disconnected,
                 timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
             )
-            chunking_duration_ms = int(max(0.0, (time.perf_counter() - _ragflow_started) * 1000.0))
+            chunking_duration_ms = int(max(0.0, (time.perf_counter() - _integrated_started) * 1000.0))
             chunks = [
                 Document(
                     page_content=str(item.get("page_content") or ""),
@@ -8026,8 +8026,8 @@ async def preview_chunking(
                 for item in (result.get("documents") or [])
                 if isinstance(item, dict)
             ]
-            resolved_backend = "ragflow"
-            documents = []  # Ragflow already handled.
+            resolved_backend = "integrated"
+            documents = []  # Integrated pipeline already handled.
             if pipeline_effective.governance_enabled:
                 _gov_started = time.perf_counter()
                 chunks, _stats = governance_processor.clean_documents(
@@ -8264,10 +8264,10 @@ async def preview_chunking(
             warnings_out.append(f"chunks truncated to max_chunks={int(max_chunks)} (full={total_chunks_full})")
             chunks = chunks[: int(max_chunks)]
 
-        # Merge original text: use parsed pages for non-ragflow, chunks for ragflow,
+        # Merge original text: use parsed pages for non-integrated, chunks for integrated,
         # to keep original_text aligned with chunks for frontend highlighting.
         page_texts: list[dict[str, object]] = []
-        ragflow_chunk_start_map: dict[int, int] = {}
+        integrated_chunk_start_map: dict[int, int] = {}
         page_start_map: dict[object, int] = {}
         page_index_start_map: dict[int, int] = {}
         total_characters = 0
@@ -8307,7 +8307,7 @@ async def preview_chunking(
             if include_original and total_characters <= int(original_text_max_chars or 0):
                 original_text_value = "\n".join([str(p.get("text") or "") for p in page_texts]) if page_texts else ""
         else:
-            # Ragflow preset: documents is empty; build "locatable" text from chunks.
+            # Integrated pipeline preset: documents is empty; build "locatable" text from chunks.
             # Note: not a strict original full text, but keeps highlighting stable.
             total_characters = sum(len(c.page_content or "") for c in chunks) + (2 * (len(chunks) - 1) if chunks else 0)
 
@@ -8320,7 +8320,7 @@ async def preview_chunking(
                 text = chunk.page_content or ""
                 if parts is not None:
                     parts.append(text)
-                ragflow_chunk_start_map[idx] = current_pos
+                integrated_chunk_start_map[idx] = current_pos
                 current_pos += len(text) + 2  # +2 for "\n\n" join separator
 
             if parts is not None:
@@ -8348,8 +8348,8 @@ async def preview_chunking(
             page_index = meta.get("page_index")
             local_start = meta.get("start_char")
 
-            if idx in ragflow_chunk_start_map:
-                start_idx = ragflow_chunk_start_map[idx]
+            if idx in integrated_chunk_start_map:
+                start_idx = integrated_chunk_start_map[idx]
             else:
                 doc_base: int | None = None
                 if page_index is not None:
@@ -8703,8 +8703,8 @@ async def preview_chunking_by_sha(
         raise HTTPException(status_code=400, detail="original_text_max_chars must be between 0 and 2000000")
     include_original = bool(include_original_text)
 
-    if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
-        raise HTTPException(status_code=400, detail="RAGFlow strategies do not support by-sha preview; please upload the file")
+    if resolved_chunk_strategy in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
+        raise HTTPException(status_code=400, detail="Integrated pipeline strategies do not support by-sha preview; please upload the file")
 
     cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
     cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)

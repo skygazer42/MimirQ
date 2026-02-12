@@ -21,7 +21,7 @@ from app.core.token_utils import num_tokens_from_string
 from .utils import get_text
 
 
-class RAGFlowTxtParser:
+class IntegratedPipelineTxtParser:
     def __call__(self, fnm, binary=None, chunk_token_num=128, delimiter="\n!?;。；！？"):
         txt = get_text(fnm, binary)
         return self.parser_txt(txt, chunk_token_num, delimiter)
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     file_path = "/data/Langagent/deepdoc/data/identity.txt"
     if len(sys.argv) > 1:
         file_path = sys.argv[1]
-    parser = RAGFlowTxtParser()
+    parser = IntegratedPipelineTxtParser()
     # Parse txt file
     chunks = parser(file_path, chunk_token_num=128)
     print(f"📄 Split into {len(chunks)} chunks:")

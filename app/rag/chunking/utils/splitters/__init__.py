@@ -1,5 +1,5 @@
 """
-Text splitter implementations integrated from dify.
+Text splitter implementations.
 """
 from app.rag.chunking.utils.splitters.fixed_text_splitter import (
     EnhanceRecursiveCharacterTextSplitter,

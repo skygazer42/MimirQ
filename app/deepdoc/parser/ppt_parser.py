@@ -20,7 +20,7 @@ from io import BytesIO
 from pptx import Presentation
 
 
-class RAGFlowPptParser:
+class IntegratedPipelinePptParser:
     def __init__(self):
         super().__init__()
 
@@ -83,7 +83,7 @@ class RAGFlowPptParser:
 
 
 if __name__ == "__main__":
-    parser = RAGFlowPptParser()
+    parser = IntegratedPipelinePptParser()
     ppt_path = "../data/love.pptx"
     # 3. Specify page range for extraction
     from_page = 0

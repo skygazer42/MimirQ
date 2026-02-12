@@ -32,7 +32,7 @@ export function ChunkStrategySelect({
   const presetStrategies = getStrategiesByGroup('preset')
   const langchainStrategies = getStrategiesByGroup('langchain')
   const llamaIndexStrategies = getStrategiesByGroup('llama_index')
-  const ragflowStrategies = getStrategiesByGroup('ragflow')
+  const integratedStrategies = getStrategiesByGroup('integrated')
 
   return (
     <div
@@ -88,8 +88,8 @@ export function ChunkStrategySelect({
             </option>
           ))}
         </optgroup>
-        <optgroup label="RAGFlow">
-          {ragflowStrategies.map((option) => (
+        <optgroup label="Integrated pipeline">
+          {integratedStrategies.map((option) => (
             <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
               {option.label}
             </option>

@@ -475,17 +475,17 @@ const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
   },
   {
     key: 'recommended:legal_docs',
-    name: '法律/合同（ragflow_laws + 合规脱敏）',
-    description: '适用于合同/法规：切块策略选择 ragflow_laws，并启用 PII/密钥脱敏（可按需关闭）。',
-    tags: ['legal', 'ragflow_laws', 'pii'],
+    name: '法律/合同（integrated_laws + 合规脱敏）',
+    description: '适用于合同/法规：切块策略选择 integrated_laws，并启用 PII/密钥脱敏（可按需关闭）。',
+    tags: ['legal', 'integrated_laws', 'pii'],
     rules: [
       {
-        name: '法律 PDF（ragflow_laws）',
+        name: '法律 PDF（integrated_laws）',
         enabled: true,
         match: { extensions: ['.pdf'], filename_regex: null },
         preprocess: { enabled: false, steps: [] },
         parser_backend: 'auto',
-        chunk_strategy: 'ragflow_laws',
+        chunk_strategy: 'integrated_laws',
         governance_profile_ref: 'builtin:pdf_text',
         pipeline_patch: {
           "governance_pii_anonymize": true,
@@ -497,12 +497,12 @@ const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         },
       },
       {
-        name: '法律 DOCX（ragflow_laws）',
+        name: '法律 DOCX（integrated_laws）',
         enabled: true,
         match: { extensions: ['.docx'], filename_regex: null },
         preprocess: { enabled: false, steps: [] },
         parser_backend: 'markitdown',
-        chunk_strategy: 'ragflow_laws',
+        chunk_strategy: 'integrated_laws',
         governance_profile_ref: 'builtin:kb_default',
         pipeline_patch: {
           "governance_pii_anonymize": true,
@@ -647,7 +647,7 @@ export default function DatasetIngestionPolicyPage() {
   const chunkStrategyOptions = useMemo(() => {
     const items = (capabilities?.chunk_strategies || []).map((s) => String(s.name || '').trim()).filter(Boolean)
     const uniq = Array.from(new Set(items))
-    return uniq.length ? uniq : ['langchain_recursive', 'ragflow_naive', 'ragflow_book', 'ragflow_laws', 'ragflow_email']
+    return uniq.length ? uniq : ['langchain_recursive', 'integrated_naive', 'integrated_book', 'integrated_laws', 'integrated_email']
   }, [capabilities])
 
   const load = useCallback(async () => {

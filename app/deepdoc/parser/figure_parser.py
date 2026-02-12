@@ -182,10 +182,10 @@ class VisionFigureParser:
 
 def vision_figure_parser_pdf_wrapper(*, tbls, callback=None, **kwargs):  # noqa: ANN001, ANN201
     """
-    Best-effort wrapper used by the integrated RAGFlow pipeline.
+    Best-effort wrapper used by the integrated parse+chunk pipeline.
 
-    Upstream RAGFlow can optionally use a vision-language model to enrich extracted
-    table/figure data.
+    The integrated chunking pipeline can optionally use a vision-language model to enrich
+    extracted table/figure data.
 
     In MimirQ we support this as an optional feature behind `.env` flags.
     When not configured, this remains a safe no-op (returns tbls unchanged).
@@ -216,8 +216,8 @@ def vision_figure_parser_pdf_wrapper(*, tbls, callback=None, **kwargs):  # noqa:
         return tbls
 
     try:
-        from app.third_party.ragflow.common.constants import LLMType
-        from app.third_party.ragflow.stubs.llm_service import LLMBundle
+        from app.third_party.integrated_pipeline.common.constants import LLMType
+        from app.third_party.integrated_pipeline.stubs.llm_service import LLMBundle
     except Exception as exc:  # pragma: no cover
         if callback:
             callback(-1, f"Vision enrichment import failed; using parsed tables unchanged. ({exc})")
@@ -241,7 +241,7 @@ def vision_figure_parser_pdf_wrapper(*, tbls, callback=None, **kwargs):  # noqa:
 
 def vision_figure_parser_docx_wrapper(*, sections, tbls, callback=None, **kwargs):  # noqa: ANN001, ANN201
     """
-    Best-effort wrapper used by the integrated RAGFlow pipeline for DOCX files.
+    Best-effort wrapper used by the integrated parse+chunk pipeline for DOCX files.
 
     See vision_figure_parser_pdf_wrapper() for rationale.
     """

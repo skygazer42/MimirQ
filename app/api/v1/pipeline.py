@@ -437,7 +437,7 @@ async def get_pipeline_capabilities(
 
     chunk_strategies: list[ChunkStrategyInfo] = []
     # Expose all strategies known to the backend (frontends may choose a subset).
-    all_strats = set(chunker_factory.SUPPORTED_STRATEGIES.keys()) | set(chunker_factory.RAGFLOW_STRATEGIES)
+    all_strats = set(chunker_factory.SUPPORTED_STRATEGIES.keys()) | set(chunker_factory.INTEGRATED_PIPELINE_STRATEGIES)
     for name in sorted(all_strats):
         s = (name or "").strip().lower()
         available = True
@@ -631,7 +631,7 @@ async def get_pipeline_capabilities(
                 available = ok
                 if not ok:
                     notes = f"llama-index-core not installed: {err}"
-        elif s in chunker_factory.RAGFLOW_STRATEGIES:
+        elif s in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
             available = True
             vision_enabled = bool(getattr(settings, "VISION_LLM_ENABLED", False))
             vision_key_ok = bool(
@@ -643,11 +643,11 @@ async def get_pipeline_capabilities(
             vision_model = (getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
 
             if vision_enabled and vision_key_ok:
-                notes = f"RAGFlow integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
+                notes = f"Integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
             elif vision_enabled and not vision_key_ok:
-                notes = "RAGFlow integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set VISION_LLM_API_KEY or LLM_API_KEY)."
+                notes = "Integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set VISION_LLM_API_KEY or LLM_API_KEY)."
             else:
-                notes = "RAGFlow integrated pipeline (parse+chunk). Vision enrichment disabled by default (set VISION_LLM_ENABLED=true to enable)."
+                notes = "Integrated pipeline (parse+chunk). Vision enrichment disabled by default (set VISION_LLM_ENABLED=true to enable)."
         elif s == "markdown":
             available = True
             notes = "Alias of markdown_header."

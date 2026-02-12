@@ -2,9 +2,9 @@ export interface ChunkStrategyOption {
   value: string
   label: string
   description: string
-  icon: 'recursive' | 'token' | 'sentence' | 'hierarchical' | 'ragflow' | 'separator'
+  icon: 'recursive' | 'token' | 'sentence' | 'hierarchical' | 'integrated' | 'separator'
   badge?: string
-  group?: 'preset' | 'langchain' | 'llama_index' | 'ragflow'
+  group?: 'preset' | 'langchain' | 'llama_index' | 'integrated'
   disabled?: boolean
 }
 
@@ -601,38 +601,38 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     group: 'llama_index',
   },
 
-  // RAGFlow (parse + chunk integrated)
+  // Integrated pipeline (parse + chunk integrated)
   {
-    value: 'ragflow_naive',
-    label: 'RAGFlow 通用切分',
-    description: 'RAGFlow 通用文档切分（集成解析+切块）。',
-    icon: 'ragflow',
-    badge: 'RAGFlow',
-    group: 'ragflow',
+    value: 'integrated_naive',
+    label: 'Integrated pipeline 通用切分',
+    description: 'Integrated pipeline 通用文档切分（集成解析+切块）。',
+    icon: 'integrated',
+    badge: 'Integrated pipeline',
+    group: 'integrated',
   },
   {
-    value: 'ragflow_book',
-    label: 'RAGFlow 书籍切分',
+    value: 'integrated_book',
+    label: 'Integrated pipeline 书籍切分',
     description: '针对书籍/长文档优化，尽量保留章节结构。',
-    icon: 'ragflow',
+    icon: 'integrated',
     badge: '书籍',
-    group: 'ragflow',
+    group: 'integrated',
   },
   {
-    value: 'ragflow_laws',
-    label: 'RAGFlow 法律切分',
+    value: 'integrated_laws',
+    label: 'Integrated pipeline 法律切分',
     description: '针对法律文档优化，尽量保留条款结构。',
-    icon: 'ragflow',
+    icon: 'integrated',
     badge: '法律',
-    group: 'ragflow',
+    group: 'integrated',
   },
   {
-    value: 'ragflow_email',
-    label: 'RAGFlow 邮件切分',
+    value: 'integrated_email',
+    label: 'Integrated pipeline 邮件切分',
     description: '针对邮件/通信优化，尽量保留引用结构。',
-    icon: 'ragflow',
+    icon: 'integrated',
     badge: '邮件',
-    group: 'ragflow',
+    group: 'integrated',
   },
 ]
 

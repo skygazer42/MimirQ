@@ -28,7 +28,7 @@ const ICON_MAP: Record<ChunkStrategyOption['icon'], any> = {
   sentence: AlignLeft,
   separator: AlignLeft,
   hierarchical: GitBranch,
-  ragflow: Layers,
+  integrated: Layers,
 }
 
 // 颜色映射
@@ -41,7 +41,7 @@ const COLOR_MAP: Record<
   sentence: { bg: 'bg-green-100 dark:bg-green-500/20', text: 'text-green-600 dark:text-green-300' },
   separator: { bg: 'bg-muted', text: 'text-muted-foreground' },
   hierarchical: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-300' },
-  ragflow: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
+  integrated: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
 }
 
 interface ChunkStrategyDropdownProps {

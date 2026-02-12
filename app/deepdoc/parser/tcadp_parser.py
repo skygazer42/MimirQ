@@ -39,7 +39,7 @@ from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.lkeap.v20240522 import lkeap_client, models  # type: ignore[import]
 
 from app.core.config import settings
-from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
+from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 
 
 class TencentCloudAPIClient:
@@ -179,7 +179,7 @@ class TencentCloudAPIClient:
             return None
 
 
-class TCADPParser(RAGFlowPdfParser):
+class TCADPParser(IntegratedPipelinePdfParser):
     def __init__(self, secret_id: str = None, secret_key: str = None, region: str = "ap-guangzhou",
                  table_result_type: str = None, markdown_image_response_type: str = None):
         super().__init__()

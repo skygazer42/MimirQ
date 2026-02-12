@@ -28,7 +28,7 @@ import pdfplumber
 from docling.document_converter import DocumentConverter
 from PIL import Image
 
-from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
+from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 
 
 class DoclingContentType(str, Enum):
@@ -47,7 +47,7 @@ class _BBox:
     y1: float
 
 
-class DoclingParser(RAGFlowPdfParser):
+class DoclingParser(IntegratedPipelinePdfParser):
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.page_images: list[Image.Image] = []

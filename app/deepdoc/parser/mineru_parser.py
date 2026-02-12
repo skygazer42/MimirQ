@@ -37,7 +37,7 @@ try:
 except ImportError:  # pragma: no cover
     from strenum import StrEnum  # py<3.11
 
-from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
+from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
@@ -135,7 +135,7 @@ class MinerUParseOptions:
     table_enable: bool = True
 
 
-class MinerUParser(RAGFlowPdfParser):
+class MinerUParser(IntegratedPipelinePdfParser):
     def __init__(self, mineru_path: str = "mineru", mineru_api: str = "", mineru_server_url: str = ""):
         super().__init__()
         self.mineru_api = mineru_api.rstrip("/")

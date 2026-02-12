@@ -1,8 +1,8 @@
 """
 Custom separator-based chunking strategy.
-
-Similar to Dify's separator-based chunking with preset options.
 """
+
+from __future__ import annotations
 
 import re
 from typing import List, Optional
@@ -14,7 +14,7 @@ from app.rag.chunking.base import BaseChunker
 
 class SeparatorChunker(BaseChunker):
     """
-    Custom separator-based chunking (similar to Dify).
+    Custom separator-based chunking.
 
     Supports preset separators or custom patterns.
     """
@@ -53,69 +53,73 @@ class SeparatorChunker(BaseChunker):
             if not text.strip():
                 continue
 
-            # Split by separator, optionally keeping it
-            if self.separator:
-                if self.keep_separator:
-                    # Keep separator by attaching it to the preceding split part.
-                    raw_parts = re.split(f"({re.escape(self.separator)})", text)
-                    parts: list[str] = []
-                    for i, part in enumerate(raw_parts):
-                        if i % 2 == 0:
-                            parts.append(part)
-                        else:
-                            if parts:
-                                parts[-1] += part
-                            else:
-                                parts.append(part)
-                else:
-                    parts = text.split(self.separator)
-            else:
-                parts = [text]
+            parts = self._split(text)
 
             offset = 0
             for i, part in enumerate(parts):
-                # Derive the absolute location for this part.
                 raw_start = offset
                 raw_end = raw_start + len(part)
 
-                # Advance offset to the next segment start.
                 offset = raw_end
-                if not self.keep_separator and self.separator and i < len(parts) - 1:
+                if (
+                    not self.keep_separator
+                    and self.separator
+                    and i < len(parts) - 1
+                ):
                     # text.split() drops the separator; account for it between parts.
                     offset += len(self.separator)
 
                 if not part.strip():
                     continue
 
-                # Handle oversized chunks
                 if len(part) > self.max_chunk_size:
-                    sub_chunks = self._split_large_chunk(part, raw_start, doc.metadata)
-                    chunks.extend(sub_chunks)
-                else:
-                    metadata = dict(doc.metadata or {})
-                    content = part
-                    start_idx = raw_start
-                    end_idx = raw_end
+                    chunks.extend(self._split_large_chunk(part, raw_start, doc.metadata))
+                    continue
 
-                    # If we're *not* keeping the separator, trim whitespace and adjust offsets
-                    # so that `text[start:end] == chunk.page_content` holds for highlighting.
-                    if not self.keep_separator:
-                        lstrip_len = len(part) - len(part.lstrip())
-                        rstrip_len = len(part) - len(part.rstrip())
-                        start_idx = raw_start + lstrip_len
-                        end_idx = raw_end - rstrip_len
-                        content = part[lstrip_len : len(part) - rstrip_len]
+                metadata = dict(doc.metadata or {})
+                content = part
+                start_idx = raw_start
+                end_idx = raw_end
 
-                    if not content:
-                        continue
+                if not self.keep_separator:
+                    # Trim whitespace but keep highlight offsets correct:
+                    # `text[start:end] == chunk.page_content`
+                    lstrip_len = len(part) - len(part.lstrip())
+                    rstrip_len = len(part) - len(part.rstrip())
+                    start_idx = raw_start + lstrip_len
+                    end_idx = raw_end - rstrip_len
+                    content = part[lstrip_len : len(part) - rstrip_len]
 
-                    metadata["start_char"] = start_idx
-                    metadata["end_char"] = end_idx
-                    metadata["chunk_strategy"] = "separator"
-                    metadata["separator"] = repr(self.separator)
-                    chunks.append(Document(page_content=content, metadata=metadata))
+                if not content:
+                    continue
+
+                metadata["start_char"] = start_idx
+                metadata["end_char"] = end_idx
+                metadata["chunk_strategy"] = "separator"
+                metadata["separator"] = repr(self.separator)
+                chunks.append(Document(page_content=content, metadata=metadata))
 
         return chunks
+
+    def _split(self, text: str) -> list[str]:
+        if not self.separator:
+            return [text]
+
+        if not self.keep_separator:
+            return text.split(self.separator)
+
+        # Keep separator by attaching it to the preceding split part.
+        raw_parts = re.split(f"({re.escape(self.separator)})", text)
+        parts: list[str] = []
+        for i, part in enumerate(raw_parts):
+            if i % 2 == 0:
+                parts.append(part)
+                continue
+            if parts:
+                parts[-1] += part
+            else:
+                parts.append(part)
+        return parts
 
     def _split_large_chunk(
         self,
@@ -123,19 +127,23 @@ class SeparatorChunker(BaseChunker):
         base_pos: int,
         base_metadata: Optional[dict],
     ) -> List[Document]:
-        """Split oversized chunks at sentence boundaries."""
-        chunks = []
+        """
+        Split oversized chunks at sentence boundaries (best-effort).
+        """
+        chunks: List[Document] = []
         pos = 0
+
+        seps = ["。", ".", "，", "！", "!", "？", "?", "\n", " "]
 
         while pos < len(text):
             end = min(pos + self.max_chunk_size, len(text))
 
-            # Try to break at sentence boundary
             if end < len(text):
-                for sep in ["。", ".", "！", "!", "？", "?", "\n", " "]:
+                # Try to break at a boundary within [pos, end).
+                for sep in seps:
                     last_sep = text.rfind(sep, pos, end)
                     if last_sep > pos:
-                        end = last_sep + 1
+                        end = last_sep + len(sep)
                         break
 
             segment = text[pos:end]
@@ -163,3 +171,4 @@ class SeparatorChunker(BaseChunker):
             pos = end
 
         return chunks
+

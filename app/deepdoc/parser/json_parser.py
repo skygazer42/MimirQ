@@ -65,7 +65,7 @@ def find_codec(blob):
     return "utf-8"
 
 
-class RAGFlowJsonParser:
+class IntegratedPipelineJsonParser:
     def __init__(
             self, max_chunk_size: int = 2000, min_chunk_size: int | None = None
     ):

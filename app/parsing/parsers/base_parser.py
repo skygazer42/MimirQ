@@ -165,7 +165,7 @@ class BaseAdvancedParser(ABC):
                     return ""
 
                 # Preserve position tags from parsers like Docling/MinerU that return (text, tag)
-                # or (text, type, tag). The ragflow integrated pipeline relies on `@@...##` tags.
+                # or (text, type, tag). The integrated integrated pipeline relies on `@@...##` tags.
                 tag = ""
                 for item in reversed(section[1:]):
                     if isinstance(item, str) and "@@" in item and "##" in item and pos_tag_re.search(item):

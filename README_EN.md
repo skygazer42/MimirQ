@@ -114,11 +114,8 @@ See `docs/README.md` for docs and guides.
 
 ## Acknowledgements
 
-This project is inspired by and references ideas from the following open source projects (no official affiliation):
-
-- [Dify](https://github.com/langgenius/dify)
-- [RAGFlow](https://github.com/infiniflow/ragflow)
-- [Bisheng](https://github.com/dataelement/bisheng)
+This project is built on the open-source Python ecosystem (FastAPI, SQLAlchemy, LangChain, etc.).
+See `requirements.txt` for direct runtime dependencies.
 
 ## License
 

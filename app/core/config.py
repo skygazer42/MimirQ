@@ -690,36 +690,15 @@ class Settings(BaseSettings):
     DEEPDOC_ENABLED: bool = False
     # Vision LLM (optional): used by integrated chunkers/parsers for vision parsing/enrichment.
     # Disabled by default to keep out-of-the-box behavior (fallback to plaintext).
-    VISION_LLM_ENABLED: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("VISION_LLM_ENABLED", "RAGFLOW_VISION_ENABLED"),
-    )
+    VISION_LLM_ENABLED: bool = False
     # Optional: use a dedicated API key/base for vision calls; falls back to LLM_API_KEY/LLM_API_BASE when empty.
-    VISION_LLM_API_KEY: str = Field(
-        default="",
-        validation_alias=AliasChoices("VISION_LLM_API_KEY", "RAGFLOW_VISION_API_KEY"),
-    )
-    VISION_LLM_API_BASE: str = Field(
-        default="",
-        validation_alias=AliasChoices("VISION_LLM_API_BASE", "RAGFLOW_VISION_API_BASE"),
-    )
+    VISION_LLM_API_KEY: str = ""
+    VISION_LLM_API_BASE: str = ""
     # OpenAI-compatible vision model id, e.g. "gpt-4o-mini".
-    VISION_LLM_MODEL: str = Field(
-        default="gpt-4o-mini",
-        validation_alias=AliasChoices("VISION_LLM_MODEL", "RAGFLOW_VISION_MODEL"),
-    )
-    VISION_LLM_TIMEOUT_SEC: int = Field(
-        default=120,
-        validation_alias=AliasChoices("VISION_LLM_TIMEOUT_SEC", "RAGFLOW_VISION_TIMEOUT_SEC"),
-    )
-    VISION_LLM_MAX_TOKENS: int = Field(
-        default=4096,
-        validation_alias=AliasChoices("VISION_LLM_MAX_TOKENS", "RAGFLOW_VISION_MAX_TOKENS"),
-    )
-    VISION_LLM_TEMPERATURE: float = Field(
-        default=0.0,
-        validation_alias=AliasChoices("VISION_LLM_TEMPERATURE", "RAGFLOW_VISION_TEMPERATURE"),
-    )
+    VISION_LLM_MODEL: str = "gpt-4o-mini"
+    VISION_LLM_TIMEOUT_SEC: int = 120
+    VISION_LLM_MAX_TOKENS: int = 4096
+    VISION_LLM_TEMPERATURE: float = 0.0
     MARKITDOWN_ENABLED: bool = False
     # Pandoc Office/HTML -> Markdown parser (optional; requires system pandoc)
     PANDOC_ENABLED: bool = False

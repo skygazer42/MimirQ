@@ -42,7 +42,7 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
     format dependencies are missing.
     """
     if name == "PdfParser":
-        from .pdf_parser import RAGFlowPdfParser as PdfParser
+        from .pdf_parser import IntegratedPipelinePdfParser as PdfParser
 
         return PdfParser
     if name == "PlainParser":
@@ -50,31 +50,31 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
 
         return PlainParser
     if name == "DocxParser":
-        from .docx_parser import RAGFlowDocxParser as DocxParser
+        from .docx_parser import IntegratedPipelineDocxParser as DocxParser
 
         return DocxParser
     if name == "ExcelParser":
-        from .excel_parser import RAGFlowExcelParser as ExcelParser
+        from .excel_parser import IntegratedPipelineExcelParser as ExcelParser
 
         return ExcelParser
     if name == "PptParser":
-        from .ppt_parser import RAGFlowPptParser as PptParser
+        from .ppt_parser import IntegratedPipelinePptParser as PptParser
 
         return PptParser
     if name == "HtmlParser":
-        from .html_parser import RAGFlowHtmlParser as HtmlParser
+        from .html_parser import IntegratedPipelineHtmlParser as HtmlParser
 
         return HtmlParser
     if name == "JsonParser":
-        from .json_parser import RAGFlowJsonParser as JsonParser
+        from .json_parser import IntegratedPipelineJsonParser as JsonParser
 
         return JsonParser
     if name == "MarkdownParser":
-        from .markdown_parser import RAGFlowMarkdownParser as MarkdownParser
+        from .markdown_parser import IntegratedPipelineMarkdownParser as MarkdownParser
 
         return MarkdownParser
     if name == "TxtParser":
-        from .txt_parser import RAGFlowTxtParser as TxtParser
+        from .txt_parser import IntegratedPipelineTxtParser as TxtParser
 
         return TxtParser
     if name == "MinerUParser":
