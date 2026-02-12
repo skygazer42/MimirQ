@@ -62,10 +62,15 @@ def _markdown_to_plain_text(markdown: str) -> str:
     return s
 
 
+def _plain_chars(markdown: str) -> int:
+    return int(len(_markdown_to_plain_text(markdown)))
+
+
 def _structure_metrics(markdown: str) -> dict[str, Any]:
     md = str(markdown or "")
     return {
         "chars": int(len(md)),
+        "plain_chars": _plain_chars(md),
         "headings": int(len(_HEADING_RE.findall(md))),
         "list_items": int(len(_LIST_ITEM_RE.findall(md))),
         "fences": int(len(_FENCE_RE.findall(md))),
@@ -118,6 +123,7 @@ def main() -> int:
     ap.add_argument("--input-dir", required=True, help="Directory containing input files (and optional golden markdown files).")
     ap.add_argument("--manifest", default="", help="Optional JSON manifest describing cases + golden markdown paths.")
     ap.add_argument("--out", default="runs/parser_benchmark.json", help="Output JSON path.")
+    ap.add_argument("--baseline", default="", help="Optional previous report JSON to diff against (adds report.regressions).")
     ap.add_argument("--max-files", type=int, default=50, help="Max number of files/cases to run.")
     ap.add_argument(
         "--backends",
@@ -132,6 +138,7 @@ def main() -> int:
         raise SystemExit(f"input_dir_not_found: {input_dir}")
 
     manifest_path = Path(str(args.manifest)).resolve() if str(args.manifest or "").strip() else None
+    baseline_path = Path(str(args.baseline)).resolve() if str(args.baseline or "").strip() else None
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -154,12 +161,16 @@ def main() -> int:
         "generated_at": started_at.isoformat(),
         "input_dir": str(input_dir),
         "manifest": str(manifest_path) if manifest_path else None,
+        "baseline": str(baseline_path) if baseline_path else None,
         "backends": backends,
         "cases": [],
         "summary": {},
     }
 
-    by_backend: dict[str, dict[str, Any]] = {b: {"attempts": 0, "ok": 0, "elapsed_ms": [], "parse_score": [], "similarity": []} for b in backends}
+    by_backend: dict[str, dict[str, Any]] = {
+        b: {"attempts": 0, "ok": 0, "elapsed_ms": [], "parse_score": [], "similarity": [], "coverage_ratio": []}
+        for b in backends
+    }
 
     for case in cases:
         file_ext = case.path.suffix.lower()
@@ -173,12 +184,15 @@ def main() -> int:
         golden_md = ""
         if case.golden_markdown_path and case.golden_markdown_path.exists():
             golden_md = _read_text(case.golden_markdown_path)
+        golden_struct = _structure_metrics(golden_md) if golden_md else None
+        golden_plain_chars = int(golden_struct.get("plain_chars") or 0) if isinstance(golden_struct, dict) else 0
 
         case_row: dict[str, Any] = {
             "id": case.case_id,
             "path": str(case.path),
             "file_type": file_ext.lstrip("."),
             "golden_markdown_path": str(case.golden_markdown_path) if case.golden_markdown_path else None,
+            "golden": ({"structure": golden_struct} if golden_struct else None),
             "attempts": [],
         }
 
@@ -195,6 +209,7 @@ def main() -> int:
                 md = _join_documents_to_markdown(docs)
                 tq = score_parsed_text_quality(md).to_dict()
                 pq = score_document_parse_quality(pdf_quality=pdf_quality, parsed_text_quality=tq)
+                struct = _structure_metrics(md)
 
                 attempt.update(
                     {
@@ -203,12 +218,16 @@ def main() -> int:
                         "provenance": prov,
                         "text_quality": tq,
                         "parse_quality": pq,
-                        "structure": _structure_metrics(md),
+                        "structure": struct,
                     }
                 )
                 if golden_md:
                     sim = _similarity(md, golden_md)
                     attempt["golden_similarity"] = round(float(sim), 4)
+                    if golden_plain_chars > 0:
+                        cov = float(struct.get("plain_chars") or 0) / float(golden_plain_chars)
+                        attempt["golden_coverage_ratio"] = round(float(cov), 4)
+                        by_backend[backend]["coverage_ratio"].append(float(cov))
                     by_backend[backend]["similarity"].append(float(sim))
 
                 by_backend[backend]["ok"] += 1
@@ -235,6 +254,7 @@ def main() -> int:
         elapsed = sorted(int(x) for x in stats.get("elapsed_ms") or [])
         parse_scores = [float(x) for x in stats.get("parse_score") or []]
         sims = [float(x) for x in stats.get("similarity") or []]
+        covs = [float(x) for x in stats.get("coverage_ratio") or []]
 
         def _pct(vals: list[int], p: float) -> int | None:
             if not vals:
@@ -251,9 +271,52 @@ def main() -> int:
             "elapsed_ms_p90": _pct(elapsed, 90.0),
             "parse_score_mean": (round(sum(parse_scores) / len(parse_scores), 4) if parse_scores else None),
             "golden_similarity_mean": (round(sum(sims) / len(sims), 4) if sims else None),
+            "golden_coverage_ratio_mean": (round(sum(covs) / len(covs), 4) if covs else None),
         }
 
     report["summary"] = summary
+
+    # Optional: compute a simple baseline diff (best-effort).
+    if baseline_path and baseline_path.exists():
+        try:
+            baseline_obj = json.loads(_read_text(baseline_path))
+        except Exception:
+            baseline_obj = {}
+        baseline_summary = baseline_obj.get("summary") if isinstance(baseline_obj, dict) else {}
+        baseline_summary = baseline_summary if isinstance(baseline_summary, dict) else {}
+
+        def _metric(before: dict[str, Any], after: dict[str, Any], key: str) -> dict[str, Any] | None:
+            b = before.get(key)
+            a = after.get(key)
+            if b is None and a is None:
+                return None
+            try:
+                delta = (float(a) - float(b)) if a is not None and b is not None else None
+            except Exception:
+                delta = None
+            return {"before": b, "after": a, "delta": (round(delta, 6) if isinstance(delta, float) else delta)}
+
+        diffs: dict[str, Any] = {}
+        for backend, after in summary.items():
+            before = baseline_summary.get(backend) if isinstance(baseline_summary.get(backend), dict) else {}
+            before = before if isinstance(before, dict) else {}
+            diffs[backend] = {
+                k: v
+                for k, v in (
+                    ("ok_rate", _metric(before, after, "ok_rate")),
+                    ("elapsed_ms_p50", _metric(before, after, "elapsed_ms_p50")),
+                    ("elapsed_ms_p90", _metric(before, after, "elapsed_ms_p90")),
+                    ("parse_score_mean", _metric(before, after, "parse_score_mean")),
+                    ("golden_similarity_mean", _metric(before, after, "golden_similarity_mean")),
+                    ("golden_coverage_ratio_mean", _metric(before, after, "golden_coverage_ratio_mean")),
+                )
+                if v is not None
+            }
+
+        report["regressions"] = {
+            "baseline": str(baseline_path),
+            "by_backend": diffs,
+        }
 
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[parser-benchmark] wrote {out_path}")
@@ -262,4 +325,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
