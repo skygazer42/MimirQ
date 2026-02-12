@@ -8332,6 +8332,7 @@ async def preview_chunking(
         chunk_items: List[ChunkPreviewItem] = []
         chunk_ranges: list[tuple[int, int]] = []
         length_samples: list[int] = []
+        token_lengths: list[int] = []
         total_len = 0
         total_tokens_est = 0
         short_threshold = 40 if unit == "tokens" else 120
@@ -8386,6 +8387,8 @@ async def preview_chunking(
                 )
 
             total_tokens_est += int(tokens_est or 0)
+            if int(tokens_est or 0) > 0:
+                token_lengths.append(int(tokens_est or 0))
             unit_len = int(tokens_est or 0) if unit == "tokens" else len(content)
             length_samples.append(unit_len)
             total_len += unit_len
@@ -8418,6 +8421,19 @@ async def preview_chunking(
                 ))
 
         sorted_lengths = sorted(length_samples)
+        # Token stats (always derived from per-chunk `tokens_est`, independent of `unit`).
+        token_stats: dict[str, Any] | None = None
+        with contextlib.suppress(Exception):
+            from app.services.chunking_stats_utils import compute_chunking_stats_from_lengths
+            from app.services.dataset_profile_utils import CHUNK_TOKEN_BINS
+
+            token_stats = compute_chunking_stats_from_lengths(
+                token_lengths,
+                short_threshold=40,
+                duplicate_count=int(duplicate_count),
+                unit="tokens",
+                bins=CHUNK_TOKEN_BINS,
+            )
         if sorted_lengths:
             def _pct(p: int) -> int:
                 if not sorted_lengths:
@@ -8526,6 +8542,7 @@ async def preview_chunking(
             ),
             chunks=(chunk_items if bool(include_chunks) else []),
             stats=stats,
+            chunking_stats_tokens=token_stats,
             auto_selected_strategy=auto_selected_strategy,
             warnings=warnings_out,
             review_signals=review_signals,
@@ -9003,6 +9020,7 @@ async def preview_chunking_by_sha(
     chunk_items: List[ChunkPreviewItem] = []
     chunk_ranges: list[tuple[int, int]] = []
     length_samples: list[int] = []
+    token_lengths: list[int] = []
     total_len = 0
     total_tokens_est = 0
     short_threshold = 40 if unit == "tokens" else 120
@@ -9051,6 +9069,8 @@ async def preview_chunking_by_sha(
             )
 
         total_tokens_est += int(tokens_est or 0)
+        if int(tokens_est or 0) > 0:
+            token_lengths.append(int(tokens_est or 0))
         unit_len = int(tokens_est or 0) if unit == "tokens" else len(content)
         length_samples.append(unit_len)
         total_len += unit_len
@@ -9083,6 +9103,19 @@ async def preview_chunking_by_sha(
             ))
 
     sorted_lengths = sorted(length_samples)
+    # Token stats (always derived from per-chunk `tokens_est`, independent of `unit`).
+    token_stats: dict[str, Any] | None = None
+    with contextlib.suppress(Exception):
+        from app.services.chunking_stats_utils import compute_chunking_stats_from_lengths
+        from app.services.dataset_profile_utils import CHUNK_TOKEN_BINS
+
+        token_stats = compute_chunking_stats_from_lengths(
+            token_lengths,
+            short_threshold=40,
+            duplicate_count=int(duplicate_count),
+            unit="tokens",
+            bins=CHUNK_TOKEN_BINS,
+        )
     if sorted_lengths:
         def _pct(p: int) -> int:
             if not sorted_lengths:
@@ -9186,14 +9219,15 @@ async def preview_chunking_by_sha(
         ),
         chunks=(chunk_items if bool(include_chunks) else []),
         stats=stats,
+        chunking_stats_tokens=token_stats,
         auto_selected_strategy=auto_selected_strategy,
         warnings=warnings_out,
-	        review_signals=review_signals,
-	        quality_gate=quality_gate,
-	        recommendations=recommendations,
-	        recommendation_patches=recommendation_patches,
-	        original_text=original_text_value,
-	        original_text_cleaned=original_text_cleaned_value,
+        review_signals=review_signals,
+        quality_gate=quality_gate,
+        recommendations=recommendations,
+        recommendation_patches=recommendation_patches,
+        original_text=original_text_value,
+        original_text_cleaned=original_text_cleaned_value,
         original_text_included=original_text_value is not None,
         original_text_truncated=original_text_truncated_val,
         original_text_max_chars=int(original_text_max_chars or 0),

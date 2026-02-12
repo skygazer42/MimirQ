@@ -944,6 +944,10 @@ class ChunkPreviewResponse(BaseModel):
     params: ChunkPreviewParams
     chunks: List[ChunkPreviewItem]
     stats: Optional[ChunkPreviewStats] = None
+    # Optional token-based stats derived from `tokens_est` per chunk.
+    # This mirrors ingest-time documents.metadata["chunking_stats_tokens"] shape and is
+    # useful for auto-tune tooling without returning full chunks.
+    chunking_stats_tokens: Optional[Dict[str, Any]] = None
     # When using chunk_strategy=auto, return the most common selected strategy (best-effort).
     auto_selected_strategy: Optional[str] = None
     # Non-fatal warnings for UI (e.g. ignored overlap for separator strategy).

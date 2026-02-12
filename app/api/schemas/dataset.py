@@ -16,6 +16,40 @@ from .document import DocumentPipelineOptions
 from .ingestion_policy import IngestionPolicy
 
 
+class DatasetChunkTargetsV2(BaseModel):
+    """
+    Per-dataset chunk target distribution spec (v2).
+
+    This is used by:
+    - Dataset profile "chunk_targets" checks (objective signals + suggestions)
+    - Chunking auto-tune tooling (search chunk_strategy/size/overlap)
+
+    Notes:
+    - This is intentionally small and declarative.
+    - Values are "best-effort" targets; they do not directly change ingestion behavior.
+    """
+
+    # Token distribution objectives.
+    token_p50_min: Optional[int] = Field(default=None, ge=0, le=4000, description="Target P50 chunk token length (min)")
+    token_p50_max: Optional[int] = Field(default=None, ge=0, le=4000, description="Target P50 chunk token length (max)")
+
+    # Ratio checks (percentage points, 0-100).
+    short_pct_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for short chunk ratio (<=100 tokens)")
+    short_pct_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for short chunk ratio (<=100 tokens)")
+    long_pct_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for long chunk ratio (>=800 tokens)")
+    long_pct_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for long chunk ratio (>=800 tokens)")
+
+    # Chunk overlap waste objectives (percentage points, 0-100).
+    overlap_waste_p50_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for overlap waste P50 (%)")
+    overlap_waste_p50_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for overlap waste P50 (%)")
+
+    # Chunk coverage objectives (percentage points, 0-100). This is best-effort and may be missing.
+    coverage_p50_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for coverage P50 (%)")
+    coverage_p50_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for coverage P50 (%)")
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class DatasetRAGDefaults(BaseModel):
     """
     Dataset-level default RAG settings (optional overrides).
@@ -80,6 +114,8 @@ class DatasetBase(BaseModel):
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
     default_prompt_ab_experiment_key: Optional[str] = None
+    # Dataset-level chunk targets (best-effort tuning objectives for profiling/auto-tune).
+    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
     # Dataset-level pipeline defaults (governance/indexing). If omitted, tenant defaults apply.
     pipeline: Optional[DocumentPipelineOptions] = None
 
@@ -99,6 +135,7 @@ class DatasetUpdate(BaseModel):
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
     default_prompt_ab_experiment_key: Optional[str] = None
+    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
     pipeline: Optional[DocumentPipelineOptions] = None
 
 
@@ -116,6 +153,7 @@ class DatasetOut(OrmModel):
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
     default_prompt_ab_experiment_key: Optional[str] = None
+    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
     pipeline: Optional[DocumentPipelineOptions] = None
 
 
@@ -150,6 +188,7 @@ class DatasetConfigBundle(BaseModel):
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
     default_prompt_ab_experiment_key: Optional[str] = None
+    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
     pipeline: Optional[DocumentPipelineOptions] = None
     ingestion_policy: Optional[IngestionPolicy] = None
 
