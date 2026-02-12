@@ -8,6 +8,7 @@ const config = {
   },
   test: {
     environment: 'node',
+    pool: 'threads',
     include: ['**/*.test.ts'],
     reporters: ['default'],
   },
