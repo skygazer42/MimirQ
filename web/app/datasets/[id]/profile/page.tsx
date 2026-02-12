@@ -48,6 +48,7 @@ import { cn, formatFileSize, formatDate } from '@/lib/utils'
 import type {
   Dataset,
   Document,
+  DatasetProfileDocumentListResponse,
   DatasetProfileFindingListResponse,
   DatasetProfileFindingSummary,
   DatasetProfileScanRunCreateRequest,
@@ -116,6 +117,12 @@ export default function DatasetProfilePage() {
   const [selectedFinding, setSelectedFinding] = useState<DatasetProfileFindingSummary | null>(null)
   const [findingLoading, setFindingLoading] = useState(false)
   const [findingRes, setFindingRes] = useState<DatasetProfileFindingListResponse | null>(null)
+
+  const [bucketOpen, setBucketOpen] = useState(false)
+  const [bucketDim, setBucketDim] = useState<'file_type' | 'language' | 'directory' | 'quality_bucket' | null>(null)
+  const [bucketKey, setBucketKey] = useState<string>('')
+  const [bucketLoading, setBucketLoading] = useState(false)
+  const [bucketRes, setBucketRes] = useState<DatasetProfileDocumentListResponse | null>(null)
 
   const stopPolling = useCallback(() => {
     const t = pollTimerRef.current
@@ -207,6 +214,51 @@ export default function DatasetProfilePage() {
       .sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name))
   }, [summary])
 
+  const directoryChartData = useMemo(() => {
+    const m = (summary as any)?.by_directory || {}
+    const entries = Object.entries(m)
+      .map(([key, value]) => ({ key: String(key || 'root'), name: String(key || 'root'), value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => b.value - a.value)
+
+    const top = entries.slice(0, 12)
+    const rest = entries.slice(12)
+    const other = rest.reduce((acc, x) => acc + x.value, 0)
+    if (other > 0) top.push({ key: '__other__', name: '其他', value: other })
+    return top
+  }, [summary])
+
+  function qualityBucketLabel(key: string): string {
+    switch (String(key || '').toLowerCase()) {
+      case 'high_density':
+        return '高密度'
+      case 'mid_density':
+        return '中密度'
+      case 'low_density':
+        return '低密度'
+      case 'outline_heavy':
+        return '目录/标题占比高'
+      case 'tiny':
+        return '内容过短'
+      case 'unknown':
+      default:
+        return '未知'
+    }
+  }
+
+  const qualityBucketChartData = useMemo(() => {
+    const m = (summary as any)?.by_quality_bucket || {}
+    const order = ['high_density', 'mid_density', 'low_density', 'outline_heavy', 'tiny', 'unknown']
+    return Object.entries(m)
+      .map(([key, value]) => ({
+        key: String(key || 'unknown'),
+        name: qualityBucketLabel(String(key || 'unknown')),
+        value: Number(value || 0),
+      }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
+  }, [summary])
+
   const pdfScanData = useMemo(() => {
     const s = summary?.pdf_scan
     if (!s) return []
@@ -272,6 +324,35 @@ export default function DatasetProfilePage() {
     [datasetId]
   )
 
+  const openBucket = useCallback(
+    async (dim: 'file_type' | 'language' | 'directory' | 'quality_bucket', key: string) => {
+      if (!datasetId) return
+      if (!key || key === '__other__') return
+      setBucketDim(dim)
+      setBucketKey(key)
+      setBucketOpen(true)
+      setBucketLoading(true)
+      try {
+        const res = await datasetApi.listProfileBucketDocuments(datasetId, {
+          dimension: dim,
+          bucket: key,
+          skip: 0,
+          limit: 50,
+          include_preview: true,
+          preview_max_chars: 360,
+        })
+        setBucketRes(res)
+      } catch (e: any) {
+        console.error('Failed to load bucket documents', e)
+        toast.error(formatApiError(e, '加载清单失败'))
+        setBucketRes(null)
+      } finally {
+        setBucketLoading(false)
+      }
+    },
+    [datasetId]
+  )
+
   const loadMoreFinding = useCallback(async () => {
     if (!datasetId || !selectedFinding || !findingRes) return
     if (findingRes.items.length >= findingRes.total) return
@@ -288,6 +369,28 @@ export default function DatasetProfilePage() {
       setFindingLoading(false)
     }
   }, [datasetId, selectedFinding, findingRes])
+
+  const loadMoreBucket = useCallback(async () => {
+    if (!datasetId || !bucketDim || !bucketKey || !bucketRes) return
+    if (bucketRes.items.length >= bucketRes.total) return
+    setBucketLoading(true)
+    try {
+      const res = await datasetApi.listProfileBucketDocuments(datasetId, {
+        dimension: bucketDim,
+        bucket: bucketKey,
+        skip: bucketRes.items.length,
+        limit: 50,
+        include_preview: true,
+        preview_max_chars: 360,
+      })
+      setBucketRes({ total: res.total, items: [...bucketRes.items, ...(res.items || [])] })
+    } catch (e: any) {
+      console.error('Failed to load more bucket documents', e)
+      toast.error(formatApiError(e, '加载更多失败'))
+    } finally {
+      setBucketLoading(false)
+    }
+  }, [datasetId, bucketDim, bucketKey, bucketRes])
 
   const pollScanRun = useCallback(
     async (datasetIdValue: string, runId: string) => {
@@ -847,6 +950,66 @@ export default function DatasetProfilePage() {
             </Panel>
 
             <Panel className="p-5">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="font-semibold">目录分布（Top-level）</div>
+                <div className="text-xs text-muted-foreground">click bar → drilldown</div>
+              </div>
+              {directoryChartData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={directoryChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} interval={0} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#94a3b8" radius={[6, 6, 0, 0]}>
+                        {directoryChartData.map((entry, idx) => (
+                          <Cell
+                            key={idx}
+                            cursor={entry.key === '__other__' ? 'default' : 'pointer'}
+                            onClick={() => (entry.key === '__other__' ? null : void openBucket('directory', String(entry.key || 'root')))}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="font-semibold">质量桶分布</div>
+                <div className="text-xs text-muted-foreground">click bar → drilldown</div>
+              </div>
+              {qualityBucketChartData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={qualityBucketChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} interval={0} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]}>
+                        {qualityBucketChartData.map((entry, idx) => (
+                          <Cell
+                            key={idx}
+                            cursor="pointer"
+                            onClick={() => void openBucket('quality_bucket', String(entry.key || 'unknown'))}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">PII 命中（次数）</div>
               </div>
@@ -1241,6 +1404,138 @@ export default function DatasetProfilePage() {
                       disabled={findingLoading || findingRes.items.length >= findingRes.total}
                     >
                       {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                      加载更多
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-10 text-center text-muted-foreground">
+                  暂无数据
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={bucketOpen} onOpenChange={(open) => {
+          setBucketOpen(open)
+          if (!open) {
+            setBucketDim(null)
+            setBucketKey('')
+            setBucketRes(null)
+          }
+        }}>
+          <DialogContent className="max-w-5xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+                {(() => {
+                  const label =
+                    bucketDim === 'file_type' ? '格式'
+                    : bucketDim === 'language' ? '语言'
+                    : bucketDim === 'directory' ? '目录'
+                    : bucketDim === 'quality_bucket' ? '质量桶'
+                    : '清单'
+                  return bucketDim ? `${label}: ${bucketKey || ''}` : '清单'
+                })()}
+                {bucketRes ? (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {bucketRes.total}
+                  </Badge>
+                ) : null}
+              </DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                Preview 已做 PII/Secrets 脱敏（best-effort）。点击文件名可查看文档详情。
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-2">
+              {bucketLoading && !bucketRes ? (
+                <div className="py-10 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+                  加载中…
+                </div>
+              ) : bucketRes ? (
+                <div className="space-y-3">
+                  <div className="text-xs text-muted-foreground font-mono">
+                    showing {bucketRes.items.length}/{bucketRes.total}
+                  </div>
+                  <div className="rounded-xl border border-border/60 overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">文件名</th>
+                          <th className="px-3 py-2 font-medium">类型</th>
+                          <th className="px-3 py-2 font-medium">大小</th>
+                          <th className="px-3 py-2 font-medium">状态</th>
+                          <th className="px-3 py-2 font-medium">长度</th>
+                          <th className="px-3 py-2 font-medium">样例（脱敏）</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bucketRes.items.map((d) => (
+                          <tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
+                            <td className="px-3 py-2">
+                              <DocumentDetailDialog
+                                document={{
+                                  id: d.id,
+                                  filename: d.filename,
+                                  file_type: d.file_type,
+                                  file_size: d.file_size,
+                                  status: (d.status as any) || 'pending',
+                                  processing_progress: 0,
+                                  chunk_count: d.chunk_count || 0,
+                                  total_characters: d.total_characters || 0,
+                                  created_at: d.created_at || new Date().toISOString(),
+                                  updated_at: d.updated_at || new Date().toISOString(),
+                                  error_message: d.error_message || undefined,
+                                  metadata: d.metadata || {},
+                                  dataset_id: datasetId || undefined,
+                                } as Document}
+                                trigger={
+                                  <button type="button" className="text-primary hover:underline">
+                                    {d.filename}
+                                  </button>
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline" className="font-mono text-xs">
+                                {d.status}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 font-mono text-xs">{d.total_characters}</td>
+                            <td className="px-3 py-2 max-w-[520px]">
+                              {d.preview ? (
+                                <div
+                                  className="text-xs text-muted-foreground line-clamp-2"
+                                  title={String(d.preview || '')}
+                                >
+                                  {String(d.preview)}
+                                  {d.preview_truncated ? '…' : ''}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-muted-foreground">
+                      {bucketRes.items.length >= bucketRes.total ? '已加载全部' : ''}
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => void loadMoreBucket()}
+                      disabled={bucketLoading || bucketRes.items.length >= bucketRes.total}
+                    >
+                      {bucketLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                       加载更多
                     </Button>
                   </div>

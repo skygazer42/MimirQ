@@ -10,6 +10,7 @@ Deep scan/backfill is implemented separately (see dataset_profile_scan.py).
 
 from __future__ import annotations
 
+import re
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.dataset_profile import (
+    DatasetProfileDocumentListResponse,
     DatasetProfileDocumentOut,
     DatasetProfileFindingListResponse,
     DatasetProfileFindingSummary,
@@ -33,7 +35,9 @@ from app.api.schemas.dataset_profile import (
 from app.models.dataset import Dataset
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentPermission
+from app.models.document import DocumentParsedContent, DocumentPermission
+from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.preprocessing.secrets import redact_secrets
 from app.services.dataset_profile_utils import (
     AVG_CHUNK_CHARS_BINS,
     AVG_CHUNK_TOKENS_BINS,
@@ -127,6 +131,94 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "description": "基于 file_sha256 的完全重复候选。可在“深度扫描”中开启 compute_file_hash 补齐。",
     },
 }
+
+
+def normalize_language_bucket(value: object) -> str:
+    """
+    Normalize language to stable buckets used by eval slicing + dataset profiling.
+
+    Notes:
+    - This intentionally stays coarse: zh/en/mixed/unknown.
+    - Keep in sync with retrieval/eval slice taxonomy.
+    """
+
+    s = str(value or "").strip()
+    if not s:
+        return "unknown"
+    lowered = s.lower()
+    if lowered in {"mixed", "multilingual", "multi"}:
+        return "mixed"
+    if any(sep in lowered for sep in (",", ";", "|", "+", "/")):
+        return "mixed"
+    if lowered.startswith("zh"):
+        return "zh"
+    if lowered.startswith("en"):
+        return "en"
+    return "unknown"
+
+
+def directory_bucket_from_source_path(value: object) -> str:
+    """
+    Map metadata.source_path -> a stable top-level directory bucket.
+
+    We intentionally only keep the first path segment to prevent exploding buckets
+    and to align with eval slice taxonomy.
+    """
+
+    raw = str(value or "").replace("\\", "/").strip()
+    if not raw or raw in {".", "/"}:
+        return "root"
+    raw = raw.lstrip("/")
+    head = raw.split("/", 1)[0].strip()
+    return head or "root"
+
+
+def quality_bucket_from_governance_quality(value: object) -> str:
+    """
+    Coarse "quality bucket" derived from metadata.governance_quality.
+
+    This is used for drilldowns and to align dataset profile distributions with
+    eval slicing buckets.
+    """
+
+    q = value if isinstance(value, dict) else {}
+    if not q:
+        return "unknown"
+    try:
+        density = float(q.get("density")) if q.get("density") is not None else None
+    except Exception:
+        density = None
+    try:
+        heading_ratio = float(q.get("heading_ratio")) if q.get("heading_ratio") is not None else None
+    except Exception:
+        heading_ratio = None
+    try:
+        content_chars = int(q.get("content_chars")) if q.get("content_chars") is not None else None
+    except Exception:
+        content_chars = None
+
+    if content_chars is not None and content_chars < 200:
+        return "tiny"
+    if heading_ratio is not None and heading_ratio >= 0.75:
+        return "outline_heavy"
+    if density is None:
+        return "unknown"
+    if density < 0.08:
+        return "low_density"
+    if density < 0.15:
+        return "mid_density"
+    return "high_density"
+
+
+def extract_language_bucket(meta: dict[str, Any]) -> str:
+    """Extract a stable language bucket from document metadata."""
+
+    if isinstance(meta.get("language"), str):
+        return normalize_language_bucket(meta.get("language"))
+    enr = meta.get("governance_enrichment")
+    if isinstance(enr, dict) and isinstance(enr.get("language"), str):
+        return normalize_language_bucket(enr.get("language"))
+    return "unknown"
 
 
 def _normalize_file_type(file_type: object, filename: object) -> str:
@@ -285,6 +377,8 @@ def aggregate_profile_from_rows(
 
     page_counts: List[int] = []
     language_counts: Counter[str] = Counter()
+    directory_counts: Counter[str] = Counter()
+    quality_bucket_counts: Counter[str] = Counter()
     parse_quality_bins: list[int] = [0 for _ in range(10)]
 
     # Parsing provenance/routing (best-effort; derived from metadata.parse_provenance).
@@ -299,30 +393,6 @@ def aggregate_profile_from_rows(
     # Findings counters.
     finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
     sha_counts: Counter[str] = Counter()
-
-    def _normalize_language_bucket(value: object) -> str:
-        s = str(value or "").strip()
-        if not s:
-            return "unknown"
-        lowered = s.lower()
-        if lowered in {"mixed", "multilingual", "multi"}:
-            return "mixed"
-        if any(sep in lowered for sep in (",", ";", "|", "+", "/")):
-            return "mixed"
-        if lowered.startswith("zh"):
-            return "zh"
-        if lowered.startswith("en"):
-            return "en"
-        return "unknown"
-
-    def _extract_language(meta: dict[str, Any]) -> str:
-        # Prefer top-level metadata; fallback to governance enrichment.
-        if isinstance(meta.get("language"), str):
-            return _normalize_language_bucket(meta.get("language"))
-        enr = meta.get("governance_enrichment")
-        if isinstance(enr, dict) and isinstance(enr.get("language"), str):
-            return _normalize_language_bucket(enr.get("language"))
-        return "unknown"
 
     chunk_length_label_to_idx: dict[str, int] = {spec.label: i for i, spec in enumerate(CHUNK_LENGTH_BINS)}
     chunk_token_label_to_idx: dict[str, int] = {spec.label: i for i, spec in enumerate(CHUNK_TOKEN_BINS)}
@@ -351,6 +421,10 @@ def aggregate_profile_from_rows(
                 avg_chunk_chars.append(int(max(1, length_val // max(1, int(chunk_count_val)))))
 
         meta_dict = meta if isinstance(meta, dict) else {}
+
+        # Stable slice distributions (align with eval).
+        directory_counts[directory_bucket_from_source_path(meta_dict.get("source_path"))] += 1
+        quality_bucket_counts[quality_bucket_from_governance_quality(meta_dict.get("governance_quality"))] += 1
 
         # Parse provenance/routing stats (best-effort).
         prov = meta_dict.get("parse_provenance")
@@ -445,7 +519,7 @@ def aggregate_profile_from_rows(
                 finding_counts["chunk_quality_fail"] += 1
 
         # Language mix (best-effort).
-        language_counts[_extract_language(meta_dict)] += 1
+        language_counts[extract_language_bucket(meta_dict)] += 1
 
         # Page count histogram (best-effort; keep it cheap: only use persisted metadata).
         page_count = safe_int(meta_dict.get("page_count"), default=0)
@@ -860,6 +934,8 @@ def aggregate_profile_from_rows(
         total_size_bytes=int(total_size),
         by_status={k: int(v) for k, v in by_status.items()},
         by_file_type={k: int(v) for k, v in by_type.items()},
+        by_directory={k: int(v) for k, v in directory_counts.items()},
+        by_quality_bucket={k: int(v) for k, v in quality_bucket_counts.items()},
         file_size_histogram=size_hist,
         length_percentiles=percentiles,
         length_histogram=length_hist,
@@ -1141,3 +1217,217 @@ def list_finding_documents(
             )
         )
     return DatasetProfileFindingListResponse(total=total, items=out_items)
+
+
+_WS_RE = re.compile(r"\s+")
+
+
+def _collapse_ws(text: object) -> str:
+    return _WS_RE.sub(" ", str(text or "").strip())
+
+
+def _safe_preview(text: str, *, max_chars: int) -> tuple[str | None, bool]:
+    """
+    Produce a short, PII-safe preview snippet from markdown.
+
+    NOTE: This is best-effort and intentionally conservative:
+    - always anonymize common PII (email/phone/id/ip)
+    - always redact common tokens/secrets
+    """
+
+    max_chars = max(80, min(int(max_chars or 0), 2000))
+    raw = str(text or "").strip()
+    if not raw:
+        return None, False
+
+    # Keep bounded input for redaction work.
+    window = raw[: max(4000, max_chars * 10)]
+    pii = anonymize_pii(window, enabled=True, mode="mask", mask="[REDACTED]")
+    sec = redact_secrets(pii.text, enabled=True, mode="mask", mask="[SECRET]")
+    safe = _collapse_ws(sec.text)
+    if not safe:
+        return None, False
+    truncated = len(safe) > max_chars
+    return safe[:max_chars].rstrip(), bool(truncated)
+
+
+def list_bucket_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    dimension: str,
+    bucket: str,
+    skip: int = 0,
+    limit: int = 50,
+    include_preview: bool = True,
+    preview_max_chars: int = 360,
+) -> DatasetProfileDocumentListResponse:
+    """
+    List documents for a specific dataset profile bucket.
+
+    Bucket dimensions intentionally align with eval slicing:
+    - file_type
+    - language (zh/en/mixed/unknown)
+    - directory (top-level from metadata.source_path)
+    - quality_bucket (derived from metadata.governance_quality)
+    """
+
+    dim = str(dimension or "").strip().lower()
+    if dim not in {"file_type", "language", "directory", "quality_bucket"}:
+        raise ValueError("Unknown dimension")
+
+    # Reuse the summary cache to get an accurate total without an extra full scan.
+    summary = compute_dataset_profile_summary(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+
+    raw_bucket = str(bucket or "").strip()
+    if not raw_bucket:
+        raw_bucket = "unknown"
+
+    if dim == "file_type":
+        bucket_key = raw_bucket.strip().lower() or "unknown"
+        total = int((summary.by_file_type or {}).get(bucket_key, 0) or 0)
+    elif dim == "language":
+        bucket_key = normalize_language_bucket(raw_bucket)
+        total = int((summary.language_mix or {}).get(bucket_key, 0) or 0)
+    elif dim == "directory":
+        # directory buckets preserve case; match case-insensitively for UX.
+        bucket_key = raw_bucket
+        total = 0
+        for k, v in (summary.by_directory or {}).items():
+            if str(k).casefold() == bucket_key.casefold():
+                total = int(v or 0)
+                break
+    else:  # quality_bucket
+        bucket_key = raw_bucket.strip().lower() or "unknown"
+        total = int((summary.by_quality_bucket or {}).get(bucket_key, 0) or 0)
+
+    # Fast exit.
+    if total <= 0:
+        return DatasetProfileDocumentListResponse(total=0, items=[])
+
+    _dataset, base = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+    q = (
+        base.with_entities(
+            DBDocument.id,
+            DBDocument.dataset_id,
+            DBDocument.filename,
+            DBDocument.file_type,
+            DBDocument.file_size,
+            DBDocument.status,
+            DBDocument.chunk_count,
+            DBDocument.total_characters,
+            DBDocument.created_at,
+            DBDocument.updated_at,
+            DBDocument.error_message,
+            DBDocument.doc_metadata,
+        )
+        .order_by(DBDocument.updated_at.desc(), DBDocument.id.asc())
+        .execution_options(stream_results=True)
+        .enable_eagerloads(False)
+        .yield_per(1000)
+    )
+
+    skip_n = max(0, int(skip or 0))
+    lim = max(1, min(int(limit or 0), 200))
+
+    matched = 0
+    picked: list[tuple] = []
+    for row in q:
+        (
+            _doc_id,
+            _ds_id,
+            filename,
+            file_type,
+            _file_size,
+            _status,
+            _chunk_count,
+            _total_chars,
+            _created_at,
+            _updated_at,
+            _err,
+            meta,
+        ) = row
+        meta_dict = meta if isinstance(meta, dict) else {}
+
+        if dim == "file_type":
+            val = _normalize_file_type(file_type, filename).lower()
+            ok = val == bucket_key
+        elif dim == "language":
+            val = extract_language_bucket(meta_dict)
+            ok = val == bucket_key
+        elif dim == "directory":
+            val = directory_bucket_from_source_path(meta_dict.get("source_path"))
+            ok = val.casefold() == bucket_key.casefold()
+        else:  # quality_bucket
+            val = quality_bucket_from_governance_quality(meta_dict.get("governance_quality")).lower()
+            ok = val == bucket_key
+
+        if not ok:
+            continue
+
+        if matched < skip_n:
+            matched += 1
+            continue
+
+        if len(picked) >= lim:
+            break
+
+        picked.append(row)
+        matched += 1
+
+    previews: dict[UUID, tuple[str | None, bool]] = {}
+    if include_preview and picked:
+        ids = [r[0] for r in picked if r and r[0]]
+        if ids:
+            rows = (
+                db.query(DocumentParsedContent.document_id, DocumentParsedContent.markdown_content)
+                .filter(DocumentParsedContent.tenant_id == tenant_id, DocumentParsedContent.document_id.in_(ids))
+                .all()
+            )
+            by_id: dict[UUID, str] = {}
+            for doc_id, md in rows:
+                if doc_id and isinstance(md, str) and md.strip():
+                    by_id[doc_id] = md
+            for doc_id in ids:
+                md = by_id.get(doc_id) or ""
+                previews[doc_id] = _safe_preview(md, max_chars=int(preview_max_chars or 0))
+
+    out_items: list[DatasetProfileDocumentOut] = []
+    for (
+        doc_id,
+        ds_id,
+        filename,
+        file_type,
+        file_size,
+        status,
+        chunk_count,
+        total_chars,
+        created_at,
+        updated_at,
+        err,
+        meta,
+    ) in picked:
+        meta_dict = meta if isinstance(meta, dict) else {}
+        preview, trunc = previews.get(doc_id, (None, False))
+        out_items.append(
+            DatasetProfileDocumentOut(
+                id=doc_id,
+                dataset_id=ds_id,
+                filename=str(filename or ""),
+                file_type=str(file_type or ""),
+                file_size=int(file_size or 0),
+                status=str(status or ""),
+                chunk_count=int(chunk_count or 0),
+                total_characters=int(total_chars or 0),
+                created_at=created_at,
+                updated_at=updated_at,
+                error_message=str(err) if err else None,
+                metadata=dict(meta_dict),
+                preview=preview,
+                preview_truncated=bool(trunc),
+            )
+        )
+
+    return DatasetProfileDocumentListResponse(total=total, items=out_items)
