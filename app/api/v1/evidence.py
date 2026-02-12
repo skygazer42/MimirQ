@@ -31,8 +31,15 @@ from app.api.schemas.evidence import (
     EvidenceSuitePatchRequest,
     EvidenceSuiteSyncRegressionResponse,
 )
+from app.api.schemas.evidence_audit import EvidenceReferenceDriftAuditOut
+from app.api.schemas.evidence_repair import (
+    EvidenceReferenceRepairRequest,
+    EvidenceReferenceRepairResponse,
+)
 from app.core.database import get_db
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
 from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.services.dataset_service import DatasetService
@@ -79,6 +86,619 @@ def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dic
         for k in ("draft", "reviewed", "approved", "archived"):
             m.setdefault(k, 0)
     return out
+
+
+def _audit_reference_sources_drift(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    suite_id: UUID | None,
+    suite_dataset_id: UUID | None,
+    items: list[EvidenceItem],
+    include_details: bool,
+    details_limit: int,
+    slice_top_n: int,
+) -> EvidenceReferenceDriftAuditOut:
+    """
+    Audit EvidenceItem.reference_sources drift for a scope (suite or dataset).
+
+    PII-safe: do NOT include quote/chunk content; ids + counters only.
+    """
+    from collections import Counter, defaultdict
+
+    from app.services.evidence_drift_audit import build_drift_slice_keys, classify_reference_source_drift
+
+    now = _now_utc()
+
+    # Flatten pointers.
+    pointers: list[dict[str, Any]] = []
+    invalid_refs = 0
+    for it in items:
+        raw_refs = getattr(it, "reference_sources", None)
+        refs = raw_refs if isinstance(raw_refs, list) else []
+        for ref in refs:
+            if not isinstance(ref, dict):
+                invalid_refs += 1
+                continue
+            doc_raw = ref.get("document_id")
+            chunk_raw = ref.get("chunk_id")
+            try:
+                doc_uuid = UUID(str(doc_raw))
+                chunk_uuid = UUID(str(chunk_raw))
+            except Exception:
+                invalid_refs += 1
+                continue
+            pointers.append(
+                {
+                    "suite_id": it.suite_id,
+                    "item_id": it.id,
+                    "item_status": str(getattr(it, "status", "") or "").strip().lower() or "unknown",
+                    "dataset_id": it.dataset_id,
+                    "reference_source": dict(ref),
+                    "document_id": doc_uuid,
+                    "chunk_id": chunk_uuid,
+                }
+            )
+
+    doc_ids = sorted({p["document_id"] for p in pointers if p.get("document_id") is not None})
+    chunk_ids = sorted({p["chunk_id"] for p in pointers if p.get("chunk_id") is not None})
+
+    # Batch fetch docs/chunks.
+    doc_rows = (
+        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.file_type, DBDocument.doc_metadata)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(doc_ids))
+        .all()
+        if doc_ids
+        else []
+    )
+    doc_map: dict[UUID, dict[str, Any]] = {
+        row[0]: {"id": row[0], "dataset_id": row[1], "file_type": row[2], "metadata": row[3] if isinstance(row[3], dict) else {}}
+        for row in doc_rows
+        if row and row[0] is not None
+    }
+
+    chunk_rows = (
+        db.query(DocumentChunk.id, DocumentChunk.document_id, DocumentChunk.chunk_index, DocumentChunk.doc_metadata, DocumentChunk.disabled_at)
+        .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.id.in_(chunk_ids))
+        .all()
+        if chunk_ids
+        else []
+    )
+    chunk_map: dict[UUID, dict[str, Any]] = {
+        row[0]: {
+            "id": row[0],
+            "document_id": row[1],
+            "chunk_index": row[2],
+            "metadata": row[3] if isinstance(row[3], dict) else {},
+            "disabled_at": row[4],
+        }
+        for row in chunk_rows
+        if row and row[0] is not None
+    }
+
+    # Aggregate counters.
+    total_items = len({it.id for it in items})
+    total_refs = len(pointers) + int(invalid_refs)
+    ok_refs = 0
+    drift_refs = 0
+    reasons: Counter[str] = Counter()
+
+    # slices[slice_name][bucket] -> (total, drift, reasons Counter)
+    slice_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    slice_drifts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    slice_reasons: dict[str, dict[str, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+
+    details: list[dict[str, Any]] = []
+    details_truncated = False
+
+    def _slice_bucket_keys(doc: dict[str, Any] | None) -> dict[str, str]:
+        if not doc:
+            return {"file_type": "unknown", "language": "unknown", "quality_bucket": "unknown", "directory": "root"}
+        keys = build_drift_slice_keys(document_file_type=doc.get("file_type"), document_metadata=doc.get("metadata"))
+        return {
+            "file_type": keys.file_type,
+            "language": keys.language,
+            "quality_bucket": keys.quality_bucket,
+            "directory": keys.directory,
+        }
+
+    # Count invalid refs as drift (PII-safe, no details).
+    if invalid_refs:
+        reasons["invalid_reference"] += int(invalid_refs)
+        drift_refs += int(invalid_refs)
+
+    for p in pointers:
+        ref = p["reference_source"]
+        doc_uuid: UUID = p["document_id"]
+        chunk_uuid: UUID = p["chunk_id"]
+
+        doc = doc_map.get(doc_uuid)
+        chunk = chunk_map.get(chunk_uuid)
+
+        ok, reason, expected, observed = classify_reference_source_drift(
+            reference_source=ref,
+            document_row=doc,
+            chunk_row=chunk,
+            suite_dataset_id=suite_dataset_id,
+        )
+
+        slice_keys = _slice_bucket_keys(doc)
+        for slice_name, bucket in slice_keys.items():
+            slice_totals[slice_name][bucket] += 1
+            if not ok:
+                slice_drifts[slice_name][bucket] += 1
+                slice_reasons[slice_name][bucket][reason] += 1
+
+        if ok:
+            ok_refs += 1
+            continue
+
+        drift_refs += 1
+        reasons[reason] += 1
+
+        if include_details:
+            if len(details) < details_limit:
+                details.append(
+                    {
+                        "suite_id": p["suite_id"],
+                        "item_id": p["item_id"],
+                        "item_status": p["item_status"],
+                        "dataset_id": p["dataset_id"],
+                        "document_id": doc_uuid,
+                        "chunk_id": chunk_uuid,
+                        "reason": reason,
+                        "expected": expected,
+                        "observed": observed,
+                        "slice": slice_keys,
+                    }
+                )
+            else:
+                details_truncated = True
+
+    # Build slice outputs (cap buckets to top-N by total to keep payload bounded).
+    slices_out: dict[str, dict[str, Any]] = {}
+    for slice_name, buckets in slice_totals.items():
+        rows = sorted(buckets.items(), key=lambda kv: (-int(kv[1] or 0), kv[0]))[: max(0, int(slice_top_n or 0))]
+        out_buckets: dict[str, Any] = {}
+        for bucket, total in rows:
+            total_i = int(total or 0)
+            drift_i = int(slice_drifts[slice_name].get(bucket) or 0)
+            ok_i = max(0, total_i - drift_i)
+            out_buckets[bucket] = {
+                "total": total_i,
+                "ok": ok_i,
+                "drift": drift_i,
+                "drift_rate": (round(drift_i / total_i, 6) if total_i > 0 else 0.0),
+                "reasons": {str(k): int(v) for k, v in sorted((slice_reasons[slice_name].get(bucket) or Counter()).items()) if int(v or 0) > 0},
+            }
+        slices_out[slice_name] = out_buckets
+
+    drift_rate = round(drift_refs / total_refs, 6) if total_refs > 0 else 0.0
+    return EvidenceReferenceDriftAuditOut(
+        generated_at=now,
+        dataset_id=dataset_id,
+        suite_id=suite_id,
+        total_items=int(total_items),
+        total_references=int(total_refs),
+        ok_references=int(ok_refs),
+        drift_references=int(drift_refs),
+        drift_rate=float(drift_rate),
+        reasons={str(k): int(v) for k, v in sorted(reasons.items()) if int(v or 0) > 0},
+        slices=slices_out,
+        details_truncated=bool(details_truncated),
+        drifted_references=details,
+    )
+
+
+def _select_quote_needle(quote: str) -> str:
+    """
+    Build a bounded, search-friendly needle from a quote excerpt.
+
+    We avoid returning the quote itself in API responses; this is internal only.
+    """
+    import re
+
+    raw = " ".join(str(quote or "").split()).strip()
+    if not raw:
+        return ""
+    # Prefer longer contiguous alnum/CJK runs (more specific than punctuation-heavy prefixes).
+    runs = re.findall(r"[A-Za-z0-9\u4e00-\u9fff]{12,}", raw)
+    if runs:
+        runs.sort(key=lambda s: (-len(s), s))
+        return runs[0][:80]
+    return raw[:80]
+
+
+def _escape_like(s: str) -> str:
+    return (s or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@router.post("/suites/{suite_id}/repair-reference-sources", response_model=EvidenceReferenceRepairResponse)
+async def repair_evidence_suite_reference_sources(
+    suite_id: UUID,
+    payload: EvidenceReferenceRepairRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Best-effort repair for drifted `reference_sources`.
+
+    Repair strategy:
+    1) (doc_pipeline_key + chunk_index) exact relink
+    2) quote needle match (within active pipeline chunks when available)
+
+    Safety:
+    - Does not mutate approved items unless `allow_approved=true`.
+    - Dry-run by default (`apply=false`).
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    if bool(payload.apply):
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+    else:
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    max_items = int(payload.max_items or 0)
+    q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
+    if not bool(payload.include_archived_items):
+        q = q.filter(EvidenceItem.status != "archived")
+    items = q.order_by(EvidenceItem.updated_at.desc()).limit(max_items).all()
+
+    from app.services.evidence_drift_audit import classify_reference_source_drift
+
+    scanned_refs = 0
+    drifted_refs = 0
+    repaired_refs = 0
+    skipped_approved = 0
+    skipped_archived = 0
+    changes: list[dict[str, Any]] = []
+    changes_truncated = False
+
+    def _append_change(change: dict[str, Any]) -> None:
+        nonlocal changes_truncated
+        if len(changes) < int(payload.max_changes or 0):
+            changes.append(change)
+        else:
+            changes_truncated = True
+
+    for it in items:
+        st = str(getattr(it, "status", "") or "").strip().lower() or "unknown"
+        if st == "archived" and not bool(payload.include_archived_items):
+            skipped_archived += 1
+            continue
+        if st == "approved" and not bool(payload.allow_approved):
+            skipped_approved += 1
+            continue
+
+        raw_refs = getattr(it, "reference_sources", None)
+        refs = raw_refs if isinstance(raw_refs, list) else []
+        if not refs:
+            continue
+
+        # Guardrail per item to avoid pathological payloads.
+        refs = refs[: int(payload.max_refs_per_item or 0)]
+
+        # Prefetch docs/chunks for drift classification.
+        doc_ids: set[UUID] = set()
+        chunk_ids: set[UUID] = set()
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            try:
+                doc_ids.add(UUID(str(ref.get("document_id"))))
+                chunk_ids.add(UUID(str(ref.get("chunk_id"))))
+            except Exception:
+                continue
+
+        doc_rows = (
+            db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.file_type, DBDocument.doc_metadata)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(sorted(doc_ids)))
+            .all()
+            if doc_ids
+            else []
+        )
+        doc_map: dict[UUID, dict[str, Any]] = {
+            row[0]: {"id": row[0], "dataset_id": row[1], "file_type": row[2], "metadata": row[3] if isinstance(row[3], dict) else {}}
+            for row in doc_rows
+            if row and row[0] is not None
+        }
+        chunk_rows = (
+            db.query(DocumentChunk.id, DocumentChunk.document_id, DocumentChunk.chunk_index, DocumentChunk.doc_metadata, DocumentChunk.page_number, DocumentChunk.start_char, DocumentChunk.end_char, DocumentChunk.disabled_at)
+            .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.id.in_(sorted(chunk_ids)))
+            .all()
+            if chunk_ids
+            else []
+        )
+        chunk_map: dict[UUID, dict[str, Any]] = {
+            row[0]: {
+                "id": row[0],
+                "document_id": row[1],
+                "chunk_index": row[2],
+                "metadata": row[3] if isinstance(row[3], dict) else {},
+                "page_number": row[4],
+                "start_char": row[5],
+                "end_char": row[6],
+                "disabled_at": row[7],
+            }
+            for row in chunk_rows
+            if row and row[0] is not None
+        }
+
+        patched_refs: list[dict[str, Any]] = []
+        changed_item = False
+
+        for ref in refs:
+            if not isinstance(ref, dict):
+                patched_refs.append(ref)
+                continue
+
+            scanned_refs += 1
+            try:
+                doc_uuid = UUID(str(ref.get("document_id")))
+                chunk_uuid = UUID(str(ref.get("chunk_id")))
+            except Exception:
+                drifted_refs += 1
+                patched_refs.append(ref)
+                continue
+
+            doc = doc_map.get(doc_uuid)
+            chunk = chunk_map.get(chunk_uuid)
+
+            ok, reason, _expected, _observed = classify_reference_source_drift(
+                reference_source=ref,
+                document_row=doc,
+                chunk_row=chunk,
+                suite_dataset_id=suite.dataset_id,
+            )
+            if ok:
+                patched_refs.append(ref)
+                continue
+
+            drifted_refs += 1
+
+            # Do not attempt repair if the document is missing or out of scope.
+            if reason in {"document_missing", "document_dataset_mismatch"}:
+                _append_change(
+                    {
+                        "suite_id": suite_id,
+                        "item_id": it.id,
+                        "item_status": st,
+                        "dataset_id": it.dataset_id,
+                        "document_id": doc_uuid,
+                        "chunk_id_before": chunk_uuid,
+                        "chunk_id_after": None,
+                        "reason": reason,
+                        "repaired": False,
+                        "method": None,
+                        "meta": {},
+                    }
+                )
+                patched_refs.append(ref)
+                continue
+
+            repaired = False
+            method: str | None = None
+            new_chunk_id: UUID | None = None
+            new_chunk_row: dict[str, Any] | None = None
+
+            # 1) Exact relink by (doc_pipeline_key + chunk_index) within the same document.
+            dpk = ref.get("doc_pipeline_key")
+            ci = ref.get("chunk_index")
+            if isinstance(dpk, str) and dpk.strip() and ci is not None:
+                try:
+                    ci_int = int(ci)
+                except Exception:
+                    ci_int = None
+                if ci_int is not None:
+                    try:
+                        row = (
+                            db.query(
+                                DocumentChunk.id,
+                                DocumentChunk.document_id,
+                                DocumentChunk.chunk_index,
+                                DocumentChunk.doc_metadata,
+                                DocumentChunk.page_number,
+                                DocumentChunk.start_char,
+                                DocumentChunk.end_char,
+                                DocumentChunk.disabled_at,
+                            )
+                            .filter(
+                                DocumentChunk.tenant_id == tenant_id,
+                                DocumentChunk.document_id == doc_uuid,
+                                DocumentChunk.chunk_index == ci_int,
+                                DocumentChunk.disabled_at.is_(None),
+                                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == dpk.strip(),  # type: ignore[attr-defined]
+                            )
+                            .limit(1)
+                            .first()
+                        )
+                    except Exception:
+                        row = None
+                    if row and row[0] is not None:
+                        new_chunk_id = row[0]
+                        new_chunk_row = {
+                            "id": row[0],
+                            "document_id": row[1],
+                            "chunk_index": row[2],
+                            "metadata": row[3] if isinstance(row[3], dict) else {},
+                            "page_number": row[4],
+                            "start_char": row[5],
+                            "end_char": row[6],
+                            "disabled_at": row[7],
+                        }
+                        if new_chunk_id != chunk_uuid:
+                            repaired = True
+                            method = "doc_pipeline_key+chunk_index"
+
+            # 2) Quote needle match (prefer active pipeline when available).
+            if not repaired:
+                quote = ref.get("quote")
+                if isinstance(quote, str) and quote.strip():
+                    needle = _select_quote_needle(quote)
+                    if needle and len(needle) >= 12 and doc is not None:
+                        doc_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+                        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+                        active_key = f"{doc_uuid}:{active_hash}" if active_hash else ""
+                        pattern = f"%{_escape_like(needle)}%"
+                        q2 = (
+                            db.query(
+                                DocumentChunk.id,
+                                DocumentChunk.document_id,
+                                DocumentChunk.chunk_index,
+                                DocumentChunk.doc_metadata,
+                                DocumentChunk.page_number,
+                                DocumentChunk.start_char,
+                                DocumentChunk.end_char,
+                            )
+                            .filter(
+                                DocumentChunk.tenant_id == tenant_id,
+                                DocumentChunk.document_id == doc_uuid,
+                                DocumentChunk.disabled_at.is_(None),
+                                DocumentChunk.content.ilike(pattern, escape="\\"),
+                            )
+                        )
+                        if active_key:
+                            try:
+                                q2 = q2.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
+                            except Exception:
+                                pass
+                        rows = q2.limit(20).all()
+                        if rows:
+                            # Pick the lowest chunk_index (stable) among matches.
+                            rows_sorted = sorted(rows, key=lambda r: (int(r[2] or 0), str(r[0] or "")))
+                            best = rows_sorted[0]
+                            if best and best[0] is not None:
+                                new_chunk_id = best[0]
+                                new_chunk_row = {
+                                    "id": best[0],
+                                    "document_id": best[1],
+                                    "chunk_index": best[2],
+                                    "metadata": best[3] if isinstance(best[3], dict) else {},
+                                    "page_number": best[4],
+                                    "start_char": best[5],
+                                    "end_char": best[6],
+                                    "disabled_at": None,
+                                }
+                                if new_chunk_id != chunk_uuid:
+                                    repaired = True
+                                    method = "quote_needle"
+
+            if repaired and new_chunk_id is not None and new_chunk_row is not None:
+                repaired_refs += 1
+                patched = dict(ref)
+                patched["chunk_id"] = str(new_chunk_id)
+                # Refresh audit fields from the newly linked chunk (best-effort).
+                try:
+                    patched["chunk_index"] = int(new_chunk_row.get("chunk_index") or 0)
+                except Exception:
+                    pass
+                cmeta = new_chunk_row.get("metadata") if isinstance(new_chunk_row.get("metadata"), dict) else {}
+                ph = str(cmeta.get("pipeline_hash") or "").strip()
+                if ph:
+                    patched["pipeline_hash"] = ph
+                dpk2 = str(cmeta.get("doc_pipeline_key") or "").strip()
+                if dpk2:
+                    patched["doc_pipeline_key"] = dpk2
+                pn = new_chunk_row.get("page_number")
+                if isinstance(pn, int) and pn > 0:
+                    patched["page_number"] = pn
+                sc = new_chunk_row.get("start_char")
+                if isinstance(sc, int) and sc >= 0:
+                    patched["start_char"] = sc
+                ec = new_chunk_row.get("end_char")
+                if isinstance(ec, int) and ec >= 0:
+                    patched["end_char"] = ec
+
+                if bool(payload.apply):
+                    changed_item = True
+                patched_refs.append(patched)
+
+                _append_change(
+                    {
+                        "suite_id": suite_id,
+                        "item_id": it.id,
+                        "item_status": st,
+                        "dataset_id": it.dataset_id,
+                        "document_id": doc_uuid,
+                        "chunk_id_before": chunk_uuid,
+                        "chunk_id_after": new_chunk_id,
+                        "reason": reason,
+                        "repaired": True,
+                        "method": method,
+                        "meta": {"needle_len": len(_select_quote_needle(str(ref.get("quote") or ""))) if method == "quote_needle" else None},
+                    }
+                )
+                continue
+
+            # No repair found.
+            _append_change(
+                {
+                    "suite_id": suite_id,
+                    "item_id": it.id,
+                    "item_status": st,
+                    "dataset_id": it.dataset_id,
+                    "document_id": doc_uuid,
+                    "chunk_id_before": chunk_uuid,
+                    "chunk_id_after": None,
+                    "reason": reason,
+                    "repaired": False,
+                    "method": None,
+                    "meta": {},
+                }
+            )
+            patched_refs.append(ref)
+
+        if bool(payload.apply) and changed_item:
+            it.reference_sources = patched_refs
+            db.add(it)
+            db.commit()
+            db.refresh(it)
+            # Best-effort audit log (do not include evidence content).
+            try:
+                from app.services.audit_log_service import audit_log_event
+
+                audit_log_event(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=account_id,
+                    action="evidence.reference_sources.repair",
+                    resource_type="evidence_item",
+                    resource_id=str(it.id),
+                    details={
+                        "suite_id": str(suite_id),
+                        "dataset_id": str(suite.dataset_id),
+                        "item_status": st,
+                        "applied": True,
+                    },
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
+
+    return EvidenceReferenceRepairResponse(
+        suite_id=suite_id,
+        dataset_id=suite.dataset_id,
+        applied=bool(payload.apply),
+        scanned_items=len(items),
+        scanned_references=int(scanned_refs),
+        drifted_references=int(drifted_refs),
+        repaired_references=int(repaired_refs),
+        skipped_approved_items=int(skipped_approved),
+        skipped_archived_items=int(skipped_archived),
+        changes_truncated=bool(changes_truncated),
+        changes=changes,
+    )
 
 
 @router.post("/suites", response_model=EvidenceSuiteOut, status_code=201)
@@ -235,6 +855,107 @@ async def patch_evidence_suite(
     out = EvidenceSuiteOut.model_validate(row).model_dump()
     out["item_counts"] = counts.get(str(row.id)) or {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
     return out
+
+
+@router.get("/suites/{suite_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut)
+async def audit_evidence_suite_reference_sources_drift(
+    suite_id: UUID,
+    include_archived_items: bool = False,
+    include_details: bool = True,
+    details_limit: int = Query(default=200, ge=0, le=2000),
+    slice_top_n: int = Query(default=20, ge=1, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
+    if not include_archived_items:
+        q = q.filter(EvidenceItem.status != "archived")
+    items = q.order_by(EvidenceItem.updated_at.desc()).limit(5000).all()
+
+    return _audit_reference_sources_drift(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=suite.dataset_id,
+        suite_id=suite_id,
+        suite_dataset_id=suite.dataset_id,
+        items=items,
+        include_details=bool(include_details),
+        details_limit=int(details_limit or 0),
+        slice_top_n=int(slice_top_n or 0),
+    )
+
+
+@router.get("/datasets/{dataset_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut)
+async def audit_dataset_reference_sources_drift(
+    dataset_id: UUID,
+    include_archived_items: bool = False,
+    include_details: bool = True,
+    details_limit: int = Query(default=200, ge=0, le=2000),
+    slice_top_n: int = Query(default=20, ge=1, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    suite_ids = [
+        row[0]
+        for row in (
+            db.query(EvidenceSuite.id)
+            .filter(EvidenceSuite.tenant_id == tenant_id, EvidenceSuite.dataset_id == dataset_id, EvidenceSuite.archived_at.is_(None))
+            .all()
+        )
+        if row and row[0] is not None
+    ]
+    if not suite_ids:
+        return EvidenceReferenceDriftAuditOut(
+            generated_at=_now_utc(),
+            dataset_id=dataset_id,
+            suite_id=None,
+            total_items=0,
+            total_references=0,
+            ok_references=0,
+            drift_references=0,
+            drift_rate=0.0,
+            reasons={},
+            slices={},
+            details_truncated=False,
+            drifted_references=[],
+        )
+
+    q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id.in_(suite_ids))
+    if not include_archived_items:
+        q = q.filter(EvidenceItem.status != "archived")
+    items = q.order_by(EvidenceItem.updated_at.desc()).limit(10_000).all()
+
+    return _audit_reference_sources_drift(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        suite_id=None,
+        suite_dataset_id=dataset_id,
+        items=items,
+        include_details=bool(include_details),
+        details_limit=int(details_limit or 0),
+        slice_top_n=int(slice_top_n or 0),
+    )
 
 
 @router.post("/suites/{suite_id}/items", response_model=EvidenceItemOut, status_code=201)
