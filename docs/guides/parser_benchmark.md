@@ -56,6 +56,19 @@ The report (`mimirq.parser_benchmark.v1`) includes:
   - `elapsed_ms`
   - `text_quality` / `parse_quality`
   - basic structure counters (headings/lists/tables)
-  - optional `golden_similarity` when a golden markdown file is provided
+  - optional `golden_similarity` + `golden_coverage_ratio` when a golden markdown file is provided
 - An aggregate `summary` keyed by backend (ok rate, latency percentiles, mean parse score, mean similarity)
 
+## Baseline Diff (Optional)
+
+To compare a run against a previous report, pass `--baseline`:
+
+```bash
+python scripts/parser_benchmark.py \
+  --input-dir /path/to/golden_set \
+  --manifest manifest.json \
+  --out runs/parser_benchmark.json \
+  --baseline runs/parser_benchmark.prev.json
+```
+
+This adds a `regressions` section to the output JSON (best-effort deltas per backend).
