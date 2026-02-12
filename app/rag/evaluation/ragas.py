@@ -263,6 +263,9 @@ def _build_regression_slice_summaries(
         "file_type": _bucketize(key="slice_file_type"),
         "language": _bucketize(key="slice_language"),
         "directory": _bucketize(key="slice_directory"),
+        "hit_type": _bucketize(key="slice_hit_type"),
+        "quality": _bucketize(key="slice_quality_bucket"),
+        "pipeline_hash": _bucketize(key="slice_pipeline_hash"),
     }
 
 
@@ -707,6 +710,43 @@ def run_regression_ragas_evaluation(
             head = raw.split("/", 1)[0].strip()
             return head or "root"
 
+        def _normalize_pipeline_hash(value: object) -> str:
+            s = str(value or "").strip()
+            if not s:
+                return "unknown"
+            # Bound to a stable length for UI/report readability while keeping uniqueness.
+            return s[:64]
+
+        def _quality_bucket_from_governance_quality(value: object) -> str:
+            q = value if isinstance(value, dict) else {}
+            if not q:
+                return "unknown"
+            try:
+                density = float(q.get("density")) if q.get("density") is not None else None
+            except Exception:
+                density = None
+            try:
+                heading_ratio = float(q.get("heading_ratio")) if q.get("heading_ratio") is not None else None
+            except Exception:
+                heading_ratio = None
+            try:
+                content_chars = int(q.get("content_chars")) if q.get("content_chars") is not None else None
+            except Exception:
+                content_chars = None
+
+            # Stable, coarse buckets (avoid overfitting thresholds).
+            if content_chars is not None and content_chars < 200:
+                return "tiny"
+            if heading_ratio is not None and heading_ratio >= 0.75:
+                return "outline_heavy"
+            if density is None:
+                return "unknown"
+            if density < 0.08:
+                return "low_density"
+            if density < 0.15:
+                return "mid_density"
+            return "high_density"
+
         evidence_doc_ids: set[UUID] = set()
         case_to_evidence_docs: dict[UUID, list[UUID]] = {}
         for case in cases:
@@ -753,7 +793,16 @@ def run_regression_ragas_evaluation(
                 source_path = meta_dict.get("source_path")
                 dir_bucket = _dir_bucket_from_source_path(source_path)
                 ft = str(file_type or "").strip().lower() or "unknown"
-                doc_attr[doc_id] = {"file_type": ft, "language": lang, "directory": dir_bucket}
+                active_ph = meta_dict.get("active_pipeline_hash") or meta_dict.get("pipeline_hash")
+                ph = _normalize_pipeline_hash(active_ph)
+                quality_bucket = _quality_bucket_from_governance_quality(meta_dict.get("governance_quality"))
+                doc_attr[doc_id] = {
+                    "file_type": ft,
+                    "language": lang,
+                    "directory": dir_bucket,
+                    "pipeline_hash": ph,
+                    "quality_bucket": quality_bucket,
+                }
 
         case_slice_meta: dict[UUID, dict[str, str]] = {}
         for case in cases:
@@ -761,6 +810,8 @@ def run_regression_ragas_evaluation(
             fts = {doc_attr.get(d, {}).get("file_type", "unknown") for d in docs}
             langs = {doc_attr.get(d, {}).get("language", "unknown") for d in docs}
             dirs = {doc_attr.get(d, {}).get("directory", "root") for d in docs}
+            phs = {doc_attr.get(d, {}).get("pipeline_hash", "unknown") for d in docs}
+            quals = {doc_attr.get(d, {}).get("quality_bucket", "unknown") for d in docs}
 
             def _stable_bucket(values: set[str], *, default: str) -> str:
                 cleaned = {str(v or "").strip().lower() for v in values if str(v or "").strip()}
@@ -774,6 +825,8 @@ def run_regression_ragas_evaluation(
                 "slice_file_type": _stable_bucket(fts, default="unknown"),
                 "slice_language": _stable_bucket(langs, default="unknown"),
                 "slice_directory": _stable_bucket(dirs, default="root"),
+                "slice_pipeline_hash": _stable_bucket(phs, default="unknown"),
+                "slice_quality_bucket": _stable_bucket(quals, default="unknown"),
             }
 
         eval_items: List[Dict[str, Any]] = []
@@ -875,6 +928,17 @@ def run_regression_ragas_evaluation(
             # Attach slice keys for report slicing (best-effort).
             merged_meta = dict(item_meta or {})
             merged_meta.update(case_slice_meta.get(case.id) or {})
+            # Retrieval channel slice (best-effort): use top-1 hit_type from citations.
+            hit_type = "unknown"
+            try:
+                c0 = (citations or [])[0] if isinstance(citations, list) else None
+                if isinstance(c0, dict):
+                    raw_ht = str(c0.get("hit_type") or "").strip().lower()
+                    if raw_ht in {"vector", "keyword", "hybrid", "mmr"}:
+                        hit_type = raw_ht
+            except Exception:
+                hit_type = "unknown"
+            merged_meta.setdefault("slice_hit_type", hit_type)
             eval_item["item_meta"] = merged_meta
             eval_items.append(eval_item)
 
