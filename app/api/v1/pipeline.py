@@ -1178,7 +1178,18 @@ async def ingestion_preview(
                 "changed": bool(pre.changed),
                 "size_before": int(pre.size_before),
                 "size_after": int(pre.size_after),
-                "steps": [{"id": s.id, "applied": s.applied, "changed": s.changed, "note": s.note} for s in (pre.steps or [])],
+                "steps": [
+                    {
+                        "id": s.id,
+                        "applied": bool(s.applied),
+                        "changed": bool(s.changed),
+                        "note": s.note,
+                        "bytes_before": int(getattr(s, "bytes_before", 0) or 0),
+                        "bytes_after": int(getattr(s, "bytes_after", 0) or 0),
+                        "elapsed_ms": int(getattr(s, "elapsed_ms", 0) or 0),
+                    }
+                    for s in (pre.steps or [])
+                ],
                 "warnings": list(pre.warnings or []),
             }
             if bool(pre.changed):

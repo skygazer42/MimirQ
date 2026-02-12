@@ -46,6 +46,9 @@ class PreprocessStepLog(BaseModel):
     applied: bool
     changed: bool
     note: str = ""
+    bytes_before: int = 0
+    bytes_after: int = 0
+    elapsed_ms: int = 0
 
 
 class PreprocessSummary(BaseModel):
