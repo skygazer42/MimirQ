@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react'
+import { BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react'
 
-import type { Citation, Dataset, EvidenceItem, EvidenceItemCreate, EvidenceItemStatus, EvidenceSuite, ReferenceSource } from '@/types'
+import type { Citation, Dataset, EvidenceItem, EvidenceItemCreate, EvidenceItemStatus, EvidenceSuite, EvidenceSuiteDashboard, ReferenceSource } from '@/types'
 import { datasetApi, evidenceApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
@@ -96,6 +96,17 @@ function safeIsoForFilename(ts: string) {
   return (ts || new Date().toISOString()).replace(/[:.]/g, '-')
 }
 
+function formatDurationSec(sec: unknown): string {
+  const n = Number(sec)
+  if (!Number.isFinite(n) || n <= 0) return '-'
+  const mins = n / 60
+  if (mins < 60) return `${Math.round(mins)}m`
+  const hours = mins / 60
+  if (hours < 48) return `${hours.toFixed(1)}h`
+  const days = hours / 24
+  return `${days.toFixed(1)}d`
+}
+
 export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId: string }) {
   const datasetId = asDatasetId(datasetIdRaw)
 
@@ -119,6 +130,13 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
   const [selectedItemId, setSelectedItemId] = useState<string>('')
   const selectedItem = useMemo(() => items.find((it) => it.id === selectedItemId) || null, [items, selectedItemId])
+
+  // Suite dashboard
+  const [dashboardOpen, setDashboardOpen] = useState(false)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState<string | null>(null)
+  const [dashboard, setDashboard] = useState<EvidenceSuiteDashboard | null>(null)
+  const [dashboardIncludeArchived, setDashboardIncludeArchived] = useState(false)
 
   // Create suite dialog
   const [createSuiteOpen, setCreateSuiteOpen] = useState(false)
@@ -235,6 +253,26 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     }
   }, [selectedItemId, selectedSuiteId, statusFilter])
 
+  const loadDashboard = useCallback(async () => {
+    if (!selectedSuiteId) {
+      setDashboard(null)
+      setDashboardError(null)
+      return
+    }
+    setDashboardLoading(true)
+    setDashboardError(null)
+    try {
+      const res = await evidenceApi.getSuiteDashboard(selectedSuiteId, {
+        include_archived_items: dashboardIncludeArchived,
+      })
+      setDashboard(res)
+    } catch (e: any) {
+      setDashboardError(formatApiError(e, '加载 Dashboard 失败'))
+    } finally {
+      setDashboardLoading(false)
+    }
+  }, [dashboardIncludeArchived, selectedSuiteId])
+
   useEffect(() => {
     void loadDataset()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,6 +285,11 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
   useEffect(() => {
     void loadItems()
   }, [loadItems])
+
+  useEffect(() => {
+    if (!dashboardOpen) return
+    void loadDashboard()
+  }, [dashboardOpen, loadDashboard])
 
   const resetCreateSuiteForm = useCallback(() => {
     setSuiteName('')
@@ -808,6 +851,16 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 variant="outline"
                 size="sm"
                 className="gap-2"
+                onClick={() => setDashboardOpen(true)}
+                disabled={!selectedSuite?.id}
+              >
+                <BarChart3 className="size-4" aria-hidden="true" />
+                Dashboard
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
                 onClick={handleExportSuite}
                 disabled={!selectedSuite?.id}
               >
@@ -1017,6 +1070,268 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
           )}
         </Panel>
       </div>
+
+      {/* Suite dashboard dialog */}
+      <Dialog
+        open={dashboardOpen}
+        onOpenChange={(open) => {
+          setDashboardOpen(open)
+          if (!open) {
+            setDashboardError(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Suite Dashboard</DialogTitle>
+            <DialogDescription className="text-pretty">
+              {selectedSuite ? (
+                <>
+                  Suite <span className="font-mono">{String(selectedSuite.id).slice(0, 8)}</span> 路{' '}
+                  <span className="font-medium">{selectedSuite.name}</span>
+                </>
+              ) : (
+                '请选择一个 Suite'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <label className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
+              <Checkbox
+                checked={dashboardIncludeArchived}
+                onCheckedChange={(v) => setDashboardIncludeArchived(Boolean(v))}
+                aria-label="Include archived items"
+              />
+              include archived items
+            </label>
+
+            <div className="sm:ml-auto flex items-center gap-2">
+              {dashboard ? (
+                <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                  generated {String(dashboard.generated_at || '').slice(0, 19).replace('T', ' ')}
+                </div>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => void loadDashboard()}
+                disabled={!selectedSuiteId || dashboardLoading}
+              >
+                <RefreshCw className={cn('size-4', dashboardLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
+                refresh
+              </Button>
+            </div>
+          </div>
+
+          {dashboardError ? <div className="text-xs text-destructive text-pretty">{dashboardError}</div> : null}
+
+          <ScrollArea className="max-h-[70vh] pr-3">
+            <div className="space-y-4">
+              {dashboardLoading ? (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  loading…
+                </div>
+              ) : dashboard ? (
+                <>
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground mb-2">
+                      Throughput (last {dashboard.throughput.window_days}d)
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge variant="outline" className="font-mono tabular-nums">
+                        created {dashboard.throughput.last_window.created}
+                      </Badge>
+                      <Badge variant="secondary" className="font-mono tabular-nums">
+                        reviewed {dashboard.throughput.last_window.reviewed}
+                      </Badge>
+                      <Badge variant="soft" className="font-mono tabular-nums">
+                        approved {dashboard.throughput.last_window.approved}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <Panel className="p-3">
+                        <div className="text-xs font-medium text-muted-foreground mb-1">draft → reviewed</div>
+                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                          n {dashboard.throughput.draft_to_reviewed.count}
+                        </div>
+                        <div className="mt-1 text-xs font-mono tabular-nums">
+                          p50 {formatDurationSec(dashboard.throughput.draft_to_reviewed.p50_sec)} · p90{' '}
+                          {formatDurationSec(dashboard.throughput.draft_to_reviewed.p90_sec)} · mean{' '}
+                          {formatDurationSec(dashboard.throughput.draft_to_reviewed.mean_sec)}
+                        </div>
+                      </Panel>
+
+                      <Panel className="p-3">
+                        <div className="text-xs font-medium text-muted-foreground mb-1">reviewed → approved</div>
+                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                          n {dashboard.throughput.reviewed_to_approved.count}
+                        </div>
+                        <div className="mt-1 text-xs font-mono tabular-nums">
+                          p50 {formatDurationSec(dashboard.throughput.reviewed_to_approved.p50_sec)} · p90{' '}
+                          {formatDurationSec(dashboard.throughput.reviewed_to_approved.p90_sec)} · mean{' '}
+                          {formatDurationSec(dashboard.throughput.reviewed_to_approved.mean_sec)}
+                        </div>
+                      </Panel>
+
+                      <Panel className="p-3">
+                        <div className="text-xs font-medium text-muted-foreground mb-1">draft → approved</div>
+                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                          n {dashboard.throughput.draft_to_approved.count}
+                        </div>
+                        <div className="mt-1 text-xs font-mono tabular-nums">
+                          p50 {formatDurationSec(dashboard.throughput.draft_to_approved.p50_sec)} · p90{' '}
+                          {formatDurationSec(dashboard.throughput.draft_to_approved.p90_sec)} · mean{' '}
+                          {formatDurationSec(dashboard.throughput.draft_to_approved.mean_sec)}
+                        </div>
+                      </Panel>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Panel className="p-3">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">Language coverage</div>
+                      <div className="space-y-1">
+                        {(dashboard.coverage.language || []).map((b) => (
+                          <div key={`lang:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            <div className="min-w-0 truncate font-mono">{b.key}</div>
+                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                              <span>refs {b.references}</span>
+                              <span>items {b.items}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+
+                    <Panel className="p-3">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">File type coverage</div>
+                      <div className="space-y-1">
+                        {(dashboard.coverage.file_type || []).map((b) => (
+                          <div key={`ft:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            <div className="min-w-0 truncate font-mono">{b.key}</div>
+                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                              <span>refs {b.references}</span>
+                              <span>items {b.items}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+
+                    <Panel className="p-3">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">Quality bucket coverage</div>
+                      <div className="space-y-1">
+                        {(dashboard.coverage.quality_bucket || []).map((b) => (
+                          <div key={`qb:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            <div className="min-w-0 truncate font-mono">{b.key}</div>
+                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                              <span>refs {b.references}</span>
+                              <span>items {b.items}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+
+                    <Panel className="p-3">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">Channel (hit_type) coverage</div>
+                      <div className="space-y-1">
+                        {(dashboard.coverage.channel || []).map((b) => (
+                          <div key={`ch:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            <div className="min-w-0 truncate font-mono">{b.key}</div>
+                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                              <span>refs {b.references}</span>
+                              <span>items {b.items}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+                  </div>
+
+                  <Panel className="p-3">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">
+                      Heatmap: language × file_type (unique items)
+                    </div>
+                    {dashboard.coverage.heatmaps?.['language_x_file_type'] ? (
+                      <div className="overflow-x-auto">
+                        {(() => {
+                          const hm = dashboard.coverage.heatmaps['language_x_file_type']
+                          const x = hm?.x || []
+                          const y = hm?.y || []
+                          const z = hm?.z || []
+                          let max = 0
+                          for (const row of z) {
+                            for (const v of row) {
+                              const n = Number(v) || 0
+                              if (n > max) max = n
+                            }
+                          }
+                          const cols = x.length
+                          return (
+                            <div
+                              className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60"
+                              style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}
+                            >
+                              <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">
+                                lang \\ ft
+                              </div>
+                              {x.map((ft) => (
+                                <div key={`hm-x:${ft}`} className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate">
+                                  {ft}
+                                </div>
+                              ))}
+                              {y.map((lang, rowIdx) => (
+                                <div key={`hm-row:${lang}`} className="contents">
+                                  <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">
+                                    {lang}
+                                  </div>
+                                  {x.map((ft, colIdx) => {
+                                    const v = Number(z?.[rowIdx]?.[colIdx] ?? 0) || 0
+                                    const ratio = max > 0 ? v / max : 0
+                                    const cellBg =
+                                      v === 0
+                                        ? 'bg-muted/20'
+                                        : ratio >= 0.75
+                                          ? 'bg-primary/30'
+                                          : ratio >= 0.5
+                                            ? 'bg-primary/20'
+                                            : ratio >= 0.25
+                                              ? 'bg-primary/10'
+                                              : 'bg-primary/5'
+                                    return (
+                                      <div
+                                        key={`hm-cell:${lang}:${ft}`}
+                                        className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}
+                                      >
+                                        {v}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">No heatmap data.</div>
+                    )}
+                  </Panel>
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
       {/* Create suite dialog */}
       <Dialog
