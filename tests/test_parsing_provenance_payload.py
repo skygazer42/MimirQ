@@ -12,7 +12,7 @@ def test_parser_factory_parse_with_provenance_includes_attempts(tmp_path):  # no
     assert docs
     assert backend
     assert isinstance(prov, dict)
-    assert prov.get("version") == "1"
+    assert prov.get("version") == "2"
     assert prov.get("requested_backend") == "auto"
     assert prov.get("resolved_backend") == backend
     assert prov.get("file_type") == "txt"
@@ -20,6 +20,7 @@ def test_parser_factory_parse_with_provenance_includes_attempts(tmp_path):  # no
     assert isinstance(attempts, list) and attempts
     assert attempts[0].get("backend") == backend
     assert attempts[0].get("ok") is True
+    assert attempts[0].get("selected") is True
 
 
 def test_subprocess_worker_parse_documents_returns_provenance(tmp_path):  # noqa: ANN001
