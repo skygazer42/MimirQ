@@ -936,6 +936,64 @@ class HybridRetriever(BaseRetriever):
             except Exception as exc:
                 logger.debug("Lexical FTS query failed: %s", exc)
 
+            # 1b) Plain FTS fallback (plainto_tsquery)
+            #
+            # `websearch_to_tsquery` is convenient for natural language, but it may interpret
+            # code-like inputs (paths, hyphenated tokens, etc.) as operators and return no hits.
+            # When the websearch query yields no results, fall back to a "plain" tsquery.
+            if not results_by_id:
+                try:
+                    vector = func.to_tsvector(fts_config, DocumentChunk.content)
+                    tsq = func.plainto_tsquery(fts_config, raw_query)
+                    rank = func.ts_rank_cd(vector, tsq).label("fts_rank")
+                    q1_plain = (
+                        _base_query()
+                        .add_columns(rank)
+                        .filter(vector.op("@@")(tsq))
+                        .order_by(rank.desc())
+                        .limit(fetch_k)
+                    )
+                    for row in q1_plain.all():
+                        try:
+                            (
+                                chunk_id,
+                                content,
+                                doc_metadata,
+                                tenant_uuid_row,
+                                document_uuid_row,
+                                chunk_index,
+                                page_number,
+                                fts_rank,
+                            ) = row
+                        except Exception:
+                            continue
+
+                        cid = str(chunk_id)
+                        meta = dict(doc_metadata or {})
+                        meta.setdefault("tenant_id", str(tenant_uuid_row))
+                        meta.setdefault("document_id", str(document_uuid_row))
+                        meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+                        meta.setdefault("chunk_id", cid)
+                        meta.setdefault("source", meta.get("source", "unknown"))
+                        if dataset_str:
+                            meta.setdefault("dataset_id", dataset_str)
+                        if page_number is not None and not meta.get("page"):
+                            meta["page"] = page_number
+                        meta.setdefault("lexical_method", "fts_plain")
+                        meta.setdefault("lexical_score_raw", float(fts_rank or 0.0))
+
+                        if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
+                            continue
+
+                        results_by_id[cid] = {
+                            "chunk_id": cid,
+                            "content": content or "",
+                            "metadata": meta,
+                            "score": float(fts_rank or 0.0),
+                        }
+                except Exception as exc:
+                    logger.debug("Lexical plain FTS query failed: %s", exc)
+
             # 2) Trigram fallback (pg_trgm)
             if want_trgm and len(raw_query) >= trgm_min_chars:
                 pg_trgm_available = self._lexical_pg_trgm_available
@@ -1092,12 +1150,11 @@ class HybridRetriever(BaseRetriever):
         # Persistent lexical DB search is an additional sparse channel that does not depend on the in-memory BM25 flag.
         want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr")
         if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
-            # Enforce the global flag even if a BM25 cache exists; fall back to vector so "keyword"
-            # mode doesn't become a hard-fail for users.
+            # Enforce the global flag even if a BM25 cache exists.
+            #
+            # Note: do not force-enable vector here. Lexical DB retrieval is an additional sparse channel,
+            # and keyword-mode already has an explicit fallback to vector when both sparse channels return empty.
             want_bm25 = False
-            if not want_vector:
-                want_vector = True
-                retrieval_mode = "vector"
 
         # MMR mode needs more candidates for diversity selection
         fetch_k = top_k * 2

@@ -25,7 +25,8 @@ from app.models.document import DocumentChunk
 
 
 def _load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def write_json_file(path: Path, obj: Any) -> None:
@@ -78,6 +79,24 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
     documents = fixture.get("documents")
     if not isinstance(documents, list) or not documents:
         raise ValueError("fixture.documents must be a non-empty list")
+
+    # Ensure all ORM models are registered so Base.metadata.create_all() has a complete
+    # foreign-key graph. This mirrors app startup (app/main.py) but keeps this script
+    # runnable standalone in CI.
+    import app.models.audit_log  # noqa: F401
+    import app.models.chunk_preset  # noqa: F401
+    import app.models.connector  # noqa: F401
+    import app.models.connector_config  # noqa: F401
+    import app.models.conversation_summary  # noqa: F401
+    import app.models.dataset_category  # noqa: F401
+    import app.models.db_catalog  # noqa: F401
+    import app.models.evaluation  # noqa: F401
+    import app.models.evidence  # noqa: F401
+    import app.models.feedback  # noqa: F401
+    import app.models.ingestion_run  # noqa: F401
+    import app.models.tenant  # noqa: F401
+    import app.models.user  # noqa: F401
+    import app.rag.kg.models  # noqa: F401
 
     # Ensure schema is up-to-date (best-effort; mirrors app startup).
     apply_runtime_migrations(engine)
@@ -185,6 +204,16 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
                 for k in ("active_pipeline_hash", "pipeline_hash", "doc_pipeline_key"):
                     if k in doc_meta and doc_meta.get(k) is not None:
                         chunk_meta[k] = doc_meta.get(k)
+                # Active-pipeline trimming expects chunks to carry either:
+                # - doc_pipeline_key = f"{document_id}:{pipeline_hash}", OR
+                # - pipeline_hash (so the key can be reconstructed).
+                #
+                # CI fixtures store the active pipeline under `active_pipeline_hash` at doc-level,
+                # so mirror it into the chunk-level fields used by retrieval trimming.
+                active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+                if active_hash:
+                    chunk_meta.setdefault("pipeline_hash", active_hash)
+                    chunk_meta.setdefault("doc_pipeline_key", f"{doc_id}:{active_hash}")
 
                 db.add(
                     DocumentChunk(
@@ -234,4 +263,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

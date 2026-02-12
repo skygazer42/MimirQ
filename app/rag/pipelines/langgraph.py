@@ -155,17 +155,33 @@ def _retrieve_cache_key(state: Dict[str, Any]) -> str:
         "dataset_id": dataset_id,
         "document_ids": doc_ids_key,
         "embedding_space_hash": embedding_space,
-        "top_k": int(state.get("top_k") or settings.RETRIEVAL_TOP_K),
-        "score_threshold": float(state.get("score_threshold") or settings.SIMILARITY_THRESHOLD),
-        "retrieval_mode": str(state.get("retrieval_mode") or ""),
-        "alpha": float(state.get("alpha") or 0.0),
-        "enable_weight_rerank": bool(state.get("enable_weight_rerank")),
-        "vector_weight": float(state.get("vector_weight") or 0.0),
-        "keyword_weight": float(state.get("keyword_weight") or 0.0),
-        "mmr_lambda": float(state.get("mmr_lambda") or 0.0),
-        "enable_reranker": bool(state.get("enable_reranker")),
-        "reranker_provider": str(state.get("reranker_provider") or ""),
-        "reranker_top_n": int(state.get("reranker_top_n") or 0),
+        # Retrieval parameters (must match _retrieve_node defaults; avoid `or` because 0.0 is valid).
+        "top_k": int(settings.RETRIEVAL_TOP_K if state.get("top_k") is None else state.get("top_k")),
+        "score_threshold": float(
+            settings.SIMILARITY_THRESHOLD if state.get("score_threshold") is None else state.get("score_threshold")
+        ),
+        "retrieval_mode": str(state.get("retrieval_mode") or "hybrid"),
+        "retrieval_profile": str(state.get("retrieval_profile") or ""),
+        # Query expansion knobs affect retrieval results; include them to avoid cache collisions.
+        "enable_query_alias_expansion": state.get("enable_query_alias_expansion"),
+        "query_alias_max_queries": state.get("query_alias_max_queries"),
+        "query_aliases": state.get("query_aliases") or None,
+        "enable_multi_query": state.get("enable_multi_query"),
+        "multi_query_count": state.get("multi_query_count"),
+        "multi_query_temperature": state.get("multi_query_temperature"),
+        "multi_query_max_chars": state.get("multi_query_max_chars"),
+        "alpha": float(0.6 if state.get("alpha") is None else state.get("alpha")),
+        "enable_weight_rerank": bool(True if state.get("enable_weight_rerank") is None else state.get("enable_weight_rerank")),
+        "vector_weight": float(0.6 if state.get("vector_weight") is None else state.get("vector_weight")),
+        "keyword_weight": float(0.4 if state.get("keyword_weight") is None else state.get("keyword_weight")),
+        "mmr_lambda": float(settings.RETRIEVAL_MMR_LAMBDA if state.get("mmr_lambda") is None else state.get("mmr_lambda")),
+        "enable_reranker": bool(settings.ENABLE_RERANKER if state.get("enable_reranker") is None else state.get("enable_reranker")),
+        "reranker_provider": str(
+            (settings.RERANKER_PROVIDER if state.get("reranker_provider") is None else state.get("reranker_provider")) or ""
+        ),
+        "reranker_top_n": int(
+            settings.RERANKER_TOP_N if state.get("reranker_top_n") is None else state.get("reranker_top_n")
+        ),
         "metadata_filter": state.get("metadata_filter") or None,
     }
     return json.dumps(key_obj, ensure_ascii=False, sort_keys=True, default=str)

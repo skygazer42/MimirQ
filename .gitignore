@@ -60,6 +60,7 @@ NUL
 uploads/
 logs/
 chroma_db/
+artifacts/
 .worktrees/
 web/.next/
 web/.next_build/
