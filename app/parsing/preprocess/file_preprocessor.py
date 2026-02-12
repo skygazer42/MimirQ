@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 import unicodedata
 import uuid
 from dataclasses import dataclass
@@ -70,6 +71,9 @@ class PreprocessStepLog:
     applied: bool
     changed: bool
     note: str = ""
+    bytes_before: int = 0
+    bytes_after: int = 0
+    elapsed_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -94,7 +98,15 @@ class FilePreprocessResult:
             "sha256_before": self.sha256_before,
             "sha256_after": self.sha256_after,
             "steps": [
-                {"id": s.id, "applied": bool(s.applied), "changed": bool(s.changed), "note": s.note}
+                {
+                    "id": s.id,
+                    "applied": bool(s.applied),
+                    "changed": bool(s.changed),
+                    "note": s.note,
+                    "bytes_before": int(getattr(s, "bytes_before", 0) or 0),
+                    "bytes_after": int(getattr(s, "bytes_after", 0) or 0),
+                    "elapsed_ms": int(getattr(s, "elapsed_ms", 0) or 0),
+                }
                 for s in (self.steps or [])
             ],
             "warnings": list(self.warnings or []),
@@ -184,6 +196,7 @@ def _detect_encoding(raw: bytes) -> tuple[str, float]:
 
 _RE_SCRIPT_STYLE = re.compile(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>")
 _RE_HTML_COMMENT = re.compile(r"(?s)<!--.*?-->")
+_RE_HTML_BOILERPLATE_TAGS = re.compile(r"(?is)<(nav|header|footer|aside|noscript)\b[^>]*>.*?</\1\s*>")
 
 
 def preprocess_file(
@@ -265,12 +278,19 @@ def preprocess_file(
 
     changed_any = False
     original_text = text
+    # Bytes in/out for per-step audit (UTF-8 after decoding/normalization).
+    try:
+        current_bytes = len(text.encode("utf-8", errors="replace"))
+    except Exception:
+        current_bytes = int(len(text or ""))
 
     for step in steps:
+        step_t0 = time.perf_counter()
         sid = str((step or {}).get("id") or "").strip().lower()
         applied = False
         changed = False
         note = ""
+        bytes_before = int(current_bytes)
 
         if sid == "text.reencode_utf8":
             applied = True
@@ -285,6 +305,13 @@ def preprocess_file(
         elif sid == "text.normalize_newlines":
             applied = True
             new = text.replace("\r\n", "\n").replace("\r", "\n")
+            if new != text:
+                text = new
+                changed = True
+        elif sid == "text.collapse_blank_lines":
+            applied = True
+            # Keep up to 2 consecutive newlines to avoid noisy whitespace inflation.
+            new = re.sub(r"\n{3,}", "\n\n", text)
             if new != text:
                 text = new
                 changed = True
@@ -306,6 +333,12 @@ def preprocess_file(
             applied = True
             # Drop ASCII control chars except TAB/LF/CR (CR can be normalized later).
             new = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+            if new != text:
+                text = new
+                changed = True
+        elif sid == "text.normalize_unicode_nfc":
+            applied = True
+            new = unicodedata.normalize("NFC", text)
             if new != text:
                 text = new
                 changed = True
@@ -334,13 +367,42 @@ def preprocess_file(
                     changed = True
             else:
                 note = "skipped (not html)"
+        elif sid == "html.strip_boilerplate_tags":
+            applied = True
+            if ext in {".html", ".htm"}:
+                new = _RE_HTML_BOILERPLATE_TAGS.sub("", text)
+                if new != text:
+                    text = new
+                    changed = True
+            else:
+                note = "skipped (not html)"
         else:
             # Unknown ids should have been rejected earlier; still keep safe.
             note = "skipped (unknown)"
 
         if changed:
             changed_any = True
-        logs.append(PreprocessStepLog(id=sid, applied=applied, changed=changed, note=note))
+        try:
+            if changed:
+                current_bytes = len(text.encode("utf-8", errors="replace"))
+            bytes_after = int(current_bytes)
+        except Exception:
+            bytes_after = int(bytes_before)
+            current_bytes = int(bytes_before)
+        elapsed_ms = int(round((time.perf_counter() - step_t0) * 1000))
+        if elapsed_ms < 0:
+            elapsed_ms = 0
+        logs.append(
+            PreprocessStepLog(
+                id=sid,
+                applied=applied,
+                changed=changed,
+                note=note,
+                bytes_before=bytes_before,
+                bytes_after=bytes_after,
+                elapsed_ms=elapsed_ms,
+            )
+        )
 
     if text == original_text:
         changed_any = False

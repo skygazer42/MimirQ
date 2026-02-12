@@ -45,13 +45,16 @@ ALLOWED_PREPROCESS_STEP_IDS: set[str] = {
     "text.reencode_utf8",
     "text.strip_bom",
     "text.normalize_newlines",
+    "text.collapse_blank_lines",
     "text.trim_trailing_whitespace",
     "text.remove_zero_width",
     "text.remove_control_chars",
+    "text.normalize_unicode_nfc",
     "text.normalize_unicode_nfkc",
     # HTML-only (applied when ext in .html/.htm)
     "html.strip_scripts_styles",
     "html.strip_comments",
+    "html.strip_boilerplate_tags",
 }
 
 

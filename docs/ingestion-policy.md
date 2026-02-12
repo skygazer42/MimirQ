@@ -97,18 +97,21 @@
 
 ---
 
-## 4. 预处理步骤（v1 allowlist）
+## 4. 预处理步骤（v2 allowlist）
 
 当前支持的 `preprocess.steps[].id`：
 - `text.reencode_utf8`
 - `text.strip_bom`
 - `text.normalize_newlines`
+- `text.collapse_blank_lines`（连续空行压缩到最多 2 行）
 - `text.trim_trailing_whitespace`
 - `text.remove_zero_width`（零宽字符/软连字符）
 - `text.remove_control_chars`（\\x00 等控制字符；保留 TAB/LF/CR）
+- `text.normalize_unicode_nfc`（更保守的 Unicode 规范化）
 - `text.normalize_unicode_nfkc`（全角/半角归一；谨慎启用）
 - `html.strip_scripts_styles`
 - `html.strip_comments`
+- `html.strip_boilerplate_tags`（移除 nav/header/footer/aside/noscript 等样板标签内容）
 
 说明：
 - v1 不支持 step params（统一要求 `{}`），以保证可控性与安全性。

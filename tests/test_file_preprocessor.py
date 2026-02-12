@@ -10,6 +10,7 @@ def test_preprocess_file_text_and_html_steps(tmp_path):  # noqa: ANN001
     # Include BOM + CRLF + script/style + comment.
     raw = (
         "\ufeff<html>\r\n"
+        "<nav>top nav</nav>\r\n"
         "<!-- comment -->\r\n"
         "<style>body{color:red}</style>\r\n"
         "<script>alert(1)</script>\r\n"
@@ -24,9 +25,11 @@ def test_preprocess_file_text_and_html_steps(tmp_path):  # noqa: ANN001
             {"id": "text.reencode_utf8", "params": {}},
             {"id": "text.strip_bom", "params": {}},
             {"id": "text.normalize_newlines", "params": {}},
+            {"id": "text.collapse_blank_lines", "params": {}},
             {"id": "text.trim_trailing_whitespace", "params": {}},
             {"id": "html.strip_scripts_styles", "params": {}},
             {"id": "html.strip_comments", "params": {}},
+            {"id": "html.strip_boilerplate_tags", "params": {}},
         ],
         max_text_bytes=50_000,
     )
@@ -35,10 +38,16 @@ def test_preprocess_file_text_and_html_steps(tmp_path):  # noqa: ANN001
     out_path = Path(res.output_path)
     assert out_path.exists()
     out = out_path.read_text("utf-8", errors="replace")
+    assert "<nav" not in out.lower()
     assert "<script" not in out.lower()
     assert "<style" not in out.lower()
     assert "<!--" not in out
     assert "\r" not in out
+    assert res.steps and hasattr(res.steps[0], "bytes_before")
+    for s in res.steps:
+        assert int(getattr(s, "bytes_before", 0) or 0) >= 0
+        assert int(getattr(s, "bytes_after", 0) or 0) >= 0
+        assert int(getattr(s, "elapsed_ms", 0) or 0) >= 0
 
 
 def test_preprocess_file_skips_non_text(tmp_path):  # noqa: ANN001
@@ -90,6 +99,8 @@ def test_preprocess_file_new_text_steps(tmp_path):  # noqa: ANN001
         steps=[
             {"id": "text.remove_zero_width", "params": {}},
             {"id": "text.remove_control_chars", "params": {}},
+            {"id": "text.collapse_blank_lines", "params": {}},
+            {"id": "text.normalize_unicode_nfc", "params": {}},
             {"id": "text.normalize_unicode_nfkc", "params": {}},
         ],
         max_text_bytes=50_000,
