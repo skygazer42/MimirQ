@@ -29,6 +29,15 @@ def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str =
     return tokens
 
 
+def set_request_user_id(user_id: str) -> None:
+    """
+    Update the current request's user_id context.
+
+    Useful when auth is resolved after middleware binds initial context.
+    """
+    _user_id.set((user_id or "").strip())
+
+
 def reset_request_context(tokens: Dict[str, Any]) -> None:
     if not tokens:
         return

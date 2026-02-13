@@ -361,6 +361,10 @@ class Settings(BaseSettings):
     # This enables key rotation for connector configs without breaking existing entries.
     SECRET_KEY_FALLBACKS: str = ""
     ALGORITHM: str = "HS256"
+    # Optional JWT claim enforcement. When set, incoming JWTs must match.
+    # NOTE: If you set these, tokens issued by /api/v1/auth/login will include these claims.
+    JWT_ISSUER: str = ""
+    JWT_AUDIENCE: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
 
