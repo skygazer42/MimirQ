@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.schemas.auth import AuthResponse, LoginRequest, RegisterRequest, TokenResponse, UserPublic
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.jwt_utils import create_access_token
 from app.services.user_service import UserService
@@ -22,7 +23,11 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Au
         username=payload.username,
         password=payload.password,
     )
-    token, expires_in = create_access_token(str(user.id))
+    tenant_id = None
+    if str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip():
+        current_tenant = UserService.get_current_tenant_id(db, user_id=str(user.id))
+        tenant_id = str(current_tenant) if current_tenant else None
+    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
     return AuthResponse(
         user=user,
         token=TokenResponse(access_token=token, expires_in=expires_in),
@@ -33,7 +38,11 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Au
 def login_user(payload: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
     user = UserService.authenticate(db, payload.identifier, payload.password)
     UserService.mark_login(db, user)
-    token, expires_in = create_access_token(str(user.id))
+    tenant_id = None
+    if str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip():
+        current_tenant = UserService.get_current_tenant_id(db, user_id=str(user.id))
+        tenant_id = str(current_tenant) if current_tenant else None
+    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
     return AuthResponse(
         user=user,
         token=TokenResponse(access_token=token, expires_in=expires_in),

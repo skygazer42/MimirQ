@@ -9,7 +9,12 @@ from jose import jwt
 from app.core.config import settings
 
 
-def create_access_token(subject: str, *, expires_minutes: int | None = None) -> Tuple[str, int]:
+def create_access_token(
+    subject: str,
+    *,
+    expires_minutes: int | None = None,
+    tenant_id: str | None = None,
+) -> Tuple[str, int]:
     """
     Create a signed JWT access token.
 
@@ -29,5 +34,8 @@ def create_access_token(subject: str, *, expires_minutes: int | None = None) -> 
     audience = str(getattr(settings, "JWT_AUDIENCE", "") or "").strip()
     if audience:
         payload["aud"] = audience
+    tenant_claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    if tenant_claim and tenant_id:
+        payload[tenant_claim] = str(tenant_id).strip()
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return token, int(expires_delta.total_seconds())

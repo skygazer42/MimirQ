@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -122,3 +123,38 @@ class UserService:
         user.last_login_at = datetime.now(timezone.utc)
         db.add(user)
         db.commit()
+
+    @staticmethod
+    def get_current_tenant_id(db: Session, *, user_id: str) -> UUID | None:
+        """
+        Best-effort current tenant selection for token issuance.
+
+        Prefers an explicit TenantMember marked as is_current; otherwise falls back to the most-recent
+        membership row. Returns None when no membership exists.
+        """
+        uid = str(user_id or "").strip()
+        if not uid:
+            return None
+
+        member = (
+            db.query(TenantMember)
+            .filter(
+                TenantMember.user_id == uid,
+                TenantMember.is_current.is_(True),
+            )
+            .order_by(desc(TenantMember.updated_at), desc(TenantMember.created_at))
+            .first()
+        )
+        if member and getattr(member, "tenant_id", None):
+            return member.tenant_id
+
+        member = (
+            db.query(TenantMember)
+            .filter(TenantMember.user_id == uid)
+            .order_by(desc(TenantMember.updated_at), desc(TenantMember.created_at))
+            .first()
+        )
+        if member and getattr(member, "tenant_id", None):
+            return member.tenant_id
+
+        return None
