@@ -10,7 +10,17 @@ const nextCoreWebVitals = require('eslint-config-next/core-web-vitals')
 module.exports = [
   // Ignore generated/build artifacts.
   {
-    ignores: ['.next/**', '.next_build/**', 'out/**', 'dist/**', 'coverage/**', 'node_modules/**'],
+    ignores: [
+      '.next/**',
+      '.next_build/**',
+      'out/**',
+      'dist/**',
+      'coverage/**',
+      'node_modules/**',
+      // Generated OpenAPI artifacts (large; linting adds noise and slows CI/dev).
+      'openapi.json',
+      'types/openapi.ts',
+    ],
   },
   ...nextCoreWebVitals,
   // Existing codebase uses state sync in effects in multiple places; keep lint signal focused.
