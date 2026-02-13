@@ -582,6 +582,9 @@ class Settings(BaseSettings):
     TABLE_STORE_MAX_COLS: int = 500      # 0 disables cap
     TABLE_STORE_MAX_SHEETS: int = 50     # 0 disables cap
     TABLE_STORE_SAMPLE_ROWS: int = 20    # 0 disables sample persistence
+    # When enabled, redact common PII/secrets patterns from table rows returned by TAG APIs
+    # for non-admin roles. This is a UI/data-egress safety guard (independent from LLM usage).
+    TABLE_ROW_REDACTION_ENABLED: bool = False
     # Auto routing (optional): when table_store_enabled=true, decide per-file whether to use TAG (table_store)
     # or fall back to normal parsing+RAG based on table size/complexity signals.
     #
