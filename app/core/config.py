@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT_SEC: int = 30
     DB_POOL_RECYCLE_SEC: int = 1800
     DB_POOL_PRE_PING: bool = True
+
+    # DB schema management (enterprise hardening)
+    # - When enabled, the app will run `Base.metadata.create_all()` on startup.
+    #   This is convenient for local/dev but is not recommended for production.
+    # - Runtime migrations are best-effort `ALTER TABLE ... IF NOT EXISTS` guardrails
+    #   for legacy deployments; prefer Alembic migrations for deterministic upgrades.
+    DB_CREATE_ALL_ON_STARTUP: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("MIMIRQ_DB_CREATE_ALL_ON_STARTUP", "DB_CREATE_ALL_ON_STARTUP"),
+    )
+    DB_RUNTIME_MIGRATIONS_ENABLED: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED", "DB_RUNTIME_MIGRATIONS_ENABLED"),
+    )
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
     MILVUS_USER: str = ""
