@@ -470,7 +470,7 @@ def _parse_uuid(value: str) -> UUID:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
 
-def _resolve_account_id_for_asset_request(request: Request) -> Optional[str]:
+async def _resolve_account_id_for_asset_request(request: Request, *, tenant_id: UUID | None = None) -> Optional[str]:
     """
     Resolve account id for asset endpoints that may be requested by <img src>.
 
@@ -494,8 +494,9 @@ def _resolve_account_id_for_asset_request(request: Request) -> Optional[str]:
     if not authorization:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    tenant_value = str(tenant_id).strip() if tenant_id is not None else None
     try:
-        return get_current_account_id(authorization=authorization, x_user_id=None)
+        return await get_current_account_id(authorization=authorization, x_user_id=None, x_tenant_id=tenant_value)
     except HTTPException:
         raise HTTPException(status_code=401, detail="Authentication required") from None
 
@@ -5862,7 +5863,7 @@ async def download_document(
     usage in <iframe>/<a> tags where custom headers cannot be set.
     """
     tenant_id = _resolve_tenant_id_for_asset_request(request)
-    account_id = _resolve_account_id_for_asset_request(request)
+    account_id = await _resolve_account_id_for_asset_request(request, tenant_id=tenant_id)
 
     # Best-effort permission check: allow anonymous in local/dev header mode.
     if account_id:
@@ -7076,7 +7077,7 @@ async def get_image(
     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
     tenant_id = _resolve_tenant_id_for_asset_request(request)
-    account_id = _resolve_account_id_for_asset_request(request)
+    account_id = await _resolve_account_id_for_asset_request(request, tenant_id=tenant_id)
 
     # Best-effort permission check: in local/dev header mode, image URLs are loaded
     # by the browser without custom headers; allow anonymous image access there.
@@ -7164,8 +7165,6 @@ async def get_image_url(
             status_code=503,
             detail="MinIO is disabled; cannot retrieve image URL"
         )
-    account_id = _resolve_account_id_for_asset_request(request)
-
     # Resolve tenant_id even when the request is coming from <img src> (no custom headers).
     requested_tenant = _get_tenant_id_from_request_if_provided(request)
 
@@ -7183,6 +7182,11 @@ async def get_image_url(
     tenant_in_img = _tenant_from_img_id(img_id)
     if tenant_in_img and requested_tenant and tenant_in_img != requested_tenant:
         raise HTTPException(status_code=403, detail="Image access denied for this tenant")
+
+    account_id = await _resolve_account_id_for_asset_request(
+        request,
+        tenant_id=requested_tenant or tenant_in_img,
+    )
 
     tenant_id = tenant_in_img or requested_tenant or _resolve_tenant_id_for_asset_request(request)
 
