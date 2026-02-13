@@ -364,12 +364,19 @@ class Settings(BaseSettings):
     # Optional: verify JWTs via JWKS (typically for RS256/ES256 tokens issued by an external IdP).
     # Comma-separated list of JWKS URLs, e.g. https://issuer.example/.well-known/jwks.json
     JWT_JWKS_URLS: str = ""
+    # Optional: derive JWKS URL via OIDC discovery when JWT_JWKS_URLS is empty.
+    # Uses {JWT_ISSUER}/.well-known/openid-configuration and reads jwks_uri.
+    JWT_JWKS_DISCOVERY_ENABLED: bool = False
     # JWKS cache TTL. Avoids fetching keys on every request.
     JWT_JWKS_CACHE_TTL_SEC: int = 300
     # When refresh fails, allow using cached keys for up to this many seconds before failing closed.
     JWT_JWKS_MAX_STALE_SEC: int = 3600
     # HTTP timeout for JWKS fetches.
     JWT_JWKS_HTTP_TIMEOUT_SEC: float = 5.0
+    # OIDC discovery cache/timeout (used only when JWT_JWKS_DISCOVERY_ENABLED=true).
+    JWT_OIDC_DISCOVERY_CACHE_TTL_SEC: int = 3600
+    JWT_OIDC_DISCOVERY_MAX_STALE_SEC: int = 86400
+    JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC: float = 5.0
     # Optional JWT claim enforcement. When set, incoming JWTs must match.
     # NOTE: If you set these, tokens issued by /api/v1/auth/login will include these claims.
     JWT_ISSUER: str = ""
@@ -983,7 +990,12 @@ class Settings(BaseSettings):
                 # RS*/ES* require a key source (JWKS) for verification.
                 jwks_urls = str(getattr(self, "JWT_JWKS_URLS", "") or "").strip()
                 if not jwks_urls:
-                    raise ValueError(f"JWT_JWKS_URLS required for ALGORITHM={algorithm}")
+                    discovery_enabled = bool(getattr(self, "JWT_JWKS_DISCOVERY_ENABLED", False))
+                    issuer = str(getattr(self, "JWT_ISSUER", "") or "").strip()
+                    if not discovery_enabled:
+                        raise ValueError(f"JWT_JWKS_URLS required for ALGORITHM={algorithm}")
+                    if not issuer:
+                        raise ValueError("JWT_ISSUER required when JWT_JWKS_DISCOVERY_ENABLED=true")
         else:
             # Best-effort warning for other uses (sessions, future JWT issuance, etc.)
             if self.SECRET_KEY == "your-secret-key-change-in-production":
