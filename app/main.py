@@ -165,6 +165,7 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
 configure_logging(
     log_level=str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO"),
     log_format=str(getattr(settings, "LOG_FORMAT", "plain") or "plain"),
+    include_trace_context=bool(getattr(settings, "OTEL_ENABLED", False)),
 )
 
 # Optional error monitoring (SENTRY_DSN).

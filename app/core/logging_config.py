@@ -19,6 +19,34 @@ _tenant_id: ContextVar[str] = ContextVar("tenant_id", default="")
 _user_id: ContextVar[str] = ContextVar("user_id", default="")
 
 _record_factory_installed = False
+_include_trace_context = True
+
+
+def _get_otel_trace_context() -> tuple[str, str]:
+    """
+    Return (trace_id, span_id) for the current OpenTelemetry span, when available.
+
+    Both values are lowercase hex strings (trace_id: 32 chars, span_id: 16 chars).
+    Returns ("", "") when OpenTelemetry is not installed or no valid span is active.
+    """
+    if not _include_trace_context:
+        return "", ""
+
+    try:
+        from opentelemetry import trace  # type: ignore
+    except Exception:  # noqa: BLE001
+        return "", ""
+
+    try:
+        span = trace.get_current_span()
+        if span is None:
+            return "", ""
+        ctx = span.get_span_context()
+        if not getattr(ctx, "is_valid", False):
+            return "", ""
+        return format(int(ctx.trace_id), "032x"), format(int(ctx.span_id), "016x")
+    except Exception:  # noqa: BLE001
+        return "", ""
 
 
 def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str = "") -> Dict[str, Any]:
@@ -87,6 +115,13 @@ class JSONFormatter(logging.Formatter):
         if user_id:
             payload["user_id"] = user_id
 
+        trace_id = getattr(record, "trace_id", None) or ""
+        span_id = getattr(record, "span_id", None) or ""
+        if trace_id:
+            payload["trace_id"] = trace_id
+        if span_id:
+            payload["span_id"] = span_id
+
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
         if record.stack_info:
@@ -106,13 +141,21 @@ def _install_record_factory() -> None:
         record.request_id = _request_id.get() or ""
         record.tenant_id = _tenant_id.get() or ""
         record.user_id = _user_id.get() or ""
+        trace_id, span_id = _get_otel_trace_context()
+        record.trace_id = trace_id
+        record.span_id = span_id
         return record
 
     logging.setLogRecordFactory(record_factory)
     _record_factory_installed = True
 
 
-def configure_logging(*, log_level: str = "INFO", log_format: str = "plain") -> None:
+def configure_logging(
+    *,
+    log_level: str = "INFO",
+    log_format: str = "plain",
+    include_trace_context: bool = True,
+) -> None:
     """
     Configure process-wide logging.
 
@@ -121,6 +164,9 @@ def configure_logging(*, log_level: str = "INFO", log_format: str = "plain") -> 
     - When LOG_FORMAT=json, we force a root reconfiguration to ensure JSON output
       even when uvicorn pre-configures logging.
     """
+    global _include_trace_context
+    _include_trace_context = bool(include_trace_context)
+
     _install_record_factory()
 
     level = int(logging._nameToLevel.get(str(log_level).upper(), logging.INFO))

@@ -12,7 +12,7 @@ def _restore_root(*, level: int, handlers: list[logging.Handler]) -> None:
     root.setLevel(level)
 
 
-def test_configure_logging_plain_sets_level_without_overriding_handlers(monkeypatch) -> None:
+def test_configure_logging_plain_sets_level_without_overriding_handlers() -> None:
     import app.core.logging_config as lc
 
     root = logging.getLogger()
@@ -31,10 +31,11 @@ def test_configure_logging_plain_sets_level_without_overriding_handlers(monkeypa
     finally:
         _restore_root(level=old_level, handlers=old_handlers)
         logging.setLogRecordFactory(old_factory)
-        monkeypatch.setattr(lc, "_record_factory_installed", False, raising=False)
+        lc._record_factory_installed = False
+        lc._include_trace_context = True
 
 
-def test_configure_logging_json_forces_json_formatter(monkeypatch) -> None:
+def test_configure_logging_json_forces_json_formatter() -> None:
     import app.core.logging_config as lc
 
     root = logging.getLogger()
@@ -52,5 +53,5 @@ def test_configure_logging_json_forces_json_formatter(monkeypatch) -> None:
     finally:
         _restore_root(level=old_level, handlers=old_handlers)
         logging.setLogRecordFactory(old_factory)
-        monkeypatch.setattr(lc, "_record_factory_installed", False, raising=False)
-
+        lc._record_factory_installed = False
+        lc._include_trace_context = True
