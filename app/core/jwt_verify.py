@@ -8,6 +8,7 @@ Supports:
 This module is intentionally best-effort:
 - JWKS is cached in-memory with TTL to avoid fetching on every request
 - On refresh failures, cached keys may be used for a bounded stale window
+- Optional OIDC discovery can derive jwks_uri from JWT_ISSUER
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 import httpx
 from jose import ExpiredSignatureError, JWTError, jwt
@@ -62,6 +64,16 @@ class _JWKSCacheEntry:
 _jwks_cache: dict[str, _JWKSCacheEntry] = {}
 _jwks_locks: dict[str, asyncio.Lock] = {}
 
+@dataclass(frozen=True)
+class _OIDCDiscoveryEntry:
+    jwks_uri: str
+    fetched_at_monotonic: float
+    expires_at_monotonic: float
+
+
+_oidc_cache: dict[str, _OIDCDiscoveryEntry] = {}
+_oidc_locks: dict[str, asyncio.Lock] = {}
+
 
 def _jwks_lock(url: str) -> asyncio.Lock:
     lock = _jwks_locks.get(url)
@@ -69,6 +81,87 @@ def _jwks_lock(url: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _jwks_locks[url] = lock
     return lock
+
+
+def _oidc_lock(issuer: str) -> asyncio.Lock:
+    lock = _oidc_locks.get(issuer)
+    if lock is None:
+        lock = asyncio.Lock()
+        _oidc_locks[issuer] = lock
+    return lock
+
+
+def _oidc_config_url_for_issuer(issuer: str) -> str | None:
+    raw = str(issuer or "").strip()
+    if not raw:
+        return None
+    base = raw.rstrip("/")
+    parsed = urlparse(base)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{base}/.well-known/openid-configuration"
+
+
+async def _fetch_oidc_configuration(url: str) -> dict[str, Any]:
+    timeout_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC", 5.0) or 5.0)
+    timeout = httpx.Timeout(timeout_sec)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
+        res = await client.get(str(url))
+        res.raise_for_status()
+        data = res.json()
+    if not isinstance(data, dict):
+        raise ValueError("invalid_oidc_configuration")
+    return data
+
+
+async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str | None:
+    ttl_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_CACHE_TTL_SEC", 3600) or 3600)
+    max_stale_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_MAX_STALE_SEC", 86400) or 86400)
+
+    issuer = str(issuer or "").strip()
+    if not issuer:
+        return None
+
+    now = time.monotonic()
+    cached = _oidc_cache.get(issuer)
+    if cached and not force_refresh and now < cached.expires_at_monotonic:
+        return str(cached.jwks_uri)
+
+    lock = _oidc_lock(issuer)
+    async with lock:
+        now = time.monotonic()
+        cached = _oidc_cache.get(issuer)
+        if cached and not force_refresh and now < cached.expires_at_monotonic:
+            return str(cached.jwks_uri)
+
+        config_url = _oidc_config_url_for_issuer(issuer)
+        if not config_url:
+            return None
+
+        try:
+            cfg = await _fetch_oidc_configuration(config_url)
+            jwks_uri = str(cfg.get("jwks_uri") or "").strip()
+            parsed = urlparse(jwks_uri) if jwks_uri else None
+            if not jwks_uri or parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ValueError("invalid_oidc_jwks_uri")
+        except Exception as exc:  # noqa: BLE001
+            if cached and (now - cached.fetched_at_monotonic) <= max_stale_sec:
+                logger.warning(
+                    "OIDC discovery refresh failed for %s; using cached jwks_uri (age=%.0fs): %s",
+                    issuer,
+                    now - cached.fetched_at_monotonic,
+                    str(exc)[:200],
+                )
+                return str(cached.jwks_uri)
+            raise
+
+        expires_at = now + max(1.0, ttl_sec)
+        _oidc_cache[issuer] = _OIDCDiscoveryEntry(
+            jwks_uri=jwks_uri,
+            fetched_at_monotonic=now,
+            expires_at_monotonic=expires_at,
+        )
+        return jwks_uri
 
 
 async def _fetch_jwks_keys(url: str) -> list[dict[str, Any]]:
@@ -150,6 +243,10 @@ def _find_jwk_for_kid(keys: list[dict[str, Any]], kid: str | None) -> dict[str, 
 
 async def _jwks_key_for_token(token: str) -> dict[str, Any]:
     urls = parse_csv(str(getattr(settings, "JWT_JWKS_URLS", "") or ""))
+    if not urls and bool(getattr(settings, "JWT_JWKS_DISCOVERY_ENABLED", False)):
+        issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
+        jwks_uri = await _get_oidc_jwks_uri(issuer)
+        urls = [jwks_uri] if jwks_uri else []
     if not urls:
         raise JWTError("JWKS not configured")
 
@@ -211,4 +308,3 @@ async def decode_access_token(token: str) -> dict:
 
     jwk_key = await _jwks_key_for_token(token)
     return jwt.decode(token, jwk_key, **decode_kwargs)
-

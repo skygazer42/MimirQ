@@ -212,3 +212,76 @@ def test_jwt_jwks_verification_allows_rs256_tokens(monkeypatch):
     payload = res.json()
     assert payload["account_id"] == "user-jwks"
     assert payload["ctx"]["user_id"] == "user-jwks"
+
+
+def test_jwt_oidc_discovery_can_resolve_jwks_uri(monkeypatch):
+    from app.core import jwt_verify
+
+    # Ensure clean caches for this test run.
+    jwt_verify._jwks_cache.clear()
+    jwt_verify._jwks_locks.clear()
+    jwt_verify._oidc_cache.clear()
+    jwt_verify._oidc_locks.clear()
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "ALGORITHM", "RS256", raising=False)
+    monkeypatch.setattr(settings, "JWT_AUDIENCE", "", raising=False)
+
+    issuer = "https://idp.example/"
+    monkeypatch.setattr(settings, "JWT_ISSUER", issuer, raising=False)
+
+    monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "", raising=False)
+    monkeypatch.setattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False, raising=False)
+
+    # Still required for other app features/config validation; not used for RS256 verification here.
+    monkeypatch.setattr(settings, "SECRET_KEY", "s" * 40, raising=False)
+    monkeypatch.setattr(settings, "SECRET_KEY_FALLBACKS", "", raising=False)
+
+    monkeypatch.setattr(settings, "JWT_JWKS_URLS", "", raising=False)
+    monkeypatch.setattr(settings, "JWT_JWKS_DISCOVERY_ENABLED", True, raising=False)
+
+    jwks_url = "https://idp.example/.well-known/jwks.json"
+
+    async def _fake_fetch_oidc(url: str):
+        assert url == "https://idp.example/.well-known/openid-configuration"
+        return {"jwks_uri": jwks_url}
+
+    monkeypatch.setattr(jwt_verify, "_fetch_oidc_configuration", _fake_fetch_oidc, raising=True)
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    kid = "kid-2"
+    jwk_key = jwk.construct(public_pem, algorithm="RS256").to_dict()
+    jwk_key["kid"] = kid
+    jwk_key["use"] = "sig"
+
+    async def _fake_fetch_jwks(url: str):
+        assert url == jwks_url
+        return [dict(jwk_key)]
+
+    monkeypatch.setattr(jwt_verify, "_fetch_jwks_keys", _fake_fetch_jwks, raising=True)
+
+    token = jwt.encode(
+        {
+            "sub": "user-oidc",
+            "iss": issuer,
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        },
+        private_pem,
+        algorithm="RS256",
+        headers={"kid": kid},
+    )
+
+    client = TestClient(_build_app())
+    res = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    assert res.json()["account_id"] == "user-oidc"
