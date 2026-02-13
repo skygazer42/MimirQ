@@ -7,7 +7,7 @@ Parses user identity from request headers.
 import logging
 from uuid import UUID
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 from jose import ExpiredSignatureError, JWTError
 
 from app.core.config import settings
@@ -104,6 +104,7 @@ async def get_current_account_id_from_headers(
 
 
 async def get_current_account_id(
+    request: Request,
     authorization: str | None = Header(default=None),
     x_user_id: str | None = Header(default=None),
     x_tenant_id: str | None = Header(default=None),
@@ -114,8 +115,13 @@ async def get_current_account_id(
     Important: keep this async so it runs in the main request context (not a threadpool),
     allowing request-scoped contextvars (e.g. user_id) to propagate to sync endpoints.
     """
+    tenant_value = x_tenant_id
+    if not tenant_value:
+        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        if tenant_header.lower() != "x-tenant-id":
+            tenant_value = (request.headers.get(tenant_header) or "").strip() or None
     return await get_current_account_id_from_headers(
         authorization=authorization,
         x_user_id=x_user_id,
-        x_tenant_id=x_tenant_id,
+        x_tenant_id=tenant_value,
     )

@@ -153,6 +153,37 @@ def test_jwt_tenant_claim_header_match_enforced_when_enabled(monkeypatch):
     assert missing_header.status_code == 400
 
 
+def test_jwt_tenant_enforcement_accepts_custom_tenant_header(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_HEADER", "X-Workspace-ID", raising=False)
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "ALGORITHM", "HS256", raising=False)
+    monkeypatch.setattr(settings, "JWT_ISSUER", "", raising=False)
+    monkeypatch.setattr(settings, "JWT_AUDIENCE", "", raising=False)
+
+    secret_key = "k" * 40
+    monkeypatch.setattr(settings, "SECRET_KEY", secret_key, raising=False)
+    monkeypatch.setattr(settings, "SECRET_KEY_FALLBACKS", "", raising=False)
+
+    monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "tenant_id", raising=False)
+    monkeypatch.setattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", True, raising=False)
+
+    tenant_id = "00000000-0000-0000-0000-000000000000"
+    token = jwt.encode(
+        {
+            "sub": "user-tenant-2",
+            "tenant_id": tenant_id,
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        },
+        secret_key,
+        algorithm="HS256",
+    )
+
+    client = TestClient(_build_app())
+    ok = client.get("/whoami", headers={"Authorization": f"Bearer {token}", "X-Workspace-ID": tenant_id})
+    assert ok.status_code == 200
+    assert ok.json()["account_id"] == "user-tenant-2"
+
+
 def test_jwt_jwks_verification_allows_rs256_tokens(monkeypatch):
     from app.core import jwt_verify
 

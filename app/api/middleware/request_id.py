@@ -42,6 +42,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
         tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
         tenant_id = (request.headers.get(tenant_header) or "").strip()
+        if not tenant_id and tenant_header.lower() != "x-tenant-id":
+            tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
 
         # Security: when AUTH_MODE=jwt, do not trust X-User-ID (spoofable) for logging context.
         mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
