@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, FolderTree, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -139,7 +139,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Dataset
   const [resp, setResp] = useState<DatasetCategoryTreeResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await datasetCategoryApi.listTree()
@@ -151,12 +151,11 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Dataset
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const items = resp?.items || []
 
@@ -189,4 +188,3 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Dataset
     </div>
   )
 }
-

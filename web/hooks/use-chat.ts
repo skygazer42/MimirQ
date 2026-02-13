@@ -474,6 +474,7 @@ export function useChat({
       conversationId,
       documentIds,
       enableLongTermMemory,
+      enableSummaryMemory,
       isLoading,
       onConversationId,
       onError,

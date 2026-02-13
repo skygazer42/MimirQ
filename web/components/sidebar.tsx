@@ -56,6 +56,7 @@ export function Sidebar() {
     storeFields: ['id']
   })
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: results.length,
     getScrollElement: () => parentRef.current,

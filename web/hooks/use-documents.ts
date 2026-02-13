@@ -377,11 +377,12 @@ export function useDocuments() {
   }, [loadDocuments])
 
   useEffect(() => {
+    const timers = pollTimersRef.current
     return () => {
-      for (const timerId of pollTimersRef.current.values()) {
+      for (const timerId of timers.values()) {
         clearTimeout(timerId)
       }
-      pollTimersRef.current.clear()
+      timers.clear()
     }
   }, [])
 

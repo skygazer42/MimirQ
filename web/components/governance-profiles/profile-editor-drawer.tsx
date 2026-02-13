@@ -101,7 +101,6 @@ function validateRegexRuleBestEffort(pattern: string, flags: number): string | n
     .replace(/\\Z/g, '$')
 
   try {
-    // eslint-disable-next-line no-new
     new RegExp(jsPattern, jsFlags)
     return null
   } catch (err) {
