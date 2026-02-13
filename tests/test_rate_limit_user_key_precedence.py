@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from starlette.requests import Request
 
 
@@ -18,7 +19,8 @@ def _make_request(headers: dict[str, str], *, client_ip: str = "127.0.0.1") -> R
     return Request(scope)
 
 
-def test_get_client_key_prefers_jwt_subject_over_x_user_id(monkeypatch):
+@pytest.mark.asyncio
+async def test_get_client_key_prefers_jwt_subject_over_x_user_id(monkeypatch):
     from jose import jwt
 
     import app.api.middleware.rate_limit as rl
@@ -35,10 +37,11 @@ def test_get_client_key_prefers_jwt_subject_over_x_user_id(monkeypatch):
         }
     )
 
-    assert rl.get_client_key(req) == "tenant:tenant-1:user:jwt-user"
+    assert await rl.get_client_key(req) == "tenant:tenant-1:user:jwt-user"
 
 
-def test_get_client_key_header_mode_uses_x_user_id(monkeypatch):
+@pytest.mark.asyncio
+async def test_get_client_key_header_mode_uses_x_user_id(monkeypatch):
     from jose import jwt
 
     import app.api.middleware.rate_limit as rl
@@ -54,10 +57,11 @@ def test_get_client_key_header_mode_uses_x_user_id(monkeypatch):
         }
     )
 
-    assert rl.get_client_key(req) == "user:header-user"
+    assert await rl.get_client_key(req) == "user:header-user"
 
 
-def test_get_client_key_jwt_mode_ignores_x_user_id_without_token(monkeypatch):
+@pytest.mark.asyncio
+async def test_get_client_key_jwt_mode_ignores_x_user_id_without_token(monkeypatch):
     import app.api.middleware.rate_limit as rl
     from app.core.config import settings
 
@@ -71,5 +75,4 @@ def test_get_client_key_jwt_mode_ignores_x_user_id_without_token(monkeypatch):
         client_ip="10.0.0.9",
     )
 
-    assert rl.get_client_key(req) == "tenant:tenant-1:ip:10.0.0.9"
-
+    assert await rl.get_client_key(req) == "tenant:tenant-1:ip:10.0.0.9"
