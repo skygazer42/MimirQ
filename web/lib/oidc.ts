@@ -255,16 +255,40 @@ export async function completeOidcLogin(params: { code: string; state: string })
   body.set('code', code)
   body.set('code_verifier', tx.code_verifier)
 
-  const res = await fetch(discovery.token_endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  })
+  let data: OidcTokenResponse | null = null
+  try {
+    const res = await fetch(discovery.token_endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    })
 
-  const data = (await res.json().catch(() => null)) as OidcTokenResponse | null
-  if (!res.ok) {
-    const msg = String(data?.error_description || data?.error || '').trim()
-    throw new Error(msg || `oidc_token_exchange_failed_${res.status}`)
+    data = (await res.json().catch(() => null)) as OidcTokenResponse | null
+    if (!res.ok) {
+      const msg = String(data?.error_description || data?.error || '').trim()
+      throw new Error(msg || `oidc_token_exchange_failed_${res.status}`)
+    }
+  } catch (err: any) {
+    // Fallback: exchange server-side to avoid browser CORS/client_secret constraints.
+    const serverRes = await fetch('/api/oidc/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, code_verifier: tx.code_verifier, redirect_uri: tx.redirect_uri }),
+    })
+    const serverData = (await serverRes.json().catch(() => null)) as any
+    if (!serverRes.ok) {
+      const msg = String(serverData?.error || '').trim()
+      const originalMsg = String(err?.message || '').trim()
+      const originalLower = originalMsg.toLowerCase()
+      const preferServer =
+        Boolean(msg) &&
+        (!originalMsg ||
+          originalLower === 'failed to fetch' ||
+          originalLower.includes('networkerror') ||
+          originalLower.startsWith('oidc_token_exchange_failed_'))
+      throw new Error((preferServer ? msg : originalMsg) || msg || `oidc_server_exchange_failed_${serverRes.status}`)
+    }
+    data = serverData as OidcTokenResponse
   }
 
   const accessToken = String(data?.access_token || '').trim()
@@ -290,4 +314,3 @@ export async function completeOidcLogin(params: { code: string; state: string })
   setAuthSession(session)
   return { session, returnTo: String(tx.return_to || '/').trim() || '/' }
 }
-

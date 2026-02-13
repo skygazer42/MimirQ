@@ -60,7 +60,19 @@ Backend must be configured to accept IdP JWTs (example):
 
 Notes:
 
-- Token exchange happens in the browser; your IdP must allow CORS on the OIDC token endpoint for your frontend origin.
+- Browser-first: token exchange is attempted in the browser (PKCE).
+- Fallback: if the IdP token endpoint blocks CORS and/or requires a `client_secret`, frontend falls back to a Next.js route handler that performs the code exchange server-side.
+
+Optional server-side env vars (Next.js server only):
+
+- `OIDC_CLIENT_SECRET` (confidential clients)
+- `OIDC_CLIENT_AUTH_METHOD` (`basic` default | `post`)
+- `OIDC_SERVER_EXCHANGE_ENABLED` (optional; set false to force-disable server exchange)
+
+Implementation:
+
+- Code exchange: `POST /api/oidc/exchange` (sets refresh token in an httpOnly cookie when provided)
+- Refresh: `POST /api/oidc/refresh` (uses refresh token cookie; returns a new access token)
 
 ## Backend Integration / Debugging
 
