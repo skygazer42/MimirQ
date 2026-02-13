@@ -13,6 +13,7 @@ from app.rag.core.text import normalize_retrieval_mode
 
 from .base import OrmModel
 from .document import DocumentPipelineOptions
+from .fls_policy import FlsPolicy
 from .ingestion_policy import IngestionPolicy
 
 
@@ -191,6 +192,7 @@ class DatasetConfigBundle(BaseModel):
     chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
     pipeline: Optional[DocumentPipelineOptions] = None
     ingestion_policy: Optional[IngestionPolicy] = None
+    fls_policy: Optional[FlsPolicy] = None
 
 
 class DatasetConfigExport(BaseModel):

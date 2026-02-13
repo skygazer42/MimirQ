@@ -34,6 +34,13 @@ from app.rag.preprocessing.secrets import redact_secrets
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
+from app.services.fls_policy import (
+    FlsUserContext,
+    build_fls_column_mask_map,
+    parse_fls_policy_from_metadata,
+    redact_row_dicts,
+    redact_row_lists,
+)
 from app.services.lotus_bridge import lotus_available
 from app.services.lotus_bridge import sem_filter as lotus_sem_filter
 from app.services.security_redaction import redact_sql_literals
@@ -45,17 +52,29 @@ router = APIRouter()
 _SQL_VIEW_ROLES = {"owner", "admin", "auditor"}
 
 
-def _can_view_redacted_sql(db: Session, tenant_id: UUID, account_id: str) -> bool:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    role = str(getattr(member, "role", "") or "").strip().lower()
-    return role in _SQL_VIEW_ROLES
+def _member_role(member: object) -> str:
+    return str(getattr(member, "role", "") or "").strip().lower()
 
 
-def _should_redact_table_rows(db: Session, tenant_id: UUID, account_id: str) -> bool:
+def _can_view_redacted_sql_role(role: str) -> bool:
+    return str(role or "").strip().lower() in _SQL_VIEW_ROLES
+
+
+def _should_redact_table_rows_role(role: str) -> bool:
     if not bool(getattr(settings, "TABLE_ROW_REDACTION_ENABLED", False)):
         return False
     # Admin/auditor roles can view raw rows; others see best-effort redaction.
-    return not _can_view_redacted_sql(db, tenant_id, account_id)
+    return not _can_view_redacted_sql_role(role)
+
+
+def _can_view_redacted_sql(db: Session, tenant_id: UUID, account_id: str) -> bool:
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    return _can_view_redacted_sql_role(_member_role(member))
+
+
+def _should_redact_table_rows(db: Session, tenant_id: UUID, account_id: str) -> bool:
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    return _should_redact_table_rows_role(_member_role(member))
 
 
 def _redact_table_text(text: str) -> str:
@@ -138,6 +157,41 @@ def _audit_table_query(
                 "sql_chars": len(str(sql or "")),
                 "sql_redacted": redacted_sql,
             },
+        )
+    except Exception:
+        return
+    try:
+        db.commit()
+    except Exception:
+        return
+
+
+def _audit_fls_redaction(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    source: str,
+    resource_type: str,
+    resource_id: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    # Best-effort, fail-open: redaction enforcement must never block product flows.
+    try:
+        payload: dict[str, Any] = {
+            "dataset_id": str(dataset_id),
+            "source": str(source or "")[:64],
+        }
+        payload.update(dict(details or {}))
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="fls.redaction_applied",
+            resource_type=str(resource_type or "")[:64] if resource_type else None,
+            resource_id=str(resource_id or "")[:255] if resource_id else None,
+            details=payload,
         )
     except Exception:
         return
@@ -232,7 +286,12 @@ def list_dataset_tables(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    redact_rows = bool(include_sample_rows) and _should_redact_table_rows(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = _member_role(member)
+    redact_rows = bool(include_sample_rows) and _should_redact_table_rows_role(role)
+
+    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
     q = (
         db.query(DBDocument)
@@ -271,6 +330,66 @@ def list_dataset_tables(
             )
         )
 
+    # FLS: if sample rows are requested, mask values for denied columns (keep response shape).
+    fls_redacted_tables = 0
+    fls_redacted_table_ids: list[str] = []
+    fls_redacted_columns: set[str] = set()
+    if bool(include_sample_rows) and fls_policy is not None and items:
+        for item in items:
+            sample_rows = list(getattr(item, "sample_rows", None) or [])
+            if not sample_rows:
+                continue
+
+            # Build a bounded, stable column list from sample row keys.
+            seen_cols: set[str] = set()
+            cols: list[str] = []
+            for r in sample_rows:
+                if not isinstance(r, dict):
+                    continue
+                for k in r.keys():
+                    name = str(k or "")
+                    if not name or name in seen_cols:
+                        continue
+                    seen_cols.add(name)
+                    cols.append(name)
+                    if len(cols) >= 2000:
+                        break
+                if len(cols) >= 2000:
+                    break
+
+            mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
+            if not mask_map:
+                continue
+            present = [c for c in mask_map.keys() if any(isinstance(r, dict) and c in r for r in sample_rows)]
+            if not present:
+                continue
+
+            item.sample_rows = redact_row_dicts(sample_rows, mask_map=mask_map)
+            fls_redacted_tables += 1
+            if len(fls_redacted_table_ids) < 20:
+                fls_redacted_table_ids.append(str(getattr(item, "table_id", "") or "")[:255])
+            for c in present:
+                if len(fls_redacted_columns) >= 50:
+                    break
+                fls_redacted_columns.add(str(c)[:500])
+
+        if fls_redacted_tables > 0:
+            _audit_fls_redaction(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                source="table_store",
+                resource_type="dataset",
+                resource_id=str(dataset_id),
+                details={
+                    "table_count": int(fls_redacted_tables),
+                    "table_ids": fls_redacted_table_ids,
+                    "columns": list(fls_redacted_columns),
+                    "column_count": int(len(fls_redacted_columns)),
+                },
+            )
+
     return DatasetTablesListResponse(total=len(items), items=items)
 
 
@@ -291,7 +410,12 @@ def get_dataset_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    redact_rows = bool(include_sample_rows) and _should_redact_table_rows(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = _member_role(member)
+    redact_rows = bool(include_sample_rows) and _should_redact_table_rows_role(role)
+
+    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -316,6 +440,44 @@ def get_dataset_table(
     )
     for a in assets:
         if a.table_id == table_id:
+            # FLS: mask values in sample rows for denied columns.
+            if bool(include_sample_rows) and fls_policy is not None and getattr(a, "sample_rows", None):
+                sample_rows = list(a.sample_rows or [])
+                seen_cols: set[str] = set()
+                cols: list[str] = []
+                for r in sample_rows:
+                    if not isinstance(r, dict):
+                        continue
+                    for k in r.keys():
+                        name = str(k or "")
+                        if not name or name in seen_cols:
+                            continue
+                        seen_cols.add(name)
+                        cols.append(name)
+                        if len(cols) >= 2000:
+                            break
+                    if len(cols) >= 2000:
+                        break
+
+                mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
+                if mask_map:
+                    present = [c for c in mask_map.keys() if any(isinstance(r, dict) and c in r for r in sample_rows)]
+                    if present:
+                        a.sample_rows = redact_row_dicts(sample_rows, mask_map=mask_map)
+                        _audit_fls_redaction(
+                            db=db,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            dataset_id=dataset_id,
+                            source="table_store",
+                            resource_type="dataset_table",
+                            resource_id=str(table_id),
+                            details={
+                                "table_id": str(table_id),
+                                "columns": [str(c)[:500] for c in present][:50],
+                                "column_count": int(len(present)),
+                            },
+                        )
             return a
     raise HTTPException(status_code=404, detail="table not found")
 
@@ -336,7 +498,12 @@ def preview_dataset_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = _member_role(member)
+    redact_rows = _should_redact_table_rows_role(role)
+
+    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -357,6 +524,28 @@ def preview_dataset_table(
     if redact_rows:
         payload = dict(payload)
         payload["rows"] = _redact_table_rows(list(payload.get("rows") or []))
+    if fls_policy is not None:
+        cols = [str(c) for c in list(payload.get("columns") or [])]
+        rows = list(payload.get("rows") or [])
+        mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
+        masked_cols = [c for c in cols if c in mask_map]
+        if mask_map and masked_cols and rows:
+            payload = dict(payload)
+            payload["rows"] = redact_row_lists(rows, columns=cols, mask_map=mask_map)
+            _audit_fls_redaction(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                source="table_store",
+                resource_type="dataset_table",
+                resource_id=str(table_id),
+                details={
+                    "table_id": str(table_id),
+                    "columns": [str(c)[:500] for c in masked_cols][:50],
+                    "column_count": int(len(masked_cols)),
+                },
+            )
     return TableQueryResponse(**payload)
 
 
@@ -377,7 +566,12 @@ def query_dataset_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = _member_role(member)
+    redact_rows = _should_redact_table_rows_role(role)
+
+    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -406,10 +600,31 @@ def query_dataset_table(
         table_id=table_id,
         sql=raw_sql,
     )
-    show_sql = bool(include_sql) and _can_view_redacted_sql(db, tenant_id, account_id)
+    show_sql = bool(include_sql) and _can_view_redacted_sql_role(role)
     out_payload = dict(payload)
     if redact_rows:
         out_payload["rows"] = _redact_table_rows(list(out_payload.get("rows") or []))
+    if fls_policy is not None:
+        cols = [str(c) for c in list(out_payload.get("columns") or [])]
+        rows = list(out_payload.get("rows") or [])
+        mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
+        masked_cols = [c for c in cols if c in mask_map]
+        if mask_map and masked_cols and rows:
+            out_payload["rows"] = redact_row_lists(rows, columns=cols, mask_map=mask_map)
+            _audit_fls_redaction(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                source="table_store",
+                resource_type="dataset_table",
+                resource_id=str(table_id),
+                details={
+                    "table_id": str(table_id),
+                    "columns": [str(c)[:500] for c in masked_cols][:50],
+                    "column_count": int(len(masked_cols)),
+                },
+            )
     out_payload["sql"] = redact_sql_literals(raw_sql) if show_sql else "<hidden>"
     return TableQueryResponse(**out_payload)
 
@@ -436,7 +651,12 @@ def ask_dataset_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = _member_role(member)
+    redact_rows = _should_redact_table_rows_role(role)
+
+    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -493,8 +713,36 @@ def ask_dataset_table(
             status_code=400,
             detail="TABLE_LLM_ALLOW_RESULT_EGRESS=false (answer drafting requires sending query results to an LLM)",
         )
+
+    # FLS: redact denied columns before any LLM call.
+    data_payload = dict(result)
+    if fls_policy is not None:
+        cols = [str(c) for c in list(data_payload.get("columns") or [])]
+        rows = list(data_payload.get("rows") or [])
+        mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
+        masked_cols = [c for c in cols if c in mask_map]
+        if mask_map and masked_cols and rows:
+            data_payload["rows"] = redact_row_lists(rows, columns=cols, mask_map=mask_map)
+            _audit_fls_redaction(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                source="table_store",
+                resource_type="dataset_table",
+                resource_id=str(table_id),
+                details={
+                    "table_id": str(table_id),
+                    "columns": [str(c)[:500] for c in masked_cols][:50],
+                    "column_count": int(len(masked_cols)),
+                },
+            )
     try:
-        answer = generate_answer_from_result(question=str(body.question or ""), sql=str(result.get("sql") or sql), result=result)
+        answer = generate_answer_from_result(
+            question=str(body.question or ""),
+            sql=str(data_payload.get("sql") or sql),
+            result=data_payload,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"answer_failed: {str(exc)[:200]}") from exc
 
@@ -507,9 +755,8 @@ def ask_dataset_table(
         table_id=table_id,
         sql=raw_sql,
     )
-    show_sql = bool(include_sql) and _can_view_redacted_sql(db, tenant_id, account_id)
+    show_sql = bool(include_sql) and _can_view_redacted_sql_role(role)
     redacted_sql = redact_sql_literals(raw_sql) if show_sql else None
-    data_payload = dict(result)
     if redact_rows:
         data_payload["rows"] = _redact_table_rows(list(data_payload.get("rows") or []))
     data_payload["sql"] = redacted_sql or "<hidden>"
@@ -541,7 +788,12 @@ def lotus_sem_filter_dataset_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = _member_role(member)
+    redact_rows = _should_redact_table_rows_role(role)
+
+    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -600,6 +852,16 @@ def lotus_sem_filter_dataset_table(
                 else:
                     query = f'SELECT * FROM "{sql_table}" LIMIT {int(max_in_rows)}'
                 df = pd.read_sql_query(query, conn)
+                if fls_policy is not None:
+                    # Defense-in-depth: avoid sending denied columns to LOTUS/LLM flows.
+                    try:
+                        df_cols = [str(c) for c in list(getattr(df, "columns", []) or [])]
+                        mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=df_cols, ctx=fls_ctx)
+                        for c, mask in mask_map.items():
+                            if c in df.columns:  # type: ignore[operator]
+                                df[c] = str(mask)  # type: ignore[index]
+                    except Exception:
+                        pass
             finally:
                 conn.close()
         except Exception as exc:  # noqa: BLE001
@@ -621,6 +883,25 @@ def lotus_sem_filter_dataset_table(
                 rows.append([x if x is None or isinstance(x, (str, int, float, bool)) else str(x) for x in (row or ())])
             if redact_rows:
                 rows = _redact_table_rows(rows)
+            if fls_policy is not None:
+                mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
+                masked_cols = [c for c in cols if c in mask_map]
+                if mask_map and masked_cols and rows:
+                    rows = redact_row_lists(rows, columns=cols, mask_map=mask_map)
+                    _audit_fls_redaction(
+                        db=db,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_id=dataset_id,
+                        source="table_store",
+                        resource_type="dataset_table",
+                        resource_id=str(table_id),
+                        details={
+                            "table_id": str(table_id),
+                            "columns": [str(c)[:500] for c in masked_cols][:50],
+                            "column_count": int(len(masked_cols)),
+                        },
+                    )
             return TableQueryResponse(sql=f"LOTUS sem_filter({sql_table})", columns=cols, rows=rows, truncated=truncated)
 
     # Fallback: use NL->SQL to generate a WHERE clause and execute safely.
@@ -651,4 +932,26 @@ def lotus_sem_filter_dataset_table(
     if redact_rows:
         payload = dict(payload)
         payload["rows"] = _redact_table_rows(list(payload.get("rows") or []))
+    if fls_policy is not None:
+        cols = [str(c) for c in list(payload.get("columns") or [])]
+        rows = list(payload.get("rows") or [])
+        mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
+        masked_cols = [c for c in cols if c in mask_map]
+        if mask_map and masked_cols and rows:
+            payload = dict(payload)
+            payload["rows"] = redact_row_lists(rows, columns=cols, mask_map=mask_map)
+            _audit_fls_redaction(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                source="table_store",
+                resource_type="dataset_table",
+                resource_id=str(table_id),
+                details={
+                    "table_id": str(table_id),
+                    "columns": [str(c)[:500] for c in masked_cols][:50],
+                    "column_count": int(len(masked_cols)),
+                },
+            )
     return TableQueryResponse(**payload)

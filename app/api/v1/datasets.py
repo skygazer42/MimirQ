@@ -65,6 +65,7 @@ from app.services.dataset_profile_service import (
     list_finding_documents,
 )
 from app.services.dataset_service import DatasetPermissionService, DatasetService
+from app.services.fls_policy import parse_fls_policy_from_metadata, validate_and_normalize_fls_policy
 from app.services.ingestion_policy import (
     export_policy_json,
     parse_ingestion_policy_from_metadata,
@@ -686,6 +687,10 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
     if "ingestion_policy" in meta_dict:
         ingestion_policy = parse_ingestion_policy_from_metadata(meta_dict)
 
+    fls_policy = None
+    if "fls_policy" in meta_dict:
+        fls_policy = parse_fls_policy_from_metadata(meta_dict)
+
     return DatasetConfigBundle(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
@@ -696,6 +701,7 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
         chunk_targets_v2=_dataset_chunk_targets_v2_out(ds),
         pipeline=_dataset_pipeline_out(ds),
         ingestion_policy=ingestion_policy,
+        fls_policy=fls_policy,
     )
 
 
@@ -821,6 +827,15 @@ def import_dataset_config(
             meta["ingestion_policy"] = normalized.model_dump()
         else:
             meta.pop("ingestion_policy", None)
+        changed = True
+
+    # FLS policy
+    if replace or cfg.fls_policy is not None:
+        if cfg.fls_policy is not None:
+            normalized = validate_and_normalize_fls_policy(cfg.fls_policy)
+            meta["fls_policy"] = normalized.model_dump()
+        else:
+            meta.pop("fls_policy", None)
         changed = True
 
     if changed:

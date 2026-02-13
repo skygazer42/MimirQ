@@ -81,9 +81,11 @@ def test_image_url_denies_tenant_mismatch_between_img_id_and_request(monkeypatch
 
 
 def test_image_url_allows_token_query_param_and_enforces_tenant_claim(monkeypatch) -> None:
-    import app.api.v1.documents as docs_mod
     from datetime import datetime, timedelta, timezone
+
     from jose import jwt
+
+    import app.api.v1.documents as docs_mod
 
     monkeypatch.delenv("ENV", raising=False)
     monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
