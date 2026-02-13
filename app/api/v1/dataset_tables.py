@@ -29,6 +29,8 @@ from app.api.schemas.table_store import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
+from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.preprocessing.secrets import redact_secrets
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
@@ -47,6 +49,63 @@ def _can_view_redacted_sql(db: Session, tenant_id: UUID, account_id: str) -> boo
     member = DatasetService.ensure_member(db, tenant_id, account_id)
     role = str(getattr(member, "role", "") or "").strip().lower()
     return role in _SQL_VIEW_ROLES
+
+
+def _should_redact_table_rows(db: Session, tenant_id: UUID, account_id: str) -> bool:
+    if not bool(getattr(settings, "TABLE_ROW_REDACTION_ENABLED", False)):
+        return False
+    # Admin/auditor roles can view raw rows; others see best-effort redaction.
+    return not _can_view_redacted_sql(db, tenant_id, account_id)
+
+
+def _redact_table_text(text: str) -> str:
+    s = text or ""
+    if not s:
+        return s
+
+    secrets_mode = str(getattr(settings, "GOVERNANCE_SECRETS_MODE", "mask") or "mask").strip().lower()
+    secrets_mask = str(getattr(settings, "GOVERNANCE_SECRETS_MASK", "[SECRET]") or "[SECRET]")
+    pii_mode = str(getattr(settings, "GOVERNANCE_PII_MODE", "mask") or "mask").strip().lower()
+    pii_mask = str(getattr(settings, "GOVERNANCE_PII_MASK", "[REDACTED]") or "[REDACTED]")
+
+    secrets_mode = secrets_mode if secrets_mode in {"mask", "token"} else "mask"
+    pii_mode = pii_mode if pii_mode in {"mask", "token"} else "mask"
+
+    s = redact_secrets(s, enabled=True, mode=secrets_mode, mask=secrets_mask).text
+    s = anonymize_pii(s, enabled=True, mode=pii_mode, mask=pii_mask).text
+    return s
+
+
+def _redact_table_cell(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return _redact_table_text(value)
+    return value
+
+
+def _redact_table_rows(rows: list[list[Any]]) -> list[list[Any]]:
+    out: list[list[Any]] = []
+    for row in rows or []:
+        if isinstance(row, tuple):
+            row = list(row)
+        if not isinstance(row, list):
+            continue
+        out.append([_redact_table_cell(v) for v in row])
+    return out
+
+
+def _redact_sample_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        redacted: dict[str, Any] = {}
+        for k, v in r.items():
+            key = str(k)[:500]
+            redacted[key] = _redact_table_cell(v)
+        out.append(redacted)
+    return out
 
 
 def _short_sql_hash(sql: str) -> str:
@@ -93,6 +152,7 @@ def _extract_table_assets(
     doc: DBDocument,
     include_columns: bool,
     include_sample_rows: bool,
+    redact_sample_rows: bool,
 ) -> list[TableAssetOut]:
     meta = getattr(doc, "doc_metadata", None) or {}
     if not isinstance(meta, dict):
@@ -134,6 +194,8 @@ def _extract_table_assets(
                     sample_payload.append(r)
                 if len(sample_payload) >= 200:
                     break
+            if redact_sample_rows:
+                sample_payload = _redact_sample_rows(sample_payload)
 
         out.append(
             TableAssetOut(
@@ -170,6 +232,8 @@ def list_dataset_tables(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
+    redact_rows = bool(include_sample_rows) and _should_redact_table_rows(db, tenant_id, account_id)
+
     q = (
         db.query(DBDocument)
         .filter(
@@ -198,7 +262,14 @@ def list_dataset_tables(
     for d in docs:
         if d.id not in allowed_ids:
             continue
-        items.extend(_extract_table_assets(doc=d, include_columns=include_columns, include_sample_rows=include_sample_rows))
+        items.extend(
+            _extract_table_assets(
+                doc=d,
+                include_columns=include_columns,
+                include_sample_rows=include_sample_rows,
+                redact_sample_rows=redact_rows,
+            )
+        )
 
     return DatasetTablesListResponse(total=len(items), items=items)
 
@@ -220,6 +291,8 @@ def get_dataset_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
+    redact_rows = bool(include_sample_rows) and _should_redact_table_rows(db, tenant_id, account_id)
+
     parsed = parse_table_id(table_id)
     if parsed is None:
         raise HTTPException(status_code=400, detail="invalid table_id")
@@ -235,7 +308,12 @@ def get_dataset_table(
     if doc is None:
         raise HTTPException(status_code=404, detail="table not found")
 
-    assets = _extract_table_assets(doc=doc, include_columns=include_columns, include_sample_rows=include_sample_rows)
+    assets = _extract_table_assets(
+        doc=doc,
+        include_columns=include_columns,
+        include_sample_rows=include_sample_rows,
+        redact_sample_rows=redact_rows,
+    )
     for a in assets:
         if a.table_id == table_id:
             return a
@@ -258,6 +336,8 @@ def preview_dataset_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
+    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
+
     parsed = parse_table_id(table_id)
     if parsed is None:
         raise HTTPException(status_code=400, detail="invalid table_id")
@@ -274,6 +354,9 @@ def preview_dataset_table(
         max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
         max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
     )
+    if redact_rows:
+        payload = dict(payload)
+        payload["rows"] = _redact_table_rows(list(payload.get("rows") or []))
     return TableQueryResponse(**payload)
 
 
@@ -293,6 +376,8 @@ def query_dataset_table(
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -323,6 +408,8 @@ def query_dataset_table(
     )
     show_sql = bool(include_sql) and _can_view_redacted_sql(db, tenant_id, account_id)
     out_payload = dict(payload)
+    if redact_rows:
+        out_payload["rows"] = _redact_table_rows(list(out_payload.get("rows") or []))
     out_payload["sql"] = redact_sql_literals(raw_sql) if show_sql else "<hidden>"
     return TableQueryResponse(**out_payload)
 
@@ -348,6 +435,8 @@ def ask_dataset_table(
 
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -421,6 +510,8 @@ def ask_dataset_table(
     show_sql = bool(include_sql) and _can_view_redacted_sql(db, tenant_id, account_id)
     redacted_sql = redact_sql_literals(raw_sql) if show_sql else None
     data_payload = dict(result)
+    if redact_rows:
+        data_payload["rows"] = _redact_table_rows(list(data_payload.get("rows") or []))
     data_payload["sql"] = redacted_sql or "<hidden>"
     return TableAskResponse(
         answer=answer,
@@ -449,6 +540,8 @@ def lotus_sem_filter_dataset_table(
 
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    redact_rows = _should_redact_table_rows(db, tenant_id, account_id)
 
     parsed = parse_table_id(table_id)
     if parsed is None:
@@ -526,6 +619,8 @@ def lotus_sem_filter_dataset_table(
                     truncated = True
                     break
                 rows.append([x if x is None or isinstance(x, (str, int, float, bool)) else str(x) for x in (row or ())])
+            if redact_rows:
+                rows = _redact_table_rows(rows)
             return TableQueryResponse(sql=f"LOTUS sem_filter({sql_table})", columns=cols, rows=rows, truncated=truncated)
 
     # Fallback: use NL->SQL to generate a WHERE clause and execute safely.
@@ -553,4 +648,7 @@ def lotus_sem_filter_dataset_table(
         max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
         max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
     )
+    if redact_rows:
+        payload = dict(payload)
+        payload["rows"] = _redact_table_rows(list(payload.get("rows") or []))
     return TableQueryResponse(**payload)

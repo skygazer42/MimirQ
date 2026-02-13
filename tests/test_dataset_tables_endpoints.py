@@ -202,6 +202,124 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     assert res.json()["answer"] == "answer"
 
 
+def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
+    """
+    Enterprise guard: when TABLE_ROW_REDACTION_ENABLED=true, redact common PII/secrets from
+    sample rows and query results for non-admin roles.
+    """
+    from app.api.v1.dataset_tables import get_dataset_table, query_dataset_table
+    from app.services.dataset_service import DatasetService
+
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Dataset:
+        def __init__(self) -> None:
+            self.id = dataset_id
+            self.tenant_id = uuid.uuid4()
+            self.name = "Demo"
+            self.dataset_metadata = {}
+
+    ds = _Dataset()
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = ds.tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "demo.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.updated_at = datetime.now(timezone.utc)
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "Sheet1",
+                            "row_count": 1,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "email", "dtype": "text"}, {"name": "token", "dtype": "text"}],
+                            "sample_rows": [
+                                {
+                                    "email": "alice@example.com",
+                                    "token": "sk-1234567890abcdef1234567890",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            }
+
+    doc = _Doc()
+
+    # Dataset access: allow.
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+
+    import app.api.v1.dataset_tables as mod
+
+    # Doc ACL: allow.
+    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda db, tenant_id, account_id, doc_ids: doc_ids, raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+
+    # Query executor: return sensitive strings.
+    monkeypatch.setattr(
+        mod,
+        "run_table_query",
+        lambda **kwargs: {"sql": kwargs.get("sql") or "", "columns": ["email", "token"], "rows": [["alice@example.com", "sk-1234567890abcdef1234567890"]], "truncated": False},
+        raising=True,
+    )
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "TABLE_ROW_REDACTION_ENABLED", True, raising=False)
+
+    class _Member:
+        role = "member"
+
+    class _Owner:
+        role = "owner"
+
+    # Non-admin: redacted.
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db([doc])
+    app.dependency_overrides[get_tenant_id] = lambda: ds.tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+
+    app.get("/api/v1/datasets/{dataset_id}/tables/{table_id}")(get_dataset_table)
+    app.post("/api/v1/datasets/{dataset_id}/tables/{table_id}/query")(query_dataset_table)
+
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}/tables/{table_id}")
+    assert res.status_code == 200
+    got = res.json()
+    assert got["sample_rows"][0]["email"] == "[REDACTED]"
+    assert got["sample_rows"][0]["token"] == "[SECRET]"
+
+    res = client.post(f"/api/v1/datasets/{dataset_id}/tables/{table_id}/query", json={"sql": 'SELECT * FROM "sheet_0" LIMIT 1'})
+    assert res.status_code == 200
+    got = res.json()
+    assert got["rows"][0][0] == "[REDACTED]"
+    assert got["rows"][0][1] == "[SECRET]"
+
+    # Admin: raw values.
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Owner(), raising=True)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}/tables/{table_id}")
+    assert res.status_code == 200
+    got = res.json()
+    assert got["sample_rows"][0]["email"] == "alice@example.com"
+    assert got["sample_rows"][0]["token"] == "sk-1234567890abcdef1234567890"
+
+
 def test_dataset_tables_list_includes_pdf_table_store_docs(monkeypatch):  # noqa: ANN001
     """
     Regression: PDF documents can have `doc_metadata.table_store` (parsed tables sidecar) and should be listed.
