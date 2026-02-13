@@ -1,7 +1,7 @@
 'use client'
 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ragvizApi } from '@/lib/api-client'
 import type {
   RagvizSimilarityCollection,
@@ -66,7 +66,7 @@ export function RagvizSimilarityWorkbench() {
   const [exclusiveIndex, setExclusiveIndex] = useState<number | null>(null)
   const [exportIndex, setExportIndex] = useState<number>(0)
 
-  const loadCollections = async () => {
+  const loadCollections = useCallback(async () => {
     setCollectionsError('')
     setCollectionsLoading(true)
     try {
@@ -77,12 +77,11 @@ export function RagvizSimilarityWorkbench() {
     } finally {
       setCollectionsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    loadCollections()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void loadCollections()
+  }, [loadCollections])
 
   const availableCollectionOptions = useMemo(() => {
     return collections.map((c) => ({ value: c.id, label: c.label, kind: c.kind, count: c.count }))
@@ -591,7 +590,6 @@ export function RagvizSimilarityWorkbench() {
     } catch {
       // ignore
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const leftTopStyle = useMemo(() => {
