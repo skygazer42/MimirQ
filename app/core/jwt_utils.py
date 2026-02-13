@@ -23,5 +23,11 @@ def create_access_token(subject: str, *, expires_minutes: int | None = None) -> 
         "exp": expire_at,
         "iat": datetime.now(timezone.utc),
     }
+    issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
+    if issuer:
+        payload["iss"] = issuer
+    audience = str(getattr(settings, "JWT_AUDIENCE", "") or "").strip()
+    if audience:
+        payload["aud"] = audience
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return token, int(expires_delta.total_seconds())

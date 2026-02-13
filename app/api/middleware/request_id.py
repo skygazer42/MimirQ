@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.config import settings
 from app.core.logging_config import bind_request_context, reset_request_context
 
 _SAFE_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-:.]{0,127}$")
@@ -39,8 +40,14 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request_id = _normalize_request_id(request.headers.get(self.header_name))
         request.state.request_id = request_id
 
-        tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
-        user_id = (request.headers.get("X-User-ID") or "").strip()
+        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_id = (request.headers.get(tenant_header) or "").strip()
+
+        # Security: when AUTH_MODE=jwt, do not trust X-User-ID (spoofable) for logging context.
+        mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+        user_id = ""
+        if mode == "header":
+            user_id = (request.headers.get("X-User-ID") or "").strip()
         tokens = bind_request_context(request_id=request_id, tenant_id=tenant_id, user_id=user_id)
         try:
             response = await call_next(request)
