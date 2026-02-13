@@ -12,6 +12,7 @@
 - [guides/lexical_fallback.md](./guides/lexical_fallback.md)：Lexical fallback（Postgres FTS + pg_trgm）配置、索引与可观测性。
 - [guides/knowledge_graph.md](./guides/knowledge_graph.md)：知识图谱（KG）的开启、抽取、可视化与导出。
 - [guides/chunk_preview.md](./guides/chunk_preview.md)：切块预览页（chunk preview）的使用说明、参数建议与快捷键。
+- [guides/connectors.md](./guides/connectors.md)：连接器（Connectors）与批量导入/增量同步（Connector Runs / Configs）。
 - [guides/milvus_guide.md](./guides/milvus_guide.md)：Milvus 的部署、调优与常见问题。
 - [guides/dependencies.md](./guides/dependencies.md)：不同解析/Embedding 模式的依赖清单。
 - [guides/marker_guide.md](./guides/marker_guide.md)：Marker（外部服务）解析器集成。
