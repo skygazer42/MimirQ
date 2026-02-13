@@ -45,15 +45,22 @@ def _get_chroma_cls():
     if _CHROMA_CLS is not None:
         return _CHROMA_CLS
     try:
-        from langchain_community.vectorstores import Chroma
+        # Prefer the dedicated package to avoid upstream deprecations.
+        from langchain_chroma import Chroma  # type: ignore[import-not-found]
 
         _CHROMA_CLS = Chroma
         return _CHROMA_CLS
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "Chroma vector backend requires optional dependencies. "
-            "Install `chromadb` and `langchain-community`."
-        ) from exc
+    except Exception:  # noqa: BLE001
+        try:
+            from langchain_community.vectorstores import Chroma
+
+            _CHROMA_CLS = Chroma
+            return _CHROMA_CLS
+        except Exception as exc2:  # noqa: BLE001
+            raise RuntimeError(
+                "Chroma vector backend requires optional dependencies. "
+                "Install `chromadb` and `langchain-chroma` (preferred) or `langchain-community`."
+            ) from exc2
 
 
 def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
@@ -525,7 +532,7 @@ class ChromaVectorStore(BaseVectorStore):
             ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
         key, store = self._get_store(tenant_id)
         store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        store.persist()
+        # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
         return ids
 
     def search(
@@ -568,7 +575,7 @@ class ChromaVectorStore(BaseVectorStore):
         try:
             # LangChain Chroma lacks a stable where delete API; use the underlying collection.
             store._collection.delete(where={"document_id": target})  # type: ignore[attr-defined]
-            store.persist()
+            # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
         except Exception:
             return
 
@@ -603,7 +610,6 @@ class ChromaVectorStore(BaseVectorStore):
             if not ids_to_delete:
                 return
             collection.delete(ids=ids_to_delete)
-            store.persist()
         except Exception as exc:
             raise NotImplementedError("Selective delete is not supported for Chroma backend") from exc
 

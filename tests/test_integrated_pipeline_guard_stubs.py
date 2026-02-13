@@ -54,9 +54,9 @@ def test_integrated_llmbundle_disabled_raises(monkeypatch):
 
 
 def test_integrated_llmbundle_configured_calls_openai_compatible(monkeypatch):
+    import app.third_party.integrated_pipeline.stubs.llm_service as llm_mod
     from app.core.config import settings
     from app.third_party.integrated_pipeline.common.constants import LLMType
-    import app.third_party.integrated_pipeline.stubs.llm_service as llm_mod
 
     monkeypatch.setattr(settings, "VISION_LLM_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "VISION_LLM_API_KEY", "k-test", raising=False)
