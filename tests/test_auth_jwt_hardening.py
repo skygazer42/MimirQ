@@ -103,3 +103,48 @@ def test_header_mode_binds_user_id_from_header(monkeypatch):
     assert payload["ctx"]["user_id"] == "header-user"
     assert payload["ctx"]["tenant_id"] == "t-2"
     assert payload["ctx"]["request_id"] == "r-2"
+
+
+def test_jwt_tenant_claim_header_match_enforced_when_enabled(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "ALGORITHM", "HS256", raising=False)
+    monkeypatch.setattr(settings, "JWT_ISSUER", "", raising=False)
+    monkeypatch.setattr(settings, "JWT_AUDIENCE", "", raising=False)
+
+    secret_key = "k" * 40
+    monkeypatch.setattr(settings, "SECRET_KEY", secret_key, raising=False)
+    monkeypatch.setattr(settings, "SECRET_KEY_FALLBACKS", "", raising=False)
+
+    monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "tenant_id", raising=False)
+    monkeypatch.setattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", True, raising=False)
+
+    tenant_id = "00000000-0000-0000-0000-000000000000"
+    token = jwt.encode(
+        {
+            "sub": "user-tenant-1",
+            "tenant_id": tenant_id,
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        },
+        secret_key,
+        algorithm="HS256",
+    )
+
+    client = TestClient(_build_app())
+
+    ok = client.get("/whoami", headers={"Authorization": f"Bearer {token}", "X-Tenant-ID": tenant_id})
+    assert ok.status_code == 200
+    payload = ok.json()
+    assert payload["account_id"] == "user-tenant-1"
+    assert payload["ctx"]["tenant_id"] == tenant_id
+
+    mismatch = client.get(
+        "/whoami",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-ID": "11111111-1111-1111-1111-111111111111",
+        },
+    )
+    assert mismatch.status_code == 401
+
+    missing_header = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+    assert missing_header.status_code == 400

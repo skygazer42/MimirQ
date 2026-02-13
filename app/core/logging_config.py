@@ -38,6 +38,16 @@ def set_request_user_id(user_id: str) -> None:
     _user_id.set((user_id or "").strip())
 
 
+def set_request_tenant_id(tenant_id: str) -> None:
+    """
+    Update the current request's tenant_id context.
+
+    Useful when tenant identity is derived from a verified source (e.g. JWT claim)
+    rather than an untrusted header.
+    """
+    _tenant_id.set((tenant_id or "").strip())
+
+
 def reset_request_context(tokens: Dict[str, Any]) -> None:
     if not tokens:
         return

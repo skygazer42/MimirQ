@@ -365,6 +365,12 @@ class Settings(BaseSettings):
     # NOTE: If you set these, tokens issued by /api/v1/auth/login will include these claims.
     JWT_ISSUER: str = ""
     JWT_AUDIENCE: str = ""
+    # Optional multi-tenant binding via JWT claim (e.g. "tid" or "tenant_id").
+    # When set, tokens issued by /api/v1/auth/login will include this claim when a current tenant is available.
+    JWT_TENANT_CLAIM: str = ""
+    # When enabled (and JWT_TENANT_CLAIM is set), require X-Tenant-ID header to match the JWT tenant claim.
+    # This mitigates cross-tenant spoofing via headers in AUTH_MODE=jwt while staying backwards compatible by default.
+    JWT_ENFORCE_TENANT_HEADER_MATCH: bool = False
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
 

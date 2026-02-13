@@ -5,12 +5,13 @@ Parses user identity from request headers.
 """
 
 import logging
+from uuid import UUID
 
 from fastapi import Header, HTTPException
 from jose import ExpiredSignatureError, JWTError, jwt
 
 from app.core.config import settings
-from app.core.logging_config import set_request_user_id
+from app.core.logging_config import set_request_tenant_id, set_request_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,36 @@ def _decode_access_token(token: str) -> dict:
     raise JWTError("Signature verification failed") from last_exc
 
 
-def get_current_account_id_from_headers(*, authorization: str | None, x_user_id: str | None) -> str:
+def _coerce_uuid(raw: object) -> str | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    try:
+        return str(UUID(value))
+    except ValueError:
+        return None
+
+
+def _get_jwt_tenant_id(payload: dict) -> str | None:
+    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    if not claim:
+        return None
+    raw = payload.get(claim)
+    if raw is None:
+        return None
+    tenant_id = _coerce_uuid(raw)
+    if not tenant_id:
+        # If a tenant claim is configured but invalid, treat it as an invalid token.
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return tenant_id
+
+
+def get_current_account_id_from_headers(
+    *,
+    authorization: str | None,
+    x_user_id: str | None,
+    x_tenant_id: str | None,
+) -> str:
     """
     Resolve current account id from request headers.
 
@@ -109,6 +139,20 @@ def get_current_account_id_from_headers(*, authorization: str | None, x_user_id:
         logger.warning("Token missing 'sub' claim")
         raise HTTPException(status_code=401, detail="Invalid token")
 
+    jwt_tenant_id = _get_jwt_tenant_id(payload)
+    if jwt_tenant_id:
+        set_request_tenant_id(jwt_tenant_id)
+
+    if bool(getattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False)):
+        if not jwt_tenant_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        header_tenant_id = _coerce_uuid(x_tenant_id)
+        if not header_tenant_id:
+            raise HTTPException(status_code=400, detail="X-Tenant-ID header required")
+        if header_tenant_id != jwt_tenant_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
     user_id = str(user_id)
     set_request_user_id(user_id)
     return user_id
@@ -117,6 +161,7 @@ def get_current_account_id_from_headers(*, authorization: str | None, x_user_id:
 async def get_current_account_id(
     authorization: str | None = Header(default=None),
     x_user_id: str | None = Header(default=None),
+    x_tenant_id: str | None = Header(default=None),
 ) -> str:
     """
     FastAPI dependency wrapper.
@@ -124,4 +169,8 @@ async def get_current_account_id(
     Important: keep this async so it runs in the main request context (not a threadpool),
     allowing request-scoped contextvars (e.g. user_id) to propagate to sync endpoints.
     """
-    return get_current_account_id_from_headers(authorization=authorization, x_user_id=x_user_id)
+    return get_current_account_id_from_headers(
+        authorization=authorization,
+        x_user_id=x_user_id,
+        x_tenant_id=x_tenant_id,
+    )
