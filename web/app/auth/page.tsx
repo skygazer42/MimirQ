@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi } from '@/lib/api-client'
 import { setAuthSession } from '@/lib/auth-storage'
+import { isOidcEnabled, startOidcLogin } from '@/lib/oidc'
 import { formatRequestId, toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { cn } from '@/lib/utils'
@@ -16,6 +17,7 @@ type Mode = 'login' | 'register'
 
 export default function AuthPage() {
     const router = useRouter()
+    const oidcEnabled = isOidcEnabled()
     const [mode, setMode] = useState<Mode>('login')
     const [email, setEmail] = useState('')
     const [username, setUsername] = useState('')
@@ -23,7 +25,19 @@ export default function AuthPage() {
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isSsoSubmitting, setIsSsoSubmitting] = useState(false)
     const [error, setError] = useState<ApiErrorInfo | null>(null)
+
+    const handleSso = async () => {
+        setError(null)
+        setIsSsoSubmitting(true)
+        try {
+            await startOidcLogin({ returnTo: '/' })
+        } catch (err: any) {
+            setError(toApiErrorInfo(err, 'SSO login failed'))
+            setIsSsoSubmitting(false)
+        }
+    }
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault()
@@ -70,6 +84,34 @@ export default function AuthPage() {
                 </div>
 
                 <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
+                    {oidcEnabled && (
+                        <div className="mb-7 space-y-3">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                className="w-full h-11 rounded-xl"
+                                disabled={isSubmitting || isSsoSubmitting}
+                                onClick={handleSso}
+                            >
+                                {isSsoSubmitting ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                        Signing in...
+                                    </>
+                                ) : (
+                                    <>
+                                        Continue with SSO
+                                        <ArrowRight className="ml-2 h-4 w-4 opacity-70" aria-hidden="true" />
+                                    </>
+                                )}
+                            </Button>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <div className="h-px flex-1 bg-border/60" />
+                                <span>or</span>
+                                <div className="h-px flex-1 bg-border/60" />
+                            </div>
+                        </div>
+                    )}
                     {/* Tab Switcher */}
                     <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
                         <button
