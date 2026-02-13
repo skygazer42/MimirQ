@@ -220,15 +220,25 @@ async def lifespan(app: FastAPI):
             setup_tracing()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to setup LangSmith tracing: %s", str(exc)[:200])
-    # Best-effort runtime migrations run before/after `create_all()`:
-    # - before: upgrade existing deployments early (best-effort)
-    # - after: ensure fresh tables get latest columns/indexes
-    apply_runtime_migrations(engine)
+    runtime_migrations_enabled = bool(getattr(settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True))
+    create_all_enabled = bool(getattr(settings, "DB_CREATE_ALL_ON_STARTUP", True))
 
-    logger.info("Creating database tables...")
-    Base.metadata.create_all(bind=engine)
-    apply_runtime_migrations(engine)
-    logger.info("Database initialized")
+    # Best-effort runtime migrations (legacy compatibility).
+    #
+    # These are idempotent `ALTER TABLE ... IF NOT EXISTS` guardrails that keep older
+    # DBs bootable. For production deployments, prefer deterministic Alembic migrations
+    # executed out-of-band (e.g. `make db-upgrade`).
+    if runtime_migrations_enabled:
+        apply_runtime_migrations(engine)
+
+    if create_all_enabled:
+        logger.info("Creating database tables (create_all)...")
+        Base.metadata.create_all(bind=engine)
+        if runtime_migrations_enabled:
+            apply_runtime_migrations(engine)
+        logger.info("Database initialized")
+    else:
+        logger.info("DB auto-create disabled; expecting schema to be managed externally (e.g. Alembic)")
 
     # Initialize task queue (optional).
     try:

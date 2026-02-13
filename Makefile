@@ -213,10 +213,10 @@ openapi-check:
 	$(PY) scripts/openapi_check.py
 
 db-upgrade:
-	alembic upgrade head
+	$(PY) scripts/alembic_cli.py -c alembic.ini upgrade head
 
 db-revision:
-	alembic revision --autogenerate -m "$(m)"
+	$(PY) scripts/alembic_cli.py -c alembic.ini revision --autogenerate -m "$(m)"
 
 verify:
 	@$(MAKE) lint-py
