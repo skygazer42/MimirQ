@@ -195,7 +195,7 @@ audit-py:
 	pip-audit -r requirements.txt --no-deps --disable-pip
 
 audit-web:
-	cd web && pnpm audit --prod --audit-level high --ignore-registry-errors
+	cd web && pnpm audit --prod --audit-level high --registry https://registry.npmjs.org/ --ignore-registry-errors
 
 audit:
 	@$(MAKE) audit-py
