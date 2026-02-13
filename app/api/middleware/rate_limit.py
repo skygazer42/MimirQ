@@ -237,7 +237,9 @@ def get_default_limiter() -> RateLimiter | RedisRateLimiter:
     return _default_limiter
 
 
-def get_client_key(request: Request) -> str:
+async def get_client_key(request: Request) -> str:
+    from app.core.config import settings
+
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         client_ip = (forwarded.split(",")[0] or "").strip() or "unknown"
@@ -245,9 +247,8 @@ def get_client_key(request: Request) -> str:
         real_ip = request.headers.get("X-Real-IP")
         client_ip = (real_ip or "").strip() if real_ip else (request.client.host if request.client else "unknown")
 
-    tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
-
-    from app.core.config import settings
+    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_id = (request.headers.get(tenant_header) or "").strip()
 
     # Prefer a trusted user id:
     # - AUTH_MODE=jwt: JWT subject (ignore X-User-ID to avoid spoofing rate-limit keys)
@@ -264,10 +265,16 @@ def get_client_key(request: Request) -> str:
             token = auth[7:].strip()
             if token:
                 try:
-                    from jose import jwt
+                    from app.core.jwt_verify import decode_access_token
 
-                    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+                    payload = await decode_access_token(token)
                     user_id = (payload.get("sub") or "").strip()
+
+                    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+                    if claim:
+                        raw = payload.get(claim)
+                        if raw:
+                            tenant_id = str(raw).strip()
                 except Exception:  # noqa: BLE001
                     user_id = ""
 
@@ -366,7 +373,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path in self.exclude_paths or (self.exclude_prefixes and any(path.startswith(p) for p in self.exclude_prefixes)):
             return await call_next(request)
 
-        key = get_client_key(request)
+        key = await get_client_key(request)
         limiter = self.limiter
         if self.chat_limiter is not None and self.chat_prefixes:
             path = request.url.path
@@ -395,7 +402,7 @@ async def rate_limit_dependency(
     if limiter is None:
         limiter = get_default_limiter()
 
-    key = get_client_key(request)
+    key = await get_client_key(request)
     allowed, retry_after = await limiter.acheck(key)
     if not allowed:
         raise HTTPException(

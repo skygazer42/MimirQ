@@ -361,6 +361,15 @@ class Settings(BaseSettings):
     # This enables key rotation for connector configs without breaking existing entries.
     SECRET_KEY_FALLBACKS: str = ""
     ALGORITHM: str = "HS256"
+    # Optional: verify JWTs via JWKS (typically for RS256/ES256 tokens issued by an external IdP).
+    # Comma-separated list of JWKS URLs, e.g. https://issuer.example/.well-known/jwks.json
+    JWT_JWKS_URLS: str = ""
+    # JWKS cache TTL. Avoids fetching keys on every request.
+    JWT_JWKS_CACHE_TTL_SEC: int = 300
+    # When refresh fails, allow using cached keys for up to this many seconds before failing closed.
+    JWT_JWKS_MAX_STALE_SEC: int = 3600
+    # HTTP timeout for JWKS fetches.
+    JWT_JWKS_HTTP_TIMEOUT_SEC: float = 5.0
     # Optional JWT claim enforcement. When set, incoming JWTs must match.
     # NOTE: If you set these, tokens issued by /api/v1/auth/login will include these claims.
     JWT_ISSUER: str = ""
@@ -965,6 +974,16 @@ class Settings(BaseSettings):
                 or len(self.SECRET_KEY) < 32
             ):
                 raise ValueError("SECRET_KEY required for JWT auth (min 32 chars)")
+
+            algorithm = str(getattr(self, "ALGORITHM", "HS256") or "HS256").strip() or "HS256"
+            if algorithm.upper().startswith("HS"):
+                # HS* uses SECRET_KEY.
+                pass
+            else:
+                # RS*/ES* require a key source (JWKS) for verification.
+                jwks_urls = str(getattr(self, "JWT_JWKS_URLS", "") or "").strip()
+                if not jwks_urls:
+                    raise ValueError(f"JWT_JWKS_URLS required for ALGORITHM={algorithm}")
         else:
             # Best-effort warning for other uses (sessions, future JWT issuance, etc.)
             if self.SECRET_KEY == "your-secret-key-change-in-production":

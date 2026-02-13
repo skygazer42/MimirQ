@@ -5,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from jose import jwt
+from jose import jwk
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.middleware.request_id import RequestIDMiddleware
@@ -148,3 +151,64 @@ def test_jwt_tenant_claim_header_match_enforced_when_enabled(monkeypatch):
 
     missing_header = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
     assert missing_header.status_code == 400
+
+
+def test_jwt_jwks_verification_allows_rs256_tokens(monkeypatch):
+    from app.core import jwt_verify
+
+    # Ensure clean cache for this test run.
+    jwt_verify._jwks_cache.clear()
+    jwt_verify._jwks_locks.clear()
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "ALGORITHM", "RS256", raising=False)
+    monkeypatch.setattr(settings, "JWT_ISSUER", "", raising=False)
+    monkeypatch.setattr(settings, "JWT_AUDIENCE", "", raising=False)
+    monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "", raising=False)
+    monkeypatch.setattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False, raising=False)
+
+    # Still required for other app features/config validation; not used for RS256 verification here.
+    monkeypatch.setattr(settings, "SECRET_KEY", "s" * 40, raising=False)
+    monkeypatch.setattr(settings, "SECRET_KEY_FALLBACKS", "", raising=False)
+
+    jwks_url = "https://idp.example/.well-known/jwks.json"
+    monkeypatch.setattr(settings, "JWT_JWKS_URLS", jwks_url, raising=False)
+    monkeypatch.setattr(settings, "JWT_JWKS_CACHE_TTL_SEC", 300, raising=False)
+    monkeypatch.setattr(settings, "JWT_JWKS_MAX_STALE_SEC", 3600, raising=False)
+    monkeypatch.setattr(settings, "JWT_JWKS_HTTP_TIMEOUT_SEC", 1.0, raising=False)
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    kid = "kid-1"
+    jwk_key = jwk.construct(public_pem, algorithm="RS256").to_dict()
+    jwk_key["kid"] = kid
+    jwk_key["use"] = "sig"
+
+    async def _fake_fetch(url: str):
+        assert url == jwks_url
+        return [dict(jwk_key)]
+
+    monkeypatch.setattr(jwt_verify, "_fetch_jwks_keys", _fake_fetch, raising=True)
+
+    token = jwt.encode(
+        {"sub": "user-jwks", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        private_pem,
+        algorithm="RS256",
+        headers={"kid": kid},
+    )
+
+    client = TestClient(_build_app())
+    res = client.get("/whoami", headers={"Authorization": f"Bearer {token}", "X-Tenant-ID": "t-1"})
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["account_id"] == "user-jwks"
+    assert payload["ctx"]["user_id"] == "user-jwks"
