@@ -249,6 +249,8 @@ async def get_client_key(request: Request) -> str:
 
     tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
     tenant_id = (request.headers.get(tenant_header) or "").strip()
+    if not tenant_id and tenant_header.lower() != "x-tenant-id":
+        tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
 
     # Prefer a trusted user id:
     # - AUTH_MODE=jwt: JWT subject (ignore X-User-ID to avoid spoofing rate-limit keys)

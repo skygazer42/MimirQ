@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.auth import get_current_account_id, get_current_account_id_from_headers
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import (
     BatchTaskStatus,
@@ -496,7 +496,11 @@ async def _resolve_account_id_for_asset_request(request: Request, *, tenant_id: 
 
     tenant_value = str(tenant_id).strip() if tenant_id is not None else None
     try:
-        return await get_current_account_id(authorization=authorization, x_user_id=None, x_tenant_id=tenant_value)
+        return await get_current_account_id_from_headers(
+            authorization=authorization,
+            x_user_id=None,
+            x_tenant_id=tenant_value,
+        )
     except HTTPException:
         raise HTTPException(status_code=401, detail="Authentication required") from None
 
@@ -507,7 +511,10 @@ def _get_tenant_id_from_request_if_provided(request: Request) -> Optional[UUID]:
 
     This is used for endpoints like `<img src>` where custom headers are not sent.
     """
-    raw = (request.headers.get("x-tenant-id") or "").strip()
+    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    raw = (request.headers.get(tenant_header) or "").strip()
+    if not raw and tenant_header.lower() != "x-tenant-id":
+        raw = (request.headers.get("x-tenant-id") or "").strip()
     if raw:
         return _parse_uuid(raw)
 
@@ -524,7 +531,7 @@ def _resolve_tenant_id_for_asset_request(request: Request) -> UUID:
     Resolve tenant id for asset endpoints.
 
     Priority:
-    1) X-Tenant-ID header
+    1) TENANT_HEADER (default: X-Tenant-ID)
     2) ?tenant_id=... query param (or aliases)
     3) settings.DEFAULT_TENANT_ID in non-production
     """
@@ -533,7 +540,8 @@ def _resolve_tenant_id_for_asset_request(request: Request) -> UUID:
         return provided
 
     if is_production_env():
-        raise HTTPException(status_code=400, detail="X-Tenant-ID header or tenant_id query param required")
+        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        raise HTTPException(status_code=400, detail=f"{tenant_header} header or tenant_id query param required")
     return _parse_uuid(str(settings.DEFAULT_TENANT_ID))
 
 def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUID) -> list:

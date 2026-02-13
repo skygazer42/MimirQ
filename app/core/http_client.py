@@ -43,7 +43,7 @@ class HTTPClientPool:
         Best-effort propagation of request-scoped context headers.
 
         - X-Request-ID: trace correlation
-        - X-Tenant-ID / X-User-ID: internal multi-tenant attribution
+        - X-Tenant-ID (and optionally TENANT_HEADER) / X-User-ID: internal multi-tenant attribution
         """
         try:
             ctx = get_request_context()
@@ -56,7 +56,10 @@ class HTTPClientPool:
 
         if rid and "X-Request-ID" not in request.headers:
             request.headers["X-Request-ID"] = rid
-        if tenant_id and "X-Tenant-ID" not in request.headers:
+        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        if tenant_id and tenant_header not in request.headers:
+            request.headers[tenant_header] = tenant_id
+        if tenant_id and tenant_header.lower() != "x-tenant-id" and "X-Tenant-ID" not in request.headers:
             request.headers["X-Tenant-ID"] = tenant_id
         if user_id and "X-User-ID" not in request.headers:
             request.headers["X-User-ID"] = user_id
