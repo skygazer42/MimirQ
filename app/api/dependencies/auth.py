@@ -11,8 +11,8 @@ from fastapi import Header, HTTPException, Request
 from jose import ExpiredSignatureError, JWTError
 
 from app.core.config import settings
-from app.core.logging_config import set_request_tenant_id, set_request_user_id
 from app.core.jwt_verify import decode_access_token
+from app.core.logging_config import set_request_tenant_id, set_request_user_id
 
 logger = logging.getLogger(__name__)
 

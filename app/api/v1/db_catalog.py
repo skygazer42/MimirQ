@@ -27,17 +27,53 @@ from app.api.schemas.db_catalog import (
 from app.connectors.db.profile_privacy import sanitize_db_profile_snapshot
 from app.core.database import get_db
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.db_catalog_profile_cache import (
     build_db_profile_cache_key,
     get_cached_db_profile,
     set_cached_db_profile,
 )
+from app.services.fls_policy import FlsUserContext, build_fls_column_mask_map, parse_fls_policy_from_metadata
 
 router = APIRouter()
 
 _DB_PROFILE_VERSION = 1
 _DB_PROFILE_CACHE_TTL_SEC = 30.0
+
+
+def _audit_fls_redaction(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    table_id: UUID,
+    redacted_columns: list[str],
+) -> None:
+    try:
+        cols = [str(c)[:500] for c in (redacted_columns or []) if str(c or "").strip()][:50]
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="fls.redaction_applied",
+            resource_type="db_catalog_table",
+            resource_id=str(table_id),
+            details={
+                "dataset_id": str(dataset_id),
+                "source": "db_catalog",
+                "table_id": str(table_id),
+                "columns": cols,
+                "column_count": int(len(cols)),
+            },
+        )
+    except Exception:
+        return
+    try:
+        db.commit()
+    except Exception:
+        return
 
 
 @router.get(
@@ -105,6 +141,11 @@ def get_db_catalog_table(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = str(getattr(member, "role", "") or "").strip().lower()
+    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    fls_ctx = FlsUserContext(account_id=account_id, role=role)
+
     table = (
         db.query(DbCatalogTable)
         .filter(
@@ -125,7 +166,37 @@ def get_db_catalog_table(
     )
 
     base = DbCatalogTableSummaryOut.model_validate(table).model_dump()
-    return DbCatalogTableDetailOut(**base, columns=[DbCatalogColumnOut.model_validate(c) for c in cols])
+    out_cols: list[DbCatalogColumnOut] = []
+    redacted: list[str] = []
+    if fls_policy is not None and cols:
+        mask_map = build_fls_column_mask_map(
+            fls_policy,
+            source="db_catalog",
+            columns=[str(getattr(c, "name", "") or "") for c in cols],
+            ctx=fls_ctx,
+        )
+    else:
+        mask_map = {}
+
+    for c in cols:
+        out = DbCatalogColumnOut.model_validate(c)
+        mask = mask_map.get(str(getattr(c, "name", "") or ""))
+        if mask:
+            redacted.append(str(getattr(c, "name", "") or ""))
+            out = out.model_copy(update={"name": str(mask), "comment": str(mask)})
+        out_cols.append(out)
+
+    if redacted:
+        _audit_fls_redaction(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            table_id=table_id,
+            redacted_columns=redacted,
+        )
+
+    return DbCatalogTableDetailOut(**base, columns=out_cols)
 
 
 @router.get(
