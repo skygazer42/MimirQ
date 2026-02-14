@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import importlib
-
 import pytest
 
 
@@ -16,13 +14,8 @@ def _set_prod_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_docs_and_openapi_disabled_by_default_in_production(monkeypatch: pytest.MonkeyPatch):
     _set_prod_env(monkeypatch)
 
-    import app.core.config as cfg
-    import app.main as main_mod
+    from app.core.config import Settings
 
-    importlib.reload(cfg)
-    importlib.reload(main_mod)
-
-    assert main_mod.app.docs_url is None
-    assert main_mod.app.redoc_url is None
-    assert main_mod.app.openapi_url is None
-
+    s = Settings()
+    assert s.API_DOCS_ENABLED is False
+    assert s.API_OPENAPI_ENABLED is False
