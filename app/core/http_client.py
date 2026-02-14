@@ -4,6 +4,7 @@ Provides unified httpx client configs for external API calls.
 """
 import asyncio
 import contextlib
+import logging
 import random
 import threading
 from typing import Any, Optional
@@ -11,11 +12,10 @@ from typing import Any, Optional
 import httpx
 
 from app.core.config import settings
+from app.core.http_env import httpx_trust_env
 from app.core.logging_config import get_request_context
-from app.rag.core.http import httpx_trust_env
-from app.rag.core.logging import get_logger
 
-logger = get_logger("http_client")
+logger = logging.getLogger("http_client")
 
 try:
     import h2  # noqa: F401
