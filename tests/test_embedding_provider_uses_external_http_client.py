@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers.outbound_http_assertions import assert_no_internal_context_headers
+
 
 class _DummyResponse:
     def __init__(self, payload: dict) -> None:
@@ -62,6 +64,9 @@ def test_openai_embedding_encode_uses_external_pool_not_requests(monkeypatch):
 
     # After refactor, encode() should use the shared external client, not requests.
     assert spy["requests_post"] == 0
+    assert dummy_sync.calls
+    _url, headers = dummy_sync.calls[-1]
+    assert_no_internal_context_headers(headers)
     assert vecs == [[0.1, 0.2]]
 
 
@@ -103,4 +108,7 @@ async def test_openai_embedding_aencode_uses_external_pool_not_new_asyncclient(m
 
     # After refactor, aencode() should use the shared external client, not a new AsyncClient().
     assert spy["asyncclient_ctor"] == 0
+    assert dummy_async.calls
+    _url, headers = dummy_async.calls[-1]
+    assert_no_internal_context_headers(headers)
     assert vecs == [[0.1, 0.2]]

@@ -4,6 +4,7 @@ import httpx
 
 from app.core.http_client import HTTPClientPool
 from app.core.logging_config import bind_request_context, reset_request_context
+from tests.helpers.outbound_http_assertions import assert_no_internal_context_headers
 
 
 def test_http_client_pool_exposes_external_clients():
@@ -22,8 +23,7 @@ def test_external_context_headers_do_not_include_tenant_or_user():
         req = httpx.Request("GET", "https://example.com/")
         hook(req)
         assert req.headers.get("X-Request-ID") == "rid"
-        assert "X-Tenant-ID" not in req.headers
-        assert "X-User-ID" not in req.headers
+        assert_no_internal_context_headers(req.headers)
     finally:
         reset_request_context(tokens)
 
@@ -42,4 +42,3 @@ def test_internal_context_headers_include_tenant_and_user():
         assert req.headers.get("X-User-ID") == "uid"
     finally:
         reset_request_context(tokens)
-
