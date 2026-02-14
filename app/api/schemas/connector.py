@@ -308,6 +308,14 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
     # Confluence auth typically supports basic (email + API token) / bearer / cookie session.
     auth: Optional[WebCrawlAuthConfig] = None
 
+    # How to ingest each page after listing:
+    # - api_view: fetch HTML via Confluence REST API (body.view)
+    # - webui: ingest the Confluence web UI URL via the existing URL ingestion pipeline
+    ingest_method: Literal["api_view", "webui"] = Field(
+        default="api_view",
+        description="api_view: REST body.view; webui: ingest _links.webui URL",
+    )
+
     sync_mode: Literal["auto", "full", "incremental"] = Field(
         default="auto",
         description="auto: incremental if state.last_modified exists else full",

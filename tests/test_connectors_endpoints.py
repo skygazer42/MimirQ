@@ -224,6 +224,7 @@ def test_connectors_create_confluence_run_redacts_auth(monkeypatch):  # noqa: AN
     body = res.json()
     cfg = body.get("config") or {}
     assert cfg.get("auth", {}).get("token") == "<redacted>"
+    assert cfg.get("ingest_method") == "api_view"
 
 
 def test_connectors_accept_mysql_catalog_config(monkeypatch):  # noqa: ANN001
