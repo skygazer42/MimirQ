@@ -2018,6 +2018,18 @@ class UrlUploadRequest(BaseModel):
     pipeline: Optional[DocumentPipelineOptions] = None
 
 
+class LocalHtmlIngestRequest(BaseModel):
+    """Ingest a local HTML payload as a document (internal connector helper)."""
+
+    html: str = Field(..., description="HTML content (fragment or full document)")
+    source_url: Optional[str] = Field(default=None, max_length=2000, description="Best-effort source URL for citations/debug")
+    dataset_id: Optional[UUID] = None
+    filename: Optional[str] = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
+    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: Optional[DocumentPipelineOptions] = None
+
+
 async def _ingest_url_upload_request(
     *,
     background_tasks: BackgroundTasks | None,
@@ -2779,6 +2791,271 @@ async def upload_document(
             resolved_parser_backend,
             resolved_chunk_strategy,
         )
+
+    return db_document
+
+
+async def _ingest_local_html_request(
+    *,
+    background_tasks: BackgroundTasks | None,
+    body: LocalHtmlIngestRequest,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+    ingestion_run_id: UUID | None = None,
+    ingestion_kind: str | None = None,
+) -> DBDocument:
+    """
+    Shared implementation for connector-style ingestion of local HTML content.
+
+    Notes:
+    - Kept queue-aware, similar to URL ingest:
+      - Enqueue when task queue is enabled
+      - Otherwise, when `background_tasks` is None, run inline (connector context)
+    - Currently gated by URL_INGEST_ENABLED for backward-compatible security semantics.
+    """
+    if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+
+    # 1) Resolve dataset permission.
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
+
+    # 2) Validate + write file.
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_html = str(body.html or "")
+    data = raw_html.encode("utf-8", "ignore")
+    if int(getattr(settings, "MAX_FILE_SIZE", 0) or 0) > 0 and len(data) > int(settings.MAX_FILE_SIZE):
+        raise HTTPException(status_code=400, detail="File too large")
+
+    safe_name = _sanitize_filename(body.filename or "confluence-page.html")
+    file_ext = Path(safe_name).suffix.lower() or ".html"
+    if file_ext == ".htm":
+        file_ext = ".html"
+    if not file_ext.startswith("."):
+        file_ext = "." + file_ext
+    if file_ext not in settings.allowed_extensions_list:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+
+    file_id = uuid.uuid4()
+    file_path = upload_dir / f"{file_id}{file_ext}"
+    try:
+        file_path.write_bytes(data)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"failed to write html file: {str(exc)[:120]}") from exc
+
+    file_size = int(len(data))
+    content_type = "text/html"
+    source_url = (str(body.source_url or "").strip() or None)
+    url_normalized = normalize_url_for_dedup(source_url) if source_url else None
+
+    # 3) Resolve ingestion policy (best-effort) based on filename/ext.
+    pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
+
+    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+    matched_rule = match_ingestion_rule(policy, filename=safe_name, file_ext=file_ext)
+
+    dataset_default_pb = None
+    dataset_default_cs = None
+    if dataset is not None:
+        ds_meta = getattr(dataset, "dataset_metadata", None)
+        if isinstance(ds_meta, dict):
+            raw_pb = ds_meta.get("default_parser_backend")
+            raw_cs = ds_meta.get("default_chunk_strategy")
+            if isinstance(raw_pb, str) and raw_pb.strip():
+                dataset_default_pb = raw_pb.strip().lower()
+            if isinstance(raw_cs, str) and raw_cs.strip():
+                dataset_default_cs = raw_cs.strip().lower()
+
+    default_pb_eff = dataset_default_pb or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    default_cs_eff = (
+        dataset_default_cs
+        or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+        or "langchain_recursive"
+    )
+
+    parser_backend_choice = str(body.parser_backend or default_pb_eff)
+    chunk_strategy_choice = str(body.chunk_strategy or default_cs_eff)
+    policy_patch = PipelineOptions()
+    ingestion_meta: Optional[dict[str, Any]] = None
+
+    if matched_rule is not None:
+        default_pb = default_pb_eff
+        req_pb = (parser_backend_choice or "").strip().lower()
+        if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
+            parser_backend_choice = str(matched_rule.parser_backend)
+
+        default_cs = default_cs_eff
+        req_cs = (chunk_strategy_choice or "").strip().lower()
+        if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
+            chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+        preprocess_steps: list[dict[str, Any]] = []
+        pp = getattr(matched_rule, "preprocess", None)
+        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+        if isinstance(steps, list) and steps:
+            preprocess_steps = [
+                {
+                    "id": str(getattr(s, "id", "") or "").strip(),
+                    "params": dict(getattr(s, "params", {}) or {}),
+                }
+                for s in steps
+            ]
+
+        patch_dict: dict[str, Any] = {}
+        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+        if isinstance(profile_ref, str) and profile_ref.strip():
+            try:
+                resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
+            patch_dict.update(dict(resolved.pipeline_patch or {}))
+            if resolved.regex_rules:
+                patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
+
+        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+        if patch_dict:
+            policy_patch = PipelineOptions(**patch_dict)
+
+        ingestion_meta = {
+            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
+            "rule": {"id": matched_rule.id, "name": matched_rule.name},
+            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
+            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
+            "source_url": source_url,
+        }
+
+    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
+
+    # 4) Resolve backend/strategy after policy application.
+    try:
+        resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    pipeline_effective = resolve_pipeline_effective(
+        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
+        document_metadata={},
+        request_overrides=pipeline_options,
+    )
+    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
+        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
+
+    # 5) Unified ingestion run manifest (best-effort; creates a run when missing).
+    if ingestion_run_id is None:
+        try:
+            ingestion_kind_norm = str(ingestion_kind or "connector_html").strip() or "connector_html"
+            run_cfg = {
+                "source_url": source_url,
+                "content_type": content_type,
+                "parser_backend_requested": str(body.parser_backend or "")[:80],
+                "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
+                "parser_backend": str(resolved_parser_backend or "")[:80],
+                "chunk_strategy": str(resolved_chunk_strategy or "")[:80],
+            }
+            ingestion_run = IngestionRunService.create_run(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=getattr(dataset, "id", None),
+                requested_by=account_id,
+                kind=ingestion_kind_norm,
+                config=run_cfg,
+                expected_documents=1,
+            )
+            ingestion_run_id = ingestion_run.id
+        except Exception:
+            ingestion_run_id = None
+
+    # 6) Create document record.
+    doc_metadata = {
+        "parser_backend": resolved_parser_backend,
+        "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "chunk_strategy": resolved_chunk_strategy,
+        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
+        "source_url": source_url,
+        "url_content_type": content_type,
+        "url_final_url": source_url,
+        "url_normalized_url": url_normalized or None,
+    }
+    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
+    if ingestion_meta:
+        doc_metadata["ingestion"] = ingestion_meta
+
+    pipeline_hash = _compute_pipeline_hash(doc_metadata)
+    doc_metadata["pipeline_hash"] = pipeline_hash
+    doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
+    doc_metadata.setdefault("active_pipeline_ready", False)
+    if ingestion_run_id is not None:
+        doc_metadata.setdefault("created_by_run_id", str(ingestion_run_id))
+        doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
+        doc_metadata["last_ingestion_kind"] = str(ingestion_kind or "connector_html")
+
+    db_document = DBDocument(
+        id=file_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset.id,
+        filename=safe_name,
+        file_type=file_ext.lstrip("."),
+        file_size=file_size,
+        file_path=str(file_path),
+        owner_id=account_id,
+        access_mode=None,  # inherit dataset permission by default
+        status="pending",
+        processing_progress=0,
+        doc_metadata=doc_metadata,
+    )
+
+    db.add(db_document)
+    db.commit()
+    db.refresh(db_document)
+    if ingestion_run_id is not None:
+        with contextlib.suppress(Exception):
+            IngestionRunService.add_document(
+                db,
+                tenant_id=tenant_id,
+                run_id=ingestion_run_id,
+                document_id=db_document.id,
+                source_ref=(source_url or safe_name)[:1000] if (source_url or safe_name) else None,
+                initial_status=str(getattr(db_document, "status", "") or "pending"),
+                doc_meta=dict(doc_metadata),
+            )
+
+    # 7) Process document: enqueue if available; otherwise run/attach to background_tasks.
+    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
+    task_id = await enqueue_document_processing(
+        tenant_id=tenant_id,
+        document_id=file_id,
+        requested_by=account_id,
+        job_id=job_id,
+    )
+    if task_id:
+        meta = dict(db_document.doc_metadata or {})
+        meta["task_id"] = task_id
+        db_document.doc_metadata = meta
+        db.commit()
+        db.refresh(db_document)
+    else:
+        if background_tasks is not None:
+            background_tasks.add_task(
+                document_processor.process_document,
+                file_path,
+                file_id,
+                tenant_id,
+                resolved_parser_backend,
+                resolved_chunk_strategy,
+            )
+        else:
+            await document_processor.process_document(
+                file_path=file_path,
+                document_id=file_id,
+                tenant_id=tenant_id,
+                parser_backend=resolved_parser_backend,
+                chunk_strategy=resolved_chunk_strategy,
+                db=db,
+            )
 
     return db_document
 
