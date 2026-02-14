@@ -9,6 +9,7 @@ from app.api.v1 import (
     chat,
     chunk_presets,
     connectors,
+    db_catalog,
     dataset_categories,
     dataset_precheck,
     dataset_tables,

@@ -178,7 +178,6 @@ def test_connectors_create_web_crawl_run_redacts_auth(monkeypatch):  # noqa: ANN
     cfg = body.get("config") or {}
     assert cfg.get("auth", {}).get("token") == "<redacted>"
 
-
 def test_connectors_create_confluence_run_redacts_auth(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors_module
     from app.api.v1.connectors import create_connector_run
