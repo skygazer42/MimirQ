@@ -1,7 +1,13 @@
 """
 FastAPI main entry point.
 """
+import logging
+import os
+import time
 import warnings
+from contextlib import asynccontextmanager
+from pathlib import Path
+from urllib.parse import urlparse
 
 # Quiet noisy third-party deprecation warnings during local development.
 warnings.filterwarnings(
@@ -25,13 +31,6 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-import logging
-import os
-import time
-from contextlib import asynccontextmanager
-from pathlib import Path
-from urllib.parse import urlparse
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -44,9 +43,6 @@ import app.models.chunk_preset  # noqa: F401
 # Ensure connector models are registered for metadata creation
 import app.models.connector  # noqa: F401
 import app.models.connector_config  # noqa: F401
-
-# Ensure DB catalog models are registered for metadata creation
-import app.models.db_catalog  # noqa: F401
 
 # Ensure conversation summary models are registered for metadata creation
 import app.models.conversation_summary  # noqa: F401
