@@ -22,6 +22,22 @@ This project includes several features that may interact with external systems. 
 - **Authentication**: `AUTH_MODE=header` is intended for local/dev. Use `AUTH_MODE=jwt` in production.
 - **Network exposure**: the default `docker-compose.yml` does not expose database/vector/object-store ports; avoid exposing infra ports publicly.
 
+## Production Checklist (Recommended)
+
+This checklist summarizes the "prod-strict baseline" defaults and hardening settings. Most of these are enforced only when `ENV=production`.
+
+- Set `ENV=production`.
+- Use `AUTH_MODE=jwt` (header mode is unsafe and must not be used in production).
+- Set `SECRET_KEY` (minimum 32 chars; do not use default/example values).
+- Configure allowed hosts: `TRUSTED_HOSTS_ENABLED=true` by default; in production, set `ALLOWED_HOSTS` to a comma-separated list (do not use `*`).
+- Configure CORS: in production, `CORS_ORIGINS` is required and must be a comma-separated list of `http(s)` origins (no `*`, no `null`, no localhost); `CORS_ALLOW_CREDENTIALS` defaults to `false` unless explicitly enabled.
+- Reduce public API surface: `API_DOCS_ENABLED` and `API_OPENAPI_ENABLED` default to `false` in production unless explicitly enabled.
+- Disable settings `.env` mutation (recommended): `SETTINGS_ENV_WRITE_ENABLED` defaults to `false` in production; keep it disabled unless you explicitly need runtime configuration writes via the Settings API.
+- Set request size guardrails: `REQUEST_MAX_BODY_BYTES` limits requests with `Content-Length` (default: 60000000). Tune for your workload.
+- Review any outbound fetch features (SSRF/egress risk): keep `URL_INGEST_ENABLED=false` unless required; if enabled, configure allowlists and keep private IP access disabled unless you have a controlled network environment.
+- Outbound HTTP safety: outbound requests use a dedicated HTTP client profile and should not forward inbound authentication headers by default (defense-in-depth against header leakage).
+- Prefer keeping production docs/schema off: only enable `API_DOCS_ENABLED`/`API_OPENAPI_ENABLED` temporarily for debugging.
+
 ## Supported Versions
 
 We provide security fixes for the latest version on the `main` branch.

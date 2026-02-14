@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -882,11 +882,17 @@ async def get_settings(
 @router.put("")
 async def update_settings(
     request: UpdateSettingsRequest,
+    http_request: Request,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
     """Update system config (write .env file)."""
+    if not bool(getattr(settings, "SETTINGS_ENV_WRITE_ENABLED", True)):
+        raise HTTPException(
+            status_code=403,
+            detail="Settings writes are disabled. Set SETTINGS_ENV_WRITE_ENABLED=true to allow updating .env.",
+        )
     _ensure_settings_writable(db, tenant_id, account_id)
     lock_ctx = _env_file_lock()
     lock_ctx.__enter__()
@@ -1196,6 +1202,34 @@ async def update_settings(
             updated_keys.append("LANGGRAPH_USE_SUBGRAPHS")
 
         write_env_file(env_vars)
+        with contextlib.suppress(Exception):
+            # Best-effort, PII-minimal audit record (no secret values).
+            from app.services.audit_log_service import audit_log_event
+
+            request_id = (http_request.headers.get("X-Request-ID") or "").strip() or str(
+                getattr(http_request.state, "request_id", "") or ""
+            ).strip() or None
+
+            ip = None
+            with contextlib.suppress(Exception):
+                ip = str(getattr(getattr(http_request, "client", None), "host", "") or "").strip() or None
+
+            user_agent = (http_request.headers.get("User-Agent") or "").strip() or None
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="settings.update",
+                resource_type="settings",
+                resource_id="env",
+                request_id=request_id,
+                ip=ip,
+                user_agent=user_agent,
+                details={"updated_keys": list(dict.fromkeys(updated_keys))},
+            )
+            with contextlib.suppress(Exception):
+                db.commit()
         with contextlib.suppress(Exception):
             # Best-effort only.
             _apply_runtime_settings(env_vars, updated_keys)

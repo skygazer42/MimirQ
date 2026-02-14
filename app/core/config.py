@@ -424,6 +424,13 @@ class Settings(BaseSettings):
     API_DOCS_ENABLED: bool = True
     API_OPENAPI_ENABLED: bool = True
 
+    # Settings API `.env` mutation guard.
+    #
+    # Prod strategy (Option A): default disabled in production unless explicitly enabled.
+    # This reduces the blast radius of a compromised admin token and aligns with
+    # "config via deploy pipeline" practices.
+    SETTINGS_ENV_WRITE_ENABLED: bool = True
+
     # Emit Server-Timing response header for quick perf debugging.
     SERVER_TIMING_ENABLED: bool = True
 
@@ -955,6 +962,9 @@ class Settings(BaseSettings):
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"
     TENANT_HEADER: str = "X-Tenant-ID"
+    # Optional hardening: when enabled (and JWT tenant claim is available), prefer the verified
+    # tenant from the token over a spoofable header.
+    TENANT_PREFER_JWT_TENANT: bool = False
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
@@ -1014,6 +1024,8 @@ class Settings(BaseSettings):
                 self.API_DOCS_ENABLED = False
             if "API_OPENAPI_ENABLED" not in fields_set:
                 self.API_OPENAPI_ENABLED = False
+            if "SETTINGS_ENV_WRITE_ENABLED" not in fields_set:
+                self.SETTINGS_ENV_WRITE_ENABLED = False
             # Docs require OpenAPI; if a deploy explicitly enables docs, keep the schema endpoint available.
             if bool(getattr(self, "API_DOCS_ENABLED", False)) and not bool(getattr(self, "API_OPENAPI_ENABLED", False)):
                 self.API_OPENAPI_ENABLED = True
