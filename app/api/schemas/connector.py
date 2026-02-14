@@ -298,7 +298,6 @@ class MinioBucketConnectorConfig(BaseModel):
         self.include_extensions = exts
         return self
 
-
 class ConfluenceSpaceConnectorConfig(BaseModel):
     """Config for `confluence_space` connector (list pages in a space -> ingest page HTML)."""
 
