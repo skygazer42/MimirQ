@@ -1,6 +1,7 @@
 """
 API v1 routes.
 """
+
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -9,7 +10,6 @@ from app.api.v1 import (
     chat,
     chunk_presets,
     connectors,
-    db_catalog,
     dataset_categories,
     dataset_precheck,
     dataset_tables,
