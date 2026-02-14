@@ -45,6 +45,7 @@ async def get_current_account_id_from_headers(
     authorization: str | None,
     x_user_id: str | None,
     x_tenant_id: str | None,
+    request: Request | None = None,
 ) -> str:
     """
     Resolve current account id from request headers.
@@ -58,6 +59,8 @@ async def get_current_account_id_from_headers(
         if not x_user_id:
             raise HTTPException(status_code=401, detail="X-User-ID header required")
         user_id = str(x_user_id)
+        if request is not None:
+            request.state.user_id = user_id
         set_request_user_id(user_id)
         return user_id
 
@@ -70,14 +73,23 @@ async def get_current_account_id_from_headers(
     else:
         raise HTTPException(status_code=401, detail="Invalid Authorization header")
 
-    try:
-        payload = await decode_access_token(token)
-    except ExpiredSignatureError as exc:
-        logger.warning("Expired token attempted for access")
-        raise HTTPException(status_code=401, detail="Token expired") from exc
-    except JWTError as exc:
-        logger.warning("Invalid token: %s", str(exc)[:100])
-        raise HTTPException(status_code=401, detail="Invalid token") from exc
+    payload = None
+    if request is not None:
+        cached = getattr(request.state, "_jwt_payload", None)
+        if isinstance(cached, dict) and cached:
+            payload = cached
+
+    if payload is None:
+        try:
+            payload = await decode_access_token(token)
+        except ExpiredSignatureError as exc:
+            logger.warning("Expired token attempted for access")
+            raise HTTPException(status_code=401, detail="Token expired") from exc
+        except JWTError as exc:
+            logger.warning("Invalid token: %s", str(exc)[:100])
+            raise HTTPException(status_code=401, detail="Invalid token") from exc
+        if request is not None:
+            request.state._jwt_payload = payload
 
     user_id = payload.get("sub")
     if not user_id:
@@ -85,8 +97,6 @@ async def get_current_account_id_from_headers(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     jwt_tenant_id = _get_jwt_tenant_id(payload)
-    if jwt_tenant_id:
-        set_request_tenant_id(jwt_tenant_id)
 
     if bool(getattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False)):
         if not jwt_tenant_id:
@@ -99,7 +109,13 @@ async def get_current_account_id_from_headers(
             raise HTTPException(status_code=401, detail="Invalid token")
 
     user_id = str(user_id)
+    if request is not None:
+        request.state.user_id = user_id
     set_request_user_id(user_id)
+    if jwt_tenant_id:
+        set_request_tenant_id(jwt_tenant_id)
+        if request is not None:
+            request.state.tenant_id = UUID(jwt_tenant_id)
     return user_id
 
 
@@ -124,4 +140,5 @@ async def get_current_account_id(
         authorization=authorization,
         x_user_id=x_user_id,
         x_tenant_id=tenant_value,
+        request=request,
     )

@@ -36,8 +36,9 @@ class _DummyAsyncClient:
 
 
 def test_openai_embedding_encode_uses_external_pool_not_requests(monkeypatch):
-    import app.rag.embedding.providers.openai as provider
     import requests
+
+    import app.rag.embedding.providers.openai as provider
 
     spy = {"requests_post": 0}
 
