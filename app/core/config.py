@@ -394,6 +394,11 @@ class Settings(BaseSettings):
     # Allow browsers to read diagnostic headers from cross-origin responses.
     # NOTE: This does not affect which headers the backend sends, only what the browser exposes to JS.
     CORS_EXPOSE_HEADERS: str = "X-Request-ID,X-Process-Time-Ms,Server-Timing,Retry-After"
+    # Allowed Host header values (Starlette TrustedHostMiddleware).
+    # - Dev default: empty => middleware disabled outside production.
+    # - Production: required when TRUSTED_HOSTS_ENABLED=true.
+    ALLOWED_HOSTS: str = ""
+    TRUSTED_HOSTS_ENABLED: bool = True
 
     # Emit Server-Timing response header for quick perf debugging.
     SERVER_TIMING_ENABLED: bool = True
@@ -968,6 +973,15 @@ class Settings(BaseSettings):
     def validate_settings(self) -> "Settings":
         """Validate configuration settings at startup."""
         is_production = is_production_env()
+
+        # Security: Host header hardening (production-only by default).
+        if is_production and bool(getattr(self, "TRUSTED_HOSTS_ENABLED", True)):
+            raw_allowed = str(getattr(self, "ALLOWED_HOSTS", "") or "").strip()
+            allowed = [p.strip() for p in raw_allowed.split(",") if p.strip()]
+            if not allowed:
+                raise ValueError("ALLOWED_HOSTS required in production (comma-separated)")
+            if "*" in allowed:
+                raise ValueError("ALLOWED_HOSTS must not include '*' in production")
 
         # Security: Auth mode guard
         auth_mode = (getattr(self, "AUTH_MODE", "jwt") or "jwt").lower()

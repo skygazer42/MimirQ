@@ -337,6 +337,13 @@ app = FastAPI(
 # Optional FastAPI instrumentation (OTEL_ENABLED).
 instrument_fastapi(app)
 
+# Trusted hosts (Host header hardening; production-only by default).
+if is_production_env() and bool(getattr(settings, "TRUSTED_HOSTS_ENABLED", True)):
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+    allowed_hosts = parse_csv(str(getattr(settings, "ALLOWED_HOSTS", "") or ""))
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
 # CORS config
 cors_origins = parse_csv(settings.CORS_ORIGINS)
 if not is_production_env():
