@@ -1823,6 +1823,16 @@ def _confluence_api_base_url(base_url: str) -> str:
     return f"{base}/rest/api"
 
 
+async def _confluence_request(pool, method: str, url: str, **kwargs):  # noqa: ANN001, ANN201
+    """
+    Confluence API requests are always third-party outbound HTTP calls.
+
+    Security/compliance: force the HTTP client pool to use its external profile
+    (no internal tenant/user headers).
+    """
+    return await pool.request_with_retry(method, url, use_external_client=True, **kwargs)
+
+
 def _confluence_join_webui(*, base: str, webui: str) -> str:
     """
     Join Confluence `_links.base` + `_links.webui` safely.
@@ -2141,7 +2151,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                 "limit": int(page_size),
                 "expand": "version",
             }
-            resp = await pool.request_with_retry("GET", search_url, params=params, headers=headers)
+            resp = await _confluence_request(pool, "GET", search_url, params=params, headers=headers)
             data = resp.json() if resp is not None else {}
 
             links = data.get("_links") if isinstance(data, dict) else None
@@ -2223,7 +2233,13 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             raise ValueError("missing page id")
                         content_url = f"{api_base}/content/{page_id}"
                         content_params = {"expand": "body.view,version"}
-                        content_resp = await pool.request_with_retry("GET", content_url, params=content_params, headers=headers)
+                        content_resp = await _confluence_request(
+                            pool,
+                            "GET",
+                            content_url,
+                            params=content_params,
+                            headers=headers,
+                        )
                         content = content_resp.json() if content_resp is not None else {}
 
                         body0 = content.get("body") if isinstance(content, dict) else None
@@ -2318,7 +2334,13 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             attachments_url = f"{api_base}/content/{page_id}/child/attachment"
                             attachments_params = {"start": 0, "limit": int(per_page_limit_eff)}
                             try:
-                                att_resp = await pool.request_with_retry("GET", attachments_url, params=attachments_params, headers=headers)
+                                att_resp = await _confluence_request(
+                                    pool,
+                                    "GET",
+                                    attachments_url,
+                                    params=attachments_params,
+                                    headers=headers,
+                                )
                                 att_data = att_resp.json() if att_resp is not None else {}
                                 att_refs = _confluence_extract_attachments(
                                     att_data if isinstance(att_data, dict) else {},
@@ -2482,7 +2504,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                     "start": int(start),
                     "limit": 1,
                 }
-                probe = await pool.request_with_retry("GET", search_url, params=probe_params, headers=headers)
+                probe = await _confluence_request(pool, "GET", search_url, params=probe_params, headers=headers)
                 probe_data = probe.json() if probe is not None else {}
                 probe_results = probe_data.get("results") if isinstance(probe_data, dict) else None
                 probe_pages = probe_results if isinstance(probe_results, list) else []

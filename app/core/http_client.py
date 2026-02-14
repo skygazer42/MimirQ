@@ -297,6 +297,7 @@ class HTTPClientPool:
         retry_delay: Optional[float] = None,
         backoff_factor: Optional[float] = None,
         jitter: Optional[float] = None,
+        use_external_client: bool = False,
         **kwargs: Any,
     ) -> httpx.Response:
         """
@@ -316,7 +317,7 @@ class HTTPClientPool:
         Raises:
             httpx.HTTPError: Request failure.
         """
-        client = await self.get_client()
+        client = await (self.get_external_client() if use_external_client else self.get_client())
         last_exception = None
 
         max_retries = int(max_retries if max_retries is not None else getattr(settings, "HTTP_CLIENT_RETRY_MAX_RETRIES", 3))
