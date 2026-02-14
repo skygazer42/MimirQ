@@ -324,6 +324,10 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
     page_size: int = Field(default=25, ge=1, le=100)
     soft_delete: bool = Field(default=False, description="If true, disable connector-managed docs missing from a full sync (best-effort).")
 
+    include_attachments: bool = Field(default=False, description="If true, list and ingest page attachments (bounded).")
+    max_attachments_per_page: int = Field(default=10, ge=1, le=50, description="Max attachments ingested per page (bounded).")
+    max_total_attachments: int = Field(default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded).")
+
     user_agent: Optional[str] = Field(default=None, max_length=200)
 
     # Ingest options per page.
