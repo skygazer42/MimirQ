@@ -416,6 +416,11 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: str = ""
     TRUSTED_HOSTS_ENABLED: bool = True
 
+    # API surface exposure (docs / schema).
+    # Prod strategy (Option A): default disabled in production unless explicitly enabled.
+    API_DOCS_ENABLED: bool = True
+    API_OPENAPI_ENABLED: bool = True
+
     # Emit Server-Timing response header for quick perf debugging.
     SERVER_TIMING_ENABLED: bool = True
 
@@ -999,12 +1004,22 @@ class Settings(BaseSettings):
             if "*" in allowed:
                 raise ValueError("ALLOWED_HOSTS must not include '*' in production")
 
+        # Security: Reduce public API surface in production by default.
+        if is_production:
+            fields_set = getattr(self, "model_fields_set", set()) or set()
+            if "API_DOCS_ENABLED" not in fields_set:
+                self.API_DOCS_ENABLED = False
+            if "API_OPENAPI_ENABLED" not in fields_set:
+                self.API_OPENAPI_ENABLED = False
+            # Docs require OpenAPI; if a deploy explicitly enables docs, keep the schema endpoint available.
+            if bool(getattr(self, "API_DOCS_ENABLED", False)) and not bool(getattr(self, "API_OPENAPI_ENABLED", False)):
+                self.API_OPENAPI_ENABLED = True
+
         # Security: CORS hardening (production guardrails).
         if is_production:
             # Production default: do not allow credentialed cross-origin calls unless explicitly enabled.
             # This avoids accidentally running a cookie-bearing API with permissive CORS defaults.
-            fields_set = getattr(self, "model_fields_set", set()) or set()
-            if "CORS_ALLOW_CREDENTIALS" not in fields_set:
+            if "CORS_ALLOW_CREDENTIALS" not in (getattr(self, "model_fields_set", set()) or set()):
                 self.CORS_ALLOW_CREDENTIALS = False
 
             cors_raw = str(getattr(self, "CORS_ORIGINS", "") or "")
