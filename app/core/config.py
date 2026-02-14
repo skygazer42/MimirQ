@@ -11,6 +11,7 @@ import sys
 import warnings
 from pathlib import Path
 from typing import Literal, Optional
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -982,6 +983,27 @@ class Settings(BaseSettings):
                 raise ValueError("ALLOWED_HOSTS required in production (comma-separated)")
             if "*" in allowed:
                 raise ValueError("ALLOWED_HOSTS must not include '*' in production")
+
+        # Security: CORS hardening (production guardrails).
+        if is_production:
+            cors_raw = str(getattr(self, "CORS_ORIGINS", "") or "")
+            cors_origins = [p.strip() for p in cors_raw.split(",") if p.strip()]
+            if not cors_origins:
+                raise ValueError("CORS_ORIGINS required in production")
+            if "*" in cors_origins:
+                # Note: FastAPI/Starlette forbids credentials with wildcard origins; keep signal high in prod.
+                raise ValueError("CORS_ORIGINS must not include '*' in production")
+
+            for origin in cors_origins:
+                if origin.lower().strip() == "null":
+                    raise ValueError("CORS_ORIGINS must not include 'null' in production")
+                parsed = urlparse(origin)
+                scheme = (parsed.scheme or "").lower().strip()
+                host = (parsed.hostname or "").lower().strip()
+                if scheme not in {"http", "https"} or not host:
+                    raise ValueError("CORS_ORIGINS must be a comma-separated list of http(s) origins in production")
+                if host in {"localhost", "127.0.0.1", "0.0.0.0"} or host.endswith(".localhost"):
+                    raise ValueError("CORS_ORIGINS must not include localhost origins in production")
 
         # Security: Auth mode guard
         auth_mode = (getattr(self, "AUTH_MODE", "jwt") or "jwt").lower()
