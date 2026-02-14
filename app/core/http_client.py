@@ -31,14 +31,15 @@ class HTTPClientPool:
     
     def __init__(self):
         self._async_client: Optional[httpx.AsyncClient] = None
+        self._async_client_external: Optional[httpx.AsyncClient] = None
         self._sync_client: Optional[httpx.Client] = None
+        self._sync_client_external: Optional[httpx.Client] = None
         self._async_lock = threading.Lock()
         self._sync_lock = threading.Lock()
         # Preserve legacy lock usage for code that expects async locking semantics.
         self._request_lock = asyncio.Lock()
 
-    @staticmethod
-    def _inject_request_context_headers(request: httpx.Request) -> None:
+    def _inject_internal_context_headers(self, request: httpx.Request) -> None:
         """
         Best-effort propagation of request-scoped context headers.
 
@@ -63,6 +64,27 @@ class HTTPClientPool:
             request.headers["X-Tenant-ID"] = tenant_id
         if user_id and "X-User-ID" not in request.headers:
             request.headers["X-User-ID"] = user_id
+
+    def _inject_external_context_headers(self, request: httpx.Request) -> None:
+        """
+        Best-effort propagation of request context to *external* third-party services.
+
+        Security/Compliance:
+        - Do NOT propagate internal attribution headers like X-Tenant-ID / X-User-ID.
+        - Only X-Request-ID is included (when available) for correlation.
+        """
+        try:
+            ctx = get_request_context()
+        except Exception:  # noqa: BLE001
+            return
+
+        rid = (ctx.get("request_id") or "").strip()
+        if rid and "X-Request-ID" not in request.headers:
+            request.headers["X-Request-ID"] = rid
+
+    # Backwards-compatible name (internal behavior).
+    def _inject_request_context_headers(self, request: httpx.Request) -> None:
+        self._inject_internal_context_headers(request)
 
     def _build_limits(self) -> httpx.Limits:
         return httpx.Limits(
@@ -107,7 +129,7 @@ class HTTPClientPool:
                 follow_redirects=True,
                 http2=http2,
                 trust_env=trust_env,
-                event_hooks={"request": [self._inject_request_context_headers]},
+                event_hooks={"request": [self._inject_internal_context_headers]},
             )
             logger.info(
                 "HTTP async client pool initialized max_connections=%s http2=%s trust_env=%s",
@@ -116,6 +138,38 @@ class HTTPClientPool:
                 trust_env,
             )
             return self._async_client
+
+    def get_external_async_client(self) -> httpx.AsyncClient:
+        """Get a pooled async HTTP client intended for third-party endpoints."""
+        client = self._async_client_external
+        if client is not None:
+            return client
+
+        with self._async_lock:
+            client = self._async_client_external
+            if client is not None:
+                return client
+
+            limits = self._build_limits()
+            timeout = self._build_timeout()
+            http2 = self._build_http2()
+            trust_env = self._build_trust_env()
+
+            self._async_client_external = httpx.AsyncClient(
+                limits=limits,
+                timeout=timeout,
+                follow_redirects=True,
+                http2=http2,
+                trust_env=trust_env,
+                event_hooks={"request": [self._inject_external_context_headers]},
+            )
+            logger.info(
+                "HTTP external async client initialized max_connections=%s http2=%s trust_env=%s",
+                limits.max_connections,
+                http2,
+                trust_env,
+            )
+            return self._async_client_external
 
     def get_sync_client(self) -> httpx.Client:
         """Get the global sync HTTP client (lazy init)."""
@@ -139,7 +193,7 @@ class HTTPClientPool:
                 follow_redirects=True,
                 http2=http2,
                 trust_env=trust_env,
-                event_hooks={"request": [self._inject_request_context_headers]},
+                event_hooks={"request": [self._inject_internal_context_headers]},
             )
             logger.info(
                 "HTTP sync client pool initialized max_connections=%s http2=%s trust_env=%s",
@@ -148,23 +202,65 @@ class HTTPClientPool:
                 trust_env,
             )
             return self._sync_client
+
+    def get_external_sync_client(self) -> httpx.Client:
+        """Get a pooled sync HTTP client intended for third-party endpoints."""
+        client = self._sync_client_external
+        if client is not None:
+            return client
+
+        with self._sync_lock:
+            client = self._sync_client_external
+            if client is not None:
+                return client
+
+            limits = self._build_limits()
+            timeout = self._build_timeout()
+            http2 = self._build_http2()
+            trust_env = self._build_trust_env()
+
+            self._sync_client_external = httpx.Client(
+                limits=limits,
+                timeout=timeout,
+                follow_redirects=True,
+                http2=http2,
+                trust_env=trust_env,
+                event_hooks={"request": [self._inject_external_context_headers]},
+            )
+            logger.info(
+                "HTTP external sync client initialized max_connections=%s http2=%s trust_env=%s",
+                limits.max_connections,
+                http2,
+                trust_env,
+            )
+            return self._sync_client_external
     
     async def get_client(self) -> httpx.AsyncClient:
         """Get the global async HTTP client (lazy init)."""
         # Keep the method async for backward compatibility (tests, callers),
         # but initialization is synchronous.
         return self.get_async_client()
+
+    async def get_external_client(self) -> httpx.AsyncClient:
+        """Async wrapper for the pooled external HTTP client."""
+        return self.get_external_async_client()
     
     async def close(self):
         """Close the client pool."""
         async_client: Optional[httpx.AsyncClient]
         sync_client: Optional[httpx.Client]
+        async_client_external: Optional[httpx.AsyncClient]
+        sync_client_external: Optional[httpx.Client]
         with self._async_lock:
             async_client = self._async_client
             self._async_client = None
+            async_client_external = self._async_client_external
+            self._async_client_external = None
         with self._sync_lock:
             sync_client = self._sync_client
             self._sync_client = None
+            sync_client_external = self._sync_client_external
+            self._sync_client_external = None
 
         if sync_client is not None:
             try:
@@ -177,6 +273,18 @@ class HTTPClientPool:
                 await async_client.aclose()
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to close HTTP async client pool: %s", str(exc)[:200])
+
+        if sync_client_external is not None:
+            try:
+                sync_client_external.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to close HTTP external sync client: %s", str(exc)[:200])
+
+        if async_client_external is not None:
+            try:
+                await async_client_external.aclose()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to close HTTP external async client: %s", str(exc)[:200])
 
         logger.info("HTTP client pool closed")
     
