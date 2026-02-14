@@ -1876,6 +1876,127 @@ def _confluence_ingest_method(cfg: dict) -> str:
     return m if m in {"api_view", "webui"} else "api_view"
 
 
+def _confluence_attachment_limits(cfg: dict) -> tuple[bool, int, int]:
+    """
+    Parse and clamp Confluence attachments ingestion limits from a raw config dict.
+
+    Notes:
+    - The API layer validates config via Pydantic, but the runner is defensive and clamps here too.
+    - 0 values fall back to defaults (same pattern as max_pages/page_size elsewhere).
+    """
+    raw = cfg if isinstance(cfg, dict) else {}
+    include = bool(raw.get("include_attachments", False))
+
+    per_page = int(raw.get("max_attachments_per_page") or 10)
+    per_page = max(1, min(per_page, 50))
+
+    total = int(raw.get("max_total_attachments") or 200)
+    total = max(1, min(total, 2000))
+
+    return include, per_page, total
+
+
+def _confluence_attachment_download_url(*, base: str, download: str) -> str:
+    """
+    Build an absolute attachment download URL from Confluence REST `_links`.
+
+    `download` is typically a path like "/download/attachments/...". We must preserve
+    Confluence context paths (e.g. "/wiki"), so we reuse the same join logic as webui.
+    """
+    return _confluence_join_webui(base=str(base or ""), webui=str(download or ""))
+
+
+def _confluence_extract_attachments(data: dict, *, link_base_fallback: str, limit: int) -> list[dict[str, str]]:
+    """
+    Extract attachment refs from a Confluence attachments API response.
+
+    Returns a list of dicts with:
+    - attachment_id
+    - filename
+    - download_url
+
+    The result is bounded by `limit` and skips items missing required fields.
+    """
+    if not isinstance(data, dict):
+        return []
+
+    lim = int(limit or 0)
+    if lim <= 0:
+        lim = 10_000
+
+    links = data.get("_links") if isinstance(data.get("_links"), dict) else {}
+    link_base = links.get("base") if isinstance(links.get("base"), str) and str(links.get("base") or "").strip() else str(link_base_fallback or "")
+
+    results = data.get("results") if isinstance(data.get("results"), list) else []
+    out: list[dict[str, str]] = []
+
+    for raw in results:
+        if len(out) >= lim:
+            break
+        if not isinstance(raw, dict):
+            continue
+
+        attachment_id = str(raw.get("id") or "").strip()
+        if not attachment_id:
+            continue
+
+        filename = str(raw.get("title") or raw.get("filename") or raw.get("name") or "").strip()
+        if not filename:
+            filename = f"confluence-attachment-{attachment_id}"
+
+        item_links = raw.get("_links") if isinstance(raw.get("_links"), dict) else {}
+        download = str(item_links.get("download") or "").strip()
+        download_url = _confluence_attachment_download_url(base=link_base, download=download)
+        if not download_url:
+            continue
+
+        out.append(
+            {
+                "attachment_id": attachment_id,
+                "filename": filename,
+                "download_url": download_url,
+            }
+        )
+
+    return out
+
+
+def _confluence_attachment_connector_metadata(
+    *,
+    base_url: str,
+    space_key: str,
+    page_id: str | None,
+    page_title: str | None,
+    page_url: str,
+    attachment_id: str,
+    filename: str,
+    download_url: str,
+    run_id: str,
+    mode: str,
+    ingest_method: str,
+) -> dict[str, Any]:
+    """
+    Build doc_metadata.connector for a Confluence attachment document.
+
+    This must not affect pipeline hashing (metadata is patched after doc creation).
+    """
+    return {
+        "connector_id": "confluence_space",
+        "doc_kind": "attachment",
+        "base_url": base_url,
+        "space_key": space_key,
+        "page_id": (str(page_id or "").strip() or None),
+        "page_title": (str(page_title or "").strip() or None),
+        "page_url": str(page_url or "").strip(),
+        "attachment_id": str(attachment_id or "").strip(),
+        "filename": str(filename or "").strip(),
+        "download_url": str(download_url or "").strip(),
+        "run_id": str(run_id or "").strip(),
+        "mode": str(mode or "").strip(),
+        "ingest_method": str(ingest_method or "").strip(),
+    }
+
+
 async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for confluence_space connector.
@@ -1932,6 +2053,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         page_size = max(1, min(page_size, 100))
         soft_delete = bool(cfg.get("soft_delete", False))
 
+        include_attachments, max_attachments_per_page, max_total_attachments = _confluence_attachment_limits(cfg)
+
         ingest_method = _confluence_ingest_method(cfg)
 
         parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
@@ -1960,6 +2083,10 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         created = 0
         failed = 0
         processed = 0
+        attachments_processed = 0
+        attachments_created = 0
+        attachments_failed = 0
+        attachments_skipped = 0
         created_doc_ids: list[UUID] = []
         observed_page_ids: set[str] = set()
         last_modified_seen: str | None = None
@@ -1977,6 +2104,13 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                 "cursor": 0,
                 "created": 0,
                 "failed": 0,
+                "include_attachments": bool(include_attachments),
+                "max_attachments_per_page": int(max_attachments_per_page),
+                "max_total_attachments": int(max_total_attachments),
+                "processed_attachments": 0,
+                "created_attachments": 0,
+                "failed_attachments": 0,
+                "skipped_attachments": 0,
                 "failed_urls": [],
                 "errors": [],
                 "error_groups": [],
@@ -2170,6 +2304,127 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                     created_doc_ids.append(doc.id)
                     if page_id:
                         observed_page_ids.add(page_id)
+
+                    # Optional: ingest page attachments (bounded, best-effort).
+                    if (
+                        include_attachments
+                        and page_id
+                        and attachments_processed < max_total_attachments
+                        and str(run.status or "").lower() != "cancelled"
+                    ):
+                        remaining_total = int(max_total_attachments) - int(attachments_processed)
+                        per_page_limit_eff = int(min(int(max_attachments_per_page), max(0, remaining_total)))
+                        if per_page_limit_eff > 0:
+                            attachments_url = f"{api_base}/content/{page_id}/child/attachment"
+                            attachments_params = {"start": 0, "limit": int(per_page_limit_eff)}
+                            try:
+                                att_resp = await pool.request_with_retry("GET", attachments_url, params=attachments_params, headers=headers)
+                                att_data = att_resp.json() if att_resp is not None else {}
+                                att_refs = _confluence_extract_attachments(
+                                    att_data if isinstance(att_data, dict) else {},
+                                    link_base_fallback=str(link_base or base_url),
+                                    limit=int(per_page_limit_eff),
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                failed += 1
+                                attachments_failed += 1
+                                stats = dict(run.stats or {})
+                                stats = _append_connector_error(stats, url=f"confluence_attachments:{page_id}", exc=exc)
+                                run.stats = _finalize_connector_stats(stats)
+                            else:
+                                for aref in att_refs:
+                                    if attachments_processed >= max_total_attachments:
+                                        break
+
+                                    # Per-attachment cancellation check (best-effort).
+                                    try:
+                                        db.refresh(run)
+                                    except Exception:
+                                        pass
+                                    if str(run.status or "").lower() == "cancelled":
+                                        break
+
+                                    attachment_id = str(aref.get("attachment_id") or "").strip()
+                                    filename_att = str(aref.get("filename") or "").strip()
+                                    download_url = str(aref.get("download_url") or "").strip()
+                                    attachments_processed += 1
+
+                                    if not attachment_id or not download_url:
+                                        attachments_skipped += 1
+                                        continue
+
+                                    # Quick skip for obvious unsupported types (URL ingest will enforce again).
+                                    ext = Path(filename_att).suffix.lower()
+                                    if ext and ext not in settings.allowed_extensions_list:
+                                        attachments_skipped += 1
+                                        continue
+
+                                    try:
+                                        att_body = UrlUploadRequest(
+                                            url=download_url,
+                                            dataset_id=run.dataset_id,
+                                            filename=filename_att,
+                                            fetch_headers=auth_headers or None,
+                                            user_agent=user_agent,
+                                            parser_backend=str(parser_backend),
+                                            chunk_strategy=str(chunk_strategy),
+                                            pipeline=pipeline,  # type: ignore[arg-type]
+                                        )
+                                        att_doc = await _ingest_url_upload_request(
+                                            background_tasks=None,
+                                            body=att_body,
+                                            tenant_id=tenant_id,
+                                            account_id=requested_by,
+                                            db=db,
+                                        )
+
+                                        _apply_document_access_from_config(
+                                            db,
+                                            tenant_id=tenant_id,
+                                            requested_by=requested_by,
+                                            doc=att_doc,
+                                            access=access,
+                                        )
+
+                                        # Attach connector metadata (must not affect pipeline_hash).
+                                        try:
+                                            meta_att = dict(getattr(att_doc, "doc_metadata", None) or {})
+                                            meta_att["connector"] = _confluence_attachment_connector_metadata(
+                                                base_url=base_url,
+                                                space_key=space_key,
+                                                page_id=(page_id or None),
+                                                page_title=(title or None),
+                                                page_url=page_url,
+                                                attachment_id=attachment_id,
+                                                filename=filename_att,
+                                                download_url=download_url,
+                                                run_id=str(run.id),
+                                                mode=effective_mode,
+                                                ingest_method=ingest_method,
+                                            )
+                                            att_doc.doc_metadata = meta_att
+                                        except Exception:
+                                            # Best-effort: never fail the run due to metadata patching.
+                                            pass
+
+                                        db.add(
+                                            ConnectorRunDocument(
+                                                tenant_id=tenant_id,
+                                                run_id=run.id,
+                                                document_id=att_doc.id,
+                                                source_ref=(attachment_id or download_url)[:1000] or None,
+                                                status="created",
+                                            )
+                                        )
+                                        created += 1
+                                        created_doc_ids.append(att_doc.id)
+                                        attachments_created += 1
+                                    except Exception as exc:  # noqa: BLE001
+                                        failed += 1
+                                        attachments_failed += 1
+                                        stats = dict(run.stats or {})
+                                        stats = _append_connector_error(stats, url=(download_url or attachment_id), exc=exc)
+                                        run.stats = _finalize_connector_stats(stats)
                 except Exception as exc:  # noqa: BLE001
                     failed += 1
                     stats = dict(run.stats or {})
@@ -2184,6 +2439,10 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             "cursor": int(processed),
                             "created": int(created),
                             "failed": int(failed),
+                            "processed_attachments": int(attachments_processed),
+                            "created_attachments": int(attachments_created),
+                            "failed_attachments": int(attachments_failed),
+                            "skipped_attachments": int(attachments_skipped),
                             "document_ids": [str(d) for d in created_doc_ids],
                         }
                     )
