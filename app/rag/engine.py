@@ -50,8 +50,9 @@ class RAGEngine:
     def __init__(self) -> None:
         # LLM config: share process-wide HTTP clients for connection reuse and consistent timeouts.
         pool = get_http_client_pool()
-        self.http_client = pool.get_sync_client()
-        self.http_async_client = pool.get_async_client()
+        # Security/compliance: do not propagate internal tenant/user headers to third-party LLM providers.
+        self.http_client = pool.get_external_sync_client()
+        self.http_async_client = pool.get_external_async_client()
 
         # Build available models for dynamic routing (inspired by agent middleware pattern)
         default_model_name = settings.LLM_MODEL or "gpt-4-turbo-preview"
