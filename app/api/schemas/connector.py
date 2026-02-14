@@ -299,6 +299,45 @@ class MinioBucketConnectorConfig(BaseModel):
         return self
 
 
+class ConfluenceSpaceConnectorConfig(BaseModel):
+    """Config for `confluence_space` connector (list pages in a space -> ingest page HTML)."""
+
+    base_url: str = Field(..., max_length=2000, description="Confluence base URL (cloud or on-prem). Example: https://<site>.atlassian.net/wiki")
+    space_key: str = Field(..., max_length=255, description="Confluence space key")
+
+    # Confluence auth typically supports basic (email + API token) / bearer / cookie session.
+    auth: Optional[WebCrawlAuthConfig] = None
+
+    sync_mode: Literal["auto", "full", "incremental"] = Field(
+        default="auto",
+        description="auto: incremental if state.last_modified exists else full",
+    )
+    max_pages: int = Field(default=50, ge=1, le=500)
+    page_size: int = Field(default=25, ge=1, le=100)
+    soft_delete: bool = Field(default=False, description="If true, disable connector-managed docs missing from a full sync (best-effort).")
+
+    user_agent: Optional[str] = Field(default=None, max_length=200)
+
+    # Ingest options per page.
+    parser_backend: str = Field(default="auto")
+    chunk_strategy: str = Field(default="langchain_recursive")
+    pipeline: Optional[DocumentPipelineOptions] = None
+    access: Optional[DocumentAccessUpdateRequest] = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "ConfluenceSpaceConnectorConfig":
+        self.base_url = str(self.base_url or "").strip().rstrip("/")
+        self.space_key = str(self.space_key or "").strip()
+
+        if not self.base_url:
+            raise ValueError("base_url is required")
+        if not (self.base_url.startswith("http://") or self.base_url.startswith("https://")):
+            raise ValueError("base_url must start with http:// or https://")
+        if not self.space_key:
+            raise ValueError("space_key is required")
+        return self
+
+
 class MySQLCatalogConnectorConfig(BaseModel):
     """Config for `mysql_catalog` connector (ingest schema/table/column catalog + safe profiling)."""
 
