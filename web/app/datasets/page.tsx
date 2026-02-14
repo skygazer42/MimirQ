@@ -361,6 +361,15 @@ export default function DatasetsPage() {
                         variant="outline"
                         size="sm"
                         className="gap-2"
+                        onClick={() => router.push(`/datasets/${ds.id}/workflow`)}
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        Workflow
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
                         onClick={() => router.push(`/datasets/${ds.id}/tables`)}
                       >
                         <Table2 className="w-3.5 h-3.5" />
