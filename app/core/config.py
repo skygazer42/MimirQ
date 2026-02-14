@@ -163,6 +163,15 @@ class Settings(BaseSettings):
     SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS: str = "nosniff"
     SECURITY_HEADERS_X_FRAME_OPTIONS: str = "DENY"
     SECURITY_HEADERS_REFERRER_POLICY: str = "strict-origin-when-cross-origin"
+    # HSTS is off by default because TLS termination is deployment-specific.
+    SECURITY_HEADERS_HSTS_ENABLED: bool = False
+    SECURITY_HEADERS_HSTS_MAX_AGE_SEC: int = 31536000  # 1 year
+    SECURITY_HEADERS_HSTS_INCLUDE_SUBDOMAINS: bool = True
+    SECURITY_HEADERS_HSTS_PRELOAD: bool = False
+    # Optional modern headers (empty => not set).
+    SECURITY_HEADERS_PERMISSIONS_POLICY: str = ""
+    SECURITY_HEADERS_CROSS_ORIGIN_OPENER_POLICY: str = ""
+    SECURITY_HEADERS_CROSS_ORIGIN_RESOURCE_POLICY: str = ""
 
     # Prometheus metrics
     PROMETHEUS_ENABLED: bool = False

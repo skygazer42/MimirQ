@@ -410,6 +410,17 @@ app.add_middleware(
 if bool(getattr(settings, "SECURITY_HEADERS_ENABLED", True)):
     from app.api.middleware.security_headers import SecurityHeadersMiddleware
 
+    hsts_value = ""
+    if bool(getattr(settings, "SECURITY_HEADERS_HSTS_ENABLED", False)):
+        max_age = int(getattr(settings, "SECURITY_HEADERS_HSTS_MAX_AGE_SEC", 31536000) or 31536000)
+        max_age = max(0, max_age)
+        parts = [f"max-age={max_age}"]
+        if bool(getattr(settings, "SECURITY_HEADERS_HSTS_INCLUDE_SUBDOMAINS", True)):
+            parts.append("includeSubDomains")
+        if bool(getattr(settings, "SECURITY_HEADERS_HSTS_PRELOAD", False)):
+            parts.append("preload")
+        hsts_value = "; ".join(parts)
+
     app.add_middleware(
         SecurityHeadersMiddleware,
         x_content_type_options=str(getattr(settings, "SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS", "nosniff") or "nosniff"),
@@ -418,6 +429,10 @@ if bool(getattr(settings, "SECURITY_HEADERS_ENABLED", True)):
             getattr(settings, "SECURITY_HEADERS_REFERRER_POLICY", "strict-origin-when-cross-origin")
             or "strict-origin-when-cross-origin"
         ),
+        strict_transport_security=hsts_value,
+        permissions_policy=str(getattr(settings, "SECURITY_HEADERS_PERMISSIONS_POLICY", "") or ""),
+        cross_origin_opener_policy=str(getattr(settings, "SECURITY_HEADERS_CROSS_ORIGIN_OPENER_POLICY", "") or ""),
+        cross_origin_resource_policy=str(getattr(settings, "SECURITY_HEADERS_CROSS_ORIGIN_RESOURCE_POLICY", "") or ""),
     )
 
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
