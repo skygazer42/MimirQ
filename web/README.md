@@ -1,6 +1,6 @@
 # MimirQ Web (Next.js Frontend)
 
-This folder contains the Next.js 14 (App Router) frontend.
+This folder contains the Next.js 16 (App Router) frontend.
 
 ## Prerequisites
 
@@ -16,6 +16,10 @@ cd web
 pnpm install
 pnpm dev
 ```
+
+Notes:
+- `pnpm dev` uses webpack (explicit) to support custom `next.config.mjs#webpack` tweaks.
+- `pnpm dev:turbo` uses Turbopack.
 
 Open:
 

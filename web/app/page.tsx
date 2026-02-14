@@ -3,28 +3,32 @@
  */
 import { ChatPageClient } from '@/components/chat-page-client'
 
-export default function Home({
+type HomeSearchParams = {
+  conversation?: string
+  prompt?: string
+  rag?: string
+  doc?: string
+  chunk?: string
+  start?: string
+  end?: string
+}
+
+export default async function Home({
   searchParams,
 }: {
-  searchParams?: {
-    conversation?: string
-    prompt?: string
-    rag?: string
-    doc?: string
-    chunk?: string
-    start?: string
-    end?: string
-  }
+  // Next.js 16 types this as a Promise in app router PageProps.
+  searchParams?: Promise<HomeSearchParams>
 }) {
+  const sp = await searchParams
   return (
     <ChatPageClient
-      initialConversationId={searchParams?.conversation}
-      initialPrompt={searchParams?.prompt}
-      initialOpenRagSettings={searchParams?.rag === '1' || searchParams?.rag === 'true'}
-      initialDocumentId={searchParams?.doc}
-      initialChunkId={searchParams?.chunk}
-      initialHighlightStart={searchParams?.start}
-      initialHighlightEnd={searchParams?.end}
+      initialConversationId={sp?.conversation}
+      initialPrompt={sp?.prompt}
+      initialOpenRagSettings={sp?.rag === '1' || sp?.rag === 'true'}
+      initialDocumentId={sp?.doc}
+      initialChunkId={sp?.chunk}
+      initialHighlightStart={sp?.start}
+      initialHighlightEnd={sp?.end}
     />
   )
 }
