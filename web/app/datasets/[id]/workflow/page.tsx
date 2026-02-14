@@ -1,0 +1,357 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { ArrowLeft, BarChart3, Download, FileUp, Layers, Loader2, RefreshCw, Settings2, Table2 } from 'lucide-react'
+
+import { AppFrame } from '@/components/app-frame'
+import { PageScaffold } from '@/components/ui/page-scaffold'
+import { Panel } from '@/components/ui/panel'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+
+import { GraphViewer } from '@/components/graph/graph-viewer'
+import { datasetApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
+import { buildDatasetConfigGraph } from '@/lib/dataset-config-graph'
+import { cn } from '@/lib/utils'
+
+import type { Dataset, DatasetConfigBundle, DatasetConfigExport } from '@/types'
+
+function asDatasetId(raw: unknown): string | null {
+  if (typeof raw === 'string' && raw.trim()) return raw
+  if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0]
+  return null
+}
+
+function downloadJson(value: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function normalizeImportedBundle(raw: any): DatasetConfigBundle | null {
+  if (!raw || typeof raw !== 'object') return null
+  if ('config' in raw && raw.config && typeof raw.config === 'object') return raw.config as DatasetConfigBundle
+  return raw as DatasetConfigBundle
+}
+
+export default function DatasetWorkflowPage() {
+  const router = useRouter()
+  const params = useParams()
+  const datasetId = asDatasetId((params as any)?.id)
+
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  const [dataset, setDataset] = useState<Dataset | null>(null)
+  const [exportRes, setExportRes] = useState<DatasetConfigExport | null>(null)
+  const [graph, setGraph] = useState(() => buildDatasetConfigGraph({}))
+  const [selectedNode, setSelectedNode] = useState<any | null>(null)
+
+  const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
+
+  const [importOpen, setImportOpen] = useState(false)
+  const [importFileName, setImportFileName] = useState<string>('')
+  const [importBundle, setImportBundle] = useState<DatasetConfigBundle | null>(null)
+
+  const importKeys = useMemo(() => {
+    if (!importBundle || typeof importBundle !== 'object') return []
+    return Object.keys(importBundle as any).sort()
+  }, [importBundle])
+
+  const selectedMeta = (selectedNode as any)?.meta as any | undefined
+  const selectedJson = selectedMeta?.json
+  const selectedJsonText = useMemo(() => {
+    if (selectedJson === undefined) return ''
+    try {
+      return JSON.stringify(selectedJson, null, 2)
+    } catch {
+      return String(selectedJson)
+    }
+  }, [selectedJson])
+
+  const load = useCallback(async () => {
+    if (!datasetId) return
+    setLoading(true)
+    try {
+      const [ds, exp] = await Promise.all([
+        datasetApi.get(datasetId),
+        datasetApi.exportConfig(datasetId),
+      ])
+      setDataset(ds)
+      setExportRes(exp)
+      setGraph(buildDatasetConfigGraph((exp as any)?.config || {}))
+      setSelectedNode(null)
+    } catch (e: any) {
+      console.error('Failed to load dataset workflow', e)
+      toast.error(formatApiError(e, 'Failed to load workflow config'))
+    } finally {
+      setLoading(false)
+    }
+  }, [datasetId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const doExport = useCallback(async () => {
+    if (!datasetId) return
+    setExporting(true)
+    try {
+      const exp = await datasetApi.exportConfig(datasetId)
+      const id8 = datasetId.slice(0, 8)
+      const name = (dataset?.name || 'dataset').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 60)
+      downloadJson(exp, `dataset-config-${name}-${id8}.json`)
+      toast.success('Exported config')
+    } catch (e: any) {
+      console.error('Failed to export dataset config', e)
+      toast.error(formatApiError(e, 'Export failed'))
+    } finally {
+      setExporting(false)
+    }
+  }, [dataset?.name, datasetId])
+
+  const onPickImportFile = useCallback(async (file: File | null) => {
+    if (!file) return
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const raw = JSON.parse(text)
+      const bundle = normalizeImportedBundle(raw)
+      if (!bundle) {
+        toast.error('Invalid JSON: expected DatasetConfigBundle or { config: DatasetConfigBundle }')
+        return
+      }
+      setImportFileName(file.name || 'config.json')
+      setImportBundle(bundle)
+      setImportOpen(true)
+    } catch (e: any) {
+      console.error('Failed to parse import JSON', e)
+      toast.error('Failed to parse JSON file')
+    } finally {
+      setImporting(false)
+      if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }, [])
+
+  const doImport = useCallback(async () => {
+    if (!datasetId || !importBundle) return
+    setImporting(true)
+    try {
+      await datasetApi.importConfig(datasetId, { config: importBundle, replace: true } as any)
+      toast.success('Imported config (replace=true)')
+      setImportOpen(false)
+      setImportBundle(null)
+      setImportFileName('')
+      await load()
+    } catch (e: any) {
+      console.error('Failed to import dataset config', e)
+      toast.error(formatApiError(e, 'Import failed'))
+    } finally {
+      setImporting(false)
+    }
+  }, [datasetId, importBundle, load])
+
+  const copySelectedJson = useCallback(async () => {
+    if (!selectedJsonText.trim()) return
+    try {
+      await navigator.clipboard.writeText(selectedJsonText)
+      toast.success('Copied JSON')
+    } catch (e) {
+      console.error('Failed to copy JSON', e)
+      toast.error('Copy failed')
+    }
+  }, [selectedJsonText])
+
+  return (
+    <AppFrame>
+      <PageScaffold
+        title={`Workflow${dataset?.name ? ` · ${dataset.name}` : ''}`}
+        badge="Dataset Workflow"
+        icon={Layers}
+        iconColor="text-primary"
+        description={
+          <span className="text-sm text-muted-foreground">
+            Read-only graph of <span className="font-mono">DatasetConfigBundle</span> with export/import.
+          </span>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => router.push('/datasets')}>
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
+            {datasetId ? (
+              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+                <Settings2 className="w-4 h-4" />
+                Ingestion
+              </Button>
+            ) : null}
+            {datasetId ? (
+              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
+                <BarChart3 className="w-4 h-4" />
+                Profile
+              </Button>
+            ) : null}
+            {datasetId ? (
+              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
+                <Table2 className="w-4 h-4" />
+                Tables
+              </Button>
+            ) : null}
+            <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
+              Refresh
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => void doExport()} disabled={exporting}>
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
+              Export JSON
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => importInputRef.current?.click()} disabled={importing}>
+              {importing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <FileUp className="w-4 h-4" />}
+              Import JSON
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={(e) => void onPickImportFile(e.target.files?.[0] || null)}
+            />
+          </div>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
+          <Panel padding="none" className="overflow-hidden h-[min(720px,calc(100vh-260px))] min-h-[480px]">
+            <GraphViewer
+              data={graph}
+              layoutMode="tree"
+              showEdgeLabels={false}
+              onNodeClick={(node) => setSelectedNode(node)}
+              onBackgroundClick={() => setSelectedNode(null)}
+            />
+          </Panel>
+
+          <Panel className="h-[min(720px,calc(100vh-260px))] min-h-[480px] flex flex-col overflow-hidden">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-border/70">
+              <div className="min-w-0">
+                <div className="font-semibold truncate">
+                  {selectedNode?.label ? String(selectedNode.label) : 'Node Details'}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {selectedMeta?.configured === false ? (
+                    <span>Not configured (inherits defaults)</span>
+                  ) : selectedMeta?.configured === true ? (
+                    <span>Configured</span>
+                  ) : (
+                    <span>Click a node to inspect summary + JSON</span>
+                  )}
+                </div>
+              </div>
+              {selectedJsonText.trim() ? (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => void copySelectedJson()}>
+                    Copy JSON
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pt-3 space-y-4 no-scrollbar">
+              {Array.isArray(selectedMeta?.summary) && selectedMeta.summary.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">Summary</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(selectedMeta.summary as any[]).slice(0, 20).map((s, idx) => (
+                      <Badge key={idx} variant="outline" className="font-mono text-[10px]">
+                        {String(s)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">JSON</div>
+                <Textarea
+                  value={selectedJsonText || ''}
+                  readOnly
+                  className="font-mono text-xs min-h-[280px]"
+                  placeholder="Select a node to view JSON…"
+                />
+              </div>
+
+              {exportRes ? (
+                <div className="pt-2 text-xs text-muted-foreground">
+                  Export version: <span className="font-mono">{String(exportRes.version || '')}</span>
+                </div>
+              ) : null}
+            </div>
+          </Panel>
+        </div>
+
+        <Dialog open={importOpen} onOpenChange={(open) => setImportOpen(open)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Import workflow config?</DialogTitle>
+              <DialogDescription>
+                This will overwrite dataset config using <span className="font-mono">replace=true</span>. This action may clear existing keys.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="text-sm">
+                File: <span className="font-mono">{importFileName || 'config.json'}</span>
+              </div>
+              {importKeys.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">Top-level keys</div>
+                  <div className="flex flex-wrap gap-2">
+                    {importKeys.slice(0, 24).map((k) => (
+                      <Badge key={k} variant="outline" className="font-mono text-[10px]">
+                        {k}
+                      </Badge>
+                    ))}
+                    {importKeys.length > 24 ? (
+                      <Badge variant="secondary" className="font-mono text-[10px]">
+                        +{importKeys.length - 24} more
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setImportOpen(false)
+                  setImportBundle(null)
+                  setImportFileName('')
+                }}
+                disabled={importing}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => void doImport()} disabled={importing || !importBundle || !datasetId} className="gap-2">
+                {importing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                Import (replace)
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </PageScaffold>
+    </AppFrame>
+  )
+}
+
