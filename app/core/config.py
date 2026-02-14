@@ -392,6 +392,12 @@ class Settings(BaseSettings):
     PASSWORD_MIN_LENGTH: int = 8
 
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
+    # Whether CORS responses include `Access-Control-Allow-Credentials: true`.
+    #
+    # Prod strategy (Option A):
+    # - Default false in production unless explicitly enabled.
+    # - Default true outside production for local dev ergonomics.
+    CORS_ALLOW_CREDENTIALS: bool = True
     # Allow browsers to read diagnostic headers from cross-origin responses.
     # NOTE: This does not affect which headers the backend sends, only what the browser exposes to JS.
     CORS_EXPOSE_HEADERS: str = "X-Request-ID,X-Process-Time-Ms,Server-Timing,Retry-After"
@@ -986,6 +992,12 @@ class Settings(BaseSettings):
 
         # Security: CORS hardening (production guardrails).
         if is_production:
+            # Production default: do not allow credentialed cross-origin calls unless explicitly enabled.
+            # This avoids accidentally running a cookie-bearing API with permissive CORS defaults.
+            fields_set = getattr(self, "model_fields_set", set()) or set()
+            if "CORS_ALLOW_CREDENTIALS" not in fields_set:
+                self.CORS_ALLOW_CREDENTIALS = False
+
             cors_raw = str(getattr(self, "CORS_ORIGINS", "") or "")
             cors_origins = [p.strip() for p in cors_raw.split(",") if p.strip()]
             if not cors_origins:

@@ -352,7 +352,7 @@ if not is_production_env():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=bool(getattr(settings, "CORS_ALLOW_CREDENTIALS", True)),
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=parse_csv(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
