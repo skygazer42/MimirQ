@@ -435,6 +435,11 @@ if bool(getattr(settings, "SECURITY_HEADERS_ENABLED", True)):
         cross_origin_resource_policy=str(getattr(settings, "SECURITY_HEADERS_CROSS_ORIGIN_RESOURCE_POLICY", "") or ""),
     )
 
+# Response header sanitization (reduce fingerprinting).
+from app.api.middleware.response_header_sanitizer import ResponseHeaderSanitizerMiddleware
+
+app.add_middleware(ResponseHeaderSanitizerMiddleware)
+
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
 app.add_middleware(RequestIDMiddleware)
 
@@ -541,5 +546,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.HOST,
         port=settings.PORT,
-        reload=True
+        reload=True,
+        server_header=False,
     )
