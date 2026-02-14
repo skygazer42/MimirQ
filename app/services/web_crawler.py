@@ -273,7 +273,8 @@ async def _fetch_page_text(
     Redirect handling is explicit to preserve SSRF checks per hop.
     """
     pool = get_http_client_pool()
-    client = await pool.get_client()
+    # Security/compliance: do not propagate internal tenant/user headers to crawled websites.
+    client = await pool.get_external_client()
 
     current = await validate_url_for_ingest(url)
     hops = 0
