@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import pytest
+
+
+class _DummyResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+        self.status_code = 200
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self):  # noqa: ANN201
+        return self._payload
+
+
+class _DummySyncClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def post(self, url: str, *, json: dict, headers: dict, timeout: float | None = None):  # noqa: ANN201
+        self.calls.append((url, dict(headers)))
+        return _DummyResponse({"data": [{"embedding": [0.1, 0.2]}]})
+
+
+class _DummyAsyncClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    async def post(self, url: str, *, json: dict, headers: dict, timeout: float | None = None):  # noqa: ANN201
+        self.calls.append((url, dict(headers)))
+        return _DummyResponse({"data": [{"embedding": [0.1, 0.2]}]})
+
+
+def test_openai_embedding_encode_uses_external_pool_not_requests(monkeypatch):
+    import app.rag.embedding.providers.openai as provider
+    import requests
+
+    spy = {"requests_post": 0}
+
+    def _requests_post(*_args, **_kwargs):  # noqa: ANN001
+        spy["requests_post"] += 1
+        return _DummyResponse({"data": [{"embedding": [0.0]}]})
+
+    monkeypatch.setattr(requests, "post", _requests_post)
+
+    dummy_sync = _DummySyncClient()
+    dummy_async = _DummyAsyncClient()
+
+    class _FakePool:
+        def get_external_sync_client(self):  # noqa: ANN201
+            return dummy_sync
+
+        def get_external_async_client(self):  # noqa: ANN201
+            return dummy_async
+
+    monkeypatch.setattr(provider, "get_http_client_pool", lambda: _FakePool(), raising=False)
+
+    model = provider.OpenAICompatibleEmbedding(model="m", base_url="https://example.com/v1/embeddings", api_key="no_api_key")
+    vecs = model.encode("hello")
+
+    # After refactor, encode() should use the shared external client, not requests.
+    assert spy["requests_post"] == 0
+    assert vecs == [[0.1, 0.2]]
+
+
+@pytest.mark.asyncio
+async def test_openai_embedding_aencode_uses_external_pool_not_new_asyncclient(monkeypatch):
+    import app.rag.embedding.providers.openai as provider
+
+    spy = {"asyncclient_ctor": 0}
+
+    class _SpyAsyncClient:  # noqa: D401
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            spy["asyncclient_ctor"] += 1
+
+        async def __aenter__(self):  # noqa: ANN201
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201
+            return False
+
+        async def post(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
+            return _DummyResponse({"data": [{"embedding": [0.0]}]})
+
+    monkeypatch.setattr(provider.httpx, "AsyncClient", _SpyAsyncClient)
+
+    dummy_sync = _DummySyncClient()
+    dummy_async = _DummyAsyncClient()
+
+    class _FakePool:
+        def get_external_sync_client(self):  # noqa: ANN201
+            return dummy_sync
+
+        def get_external_async_client(self):  # noqa: ANN201
+            return dummy_async
+
+    monkeypatch.setattr(provider, "get_http_client_pool", lambda: _FakePool(), raising=False)
+
+    model = provider.OpenAICompatibleEmbedding(model="m", base_url="https://example.com/v1/embeddings", api_key="no_api_key")
+    vecs = await model.aencode("hello")
+
+    # After refactor, aencode() should use the shared external client, not a new AsyncClient().
+    assert spy["asyncclient_ctor"] == 0
+    assert vecs == [[0.1, 0.2]]
