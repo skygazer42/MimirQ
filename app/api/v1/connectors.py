@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import html
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,7 +46,13 @@ from app.api.schemas.connector import (
     WebCrawlConnectorConfig,
 )
 from app.api.utils.url_ingest import validate_url_for_ingest
-from app.api.v1.documents import UrlUploadRequest, _ingest_url_upload_request, _resolve_writable_dataset
+from app.api.v1.documents import (
+    LocalHtmlIngestRequest,
+    UrlUploadRequest,
+    _ingest_local_html_request,
+    _ingest_url_upload_request,
+    _resolve_writable_dataset,
+)
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.http_client import get_http_client_pool
@@ -1857,6 +1864,18 @@ def _confluence_extract_last_modified(page: dict) -> str | None:
     return None
 
 
+def _confluence_ingest_method(cfg: dict) -> str:
+    """
+    Normalize Confluence page ingestion method.
+
+    Backward compatibility:
+    - If ingest_method is missing (older saved configs), default to api_view.
+    """
+    raw = cfg.get("ingest_method") if isinstance(cfg, dict) else None
+    m = str(raw or "api_view").strip().lower()
+    return m if m in {"api_view", "webui"} else "api_view"
+
+
 async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for confluence_space connector.
@@ -1913,6 +1932,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         page_size = max(1, min(page_size, 100))
         soft_delete = bool(cfg.get("soft_delete", False))
 
+        ingest_method = _confluence_ingest_method(cfg)
+
         parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
         chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
         pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
@@ -1947,6 +1968,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         stats0.update(
             {
                 "mode": effective_mode,
+                "ingest_method": ingest_method,
                 "space_key": space_key,
                 "base_url": base_url,
                 "max_pages": int(max_pages),
@@ -2043,23 +2065,74 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                         if not filename.lower().endswith((".html", ".htm")):
                             filename = filename + ".html"
 
-                    body = UrlUploadRequest(
-                        url=page_url,
-                        dataset_id=run.dataset_id,
-                        filename=filename,
-                        fetch_headers=auth_headers or None,
-                        user_agent=user_agent,
-                        parser_backend=str(parser_backend),
-                        chunk_strategy=str(chunk_strategy),
-                        pipeline=pipeline,  # type: ignore[arg-type]
-                    )
-                    doc = await _ingest_url_upload_request(
-                        background_tasks=None,
-                        body=body,
-                        tenant_id=tenant_id,
-                        account_id=requested_by,
-                        db=db,
-                    )
+                    if ingest_method == "webui":
+                        body = UrlUploadRequest(
+                            url=page_url,
+                            dataset_id=run.dataset_id,
+                            filename=filename,
+                            fetch_headers=auth_headers or None,
+                            user_agent=user_agent,
+                            parser_backend=str(parser_backend),
+                            chunk_strategy=str(chunk_strategy),
+                            pipeline=pipeline,  # type: ignore[arg-type]
+                        )
+                        doc = await _ingest_url_upload_request(
+                            background_tasks=None,
+                            body=body,
+                            tenant_id=tenant_id,
+                            account_id=requested_by,
+                            db=db,
+                        )
+                    else:
+                        # Fetch page HTML via REST (body.view) to avoid web UI session/cookie requirements.
+                        if not page_id:
+                            raise ValueError("missing page id")
+                        content_url = f"{api_base}/content/{page_id}"
+                        content_params = {"expand": "body.view,version"}
+                        content_resp = await pool.request_with_retry("GET", content_url, params=content_params, headers=headers)
+                        content = content_resp.json() if content_resp is not None else {}
+
+                        body0 = content.get("body") if isinstance(content, dict) else None
+                        view0 = body0.get("view") if isinstance(body0, dict) else None
+                        view_value = view0.get("value") if isinstance(view0, dict) else None
+                        page_html = str(view_value or "")
+                        if not page_html.strip():
+                            raise ValueError("missing body.view.value")
+
+                        title_escaped = html.escape(title or "")
+                        base_tag = f'<base href="{html.escape(page_url)}" />' if page_url else ""
+                        full_html = (
+                            "<!doctype html>\n"
+                            "<html>\n"
+                            "<head>\n"
+                            "  <meta charset=\"utf-8\" />\n"
+                            f"  <title>{title_escaped}</title>\n"
+                            f"  {base_tag}\n"
+                            "</head>\n"
+                            "<body>\n"
+                            f"  <h1>{title_escaped}</h1>\n"
+                            f"{page_html}\n"
+                            "</body>\n"
+                            "</html>\n"
+                        )
+
+                        html_body = LocalHtmlIngestRequest(
+                            html=full_html,
+                            source_url=page_url,
+                            dataset_id=run.dataset_id,
+                            filename=filename,
+                            parser_backend=str(parser_backend),
+                            chunk_strategy=str(chunk_strategy),
+                            pipeline=pipeline,  # type: ignore[arg-type]
+                        )
+                        doc = await _ingest_local_html_request(
+                            background_tasks=None,
+                            body=html_body,
+                            tenant_id=tenant_id,
+                            account_id=requested_by,
+                            db=db,
+                            ingestion_kind="upload_url",
+                        )
 
                     _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
 
@@ -2076,6 +2149,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             "last_modified": (lm or None),
                             "run_id": str(run.id),
                             "mode": effective_mode,
+                            "ingest_method": ingest_method,
                         }
                         doc.doc_metadata = meta0
                         db.commit()

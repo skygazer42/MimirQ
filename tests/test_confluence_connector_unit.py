@@ -21,6 +21,16 @@ def test_confluence_api_base_url_normalizes_rest_api_suffix():  # noqa: ANN001
     assert connectors._confluence_api_base_url("https://c.example.com/rest/api") == "https://c.example.com/rest/api"
 
 
+def test_confluence_ingest_method_defaults_to_api_view():  # noqa: ANN001
+    import app.api.v1.connectors as connectors
+
+    assert connectors._confluence_ingest_method({}) == "api_view"
+    assert connectors._confluence_ingest_method({"ingest_method": "api_view"}) == "api_view"
+    assert connectors._confluence_ingest_method({"ingest_method": "webui"}) == "webui"
+    assert connectors._confluence_ingest_method({"ingest_method": "WEBUI"}) == "webui"
+    assert connectors._confluence_ingest_method({"ingest_method": "nope"}) == "api_view"
+
+
 def test_sync_connector_config_from_run_persists_last_modified():  # noqa: ANN001
     import app.api.v1.connectors as connectors
 
@@ -72,4 +82,3 @@ def test_sync_connector_config_from_run_persists_last_modified():  # noqa: ANN00
     connectors._sync_connector_config_from_run(_DummyDB(), run=run)
     assert cfg.state.get("last_modified") == "2026-02-14T00:00:00.000Z"
     assert cfg.state.get("last_run_id") == str(run.id)
-
