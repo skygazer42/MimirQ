@@ -331,6 +331,13 @@ app = FastAPI(
     title="MimirQ - Knowledge Base RAG System",
     description="Knowledge Base Management and RAG Conversation System",
     version="1.0.0",
+    docs_url="/docs" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
+    redoc_url="/redoc" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
+    openapi_url=(
+        "/openapi.json"
+        if (bool(getattr(settings, "API_OPENAPI_ENABLED", True)) or _OPENAPI_EXPORT_MODE)
+        else None
+    ),
     lifespan=lifespan
 )
 
