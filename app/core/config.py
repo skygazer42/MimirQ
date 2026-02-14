@@ -194,6 +194,9 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
+    # Hard cap for HTTP request bodies (Content-Length gate; 0 disables).
+    # Keep slightly above MAX_FILE_SIZE to account for multipart overhead.
+    REQUEST_MAX_BODY_BYTES: int = 60_000_000
     # Optional: deduplicate uploads by (file_sha256 + pipeline_hash) within a dataset.
     # When enabled, re-uploading the same file with the same pipeline options returns the existing document
     # instead of creating a new record + re-embedding.

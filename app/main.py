@@ -351,6 +351,14 @@ if is_production_env() and bool(getattr(settings, "TRUSTED_HOSTS_ENABLED", True)
     allowed_hosts = parse_csv(str(getattr(settings, "ALLOWED_HOSTS", "") or ""))
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
+# Request body size limit (DoS guardrail).
+from app.api.middleware.body_size_limit import BodySizeLimitMiddleware
+
+app.add_middleware(
+    BodySizeLimitMiddleware,
+    max_body_bytes=int(getattr(settings, "REQUEST_MAX_BODY_BYTES", 0) or 0),
+)
+
 # CORS config
 cors_origins = parse_csv(settings.CORS_ORIGINS)
 if not is_production_env():
