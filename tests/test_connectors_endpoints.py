@@ -227,6 +227,55 @@ def test_connectors_create_confluence_run_redacts_auth(monkeypatch):  # noqa: AN
     assert cfg.get("ingest_method") == "api_view"
 
 
+def test_connectors_create_confluence_run_supports_include_attachments(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+    from app.api.v1.connectors import create_connector_run
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self, dataset_id: uuid.UUID):  # noqa: ANN001
+            self.id = dataset_id
+
+    monkeypatch.setattr(
+        connectors_module,
+        "_resolve_writable_dataset",
+        lambda *_a, **_k: _Dataset(dataset_id),
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/runs", status_code=201, response_model=ConnectorRunOut)(create_connector_run)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/runs",
+        json={
+            "connector_id": "confluence_space",
+            "dataset_id": str(dataset_id),
+            "config": {
+                "base_url": "https://example.atlassian.net/wiki",
+                "space_key": "DOCS",
+                "auth": {"type": "bearer", "token": "secret-token"},
+                "include_attachments": True,
+                "max_pages": 1,
+            },
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    cfg = body.get("config") or {}
+    assert cfg.get("auth", {}).get("token") == "<redacted>"
+    assert cfg.get("include_attachments") is True
+
+
 def test_connectors_accept_mysql_catalog_config(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors_module
     from app.api.v1.connectors import create_connector_run
