@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.connector import (
+    ConfluenceSpaceConnectorConfig,
     ConnectorConfigCreateRequest,
     ConnectorConfigListResponse,
     ConnectorConfigOut,
@@ -47,9 +48,11 @@ from app.api.utils.url_ingest import validate_url_for_ingest
 from app.api.v1.documents import UrlUploadRequest, _ingest_url_upload_request, _resolve_writable_dataset
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
+from app.core.http_client import get_http_client_pool
 from app.core.secrets import decrypt_connector_config_secrets, encrypt_connector_config_secrets, redact_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.connector_config import ConnectorConfig
+from app.models.document import Document as DBDocument
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
@@ -320,6 +323,14 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
             state["total_urls"] = int(stats.get("total_urls", 0) or 0)
             state["last_run_id"] = str(run.id)
         cfg.state = state  # type: ignore[assignment]
+    elif connector_id == "confluence_space":
+        state = dict(getattr(cfg, "state", None) or {})
+        with contextlib.suppress(Exception):
+            last_modified = str(stats.get("last_modified") or "").strip()
+            if last_modified:
+                state["last_modified"] = last_modified
+            state["last_run_id"] = str(run.id)
+        cfg.state = state  # type: ignore[assignment]
 
     db.commit()
 
@@ -357,6 +368,12 @@ def list_connectors() -> list[ConnectorInfo]:
             name="MinIO/S3 Bucket 导入",
             description="列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；URL_INGEST 需允许访问 MinIO 端点）",
             supports_incremental=False,
+        ),
+        ConnectorInfo(
+            id="confluence_space",
+            name="Confluence Space 导入",
+            description="从 Confluence Space 列出页面并入库（支持增量 cursor；配置中的 Cookie/Token/Password 会被加密存储并在响应中脱敏）",
+            supports_incremental=True,
         ),
         ConnectorInfo(
             id="sqlserver_catalog",
@@ -404,6 +421,8 @@ def _validate_connector_schema(connector_id: str, config: dict[str, Any]) -> tup
         cfg_obj = DriveFilesConnectorConfig.model_validate(config or {})
     elif connector_id == "minio_bucket":
         cfg_obj = MinioBucketConnectorConfig.model_validate(config or {})
+    elif connector_id == "confluence_space":
+        cfg_obj = ConfluenceSpaceConnectorConfig.model_validate(config or {})
     elif connector_id == "mysql_catalog":
         cfg_obj = MySQLCatalogConnectorConfig.model_validate(config or {})
     elif connector_id == "sqlserver_catalog":
@@ -1782,6 +1801,458 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
         db.close()
 
 
+def _confluence_api_base_url(base_url: str) -> str:
+    """
+    Normalize a Confluence base URL to its REST API base.
+
+    Examples:
+    - https://<site>.atlassian.net/wiki -> https://<site>.atlassian.net/wiki/rest/api
+    - https://confluence.example.com -> https://confluence.example.com/rest/api
+    - https://confluence.example.com/rest/api -> unchanged
+    """
+    base = str(base_url or "").strip().rstrip("/")
+    if base.endswith("/rest/api"):
+        return base
+    return f"{base}/rest/api"
+
+
+def _confluence_join_webui(*, base: str, webui: str) -> str:
+    """
+    Join Confluence `_links.base` + `_links.webui` safely.
+
+    Note: `webui` is often an absolute path (starts with "/") that must be appended
+    to `base` *including* its context path (e.g. "/wiki"). Do NOT use urljoin().
+    """
+    b = str(base or "").strip().rstrip("/")
+    w = str(webui or "").strip()
+    if not b or not w:
+        return ""
+    if w.startswith(("http://", "https://")):
+        return w
+    if not w.startswith("/"):
+        w = "/" + w
+    return b + w
+
+
+def _confluence_extract_last_modified(page: dict) -> str | None:
+    """
+    Best-effort extraction of a stable modified timestamp for incremental cursoring.
+
+    We prefer `version.when` (available with expand=version).
+    """
+    if not isinstance(page, dict):
+        return None
+    ver = page.get("version")
+    if isinstance(ver, dict):
+        when = ver.get("when")
+        if isinstance(when, str) and when.strip():
+            return when.strip()
+    hist = page.get("history")
+    if isinstance(hist, dict):
+        last_upd = hist.get("lastUpdated")
+        if isinstance(last_upd, dict):
+            when = last_upd.get("when")
+            if isinstance(when, str) and when.strip():
+                return when.strip()
+    return None
+
+
+async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution for confluence_space connector.
+
+    Flow:
+    - List pages in a Confluence space (full or incremental based on state/sync_mode)
+    - For each page, ingest its web UI URL via the existing URL ingestion pipeline
+    """
+    db = SessionLocal()
+    try:
+        run = (
+            db.query(ConnectorRun)
+            .options(selectinload(ConnectorRun.documents))
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if not run:
+            return
+        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+            return
+
+        run.status = "running"
+        run.started_at = _now()
+        run.error_message = None
+        run.stats = dict(run.stats or {})
+        db.commit()
+        db.refresh(run)
+
+        cfg_raw = dict(run.config or {})
+        cfg = decrypt_connector_config_secrets(cfg_raw)
+
+        base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
+        space_key = str(cfg.get("space_key") or "").strip()
+        if not base_url or not space_key:
+            raise ValueError("base_url and space_key are required")
+
+        sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
+        if sync_mode not in {"auto", "full", "incremental"}:
+            sync_mode = "auto"
+
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
+
+        effective_mode = sync_mode
+        if effective_mode == "auto":
+            effective_mode = "incremental" if cursor_last_modified else "full"
+        if effective_mode == "incremental" and not cursor_last_modified:
+            # No cursor available; fall back to full to avoid silently doing nothing.
+            effective_mode = "full"
+
+        max_pages = int(cfg.get("max_pages") or 50)
+        max_pages = max(1, min(max_pages, 500))
+        page_size = int(cfg.get("page_size") or 25)
+        page_size = max(1, min(page_size, 100))
+        soft_delete = bool(cfg.get("soft_delete", False))
+
+        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
+        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
+        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
+        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+
+        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+        auth_headers = _build_auth_headers(cfg)
+
+        api_base = _confluence_api_base_url(base_url)
+        search_url = f"{api_base}/content/search"
+
+        headers: dict[str, str] = {
+            "Accept": "application/json",
+            "User-Agent": (user_agent or "MimirQ/1.0 (+confluence_space)"),
+        }
+        headers.update(auth_headers)
+
+        # CQL: keep it simple and stable. Prefer ordering to make cursor updates monotonic.
+        cql = f'space="{space_key}" and type=page and status=current'
+        if effective_mode == "incremental" and cursor_last_modified:
+            cql += f' and lastmodified > "{cursor_last_modified}"'
+        cql += " ORDER BY lastmodified ASC"
+
+        created = 0
+        failed = 0
+        processed = 0
+        created_doc_ids: list[UUID] = []
+        observed_page_ids: set[str] = set()
+        last_modified_seen: str | None = None
+
+        stats0 = dict(run.stats or {})
+        stats0.update(
+            {
+                "mode": effective_mode,
+                "space_key": space_key,
+                "base_url": base_url,
+                "max_pages": int(max_pages),
+                "page_size": int(page_size),
+                "processed_pages": 0,
+                "cursor": 0,
+                "created": 0,
+                "failed": 0,
+                "failed_urls": [],
+                "errors": [],
+                "error_groups": [],
+            }
+        )
+        if cursor_last_modified:
+            stats0["cursor_in"] = cursor_last_modified
+        run.stats = _finalize_connector_stats(stats0)
+        db.commit()
+
+        pool = get_http_client_pool()
+        start = 0
+        listing_complete = False
+        stopped_mid_batch = False
+
+        while processed < max_pages:
+            # Best-effort cancellation check between API pages.
+            try:
+                db.refresh(run)
+            except Exception:
+                pass
+            if str(run.status or "").lower() == "cancelled":
+                break
+
+            params = {
+                "cql": cql,
+                "start": int(start),
+                "limit": int(page_size),
+                "expand": "version",
+            }
+            resp = await pool.request_with_retry("GET", search_url, params=params, headers=headers)
+            data = resp.json() if resp is not None else {}
+
+            links = data.get("_links") if isinstance(data, dict) else None
+            link_base = links.get("base") if isinstance(links, dict) and isinstance(links.get("base"), str) else base_url
+
+            results = data.get("results") if isinstance(data, dict) else None
+            pages = results if isinstance(results, list) else []
+            if not pages:
+                listing_complete = True
+                break
+
+            batch_processed0 = processed
+            for page in pages:
+                if processed >= max_pages:
+                    break
+
+                # Per-item cancellation check (best-effort).
+                try:
+                    db.refresh(run)
+                except Exception:
+                    pass
+                if str(run.status or "").lower() == "cancelled":
+                    break
+
+                page_id = str((page or {}).get("id") or "").strip() if isinstance(page, dict) else ""
+                title = str((page or {}).get("title") or "").strip() if isinstance(page, dict) else ""
+                lm = _confluence_extract_last_modified(page if isinstance(page, dict) else {})
+                if lm:
+                    # Results are ordered by lastmodified ASC; the latest processed timestamp is the cursor.
+                    last_modified_seen = lm
+
+                page_links = page.get("_links") if isinstance(page, dict) else None
+                webui = str(page_links.get("webui") or "").strip() if isinstance(page_links, dict) else ""
+                if not webui and isinstance(page_links, dict):
+                    webui = str(page_links.get("tinyui") or "").strip()
+
+                page_url = _confluence_join_webui(base=str(link_base or base_url), webui=webui)
+                if not page_url:
+                    failed += 1
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=(page_id or title or "confluence_page"), exc=ValueError("missing page url"))
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    processed += 1
+                    continue
+
+                try:
+                    filename = None
+                    if page_id:
+                        base_name = f"{page_id}-{title}".strip("-").strip() if title else str(page_id)
+                    else:
+                        base_name = title or "confluence-page"
+                    if base_name:
+                        filename = base_name
+                        if not filename.lower().endswith((".html", ".htm")):
+                            filename = filename + ".html"
+
+                    body = UrlUploadRequest(
+                        url=page_url,
+                        dataset_id=run.dataset_id,
+                        filename=filename,
+                        fetch_headers=auth_headers or None,
+                        user_agent=user_agent,
+                        parser_backend=str(parser_backend),
+                        chunk_strategy=str(chunk_strategy),
+                        pipeline=pipeline,  # type: ignore[arg-type]
+                    )
+                    doc = await _ingest_url_upload_request(
+                        background_tasks=None,
+                        body=body,
+                        tenant_id=tenant_id,
+                        account_id=requested_by,
+                        db=db,
+                    )
+
+                    _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
+
+                    # Attach connector metadata (must not affect pipeline_hash).
+                    try:
+                        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                        meta0["connector"] = {
+                            "connector_id": "confluence_space",
+                            "base_url": base_url,
+                            "space_key": space_key,
+                            "page_id": (page_id or None),
+                            "page_title": (title or None),
+                            "page_url": page_url,
+                            "last_modified": (lm or None),
+                            "run_id": str(run.id),
+                            "mode": effective_mode,
+                        }
+                        doc.doc_metadata = meta0
+                        db.commit()
+                    except Exception:
+                        # Best-effort: never fail the run due to metadata patching.
+                        pass
+
+                    db.add(
+                        ConnectorRunDocument(
+                            tenant_id=tenant_id,
+                            run_id=run.id,
+                            document_id=doc.id,
+                            source_ref=(page_id or page_url)[:1000] or None,
+                            status="created",
+                        )
+                    )
+                    created += 1
+                    created_doc_ids.append(doc.id)
+                    if page_id:
+                        observed_page_ids.add(page_id)
+                except Exception as exc:  # noqa: BLE001
+                    failed += 1
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=page_url, exc=exc)
+                    run.stats = _finalize_connector_stats(stats)
+                finally:
+                    processed += 1
+                    stats = dict(run.stats or {})
+                    stats.update(
+                        {
+                            "processed_pages": int(processed),
+                            "cursor": int(processed),
+                            "created": int(created),
+                            "failed": int(failed),
+                            "document_ids": [str(d) for d in created_doc_ids],
+                        }
+                    )
+                    if last_modified_seen:
+                        stats["last_modified"] = last_modified_seen
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+
+            # If we reached the max_pages cap in the middle of an API batch, do not treat this
+            # as a full listing (soft-delete must not run in this case).
+            if processed >= max_pages and (batch_processed0 + len(pages)) > max_pages:
+                stopped_mid_batch = True
+
+            # Advance pagination by page size; Confluence returns stable paging via start+limit.
+            start += int(len(pages))
+            if processed >= max_pages:
+                break
+            if len(pages) < page_size:
+                listing_complete = True
+                break
+
+        # If we stopped exactly at the page cap boundary, do a tiny probe to determine whether the
+        # listing was actually complete (avoid incorrect soft-deletes when max_pages == total pages).
+        if (
+            effective_mode == "full"
+            and soft_delete
+            and run.dataset_id
+            and observed_page_ids
+            and (not listing_complete)
+            and (not stopped_mid_batch)
+            and processed >= max_pages
+            and str(run.status or "").lower() != "cancelled"
+        ):
+            try:
+                probe_params = {
+                    "cql": cql,
+                    "start": int(start),
+                    "limit": 1,
+                }
+                probe = await pool.request_with_retry("GET", search_url, params=probe_params, headers=headers)
+                probe_data = probe.json() if probe is not None else {}
+                probe_results = probe_data.get("results") if isinstance(probe_data, dict) else None
+                probe_pages = probe_results if isinstance(probe_results, list) else []
+                if not probe_pages:
+                    listing_complete = True
+            except Exception:
+                listing_complete = False
+
+        # Soft-delete only makes sense on a full listing.
+        if effective_mode == "full" and soft_delete and run.dataset_id and observed_page_ids and listing_complete:
+            now = _now()
+            disabled = 0
+            try:
+                # Prefer Postgres JSONB filtering when available.
+                docs = (
+                    db.query(DBDocument)
+                    .filter(
+                        DBDocument.tenant_id == tenant_id,
+                        DBDocument.dataset_id == run.dataset_id,
+                        DBDocument.archived_at.is_(None),
+                    )
+                    .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "confluence_space")  # type: ignore[attr-defined]
+                    .filter(DBDocument.doc_metadata["connector"]["space_key"].astext == space_key)  # type: ignore[attr-defined]
+                    .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+                    .all()
+                )
+            except Exception:
+                # Best-effort fallback: scan a bounded window.
+                docs = (
+                    db.query(DBDocument)
+                    .filter(
+                        DBDocument.tenant_id == tenant_id,
+                        DBDocument.dataset_id == run.dataset_id,
+                        DBDocument.archived_at.is_(None),
+                    )
+                    .order_by(DBDocument.created_at.desc())
+                    .limit(5000)
+                    .all()
+                )
+
+            for doc in docs or []:
+                meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+                conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+                if str(conn.get("connector_id") or "") != "confluence_space":
+                    continue
+                if str(conn.get("space_key") or "") != space_key:
+                    continue
+                if str(conn.get("base_url") or "") != base_url:
+                    continue
+                pid = str(conn.get("page_id") or "").strip()
+                if not pid:
+                    continue
+                if pid in observed_page_ids:
+                    continue
+                if getattr(doc, "disabled_at", None) is None:
+                    doc.disabled_at = now
+                    disabled += 1
+
+            if disabled:
+                stats = dict(run.stats or {})
+                stats["soft_deleted"] = int(disabled)
+                run.stats = _finalize_connector_stats(stats)
+                db.commit()
+
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        if str(run.status or "").lower() == "cancelled":
+            if run.finished_at is None:
+                run.finished_at = _now()
+            run.stats = _finalize_connector_stats(dict(run.stats or {}))
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+            return
+
+        stats = dict(run.stats or {})
+        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        run.stats = _finalize_connector_stats(stats)
+        run.finished_at = _now()
+        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
+    except Exception as exc:  # noqa: BLE001
+        with contextlib.suppress(Exception):
+            run = (
+                db.query(ConnectorRun)
+                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+                .first()
+            )
+            if run is not None:
+                run.status = "failed"
+                run.finished_at = _now()
+                run.error_message = str(exc)[:200]
+                db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
+    finally:
+        db.close()
+
+
 @router.post("/runs", response_model=ConnectorRunOut, status_code=201)
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
@@ -1796,7 +2267,7 @@ async def create_connector_run(
     Requires dataset write permission.
     """
     connector_id = str(payload.connector_id or "").strip()
-    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket"}
+    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space"}
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
 
     if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
@@ -1821,6 +2292,9 @@ async def create_connector_run(
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
     elif connector_id == "minio_bucket":
         cfg = MinioBucketConnectorConfig.model_validate(payload.config or {})
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+    elif connector_id == "confluence_space":
+        cfg = ConfluenceSpaceConnectorConfig.model_validate(payload.config or {})
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
     elif connector_id == "mysql_catalog":
         cfg = MySQLCatalogConnectorConfig.model_validate(payload.config or {})
@@ -1869,6 +2343,8 @@ async def create_connector_run(
         background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "minio_bucket":
         background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "confluence_space":
+        background_tasks.add_task(_execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
         background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
@@ -2336,7 +2812,7 @@ async def run_connector_config(
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
     connector_id = str(cfg.connector_id or "").strip()
-    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket"}
+    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space"}
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
     if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
@@ -2373,6 +2849,8 @@ async def run_connector_config(
         background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "minio_bucket":
         background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "confluence_space":
+        background_tasks.add_task(_execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
         background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
@@ -2446,7 +2924,7 @@ async def scheduled_tick(
         db.commit()
         db.refresh(run)
 
-        url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket"}
+        url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space"}
         db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
 
         if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
@@ -2476,6 +2954,8 @@ async def scheduled_tick(
             background_tasks.add_task(_execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         elif connector_id == "minio_bucket":
             background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        elif connector_id == "confluence_space":
+            background_tasks.add_task(_execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
             background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         else:

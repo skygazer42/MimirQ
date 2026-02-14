@@ -99,6 +99,8 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
             await connectors_module._execute_drive_files_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
         elif connector_id == "minio_bucket":
             await connectors_module._execute_minio_bucket_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
+        elif connector_id == "confluence_space":
+            await connectors_module._execute_confluence_space_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
         elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
             await connectors_module._execute_db_catalog_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
         else:
