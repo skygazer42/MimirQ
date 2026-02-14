@@ -243,7 +243,8 @@ async def download_url_to_path(
     destination.parent.mkdir(parents=True, exist_ok=True)
     size = 0
     pool = get_http_client_pool()
-    client = await pool.get_client()
+    # Security/compliance: do not propagate internal tenant/user headers to arbitrary URLs.
+    client = await pool.get_external_client()
 
     # Validate the starting URL.
     current = await validate_url_for_ingest(url)

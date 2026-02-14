@@ -87,7 +87,7 @@ async def test_download_url_to_path_validates_redirect_hops(monkeypatch: pytest.
     client = httpx.AsyncClient(transport=transport)
 
     class _Pool:
-        async def get_client(self):  # noqa: ANN202
+        async def get_external_client(self):  # noqa: ANN202
             return client
 
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo_global, raising=True)
@@ -112,4 +112,3 @@ async def test_download_url_to_path_validates_redirect_hops(monkeypatch: pytest.
     assert not dest.exists()
 
     await client.aclose()
-
