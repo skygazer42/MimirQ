@@ -16,12 +16,17 @@ The payload currently records:
 - `ts` (UTC ISO-8601 timestamp)
 - `suite` (e.g. `perf-v1`)
 - `base_url` (API target)
+- `llm_mock` (bool) — whether the harness attempted to enable LLM mock mode for this run
+- `llm_mock_env` (string|null) — the observed `LLM_MOCK_ENABLED` value after applying the flag
+- `llm_mock_env_error` (string|null) — any error encountered while setting/unsetting the env var (best-effort)
 
 ### CLI
 
 - `--out` (default: timestamped under `runs/perf/`)
 - `--base-url` (default: `http://localhost:8000`)
-- `--llm-mock/--no-llm-mock` (default: enabled) — when enabled, sets `LLM_MOCK_ENABLED=1` to prevent external LLM calls.
+- `--llm-mock/--no-llm-mock` (default: enabled) — best-effort sets/unsets `LLM_MOCK_ENABLED` in the harness process (and any subprocesses it launches).
+
+Note: if you point `--base-url` at an already-running remote server, changing `LLM_MOCK_ENABLED` locally does not affect that server's configuration. To enforce mock behavior on the server side, set `LLM_MOCK_ENABLED=1` in the server process environment when starting it.
 
 ## Sample inputs
 
