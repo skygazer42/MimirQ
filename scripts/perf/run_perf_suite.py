@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,11 +27,32 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default="http://localhost:8000",
         help="Base URL for the MimirQ API (default: http://localhost:8000).",
     )
+    parser.add_argument(
+        "--llm-mock",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable LLM mock mode for this run (sets LLM_MOCK_ENABLED=1).",
+    )
     return parser.parse_args(argv)
+
+
+def _apply_llm_mock_env(enabled: bool) -> None:
+    if enabled:
+        try:
+            os.environ["LLM_MOCK_ENABLED"] = "1"
+        except Exception:
+            pass
+        return
+
+    try:
+        os.environ.pop("LLM_MOCK_ENABLED", None)
+    except Exception:
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    _apply_llm_mock_env(bool(getattr(args, "llm_mock", True)))
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

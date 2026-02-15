@@ -21,6 +21,7 @@ The payload currently records:
 
 - `--out` (default: timestamped under `runs/perf/`)
 - `--base-url` (default: `http://localhost:8000`)
+- `--llm-mock/--no-llm-mock` (default: enabled) — when enabled, sets `LLM_MOCK_ENABLED=1` to prevent external LLM calls.
 
 ## Sample inputs
 
