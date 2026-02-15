@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,23 +37,25 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _apply_llm_mock_env(enabled: bool) -> None:
-    if enabled:
-        try:
-            os.environ["LLM_MOCK_ENABLED"] = "1"
-        except Exception:
-            pass
-        return
-
+def _apply_llm_mock_env(enabled: bool) -> str | None:
+    action = "set" if enabled else "unset"
     try:
-        os.environ.pop("LLM_MOCK_ENABLED", None)
-    except Exception:
-        pass
+        if enabled:
+            os.environ["LLM_MOCK_ENABLED"] = "1"
+        else:
+            os.environ.pop("LLM_MOCK_ENABLED", None)
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        print(f"warning: failed to {action} LLM_MOCK_ENABLED ({error})", file=sys.stderr)
+        return error
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    _apply_llm_mock_env(bool(getattr(args, "llm_mock", True)))
+    llm_mock = bool(getattr(args, "llm_mock", True))
+    llm_mock_env_error = _apply_llm_mock_env(llm_mock)
+    llm_mock_env = os.environ.get("LLM_MOCK_ENABLED")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,6 +64,9 @@ def main(argv: list[str] | None = None) -> int:
         "ts": datetime.now(timezone.utc).isoformat(),
         "suite": SUITE_NAME,
         "base_url": args.base_url,
+        "llm_mock": llm_mock,
+        "llm_mock_env": llm_mock_env,
+        "llm_mock_env_error": llm_mock_env_error,
     }
 
     out_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
