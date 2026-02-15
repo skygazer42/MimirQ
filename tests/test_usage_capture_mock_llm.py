@@ -21,7 +21,7 @@ class FakeDB:
         return None
 
 
-def test_usage_capture_includes_usage_block_when_mock_llm_enabled(monkeypatch) -> None:
+def _build_test_client(monkeypatch, *, mock_llm_enabled: bool) -> TestClient:
     app = FastAPI()
     app.post("/api/v1/chat")(chat_endpoint)
 
@@ -29,7 +29,7 @@ def test_usage_capture_includes_usage_block_when_mock_llm_enabled(monkeypatch) -
     app.dependency_overrides[get_tenant_id] = lambda: uuid.uuid4()
     app.dependency_overrides[get_current_account_id] = lambda: "acct_123"
 
-    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", mock_llm_enabled, raising=False)
     monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
     monkeypatch.setattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False, raising=False)
@@ -60,7 +60,11 @@ def test_usage_capture_includes_usage_block_when_mock_llm_enabled(monkeypatch) -
         lambda *_args, **_kwargs: ([], {"enabled": False, "used": False}),
     )
 
-    client = TestClient(app)
+    return TestClient(app)
+
+
+def test_usage_capture_includes_usage_block_when_mock_llm_enabled(monkeypatch) -> None:
+    client = _build_test_client(monkeypatch, mock_llm_enabled=True)
     res = client.post(
         "/api/v1/chat",
         json={
@@ -81,3 +85,22 @@ def test_usage_capture_includes_usage_block_when_mock_llm_enabled(monkeypatch) -
     assert body["usage"]["total_tokens"] == body["total_tokens"]
     for key in ("prompt_tokens", "completion_tokens", "total_tokens", "source"):
         assert key in body["usage"]
+
+
+def test_usage_capture_marks_estimate_when_mock_llm_disabled(monkeypatch) -> None:
+    client = _build_test_client(monkeypatch, mock_llm_enabled=False)
+    res = client.post(
+        "/api/v1/chat",
+        json={
+            "message": "hello",
+            "stream": False,
+            "dataset_id": str(uuid.uuid4()),
+            "rag_config": {"use_graph": True},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+
+    assert "usage" in body
+    assert body["usage"]["source"] == "estimate"

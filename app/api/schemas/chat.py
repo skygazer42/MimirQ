@@ -255,6 +255,43 @@ class TokenUsage(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    @model_validator(mode="after")
+    def _normalize_total_tokens(self) -> "TokenUsage":
+        """
+        Normalize usage invariants so `total_tokens == prompt_tokens + completion_tokens`.
+
+        For estimate-only usage, callers may provide only `total_tokens`; in that case treat it
+        as completion-only (prompt=0, completion=total).
+        """
+        fields_set = getattr(self, "model_fields_set", set())
+        prompt_set = "prompt_tokens" in fields_set
+        completion_set = "completion_tokens" in fields_set
+        total_set = "total_tokens" in fields_set
+
+        prompt_tokens = int(self.prompt_tokens or 0)
+        completion_tokens = int(self.completion_tokens or 0)
+        total_tokens = int(self.total_tokens or 0)
+
+        if total_set and not prompt_set and not completion_set:
+            self.prompt_tokens = 0
+            self.completion_tokens = total_tokens
+            return self
+
+        if total_set and prompt_set and not completion_set:
+            inferred_completion = total_tokens - prompt_tokens
+            if inferred_completion >= 0:
+                self.completion_tokens = inferred_completion
+                return self
+
+        if total_set and completion_set and not prompt_set:
+            inferred_prompt = total_tokens - completion_tokens
+            if inferred_prompt >= 0:
+                self.prompt_tokens = inferred_prompt
+                return self
+
+        self.total_tokens = int(self.prompt_tokens or 0) + int(self.completion_tokens or 0)
+        return self
+
 
 class ChatResponse(BaseModel):
     """Non-streaming chat response payload."""
@@ -265,7 +302,10 @@ class ChatResponse(BaseModel):
     content: str
     citations: List[Citation] = Field(default_factory=list)
     total_tokens: int = 0
-    usage: Optional[TokenUsage] = None
+    usage: Optional[TokenUsage] = Field(
+        default=None,
+        description="Best-effort token usage metadata; currently may be an assistant-only estimate.",
+    )
     total_chars: int = 0
     retrieval_mode: Optional[str] = None
     vector_backend: Optional[str] = None
