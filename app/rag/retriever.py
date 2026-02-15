@@ -1089,6 +1089,17 @@ class HybridRetriever(BaseRetriever):
         """Hybrid search: vector retrieval + BM25, optional reranking."""
         retrieval_mode = (retrieval_mode or "hybrid").lower()
 
+        # Best-effort per-query debug metrics (low overhead, no external deps).
+        # `_get_relevant_documents` will embed these into `_last_debug_metrics`.
+        channel_metrics: Dict[str, Any] = {
+            "timing": {"vector_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0},
+            "counts": {"vector_candidates": 0, "bm25_candidates": 0},
+        }
+        self._last_channel_metrics = channel_metrics
+
+        vector_elapsed_ms = 0.0
+        bm25_elapsed_ms = 0.0
+
         # Metadata filter strategy:
         # - BM25 sees Postgres chunk metadata (rich JSON) -> can apply most filters early.
         # - Milvus (document collection) stores a small fixed metadata schema -> only pass supported keys early
@@ -1177,7 +1188,11 @@ class HybridRetriever(BaseRetriever):
                 if vector_filter:
                     search_kwargs["metadata_filter"] = vector_filter
 
-                vector_results = vector_store.search(**search_kwargs)
+                t0 = time.perf_counter()
+                try:
+                    vector_results = vector_store.search(**search_kwargs)
+                finally:
+                    vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
@@ -1185,13 +1200,17 @@ class HybridRetriever(BaseRetriever):
         # 2) BM25 retrieval
         bm25_results: List[Dict[str, Any]] = []
         if want_bm25:
-            bm25_results = self._search_bm25(
-                query=query,
-                top_k=fetch_k,
-                document_ids=document_ids,
-                tenant_id=tenant_id,
-                metadata_filter=bm25_filter,
-            )
+            t0 = time.perf_counter()
+            try:
+                bm25_results = self._search_bm25(
+                    query=query,
+                    top_k=fetch_k,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                    metadata_filter=bm25_filter,
+                )
+            finally:
+                bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
 
         # 2b) Persistent lexical fallback (Postgres FTS / pg_trgm)
         lexical_results: List[Dict[str, Any]] = []
@@ -1210,13 +1229,17 @@ class HybridRetriever(BaseRetriever):
 
         # Fallback: when single-channel mode fails, try the other channel.
         if retrieval_mode == "vector" and not vector_results:
-            bm25_results = self._search_bm25(
-                query=query,
-                top_k=fetch_k,
-                document_ids=document_ids,
-                tenant_id=tenant_id,
-                metadata_filter=bm25_filter,
-            )
+            t0 = time.perf_counter()
+            try:
+                bm25_results = self._search_bm25(
+                    query=query,
+                    top_k=fetch_k,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                    metadata_filter=bm25_filter,
+                )
+            finally:
+                bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
             try:
                 lexical_results = self._search_lexical_db(
                     query=query,
@@ -1240,7 +1263,11 @@ class HybridRetriever(BaseRetriever):
                 }
                 if vector_filter:
                     fallback_kwargs["metadata_filter"] = vector_filter
-                vector_results = vector_store.search(**fallback_kwargs)
+                t0 = time.perf_counter()
+                try:
+                    vector_results = vector_store.search(**fallback_kwargs)
+                finally:
+                    vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
@@ -1299,35 +1326,59 @@ class HybridRetriever(BaseRetriever):
                 m = str(meta.get("lexical_method") or "unknown").strip().lower() or "unknown"
                 lexical_methods[m] += 1
 
-            self._last_channel_metrics = {
-                "retrieval_mode": retrieval_mode,
-                "fusion_strategy": str(self.fusion_strategy or ""),
-                "rrf_k": int(self.rrf_k or 0),
-                "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-                "vector": {
-                    "enabled": bool(want_vector),
-                    "candidates": len(vector_results or []),
-                    "filter_applied": bool(vector_filter),
-                },
-                "bm25": {
-                    "enabled": bool(want_bm25),
-                    "candidates": len(bm25_results or []),
-                    "index_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
-                    "filter_applied": bool(bm25_filter),
-                },
-                "lexical_db": {
-                    "enabled": bool(want_lexical) and bool(getattr(settings, "LEXICAL_DB_ENABLED", True)),
-                    "candidates": len(lexical_results or []),
-                    "fts_config": str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple"),
-                    "trgm_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)),
-                    "pg_trgm_available": self._lexical_pg_trgm_available,
-                    "methods": dict(lexical_methods),
-                },
-            }
+            timing = channel_metrics.get("timing")
+            if isinstance(timing, dict):
+                timing["vector_ms"] = round(float(vector_elapsed_ms), 2)
+                timing["bm25_ms"] = round(float(bm25_elapsed_ms), 2)
+
+            counts = channel_metrics.get("counts")
+            if isinstance(counts, dict):
+                counts["vector_candidates"] = int(len(vector_results or []))
+                counts["bm25_candidates"] = int(len(bm25_results or []))
+
+            channel_metrics.update(
+                {
+                    "retrieval_mode": retrieval_mode,
+                    "fusion_strategy": str(self.fusion_strategy or ""),
+                    "rrf_k": int(self.rrf_k or 0),
+                    "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+                    "vector": {
+                        "enabled": bool(want_vector),
+                        "candidates": len(vector_results or []),
+                        "filter_applied": bool(vector_filter),
+                    },
+                    "bm25": {
+                        "enabled": bool(want_bm25),
+                        "candidates": len(bm25_results or []),
+                        "index_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+                        "filter_applied": bool(bm25_filter),
+                    },
+                    "lexical_db": {
+                        "enabled": bool(want_lexical) and bool(getattr(settings, "LEXICAL_DB_ENABLED", True)),
+                        "candidates": len(lexical_results or []),
+                        "fts_config": str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple"),
+                        "trgm_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)),
+                        "pg_trgm_available": self._lexical_pg_trgm_available,
+                        "methods": dict(lexical_methods),
+                    },
+                }
+            )
         except Exception:
-            self._last_channel_metrics = {}
+            # Keep the stable shape even if richer channel details fail.
+            try:
+                timing = channel_metrics.get("timing")
+                if isinstance(timing, dict):
+                    timing["vector_ms"] = round(float(vector_elapsed_ms), 2)
+                    timing["bm25_ms"] = round(float(bm25_elapsed_ms), 2)
+                counts = channel_metrics.get("counts")
+                if isinstance(counts, dict):
+                    counts["vector_candidates"] = int(len(vector_results or []))
+                    counts["bm25_candidates"] = int(len(bm25_results or []))
+            except Exception:
+                pass
 
         # 3) Score normalization + linear merge
+        t_fusion0 = time.perf_counter()
         merged_results = self._merge_results(
             vector_results,
             bm25_results,
@@ -1348,6 +1399,12 @@ class HybridRetriever(BaseRetriever):
         try:
             if isinstance(self._last_channel_metrics, dict):
                 self._last_channel_metrics["merged_post_dedup"] = len(merged_results or [])
+        except Exception:
+            pass
+        try:
+            timing = channel_metrics.get("timing")
+            if isinstance(timing, dict):
+                timing["fusion_ms"] = round(float((time.perf_counter() - t_fusion0) * 1000), 2)
         except Exception:
             pass
 
@@ -2324,6 +2381,24 @@ class HybridRetriever(BaseRetriever):
             debug["channels"] = dict(self._last_channel_metrics or {})
         except Exception:
             debug["channels"] = {}
+        try:
+            ch = debug.get("channels") or {}
+            timing0 = ch.get("timing") if isinstance(ch, dict) else None
+            counts0 = ch.get("counts") if isinstance(ch, dict) else None
+            timing_src = timing0 if isinstance(timing0, dict) else {}
+            counts_src = counts0 if isinstance(counts0, dict) else {}
+            debug["timing"] = {
+                "vector_ms": float(timing_src.get("vector_ms") or 0.0),
+                "bm25_ms": float(timing_src.get("bm25_ms") or 0.0),
+                "fusion_ms": float(timing_src.get("fusion_ms") or 0.0),
+            }
+            debug["counts"] = {
+                "vector_candidates": int(counts_src.get("vector_candidates") or 0),
+                "bm25_candidates": int(counts_src.get("bm25_candidates") or 0),
+            }
+        except Exception:
+            debug["timing"] = {"vector_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0}
+            debug["counts"] = {"vector_candidates": 0, "bm25_candidates": 0}
         enrich1: Dict[str, Any] = {}
         results = self._enrich_results_with_db_metadata(results, stats=enrich1)
         debug["enrich_pass1"] = enrich1
