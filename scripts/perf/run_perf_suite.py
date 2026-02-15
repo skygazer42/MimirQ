@@ -9,12 +9,17 @@ from pathlib import Path
 SUITE_NAME = "perf-v1"
 
 
+def _utc_compact_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the MimirQ performance harness suite.")
+    default_out = str(Path("runs") / "perf" / f"{SUITE_NAME}-{_utc_compact_timestamp()}.json")
     parser.add_argument(
         "--out",
-        default=str(Path("runs") / "perf" / f"{SUITE_NAME}.json"),
-        help="Output JSON path (default: runs/perf/perf-v1.json).",
+        default=default_out,
+        help="Output JSON path (default: timestamped under runs/perf/).",
     )
     parser.add_argument(
         "--base-url",
@@ -42,4 +47,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
