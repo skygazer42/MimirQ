@@ -2,7 +2,7 @@
 Chat-related Pydantic schemas.
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -245,6 +245,17 @@ class ChatRequest(BaseModel):
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 
+class TokenUsage(BaseModel):
+    """Token usage metadata for a single response."""
+
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    source: Literal["provider", "mock", "estimate"] = "estimate"
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class ChatResponse(BaseModel):
     """Non-streaming chat response payload."""
 
@@ -254,6 +265,7 @@ class ChatResponse(BaseModel):
     content: str
     citations: List[Citation] = Field(default_factory=list)
     total_tokens: int = 0
+    usage: Optional[TokenUsage] = None
     total_chars: int = 0
     retrieval_mode: Optional[str] = None
     vector_backend: Optional[str] = None
