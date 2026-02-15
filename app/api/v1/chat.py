@@ -835,13 +835,22 @@ async def chat(
     vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
     structured_ok = bool(metrics_data.get("structured_parse_ok")) and structured_data is not None
 
+    total_tokens = num_tokens_from_string(full_response or "")
+    usage = {
+        "prompt_tokens": 0,
+        "completion_tokens": total_tokens,
+        "total_tokens": total_tokens,
+        "source": "mock" if bool(getattr(settings, "LLM_MOCK_ENABLED", False)) else "estimate",
+    }
+
     return {
         "conversation_id": conversation_id,
         "assistant_message_id": assistant_message_id,
         "request_id": str(request_id),
         "content": full_response,
         "citations": citations_data,
-        "total_tokens": num_tokens_from_string(full_response or ""),
+        "total_tokens": total_tokens,
+        "usage": usage,
         "total_chars": len(full_response or ""),
         "retrieval_mode": retrieval_mode_used,
         "vector_backend": vector_backend_used,
