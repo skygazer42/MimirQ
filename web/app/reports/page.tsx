@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { wrap, type Remote } from 'comlink'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, BarChart3, Download, FileSearch, FileText, Layers, Loader2, RefreshCw, ShieldAlert } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -20,9 +21,12 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { datasetApi, datasetCategoryApi, reportApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { flattenFolderTree } from '@/lib/report-transforms'
 import { formatDate, formatFileSize } from '@/lib/utils'
 
+import type { FlatFolderRow } from '@/lib/report-transforms'
 import type { Dataset, DatasetCategoryNode, DatasetReport } from '@/types'
+import type { ReportTransformsWorkerApi } from '@/workers/report-transforms.worker'
 
 const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
 
@@ -58,6 +62,12 @@ export default function ReportsCenterPage() {
   const [categoryQuery, setCategoryQuery] = useState<string>('')
   const [categoryTree, setCategoryTree] = useState<DatasetCategoryNode[]>([])
   const [isLoadingCategories, setIsLoadingCategories] = useState(false)
+
+  const [flatFolders, setFlatFolders] = useState<FlatFolderRow[] | null>(null)
+  const transformsWorkerRef = useRef<Worker | null>(null)
+  const transformsApiRef = useRef<Remote<ReportTransformsWorkerApi> | null>(null)
+  const transformsDisabledRef = useRef(false)
+  const flatFoldersSeqRef = useRef(0)
 
   const selectedDataset = useMemo(() => datasets.find((d) => d.id === datasetId) || null, [datasets, datasetId])
 
@@ -120,6 +130,16 @@ export default function ReportsCenterPage() {
     void loadReport()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId])
+
+  useEffect(() => {
+    return () => {
+      if (transformsWorkerRef.current) {
+        transformsWorkerRef.current.terminate()
+        transformsWorkerRef.current = null
+        transformsApiRef.current = null
+      }
+    }
+  }, [])
 
   const handleExportJson = useCallback(async () => {
     if (!datasetId) return
@@ -190,28 +210,61 @@ export default function ReportsCenterPage() {
   const governance = report?.governance_metrics || null
   const governanceAudit = report?.governance_audit || null
 
-  const flatFolders = useMemo(() => {
-    const root = folderTree?.root
-    if (!root) return [] as Array<{ path: string; documents: number; depth: number }>
+  useEffect(() => {
+    const seq = ++flatFoldersSeqRef.current
 
-    const out: Array<{ path: string; documents: number; depth: number }> = []
-    const walk = (node: any) => {
-      for (const child of (node.children || []) as any[]) {
-        out.push({
-          path: String(child.path || ''),
-          documents: Number(child.documents || 0),
-          depth: Number(child.depth || 0),
-        })
-        walk(child)
+    if (!folderTree) {
+      setFlatFolders(null)
+      return
+    }
+
+    // Null => computed pending for this folder tree.
+    setFlatFolders(null)
+
+    const computeSync = () => {
+      try {
+        const rows = flattenFolderTree(folderTree)
+        if (flatFoldersSeqRef.current === seq) setFlatFolders(rows)
+      } catch (e) {
+        console.warn('Failed to flatten folder tree; falling back to empty list', e)
+        if (flatFoldersSeqRef.current === seq) setFlatFolders([])
       }
     }
-    walk(root)
-    return out
+
+    if (transformsDisabledRef.current || typeof Worker === 'undefined') {
+      computeSync()
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        if (!transformsWorkerRef.current || !transformsApiRef.current) {
+          transformsWorkerRef.current = new Worker(new URL('../../workers/report-transforms.worker.ts', import.meta.url), { type: 'module' })
+          transformsApiRef.current = wrap<ReportTransformsWorkerApi>(transformsWorkerRef.current)
+        }
+
+        const rows = await transformsApiRef.current.flattenFolderTree(folderTree)
+        if (cancelled) return
+        if (flatFoldersSeqRef.current !== seq) return
+        setFlatFolders(rows)
+      } catch (e) {
+        // If the environment can't load a worker bundle (or Comlink fails), keep the page functional.
+        console.warn('Report transforms worker failed; falling back to main thread', e)
+        transformsDisabledRef.current = true
+        computeSync()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [folderTree])
 
   const folderBarData = useMemo(() => {
+    const rows = flatFolders ?? []
     const q = folderQuery.trim().toLowerCase()
-    const filtered = q ? flatFolders.filter((f) => f.path.toLowerCase().includes(q)) : flatFolders
+    const filtered = q ? rows.filter((f) => f.path.toLowerCase().includes(q)) : rows
     return filtered
       .slice()
       .sort((a, b) => b.documents - a.documents)
@@ -745,6 +798,11 @@ export default function ReportsCenterPage() {
 
                   {!folderTree ? (
                     <div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>
+                  ) : flatFolders === null ? (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                      <span>目录统计计算中...</span>
+                    </div>
                   ) : flatFolders.length === 0 ? (
                     <div className="mt-3 text-sm text-muted-foreground">暂无目录（未上传带路径的文件）</div>
                   ) : folderBarData.length === 0 ? (
