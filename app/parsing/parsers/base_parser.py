@@ -82,7 +82,7 @@ class BaseAdvancedParser(ABC):
         self,
         parser: Any,
         file_path: Path,
-        binary: bytes,
+        binary: Optional[bytes],
         callback: Callable[[float, str], None],
         **kwargs
     ) -> Tuple[List, List]:
@@ -92,7 +92,8 @@ class BaseAdvancedParser(ABC):
         Args:
             parser: Underlying parser instance.
             file_path: File path.
-            binary: File bytes.
+            binary: Optional file bytes. Prefer passing None so the underlying parser can
+                stream/read from disk without duplicating the file in memory.
             callback: Progress callback.
             **kwargs: Extra args.
 
@@ -304,16 +305,12 @@ class BaseAdvancedParser(ABC):
         if not ok:
             raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
 
-        # Read file.
-        with open(file_path, "rb") as f:
-            binary = f.read()
-
         # Call underlying parser.
         callback = self._create_callback()
         sections, tables = self._call_parse_method(
             parser=parser,
             file_path=file_path,
-            binary=binary,
+            binary=None,
             callback=callback,
             **kwargs
         )
@@ -341,7 +338,7 @@ class BaseAdvancedParser(ABC):
         **kwargs,
     ) -> List[Document]:
         """
-        Parse document asynchronously (aiofiles for async file IO).
+        Parse document asynchronously.
 
         Args:
             file_path: Document file path.
@@ -350,8 +347,6 @@ class BaseAdvancedParser(ABC):
         Returns:
             List of LangChain Documents.
         """
-        import aiofiles
-        
         file_path = Path(file_path)
         self._validate_file(file_path)
 
@@ -362,17 +357,13 @@ class BaseAdvancedParser(ABC):
         if not ok:
             raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
 
-        # Read file asynchronously.
-        async with aiofiles.open(file_path, "rb") as f:
-            binary = await f.read()
-
         # Call underlying parser in a thread pool (parser may be sync).
         def _parse_in_thread():
             callback = self._create_callback()
             sections, tables = self._call_parse_method(
                 parser=parser,
                 file_path=file_path,
-                binary=binary,
+                binary=None,
                 callback=callback,
                 **kwargs
             )

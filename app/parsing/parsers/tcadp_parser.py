@@ -86,7 +86,7 @@ class TCADPParser(BaseAdvancedParser):
         self,
         parser: Any,
         file_path: Path,
-        binary: bytes,
+        binary: bytes | None,
         callback: Callable[[float, str], None],
         **kwargs
     ) -> Tuple[List, List]:
