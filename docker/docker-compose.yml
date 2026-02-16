@@ -38,6 +38,12 @@ x-docker-logging: &docker_logging
     max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
     max-file: "${DOCKER_LOG_MAX_FILE:-3}"
 
+x-docker-logging: &docker_logging
+  driver: "json-file"
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+    max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+
 services:
   # Redis（任务队列/缓存/幂等锁）
   mimirq-redis:
