@@ -41,9 +41,9 @@ services:
       [
         "redis-server",
         "--maxmemory",
-        "${REDIS_MAXMEMORY:-0}",
+        "${REDIS_MAXMEMORY:-512mb}",
         "--maxmemory-policy",
-        "${REDIS_MAXMEMORY_POLICY:-noeviction}",
+        "${REDIS_MAXMEMORY_POLICY:-allkeys-lru}",
       ]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
