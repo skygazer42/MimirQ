@@ -33,6 +33,11 @@ from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval_candidate_cache import (
+    build_retrieval_candidate_cache_key,
+    get_cached_retrieval_candidates,
+    set_cached_retrieval_candidates,
+)
 from app.storage.vector.factory import get_vector_store
 
 logger = get_logger("rag.retriever")
@@ -1304,6 +1309,57 @@ class HybridRetriever(BaseRetriever):
             # and keyword-mode already has an explicit fallback to vector when both sparse channels return empty.
             want_bm25 = False
 
+        # Optional: retrieval candidate short TTL cache (Redis, best-effort).
+        cache_key: str | None = None
+        cache_hit = False
+        cache_eligible = bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False))
+        if cache_eligible:
+            ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
+            if ttl <= 0:
+                cache_eligible = False
+
+            tenant_uuid = tenant_id or self.tenant_id
+            account_id0 = (self.account_id or "").strip()
+            # Fail closed on ambiguous scope: only cache when we can bind to a strict tenant+account
+            # and a dataset/document scope boundary.
+            if tenant_uuid is None or not account_id0 or (not document_ids and self.dataset_id is None):
+                cache_eligible = False
+
+        if cache_eligible:
+            try:
+                tenant_uuid = tenant_id or self.tenant_id
+                account_id0 = (self.account_id or "").strip()
+                dataset_id0 = str(self.dataset_id) if self.dataset_id is not None else None
+                pipeline_key = str(current_embedding_space_hash() or "") or None
+                doc_ids = [str(d) for d in (document_ids or [])]
+
+                cache_key = build_retrieval_candidate_cache_key(
+                    tenant_id=str(tenant_uuid),
+                    account_id=account_id0,
+                    dataset_id=dataset_id0,
+                    pipeline_key=pipeline_key,
+                    query=query,
+                    top_k=int(top_k or 0),
+                    score_threshold=float(score_threshold or 0.0),
+                    retrieval_mode=retrieval_mode,
+                    metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
+                    document_ids=doc_ids,
+                )
+
+                cached = get_cached_retrieval_candidates(cache_key) if cache_key else None
+            except Exception:
+                cached = None
+
+            if cached:
+                cache_hit = True
+                try:
+                    if isinstance(self._last_channel_metrics, dict):
+                        self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
+                        self._last_channel_metrics["cache"]["hit"] = True
+                except Exception:
+                    pass
+                return cached[:top_k]
+
         # MMR mode needs more candidates for diversity selection
         fetch_k = top_k * 2
         if retrieval_mode == "mmr":
@@ -1659,7 +1715,18 @@ class HybridRetriever(BaseRetriever):
                 self._last_channel_metrics["returned_top_k"] = int(min(int(top_k or 0), after_diversity))
         except Exception:
             pass
-        return merged_results[:top_k]
+        out = merged_results[:top_k]
+
+        if cache_eligible and (not cache_hit) and cache_key and out:
+            try:
+                stored = bool(set_cached_retrieval_candidates(cache_key, out))
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
+                    self._last_channel_metrics["cache"]["store_ok"] = stored
+            except Exception:
+                pass
+
+        return out
 
     # ---- LangChain Retriever API ----
 
