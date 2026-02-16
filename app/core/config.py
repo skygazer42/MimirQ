@@ -196,6 +196,14 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_API_KEY: str = ""
     EMBEDDING_API_BASE: str = ""
+    # Embedding API engineering knobs (batching + concurrency + retry/backoff).
+    # Keep defaults conservative to avoid rate-limit spikes in mid-scale ingest.
+    EMBEDDING_API_TIMEOUT_SEC: float = 60.0
+    EMBEDDING_API_BATCH_SIZE: int = 64
+    EMBEDDING_API_MAX_CONCURRENCY: int = 3
+    EMBEDDING_API_MAX_RETRIES: int = 3
+    EMBEDDING_API_RETRY_BACKOFF_SEC: float = 0.5
+    EMBEDDING_API_RETRY_JITTER_SEC: float = 0.2
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
@@ -1206,6 +1214,19 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_CACHE_PREFIX must not contain whitespace")
         if self.EMBEDDING_CACHE_PREFIX != emb_prefix:
             self.EMBEDDING_CACHE_PREFIX = emb_prefix
+
+        if float(getattr(self, "EMBEDDING_API_TIMEOUT_SEC", 0.0) or 0.0) <= 0:
+            raise ValueError("EMBEDDING_API_TIMEOUT_SEC must be > 0")
+        if int(getattr(self, "EMBEDDING_API_BATCH_SIZE", 0) or 0) < 1:
+            raise ValueError("EMBEDDING_API_BATCH_SIZE must be >= 1")
+        if int(getattr(self, "EMBEDDING_API_MAX_CONCURRENCY", 0) or 0) < 1:
+            raise ValueError("EMBEDDING_API_MAX_CONCURRENCY must be >= 1")
+        if int(getattr(self, "EMBEDDING_API_MAX_RETRIES", 0) or 0) < 0:
+            raise ValueError("EMBEDDING_API_MAX_RETRIES must be >= 0")
+        if float(getattr(self, "EMBEDDING_API_RETRY_BACKOFF_SEC", 0.0) or 0.0) < 0:
+            raise ValueError("EMBEDDING_API_RETRY_BACKOFF_SEC must be >= 0")
+        if float(getattr(self, "EMBEDDING_API_RETRY_JITTER_SEC", 0.0) or 0.0) < 0:
+            raise ValueError("EMBEDDING_API_RETRY_JITTER_SEC must be >= 0")
 
         if int(getattr(self, "CHAT_RESPONSE_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
