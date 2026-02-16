@@ -1261,7 +1261,6 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
         if self.RETRIEVAL_CANDIDATE_CACHE_PREFIX != cand_prefix:
             self.RETRIEVAL_CANDIDATE_CACHE_PREFIX = cand_prefix
-
         if int(getattr(self, "VECTOR_WRITE_BATCH_SIZE", 0) or 0) < 1:
             raise ValueError("VECTOR_WRITE_BATCH_SIZE must be >= 1")
         if int(getattr(self, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0) < 0:
