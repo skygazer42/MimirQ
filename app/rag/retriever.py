@@ -81,6 +81,8 @@ class HybridRetriever(BaseRetriever):
     # LRU order for per-tenant BM25 caches (prevents unbounded growth in multi-tenant deployments).
     _bm25_cache_order: "OrderedDict[str, None]" = PrivateAttr(default_factory=OrderedDict)
     _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    # Cache versions per BM25 scope key (used to invalidate dataset-scoped indices after ingest).
+    _bm25_cache_versions: Dict[str, str] = PrivateAttr(default_factory=dict)
     # Best-effort debug metrics for the last retrieval call (per retriever instance).
     # Used by debug endpoints / observability to expose trimming/overfetch behavior.
     _last_debug_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
@@ -107,6 +109,81 @@ class HybridRetriever(BaseRetriever):
 
     def _tenant_key(self, tenant_id: Optional[UUID]) -> str:
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
+
+    def _bm25_scope_key(
+        self,
+        *,
+        tenant_id: UUID,
+        dataset_id: Optional[UUID],
+        document_ids: Optional[List[UUID]],
+    ) -> str:
+        """
+        Return the in-memory BM25 cache key for a retrieval scope.
+
+        - document_ids scoped: cache per-tenant (small and request-specific)
+        - dataset scoped: cache per (tenant, dataset) to keep indices smaller and easier to invalidate
+        - open scope: cache per-tenant (legacy; usually disabled at the API layer)
+        """
+        tenant_key = self._tenant_key(tenant_id)
+        if document_ids:
+            return tenant_key
+        if dataset_id is not None:
+            return f"{tenant_key}:dataset:{dataset_id}"
+        return tenant_key
+
+    def _clear_bm25_cache_key(self, key: str) -> None:
+        """Clear a single BM25 cache entry (in-memory only)."""
+        self._bm25_retrievers.pop(key, None)
+        self._bm25_docs.pop(key, None)
+        self._bm25_doc_ids.pop(key, None)
+        self._chunk_id_lookup.pop(key, None)
+        self._bm25_build_locks.pop(key, None)
+        self._bm25_cache_versions.pop(key, None)
+        with self._bm25_cache_lock:
+            self._bm25_cache_order.pop(key, None)
+
+    def _bm25_dataset_cache_version(
+        self,
+        *,
+        tenant_id: Optional[UUID],
+        dataset_id: UUID,
+    ) -> str:
+        """
+        Return a stable dataset version string for BM25 cache invalidation.
+
+        Cross-process goal: ingestion workers can "touch" the dataset row, and API instances
+        observe the updated `updated_at` to invalidate their in-memory BM25 indices.
+        """
+        tenant_uuid: Optional[UUID] = tenant_id
+        if tenant_uuid is None:
+            try:
+                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            except Exception:
+                tenant_uuid = None
+        if tenant_uuid is None:
+            return ""
+
+        db = SessionLocal()
+        try:
+            from app.models.dataset import Dataset  # noqa: WPS433
+
+            row = (
+                db.query(Dataset.updated_at)
+                .filter(Dataset.tenant_id == tenant_uuid, Dataset.id == dataset_id)
+                .first()
+            )
+            updated_at = row[0] if row else None
+            try:
+                return updated_at.isoformat() if updated_at is not None else ""
+            except Exception:
+                return ""
+        except Exception:
+            return ""
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
 
     def _get_bm25_build_lock(self, tenant_key: str) -> threading.Lock:
         lock = self._bm25_build_locks.get(tenant_key)
@@ -151,21 +228,23 @@ class HybridRetriever(BaseRetriever):
                 self._bm25_cache_order.pop(oldest, None)
                 evicted.append(oldest)
 
-        for tenant in evicted:
-            self._bm25_retrievers.pop(tenant, None)
-            self._bm25_docs.pop(tenant, None)
-            self._bm25_doc_ids.pop(tenant, None)
-            self._chunk_id_lookup.pop(tenant, None)
-            self._bm25_build_locks.pop(tenant, None)
+        for key in evicted:
+            self._bm25_retrievers.pop(key, None)
+            self._bm25_docs.pop(key, None)
+            self._bm25_doc_ids.pop(key, None)
+            self._chunk_id_lookup.pop(key, None)
+            self._bm25_build_locks.pop(key, None)
+            self._bm25_cache_versions.pop(key, None)
 
         if evicted:
-            logger.info("BM25 cache evicted %s tenants (max=%s)", len(evicted), max_tenants)
+            logger.info("BM25 cache evicted %s keys (max=%s)", len(evicted), max_tenants)
 
     def _lazy_build_bm25_index(
         self,
         *,
         tenant_id: Optional[UUID],
         document_ids: Optional[List[UUID]],
+        dataset_id: Optional[UUID] = None,
     ) -> bool:
         """Build BM25 index on-demand to mitigate cold-start in multi-process deployments."""
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
@@ -183,46 +262,47 @@ class HybridRetriever(BaseRetriever):
             return False
 
         tenant_key = self._tenant_key(tenant_uuid)
-        existing_retriever = self._bm25_retrievers.get(tenant_key)
-        existing_docs = self._bm25_docs.get(tenant_key)
+        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_id, document_ids=document_ids)
+        existing_retriever = self._bm25_retrievers.get(cache_key)
+        existing_docs = self._bm25_docs.get(cache_key)
         if existing_retriever is not None and existing_docs is not None:
             # If a request scopes to specific documents, ensure those docs are covered by the current cache.
             # Lazy-built indices may have been created from a subset (e.g. first query after restart).
             if document_ids:
-                indexed = self._bm25_doc_ids.get(tenant_key)
+                indexed = self._bm25_doc_ids.get(cache_key)
                 if indexed is None:
-                    self._refresh_bm25_doc_ids(tenant_key, existing_docs)
-                    indexed = self._bm25_doc_ids.get(tenant_key) or set()
+                    self._refresh_bm25_doc_ids(cache_key, existing_docs)
+                    indexed = self._bm25_doc_ids.get(cache_key) or set()
                 requested = {str(did) for did in document_ids if did is not None}
                 missing = requested - set(indexed or set())
                 if not missing:
-                    self._touch_bm25_cache(tenant_key)
+                    self._touch_bm25_cache(cache_key)
                     return True
             else:
-                self._touch_bm25_cache(tenant_key)
+                self._touch_bm25_cache(cache_key)
                 return True
 
-        lock = self._get_bm25_build_lock(tenant_key)
+        lock = self._get_bm25_build_lock(cache_key)
         with lock:
-            existing_retriever = self._bm25_retrievers.get(tenant_key)
-            existing_docs = self._bm25_docs.get(tenant_key)
+            existing_retriever = self._bm25_retrievers.get(cache_key)
+            existing_docs = self._bm25_docs.get(cache_key)
             if existing_retriever is not None and existing_docs is not None:
                 if document_ids:
-                    indexed = self._bm25_doc_ids.get(tenant_key)
+                    indexed = self._bm25_doc_ids.get(cache_key)
                     if indexed is None:
-                        self._refresh_bm25_doc_ids(tenant_key, existing_docs)
-                        indexed = self._bm25_doc_ids.get(tenant_key) or set()
+                        self._refresh_bm25_doc_ids(cache_key, existing_docs)
+                        indexed = self._bm25_doc_ids.get(cache_key) or set()
                     requested = {str(did) for did in document_ids if did is not None}
                     missing = requested - set(indexed or set())
                     if not missing:
-                        self._touch_bm25_cache(tenant_key)
+                        self._touch_bm25_cache(cache_key)
                         return True
                 else:
-                    self._touch_bm25_cache(tenant_key)
+                    self._touch_bm25_cache(cache_key)
                     return True
 
             full_tenant = bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False))
-            if not document_ids and not full_tenant:
+            if not document_ids and not full_tenant and dataset_id is None:
                 return False
 
             def _maybe_call(q, method_name: str, *args, **kwargs):
@@ -282,10 +362,10 @@ class HybridRetriever(BaseRetriever):
             try:
                 # If we already have an index and are missing requested docs, try to extend it.
                 if existing_retriever is not None and existing_docs is not None and document_ids:
-                    indexed = self._bm25_doc_ids.get(tenant_key)
+                    indexed = self._bm25_doc_ids.get(cache_key)
                     if indexed is None:
-                        self._refresh_bm25_doc_ids(tenant_key, existing_docs)
-                        indexed = self._bm25_doc_ids.get(tenant_key) or set()
+                        self._refresh_bm25_doc_ids(cache_key, existing_docs)
+                        indexed = self._bm25_doc_ids.get(cache_key) or set()
                     requested = {str(did) for did in document_ids if did is not None}
                     missing = requested - set(indexed or set())
 
@@ -337,11 +417,11 @@ class HybridRetriever(BaseRetriever):
                                 docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
                             if not docs:
                                 return True
-                            self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid)
+                            self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
                             logger.info(
                                 "BM25 lazy-built (scoped rebuild) %s chunks for tenant %s missing_docs=%s cap=%s",
                                 len(docs),
-                                tenant_key,
+                                cache_key,
                                 len(missing),
                                 max_chunks,
                             )
@@ -422,6 +502,8 @@ class HybridRetriever(BaseRetriever):
                 q = _maybe_call(q, "execution_options", stream_results=True)
                 if document_ids:
                     q = q.filter(DocumentChunk.document_id.in_(document_ids))
+                elif dataset_id is not None:
+                    q = q.filter(DBDocument.dataset_id == dataset_id)
                 q = q.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
                 if max_chunks:
                     q = q.limit(max_chunks)
@@ -449,16 +531,16 @@ class HybridRetriever(BaseRetriever):
                     docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
                 if not docs:
                     return False
-                self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid)
+                self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
                 logger.info(
-                    "BM25 lazy-built %s chunks for tenant %s (doc_ids=%s)",
+                    "BM25 lazy-built %s chunks for scope %s (doc_ids=%s)",
                     len(docs),
-                    tenant_key,
+                    cache_key,
                     len(document_ids) if document_ids else 0,
                 )
                 return True
             except Exception as exc:
-                logger.warning("BM25 lazy build failed for tenant %s: %s", tenant_key, str(exc)[:200])
+                logger.warning("BM25 lazy build failed for scope %s: %s", cache_key, str(exc)[:200])
                 return False
             finally:
                 try:
@@ -491,15 +573,21 @@ class HybridRetriever(BaseRetriever):
             docs.append(Document(page_content=chunk.content, id=str(chunk.id), metadata=meta))
         self._build_bm25_index_from_documents(docs, tenant_id=tenant_id)
 
-    def _build_bm25_index_from_documents(self, docs: List[Document], *, tenant_id: Optional[UUID] = None) -> None:
+    def _build_bm25_index_from_documents(
+        self,
+        docs: List[Document],
+        *,
+        tenant_id: Optional[UUID] = None,
+        cache_key: str | None = None,
+    ) -> None:
         """Build BM25 from LangChain Document list (avoids dependency on ORM objects)."""
         if not docs:
             return
-        tenant_key = self._tenant_key(tenant_id)
+        key = str(cache_key) if cache_key is not None else self._tenant_key(tenant_id)
         retriever = BM25Retriever.from_documents(docs, preprocess_func=self._bm25_tokenize, k=10)
-        self._bm25_retrievers[tenant_key] = retriever
-        self._bm25_docs[tenant_key] = docs
-        self._refresh_bm25_doc_ids(tenant_key, docs)
+        self._bm25_retrievers[key] = retriever
+        self._bm25_docs[key] = docs
+        self._refresh_bm25_doc_ids(key, docs)
         lookup: Dict[str, str] = {}
         for d in docs:
             meta = d.metadata or {}
@@ -511,9 +599,9 @@ class HybridRetriever(BaseRetriever):
             if doc_pipeline_key is not None:
                 lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
-        self._chunk_id_lookup[tenant_key] = lookup
-        self._touch_bm25_cache(tenant_key)
-        logger.info("BM25 index built with %s chunks for tenant %s", len(docs), tenant_key)
+        self._chunk_id_lookup[key] = lookup
+        self._touch_bm25_cache(key)
+        logger.info("BM25 index built with %s chunks for scope %s", len(docs), key)
 
     def build_bm25_index_from_db(
         self,
@@ -583,8 +671,21 @@ class HybridRetriever(BaseRetriever):
         """
         if not docs:
             return
-        tenant_key = self._tenant_key(tenant_id)
-        existing = self._bm25_docs.get(tenant_key) or []
+        tenant_uuid: Optional[UUID] = tenant_id
+        if tenant_uuid is None:
+            try:
+                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            except Exception:
+                tenant_uuid = None
+        if tenant_uuid is None:
+            return
+
+        cache_key = self._bm25_scope_key(
+            tenant_id=tenant_uuid,
+            dataset_id=self.dataset_id,
+            document_ids=None,
+        )
+        existing = self._bm25_docs.get(cache_key) or []
         merged: Dict[str, Document] = {str(d.id): d for d in existing if d.id is not None}
         for d in docs:
             if d.id is None:
@@ -597,9 +698,9 @@ class HybridRetriever(BaseRetriever):
             preprocess_func=self._bm25_tokenize,
             k=10,
         )
-        self._bm25_retrievers[tenant_key] = retriever
-        self._bm25_docs[tenant_key] = merged_docs
-        self._refresh_bm25_doc_ids(tenant_key, merged_docs)
+        self._bm25_retrievers[cache_key] = retriever
+        self._bm25_docs[cache_key] = merged_docs
+        self._refresh_bm25_doc_ids(cache_key, merged_docs)
         lookup: Dict[str, str] = {}
         for d in merged_docs:
             meta = d.metadata or {}
@@ -611,9 +712,9 @@ class HybridRetriever(BaseRetriever):
             if doc_pipeline_key is not None:
                 lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
-        self._chunk_id_lookup[tenant_key] = lookup
-        self._touch_bm25_cache(tenant_key)
-        logger.info("BM25 index updated to %s chunks for tenant %s", len(merged_docs), tenant_key)
+        self._chunk_id_lookup[cache_key] = lookup
+        self._touch_bm25_cache(cache_key)
+        logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs), cache_key)
 
     def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
         """Remove all chunks of a specified document from the BM25 index."""
@@ -724,6 +825,7 @@ class HybridRetriever(BaseRetriever):
         self._bm25_doc_ids.clear()
         self._chunk_id_lookup.clear()
         self._bm25_build_locks.clear()
+        self._bm25_cache_versions.clear()
         with self._bm25_cache_lock:
             self._bm25_cache_order.clear()
 
@@ -738,18 +840,53 @@ class HybridRetriever(BaseRetriever):
         """BM25 keyword retrieval (internal use, returns dicts with scores)."""
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             return []
-        tenant_key = self._tenant_key(tenant_id)
-        retriever = self._bm25_retrievers.get(tenant_key)
-        docs = self._bm25_docs.get(tenant_key)
+
+        tenant_uuid: Optional[UUID] = tenant_id
+        if tenant_uuid is None:
+            try:
+                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            except Exception:
+                tenant_uuid = None
+        if tenant_uuid is None:
+            return []
+
+        dataset_scope_id: UUID | None = None
+        if self.dataset_id is not None and not (document_ids or []):
+            dataset_scope_id = self.dataset_id
+
+        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
+
+        current_version: str | None = None
+        if dataset_scope_id is not None:
+            current_version = self._bm25_dataset_cache_version(tenant_id=tenant_uuid, dataset_id=dataset_scope_id)
+            if current_version:
+                cached_version = self._bm25_cache_versions.get(cache_key)
+                if cached_version != current_version:
+                    # Dataset was updated since this index was built. Fail closed by rebuilding.
+                    self._clear_bm25_cache_key(cache_key)
+            else:
+                # If we can't determine a stable version (e.g., offline test mode / DB down),
+                # do not invalidate existing in-memory indices.
+                current_version = None
+
+        retriever = self._bm25_retrievers.get(cache_key)
+        docs = self._bm25_docs.get(cache_key)
         if retriever is None or docs is None:
-            self._lazy_build_bm25_index(tenant_id=tenant_id, document_ids=document_ids)
-            retriever = self._bm25_retrievers.get(tenant_key)
-            docs = self._bm25_docs.get(tenant_key)
+            self._lazy_build_bm25_index(
+                tenant_id=tenant_uuid,
+                document_ids=document_ids,
+                dataset_id=dataset_scope_id,
+            )
+            retriever = self._bm25_retrievers.get(cache_key)
+            docs = self._bm25_docs.get(cache_key)
             if retriever is None or docs is None:
                 logger.warning("BM25 index not initialized, skipping keyword search")
                 return []
 
-        self._touch_bm25_cache(tenant_key)
+        if dataset_scope_id is not None and current_version:
+            self._bm25_cache_versions[cache_key] = current_version
+
+        self._touch_bm25_cache(cache_key)
 
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
         processed_query = retriever.preprocess_func(query)
