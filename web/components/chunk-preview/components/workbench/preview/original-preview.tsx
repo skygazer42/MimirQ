@@ -35,6 +35,46 @@ function canReadFileAsText(file: File | null) {
   )
 }
 
+function DeferredMarkdownToc({ markdown }: { markdown: string }) {
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setReady(false)
+
+    const enable = () => {
+      if (cancelled) return
+      setReady(true)
+    }
+
+    // Rendering + heading extraction for large markdown docs can block the main thread.
+    // Defer the (non-critical) ToC until the browser is idle so the main preview shows ASAP.
+    const ric = (globalThis as any).requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout?: number }) => number)
+      | undefined
+    const cic = (globalThis as any).cancelIdleCallback as ((id: number) => void) | undefined
+    if (typeof ric === 'function') {
+      const id = ric(enable, { timeout: 800 })
+      return () => {
+        cancelled = true
+        cic?.(id)
+      }
+    }
+
+    const t = setTimeout(enable, 0)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [markdown])
+
+  if (!ready) {
+    return <div className="text-[11px] text-muted-foreground">正在生成目录…</div>
+  }
+
+  return <MarkdownToc markdown={markdown} />
+}
+
 export function OriginalPreview() {
   const {
     previewData,
@@ -407,14 +447,14 @@ export function OriginalPreview() {
                       提示：渲染模式下不支持高亮显示，请切换至源码/编辑器模式查看切片对应位置
                     </p>
                   </div>
-                  {tocEnabled && (
-                    <aside className="hidden xl:block w-64 shrink-0">
-                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/60 bg-card p-3">
-                        <MarkdownToc markdown={effectiveOriginalText} />
-                      </div>
-                    </aside>
-                  )}
-                </div>
+	                  {tocEnabled && (
+	                    <aside className="hidden xl:block w-64 shrink-0">
+	                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/60 bg-card p-3">
+	                        <DeferredMarkdownToc markdown={effectiveOriginalText} />
+	                      </div>
+	                    </aside>
+	                  )}
+	                </div>
               ) : previewMode === 'editor' ? (
                 <div className="mx-auto w-full max-w-6xl h-full">
                   <OriginalPreviewMonaco
