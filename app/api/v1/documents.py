@@ -2599,6 +2599,39 @@ async def upload_document(
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
 
+    # Ingest idempotency lock (best-effort):
+    # Prevent duplicate concurrent uploads of the same file+pipeline into the same dataset.
+    #
+    # Key must bind:
+    # - tenant_id (multi-tenant safety)
+    # - dataset_id (same file can exist in different datasets)
+    # - file_sha256 (same content)
+    # - pipeline_hash (same preprocessing/chunking/indexing semantics)
+    ingest_lock_key: str | None = None
+    ingest_lock_value: str | None = None
+    if isinstance(file_sha256, str) and file_sha256 and pipeline_hash and dataset is not None:
+        try:
+            from app.tasks.queue import get_queue
+            from app.tasks.locks import acquire_lock, make_lock_value
+
+            redis = await get_queue()
+        except Exception:  # noqa: BLE001
+            redis = None
+
+        if redis is not None:
+            ingest_lock_key = f"lock:ingest:{tenant_id}:{dataset.id}:{file_sha256}:{pipeline_hash}"
+            ingest_lock_value = make_lock_value(account_id)
+            lock_ttl = 60 * 40  # 40 min (slightly above worker job_timeout)
+            acquired = await acquire_lock(redis, key=ingest_lock_key, value=ingest_lock_value, ttl_sec=lock_ttl)
+            if not acquired:
+                # Remove the just-uploaded file to save disk.
+                with contextlib.suppress(OSError):
+                    file_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=409, detail="Duplicate ingest in progress")
+
+            doc_metadata["ingest_lock_key"] = ingest_lock_key
+            doc_metadata["ingest_lock_value"] = ingest_lock_value
+
     # Unified ingestion run manifest (best-effort; never blocks uploads).
     ingestion_run = None
     try:
