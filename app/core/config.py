@@ -125,6 +125,11 @@ class Settings(BaseSettings):
 
     # Vector write batching (Milvus/Chroma/etc). Smaller batches reduce tail latency and memory spikes.
     VECTOR_WRITE_BATCH_SIZE: int = 256
+    # Adaptive write batching: when chunks are large, reduce batch size to avoid
+    # large embedding payloads / insert spikes (default: enabled).
+    VECTOR_WRITE_ADAPTIVE_BATCHING_ENABLED: bool = True
+    # Max total characters per vector write batch (best-effort; 0 disables adaptive batching).
+    VECTOR_WRITE_BATCH_MAX_CHARS: int = 200_000
     VECTOR_WRITE_MAX_RETRIES: int = 1
     VECTOR_WRITE_RETRY_BACKOFF_SEC: float = 0.5
 
@@ -1232,6 +1237,11 @@ class Settings(BaseSettings):
             raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
             raise ValueError("CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES must be >= 0")
+
+        if int(getattr(self, "VECTOR_WRITE_BATCH_SIZE", 0) or 0) < 1:
+            raise ValueError("VECTOR_WRITE_BATCH_SIZE must be >= 1")
+        if int(getattr(self, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0) < 0:
+            raise ValueError("VECTOR_WRITE_BATCH_MAX_CHARS must be >= 0")
 
         if int(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT", 0) or 0) < 0:
             raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT must be >= 0")
