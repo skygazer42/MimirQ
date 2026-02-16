@@ -25,7 +25,63 @@ try:
 except ImportError:  # pragma: no cover
     from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY as HTTP_422_UNPROCESSABLE_CONTENT
 
+# Starlette renamed 413 constant; keep compatibility alias.
+try:
+    from starlette.status import HTTP_413_CONTENT_TOO_LARGE  # type: ignore
+except ImportError:  # pragma: no cover
+    from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE as HTTP_413_CONTENT_TOO_LARGE
+
 logger = logging.getLogger(__name__)
+
+_HINT_BY_KEY: dict[str, str] = {
+    "timeout": "Parsing timed out. Try a smaller file, choose a faster parser backend, or increase TASK_JOB_TIMEOUT_SEC.",
+    "payload_too_large": "Request payload is too large. Try a smaller file, or increase MAX_FILE_SIZE / REQUEST_MAX_BODY_BYTES.",
+    "result_too_large": "Parsing output is too large. Try a smaller file or reduce extracted content (e.g., fewer pages).",
+    "parse_failed": "Parsing failed. Try a different parser backend; for scanned PDFs you may need OCR.",
+    "preprocess_failed": "Preprocessing failed. Disable file preprocess steps in the ingestion policy or adjust the preprocess config.",
+    "rate_limited": "You are being rate limited. Retry later, or reduce concurrent requests / embedding concurrency.",
+}
+
+
+def _derive_hint(
+    *,
+    status_code: int,
+    error_code: str,
+    message: str,
+    detail: dict[str, Any] | None,
+) -> str | None:
+    # 1) Explicit hint takes precedence.
+    if isinstance(detail, dict):
+        raw_hint = detail.get("hint")
+        if isinstance(raw_hint, str) and raw_hint.strip():
+            return raw_hint.strip()
+
+        hint_key = detail.get("hint_key")
+        if isinstance(hint_key, str) and hint_key.strip():
+            mapped = _HINT_BY_KEY.get(hint_key.strip().lower())
+            if mapped:
+                return mapped
+
+    # 2) Heuristics for legacy string-only HTTPException details.
+    msg = str(message or "").strip()
+    norm = msg.lower()
+
+    if status_code == HTTP_413_CONTENT_TOO_LARGE or "file too large" in norm:
+        return _HINT_BY_KEY.get("payload_too_large")
+
+    if status_code == HTTP_429_TOO_MANY_REQUESTS or error_code == "RATE_LIMIT_EXCEEDED":
+        return _HINT_BY_KEY.get("rate_limited")
+
+    if "worker_timeout" in norm or "timeout" in norm:
+        return _HINT_BY_KEY.get("timeout")
+
+    if "preprocess_failed" in norm:
+        return _HINT_BY_KEY.get("preprocess_failed")
+
+    if "parse_failed" in norm or "failed to parse" in norm:
+        return _HINT_BY_KEY.get("parse_failed")
+
+    return None
 
 
 class ErrorResponse(BaseModel):
@@ -33,6 +89,7 @@ class ErrorResponse(BaseModel):
     message: str
     detail: Optional[Dict[str, Any]] = None
     request_id: Optional[str] = None
+    hint: Optional[str] = None
 
 
 class MimirQError(Exception):
@@ -230,9 +287,15 @@ async def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONRe
         exc.message,
         request_id,
     )
+    hint = _derive_hint(
+        status_code=int(exc.status_code),
+        error_code=str(exc.error_code or "INTERNAL_ERROR"),
+        message=str(exc.message or ""),
+        detail=exc.detail if isinstance(exc.detail, dict) else None,
+    )
     return JSONResponse(
         status_code=exc.status_code,
-        content=exc.to_response(request_id).model_dump(exclude_none=True),
+        content=exc.to_response(request_id).model_dump(exclude_none=True) | ({"hint": hint} if hint else {}),
     )
 
 
@@ -244,14 +307,38 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         403: "AUTHORIZATION_ERROR",
         404: "NOT_FOUND",
         422: "VALIDATION_ERROR",
+        413: "PAYLOAD_TOO_LARGE",
         429: "RATE_LIMIT_EXCEEDED",
         500: "INTERNAL_ERROR",
         503: "SERVICE_UNAVAILABLE",
     }
 
     error_code = error_code_map.get(exc.status_code, "HTTP_ERROR")
-    message = str(exc.detail) if isinstance(exc.detail, str) else "Request failed"
-    detail = exc.detail if isinstance(exc.detail, dict) else None
+    message = ""
+    detail: dict[str, Any] | None = None
+    if isinstance(exc.detail, dict):
+        detail = dict(exc.detail)
+        raw = detail.get("message")
+        message = str(raw) if raw is not None else "Request failed"
+    elif isinstance(exc.detail, str):
+        message = exc.detail
+    else:
+        message = "Request failed"
+
+    hint = _derive_hint(
+        status_code=int(exc.status_code),
+        error_code=str(error_code),
+        message=str(message),
+        detail=detail,
+    )
+
+    # Keep detail payload small and stable: promote message/hint to top-level fields.
+    if detail is not None:
+        detail.pop("message", None)
+        detail.pop("hint", None)
+        detail.pop("hint_key", None)
+        if not detail:
+            detail = None
 
     return JSONResponse(
         status_code=exc.status_code,
@@ -260,6 +347,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             message=message,
             detail=detail,
             request_id=request_id,
+            hint=hint,
         ).model_dump(exclude_none=True),
     )
 
