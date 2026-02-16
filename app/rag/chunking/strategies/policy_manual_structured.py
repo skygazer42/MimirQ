@@ -1,0 +1,259 @@
+"""
+Policy/manual structured chunking strategy.
+
+Goal:
+- Detect policy/manual style headings (chapter/article/clause)
+- Emit parent/child chunks with stable identifiers for clause-addressable retrieval
+
+This is intentionally deterministic and conservative:
+- No LLM calls
+- Heuristics aim to avoid misclassifying generic outlines
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from dataclasses import dataclass
+from typing import Any, List, Optional
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.chunking.base import BaseChunker
+
+
+@dataclass(frozen=True)
+class PolicyHeading:
+    start: int
+    end: int
+    text: str
+    level: int
+    kind: str  # chapter|section|article|clause
+    number: Optional[str] = None
+
+
+_RE_CN_CHAPTER = re.compile(r"^\s*(?P<prefix>第[0-9一二三四五六七八九十百千]+章)\s*(?P<title>.*?)\s*$")
+_RE_CN_SECTION = re.compile(r"^\s*(?P<prefix>第[0-9一二三四五六七八九十百千]+节)\s*(?P<title>.*?)\s*$")
+_RE_CN_ARTICLE = re.compile(
+    r"^\s*(?P<prefix>第[0-9一二三四五六七八九十百千]+条)\b\s*(?P<title>(?:【[^】]{1,60}】)?)\s*(?P<rest>.*)$"
+)
+_RE_CN_CLAUSE = re.compile(r"^\s*(?P<prefix>[（(][0-9一二三四五六七八九十]+[)）])\s*(?P<rest>.*)$")
+
+
+def _sha256_hex(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+def _stable_id24(text: str) -> str:
+    return _sha256_hex(text)[:24]
+
+
+def _iter_headings(text: str) -> List[PolicyHeading]:
+    headings: List[PolicyHeading] = []
+    if not text:
+        return headings
+
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Avoid absurdly long "lines" being misdetected as headings.
+        if len(line) > 240:
+            continue
+
+        kind: Optional[str] = None
+        level: Optional[int] = None
+        num: Optional[str] = None
+
+        if (m := _RE_CN_CHAPTER.match(raw_line)) is not None:
+            kind, level = "chapter", 1
+            num = (m.group("prefix") or "").strip()
+        elif (m := _RE_CN_SECTION.match(raw_line)) is not None:
+            kind, level = "section", 2
+            num = (m.group("prefix") or "").strip()
+        elif (m := _RE_CN_ARTICLE.match(raw_line)) is not None:
+            kind, level = "article", 3
+            num = (m.group("prefix") or "").strip()
+        elif (m := _RE_CN_CLAUSE.match(raw_line)) is not None:
+            kind, level = "clause", 4
+            num = (m.group("prefix") or "").strip()
+
+        if kind is None or level is None:
+            continue
+
+        headings.append(
+            PolicyHeading(
+                start=line_start,
+                end=line_start + len(raw_line),
+                text=line,
+                level=int(level),
+                kind=kind,
+                number=num,
+            )
+        )
+
+    return headings
+
+
+def _update_heading_stack(stack: list[PolicyHeading], *, heading: PolicyHeading) -> None:
+    while stack and stack[-1].level >= heading.level:
+        stack.pop()
+    stack.append(heading)
+
+
+def looks_like_policy_manual(text: str) -> bool:
+    """
+    Heuristic detection for policy/manual style documents.
+
+    We require multiple article markers, and at least one extra signal
+    (chapter/clause marker, or bracketed titles) to avoid matching generic outlines.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return False
+
+    headings = _iter_headings(raw)
+    if not headings:
+        return False
+
+    articles = [h for h in headings if h.kind == "article"]
+    if len(articles) < 2:
+        return False
+
+    chapters = any(h.kind == "chapter" for h in headings)
+    clauses = any(h.kind == "clause" for h in headings)
+    bracket_titles = "【" in raw and "】" in raw
+
+    # Short texts can still be policy-like if they clearly use the format.
+    return bool(chapters or clauses or bracket_titles or len(raw) >= 400)
+
+
+class PolicyManualStructuredChunker(BaseChunker):
+    """
+    Structured chunker for policy/manual documents.
+
+    Emits both:
+    - parent chunks (per-article, stable parent_id)
+    - child chunks (bounded by chunk_size, with parent_id reference)
+    """
+
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._child_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", "。", "；", "，", ". ", "!", "?", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        out: List[Document] = []
+
+        for doc in documents:
+            text = doc.page_content or ""
+            base_meta = dict(doc.metadata or {})
+            if not text.strip():
+                continue
+
+            doc_id = str(base_meta.get("document_id") or "").strip()
+            if not doc_id:
+                doc_id = str(base_meta.get("source") or "").strip() or "unknown"
+
+            headings = _iter_headings(text)
+            article_heads = [h for h in headings if h.kind == "article"]
+
+            # Best-effort: if no articles detected, treat entire text as one section.
+            if not article_heads:
+                article_heads = [
+                    PolicyHeading(start=0, end=0, text="(document)", level=3, kind="article", number="document")
+                ]
+
+            # Pre-compute heading path for each article heading start.
+            stack: list[PolicyHeading] = []
+            path_by_article_start: dict[int, list[str]] = {}
+            for h in headings:
+                _update_heading_stack(stack, heading=h)
+                if h.kind == "article":
+                    path_by_article_start[h.start] = [x.text for x in stack]
+
+            preamble = text[: article_heads[0].start]
+            first_start = 0 if preamble.strip() else article_heads[0].start
+
+            for idx, h in enumerate(article_heads):
+                sec_start = first_start if idx == 0 else h.start
+                sec_end = article_heads[idx + 1].start if idx + 1 < len(article_heads) else len(text)
+                sec_text = text[sec_start:sec_end]
+                if not sec_text.strip():
+                    continue
+
+                article_number = str(h.number or "").strip() or f"article_{idx + 1}"
+                parent_id = _stable_id24(f"{doc_id}:{article_number}")
+
+                path = path_by_article_start.get(h.start) or ([h.text] if h.text else [])
+                if not path:
+                    path = [article_number]
+                path_str = " / ".join(path)
+
+                # Parent chunk (one per article section; may exceed chunk_size for now).
+                parent_content_hash = _sha256_hex(sec_text)
+                parent_clause_id = _stable_id24(f"{doc_id}:{article_number}:{parent_content_hash}")
+                parent_meta: dict[str, Any] = dict(base_meta)
+                parent_meta.update(
+                    {
+                        "chunk_strategy": "policy_manual_structured",
+                        "chunk_role": "parent",
+                        "parent_id": parent_id,
+                        "start_char": sec_start,
+                        "end_char": sec_end,
+                        "policy_clause_id": parent_clause_id,
+                        "policy_clause_number": article_number,
+                        "policy_path": list(path),
+                        "policy_path_str": path_str,
+                    }
+                )
+                out.append(Document(page_content=sec_text, metadata=parent_meta))
+
+                # Child chunks (bounded by chunk_size).
+                split_docs = self._child_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = sec_start + int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+
+                    child_content = sd.page_content or ""
+                    child_content_hash = _sha256_hex(child_content)
+                    child_clause_id = _stable_id24(f"{doc_id}:{article_number}:{child_content_hash}")
+
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta.update(
+                        {
+                            "chunk_strategy": "policy_manual_structured",
+                            "chunk_role": "child",
+                            "parent_id": parent_id,
+                            "start_char": abs_start,
+                            "end_char": abs_end,
+                            "policy_clause_id": child_clause_id,
+                            "policy_clause_number": article_number,
+                            "policy_path": list(path),
+                            "policy_path_str": path_str,
+                        }
+                    )
+                    out.append(Document(page_content=child_content, metadata=meta))
+
+        # Add a stable chunk_index within this output list for convenience/debugging.
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta.setdefault("chunk_index", idx)
+            chunk.metadata = meta
+
+        return out
+
