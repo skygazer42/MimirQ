@@ -63,11 +63,11 @@ services:
       [
         "postgres",
         "-c",
-        "shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}",
+        "shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}",
         "-c",
-        "work_mem=${POSTGRES_WORK_MEM:-4MB}",
+        "work_mem=${POSTGRES_WORK_MEM:-16MB}",
         "-c",
-        "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}",
+        "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MB}",
       ]
     volumes:
       - postgres_data:/var/lib/postgresql/data
