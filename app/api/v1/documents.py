@@ -2611,9 +2611,8 @@ async def upload_document(
     ingest_lock_value: str | None = None
     if isinstance(file_sha256, str) and file_sha256 and pipeline_hash and dataset is not None:
         try:
-            from app.tasks.queue import get_queue
             from app.tasks.locks import acquire_lock, make_lock_value
-
+            from app.tasks.queue import get_queue
             redis = await get_queue()
         except Exception:  # noqa: BLE001
             redis = None
