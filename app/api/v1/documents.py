@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import mimetypes
+import os
 import re
 import shutil
 import time
@@ -83,11 +84,12 @@ from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResp
 from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
 from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.env import is_production_env
 from app.core.token_utils import estimate_tokens, num_tokens_from_string
 from app.models.audit_log import AuditLog
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent, DocumentPermission
 from app.parsing.factory import parser_factory
@@ -101,6 +103,8 @@ from app.rag.preprocessing.html_canonical import extract_canonical_url, normaliz
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
 from app.services.audit_log_service import audit_log_event
+from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
+from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_folders import build_document_folder_tree
 from app.services.document_permission_service import DocumentPermissionService
@@ -3142,6 +3146,7 @@ async def upload_documents_batch(
     event_vector_enabled: Optional[bool] = Form(default=None),
     entity_vector_enabled: Optional[bool] = Form(default=None),
     dataset_id: Optional[UUID] = Form(default=None),
+    precheck_first: bool = Form(default=False),
     user_metadata_map: Optional[str] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -3248,6 +3253,586 @@ async def upload_documents_batch(
     req_cs = (chunk_strategy or "").strip().lower()
     if dataset_default_cs and req_cs in {"", global_default_cs}:
         chunk_strategy_base = dataset_default_cs
+
+    if precheck_first:
+        if dataset is None:
+            raise HTTPException(status_code=400, detail="dataset_id is required for precheck_first")
+
+        async def _save_upload_only(file: UploadFile) -> dict:
+            """Stage files to disk first so we can precheck before ingesting."""
+            async with semaphore:
+                source_path: str | None = None
+                upload_key: str | None = None
+                try:
+                    raw_filename = file.filename
+                    upload_key = _normalize_upload_key(raw_filename)
+                    source_path = upload_key if "/" in upload_key else None
+                    file.filename = _sanitize_filename(raw_filename)
+
+                    file_ext = Path(file.filename).suffix.lower()
+                    if file_ext not in settings.allowed_extensions_list:
+                        return {
+                            "success": False,
+                            "filename": file.filename,
+                            "source_path": source_path,
+                            "error": f"Unsupported file type: {file_ext}",
+                        }
+
+                    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+
+                    file_id = uuid.uuid4()
+                    file_path = upload_dir / f"{file_id}{file_ext}"
+                    file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
+
+                    return {
+                        "success": True,
+                        "filename": file.filename,
+                        "source_path": source_path,
+                        "upload_key": upload_key,
+                        "file_ext": file_ext,
+                        "file_id": file_id,
+                        "file_path": str(file_path),
+                        "file_size": int(file_size or 0),
+                        "file_sha256": str(file_sha256 or "").strip().lower() or None,
+                    }
+                except HTTPException as exc:
+                    return {
+                        "success": False,
+                        "filename": str(getattr(file, "filename", "") or "unknown"),
+                        "source_path": source_path,
+                        "error": str(getattr(exc, "detail", "") or str(exc) or "upload_failed"),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    return {
+                        "success": False,
+                        "filename": str(getattr(file, "filename", "") or "unknown"),
+                        "source_path": source_path,
+                        "error": str(exc)[:200],
+                    }
+
+        save_tasks = [_save_upload_only(file) for file in files]
+        save_results = await asyncio.gather(*save_tasks, return_exceptions=True)
+
+        staged_results: list[dict[str, Any]] = []
+        for r in save_results:
+            if isinstance(r, Exception):
+                staged_results.append({"success": False, "filename": "unknown", "source_path": None, "error": str(r)[:200]})
+            elif isinstance(r, dict):
+                staged_results.append(r)
+            else:
+                staged_results.append({"success": False, "filename": "unknown", "source_path": None, "error": "upload_failed"})
+
+        staged_successful = [r for r in staged_results if r.get("success")]
+        staged_failed = [r for r in staged_results if not r.get("success")]
+
+        # Precheck-first: run a best-effort precheck scan on a staging folder with the uploaded files.
+        # This lets us apply suggested ingestion policy before creating documents/queueing jobs.
+        if staged_successful:
+            scan_run: DBDatasetPrecheckScanRun | None = None
+            staging_root: Path | None = None
+            try:
+                upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+                staging_root = (upload_dir / ".tmp" / "precheck_ingest" / uuid.uuid4().hex).resolve(strict=False)
+                staging_root.mkdir(parents=True, exist_ok=True)
+                staging_root_resolved = staging_root.resolve(strict=False)
+
+                def _safe_staging_relpath(item: dict, *, idx: int) -> Path:
+                    raw = str(item.get("upload_key") or item.get("filename") or f"FILE_{idx:06d}").strip()
+                    parts = _normalize_upload_path_parts(raw)
+                    if not parts:
+                        parts = [str(item.get("filename") or f"FILE_{idx:06d}")]
+
+                    safe_parts: list[str] = []
+                    for seg in parts:
+                        seg0 = str(seg or "").replace("\\", "/").strip()
+                        seg0 = seg0.rsplit("/", 1)[-1]
+                        seg0 = "".join(ch for ch in seg0 if ord(ch) >= 32 and ch != "\x7f")
+                        if not seg0 or seg0 in {".", ".."}:
+                            seg0 = "item"
+                        if len(seg0) > 120:
+                            seg0 = seg0[:120]
+                        safe_parts.append(seg0)
+
+                    file_ext0 = str(item.get("file_ext") or "").strip().lower()
+                    if safe_parts:
+                        last = safe_parts[-1]
+                        if file_ext0 and not last.lower().endswith(file_ext0):
+                            safe_parts[-1] = f"{last}{file_ext0}"
+
+                    rel = Path(*safe_parts) if safe_parts else Path(f"FILE_{idx:06d}{file_ext0}")
+                    # Defensive: strip any accidental traversal.
+                    rel = Path(*[p for p in rel.parts if p not in {"", ".."}])
+                    return rel
+
+                linked_any = False
+                for idx, item in enumerate(staged_successful):
+                    src_raw = str(item.get("file_path") or "").strip()
+                    if not src_raw:
+                        continue
+                    src = Path(src_raw).resolve(strict=False)
+                    if not src.exists() or not src.is_file():
+                        continue
+
+                    rel = _safe_staging_relpath(item, idx=idx)
+                    dst = (staging_root / rel).resolve(strict=False)
+                    try:
+                        dst.relative_to(staging_root_resolved)
+                    except Exception:
+                        ext0 = str(item.get("file_ext") or "").strip().lower()
+                        dst = (staging_root / f"FILE_{idx:06d}{ext0}").resolve(strict=False)
+
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    if dst.exists():
+                        fid = item.get("file_id")
+                        suffix = getattr(fid, "hex", None) if fid is not None else uuid.uuid4().hex
+                        dst = dst.with_name(f"{dst.stem}.{suffix}{dst.suffix}")
+                    try:
+                        os.link(src, dst)
+                        linked_any = True
+                    except Exception:
+                        try:
+                            shutil.copy2(src, dst)
+                            linked_any = True
+                        except Exception:
+                            continue
+
+                if linked_any:
+                    scan_run = DBDatasetPrecheckScanRun(
+                        tenant_id=tenant_id,
+                        dataset_id=dataset.id,
+                        requested_by=account_id,
+                        kind="path",
+                        status="pending",
+                        progress=0,
+                        config={
+                            "root_path": str(staging_root),
+                            "max_files": int(len(staged_successful)),
+                            "enable_pdf_quality": True,
+                            "enable_text_extract": True,
+                            "enable_pii": False,
+                            "enable_secrets": False,
+                            "compute_file_hash": False,
+                            "redact_paths": False,
+                            "enable_sampling": False,
+                            "sample_size": 0,
+                            "enable_near_dup": False,
+                            # Internal-only flag: allow scans under UPLOAD_DIR without LOCAL_SCAN_ENABLED.
+                            "internal_allow_upload_scan": True,
+                        },
+                        summary={},
+                        artifacts={},
+                    )
+                    db.add(scan_run)
+                    db.commit()
+                    db.refresh(scan_run)
+
+                    tid0 = tenant_id
+                    dsid0 = dataset.id
+                    rid0 = scan_run.id
+
+                    def _run_scan_job() -> None:
+                        db2 = SessionLocal()
+                        try:
+                            run_dataset_precheck_scan(db2, tenant_id=tid0, dataset_id=dsid0, scan_run_id=rid0)
+                        except Exception as exc:  # noqa: BLE001
+                            # Mirror worker behavior: mark failed instead of leaving "running".
+                            try:
+                                row = (
+                                    db2.query(DBDatasetPrecheckScanRun)
+                                    .filter(
+                                        DBDatasetPrecheckScanRun.id == rid0,
+                                        DBDatasetPrecheckScanRun.tenant_id == tid0,
+                                        DBDatasetPrecheckScanRun.dataset_id == dsid0,
+                                    )
+                                    .first()
+                                )
+                                if row is not None:
+                                    row.status = "failed"
+                                    row.error_message = str(exc)[:200]
+                                    row.finished_at = datetime.now(timezone.utc)
+                                    db2.commit()
+                            except Exception:
+                                pass
+                            raise
+                        finally:
+                            db2.close()
+
+                    try:
+                        await asyncio.to_thread(_run_scan_job)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Precheck-first scan failed: %s", str(exc)[:200])
+                    finally:
+                        with contextlib.suppress(Exception):
+                            shutil.rmtree(staging_root)
+
+                    with contextlib.suppress(Exception):
+                        db.refresh(scan_run)
+
+                    try:
+                        apply_ingestion_policy_suggestion(
+                            db,
+                            dataset=dataset,
+                            scan_run=scan_run,
+                            tenant_id=tenant_id,
+                            replace=False,
+                        )
+                    except HTTPException as exc:
+                        # 409 means policy already exists; keep it.
+                        if int(getattr(exc, "status_code", 0) or 0) != 409:
+                            logger.warning("Precheck-first policy apply failed: %s", str(getattr(exc, "detail", exc))[:200])
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
+
+                    with contextlib.suppress(Exception):
+                        db.refresh(dataset)
+                    dataset_meta2 = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+                    policy = parse_ingestion_policy_from_metadata(dataset_meta2 if isinstance(dataset_meta2, dict) else {})  # type: ignore[arg-type]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Precheck-first ingest failed; continuing without precheck: %s", str(exc)[:200])
+            finally:
+                if staging_root is not None:
+                    with contextlib.suppress(Exception):
+                        shutil.rmtree(staging_root)
+
+        # Now proceed with normal ingestion using (potentially) updated policy.
+        governance_profile_cache: dict[str, Any] = {}
+
+        async def _finalize_staged_file(staged: dict) -> dict:
+            """Create DB record + enqueue processing for an already-staged file on disk."""
+            async with semaphore:
+                source_path = staged.get("source_path")
+                upload_key = staged.get("upload_key")
+                filename0 = str(staged.get("filename") or "unknown")
+                try:
+                    file_ext = str(staged.get("file_ext") or "").strip().lower() or Path(filename0).suffix.lower()
+                    file_id = staged.get("file_id")
+                    file_path = Path(str(staged.get("file_path") or ""))
+                    file_size = int(staged.get("file_size") or 0)
+                    file_sha256 = staged.get("file_sha256")
+
+                    if not file_ext:
+                        raise HTTPException(status_code=400, detail="Missing file extension")
+                    if file_ext not in settings.allowed_extensions_list:
+                        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_ext}")
+
+                    pipeline_options = _to_pipeline_options(
+                        pipeline=pipeline_parsed,
+                        governance_enabled=governance_enabled,
+                        governance_remove_toc_lines=governance_remove_toc_lines,
+                        governance_remove_noise_lines=governance_remove_noise_lines,
+                        governance_unwrap_lines=governance_unwrap_lines,
+                        governance_remove_common_lines=governance_remove_common_lines,
+                        governance_unwrap_max_line_length=governance_unwrap_max_line_length,
+                        governance_noise_min_chars=governance_noise_min_chars,
+                        governance_noise_ratio_threshold=governance_noise_ratio_threshold,
+                        governance_common_lines_min_docs=governance_common_lines_min_docs,
+                        governance_common_lines_min_ratio=governance_common_lines_min_ratio,
+                        chunk_size=chunk_size,
+                        chunk_overlap=chunk_overlap,
+                        chunk_vector_enabled=chunk_vector_enabled,
+                        bm25_index_enabled=bm25_index_enabled,
+                        kg_enabled=kg_enabled,
+                        event_vector_enabled=event_vector_enabled,
+                        entity_vector_enabled=entity_vector_enabled,
+                    )
+
+                    matched_rule = match_ingestion_rule(policy, filename=str(upload_key or filename0), file_ext=file_ext)
+                    ingestion_meta: Optional[dict[str, Any]] = None
+                    parser_backend_choice: str = parser_backend_base
+                    chunk_strategy_choice: str = chunk_strategy_base
+                    preprocess_steps: list[dict] = []
+                    policy_patch = PipelineOptions()
+
+                    if matched_rule is not None:
+                        req_pb0 = (parser_backend_choice or "").strip().lower()
+                        if req_pb0 in {"", "auto", default_pb} and matched_rule.parser_backend:
+                            parser_backend_choice = str(matched_rule.parser_backend)
+
+                        req_cs0 = (chunk_strategy_choice or "").strip().lower()
+                        if req_cs0 in {"", default_cs} and matched_rule.chunk_strategy:
+                            chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+                        pp = getattr(matched_rule, "preprocess", None)
+                        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+                        if isinstance(steps, list) and steps:
+                            preprocess_steps = [
+                                {
+                                    "id": str(getattr(s, "id", "") or "").strip(),
+                                    "params": dict(getattr(s, "params", {}) or {}),
+                                }
+                                for s in steps
+                            ]
+
+                        patch_dict: dict[str, Any] = {}
+                        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+                        if isinstance(profile_ref, str) and profile_ref.strip():
+                            ref = profile_ref.strip()
+                            cached = governance_profile_cache.get(ref)
+                            if cached is None:
+                                try:
+                                    cached = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=ref)
+                                except ValueError as exc:
+                                    raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
+                                governance_profile_cache[ref] = cached
+                            patch_dict.update(dict(getattr(cached, "pipeline_patch", None) or {}))
+                            rules = getattr(cached, "regex_rules", None) or []
+                            if rules:
+                                patch_dict["governance_regex_rules"] = list(rules)
+
+                        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+                        if patch_dict:
+                            policy_patch = PipelineOptions(**patch_dict)
+
+                        ingestion_meta = {
+                            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
+                            "rule": {"id": matched_rule.id, "name": matched_rule.name},
+                            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
+                            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
+                        }
+
+                    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
+
+                    requested_parser_backend = (parser_backend_choice or "").strip().lower()
+                    if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+                        resolved_parser_backend = "auto"
+                    else:
+                        resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
+                    resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
+
+                    pipeline_effective = resolve_pipeline_effective(
+                        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}) if dataset else {},
+                        document_metadata={},
+                        request_overrides=pipeline_options,
+                    )
+                    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
+                        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
+
+                    doc_metadata = {
+                        "parser_backend": resolved_parser_backend,
+                        "parser_backend_requested": (parser_backend or "").lower(),
+                        "chunk_strategy": resolved_chunk_strategy,
+                        "chunk_strategy_requested": (chunk_strategy or "").lower(),
+                    }
+                    if source_path:
+                        doc_metadata["source_path"] = source_path
+                    if isinstance(file_sha256, str) and file_sha256:
+                        doc_metadata["file_sha256"] = file_sha256
+                    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
+                    if ingestion_meta:
+                        doc_metadata["ingestion"] = ingestion_meta
+
+                    user_patch = None
+                    if isinstance(upload_key, str) and upload_key:
+                        user_patch = user_meta_by_key.get(upload_key)
+                        if user_patch is None and "/" in upload_key:
+                            user_patch = user_meta_by_key.get(upload_key.rsplit("/", 1)[-1])
+                    if user_patch is None:
+                        user_patch = user_meta_by_key.get(filename0)
+                    if isinstance(user_patch, dict) and user_patch:
+                        doc_metadata["user"] = _apply_user_metadata_patch(current={}, patch=user_patch, replace=True)
+                    pipeline_hash = _compute_pipeline_hash(doc_metadata)
+                    doc_metadata["pipeline_hash"] = pipeline_hash
+                    doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
+                    doc_metadata.setdefault("active_pipeline_ready", False)
+
+                    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
+                        dup = _find_duplicate_document(
+                            db,
+                            tenant_id=tenant_id,
+                            dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+                            file_sha256=file_sha256,
+                            pipeline_hash=pipeline_hash,
+                        )
+                        if dup is not None and str(getattr(dup, "status", "") or "").lower() not in {"failed"}:
+                            with contextlib.suppress(OSError):
+                                file_path.unlink(missing_ok=True)
+                            return {
+                                "success": True,
+                                "filename": filename0,
+                                "source_path": source_path,
+                                "document_id": str(getattr(dup, "id", "")),
+                                "document": dup,
+                            }
+
+                        dup_any = _find_duplicate_document_by_sha(
+                            db,
+                            tenant_id=tenant_id,
+                            dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+                            file_sha256=file_sha256,
+                        )
+                        if dup_any is not None:
+                            status0 = str(getattr(dup_any, "status", "") or "").lower()
+                            if status0 in {"pending", "processing"}:
+                                raise HTTPException(status_code=409, detail="Duplicate document is currently processing")
+
+                            with contextlib.suppress(OSError):
+                                file_path.unlink(missing_ok=True)
+
+                            meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
+                            meta_any["parser_backend"] = resolved_parser_backend
+                            meta_any["parser_backend_requested"] = (parser_backend or "").lower()
+                            meta_any["chunk_strategy"] = resolved_chunk_strategy
+                            meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
+                            if source_path and not meta_any.get("source_path"):
+                                meta_any["source_path"] = source_path
+                            meta_any["file_sha256"] = str(file_sha256).strip().lower()
+                            upsert_pipeline_metadata(meta_any, options=pipeline_options)
+                            if ingestion_meta:
+                                meta_any["ingestion"] = ingestion_meta
+
+                            if isinstance(user_patch, dict) and user_patch:
+                                current_user = meta_any.get("user") if isinstance(meta_any.get("user"), dict) else {}
+                                meta_any["user"] = _apply_user_metadata_patch(current=current_user, patch=user_patch, replace=False)
+
+                            if "active_pipeline_hash" not in meta_any:
+                                meta_any["active_pipeline_hash"] = str(meta_any.get("pipeline_hash") or "").strip() or None
+                            if "active_pipeline_ready" not in meta_any:
+                                meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+
+                            dup_any.doc_metadata = meta_any
+                            db.commit()
+                            db.refresh(dup_any)
+
+                            await retry_document_processing(
+                                document_id=dup_any.id,
+                                background_tasks=background_tasks,
+                                force=True,
+                                skip_if_unchanged=True,
+                                tenant_id=tenant_id,
+                                account_id=account_id,
+                                db=db,
+                            )
+                            db.refresh(dup_any)
+                            return {
+                                "success": True,
+                                "filename": filename0,
+                                "source_path": source_path,
+                                "document_id": str(getattr(dup_any, "id", "")),
+                                "document": dup_any,
+                            }
+
+                    db_document = DBDocument(
+                        id=file_id,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset.id if dataset else None,
+                        filename=filename0,
+                        file_type=file_ext.lstrip("."),
+                        file_size=file_size,
+                        file_path=str(file_path),
+                        owner_id=account_id,
+                        access_mode=None,
+                        status="pending",
+                        processing_progress=0,
+                        doc_metadata=doc_metadata,
+                    )
+
+                    db.add(db_document)
+                    db.commit()
+                    db.refresh(db_document)
+
+                    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
+                    task_id = await enqueue_document_processing(
+                        tenant_id=tenant_id,
+                        document_id=file_id,
+                        requested_by=account_id,
+                        job_id=job_id,
+                    )
+                    if task_id:
+                        meta = dict(db_document.doc_metadata or {})
+                        meta["task_id"] = task_id
+                        db_document.doc_metadata = meta
+                        db.commit()
+                        db.refresh(db_document)
+                    else:
+                        background_tasks.add_task(
+                            document_processor.process_document,
+                            file_path,
+                            file_id,
+                            tenant_id,
+                            resolved_parser_backend,
+                            resolved_chunk_strategy,
+                        )
+
+                    return {
+                        "success": True,
+                        "filename": filename0,
+                        "source_path": source_path,
+                        "document_id": str(file_id),
+                        "document": db_document,
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("Error processing staged file %s: %s", filename0, str(exc)[:200])
+                    return {
+                        "success": False,
+                        "filename": filename0,
+                        "source_path": source_path,
+                        "error": str(exc)[:200],
+                    }
+
+        finalize_tasks = [_finalize_staged_file(item) for item in staged_successful]
+        finalize_results = await asyncio.gather(*finalize_tasks, return_exceptions=True)
+
+        processed: list[dict[str, Any]] = []
+        for r in finalize_results:
+            if isinstance(r, Exception):
+                processed.append({"success": False, "filename": "unknown", "source_path": None, "error": str(r)[:200]})
+            elif isinstance(r, dict):
+                processed.append(r)
+            else:
+                processed.append({"success": False, "filename": "unknown", "source_path": None, "error": "upload_failed"})
+
+        successful = [r for r in processed if r.get("success")]
+        failed = staged_failed + [r for r in processed if not r.get("success")]
+
+        if ingestion_run is not None:
+            for r in successful:
+                doc = r.get("document")
+                if doc is None:
+                    continue
+                try:
+                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                    meta0["last_ingestion_run_id"] = str(ingestion_run.id)
+                    meta0["last_ingestion_kind"] = "upload_batch"
+                    doc.doc_metadata = meta0
+                    db.commit()
+                    db.refresh(doc)
+                except Exception:
+                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+
+                with contextlib.suppress(Exception):
+                    IngestionRunService.add_document(
+                        db,
+                        tenant_id=tenant_id,
+                        run_id=ingestion_run.id,
+                        document_id=doc.id,
+                        source_ref=(r.get("source_path") or getattr(doc, "filename", None)),
+                        initial_status=str(getattr(doc, "status", "") or "created"),
+                        doc_meta=meta0 if isinstance(meta0, dict) else None,
+                    )
+
+        return {
+            "total": len(files),
+            "successful_count": len(successful),
+            "failed_count": len(failed),
+            "successful": [
+                {
+                    "document_id": r["document_id"],
+                    "filename": r["filename"],
+                    "source_path": r.get("source_path"),
+                    "status": r["document"].status,
+                }
+                for r in successful
+            ],
+            "failed": [
+                {
+                    "filename": r.get("filename") or "unknown",
+                    "source_path": r.get("source_path"),
+                    "error": r.get("error") or "upload_failed",
+                }
+                for r in failed
+            ],
+        }
 
     governance_profile_cache: dict[str, Any] = {}
     
