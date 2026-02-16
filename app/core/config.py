@@ -482,7 +482,8 @@ class Settings(BaseSettings):
     # Optional: drop exact-duplicate text chunks within a single document.
     # Useful for PDFs that repeat headers/footers or boilerplate blocks.
     CHUNK_DEDUP_ENABLED: bool = False
-    RETRIEVAL_TOP_K: int = 5
+    # Mid-scale default: keep recall reasonable without exploding context/token cost.
+    RETRIEVAL_TOP_K: int = 10
     SIMILARITY_THRESHOLD: float = 0.7
     # Concurrent retrieval across query variants (multi-query / decompose / HyDE).
     RETRIEVAL_QUERY_PARALLELISM: int = 1
