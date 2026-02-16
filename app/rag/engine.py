@@ -1435,6 +1435,17 @@ Requirements:
             # Step 3: Build context (document chunks + optional KG events).
             chunk_context = ""
             if docs:
+                # Prompt-context de-noising (O33):
+                # - drop exact/near-duplicate chunks that waste tokens
+                # - cap per-document chunks (post-injection) for diversity
+                # - remove low-value boilerplate (conservative)
+                try:
+                    from app.rag.core.context_denoise import denoise_context_docs
+
+                    context_docs = denoise_context_docs(docs)
+                except Exception:  # noqa: BLE001
+                    context_docs = docs
+
                 max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
                 max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
                 max_per_chunk_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0))
@@ -1442,7 +1453,7 @@ Requirements:
                 total_chars = 0
                 total_tokens = 0
                 context_parts = []
-                for idx, doc in enumerate(docs, 1):
+                for idx, doc in enumerate(context_docs, 1):
                     meta = doc.metadata or {}
                     source = meta.get("source", "Unknown")
                     page_info = None
