@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     #   workers handle document parsing/indexing asynchronously.
     TASK_QUEUE_ENABLED: bool = False
     REDIS_URL: str = "redis://localhost:6379/0"
+    # Arq worker Redis connection retries.
+    # Used to reduce crash loops on cold start when Redis isn't ready yet.
+    TASK_WORKER_REDIS_CONN_TIMEOUT_SEC: int = 1
+    TASK_WORKER_REDIS_CONN_RETRIES: int = 60
+    TASK_WORKER_REDIS_CONN_RETRY_DELAY_SEC: int = 1
     # Arq queue name
     TASK_QUEUE_NAME: str = "mimirq"
     # Worker concurrency (Arq max_jobs).
