@@ -3,7 +3,8 @@
  */
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, Tags, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -115,6 +116,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const [detail, setDetail] = useState<Document | null>(null)
   const [isLoadingDoc, setIsLoadingDoc] = useState(false)
   const [docError, setDocError] = useState<string | null>(null)
+
+  const scrollParentRef = useRef<HTMLDivElement>(null)
 
   const [chunks, setChunks] = useState<DocumentChunk[]>(EMPTY_CHUNKS)
   const [chunksTotal, setChunksTotal] = useState(0)
@@ -439,6 +442,24 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const loadError = docError || chunkError
   const timelineItems: DocumentTimelineItem[] = timeline?.items || []
   const timelineTotal = Number(timeline?.total || timelineItems.length)
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const chunkRowVirtualizer = useVirtualizer({
+    count: activeView === 'chunks' ? chunks.length : 0,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => 220,
+    overscan: 8,
+    getItemKey: (idx) => chunks[idx]?.id ?? idx,
+  })
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const timelineRowVirtualizer = useVirtualizer({
+    count: activeView === 'timeline' ? timelineItems.length : 0,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => 160,
+    overscan: 8,
+    getItemKey: (idx) => timelineItems[idx]?.id ?? idx,
+  })
 
   const copyToClipboard = useCallback(async (text: string) => {
     const content = text || ''
@@ -895,7 +916,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
               )}
             </div>
 
-            <div className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4">
+            <div ref={scrollParentRef} className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4">
               {activeView === "chunks" ? (
                 (isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0) ? (
                   <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -937,148 +958,177 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     title="未找到匹配切片"
                     description={<span>尝试更换关键词，或清空筛选条件。</span>}
                     className="min-h-[320px]"
-                  >
-                    <Button variant="outline" onClick={() => setChunkQuery("")}>
-                      清空筛选
-                    </Button>
-                  </EmptyState>
-                ) : (
-                  <div className="space-y-3 pb-6">
-                    {chunkError && chunks.length > 0 ? (
-                      <Alert variant="destructive">
-                        <AlertTitle>加载切片失败</AlertTitle>
-                        <AlertDescription>{chunkError}</AlertDescription>
-                      </Alert>
-                    ) : null}
-
-                    {chunks.map((chunk) => (
-                      <div
-                        key={chunk.id}
-                        className={cn(
-                          "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
-                          "hover:border-primary/25 hover:shadow-soft/30",
-                          chunk.disabled_at ? "opacity-70" : null
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono font-medium text-muted-foreground">
-                              #{chunk.chunk_index}
-                            </span>
-                            {typeof chunk.page_number === "number" ? (
-                              <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
-                                P.{chunk.page_number}
-                              </span>
-                            ) : null}
-                            <span className="text-muted-foreground">{(chunk.content || "").length} chars</span>
-                            {chunk.disabled_at ? (
-                              <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
-                                disabled
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <IconButton
-                              label={canMutateChunks ? "编辑切片" : "仅当前激活版本可编辑"}
-                              variant="ghost"
-                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                              onClick={() => beginEditChunk(chunk)}
-                              disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </IconButton>
-                            <IconButton
-                              label={chunk.disabled_at ? "启用切片" : "禁用切片"}
-                              variant="ghost"
-                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                              onClick={() => void toggleChunkDisabled(chunk)}
-                              disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-                            >
-                              {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
-                            </IconButton>
-                            <IconButton
-                              label={chunk.disabled_at ? "禁用切片不能 re-embed" : "重新嵌入切片"}
-                              variant="ghost"
-                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                              onClick={() => void reembedChunk(chunk)}
-                              disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}
-                            >
-                              <RefreshCw className="h-4 w-4" />
-                            </IconButton>
-                            <IconButton
-                              label="复制切片内容"
-                              variant="ghost"
-                              className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                              onClick={() => void copyToClipboard(chunk.content)}
-                              disabled={chunkOpWorkingId === chunk.id}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </IconButton>
-                          </div>
-                        </div>
-
-                        {editingChunkId === chunk.id ? (
-                          <div className="mt-3 space-y-2">
-                            <Textarea
-                              value={editingChunkContent}
-                              onChange={(e) => setEditingChunkContent(e.target.value)}
-                              className="min-h-[140px] font-mono text-xs"
-                              disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-                            />
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={cancelEditChunk}
-                                disabled={chunkOpWorkingId === chunk.id}
-                              >
-                                取消
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => void saveEditChunk()}
-                                disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-                                className="gap-2"
-                              >
-                                {chunkOpWorkingId === chunk.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                                ) : (
-                                  <Save className="h-4 w-4" />
-                                )}
-                                保存
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
-                            {highlightText(chunk.content || "", chunkQuery)}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    {canLoadMoreChunks ? (
-                      <div className="flex justify-center pt-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => void loadMoreChunks()}
-                          disabled={isLoadingChunks}
-                          className="gap-2"
-                        >
-                          {isLoadingChunks ? (
-                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                          ) : null}
-                          加载更多
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                )
-              ) : isLoadingTimeline && timelineItems.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+	                  >
+	                    <Button variant="outline" onClick={() => setChunkQuery("")}>
+	                      清空筛选
+	                    </Button>
+	                  </EmptyState>
+	                ) : (
+	                  <div className="pb-6 space-y-3">
+	                    {chunkError && chunks.length > 0 ? (
+	                      <Alert variant="destructive">
+	                        <AlertTitle>加载切片失败</AlertTitle>
+	                        <AlertDescription>{chunkError}</AlertDescription>
+	                      </Alert>
+	                    ) : null}
+	
+	                    <div
+	                      role="list"
+	                      aria-label="文档切片列表"
+	                      style={{
+	                        height: `${chunkRowVirtualizer.getTotalSize()}px`,
+	                        width: '100%',
+	                        position: 'relative',
+	                      }}
+	                    >
+	                      {chunkRowVirtualizer.getVirtualItems().map((virtualRow) => {
+	                        const chunk = chunks[virtualRow.index]
+	                        if (!chunk) return null
+	
+	                        return (
+	                          <div
+	                            key={virtualRow.key}
+	                            data-index={virtualRow.index}
+	                            ref={chunkRowVirtualizer.measureElement}
+	                            role="listitem"
+	                            style={{
+	                              position: 'absolute',
+	                              top: 0,
+	                              left: 0,
+	                              width: '100%',
+	                              transform: `translateY(${virtualRow.start}px)`,
+	                            }}
+	                            className="pb-3"
+	                          >
+	                            <div
+	                              className={cn(
+	                                "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
+	                                "hover:border-primary/25 hover:shadow-soft/30",
+	                                chunk.disabled_at ? "opacity-70" : null
+	                              )}
+	                            >
+	                              <div className="flex items-start justify-between gap-3">
+	                                <div className="flex flex-wrap items-center gap-2 text-xs">
+	                                  <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono font-medium text-muted-foreground">
+	                                    #{chunk.chunk_index}
+	                                  </span>
+	                                  {typeof chunk.page_number === "number" ? (
+	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
+	                                      P.{chunk.page_number}
+	                                    </span>
+	                                  ) : null}
+	                                  <span className="text-muted-foreground">{(chunk.content || "").length} chars</span>
+	                                  {chunk.disabled_at ? (
+	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
+	                                      disabled
+	                                    </span>
+	                                  ) : null}
+	                                </div>
+	                                <div className="flex items-center gap-1">
+	                                  <IconButton
+	                                    label={canMutateChunks ? "编辑切片" : "仅当前激活版本可编辑"}
+	                                    variant="ghost"
+	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+	                                    onClick={() => beginEditChunk(chunk)}
+	                                    disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+	                                  >
+	                                    <Pencil className="h-4 w-4" />
+	                                  </IconButton>
+	                                  <IconButton
+	                                    label={chunk.disabled_at ? "启用切片" : "禁用切片"}
+	                                    variant="ghost"
+	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+	                                    onClick={() => void toggleChunkDisabled(chunk)}
+	                                    disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+	                                  >
+	                                    {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+	                                  </IconButton>
+	                                  <IconButton
+	                                    label={chunk.disabled_at ? "禁用切片不能 re-embed" : "重新嵌入切片"}
+	                                    variant="ghost"
+	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+	                                    onClick={() => void reembedChunk(chunk)}
+	                                    disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}
+	                                  >
+	                                    <RefreshCw className="h-4 w-4" />
+	                                  </IconButton>
+	                                  <IconButton
+	                                    label="复制切片内容"
+	                                    variant="ghost"
+	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+	                                    onClick={() => void copyToClipboard(chunk.content)}
+	                                    disabled={chunkOpWorkingId === chunk.id}
+	                                  >
+	                                    <Copy className="h-4 w-4" />
+	                                  </IconButton>
+	                                </div>
+	                              </div>
+	
+	                              {editingChunkId === chunk.id ? (
+	                                <div className="mt-3 space-y-2">
+	                                  <Textarea
+	                                    value={editingChunkContent}
+	                                    onChange={(e) => setEditingChunkContent(e.target.value)}
+	                                    className="min-h-[140px] font-mono text-xs"
+	                                    disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+	                                  />
+	                                  <div className="flex items-center justify-end gap-2">
+	                                    <Button
+	                                      type="button"
+	                                      variant="outline"
+	                                      size="sm"
+	                                      onClick={cancelEditChunk}
+	                                      disabled={chunkOpWorkingId === chunk.id}
+	                                    >
+	                                      取消
+	                                    </Button>
+	                                    <Button
+	                                      type="button"
+	                                      size="sm"
+	                                      onClick={() => void saveEditChunk()}
+	                                      disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+	                                      className="gap-2"
+	                                    >
+	                                      {chunkOpWorkingId === chunk.id ? (
+	                                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+	                                      ) : (
+	                                        <Save className="h-4 w-4" />
+	                                      )}
+	                                      保存
+	                                    </Button>
+	                                  </div>
+	                                </div>
+	                              ) : (
+	                                <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
+	                                  {highlightText(chunk.content || "", chunkQuery)}
+	                                </div>
+	                              )}
+	                            </div>
+	                          </div>
+	                        )
+	                      })}
+	                    </div>
+	
+	                    {canLoadMoreChunks ? (
+	                      <div className="flex justify-center pt-2">
+	                        <Button
+	                          variant="outline"
+	                          onClick={() => void loadMoreChunks()}
+	                          disabled={isLoadingChunks}
+	                          className="gap-2"
+	                        >
+	                          {isLoadingChunks ? (
+	                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+	                          ) : null}
+	                          加载更多
+	                        </Button>
+	                      </div>
+	                    ) : null}
+	                  </div>
+	                )
+	              ) : isLoadingTimeline && timelineItems.length === 0 ? (
+	                <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+	                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
                   <p className="text-sm">正在加载时间线...</p>
                 </div>
               ) : (timelineError || docError) && timelineItems.length === 0 ? (
@@ -1100,106 +1150,133 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 <EmptyState
                   icon={Calendar}
                   title="暂无时间线事件"
-                  description="该文档暂未产生可回溯的事件记录（或审计未启用）。"
-                  className="min-h-[320px]"
-                />
-              ) : (
-                <div className="space-y-3 pb-6">
-                  {timelineError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>加载时间线失败</AlertTitle>
-                      <AlertDescription>{timelineError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  {timelineItems.map((ev) => {
-                    const detailPairs = Object.entries(ev.details || {}).slice(0, 12)
-                    const hasDetails = detailPairs.length > 0
-                    return (
-                      <div
-                        key={ev.id}
-                        className={cn(
-                          "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
-                          "hover:border-primary/25 hover:shadow-soft/30"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                                {formatDate(ev.created_at)}
-                              </span>
-                              <span className="truncate font-mono text-xs text-foreground/90">{ev.action}</span>
-                              {ev.source === "synthetic" ? (
-                                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-                                  synthetic
-                                </span>
-                              ) : null}
-                            </div>
-
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              {ev.stage ? <span>stage: {ev.stage}</span> : null}
-                              {ev.status ? <span>status: {ev.status}</span> : null}
-                              {typeof ev.progress === "number" ? <span>progress: {ev.progress}%</span> : null}
-                              {ev.request_id ? (
-                                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-                                  req: {ev.request_id}
-                                </span>
-                              ) : null}
-                              {ev.actor_id ? (
-                                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-                                  by: {ev.actor_id}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <IconButton
-                            label="复制事件信息"
-                            variant="ghost"
-                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                            onClick={() =>
-                              void copyToClipboard(
-                                JSON.stringify(
-                                  {
-                                    id: ev.id,
-                                    action: ev.action,
-                                    created_at: ev.created_at,
-                                    stage: ev.stage,
-                                    status: ev.status,
-                                    progress: ev.progress,
-                                    request_id: ev.request_id,
-                                    actor_id: ev.actor_id,
-                                    details: ev.details,
-                                  },
-                                  null,
-                                  2
-                                )
-                              )
-                            }
-                          >
-                            <Copy className="h-4 w-4" />
-                          </IconButton>
-                        </div>
-
-                        {hasDetails ? (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {detailPairs.map(([k, v]) => (
-                              <span
-                                key={`${ev.id}:${k}`}
-                                className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground"
-                                title={`${k}: ${String(v)}`}
-                              >
-                                {k}: {String(v)}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+	                  description="该文档暂未产生可回溯的事件记录（或审计未启用）。"
+	                  className="min-h-[320px]"
+	                />
+	              ) : (
+	                <div className="pb-6 space-y-3">
+	                  {timelineError ? (
+	                    <Alert variant="destructive">
+	                      <AlertTitle>加载时间线失败</AlertTitle>
+	                      <AlertDescription>{timelineError}</AlertDescription>
+	                    </Alert>
+	                  ) : null}
+	
+	                  <div
+	                    role="list"
+	                    aria-label="文档时间线"
+	                    style={{
+	                      height: `${timelineRowVirtualizer.getTotalSize()}px`,
+	                      width: '100%',
+	                      position: 'relative',
+	                    }}
+	                  >
+	                    {timelineRowVirtualizer.getVirtualItems().map((virtualRow) => {
+	                      const ev = timelineItems[virtualRow.index]
+	                      if (!ev) return null
+	                      const detailPairs = Object.entries(ev.details || {}).slice(0, 12)
+	                      const hasDetails = detailPairs.length > 0
+	
+	                      return (
+	                        <div
+	                          key={virtualRow.key}
+	                          data-index={virtualRow.index}
+	                          ref={timelineRowVirtualizer.measureElement}
+	                          role="listitem"
+	                          style={{
+	                            position: 'absolute',
+	                            top: 0,
+	                            left: 0,
+	                            width: '100%',
+	                            transform: `translateY(${virtualRow.start}px)`,
+	                          }}
+	                          className="pb-3"
+	                        >
+	                          <div
+	                            className={cn(
+	                              "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
+	                              "hover:border-primary/25 hover:shadow-soft/30"
+	                            )}
+	                          >
+	                            <div className="flex items-start justify-between gap-3">
+	                              <div className="min-w-0">
+	                                <div className="flex flex-wrap items-center gap-2">
+	                                  <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+	                                    {formatDate(ev.created_at)}
+	                                  </span>
+	                                  <span className="truncate font-mono text-xs text-foreground/90">{ev.action}</span>
+	                                  {ev.source === "synthetic" ? (
+	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+	                                      synthetic
+	                                    </span>
+	                                  ) : null}
+	                                </div>
+	
+	                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+	                                  {ev.stage ? <span>stage: {ev.stage}</span> : null}
+	                                  {ev.status ? <span>status: {ev.status}</span> : null}
+	                                  {typeof ev.progress === "number" ? <span>progress: {ev.progress}%</span> : null}
+	                                  {ev.request_id ? (
+	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
+	                                      req: {ev.request_id}
+	                                    </span>
+	                                  ) : null}
+	                                  {ev.actor_id ? (
+	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
+	                                      by: {ev.actor_id}
+	                                    </span>
+	                                  ) : null}
+	                                </div>
+	                              </div>
+	
+	                              <IconButton
+	                                label="复制事件信息"
+	                                variant="ghost"
+	                                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+	                                onClick={() =>
+	                                  void copyToClipboard(
+	                                    JSON.stringify(
+	                                      {
+	                                        id: ev.id,
+	                                        action: ev.action,
+	                                        created_at: ev.created_at,
+	                                        stage: ev.stage,
+	                                        status: ev.status,
+	                                        progress: ev.progress,
+	                                        request_id: ev.request_id,
+	                                        actor_id: ev.actor_id,
+	                                        details: ev.details,
+	                                      },
+	                                      null,
+	                                      2
+	                                    )
+	                                  )
+	                                }
+	                              >
+	                                <Copy className="h-4 w-4" />
+	                              </IconButton>
+	                            </div>
+	
+	                            {hasDetails ? (
+	                              <div className="mt-3 flex flex-wrap gap-2">
+	                                {detailPairs.map(([k, v]) => (
+	                                  <span
+	                                    key={`${ev.id}:${k}`}
+	                                    className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground"
+	                                    title={`${k}: ${String(v)}`}
+	                                  >
+	                                    {k}: {String(v)}
+	                                  </span>
+	                                ))}
+	                              </div>
+	                            ) : null}
+	                          </div>
+	                        </div>
+	                      )
+	                    })}
+	                  </div>
+	                </div>
+	              )}
             </div>
           </Panel>
         </main>

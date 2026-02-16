@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Database,
   FileText,
@@ -106,6 +107,17 @@ type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quaranti
 type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
 type DocSortKey = 'created_at' | 'filename' | 'file_size'
 type DocSortDir = 'asc' | 'desc'
+
+function docGridColumnsForViewportWidth(width: number): number {
+  // Keep in sync with the Tailwind grid classes used in the documents grid:
+  // `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5`.
+  const w = Number(width) || 0
+  if (w >= 1536) return 5
+  if (w >= 1280) return 4
+  if (w >= 1024) return 3
+  if (w >= 640) return 2
+  return 1
+}
 
 type FileTypeStyle = {
   icon: typeof FileText
@@ -424,6 +436,53 @@ export default function KnowledgePage() {
 
   // The backend already applies q/status/dataset filters; keep UI list consistent with server results.
   const filteredDocuments = useMemo(() => documents, [documents])
+
+  const [pageScrollEl, setPageScrollEl] = useState<HTMLElement | null>(null)
+
+  useEffect(() => {
+    setPageScrollEl(document.querySelector<HTMLElement>('[data-page-scroll-container="true"]'))
+  }, [])
+
+  const [docGridColumns, setDocGridColumns] = useState(() => {
+    if (typeof window === 'undefined') return 1
+    return docGridColumnsForViewportWidth(window.innerWidth)
+  })
+
+  useEffect(() => {
+    const onResize = () => setDocGridColumns(docGridColumnsForViewportWidth(window.innerWidth))
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const docGridRowCount = useMemo(() => {
+    const cols = Math.max(1, docGridColumns)
+    return Math.ceil(filteredDocuments.length / cols)
+  }, [filteredDocuments.length, docGridColumns])
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const docsGridVirtualizer = useVirtualizer({
+    count: activeTab === 'documents' && viewMode === 'grid' ? docGridRowCount : 0,
+    getScrollElement: () => pageScrollEl,
+    estimateSize: () => 340,
+    overscan: 6,
+  })
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const docsTableVirtualizer = useVirtualizer({
+    count: activeTab === 'documents' && viewMode === 'list' ? filteredDocuments.length : 0,
+    getScrollElement: () => pageScrollEl,
+    estimateSize: () => 72,
+    overscan: 10,
+    getItemKey: (idx) => filteredDocuments[idx]?.id ?? idx,
+  })
+
+  const docsGridVirtualRows = docsGridVirtualizer.getVirtualItems()
+  const docsTableVirtualRows = docsTableVirtualizer.getVirtualItems()
+  const docsTablePaddingTop = docsTableVirtualRows.length ? docsTableVirtualRows[0].start : 0
+  const docsTablePaddingBottom = docsTableVirtualRows.length
+    ? docsTableVirtualizer.getTotalSize() - docsTableVirtualRows[docsTableVirtualRows.length - 1].end
+    : 0
 
   const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
   const allVisibleSelected = filteredDocuments.length > 0 && filteredDocuments.every((d) => selectedSet.has(d.id))
@@ -2222,26 +2281,61 @@ export default function KnowledgePage() {
                         </Button>
                       </EmptyState>
                     </div>
-                  ) : viewMode === 'grid' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-                      {filteredDocuments.map((doc) => {
-                        const badge = getStatusBadge(doc.status)
-                        return (
-                          <DocumentCard
-                            key={doc.id}
-                            doc={doc}
-                            statusBadge={badge}
-                            statusBarClassName={statusBarClassName(badge.status)}
-                            onDelete={deleteDocument}
-                            selected={selectedSet.has(doc.id)}
-                            onToggleSelect={() => toggleDocSelection(doc.id)}
-                          />
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <Panel padding="none" className="rounded-xl overflow-hidden">
-                      <table className="w-full text-sm text-left">
+	                  ) : viewMode === 'grid' ? (
+	                    <div
+	                      role="list"
+	                      aria-label="文档列表"
+	                      style={{
+	                        height: `${docsGridVirtualizer.getTotalSize()}px`,
+	                        width: '100%',
+	                        position: 'relative',
+	                      }}
+	                    >
+	                      {docsGridVirtualRows.map((virtualRow) => {
+	                        const cols = Math.max(1, docGridColumns)
+	                        const startIndex = virtualRow.index * cols
+	                        const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols)
+	                        const isLastRow = virtualRow.index === docGridRowCount - 1
+	
+	                        return (
+	                          <div
+	                            key={virtualRow.key}
+	                            data-index={virtualRow.index}
+	                            ref={docsGridVirtualizer.measureElement}
+	                            role="presentation"
+	                            style={{
+	                              position: 'absolute',
+	                              top: 0,
+	                              left: 0,
+	                              width: '100%',
+	                              transform: `translateY(${virtualRow.start}px)`,
+	                            }}
+	                            className={isLastRow ? undefined : 'pb-5'}
+	                          >
+	                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+	                              {rowDocs.map((doc) => {
+	                                const badge = getStatusBadge(doc.status)
+	                                return (
+	                                  <div key={doc.id} role="listitem">
+	                                    <DocumentCard
+	                                      doc={doc}
+	                                      statusBadge={badge}
+	                                      statusBarClassName={statusBarClassName(badge.status)}
+	                                      onDelete={deleteDocument}
+	                                      selected={selectedSet.has(doc.id)}
+	                                      onToggleSelect={() => toggleDocSelection(doc.id)}
+	                                    />
+	                                  </div>
+	                                )
+	                              })}
+	                            </div>
+	                          </div>
+	                        )
+	                      })}
+	                    </div>
+	                  ) : (
+	                    <Panel padding="none" className="rounded-xl overflow-hidden">
+	                      <table className="w-full text-sm text-left">
                         <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/60">
                           <tr>
                             <th className="px-4 py-4 font-medium w-10">
@@ -2261,84 +2355,103 @@ export default function KnowledgePage() {
                             <th className="px-6 py-4 font-medium">上传时间</th>
                             <th className="px-6 py-4 font-medium text-right">操作</th>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/60">
-                          {filteredDocuments.map((doc) => {
-                            const badge = getStatusBadge(doc.status)
-                            const fileType = getFileTypeStyle(doc)
-                            const TypeIcon = fileType.icon
-                            const userTags = getUserTagsFromDocument(doc)
-                            return (
-                              <tr key={doc.id} className="hover:bg-muted/20 transition-colors group">
-                                <td className="px-4 py-4 align-top">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-                                    checked={selectedSet.has(doc.id)}
-                                    onChange={() => toggleDocSelection(doc.id)}
-                                    aria-label={`选择文档 ${doc.filename}`}
-                                  />
-                                </td>
-                                <td className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
-                                  <div className={cn("p-2 rounded-lg border", fileType.bg, fileType.border, fileType.color)}>
-                                    <TypeIcon className="w-4 h-4" />
-                                  </div>
-                                  <div className="min-w-0 flex items-center gap-2">
-                                    <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
-                                    <span
-                                      className={cn(
-                                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ",
-                                        fileType.bg,
-                                        fileType.border,
-                                        fileType.color
-                                      )}
-                                      title={fileType.label}
-                                    >
-                                      {fileType.label}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 align-top">
-                                  {userTags.length ? (
-                                    <DocumentTags tags={userTags} max={3} dense />
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">—</span>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4">
-                                  <StatusBadge status={badge.status} label={badge.label} />
-                                </td>
-                                <td className="px-6 py-4 text-muted-foreground">{doc.chunk_count || '-'}</td>
-                                <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{formatFileSize(doc.file_size)}</td>
-                                <td className="px-6 py-4 text-muted-foreground">{formatDate(doc.created_at)}</td>
-                                <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                                  <DocumentDetailDialog 
-                                    document={doc} 
-                                    trigger={
-                                      <IconButton
-                                        label="预览内容"
-                                        variant="ghost"
-                                        className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted opacity-0 group-hover:opacity-100"
-                                      >
-                                        <Eye className="w-4 h-4" />
-                                      </IconButton>
-                                    }
-                                  />
-                                  <IconButton
-                                    label="删除文档"
-                                    variant="ghost"
-                                    className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100"
-                                    onClick={() => deleteDocument(doc.id)}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </IconButton>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </Panel>
+	                        </thead>
+	                        <tbody className="divide-y divide-border/60">
+	                          {docsTablePaddingTop > 0 ? (
+	                            <tr aria-hidden="true">
+	                              <td colSpan={8} className="p-0" style={{ height: `${docsTablePaddingTop}px` }} />
+	                            </tr>
+	                          ) : null}
+
+	                          {docsTableVirtualRows.map((virtualRow) => {
+	                            const doc = filteredDocuments[virtualRow.index]
+	                            if (!doc) return null
+	                            const badge = getStatusBadge(doc.status)
+	                            const fileType = getFileTypeStyle(doc)
+	                            const TypeIcon = fileType.icon
+	                            const userTags = getUserTagsFromDocument(doc)
+	                            return (
+	                              <tr
+	                                key={virtualRow.key}
+	                                data-index={virtualRow.index}
+	                                ref={docsTableVirtualizer.measureElement}
+	                                className="hover:bg-muted/20 transition-colors group"
+	                              >
+	                                <td className="px-4 py-4 align-top">
+	                                  <input
+	                                    type="checkbox"
+	                                    className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+	                                    checked={selectedSet.has(doc.id)}
+	                                    onChange={() => toggleDocSelection(doc.id)}
+	                                    aria-label={`选择文档 ${doc.filename}`}
+	                                  />
+	                                </td>
+	                                <td className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
+	                                  <div className={cn("p-2 rounded-lg border", fileType.bg, fileType.border, fileType.color)}>
+	                                    <TypeIcon className="w-4 h-4" />
+	                                  </div>
+	                                  <div className="min-w-0 flex items-center gap-2">
+	                                    <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
+	                                    <span
+	                                      className={cn(
+	                                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ",
+	                                        fileType.bg,
+	                                        fileType.border,
+	                                        fileType.color
+	                                      )}
+	                                      title={fileType.label}
+	                                    >
+	                                      {fileType.label}
+	                                    </span>
+	                                  </div>
+	                                </td>
+	                                <td className="px-6 py-4 align-top">
+	                                  {userTags.length ? (
+	                                    <DocumentTags tags={userTags} max={3} dense />
+	                                  ) : (
+	                                    <span className="text-xs text-muted-foreground">—</span>
+	                                  )}
+	                                </td>
+	                                <td className="px-6 py-4">
+	                                  <StatusBadge status={badge.status} label={badge.label} />
+	                                </td>
+	                                <td className="px-6 py-4 text-muted-foreground">{doc.chunk_count || '-'}</td>
+	                                <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{formatFileSize(doc.file_size)}</td>
+	                                <td className="px-6 py-4 text-muted-foreground">{formatDate(doc.created_at)}</td>
+	                                <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+	                                  <DocumentDetailDialog 
+	                                    document={doc} 
+	                                    trigger={
+	                                      <IconButton
+	                                        label="预览内容"
+	                                        variant="ghost"
+	                                        className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted opacity-0 group-hover:opacity-100"
+	                                      >
+	                                        <Eye className="w-4 h-4" />
+	                                      </IconButton>
+	                                    }
+	                                  />
+	                                  <IconButton
+	                                    label="删除文档"
+	                                    variant="ghost"
+	                                    className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100"
+	                                    onClick={() => deleteDocument(doc.id)}
+	                                  >
+	                                    <Trash2 className="w-4 h-4" />
+	                                  </IconButton>
+	                                </td>
+	                              </tr>
+	                            )
+	                          })}
+
+	                          {docsTablePaddingBottom > 0 ? (
+	                            <tr aria-hidden="true">
+	                              <td colSpan={8} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }} />
+	                            </tr>
+	                          ) : null}
+	                        </tbody>
+	                      </table>
+	                    </Panel>
                   )}
                 </>
               )}
