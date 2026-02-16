@@ -705,6 +705,9 @@ class Settings(BaseSettings):
     QUERY_DECOMPOSITION_TEMPERATURE: float = 0.2
     QUERY_DECOMPOSITION_MIN_CHARS: int = 60
     QUERY_DECOMPOSITION_MAX_CHARS: int = 400
+    # When enabled, use a deterministic heuristic decomposition fallback when LLM decomposition
+    # is unavailable/fails. Keeps "no LLM" deployments usable.
+    QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED: bool = True
     GOVERNANCE_ENABLED: bool = False
     GOVERNANCE_REMOVE_TOC_LINES: bool = True
     GOVERNANCE_REMOVE_NOISE_LINES: bool = True

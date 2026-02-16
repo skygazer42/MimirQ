@@ -901,41 +901,73 @@ Requirements:
                 and len(query_for_retrieval) >= dq_min_chars
                 and (dq_max_chars <= 0 or len(query_for_retrieval) <= dq_max_chars)
             ):
-                dq_llm = self.models.get("fast") or llm
-                decompose_model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
-                try:
-                    dq_chain = (
-                        self.decompose_prompt
-                        | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
-                        | StrOutputParser()
-                    )
-                    dq_start = time.time()
-                    dq_raw = await dq_chain.ainvoke({"query": query_for_retrieval, "n": dq_n})
-                    decompose_elapsed = time.time() - dq_start
-                    dq_data, decompose_parse_meta = parse_json_from_text(dq_raw, expected="array")
+                from app.rag.core.text import heuristic_decompose_query
 
-                    if isinstance(dq_data, list):
-                        seen: set[str] = set()
-                        for item in dq_data:
-                            if not isinstance(item, str):
-                                continue
-                            q = (item or "").strip().strip('"').strip()
-                            if not q:
-                                continue
-                            if q == query_for_retrieval:
-                                continue
-                            if q in seen:
-                                continue
-                            if len(q) > 500:
-                                q = q[:500] + "..."
-                            seen.add(q)
-                            sub_questions.append(q)
-                            if len(sub_questions) >= dq_n:
-                                break
-                except Exception as exc:  # noqa: BLE001
-                    decompose_elapsed = 0.0
-                    decompose_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-                    sub_questions = []
+                heuristic_fallback_enabled = bool(
+                    getattr(settings, "QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED", True)
+                )
+                llm_api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+
+                # If LLM credentials are missing, skip LLM decomposition entirely and fall back
+                # to a deterministic heuristic splitter (when enabled).
+                if heuristic_fallback_enabled and not llm_api_key:
+                    sub_questions = heuristic_decompose_query(
+                        query_for_retrieval,
+                        max_subquestions=dq_n,
+                    )
+                    if sub_questions:
+                        decompose_elapsed = 0.0
+                        decompose_parse_meta = {"ok": True, "method": "heuristic", "error": None}
+                else:
+                    dq_llm = self.models.get("fast") or llm
+                    decompose_model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
+                    try:
+                        dq_chain = (
+                            self.decompose_prompt
+                            | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
+                            | StrOutputParser()
+                        )
+                        dq_start = time.time()
+                        dq_raw = await dq_chain.ainvoke({"query": query_for_retrieval, "n": dq_n})
+                        decompose_elapsed = time.time() - dq_start
+                        dq_data, decompose_parse_meta = parse_json_from_text(dq_raw, expected="array")
+
+                        if isinstance(dq_data, list):
+                            seen: set[str] = set()
+                            for item in dq_data:
+                                if not isinstance(item, str):
+                                    continue
+                                q = (item or "").strip().strip('"').strip()
+                                if not q:
+                                    continue
+                                if q == query_for_retrieval:
+                                    continue
+                                if q in seen:
+                                    continue
+                                if len(q) > 500:
+                                    q = q[:500] + "..."
+                                seen.add(q)
+                                sub_questions.append(q)
+                                if len(sub_questions) >= dq_n:
+                                    break
+                    except Exception as exc:  # noqa: BLE001
+                        decompose_elapsed = 0.0
+                        decompose_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+                        sub_questions = []
+
+                    if (
+                        heuristic_fallback_enabled
+                        and not sub_questions
+                        and not bool(decompose_parse_meta.get("ok"))
+                    ):
+                        sub_questions = heuristic_decompose_query(
+                            query_for_retrieval,
+                            max_subquestions=dq_n,
+                        )
+                        if sub_questions:
+                            decompose_model_used = None
+                            decompose_elapsed = 0.0
+                            decompose_parse_meta = {"ok": True, "method": "heuristic", "error": None}
 
             decompose_used = bool(sub_questions)
 
