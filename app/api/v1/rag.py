@@ -7,6 +7,7 @@ For debugging and validating:
 """
 
 
+import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -403,6 +404,7 @@ async def prompt_preview(
     db: Session = Depends(get_db),
 ):
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
+    t0 = time.time()
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     scope_dataset_id: UUID | None = None
@@ -516,8 +518,10 @@ async def prompt_preview(
     metrics = dict(retrieved.get("metrics") or {})
     query_for_retrieval = (retrieved.get("query_for_retrieval") or body.query or "").strip()
 
+    ctx_t0 = time.time()
     ctx = _build_context(docs, query=query_for_retrieval or body.query)
     hist_text = _build_history_text(state.get("history"))
+    ctx_elapsed = time.time() - ctx_t0
     format_instructions = state.get("format_instructions") or ""
 
     engine = get_rag_engine()
@@ -537,6 +541,7 @@ async def prompt_preview(
     }
 
     try:
+        render_t0 = time.time()
         prompt_value = prompt_obj.format_prompt(**variables)
         prompt_messages = []
         for msg in prompt_value.to_messages():
@@ -547,6 +552,7 @@ async def prompt_preview(
                 }
             )
         prompt_text = prompt_value.to_string()
+        render_elapsed = time.time() - render_t0
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Prompt render failed: {exc}") from exc
 
@@ -555,9 +561,18 @@ async def prompt_preview(
     if dataset_rag_defaults_applied_fields:
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
-    metrics["prompt_chars"] = len(prompt_text or "")
-    metrics["context_chars"] = len(ctx or "")
-    metrics["history_chars"] = len(hist_text or "")
+
+    from app.rag.core.prompt_preview_metrics import compute_prompt_preview_metrics
+
+    metrics = compute_prompt_preview_metrics(
+        prompt_text=prompt_text,
+        context=ctx,
+        history=hist_text,
+        base_metrics=metrics,
+        elapsed_sec=(time.time() - t0),
+        context_build_elapsed_sec=ctx_elapsed,
+        prompt_render_elapsed_sec=render_elapsed,
+    )
 
     return PromptPreviewResponse(
         query_for_retrieval=query_for_retrieval,
