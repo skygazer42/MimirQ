@@ -64,6 +64,8 @@ def test_hybrid_retriever_normalizes_query_before_search(monkeypatch) -> None:  
 
     from app.rag.retriever import HybridRetriever
 
+    from uuid import uuid4
+
     captured: dict[str, str] = {}
 
     retriever = HybridRetriever(k=5, dataset_id=uuid4())
