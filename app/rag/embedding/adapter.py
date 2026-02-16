@@ -12,6 +12,7 @@ from typing import List, Optional, Tuple
 from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import current_embedding_space_hash, logger
+from app.services.metrics_logger import log_metrics
 
 _redis_client = None
 
@@ -115,15 +116,23 @@ class LangChainEmbeddingsAdapter:
                     embeddings = self._normalize_vectors(embeddings)
                 return embeddings
 
+            cache_hits = 0
+            cache_misses = 0
+            cache_corrupt = 0
+
             missing: List[Tuple[int, str]] = []
             out: List[Optional[List[float]]] = [None] * len(texts)
             for i, raw in enumerate(cached_raw):
                 if raw:
                     try:
                         out[i] = json.loads(raw)
+                        cache_hits += 1
                     except Exception:  # noqa: BLE001
+                        cache_corrupt += 1
+                        cache_misses += 1
                         missing.append((i, texts[i]))
                 else:
+                    cache_misses += 1
                     missing.append((i, texts[i]))
 
             if missing:
@@ -151,6 +160,19 @@ class LangChainEmbeddingsAdapter:
                     _invalidate_redis_client()
 
             embeddings = [v if v is not None else [] for v in out]
+            try:
+                log_metrics(
+                    {
+                        "event": "embedding.cache",
+                        "op": "documents",
+                        "total": int(len(texts)),
+                        "hits": int(cache_hits),
+                        "misses": int(cache_misses),
+                        "corrupt": int(cache_corrupt),
+                    }
+                )
+            except Exception:
+                pass
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)
@@ -171,6 +193,9 @@ class LangChainEmbeddingsAdapter:
         else:
             client = None
 
+        cache_hits = 0
+        cache_misses = 0
+
         if client is None:
             embeddings = self._model.encode([text])
         else:
@@ -185,9 +210,12 @@ class LangChainEmbeddingsAdapter:
                 try:
                     vec = json.loads(raw)
                     embeddings = [vec]
+                    cache_hits = 1
                 except Exception:  # noqa: BLE001
+                    cache_misses = 1
                     embeddings = self._model.encode([text])
             else:
+                cache_misses = 1
                 embeddings = self._model.encode([text])
                 try:
                     ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
@@ -198,6 +226,19 @@ class LangChainEmbeddingsAdapter:
                         client.set(key, payload)
                 except Exception:  # noqa: BLE001
                     _invalidate_redis_client()
+
+        try:
+            log_metrics(
+                {
+                    "event": "embedding.cache",
+                    "op": "query",
+                    "total": 1,
+                    "hits": int(cache_hits),
+                    "misses": int(cache_misses),
+                }
+            )
+        except Exception:
+            pass
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)
