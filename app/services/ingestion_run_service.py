@@ -327,6 +327,22 @@ class IngestionRunService:
                     run.status = "completed"
                 if run.finished_at is None:
                     run.finished_at = now
+                    # Touch dataset.updated_at so API instances can invalidate dataset-scoped caches
+                    # (e.g., in-memory BM25 indices) after ingestion completes.
+                    try:
+                        ds_id = getattr(run, "dataset_id", None)
+                        if ds_id is not None:
+                            from app.models.dataset import Dataset  # noqa: WPS433
+
+                            ds = (
+                                db.query(Dataset)
+                                .filter(Dataset.tenant_id == tenant_id, Dataset.id == ds_id)
+                                .first()
+                            )
+                            if ds is not None:
+                                ds.updated_at = now
+                    except Exception:
+                        pass
 
             run.stats = stats
         try:
