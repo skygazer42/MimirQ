@@ -1591,35 +1591,93 @@ class DocumentProcessorService:
             chunk_asset_stage = ChunkAssetStage(self)
             index_stage = IndexStage()
 
-            with metrics_span(
-                "ingest.parse",
-                parser_backend_requested=parser_backend,
-                chunk_strategy_requested=chunk_strategy,
-            ):
-                t_parse0 = time.perf_counter()
-                parsed = await parsing_stage.run(
-                    db=db,
-                    db_document=db_document,
-                    file_path=file_path,
-                    document_id=document_id,
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    parser_backend=parser_backend,
-                    chunk_strategy=chunk_strategy,
-                    html_xpath=(
-                        pipeline_effective.governance_html_xpath
-                        if file_path.suffix.lower() in {".html", ".htm"}
-                        else None
-                    ),
-                )
+            parsed_documents_before_governance: list[Document] | None = None
+            parsed_documents: list[Document] | None = None
+            governance_stats: Optional[GovernanceStats] = None
+            governance_audit_patch: dict[str, Any] | None = None
+            resumed_from_checkpoint = False
+            parsed: ParseResult | None = None
 
-            await raise_if_cancelled(force=True)
+            # Optional checkpoint/resume: if we previously persisted parsed markdown content
+            # for this same (file_sha256 + pipeline_hash), skip parsing and resume from it.
+            #
+            # This reduces wasted work on retries after downstream failures (embedding/vector writes).
+            try:
+                meta0 = dict(db_document.doc_metadata or {})
+                ck = meta0.get("ingest_checkpoint") if isinstance(meta0, dict) else None
+                ck_ok = isinstance(ck, dict) and str(ck.get("version") or "") == "1" and str(ck.get("stage") or "") == "parsed"
+                if ck_ok:
+                    pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
+                    file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
+                    ck_pipeline = str(ck.get("pipeline_hash") or "").strip()
+                    ck_sha = str(ck.get("file_sha256") or "").strip().lower()
+
+                    if (not pipeline_hash0 or ck_pipeline == pipeline_hash0) and (not file_sha0 or not ck_sha or ck_sha == file_sha0):
+                        rec = (
+                            db.query(DocumentParsedContent)
+                            .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
+                            .first()
+                        )
+                        cleaned_md = str(getattr(rec, "markdown_content", "") or "").strip() if rec is not None else ""
+                        original_md = str(getattr(rec, "original_markdown_content", "") or "").strip() if rec is not None else ""
+                        if cleaned_md:
+                            logger.info(
+                                "Resuming ingest from parsed checkpoint: tenant=%s document=%s pipeline_hash=%s",
+                                tenant_id,
+                                document_id,
+                                pipeline_hash0[:16] if pipeline_hash0 else "",
+                            )
+                            resolved_backend0 = (
+                                str(
+                                    meta0.get("parser_backend")
+                                    or meta0.get("parser_backend_requested")
+                                    or parser_backend
+                                    or "auto"
+                                ).strip()
+                                or "auto"
+                            )
+                            resolved_chunk_strategy0 = chunker_factory.resolve_strategy(chunk_strategy)
+                            resume_md = (original_md or cleaned_md).strip()
+                            parsed = ParseResult(
+                                resolved_backend=resolved_backend0,
+                                resolved_chunk_strategy=resolved_chunk_strategy0,
+                                documents=[Document(page_content=resume_md, metadata={"page": 1})],
+                            )
+                            resumed_from_checkpoint = True
+            except Exception:
+                resumed_from_checkpoint = False
+
+            if not resumed_from_checkpoint:
+                with metrics_span(
+                    "ingest.parse",
+                    parser_backend_requested=parser_backend,
+                    chunk_strategy_requested=chunk_strategy,
+                ):
+                    t_parse0 = time.perf_counter()
+                    parsed = await parsing_stage.run(
+                        db=db,
+                        db_document=db_document,
+                        file_path=file_path,
+                        document_id=document_id,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        parser_backend=parser_backend,
+                        chunk_strategy=chunk_strategy,
+                        html_xpath=(
+                            pipeline_effective.governance_html_xpath
+                            if file_path.suffix.lower() in {".html", ".htm"}
+                            else None
+                        ),
+                    )
+
+                await raise_if_cancelled(force=True)
 
             # Optional: retry parsing with an alternative backend when output quality is obviously low.
             if (
                 bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
                 and file_path.suffix.lower() == ".pdf"
                 and (str(parser_backend or "").strip().lower() in {"", "auto"})
+                and (not resumed_from_checkpoint)
                 and parsed.documents is not None
             ):
                 try:
@@ -1730,10 +1788,15 @@ class DocumentProcessorService:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Parse fallback failed (ignored): %s", str(exc)[:200])
 
-            _add_stage_duration("parse", (time.perf_counter() - t_parse0) * 1000)
+            if resumed_from_checkpoint:
+                meta0 = dict(db_document.doc_metadata or {})
+                resolved_backend = str(meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto").strip() or "auto"
+                resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+            else:
+                _add_stage_duration("parse", (time.perf_counter() - t_parse0) * 1000)
 
-            resolved_backend = parsed.resolved_backend
-            resolved_chunk_strategy = parsed.resolved_chunk_strategy
+                resolved_backend = parsed.resolved_backend
+                resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
             # Parse quality gate: if fallback is enabled but we still don't have enough signal,
             # route to failed/quarantined instead of indexing garbage.
@@ -1744,6 +1807,7 @@ class DocumentProcessorService:
                 bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
                 and file_path.suffix.lower() == ".pdf"
                 and (str(parser_backend or "").strip().lower() in {"", "auto"})
+                and (not resumed_from_checkpoint)
                 and parsed.documents is not None
             ):
                 try:
@@ -1829,68 +1893,67 @@ class DocumentProcessorService:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Parse quality gate failed (ignored): %s", str(exc)[:200])
 
-            # Collect images uploaded by the parser (e.g., MinerU ZIP mode returns images).
-            if parsed.documents:
-                for doc in parsed.documents:
-                    images = (doc.metadata or {}).get("images")
-                    if isinstance(images, list):
-                        for item in images:
-                            img_id = item.get("img_id") if isinstance(item, dict) else None
-                            if isinstance(img_id, str) and img_id.strip():
-                                document_img_ids.add(img_id)
-                    artifact_dir = (doc.metadata or {}).get("artifact_dir")
-                    if isinstance(artifact_dir, str) and artifact_dir.strip():
-                        artifact_dirs.add(artifact_dir.strip())
-            # Also collect artifact directories from integrated chunks (subprocess image materialization).
-            if parsed.chunks:
-                for doc in parsed.chunks:
-                    artifact_dir = (doc.metadata or {}).get("artifact_dir")
-                    if isinstance(artifact_dir, str) and artifact_dir.strip():
-                        artifact_dirs.add(artifact_dir.strip())
-
-            # Inline image assets (non-integrated path: documents -> documents).
-            if parsed.documents:
-                t0 = time.perf_counter()
-                with metrics_span("ingest.inline_assets"):
-                    inline_result = inline_asset_stage.run(
-                        documents=parsed.documents,
-                        tenant_id=tenant_id,
-                        dataset_id=dataset_id,
-                        document_id=document_id,
-                        origin_path=file_path,
-                        start_index=0,
-                    )
-                _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
-                parsed_documents = inline_result.documents
-                for iid in inline_result.uploaded_img_ids:
-                    if isinstance(iid, str) and iid.strip():
-                        document_img_ids.add(iid)
-            else:
-                parsed_documents = None
-
-            # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
-            if parsed_documents and file_path.suffix.lower() == ".pdf":
-                self._import_parsed_markdown_tables_to_store(
-                    db,
-                    db_document=db_document,
-                    tenant_id=tenant_id,
-                    documents=parsed_documents,
-                    pipeline_effective=pipeline_effective,
-                )
-
-            # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
-            self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
-
-            await raise_if_cancelled()
-
             # Governance: normalize/clean documents or integrated chunks.
             merge_small_min_chars = 0
             merge_small_before = 0
             merge_small_after = 0
             merge_small_reduced = 0
-            governance_stats: Optional[GovernanceStats] = None
-            governance_audit_patch: dict[str, Any] | None = None
+
             if parsed.chunks is not None:
+                # Collect images uploaded by the parser (e.g., MinerU ZIP mode returns images).
+                if parsed.documents:
+                    for doc in parsed.documents:
+                        images = (doc.metadata or {}).get("images")
+                        if isinstance(images, list):
+                            for item in images:
+                                img_id = item.get("img_id") if isinstance(item, dict) else None
+                                if isinstance(img_id, str) and img_id.strip():
+                                    document_img_ids.add(img_id)
+                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
+                        if isinstance(artifact_dir, str) and artifact_dir.strip():
+                            artifact_dirs.add(artifact_dir.strip())
+                # Also collect artifact directories from integrated chunks (subprocess image materialization).
+                if parsed.chunks:
+                    for doc in parsed.chunks:
+                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
+                        if isinstance(artifact_dir, str) and artifact_dir.strip():
+                            artifact_dirs.add(artifact_dir.strip())
+
+                # Inline image assets (non-integrated path: documents -> documents).
+                if parsed.documents:
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.inline_assets"):
+                        inline_result = inline_asset_stage.run(
+                            documents=parsed.documents,
+                            tenant_id=tenant_id,
+                            dataset_id=dataset_id,
+                            document_id=document_id,
+                            origin_path=file_path,
+                            start_index=0,
+                        )
+                    _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
+                    parsed_documents = inline_result.documents
+                    for iid in inline_result.uploaded_img_ids:
+                        if isinstance(iid, str) and iid.strip():
+                            document_img_ids.add(iid)
+                else:
+                    parsed_documents = None
+
+                # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
+                if parsed_documents and file_path.suffix.lower() == ".pdf":
+                    self._import_parsed_markdown_tables_to_store(
+                        db,
+                        db_document=db_document,
+                        tenant_id=tenant_id,
+                        documents=parsed_documents,
+                        pipeline_effective=pipeline_effective,
+                    )
+
+                # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
+                self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
+
+                await raise_if_cancelled()
+
                 t0 = time.perf_counter()
                 with metrics_span("ingest.normalize"):
                     parsed_chunks = normalize_stage.run(items=parsed.chunks)
@@ -2007,6 +2070,60 @@ class DocumentProcessorService:
                         logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
                     self._strip_doc_enrichment_fields(chunks)
             else:
+                # Collect images uploaded by the parser (e.g., MinerU ZIP mode returns images).
+                if parsed.documents:
+                    for doc in parsed.documents:
+                        images = (doc.metadata or {}).get("images")
+                        if isinstance(images, list):
+                            for item in images:
+                                img_id = item.get("img_id") if isinstance(item, dict) else None
+                                if isinstance(img_id, str) and img_id.strip():
+                                    document_img_ids.add(img_id)
+                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
+                        if isinstance(artifact_dir, str) and artifact_dir.strip():
+                            artifact_dirs.add(artifact_dir.strip())
+                # Also collect artifact directories from integrated chunks (subprocess image materialization).
+                if parsed.chunks:
+                    for doc in parsed.chunks:
+                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
+                        if isinstance(artifact_dir, str) and artifact_dir.strip():
+                            artifact_dirs.add(artifact_dir.strip())
+
+                # Inline image assets (non-integrated path: documents -> documents).
+                if parsed.documents:
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.inline_assets"):
+                        inline_result = inline_asset_stage.run(
+                            documents=parsed.documents,
+                            tenant_id=tenant_id,
+                            dataset_id=dataset_id,
+                            document_id=document_id,
+                            origin_path=file_path,
+                            start_index=0,
+                        )
+                    _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
+                    parsed_documents = inline_result.documents
+                    for iid in inline_result.uploaded_img_ids:
+                        if isinstance(iid, str) and iid.strip():
+                            document_img_ids.add(iid)
+                else:
+                    parsed_documents = None
+
+                # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
+                if parsed_documents and file_path.suffix.lower() == ".pdf":
+                    self._import_parsed_markdown_tables_to_store(
+                        db,
+                        db_document=db_document,
+                        tenant_id=tenant_id,
+                        documents=parsed_documents,
+                        pipeline_effective=pipeline_effective,
+                    )
+
+                # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
+                self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
+
+                await raise_if_cancelled()
+
                 t0 = time.perf_counter()
                 with metrics_span("ingest.normalize"):
                     parsed_documents = normalize_stage.run(items=parsed_documents or [])
@@ -2051,6 +2168,14 @@ class DocumentProcessorService:
                         )
                         meta = dict(db_document.doc_metadata or {})
                         meta["parsed_content_persisted"] = persist_meta
+                        # Checkpoint: enable resuming ingest retries without re-parsing.
+                        meta["ingest_checkpoint"] = {
+                            "version": "1",
+                            "stage": "parsed",
+                            "source": "document_parsed_contents",
+                            "file_sha256": str(meta.get("file_sha256") or "").strip().lower(),
+                            "pipeline_hash": str(meta.get("pipeline_hash") or "").strip(),
+                        }
                         db_document.doc_metadata = meta
                         db.commit()
                         db.refresh(db_document)
