@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable, Optional
 from uuid import UUID
 
 from app.core.config import settings
+from app.parsing.errors import ParsingError, classify_parser_subprocess_error
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.subprocess_runner")
@@ -290,3 +291,85 @@ async def run_subprocess_worker(
                 p.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+def _compute_retry_delay_sec(*, attempt: int, base_delay_sec: float, max_delay_sec: float) -> float:
+    """
+    Exponential backoff with a hard cap.
+
+    attempt: 1 for the first retry.
+    """
+    try:
+        a = int(attempt)
+    except Exception:
+        a = 1
+    a = max(1, a)
+    base = float(base_delay_sec or 0.0)
+    cap = float(max_delay_sec or 0.0)
+    delay = base * (2 ** (a - 1))
+    if cap > 0:
+        delay = min(delay, cap)
+    if delay < 0:
+        delay = 0.0
+    return float(delay)
+
+
+async def run_parser_subprocess(
+    *,
+    tenant_id: UUID,
+    payload: dict[str, Any],
+    disconnect_check: DisconnectCheck | None = None,
+    cancel_check: CancelCheck | None = None,
+    timeout_sec: float | None = None,
+    poll_interval_sec: float = 0.2,
+    max_attempts: int = 2,
+    base_delay_sec: float = 0.5,
+    max_delay_sec: float = 5.0,
+) -> dict[str, Any]:
+    """
+    Wrapper around `run_subprocess_worker` with:
+    - typed error classification (timeout/unsupported/internal)
+    - bounded retries + exponential backoff for retryable failures
+    """
+    attempts = max(1, int(max_attempts) if max_attempts is not None else 1)
+    last_typed: ParsingError | None = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return await run_subprocess_worker(
+                tenant_id=tenant_id,
+                payload=payload,
+                disconnect_check=disconnect_check,
+                cancel_check=cancel_check,
+                timeout_sec=timeout_sec,
+                poll_interval_sec=poll_interval_sec,
+            )
+        except SubprocessCancelled:
+            raise
+        except asyncio.CancelledError:
+            raise
+        except SubprocessWorkerError as exc:
+            typed = classify_parser_subprocess_error(exc)
+            last_typed = typed
+
+            if not bool(getattr(typed, "retryable", False)) or attempt >= attempts:
+                raise typed from exc
+
+            delay = _compute_retry_delay_sec(
+                attempt=attempt,
+                base_delay_sec=float(base_delay_sec or 0.0),
+                max_delay_sec=float(max_delay_sec or 0.0),
+            )
+            logger.warning(
+                "Parser subprocess failed (attempt %s/%s): %s; retrying in %.2fs",
+                attempt,
+                attempts,
+                str(exc)[:200],
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+    # Defensive: should have returned or raised.
+    if last_typed is not None:
+        raise last_typed
+    raise ParsingError("worker_failed", code="internal", retryable=True)
