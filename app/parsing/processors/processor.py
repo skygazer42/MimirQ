@@ -2532,6 +2532,10 @@ class DocumentProcessorService:
 
             await raise_if_cancelled()
 
+            # Indexing performs embedding + vector persistence; surface this as a distinct stage so
+            # UI/progress polling isn't stuck on "embedding" for the entire index write.
+            await self._update_status(db, tenant_id, document_id, "processing", 80, "vector_write")
+
             t0 = time.perf_counter()
             with metrics_span(
                 "ingest.index",
