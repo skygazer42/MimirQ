@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
+.PHONY: help init up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -55,6 +55,7 @@ help:
 	@echo "  make backend   - run backend locally (uvicorn --reload)"
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
+	@echo "  make perf-smoke - run perf harness in LLM mock mode (writes runs/perf/perf-smoke.json)"
 	@echo "  make api-check - verify web routes exist in backend"
 	@echo "  make api-ping  - ping backend health endpoints (quick reachability check)"
 	@echo "  make web-api-ping - ping backend endpoints using frontend URL logic (NEXT_PUBLIC_API_URL)"
@@ -159,6 +160,9 @@ web:
 
 test:
 	$(PY) -m pytest -q
+
+perf-smoke:
+	$(PY) scripts/perf/run_perf_suite.py --llm-mock --out runs/perf/perf-smoke.json
 
 parser-status:
 	$(PY) scripts/check_parsers.py
