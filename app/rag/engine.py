@@ -4,6 +4,7 @@ RAG Conversation Engine
 
 import asyncio
 import json
+import re
 import threading
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Type
@@ -46,6 +47,19 @@ logger = get_logger("rag.engine")
 
 class RAGEngine:
     """RAG Conversation Engine"""
+
+    # Coarse, low-dependency "complex query" indicators used for dynamic model routing.
+    # Intentionally conservative: we only use these signals when routing is enabled.
+    _COMPLEXITY_PATTERNS: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\b(analyze|compare|contrast|evaluate|synthesize)\b", flags=re.IGNORECASE),
+        re.compile(r"\b(step[- ]by[- ]step|first.*then|multiple|several)\b", flags=re.IGNORECASE),
+        re.compile(r"\b(calculate|compute|solve|prove|derive)\b", flags=re.IGNORECASE),
+        re.compile(r"\b(code|function|algorithm|implement|debug)\b", flags=re.IGNORECASE),
+        re.compile(r"\b(because|therefore|however|although|despite)\b", flags=re.IGNORECASE),
+        re.compile(r"\$.*\$", flags=re.DOTALL),  # inline math-ish blocks
+        re.compile(r"```"),  # fenced code blocks
+        re.compile(r"\d+\.\s+"),  # numbered list
+    )
 
     def __init__(self) -> None:
         # LLM config: share process-wide HTTP clients for connection reuse and consistent timeouts.
@@ -208,12 +222,33 @@ Requirements:
 
     def _score_question_complexity(self, question: str, history: Optional[List[Dict[str, str]]]) -> float:
         """
-        Coarse-grained complexity scoring: length + history length * weight.
-        Simple and dependency-free, maintains existing interface compatibility.
+        Coarse-grained complexity scoring:
+        - question length
+        - history length * weight
+        - "complex query" indicators (analysis/code/multi-step phrasing)
+
+        This stays dependency-free and is only used for model routing heuristics.
         """
+        q = question or ""
+
         history = history or []
         history_len = sum(len(msg.get("content", "")) for msg in history if isinstance(msg, dict))
-        return float(len(question)) + settings.MODEL_COMPLEXITY_HISTORY_WEIGHT * float(history_len)
+        score = float(len(q)) + settings.MODEL_COMPLEXITY_HISTORY_WEIGHT * float(history_len)
+
+        # If routing is enabled, treat certain patterns as "complex" even when the
+        # question is short (e.g., "analyze/compare", step-by-step requests, code).
+        # Scale the bonus relative to the configured threshold so deployments can tune one knob.
+        try:
+            pattern_matches = sum(1 for p in self._COMPLEXITY_PATTERNS if p.search(q))
+        except re.error:
+            pattern_matches = 0
+
+        if pattern_matches > 0:
+            threshold = float(getattr(settings, "MODEL_COMPLEXITY_THRESHOLD", 160) or 160)
+            bonus_per_match = max(0.0, threshold * 0.35)
+            score += float(min(pattern_matches, 6)) * bonus_per_match
+
+        return score
 
     def _select_llm(self, question: str, history: Optional[List[Dict[str, str]]]) -> tuple[Any, str, str]:
         """
