@@ -27,11 +27,12 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
+from app.parsing.errors import ParsingError
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
-from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
+from app.parsing.subprocess_runner import SubprocessCancelled, run_parser_subprocess
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.roles import classify_chunk_semantic_role
 from app.rag.chunking.strategies import SeparatorChunker
@@ -521,7 +522,7 @@ class ParsingStage:
                 return await cancel_check()
 
             try:
-                result = await run_subprocess_worker(
+                result = await run_parser_subprocess(
                     tenant_id=tenant_id,
                     payload={
                         "action": "integrated_chunk",
@@ -546,7 +547,7 @@ class ParsingStage:
                 except Exception:
                     pass
                 raise
-            except SubprocessWorkerError as exc:
+            except ParsingError as exc:
                 raise RuntimeError(f"Integrated pipeline parsing failed: {str(exc)[:200]}") from exc
 
             chunks = [
@@ -609,7 +610,7 @@ class ParsingStage:
             }
             if isinstance(html_xpath, str) and html_xpath.strip():
                 payload["html_xpath"] = html_xpath.strip()
-            parsed = await run_subprocess_worker(
+            parsed = await run_parser_subprocess(
                 tenant_id=tenant_id,
                 payload=payload,
                 cancel_check=cancel_check_worker,
@@ -627,7 +628,7 @@ class ParsingStage:
             except Exception:
                 pass
             raise
-        except SubprocessWorkerError as exc:
+        except ParsingError as exc:
             raise RuntimeError(f"Parsing failed: {str(exc)[:200]}") from exc
 
         documents = [
