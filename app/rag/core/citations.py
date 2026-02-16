@@ -148,10 +148,20 @@ def _build_snippet_and_span(
     terms = _extract_query_terms(query or "", max_terms=10) if query else []
     hit = _find_first_match(raw, terms) if terms else None
     if hit is None:
-        snippet = _collapse_ws(raw[:max_chars])
-        if len(raw) > max_chars:
+        # Fallback: still return a bounded span window so the UI can deep-link/highlight
+        # even when we don't find an explicit query-term match (best-effort).
+        base_end = min(len(raw), max_chars)
+        start = 0
+        end = base_end
+        nxt = _find_next_boundary(raw, start=0, end=base_end)
+        if nxt is not None and nxt > 0:
+            end = min(base_end, nxt + 1)
+
+        snippet_raw = raw[start:end]
+        snippet = _collapse_ws(snippet_raw).strip() or _collapse_ws(raw[:base_end])
+        if end < len(raw):
             snippet += "..."
-        return snippet, [], None, None
+        return snippet, [], int(start), int(end)
 
     idx, _ = hit
     before = max_chars // 3

@@ -37,7 +37,7 @@ def test_build_citations_includes_evidence_span_offsets_when_query_matches():
     assert int(c["evidence_end_char"]) > int(c["evidence_start_char"])
 
 
-def test_build_citations_omits_evidence_span_offsets_when_no_query_match():
+def test_build_citations_includes_evidence_span_offsets_even_when_no_query_match():
     from langchain_core.documents import Document
 
     from app.rag.core.citations import build_citations_from_docs
@@ -61,6 +61,7 @@ def test_build_citations_omits_evidence_span_offsets_when_no_query_match():
     )
     assert len(citations) == 1
     c = citations[0]
-    assert c.get("evidence_start_char") is None
-    assert c.get("evidence_end_char") is None
-
+    assert c.get("matched_terms") == []
+    assert c.get("evidence_start_char") == 10
+    assert c.get("evidence_end_char") is not None
+    assert int(c["evidence_end_char"]) > int(c["evidence_start_char"])

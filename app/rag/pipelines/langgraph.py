@@ -878,9 +878,14 @@ def _retrieve_node(state: RAGState) -> RAGState:
         try:
             top_rel = max(
                 float(
-                    c.get("retrieval_score")
-                    if c.get("retrieval_score") is not None
-                    else (c.get("relevance_score", 0.0) or 0.0)
+                    # Use final relevance score for abstain gate (post-rerank),
+                    # not pre-rerank retrieval_score.
+                    (
+                        c.get("relevance_score")
+                        if c.get("relevance_score") is not None
+                        else c.get("retrieval_score")
+                    )
+                    or 0.0
                 )
                 for c in citations
             )
@@ -905,7 +910,6 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["visible_evidence_only_enabled"] = bool(strict_visible)
     metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
     metrics["top_relevance_score"] = round(float(top_rel or 0.0), 3)
-
     if bool(abstain_triggered):
         metrics["abstain_followup"] = build_abstain_followup(reason=abstain_reason, citations=citations)
 
