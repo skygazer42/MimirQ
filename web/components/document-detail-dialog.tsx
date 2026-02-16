@@ -443,6 +443,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const timelineItems: DocumentTimelineItem[] = timeline?.items || []
   const timelineTotal = Number(timeline?.total || timelineItems.length)
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const chunkRowVirtualizer = useVirtualizer({
     count: activeView === 'chunks' ? chunks.length : 0,
     getScrollElement: () => scrollParentRef.current,
@@ -451,6 +452,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     getItemKey: (idx) => chunks[idx]?.id ?? idx,
   })
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const timelineRowVirtualizer = useVirtualizer({
     count: activeView === 'timeline' ? timelineItems.length : 0,
     getScrollElement: () => scrollParentRef.current,
