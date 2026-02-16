@@ -77,13 +77,14 @@ export default function IngestionMonitorPage() {
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['ingestion-documents', status],
-    queryFn: async () => {
-      const res = await documentApi.list({
-        limit: 200,
-        status: status === 'all' ? undefined : status,
-      })
-      return res
-    },
+    queryFn: ({ signal }) =>
+      documentApi.list(
+        {
+          limit: 200,
+          status: status === 'all' ? undefined : status,
+        },
+        { signal }
+      ),
     staleTime: 3_000,
     refetchInterval: autoRefresh ? 5_000 : false,
   })

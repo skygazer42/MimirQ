@@ -67,7 +67,7 @@ export default function FeedbackTriagePage() {
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['feedback-enriched', params],
-    queryFn: async () => feedbackApi.listEnriched({ limit: 100, ...params }),
+    queryFn: ({ signal }) => feedbackApi.listEnriched({ limit: 100, ...params }, { signal }),
     staleTime: 5_000,
   })
 
