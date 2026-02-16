@@ -28,11 +28,18 @@ x-backend-env: &backend_env
   # Persisted data dirs (mounted as volumes; avoid coupling to /app code mounts).
   UPLOAD_DIR: ${UPLOAD_DIR_DOCKER:-/data/uploads}
 
+x-docker-logging: &docker_logging
+  driver: "json-file"
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+    max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+
 services:
   # Redis（任务队列/缓存/幂等锁）
   mimirq-redis:
     image: redis:7
     restart: unless-stopped
+    logging: *docker_logging
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -43,6 +50,7 @@ services:
   mimirq-postgres:
     image: postgres:15
     restart: unless-stopped
+    logging: *docker_logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mimirq}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -59,6 +67,7 @@ services:
   mimirq-api:
     build: *backend_build
     restart: unless-stopped
+    logging: *docker_logging
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     healthcheck:
@@ -84,6 +93,7 @@ services:
   mimirq-worker:
     build: *backend_build
     restart: unless-stopped
+    logging: *docker_logging
     # Worker uses the same image as backend, but does not expose HTTP; disable image healthcheck.
     # NOTE: `disable: true` isn't supported by some older docker-compose versions; use NONE for compatibility.
     healthcheck:
