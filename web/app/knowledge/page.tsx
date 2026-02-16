@@ -460,7 +460,6 @@ export default function KnowledgePage() {
     return Math.ceil(filteredDocuments.length / cols)
   }, [filteredDocuments.length, docGridColumns])
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const docsGridVirtualizer = useVirtualizer({
     count: activeTab === 'documents' && viewMode === 'grid' ? docGridRowCount : 0,
     getScrollElement: () => pageScrollEl,
@@ -468,7 +467,6 @@ export default function KnowledgePage() {
     overscan: 6,
   })
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const docsTableVirtualizer = useVirtualizer({
     count: activeTab === 'documents' && viewMode === 'list' ? filteredDocuments.length : 0,
     getScrollElement: () => pageScrollEl,
