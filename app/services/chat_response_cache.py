@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
+from app.rag.embedding.utils import current_embedding_space_hash
 
 logger = get_logger("chat.cache")
 
@@ -58,6 +59,7 @@ def build_chat_cache_key(
     *,
     tenant_id: str,
     account_id: str,
+    dataset_id: str | None,
     document_ids: list[str],
     question: str,
     rag_config: dict[str, Any],
@@ -78,6 +80,10 @@ def build_chat_cache_key(
         "v": 1,
         "tenant_id": str(tenant_id),
         "account_id": str(account_id or ""),
+        "dataset_id": str(dataset_id or "") or None,
+        # Bind to the current embedding "space" (provider/model/base_url) so a model
+        # change can't serve stale cached responses.
+        "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
         "doc_scope": _hash_doc_scope(document_ids),
         "doc_count": len([d for d in document_ids if d]),
         "question": (question or "").strip(),
@@ -150,4 +156,3 @@ def set_cached_chat_response(key: str, payload: dict[str, Any]) -> bool:
         logger.warning("Chat cache write failed: %s", str(exc)[:200])
         _invalidate_redis_client()
         return False
-

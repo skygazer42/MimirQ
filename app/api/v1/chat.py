@@ -590,6 +590,7 @@ async def chat(
             cache_key = build_chat_cache_key(
                 tenant_id=str(tenant_id),
                 account_id=str(account_id or ""),
+                dataset_id=str(dataset_id_used) if dataset_id_used is not None else None,
                 document_ids=[str(d) for d in doc_ids_to_use],
                 question=request.message,
                 rag_config=rag_cfg,
@@ -1153,6 +1154,7 @@ async def stream_chat(
                 cache_key = build_chat_cache_key(
                     tenant_id=str(tenant_id),
                     account_id=str(account_id or ""),
+                    dataset_id=str(dataset_id_used) if dataset_id_used is not None else None,
                     document_ids=[str(d) for d in doc_ids_to_use],
                     question=request.message,
                     rag_config=rag_cfg,
