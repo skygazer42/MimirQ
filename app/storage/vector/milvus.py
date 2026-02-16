@@ -670,6 +670,35 @@ class MilvusVectorStore:
         self._ensure_store()
         assert self._store is not None
 
+        def _effective_write_batch_size(texts: list[str]) -> int:
+            base = max(1, int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256))
+            if not bool(getattr(settings, "VECTOR_WRITE_ADAPTIVE_BATCHING_ENABLED", True)):
+                return base
+            max_chars_per_batch = int(getattr(settings, "VECTOR_WRITE_BATCH_MAX_CHARS", 200_000) or 200_000)
+            if max_chars_per_batch <= 0:
+                return base
+            if not texts:
+                return base
+            max_chunk_chars = max(len(t or "") for t in texts)
+            if max_chunk_chars <= 0:
+                return base
+            budgeted = max(1, int(max_chars_per_batch // max_chunk_chars))
+            return max(1, min(base, budgeted))
+
+        def _add_texts_with_compat(*, texts: list[str], metadatas: list[dict[str, Any]], ids: list[str]) -> list[str]:
+            # Normalize per-batch (Milvus expects aligned keys for each insert call).
+            metadatas_norm = _normalize_milvus_metadata_batch(metadatas)
+            try:
+                pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
+            except Exception:
+                # Backward compatibility: older collections might not have new scalar fields.
+                # Retry once with new optional fields dropped (safe, does not change retrieval semantics).
+                for m in metadatas_norm:
+                    m.pop("dataset_id", None)
+                    m.pop("embedding_space_hash", None)
+                pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
+            return [str(pk) for pk in pks]
+
         texts: List[str] = []
         metadatas: List[Dict[str, Any]] = []
         ids: List[str] = []
@@ -712,17 +741,20 @@ class MilvusVectorStore:
                 }
             )
 
-        metadatas = _normalize_milvus_metadata_batch(metadatas)
-        try:
-            pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        except Exception:
-            # Backward compatibility: older collections might not have new scalar fields.
-            # Retry once with new optional fields dropped (safe, does not change retrieval semantics).
-            for m in metadatas:
-                m.pop("dataset_id", None)
-                m.pop("embedding_space_hash", None)
-            pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        return [str(pk) for pk in pks]
+        batch_size = _effective_write_batch_size(texts)
+        if batch_size >= len(texts):
+            return _add_texts_with_compat(texts=texts, metadatas=metadatas, ids=ids)
+
+        pks: list[str] = []
+        for start in range(0, len(texts), batch_size):
+            pks.extend(
+                _add_texts_with_compat(
+                    texts=texts[start : start + batch_size],
+                    metadatas=metadatas[start : start + batch_size],
+                    ids=ids[start : start + batch_size],
+                )
+            )
+        return pks
 
     def search(
         self,
