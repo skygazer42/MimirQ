@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite ps ps-lite logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
+.PHONY: help init up up-web up-lite up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite ps ps-lite logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status compose-diagnostics clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -79,6 +79,7 @@ help:
 	@echo "  make enterprise-checks - verify + backend/web tests (CI-like)"
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make clean     - remove local caches"
+	@echo "  make compose-diagnostics - print docker compose status + health as JSON"
 	@echo "  make doctor    - quick env sanity checks"
 
 init:
@@ -180,6 +181,9 @@ perf-smoke:
 
 parser-status:
 	$(PY) scripts/check_parsers.py
+
+compose-diagnostics:
+	$(PY) scripts/compose_diagnostics.py
 
 api-check:
 	node web/scripts/check-api-contract.mjs
