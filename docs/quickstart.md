@@ -34,6 +34,11 @@ make init
 make up
 make ps
 
+# (可选) 低资源模式（lite：不启动 Milvus/MinIO，默认使用 Chroma 本地向量库）
+# 适合：笔记本 / 小内存机器 / 快速试跑（更省资源）
+make up-lite
+make ps-lite
+
 # 或直接使用 docker compose
 cd docker
 docker compose up -d --build
