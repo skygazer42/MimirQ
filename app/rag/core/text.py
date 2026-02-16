@@ -26,6 +26,94 @@ _QUERY_REWRITE_TRIGGER_RE = re.compile(
     r"(它们?|他(们)?|她(们)?|这个|这(段|部分|些)|那(个)?|上述|上面|前面|之前|刚才|上文|下文|这里|那里|继续|同上|同理)",
     flags=re.IGNORECASE,
 )
+_DECOMPOSE_STRONG_SPLIT_RE = re.compile(r"[?？。.!！;；\n]+")
+# Split on common CN/EN conjunctions that often join multiple sub-questions.
+# Keep this conservative (avoid single-char CN splitters like "和") to reduce false splits.
+_DECOMPOSE_CONJ_SPLIT_RE = re.compile(
+    r"(?:\s+(?:and|or|also|plus|then|as\s+well\s+as)\s+|(?:以及|并且|同时|另外|此外|还有|然后))",
+    flags=re.IGNORECASE,
+)
+_DECOMPOSE_LEADING_FILLER_RE = re.compile(
+    r"^(?:and|or|also|then)\s+",
+    flags=re.IGNORECASE,
+)
+_DECOMPOSE_TRAILING_PUNCT = " \t\r\n,，;；:：.!?。！？"
+
+
+def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[str]:
+    """
+    Deterministic query decomposition helper (no LLM).
+
+    Splits a multi-part question into <= N sub-questions using punctuation and
+    common conjunctions. Designed as a safe fallback when LLM decomposition is
+    unavailable.
+    """
+
+    max_subquestions = max(0, int(max_subquestions or 0))
+    raw = (query or "").strip()
+    if not raw or max_subquestions <= 0:
+        return []
+
+    def _clean_fragment(text: str) -> str:
+        t = (text or "").strip()
+        if not t:
+            return ""
+        # Strip common list prefixes.
+        t = re.sub(r"^[-*•]\s+", "", t)
+        t = re.sub(r"^\d+\s*[.)]\s+", "", t)
+        t = t.strip().strip('"').strip("'").strip()
+        t = _DECOMPOSE_LEADING_FILLER_RE.sub("", t).strip()
+        # Light punctuation trimming on both ends.
+        t = t.strip(_DECOMPOSE_TRAILING_PUNCT).strip()
+        # Normalize whitespace.
+        t = " ".join(t.split())
+        return t
+
+    # 1) Strong splits (sentence/question boundaries)
+    chunks = [c.strip() for c in _DECOMPOSE_STRONG_SPLIT_RE.split(raw) if c.strip()]
+    if not chunks:
+        return []
+
+    # 2) Conjunction splits within each chunk.
+    fragments: list[str] = []
+    for ch in chunks:
+        for frag in _DECOMPOSE_CONJ_SPLIT_RE.split(ch):
+            cleaned = _clean_fragment(frag)
+            if cleaned:
+                fragments.append(cleaned)
+
+    if not fragments:
+        return []
+
+    raw_norm = " ".join(raw.split())
+    out: list[str] = []
+    seen: set[str] = set()
+
+    for frag in fragments:
+        # Filter "tiny" fragments that tend to be unhelpful for retrieval.
+        tokens = _QUERY_TOKEN_RE.findall(frag)
+        if len(frag) < 8 and len(tokens) < 2:
+            continue
+
+        key = frag.casefold() if frag.isascii() else frag
+        if key in seen:
+            continue
+        seen.add(key)
+
+        if len(frag) > 500:
+            frag = frag[:500] + "..."
+        out.append(frag)
+        if len(out) >= max_subquestions:
+            break
+
+    if not out:
+        return []
+
+    # Avoid returning a single "decomposed" fragment that is identical to input.
+    if len(out) == 1 and out[0] == raw_norm:
+        return []
+
+    return out
 
 
 def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[str]:
