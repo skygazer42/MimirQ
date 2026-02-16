@@ -60,6 +60,13 @@ async def retrieve_preview(
         ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = body.dataset_id
+    else:
+        allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+        if not allow_open_scope:
+            raise HTTPException(
+                status_code=400,
+                detail="dataset_id is required when document_ids is empty",
+            )
 
     # Optional existence check (keeps behavior consistent with chat).
     if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
@@ -221,6 +228,13 @@ async def retrieve_evidence(
         ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = body.dataset_id
+    else:
+        allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+        if not allow_open_scope:
+            raise HTTPException(
+                status_code=400,
+                detail="dataset_id is required when document_ids is empty",
+            )
 
     # Optional existence check (keeps behavior consistent with chat).
     if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
@@ -399,6 +413,13 @@ async def prompt_preview(
         ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = body.dataset_id
+    else:
+        allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+        if not allow_open_scope:
+            raise HTTPException(
+                status_code=400,
+                detail="dataset_id is required when document_ids is empty",
+            )
 
     if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
         if scope_document_ids:

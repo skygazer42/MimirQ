@@ -8,6 +8,7 @@ async def test_rag_retrieve_includes_query_debug_when_present(monkeypatch: pytes
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", True, raising=False)
 
     import app.api.v1.rag as rag_api
 
@@ -43,4 +44,3 @@ async def test_rag_retrieve_includes_query_debug_when_present(monkeypatch: pytes
 
     dumped = res.model_dump()
     assert dumped.get("query_debug", {}).get("original") == "o"
-
