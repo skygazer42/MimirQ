@@ -2304,6 +2304,14 @@ class HybridRetriever(BaseRetriever):
         original_query = query
         query = query_norm.normalized_text
 
+        # Defense-in-depth: avoid accidental tenant-level "open scope" retrieval.
+        # Caller must explicitly scope retrieval via either:
+        # - `document_ids`, or
+        # - `dataset_id` (dataset boundary is the default enterprise safety posture).
+        if self.dataset_id is None and not (self.document_ids or []):
+            if not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
+                raise ValueError("dataset_id is required when document_ids is empty")
+
         requested_k = max(1, int(self.k or 0))
         # When running in open scope (no explicit document_ids), we may drop candidates due to:
         # - document/dataset ACL (security trimming)

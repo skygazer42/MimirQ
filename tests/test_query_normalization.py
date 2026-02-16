@@ -62,9 +62,11 @@ def test_normalize_query_unit_case() -> None:
 def test_hybrid_retriever_normalizes_query_before_search(monkeypatch) -> None:  # noqa: ANN001
     from app.rag.retriever import HybridRetriever
 
+    from uuid import uuid4
+
     captured: dict[str, str] = {}
 
-    retriever = HybridRetriever(k=5)
+    retriever = HybridRetriever(k=5, dataset_id=uuid4())
 
     def _hybrid_search_stub(*, query: str, **_kwargs):  # noqa: ANN001
         captured["query"] = query

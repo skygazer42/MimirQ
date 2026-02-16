@@ -20,6 +20,7 @@ class _StubVectorStore:
 def test_retriever_debug_metrics_include_channel_timing_and_counts(monkeypatch: pytest.MonkeyPatch) -> None:
     retriever = HybridRetriever()
     retriever.tenant_id = uuid4()
+    retriever.dataset_id = uuid4()
 
     # Ensure the lexical DB channel never touches Postgres in this unit test.
     monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
@@ -77,4 +78,3 @@ def test_retriever_debug_metrics_include_channel_timing_and_counts(monkeypatch: 
 
     for key in ("vector_candidates", "bm25_candidates"):
         assert key in counts
-
