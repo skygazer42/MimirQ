@@ -370,9 +370,30 @@ def _parse_csv(raw: str) -> list[str]:
     return [p for p in parts if p]
 
 
-def _assert_local_scan_enabled() -> None:
-    if not bool(getattr(settings, "LOCAL_SCAN_ENABLED", False)):
-        raise ValueError("local_scan_disabled")
+def _is_local_scan_allowed_for_root(*, cfg: dict[str, Any], root: Path) -> bool:
+    """
+    Return True if local scanning is allowed for this run.
+
+    Normal mode requires LOCAL_SCAN_ENABLED=true.
+
+    Internal mode (used by "precheck-first ingest") can allow scans of server-managed staging
+    folders under UPLOAD_DIR even when LOCAL_SCAN_ENABLED=false.
+    """
+    if bool(getattr(settings, "LOCAL_SCAN_ENABLED", False)):
+        return True
+
+    # Internal allowlist: must be explicitly set by server code (not exposed in API schema)
+    # and must target a root under UPLOAD_DIR.
+    if not bool(cfg.get("internal_allow_upload_scan", False)):
+        return False
+
+    upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
+    resolved = root.expanduser().resolve(strict=False)
+    try:
+        resolved.relative_to(upload_root)
+        return True
+    except Exception:
+        return False
 
 
 def _assert_scan_root_allowed(root: Path) -> None:
@@ -746,10 +767,11 @@ def run_dataset_precheck_scan(
     if not root_path:
         raise ValueError("root_path_required")
 
-    _assert_local_scan_enabled()
     root = Path(root_path)
     if not root.exists() or not root.is_dir():
         raise ValueError("root_path_not_found")
+    if not _is_local_scan_allowed_for_root(cfg=cfg, root=root):
+        raise ValueError("local_scan_disabled")
     _assert_scan_root_allowed(root)
 
     max_files_cap = safe_int(getattr(settings, "PRECHECK_SCAN_MAX_FILES", 20_000), default=20_000)
