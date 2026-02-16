@@ -118,13 +118,14 @@ export default function QuarantineQueuePage() {
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['quarantine-documents'],
-    queryFn: async () => {
-      const res = await documentApi.list({
-        limit: 200,
-        status: 'quarantined',
-      })
-      return res
-    },
+    queryFn: ({ signal }) =>
+      documentApi.list(
+        {
+          limit: 200,
+          status: 'quarantined',
+        },
+        { signal }
+      ),
     staleTime: 3_000,
     refetchInterval: autoRefresh ? 5_000 : false,
   })

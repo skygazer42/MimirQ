@@ -224,6 +224,10 @@ function getOrCreateRequestId(headers: AxiosHeaders): string {
   return requestId
 }
 
+type ApiRequestOptions = {
+  signal?: AbortSignal
+}
+
 const apiClient = axios.create({
   baseURL: API_V1_BASE_URL,
   timeout: API_TIMEOUT_MS,
@@ -439,20 +443,23 @@ export const documentApi = {
   /**
    * 获取文档列表
    */
-  async list(params?: {
-    skip?: number
-    limit?: number
-    status?: string
-    lifecycle?: string
-    dataset_id?: string
-    source_path_prefix?: string
-    file_type?: string
-    owner_id?: string
-    q?: string
-    order_by?: string
-    order_dir?: 'asc' | 'desc' | string
-  }): Promise<{ total: number; items: Document[] }> {
-    const { data } = await apiClient.get('/documents/', { params })
+  async list(
+    params?: {
+      skip?: number
+      limit?: number
+      status?: string
+      lifecycle?: string
+      dataset_id?: string
+      source_path_prefix?: string
+      file_type?: string
+      owner_id?: string
+      q?: string
+      order_by?: string
+      order_dir?: 'asc' | 'desc' | string
+    },
+    options?: ApiRequestOptions
+  ): Promise<{ total: number; items: Document[] }> {
+    const { data } = await apiClient.get('/documents/', { params, signal: options?.signal })
     return data
   },
 
@@ -481,7 +488,8 @@ export const documentApi = {
    */
   async get(
     documentId: string,
-    options?: { includeChunks?: boolean; pipeline_hash?: string; all_versions?: boolean }
+    options?: { includeChunks?: boolean; pipeline_hash?: string; all_versions?: boolean },
+    request?: ApiRequestOptions
   ): Promise<Document> {
     const params = options?.includeChunks
       ? {
@@ -493,6 +501,7 @@ export const documentApi = {
 
     const { data } = await apiClient.get(`/documents/${documentId}`, {
       params,
+      signal: request?.signal,
     })
     return data
   },
@@ -770,8 +779,8 @@ export const documentApi = {
   },
 
   // Document pipeline versions (ops/debug/rollback)
-  async listVersions(documentId: string): Promise<DocumentVersionList> {
-    const { data } = await apiClient.get(`/documents/${documentId}/versions`)
+  async listVersions(documentId: string, options?: ApiRequestOptions): Promise<DocumentVersionList> {
+    const { data } = await apiClient.get(`/documents/${documentId}/versions`, { signal: options?.signal })
     return data
   },
 
@@ -2205,8 +2214,8 @@ export const feedbackApi = {
     message_id?: string
     min_rating?: number
     max_rating?: number
-  }): Promise<MessageFeedbackEnrichedListResponse> {
-    const { data } = await apiClient.get('/feedback/messages/enriched', { params })
+  }, options?: ApiRequestOptions): Promise<MessageFeedbackEnrichedListResponse> {
+    const { data } = await apiClient.get('/feedback/messages/enriched', { params, signal: options?.signal })
     return data
   },
 

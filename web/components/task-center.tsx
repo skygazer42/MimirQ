@@ -20,8 +20,8 @@ export function TaskCenter() {
   // Poll for active tasks globally
   const { data: documents = [], refetch } = useQuery<Document[]>({
     queryKey: ['documents'],
-    queryFn: async () => {
-      const res = await documentApi.list({ limit: 100 })
+    queryFn: async ({ signal }) => {
+      const res = await documentApi.list({ limit: 100 }, { signal })
       return res.items
     },
     // Passive update, rely on other components to trigger fetches or slow poll

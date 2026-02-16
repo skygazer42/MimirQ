@@ -60,9 +60,9 @@ export function IngestionDetailDialog({
 
   const { data: doc, isLoading, isError, refetch } = useQuery({
     queryKey: ['ingestion-doc-detail', documentId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!documentId) throw new Error('missing document id')
-      return await documentApi.get(documentId)
+      return await documentApi.get(documentId, undefined, { signal })
     },
     enabled: open && Boolean(documentId),
     staleTime: 1_000,
@@ -80,9 +80,9 @@ export function IngestionDetailDialog({
     refetch: refetchVersions,
   } = useQuery<DocumentVersionList>({
     queryKey: ['ingestion-doc-versions', documentId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!documentId) throw new Error('missing document id')
-      return await documentApi.listVersions(documentId)
+      return await documentApi.listVersions(documentId, { signal })
     },
     enabled: open && Boolean(documentId),
     staleTime: 3_000,
