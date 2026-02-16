@@ -1,8 +1,9 @@
 # Docker Compose 部署指南
 
-本项目提供两套 Compose 配置：
+本项目提供多套 Compose 配置：
 
 - `docker/docker-compose.yml`：主栈（`mimirq-api`/`mimirq-worker` + Postgres/Milvus/Redis/MinIO；默认不暴露基础设施端口）
+- `docker/docker-compose.lite.yml`：低资源栈（`mimirq-api`/`mimirq-worker` + Postgres/Redis；默认使用 Chroma 本地向量库，不启动 Milvus/MinIO）
 - `docker/docker-compose.infra.yml`：仅基础设施（暴露端口，便于本地后端调试）
 - `docker/docker-compose.parsers.yml`：可选外部解析服务（Marker/PaddleOCR-VL/MinerU/ETL4LLM），用 `-f` 叠加并通过 `--profile` 按需启用
 
@@ -42,6 +43,14 @@ cp web/.env.local.example web/.env.local
 make up
 make ps
 make logs
+```
+
+低资源（lite）模式（可选，适合小内存机器/快速试跑）：
+
+```bash
+make up-lite
+make ps-lite
+make logs-lite
 ```
 
 如需本地开发后端（推荐）：只启动基础设施，然后本地运行后端：
@@ -89,6 +98,7 @@ make up-web
 - `postgres_data`：PostgreSQL 数据
 - `milvus_data` / `etcd_data` / `minio_data`：Milvus 相关数据
 - `upload_data`：上传文件（后端容器内路径默认为 `/data/uploads`）
+- `vector_data`：lite 模式下的本地向量库持久化目录（`CHROMA_PERSIST_PATH_DOCKER=/data/vector_chroma`）
 
 仅停止服务：
 
@@ -96,11 +106,24 @@ make up-web
 make down
 ```
 
+仅停止 lite 栈：
+
+```bash
+make down-lite
+```
+
 重置所有数据（谨慎）：
 
 ```bash
 cd docker
 docker compose down -v
+```
+
+如需重置 lite 栈数据（谨慎）：
+
+```bash
+cd docker
+docker compose -f docker-compose.lite.yml down -v
 ```
 
 ---
