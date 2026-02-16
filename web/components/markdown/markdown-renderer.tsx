@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import type * as React from 'react'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
@@ -87,7 +87,7 @@ function maybeAttachImageAuthToken(url: string): string {
   return parsed.toString()
 }
 
-export function MarkdownRenderer({
+export const MarkdownRenderer = memo(function MarkdownRenderer({
   markdown,
   className,
   enableTocAnchors = true,
@@ -249,4 +249,4 @@ export function MarkdownRenderer({
       </ReactMarkdown>
     </div>
   )
-}
+})
