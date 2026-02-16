@@ -20,6 +20,7 @@ Available strategies:
 - manuscript: Content-aware preset for manuscripts
 - book_structured: Book chapter/part aware chunking
 - laws_structured: Legal document clause-aware chunking
+- policy_manual_structured: Policy/manual clause-aware parent-child chunking
 - email_thread: Email thread aware chunking
 - sop_steps: SOP/procedure step-aware chunking
 - glossary: Glossary/dictionary entry-aware chunking
@@ -103,6 +104,7 @@ from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker
 from app.rag.chunking.strategies.kv_config import KVConfigChunker
 from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker
 from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker
+from app.rag.chunking.strategies.policy_manual_structured import PolicyManualStructuredChunker
 from app.rag.chunking.strategies.llama_index import (
     LlamaIndexChunker,
     LlamaIndexHierarchicalChunker,
@@ -176,6 +178,7 @@ __all__ = [
     "ManuscriptChunker",
     "BookStructuredChunker",
     "LawsStructuredChunker",
+    "PolicyManualStructuredChunker",
     "EmailThreadChunker",
     "SOPStepsChunker",
     "GlossaryChunker",

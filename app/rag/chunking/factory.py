@@ -43,6 +43,7 @@ from app.rag.chunking.strategies import (
     LangChainTokenChunker,
     LatexSectionsChunker,
     LawsStructuredChunker,
+    PolicyManualStructuredChunker,
     LlamaIndexChunker,
     LlamaIndexHierarchicalChunker,
     LogEventsChunker,
@@ -117,6 +118,7 @@ class ChunkerFactory:
     - paper: Academic paper section aware chunking
     - book_structured: Book chapter/part aware chunking
     - laws_structured: Legal document clause-aware chunking
+    - policy_manual_structured: Policy/manual clause-aware parent-child chunking
     - email_thread: Email thread aware chunking
     - sop_steps: SOP/procedure step-aware chunking
     - glossary: Glossary/dictionary entry-aware chunking
@@ -201,6 +203,7 @@ class ChunkerFactory:
         "paper": PaperChunker,
         "book_structured": BookStructuredChunker,
         "laws_structured": LawsStructuredChunker,
+        "policy_manual_structured": PolicyManualStructuredChunker,
         "email_thread": EmailThreadChunker,
         "sop_steps": SOPStepsChunker,
         "glossary": GlossaryChunker,
