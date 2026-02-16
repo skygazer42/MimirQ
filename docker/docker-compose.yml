@@ -32,11 +32,18 @@ x-backend-env: &backend_env
   TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-10}
 
+x-docker-logging: &docker_logging
+  driver: "json-file"
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+    max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+
 services:
   # Redis（任务队列/缓存/幂等锁）
   mimirq-redis:
     image: redis:7
     restart: unless-stopped
+    logging: *docker_logging
     command:
       [
         "redis-server",
@@ -55,6 +62,7 @@ services:
   mimirq-postgres:
     image: postgres:15
     restart: unless-stopped
+    logging: *docker_logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mimirq}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -82,6 +90,7 @@ services:
     # quay.io can be unreachable in some networks; use a public mirror image instead.
     image: registry.k8s.io/etcd:3.5.5-0
     restart: unless-stopped
+    logging: *docker_logging
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
@@ -101,6 +110,7 @@ services:
   mimirq-minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     restart: unless-stopped
+    logging: *docker_logging
     environment:
       # Modern env names (also keep the old ones for compatibility with older images).
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
@@ -120,6 +130,7 @@ services:
   mimirq-milvus:
     image: milvusdb/milvus:v2.3.5
     restart: unless-stopped
+    logging: *docker_logging
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
@@ -144,6 +155,7 @@ services:
   mimirq-api:
     build: *backend_build
     restart: unless-stopped
+    logging: *docker_logging
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     healthcheck:
@@ -170,6 +182,7 @@ services:
   mimirq-worker:
     build: *backend_build
     restart: unless-stopped
+    logging: *docker_logging
     # Worker uses the same image as backend, but does not expose HTTP; disable image healthcheck.
     # NOTE: `disable: true` isn't supported by some older docker-compose versions; use NONE for compatibility.
     healthcheck:
