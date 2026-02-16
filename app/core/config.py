@@ -113,6 +113,13 @@ class Settings(BaseSettings):
     # Default guardrail: only cache stateless requests (no explicit history).
     CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY: bool = True
 
+    # Retrieval candidate cache (Redis, short TTL; best-effort; safe by default).
+    # Stores retrieval outputs for identical scoped requests to reduce repeated vector/BM25 work.
+    RETRIEVAL_CANDIDATE_CACHE_ENABLED: bool = False
+    RETRIEVAL_CANDIDATE_CACHE_TTL_SEC: int = 30
+    RETRIEVAL_CANDIDATE_CACHE_PREFIX: str = "rcand"
+    RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES: int = 400_000
+
     # Usage quotas (best-effort; disabled by default).
     # Applies per-tenant over a rolling time window.
     CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED: bool = False
@@ -1238,6 +1245,19 @@ class Settings(BaseSettings):
             raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
             raise ValueError("CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES must be >= 0")
+
+        if int(getattr(self, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_CANDIDATE_CACHE_TTL_SEC must be >= 0")
+        if int(getattr(self, "RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES must be >= 0")
+
+        cand_prefix = (getattr(self, "RETRIEVAL_CANDIDATE_CACHE_PREFIX", "") or "").strip()
+        if not cand_prefix:
+            raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must be non-empty")
+        if any(ch.isspace() for ch in cand_prefix):
+            raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
+        if self.RETRIEVAL_CANDIDATE_CACHE_PREFIX != cand_prefix:
+            self.RETRIEVAL_CANDIDATE_CACHE_PREFIX = cand_prefix
 
         if int(getattr(self, "VECTOR_WRITE_BATCH_SIZE", 0) or 0) < 1:
             raise ValueError("VECTOR_WRITE_BATCH_SIZE must be >= 1")
