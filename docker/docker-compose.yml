@@ -203,8 +203,13 @@ services:
     command: arq app.tasks.worker.WorkerSettings
 
 volumes:
+  # PostgreSQL data dir (/var/lib/postgresql/data)
   postgres_data:
+  # Milvus metadata store (etcd)
   etcd_data:
+  # Milvus object store (minio)
   minio_data:
+  # Milvus vector data dir (/var/lib/milvus)
   milvus_data:
+  # Uploaded documents + derived artifacts (/data/uploads)
   upload_data:

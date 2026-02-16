@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite ps ps-lite logs restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
+.PHONY: help init up up-web up-lite up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite ps ps-lite logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -159,6 +159,9 @@ ps-lite:
 
 logs:
 	$(COMPOSE) logs -f --tail=200
+
+logs-lite:
+	$(COMPOSE_LITE) logs -f --tail=200
 
 restart:
 	$(COMPOSE) restart mimirq-api
