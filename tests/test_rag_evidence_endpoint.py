@@ -16,6 +16,7 @@ async def test_rag_retrieve_defaults_to_recall50_when_rag_config_omitted(
 
     # Keep the handler on the lightweight path (no DB existence scan).
     monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", True, raising=False)
 
     import app.api.v1.rag as rag_api
 
@@ -59,6 +60,7 @@ async def test_rag_retrieve_sets_has_evidence_when_citations_present(monkeypatch
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", True, raising=False)
 
     import app.api.v1.rag as rag_api
 
@@ -97,6 +99,7 @@ async def test_rag_retrieve_has_evidence_respects_min_top_relevance_score(
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", True, raising=False)
     # When enabled (>0), has_evidence should require top_relevance_score >= min.
     monkeypatch.setattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.5, raising=False)
 
