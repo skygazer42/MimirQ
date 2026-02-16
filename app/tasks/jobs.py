@@ -138,6 +138,8 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
     redis = None
     lock_key = None
     lock_val = None
+    ingest_lock_key = None
+    ingest_lock_val = None
     sem_key = None
     try:
         # Re-validate tenant/document ownership.
@@ -150,8 +152,11 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             # Task can be considered complete (target missing).
             return {"ok": False, "reason": "document_not_found", "tenant_id": tenant_id, "document_id": document_id}
 
-        pipeline_hash = (doc.doc_metadata or {}).get("pipeline_hash") or "unknown"
+        meta0 = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+        pipeline_hash = meta0.get("pipeline_hash") or "unknown"
         lock_key = f"lock:doc:{tenant_id}:{document_id}:{pipeline_hash}"
+        ingest_lock_key = meta0.get("ingest_lock_key")
+        ingest_lock_val = meta0.get("ingest_lock_value")
 
         # Idempotent lock: avoid duplicate concurrent processing per doc+pipeline.
         # - Use Redis SET NX EX
@@ -323,6 +328,8 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
+        if redis is not None and ingest_lock_key and ingest_lock_val:
+            await release_lock(redis, key=ingest_lock_key, value=ingest_lock_val)
         await tenant_release(redis, sem_key)
         db.close()
 
