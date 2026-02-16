@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 
 import { cn } from '@/lib/utils'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
 
 const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
-export function MarkdownToc({
+export const MarkdownToc = memo(function MarkdownToc({
   markdown,
   className,
   title = '目录',
@@ -65,4 +65,4 @@ export function MarkdownToc({
       </ul>
     </nav>
   )
-}
+})
