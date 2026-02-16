@@ -494,7 +494,195 @@ async def _best_effort_connectivity_checks(*, connector_id: str, cfg: Any) -> tu
                 warnings.append({"code": "start_url_check_error", "url": url, "error": _safe_error_str(exc)})
         checks["url_ingest"] = {"checked": checked, "ok": ok == len(checked) if checked else True}
 
+    elif cid in _DB_CONNECTOR_IDS:
+        # Patchable helper for unit tests; best-effort, fail-open warnings.
+        db_check, db_warn = await _check_db_connectivity_best_effort(connector_id=cid, cfg=cfg)
+        checks["db_connectivity"] = db_check
+        warnings.extend(db_warn)
+
     return checks, warnings
+
+
+def _has_write_privileges_from_text(text: str) -> bool:
+    t = str(text or "").lower()
+    if not t:
+        return False
+    # Intentionally coarse: any write-ish privilege triggers a warning.
+    tokens = [
+        "all privileges",
+        "insert",
+        "update",
+        "delete",
+        "create",
+        "drop",
+        "alter",
+        "grant",
+        "super",
+        "owner",
+        "control",
+        "take ownership",
+    ]
+    return any(tok in t for tok in tokens)
+
+
+def _mysql_connectivity_check_sync(cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    import time
+
+    warnings: list[dict[str, Any]] = []
+    check: dict[str, Any] = {"ok": False, "latency_ms": None, "read_only": None}
+
+    try:
+        import pymysql
+
+        t0 = time.time()
+        conn = pymysql.connect(
+            host=str(getattr(cfg, "host", "") or "").strip(),
+            port=int(getattr(cfg, "port", 3306) or 3306),
+            user=str(getattr(cfg, "username", "") or "").strip(),
+            password=str(getattr(cfg, "password", "") or ""),
+            database=str(getattr(cfg, "database", "") or "").strip(),
+            connect_timeout=3,
+            read_timeout=3,
+            write_timeout=3,
+            charset="utf8mb4",
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+            check["ok"] = True
+            check["latency_ms"] = round((time.time() - t0) * 1000.0, 1)
+
+            # Best-effort: warn if the user appears to have write privileges.
+            try:
+                grants_text = ""
+                with conn.cursor() as cur:
+                    cur.execute("SHOW GRANTS")
+                    rows = cur.fetchall() or []
+                parts: list[str] = []
+                for row in rows:
+                    if not row:
+                        continue
+                    parts.append(str(row[0] or ""))
+                    if len(parts) >= 20:
+                        break
+                grants_text = "\n".join(parts)
+                has_write = _has_write_privileges_from_text(grants_text)
+                check["read_only"] = not has_write
+                if has_write:
+                    warnings.append(
+                        {
+                            "code": "db_write_privileges_detected",
+                            "message": "DB user appears to have write privileges; consider using a read-only account.",
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001
+                check["read_only"] = None
+                warnings.append({"code": "db_read_only_check_error", "error": _safe_error_str(exc)})
+        finally:
+            with contextlib.suppress(Exception):
+                conn.close()
+    except Exception as exc:  # noqa: BLE001
+        check["ok"] = False
+        check["error"] = _safe_error_str(exc)
+        warnings.append({"code": "db_connectivity_failed", "error": _safe_error_str(exc)})
+
+    return check, warnings
+
+
+def _sqlserver_connectivity_check_sync(cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    import time
+
+    warnings: list[dict[str, Any]] = []
+    check: dict[str, Any] = {"ok": False, "latency_ms": None, "read_only": None}
+
+    try:
+        import pyodbc
+
+        # Try a reasonable default driver first; fall back to any installed driver.
+        preferred = [
+            "ODBC Driver 18 for SQL Server",
+            "ODBC Driver 17 for SQL Server",
+        ]
+        installed = list(pyodbc.drivers() or [])
+        driver = None
+        for cand in preferred:
+            if cand in installed:
+                driver = cand
+                break
+        if not driver and installed:
+            driver = installed[-1]
+        if not driver:
+            raise RuntimeError("No SQL Server ODBC driver found")
+
+        host = str(getattr(cfg, "host", "") or "").strip()
+        port = int(getattr(cfg, "port", 1433) or 1433)
+        database = str(getattr(cfg, "database", "") or "").strip()
+        username = str(getattr(cfg, "username", "") or "").strip()
+        password = str(getattr(cfg, "password", "") or "")
+
+        # Best-effort TLS defaults; operator can override at runtime by patching this helper.
+        conn_str = (
+            f"DRIVER={{{driver}}};"
+            f"SERVER={host},{port};"
+            f"DATABASE={database};"
+            f"UID={username};"
+            f"PWD={password};"
+            "Encrypt=yes;"
+            "TrustServerCertificate=yes;"
+        )
+
+        t0 = time.time()
+        conn = pyodbc.connect(conn_str, timeout=3)
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            check["ok"] = True
+            check["latency_ms"] = round((time.time() - t0) * 1000.0, 1)
+
+            # Best-effort: warn if user has write-ish permissions at DB scope.
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT permission_name FROM fn_my_permissions(NULL, 'DATABASE')")
+                perms = [str(r[0] or "") for r in (cur.fetchall() or []) if r and r[0]]
+                perms_text = "\n".join(perms[:200])
+                has_write = _has_write_privileges_from_text(perms_text)
+                check["read_only"] = not has_write
+                if has_write:
+                    warnings.append(
+                        {
+                            "code": "db_write_privileges_detected",
+                            "message": "DB user appears to have write privileges; consider using a read-only account.",
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001
+                check["read_only"] = None
+                warnings.append({"code": "db_read_only_check_error", "error": _safe_error_str(exc)})
+        finally:
+            with contextlib.suppress(Exception):
+                conn.close()
+    except Exception as exc:  # noqa: BLE001
+        check["ok"] = False
+        check["error"] = _safe_error_str(exc)
+        warnings.append({"code": "db_connectivity_failed", "error": _safe_error_str(exc)})
+
+    return check, warnings
+
+
+async def _check_db_connectivity_best_effort(*, connector_id: str, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """
+    Patchable DB connectivity check helper for validate endpoint.
+
+    Unit tests should monkeypatch this function to avoid real outbound DB calls.
+    """
+
+    cid = str(connector_id or "").strip()
+    if cid == "mysql_catalog":
+        return await asyncio.to_thread(_mysql_connectivity_check_sync, cfg)
+    if cid == "sqlserver_catalog":
+        return await asyncio.to_thread(_sqlserver_connectivity_check_sync, cfg)
+    return {}, []
 
 
 @router.post("/validate", response_model=ConnectorValidateResponse)
