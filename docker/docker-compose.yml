@@ -37,6 +37,14 @@ services:
   mimirq-redis:
     image: redis:7
     restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--maxmemory",
+        "${REDIS_MAXMEMORY:-0}",
+        "--maxmemory-policy",
+        "${REDIS_MAXMEMORY_POLICY:-noeviction}",
+      ]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -51,6 +59,16 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-mimirq}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    command:
+      [
+        "postgres",
+        "-c",
+        "shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}",
+        "-c",
+        "work_mem=${POSTGRES_WORK_MEM:-4MB}",
+        "-c",
+        "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}",
+      ]
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
