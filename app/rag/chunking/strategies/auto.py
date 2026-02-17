@@ -38,6 +38,10 @@ from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker, looks_like_ju
 from app.rag.chunking.strategies.kv_config import KVConfigChunker, looks_like_kv_config
 from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker, looks_like_latex_sections
 from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker, looks_like_laws
+from app.rag.chunking.strategies.policy_manual_structured import (
+    PolicyManualStructuredChunker,
+    looks_like_policy_manual,
+)
 from app.rag.chunking.strategies.log_events import LogEventsChunker, looks_like_log_events
 from app.rag.chunking.strategies.makefile import MakefileChunker, looks_like_makefile
 from app.rag.chunking.strategies.markdown import MarkdownAwareChunker
@@ -205,6 +209,10 @@ class AutoChunker(BaseChunker):
             chunk_overlap=self.chunk_overlap,
         )
         self._laws = LawsStructuredChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._policy_manual = PolicyManualStructuredChunker(
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
         )
@@ -560,6 +568,9 @@ class AutoChunker(BaseChunker):
         if looks_like_presentation(text):
             return self._slides, "presentation_slides"
 
+        if looks_like_policy_manual(text):
+            return self._policy_manual, "policy_manual_structured"
+
         if looks_like_laws(text):
             return self._laws, "laws_structured"
 
@@ -621,4 +632,3 @@ class AutoChunker(BaseChunker):
                 item.metadata = meta
             chunks.extend(produced)
         return chunks
-
