@@ -420,6 +420,7 @@ export function OriginalPreview() {
       </div>
 
       <div
+        data-page-scroll-container="true"
         className={cn(
           'flex-1 overscroll-contain no-scrollbar p-4 scroll-smooth',
           previewMode === 'editor' || previewMode === 'pdf' ? 'overflow-hidden' : 'overflow-y-auto'

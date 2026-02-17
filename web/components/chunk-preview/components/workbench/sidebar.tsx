@@ -53,7 +53,9 @@ function clampInt(value: number, min: number, max: number) {
 
 const DATASET_DEFAULT_VALUE = '__mimirq_dataset_default__'
 
-export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } = {}) {
+type SidebarVariant = 'panel' | 'dialog' | 'pane'
+
+export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}) {
   const {
     fileList,
     currentFileIndex,
@@ -291,14 +293,13 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     }
   }, [])
 
-  return (
-    <aside
+  const content = (
+    <div
       className={cn(
-        'bg-card flex flex-col flex-shrink-0 z-10',
-        variant === 'dialog' ? 'w-full border-0' : 'w-80 border-r border-border/60'
+        'p-6',
+        variant === 'pane' ? 'min-h-0' : 'flex-1 overflow-y-auto overscroll-contain no-scrollbar'
       )}
     >
-      <div className="p-6 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
         {/* 文件列表 */}
         <div className="mb-8 pb-8 border-b border-border/60">
           <div className="flex items-center justify-between mb-4">
@@ -1539,6 +1540,18 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
           </div>
         )}
       </div>
+    )
+
+  if (variant === 'pane') return content
+
+  return (
+    <aside
+      className={cn(
+        'bg-card flex h-full min-h-0 overflow-hidden flex-col flex-shrink-0 z-10',
+        variant === 'dialog' ? 'w-full border-0' : 'w-80 border-r border-border/60'
+      )}
+    >
+      {content}
     </aside>
   )
 }

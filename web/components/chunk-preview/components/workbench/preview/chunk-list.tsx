@@ -1244,6 +1244,7 @@ export function ChunkList() {
 
       <div
         ref={scrollRef}
+        data-page-scroll-container="true"
         tabIndex={0}
         onKeyDown={(e) => {
           if (!previewData?.chunks?.length) return

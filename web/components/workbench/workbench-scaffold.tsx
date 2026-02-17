@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { PageContainer } from '@/components/ui/page-container'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageHeaderBar } from '@/components/ui/page-header-bar'
+import { WorkbenchPane } from './workbench-pane'
 
 type WorkbenchScaffoldProps = {
   title: string
@@ -14,12 +15,15 @@ type WorkbenchScaffoldProps = {
   badge?: string
   actions?: React.ReactNode
 
+  top?: React.ReactNode
   pipelineRail?: React.ReactNode
   toolbar?: React.ReactNode
 
   leftPanel?: React.ReactNode
-  mainPanel: React.ReactNode
   rightPanel?: React.ReactNode
+
+  mainPanel?: React.ReactNode
+  children?: React.ReactNode
 
   size?: ComponentProps<typeof PageContainer>['size']
 
@@ -36,17 +40,26 @@ export function WorkbenchScaffold({
   iconColor,
   badge,
   actions,
+  top,
   pipelineRail,
   toolbar,
   leftPanel,
-  mainPanel,
   rightPanel,
+  mainPanel,
+  children,
   size = '6xl',
   className,
   headerClassName,
   toolbarClassName,
   bodyClassName,
 }: WorkbenchScaffoldProps) {
+  const resolvedMainPanel =
+    mainPanel ?? (children ? <WorkbenchPane className="flex-1">{children}</WorkbenchPane> : null)
+
+  if (!resolvedMainPanel) {
+    throw new Error('WorkbenchScaffold requires `mainPanel` or `children`.')
+  }
+
   return (
     <div className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
       <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
@@ -62,6 +75,7 @@ export function WorkbenchScaffold({
             {actions}
           </PageHeader>
 
+          {top ? <div className="mt-4">{top}</div> : null}
           {pipelineRail ? <div className="mt-4">{pipelineRail}</div> : null}
         </PageContainer>
       </div>
@@ -84,7 +98,7 @@ export function WorkbenchScaffold({
             ) : null}
 
             <section className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
-              {mainPanel}
+              {resolvedMainPanel}
             </section>
 
             {rightPanel ? (
