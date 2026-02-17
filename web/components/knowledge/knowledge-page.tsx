@@ -997,6 +997,7 @@ export default function KnowledgePage() {
               datasetAllValue={DATASET_ALL}
               selectedDatasetId={selectedDatasetId}
               lifecycleFilter={lifecycleFilter}
+              setLifecycleFilter={setLifecycleFilter}
               folderPath={folderPath}
               setFolderPath={setFolderPath}
               setDatasetScope={(v) => {
@@ -1760,21 +1761,6 @@ export default function KnowledgePage() {
 	                        containerClassName="w-full"
 	                        inputClassName="h-10 rounded-xl border-border/60 bg-background/60 backdrop-blur-sm placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40"
 	                      />
-
-                      <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
-                        <SelectTrigger
-                          className="h-10 w-full sm:w-[180px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm"
-                          aria-label="筛选生命周期"
-                        >
-                          <SelectValue placeholder="生命周期" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">启用中</SelectItem>
-                          <SelectItem value="disabled">已禁用</SelectItem>
-                          <SelectItem value="archived">已归档</SelectItem>
-                          <SelectItem value="all">全部</SelectItem>
-                        </SelectContent>
-                      </Select>
 
                       <Select
                         value={`${sortKey}:${sortDir}`}

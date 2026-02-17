@@ -17,6 +17,7 @@ type KnowledgeScopePanelProps = {
 
   selectedDatasetId?: string
   lifecycleFilter: DocLifecycleFilter
+  setLifecycleFilter: (value: DocLifecycleFilter) => void
   folderPath: string | null
   setFolderPath: (value: string | null) => void
 }
@@ -30,6 +31,7 @@ export function KnowledgeScopePanel({
   datasetAllValue,
   selectedDatasetId,
   lifecycleFilter,
+  setLifecycleFilter,
   folderPath,
   setFolderPath,
 }: KnowledgeScopePanelProps) {
@@ -94,7 +96,22 @@ export function KnowledgeScopePanel({
           </div>
         )}
 
-        <div className="text-sm text-muted-foreground">将生命周期与状态筛选移动到这里。</div>
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">生命周期</div>
+          <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
+            <SelectTrigger className="h-9 w-full" aria-label="筛选生命周期">
+              <SelectValue placeholder="生命周期" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">启用中</SelectItem>
+              <SelectItem value="disabled">已禁用</SelectItem>
+              <SelectItem value="archived">已归档</SelectItem>
+              <SelectItem value="all">全部</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="text-sm text-muted-foreground">将状态筛选移动到这里。</div>
       </div>
     </WorkbenchPane>
   )
