@@ -56,7 +56,6 @@ import { Panel } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { DocumentTags } from '@/components/documents/document-tags'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Dialog,
   DialogContent,
@@ -83,7 +82,6 @@ import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
-import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
@@ -148,7 +146,6 @@ export default function KnowledgePage() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetScope, setDatasetScope] = useState<string>(DATASET_ALL)
   const [folderPath, setFolderPath] = useState<string | null>(null)
-  const [folderPickerOpen, setFolderPickerOpen] = useState(false)
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const selectedDatasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
   const [docStats, setDocStats] = useState<DocumentStats | null>(null)
@@ -998,10 +995,13 @@ export default function KnowledgePage() {
               datasetsLoading={datasetsLoading}
               datasetScope={datasetScope}
               datasetAllValue={DATASET_ALL}
+              selectedDatasetId={selectedDatasetId}
+              lifecycleFilter={lifecycleFilter}
+              folderPath={folderPath}
+              setFolderPath={setFolderPath}
               setDatasetScope={(v) => {
                 setDatasetScope(v)
                 setFolderPath(null)
-                setFolderPickerOpen(false)
               }}
             />
           }
@@ -1760,42 +1760,6 @@ export default function KnowledgePage() {
 	                        containerClassName="w-full"
 	                        inputClassName="h-10 rounded-xl border-border/60 bg-background/60 backdrop-blur-sm placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40"
 	                      />
-
-                      {datasetScope !== DATASET_ALL ? (
-                        <Popover open={folderPickerOpen} onOpenChange={setFolderPickerOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-10 w-full sm:w-[220px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm justify-between"
-                              aria-label="按目录筛选"
-                            >
-                              <span className="min-w-0 flex items-center gap-2">
-                                <Folder className="h-4 w-4 text-muted-foreground" />
-                                <span className="truncate" title={folderPath || '全部目录'}>
-                                  {folderPath ? folderPath.split('/').slice(-1)[0] : '全部目录'}
-                                </span>
-                              </span>
-                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent align="start" className="w-[380px] p-3">
-                            {selectedDatasetId ? (
-                              <DatasetFolderTree
-                                datasetId={selectedDatasetId}
-                                lifecycle={lifecycleFilter}
-                                selectedPath={folderPath}
-                                onSelect={(path) => {
-                                  setFolderPath(path)
-                                  setFolderPickerOpen(false)
-                                }}
-                              />
-                            ) : (
-                              <div className="text-xs text-muted-foreground">请选择数据集</div>
-                            )}
-                          </PopoverContent>
-                        </Popover>
-                      ) : null}
 
                       <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
                         <SelectTrigger

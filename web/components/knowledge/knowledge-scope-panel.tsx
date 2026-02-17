@@ -1,7 +1,10 @@
 import { WorkbenchPane } from '@/components/workbench'
+import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { Dataset } from '@/types'
+
+type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
 
 type KnowledgeScopePanelProps = {
   className?: string
@@ -11,6 +14,11 @@ type KnowledgeScopePanelProps = {
   datasetScope: string
   setDatasetScope: (value: string) => void
   datasetAllValue?: string
+
+  selectedDatasetId?: string
+  lifecycleFilter: DocLifecycleFilter
+  folderPath: string | null
+  setFolderPath: (value: string | null) => void
 }
 
 export function KnowledgeScopePanel({
@@ -20,6 +28,10 @@ export function KnowledgeScopePanel({
   datasetScope,
   setDatasetScope,
   datasetAllValue,
+  selectedDatasetId,
+  lifecycleFilter,
+  folderPath,
+  setFolderPath,
 }: KnowledgeScopePanelProps) {
   const DATASET_ALL = datasetAllValue ?? '__all__'
 
@@ -55,9 +67,34 @@ export function KnowledgeScopePanel({
           </Select>
         </div>
 
-        <div className="text-sm text-muted-foreground">
-          将文件夹、生命周期与状态筛选移动到这里。
-        </div>
+        {selectedDatasetId ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs font-medium text-muted-foreground">目录</div>
+              {folderPath ? (
+                <button
+                  type="button"
+                  onClick={() => setFolderPath(null)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4"
+                >
+                  清除
+                </button>
+              ) : null}
+            </div>
+            <DatasetFolderTree
+              datasetId={selectedDatasetId}
+              lifecycle={lifecycleFilter}
+              selectedPath={folderPath}
+              onSelect={setFolderPath}
+            />
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+            选择一个数据集以浏览目录范围。
+          </div>
+        )}
+
+        <div className="text-sm text-muted-foreground">将生命周期与状态筛选移动到这里。</div>
       </div>
     </WorkbenchPane>
   )
