@@ -48,6 +48,7 @@ from app.rag.core.text import (
 )
 from app.rag.engine import get_rag_engine
 from app.rag.kg.pipeline import kg_search
+from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.retriever import hybrid_retriever
 from app.rag.store.factory import get_langgraph_store
@@ -711,6 +712,11 @@ def _retrieve_node(state: RAGState) -> RAGState:
             retrieval_queries.append(("dict", str(q)))
     for q in kg_query_expansion_queries:
         retrieval_queries.append(("kgq", q))
+    # Policy/manual "fast lane": when users mention clause numbers, add clause-only
+    # queries to improve exact-match recall without invoking the LLM.
+    clause_fastlane_queries = build_clause_fastlane_queries(query_for_retrieval)
+    for q in clause_fastlane_queries:
+        retrieval_queries.append(("clause", q))
     for q in multi_queries:
         retrieval_queries.append(("mq", q))
     for q in sub_questions:
@@ -998,6 +1004,15 @@ def _retrieve_node(state: RAGState) -> RAGState:
                 "kind": "kgq",
                 "expanded_text": q,
                 "source_rule_id": "kg:entity_name",
+                "weight": 1.0,
+            }
+        )
+    for q in clause_fastlane_queries:
+        expansions_dbg.append(
+            {
+                "kind": "clause",
+                "expanded_text": q,
+                "source_rule_id": "policy:clause_ref",
                 "weight": 1.0,
             }
         )
