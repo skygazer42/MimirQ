@@ -87,7 +87,7 @@ import { DatasetFolderTree } from '@/components/document-library/dataset-folder-
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
-import { KnowledgeSidebar } from '@/components/knowledge/knowledge-sidebar'
+import { KnowledgeScopePanel } from '@/components/knowledge/knowledge-scope-panel'
 import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
 import { useKnowledgeScrollContainer } from '@/components/knowledge/use-knowledge-scroll-container'
 import {
@@ -992,7 +992,7 @@ export default function KnowledgePage() {
           icon={Database}
           iconColor="text-primary"
           description="管理您的文档资产，构建专属知识大脑"
-          leftPanel={<KnowledgeSidebar />}
+          leftPanel={<KnowledgeScopePanel />}
           rightPanel={
             <KnowledgeInspector selectedDocs={selectedDocs}>
               {activeTab === 'retrieval' ? (
