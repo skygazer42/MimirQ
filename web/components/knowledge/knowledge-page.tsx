@@ -1000,6 +1000,13 @@ export default function KnowledgePage() {
               setLifecycleFilter={setLifecycleFilter}
               folderPath={folderPath}
               setFolderPath={setFolderPath}
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+              totalDocs={totalDocs}
+              completedDocsValue={completedDocsValue}
+              processingDocsValue={processingDocsValue}
+              failedDocsValue={failedDocsValue}
+              quarantinedDocsValue={quarantinedDocsValue}
               setDatasetScope={(v) => {
                 setDatasetScope(v)
                 setFolderPath(null)
@@ -1785,34 +1792,6 @@ export default function KnowledgePage() {
                           <SelectItem value="file_size:asc">大小 从小到大</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {(
-                        [
-                          { key: 'all', label: '全部', count: totalDocs },
-                          { key: 'completed', label: '已就绪', count: completedDocsValue },
-                          { key: 'processing', label: '处理中', count: processingDocsValue },
-                          { key: 'failed', label: '失败', count: failedDocsValue },
-                          { key: 'quarantined', label: '隔离', count: quarantinedDocsValue },
-                        ] as const
-                      ).map((item) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => setStatusFilter(item.key)}
-                          className={cn(
-                            "h-9 px-3 rounded-full border text-xs font-semibold  transition-colors focus-ring",
-                            statusFilter === item.key
-                              ? "bg-primary/10 border-primary/40 text-primary"
-                              : "bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30"
-                          )}
-                          aria-pressed={statusFilter === item.key}
-                        >
-                          {item.label}
-                          <span className="ml-1 tabular-nums text-[11px] opacity-80">{item.count}</span>
-                        </button>
-                      ))}
                     </div>
                   </div>
 
