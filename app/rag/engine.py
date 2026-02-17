@@ -37,6 +37,7 @@ from app.rag.core.text import (
     split_into_claims,
 )
 from app.rag.kg.pipeline import kg_search
+from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
@@ -1012,6 +1013,10 @@ Requirements:
                     retrieval_queries.append(("dict", str(q)))
             for q in kg_query_expansion_queries:
                 retrieval_queries.append(("kgq", q))
+            # Policy/manual "fast lane": when users mention clause numbers, add a clause-only
+            # retrieval query to improve exact-match recall without invoking the LLM.
+            for q in build_clause_fastlane_queries(query_for_retrieval):
+                retrieval_queries.append(("clause", q))
             for q in multi_queries:
                 retrieval_queries.append(("mq", q))
             for q in sub_questions:
