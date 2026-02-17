@@ -992,7 +992,19 @@ export default function KnowledgePage() {
           icon={Database}
           iconColor="text-primary"
           description="管理您的文档资产，构建专属知识大脑"
-          leftPanel={<KnowledgeScopePanel />}
+          leftPanel={
+            <KnowledgeScopePanel
+              datasets={datasets}
+              datasetsLoading={datasetsLoading}
+              datasetScope={datasetScope}
+              datasetAllValue={DATASET_ALL}
+              setDatasetScope={(v) => {
+                setDatasetScope(v)
+                setFolderPath(null)
+                setFolderPickerOpen(false)
+              }}
+            />
+          }
           rightPanel={
             <KnowledgeInspector selectedDocs={selectedDocs}>
               {activeTab === 'retrieval' ? (
@@ -1748,31 +1760,6 @@ export default function KnowledgePage() {
 	                        containerClassName="w-full"
 	                        inputClassName="h-10 rounded-xl border-border/60 bg-background/60 backdrop-blur-sm placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40"
 	                      />
-
-                      <Select
-                        value={datasetScope}
-                        onValueChange={(v) => {
-                          setDatasetScope(v)
-                          setFolderPath(null)
-                          setFolderPickerOpen(false)
-                        }}
-                      >
-                        <SelectTrigger
-                          className="h-10 w-full sm:w-[220px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm"
-                          disabled={datasetsLoading}
-                          aria-label="筛选数据集"
-                        >
-                          <SelectValue placeholder={datasetsLoading ? '加载数据集…' : '全部数据集'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={DATASET_ALL}>全部数据集</SelectItem>
-                          {datasets.map((ds) => (
-                            <SelectItem key={ds.id} value={ds.id}>
-                              {ds.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
 
                       {datasetScope !== DATASET_ALL ? (
                         <Popover open={folderPickerOpen} onOpenChange={setFolderPickerOpen}>
