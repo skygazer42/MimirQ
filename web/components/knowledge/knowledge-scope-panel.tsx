@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 import type { Dataset } from '@/types'
 
 type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
+type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
+type DocCountValue = string | number
 
 type KnowledgeScopePanelProps = {
   className?: string
@@ -20,6 +22,14 @@ type KnowledgeScopePanelProps = {
   setLifecycleFilter: (value: DocLifecycleFilter) => void
   folderPath: string | null
   setFolderPath: (value: string | null) => void
+
+  statusFilter: DocStatusFilter
+  setStatusFilter: (value: DocStatusFilter) => void
+  totalDocs: DocCountValue
+  completedDocsValue: DocCountValue
+  processingDocsValue: DocCountValue
+  failedDocsValue: DocCountValue
+  quarantinedDocsValue: DocCountValue
 }
 
 export function KnowledgeScopePanel({
@@ -34,6 +44,13 @@ export function KnowledgeScopePanel({
   setLifecycleFilter,
   folderPath,
   setFolderPath,
+  statusFilter,
+  setStatusFilter,
+  totalDocs,
+  completedDocsValue,
+  processingDocsValue,
+  failedDocsValue,
+  quarantinedDocsValue,
 }: KnowledgeScopePanelProps) {
   const DATASET_ALL = datasetAllValue ?? '__all__'
 
@@ -67,6 +84,37 @@ export function KnowledgeScopePanel({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">状态</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(
+              [
+                { key: 'all', label: '全部', count: totalDocs },
+                { key: 'completed', label: '已就绪', count: completedDocsValue },
+                { key: 'processing', label: '处理中', count: processingDocsValue },
+                { key: 'failed', label: '失败', count: failedDocsValue },
+                { key: 'quarantined', label: '隔离', count: quarantinedDocsValue },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setStatusFilter(item.key)}
+                className={cn(
+                  'h-9 px-3 rounded-full border text-xs font-semibold transition-colors focus-ring',
+                  statusFilter === item.key
+                    ? 'bg-primary/10 border-primary/40 text-primary'
+                    : 'bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                )}
+                aria-pressed={statusFilter === item.key}
+              >
+                {item.label}
+                <span className="ml-1 tabular-nums text-[11px] opacity-80">{item.count}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {selectedDatasetId ? (
@@ -110,8 +158,6 @@ export function KnowledgeScopePanel({
             </SelectContent>
           </Select>
         </div>
-
-        <div className="text-sm text-muted-foreground">将状态筛选移动到这里。</div>
       </div>
     </WorkbenchPane>
   )
