@@ -214,14 +214,15 @@ export default function KnowledgePage() {
     router.replace(nextUrl, { scroll: false })
   }, [activeTab, viewMode, docFilter, statusFilter, lifecycleFilter, datasetScope, folderPath, sortKey, sortDir, router])
 
+  const { sentinelRef: mainPaneSentinelRef, scrollEl: mainPaneScrollEl } = useKnowledgeScrollContainer()
+
   // PageBody is an internal scroll container; on tab switches keep the top anchored.
   useEffect(() => {
     const id = window.requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLElement>('[data-page-scroll-container="true"]')
-      el?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+      mainPaneScrollEl?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     })
     return () => window.cancelAnimationFrame(id)
-  }, [activeTab])
+  }, [activeTab, mainPaneScrollEl])
 
   // Load datasets for filtering (best-effort).
   useEffect(() => {
@@ -310,8 +311,6 @@ export default function KnowledgePage() {
 
   // The backend already applies q/status/dataset filters; keep UI list consistent with server results.
   const filteredDocuments = useMemo(() => documents, [documents])
-
-  const { sentinelRef: mainPaneSentinelRef, scrollEl: mainPaneScrollEl } = useKnowledgeScrollContainer()
 
   const [docGridColumns, setDocGridColumns] = useState(() => {
     if (typeof window === 'undefined') return 1
