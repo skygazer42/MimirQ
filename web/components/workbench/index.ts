@@ -1,3 +1,3 @@
 // Workbench UI primitives (layout + panes).
 
-export {}
+export { WorkbenchScaffold } from './workbench-scaffold'
