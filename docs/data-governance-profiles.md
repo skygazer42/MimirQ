@@ -110,6 +110,22 @@ MimirQ 支持用“治理预设（Profiles）”来统一管理数据治理策�
 - `governance_remove_common_lines = true`
 - `governance_normalize_tables = true`
 
+### 制度/手册类 PDF（条款结构友好）
+常见问题：
+- 目录/页眉页脚/水印等噪声混入正文，影响检索召回
+- 同一段落在多页反复出现（页脚免责声明/适用范围等），导致向量与 BM25 噪声变大
+- 软换行导致 “第 X 条/第 X 章” 等结构被拆散
+
+推荐：
+- 直接使用内置治理预设：`builtin:policy_manual_pdf`
+- 或者确保启用以下组合（保守）：
+- `governance_remove_toc_lines = true`
+- `governance_remove_noise_lines = true`
+- `governance_unwrap_lines = true`
+- `governance_remove_common_lines = true`
+- `governance_drop_duplicate_paragraphs = true`
+- `governance_normalize_tables = true`
+
 ---
 
 ## 5) 使用方式（UI）
