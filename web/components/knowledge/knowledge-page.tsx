@@ -142,6 +142,7 @@ export default function KnowledgePage() {
   const [batchLifecycleWorking, setBatchLifecycleWorking] = useState(false)
   const [batchReingestWorking, setBatchReingestWorking] = useState(false)
   const [scopeOpen, setScopeOpen] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
   const DATASET_ALL = '__all__'
   const DATASET_DEFAULT = '__default__'
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -1703,6 +1704,31 @@ export default function KnowledgePage() {
                   </WorkbenchPanelDialog>
                 </div>
 
+                {selectedDocIds.length > 0 || activeTab === 'retrieval' ? (
+                  <div className="xl:hidden">
+                    <WorkbenchPanelDialog
+                      open={inspectorOpen}
+                      onOpenChange={setInspectorOpen}
+                      title="Inspector"
+                      trigger={
+                        <IconButton
+                          label="Inspector"
+                          variant="ghost"
+                          className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </IconButton>
+                      }
+                    >
+                      <KnowledgeInspector selectedDocs={selectedDocs} className="flex-1">
+                        {activeTab === 'retrieval' ? (
+                          <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
+                        ) : null}
+                      </KnowledgeInspector>
+                    </WorkbenchPanelDialog>
+                  </div>
+                ) : null}
+
                 {activeTab === 'documents' ? (
                   <>
                     <IconButton
@@ -2149,13 +2175,9 @@ export default function KnowledgePage() {
             </div>
           )}
 
-		          {/* 检索测试 */}
-		          {activeTab === 'retrieval' && (
-		            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none space-y-4">
-                <div className="xl:hidden">
-                  <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
-                </div>
-
+			          {/* 检索测试 */}
+			          {activeTab === 'retrieval' && (
+			            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none space-y-4">
               <Panel padding="none" className="rounded-2xl p-6 text-left bg-background/60 border border-border/60">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
