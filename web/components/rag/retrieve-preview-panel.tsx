@@ -1,0 +1,702 @@
+'use client'
+
+import { useCallback, useMemo, useState } from 'react'
+import {
+  Copy,
+  File as FileIcon,
+  FileStack,
+  Loader2,
+  Search,
+  Sparkles,
+  TestTube2,
+  Zap,
+} from 'lucide-react'
+import type { Citation } from '@/types'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { IconButton } from '@/components/ui/icon-button'
+import { Panel } from '@/components/ui/panel'
+import { formatApiError } from '@/lib/api-errors'
+import { cn } from '@/lib/utils'
+import { evaluationApi, ragApi } from '@/lib/api-client'
+import { toast } from 'sonner'
+
+type RetrievePreviewPanelProps = {
+  selectedDatasetId: string | null | undefined
+  className?: string
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function shortId(id: string, opts?: { head?: number; tail?: number }): string {
+  const s = String(id || '').trim()
+  if (!s) return ''
+  const head = Math.max(1, Number(opts?.head ?? 8) || 8)
+  const tail = Math.max(0, Number(opts?.tail ?? 4) || 4)
+  if (s.length <= head + tail + 1) return s
+  return `${s.slice(0, head)}...${s.slice(-tail)}`
+}
+
+async function copyToClipboard(text: string, label: string): Promise<void> {
+  const v = String(text || '')
+  if (!v) {
+    toast.error('无可复制内容')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(v)
+    toast.success(`已复制 ${label}`)
+  } catch (err) {
+    console.error('clipboard.writeText failed:', err)
+    toast.error('复制失败（浏览器权限限制）')
+  }
+}
+
+export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrievePreviewPanelProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Citation[]>([])
+  const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
+  const [searchMetrics, setSearchMetrics] = useState<Record<string, any> | null>(null)
+  const [searchHasEvidence, setSearchHasEvidence] = useState<boolean | null>(null)
+  const [searchAbstainTriggered, setSearchAbstainTriggered] = useState<boolean | null>(null)
+  const [searchAbstainReason, setSearchAbstainReason] = useState<string | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [selectedEvidenceChunkIds, setSelectedEvidenceChunkIds] = useState<string[]>([])
+  const [isCreatingRegressionCase, setIsCreatingRegressionCase] = useState(false)
+
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [activeHit, setActiveHit] = useState<Citation | null>(null)
+
+  const selectedEvidenceSet = useMemo(() => new Set(selectedEvidenceChunkIds || []), [selectedEvidenceChunkIds])
+
+  const retrievalPerQuery = useMemo(() => {
+    const raw = searchMetrics?.retrieval_per_query
+    if (!Array.isArray(raw)) return []
+    return raw.slice(0, 12).filter((x) => isRecord(x))
+  }, [searchMetrics])
+
+  const handleSearch = useCallback(async () => {
+    const q = searchQuery.trim()
+    if (!q) return
+
+    setIsSearching(true)
+    setSearchError(null)
+    setSearchResults([])
+    setSearchQueryForRetrieval('')
+    setSearchMetrics(null)
+    setSearchHasEvidence(null)
+    setSearchAbstainTriggered(null)
+    setSearchAbstainReason(null)
+    setSelectedEvidenceChunkIds([])
+    try {
+      // Use the production retrieval-only endpoint so this workbench answers:
+      // "Do we have evidence in the corpus?" (no answer generation).
+      const res = await ragApi.retrieveEvidence({
+        query: q,
+        history: [],
+        dataset_id: selectedDatasetId || undefined,
+        document_ids: [],
+      })
+      setSearchResults(res.citations || [])
+      setSearchQueryForRetrieval(res.query_for_retrieval || '')
+      setSearchMetrics(res.metrics || null)
+      setSearchHasEvidence(Boolean((res as any).has_evidence))
+      setSearchAbstainTriggered(Boolean((res as any).abstain_triggered))
+      setSearchAbstainReason(((res as any).abstain_reason as string | null | undefined) ?? null)
+    } catch (error: any) {
+      console.error('Search failed:', error)
+      setSearchError(formatApiError(error, '检索失败，请检查后端服务状态'))
+    } finally {
+      setIsSearching(false)
+    }
+  }, [searchQuery, selectedDatasetId])
+
+  const toggleEvidenceSelection = useCallback((chunkId: string) => {
+    const key = String(chunkId || '').trim()
+    if (!key) return
+    setSelectedEvidenceChunkIds((prev) => {
+      const set = new Set(prev || [])
+      if (set.has(key)) set.delete(key)
+      else set.add(key)
+      return Array.from(set)
+    })
+  }, [])
+
+  const handleExportEvidencePack = useCallback(() => {
+    if (!searchResults.length) return
+
+    const exportedAt = new Date().toISOString()
+    const safeTs = exportedAt.replace(/[:.]/g, '-')
+    const ds = selectedDatasetId || 'all'
+    const filename = `evidence-pack-${ds}-${safeTs}.json`
+
+    const referenceSources = (searchResults || [])
+      .filter((c) => !!c?.chunk_id && selectedEvidenceSet.has(String(c.chunk_id)))
+      .map((c) => ({
+        document_id: c.document_id,
+        chunk_id: c.chunk_id,
+        page_number: c.page_number ?? null,
+        start_char: c.start_char ?? null,
+        end_char: c.end_char ?? null,
+        doc_pipeline_key: c.doc_pipeline_key ?? null,
+        pipeline_hash: c.pipeline_hash ?? null,
+        quote: c.chunk_content,
+        label: 'ground_truth',
+      }))
+
+    const payload = {
+      dataset_id: selectedDatasetId || null,
+      query: searchQuery.trim(),
+      query_for_retrieval: searchQueryForRetrieval || searchQuery.trim(),
+      metrics: searchMetrics || null,
+      citations: searchResults,
+      reference_sources: referenceSources,
+      selected_chunk_ids: Array.from(selectedEvidenceSet),
+      exported_at: exportedAt,
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    try {
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      toast.success('已导出 Evidence Pack')
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }, [searchMetrics, searchQuery, searchQueryForRetrieval, searchResults, selectedDatasetId, selectedEvidenceSet])
+
+  const handleCreateRegressionCaseFromSelection = useCallback(async () => {
+    if (!selectedDatasetId) {
+      toast.error('请先选择数据集')
+      return
+    }
+    const q = (searchQuery || '').trim()
+    if (!q) {
+      toast.error('请输入问题')
+      return
+    }
+    if (!selectedEvidenceSet.size) {
+      toast.error('请先勾选至少 1 条 Ground Truth 证据')
+      return
+    }
+
+    const refs = (searchResults || [])
+      .filter((c) => !!c?.chunk_id && selectedEvidenceSet.has(String(c.chunk_id)))
+      .map((c) => ({
+        document_id: c.document_id,
+        chunk_id: c.chunk_id,
+        page_number: c.page_number ?? null,
+        start_char: c.start_char ?? null,
+        end_char: c.end_char ?? null,
+        doc_pipeline_key: c.doc_pipeline_key ?? null,
+        pipeline_hash: c.pipeline_hash ?? null,
+        quote: c.chunk_content,
+        label: 'ground_truth',
+      }))
+    if (!refs.length) {
+      toast.error('选中的证据引用无效（缺少 chunk_id/document_id）')
+      return
+    }
+
+    setIsCreatingRegressionCase(true)
+    try {
+      await evaluationApi.createRegressionCase({
+        question: q,
+        dataset_id: selectedDatasetId,
+        reference_sources: refs as any,
+        tags: ['from_retrieval_preview'],
+        extra: {
+          query_for_retrieval: searchQueryForRetrieval || q,
+          retrieval_metrics: searchMetrics || null,
+          created_from: 'knowledge.retrieval',
+        },
+      } as any)
+      toast.success('已创建回归用例')
+    } catch (err: any) {
+      console.error('Failed to create regression case from selection', err)
+      toast.error(formatApiError(err, '创建回归用例失败'))
+    } finally {
+      setIsCreatingRegressionCase(false)
+    }
+  }, [searchMetrics, searchQuery, searchQueryForRetrieval, searchResults, selectedDatasetId, selectedEvidenceSet])
+
+  const openDetails = useCallback((hit: Citation) => {
+    setActiveHit(hit)
+    setDetailOpen(true)
+  }, [])
+
+  const closeDetails = useCallback((open: boolean) => {
+    setDetailOpen(open)
+    if (!open) setActiveHit(null)
+  }, [])
+
+  const activeMatchedTerms = useMemo(() => {
+    const terms = activeHit?.matched_terms
+    if (!Array.isArray(terms)) return []
+    return terms.filter(Boolean).slice(0, 24).map((t) => String(t))
+  }, [activeHit])
+
+  return (
+    <>
+      <Panel padding="none" className={cn("rounded-2xl p-8 text-center relative overflow-hidden", className)}>
+        <div className="mb-8">
+          <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-soft">
+            <Sparkles className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-bold text-foreground text-balance">语义检索测试</h3>
+          <p className="text-muted-foreground mt-2 text-pretty">
+            输入问题，模拟 RAG 系统的检索召回过程（包含混合检索、RRF 融合、rerank 等）
+          </p>
+        </div>
+
+        <div className="max-w-2xl mx-auto relative mb-10">
+          <div
+            className={cn(
+              "flex items-center bg-background/60 border-2 border-border/60 rounded-2xl p-2 shadow-soft transition-colors transition-shadow duration-200 motion-reduce:transition-none",
+              "focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-ring/15 focus-within:shadow-strong/10"
+            )}
+          >
+            <Search className="w-5 h-5 text-muted-foreground ml-3" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void handleSearch()}
+              placeholder="例如：请按第十二条说明例外条件"
+              className="flex-1 px-4 py-3 bg-transparent outline-none text-foreground placeholder:text-muted-foreground/60 text-lg"
+            />
+            <Button
+              onClick={() => void handleSearch()}
+              disabled={isSearching || !searchQuery.trim()}
+              className="rounded-xl px-6 h-12 text-base font-medium shadow-md border border-primary/20"
+            >
+              {isSearching ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none" />
+                  检索中…
+                </span>
+              ) : (
+                '开始检索'
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {searchError && (
+          <div className="max-w-2xl mx-auto mb-6 text-left">
+            <div className="rounded-xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive">
+              {searchError}
+            </div>
+          </div>
+        )}
+
+        {searchResults.length > 0 && (
+          <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4 motion-reduce:animate-none motion-reduce:transition-none">
+            <div className="flex flex-col gap-2 px-2 sm:flex-row sm:items-center sm:justify-between">
+              <h4 className="text-sm font-semibold text-foreground">召回结果</h4>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
+                  disabled={isCreatingRegressionCase || selectedEvidenceSet.size === 0 || !selectedDatasetId}
+                  onClick={() => void handleCreateRegressionCaseFromSelection()}
+                  title={!selectedDatasetId ? '请先选择数据集' : '用选中的证据创建回归用例'}
+                >
+                  {isCreatingRegressionCase ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <TestTube2 className="h-3.5 w-3.5" />
+                  )}
+                  创建回归用例
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
+                  onClick={handleExportEvidencePack}
+                >
+                  <FileStack className="h-3.5 w-3.5" />
+                  导出 Evidence Pack
+                </Button>
+
+                {selectedEvidenceSet.size > 0 && (
+                  <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
+                    已选 {selectedEvidenceSet.size}
+                  </span>
+                )}
+                <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
+                  Top {searchResults.length}
+                </span>
+              </div>
+            </div>
+
+            {searchQueryForRetrieval && searchQueryForRetrieval !== searchQuery.trim() && (
+              <div className="px-2 text-xs text-muted-foreground">
+                实际检索 Query：<span className="font-mono">{searchQueryForRetrieval}</span>
+              </div>
+            )}
+
+            {(searchHasEvidence !== null || searchAbstainTriggered !== null) && (
+              <div className="px-2 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+                {searchHasEvidence !== null && (
+                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                    has_evidence={String(searchHasEvidence)}
+                  </span>
+                )}
+                {searchAbstainTriggered !== null && (
+                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                    abstain_triggered={String(searchAbstainTriggered)}
+                  </span>
+                )}
+                {searchAbstainReason ? (
+                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                    abstain_reason={searchAbstainReason}
+                  </span>
+                ) : null}
+              </div>
+            )}
+
+            <div className="rounded-xl border border-border/60 bg-background/60 overflow-auto">
+              <table className="min-w-[980px] w-full text-xs">
+                <thead className="bg-muted/30 text-muted-foreground">
+                  <tr className="border-b border-border/60">
+                    <th className="p-3 text-left font-semibold w-10">GT</th>
+                    <th className="p-3 text-left font-semibold w-10">#</th>
+                    <th className="p-3 text-left font-semibold w-20">role</th>
+                    <th className="p-3 text-left font-semibold w-20">chunk</th>
+                    <th className="p-3 text-left font-semibold w-28">clause</th>
+                    <th className="p-3 text-left font-semibold">path</th>
+                    <th className="p-3 text-left font-semibold w-44">doc</th>
+                    <th className="p-3 text-left font-semibold w-14 tabular-nums">P</th>
+                    <th className="p-3 text-left font-semibold w-16 tabular-nums">final</th>
+                    <th className="p-3 text-left font-semibold w-16 tabular-nums">vec</th>
+                    <th className="p-3 text-left font-semibold w-16 tabular-nums">bm25</th>
+                    <th className="p-3 text-left font-semibold w-16 tabular-nums">rerank</th>
+                    <th className="p-3 text-left font-semibold w-28">chunk_id</th>
+                    <th className="p-3 text-right font-semibold w-20">actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searchResults.map((hit, idx) => {
+                    const chunkId = String((hit as any)?.chunk_id || '')
+                    const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
+                    const role = String(hit.retrieval_role || 'main')
+                    const chunkRole = String(hit.chunk_role || '')
+                    const clause = String((hit as any).policy_clause_number || '')
+                    const pathStr = String((hit as any).policy_path_str || '')
+                    const docName = String(hit.document_name || '')
+                    return (
+                      <tr key={`${hit.document_id}-${chunkId || idx}-${idx}`} className="border-b border-border/40 hover:bg-muted/20">
+                        <td className="p-3 align-top">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-border"
+                            aria-label={`Ground truth: #${idx + 1}`}
+                            disabled={!chunkId}
+                            checked={checked}
+                            onChange={() => toggleEvidenceSelection(chunkId)}
+                          />
+                        </td>
+                        <td className="p-3 align-top text-muted-foreground tabular-nums">{idx + 1}</td>
+                        <td className="p-3 align-top">
+                          <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
+                            {role}
+                          </span>
+                        </td>
+                        <td className="p-3 align-top">
+                          {chunkRole ? (
+                            <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
+                              {chunkRole}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 align-top">
+                          {clause ? (
+                            <span className="font-mono bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-md">
+                              {clause}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 align-top">
+                          {pathStr ? (
+                            <span className="text-foreground/90 line-clamp-2">{pathStr}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 align-top">
+                          <span className="inline-flex items-center gap-1 text-muted-foreground">
+                            <FileIcon className="w-3 h-3" />
+                            <span className="truncate max-w-[180px]" title={docName}>
+                              {docName || 'Unknown'}
+                            </span>
+                          </span>
+                        </td>
+                        <td className="p-3 align-top text-muted-foreground tabular-nums">
+                          {typeof hit.page_number === 'number' ? hit.page_number : '—'}
+                        </td>
+                        <td className="p-3 align-top font-mono tabular-nums text-primary">
+                          {typeof hit.relevance_score === 'number' ? hit.relevance_score.toFixed(2) : '—'}
+                        </td>
+                        <td className="p-3 align-top font-mono tabular-nums text-muted-foreground">
+                          {typeof hit.vector_score === 'number' ? hit.vector_score.toFixed(3) : '—'}
+                        </td>
+                        <td className="p-3 align-top font-mono tabular-nums text-muted-foreground">
+                          {typeof hit.bm25_score === 'number' ? hit.bm25_score.toFixed(3) : '—'}
+                        </td>
+                        <td className="p-3 align-top font-mono tabular-nums text-muted-foreground">
+                          {typeof hit.rerank_score === 'number' ? hit.rerank_score.toFixed(3) : '—'}
+                        </td>
+                        <td className="p-3 align-top">
+                          {chunkId ? (
+                            <span className="font-mono text-muted-foreground" title={chunkId}>
+                              {shortId(chunkId)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 align-top text-right">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            <IconButton
+                              label="复制 chunk_id"
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
+                              onClick={() => void copyToClipboard(chunkId, 'chunk_id')}
+                              disabled={!chunkId}
+                            >
+                              <Copy className="w-4 h-4" />
+                            </IconButton>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-8 px-2 rounded-lg"
+                              onClick={() => openDetails(hit)}
+                            >
+                              详情
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <details className="px-2">
+              <summary className="cursor-pointer select-none text-xs font-semibold text-foreground inline-flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                检索 Debug（RRF / trimming / per-query metrics）
+              </summary>
+              <div className="mt-3 rounded-xl border border-border/60 bg-background/60 p-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                    retrieval_mode={String(searchMetrics?.retrieval_mode ?? '—')}
+                  </span>
+                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
+                    retrieval_query_count={String(searchMetrics?.retrieval_query_count ?? '—')}
+                  </span>
+                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
+                    retrieval_elapsed_sec={String(searchMetrics?.retrieval_elapsed_sec ?? '—')}
+                  </span>
+                </div>
+
+                {retrievalPerQuery.length ? (
+                  <div className="rounded-lg border border-border/60 overflow-auto">
+                    <table className="min-w-[720px] w-full text-xs">
+                      <thead className="bg-muted/30 text-muted-foreground">
+                        <tr className="border-b border-border/60">
+                          <th className="p-2 text-left font-semibold w-24">kind</th>
+                          <th className="p-2 text-left font-semibold w-24 tabular-nums">elapsed</th>
+                          <th className="p-2 text-left font-semibold w-20">ok</th>
+                          <th className="p-2 text-left font-semibold w-28 tabular-nums">query_chars</th>
+                          <th className="p-2 text-left font-semibold">retriever_debug</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {retrievalPerQuery.map((item, i) => (
+                          <tr key={`${String(item.kind || i)}-${i}`} className="border-b border-border/40 align-top">
+                            <td className="p-2 font-mono text-foreground/90">{String(item.kind || '—')}</td>
+                            <td className="p-2 font-mono tabular-nums text-muted-foreground">
+                              {typeof item.elapsed_sec === 'number' ? item.elapsed_sec.toFixed(3) : String(item.elapsed_sec ?? '—')}
+                            </td>
+                            <td className="p-2 font-mono text-muted-foreground">{String(Boolean(item.ok))}</td>
+                            <td className="p-2 font-mono tabular-nums text-muted-foreground">{String(item.query_chars ?? '—')}</td>
+                            <td className="p-2">
+                              <pre className="whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground font-mono">
+                                {JSON.stringify(item.retriever_debug || null, null, 2)}
+                              </pre>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">无 per-query debug 数据（可能是旧版本后端或被裁剪）。</div>
+                )}
+              </div>
+            </details>
+          </div>
+        )}
+      </Panel>
+
+      <Dialog open={detailOpen} onOpenChange={closeDetails}>
+        <DialogContent
+          className={cn(
+            // "Drawer-like" right panel (still a dialog for a11y + focus).
+            "left-auto right-0 top-0 translate-x-0 translate-y-0 h-dvh w-[min(760px,100vw)] max-w-[760px] rounded-none",
+            "p-0 overflow-hidden"
+          )}
+        >
+          <div className="flex h-full flex-col">
+            <div className="border-b border-border/60 bg-background/80 px-6 py-4">
+              <DialogHeader className="space-y-1">
+                <DialogTitle className="text-base">
+                  {activeHit?.document_name || 'Hit Details'}
+                </DialogTitle>
+                <DialogDescription>
+                  chunk_id <span className="font-mono">{activeHit?.chunk_id ? shortId(activeHit.chunk_id) : '—'}</span>
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+
+            <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
+              {activeHit ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 rounded-full px-3 gap-2"
+                      onClick={() => void copyToClipboard(String(activeHit.chunk_id || ''), 'chunk_id')}
+                      disabled={!activeHit.chunk_id}
+                    >
+                      <Copy className="h-4 w-4" />
+                      复制 chunk_id
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 rounded-full px-3 gap-2"
+                      onClick={() => void copyToClipboard(String(activeHit.doc_pipeline_key || ''), 'doc_pipeline_key')}
+                      disabled={!activeHit.doc_pipeline_key}
+                    >
+                      <Copy className="h-4 w-4" />
+                      复制 doc_pipeline_key
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 rounded-full px-3 gap-2"
+                      onClick={() => void copyToClipboard((activeMatchedTerms || []).join(' '), 'matched_terms')}
+                      disabled={!activeMatchedTerms.length}
+                    >
+                      <Copy className="h-4 w-4" />
+                      复制 matched_terms
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                      <div className="text-xs text-muted-foreground">retrieval_role</div>
+                      <div className="mt-1 text-xs font-mono text-foreground/90">{String(activeHit.retrieval_role || 'main')}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                      <div className="text-xs text-muted-foreground">chunk_role</div>
+                      <div className="mt-1 text-xs font-mono text-foreground/90">{String(activeHit.chunk_role || '—')}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                      <div className="text-xs text-muted-foreground">chunk_strategy</div>
+                      <div className="mt-1 text-xs font-mono text-foreground/90">{String(activeHit.chunk_strategy || '—')}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                      <div className="text-xs text-muted-foreground">doc_pipeline_key</div>
+                      <div className="mt-1 text-[11px] font-mono text-foreground/90 break-all">{String(activeHit.doc_pipeline_key || '—')}</div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                    <div className="text-xs font-semibold text-foreground mb-3">Scores</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                      {[
+                        ['final(relevance_score)', activeHit.relevance_score],
+                        ['retrieval_score', activeHit.retrieval_score],
+                        ['vector_score', activeHit.vector_score],
+                        ['bm25_score', activeHit.bm25_score],
+                        ['keyword_score', activeHit.keyword_score],
+                        ['rerank_score', activeHit.rerank_score],
+                      ].map(([k, v]) => (
+                        <div key={String(k)} className="rounded-lg border border-border/60 bg-background/60 p-2">
+                          <div className="text-[11px] text-muted-foreground">{String(k)}</div>
+                          <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                            {typeof v === 'number' ? v.toFixed(3) : '—'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                    <div className="text-xs font-semibold text-foreground mb-3">Policy Metadata</div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-muted-foreground">policy_clause_number</div>
+                        <div className="font-mono text-foreground/90">{String((activeHit as any).policy_clause_number || '—')}</div>
+                      </div>
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-muted-foreground">parent_id</div>
+                        <div className="font-mono text-foreground/90 break-all">{String((activeHit as any).parent_id || '—')}</div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-muted-foreground">policy_path_str</div>
+                        <div className="font-mono text-foreground/90">{String((activeHit as any).policy_path_str || '—')}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {activeMatchedTerms.length ? (
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="text-xs font-semibold text-foreground mb-3">Matched Terms</div>
+                      <div className="flex flex-wrap gap-2">
+                        {activeMatchedTerms.map((t) => (
+                          <span
+                            key={t}
+                            className="text-[11px] font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                    <div className="text-xs font-semibold text-foreground mb-3">Snippet</div>
+                    <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-mono">
+                      {String(activeHit.chunk_content || '')}
+                    </pre>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground">无选中条目</div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
