@@ -8,43 +8,47 @@ import { Sidebar } from './sidebar'
 import { OriginalPreview } from './preview/original-preview'
 import { ChunkList } from './preview/chunk-list'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { PipelineRail, WorkbenchPane, WorkbenchPanelDialog } from '@/components/workbench'
 
 export function Workbench() {
   const { showOriginalPanel, showSettingsPanel, toggleSettingsPanel } = useChunkPreview()
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground font-sans overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground font-sans">
       {/* 顶部栏 */}
       <TopBar />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左侧配置栏 */}
-        <div className="hidden lg:flex">
-          <Sidebar />
+      <div className="px-4 py-3 border-b border-border/60 bg-background/70 flex-shrink-0">
+        <PipelineRail />
+      </div>
+
+      <div className="flex flex-1 min-h-0 overflow-hidden gap-4 p-4">
+        {/* Left: settings */}
+        <div className="hidden lg:flex min-h-0">
+          <WorkbenchPane className="w-80" bodyClassName="p-0">
+            <Sidebar variant="pane" />
+          </WorkbenchPane>
         </div>
 
-        {/* 主区域：原文 vs 预览 */}
-        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-background">
-          {/* 左侧原文 */}
-          {showOriginalPanel ? <OriginalPreview /> : null}
-
-          {/* 右侧切片 */}
-          <ChunkList />
-        </main>
+        {/* Main: original vs chunks */}
+        <WorkbenchPane className="flex-1 min-w-0" bodyClassName="p-0 overflow-hidden">
+          <main className="flex h-full min-h-0 min-w-0 flex-col lg:flex-row overflow-hidden bg-background">
+            {showOriginalPanel ? <OriginalPreview /> : null}
+            <ChunkList />
+          </main>
+        </WorkbenchPane>
       </div>
 
       {/* Mobile: settings panel as a modal (sheet-like) */}
-      <Dialog
+      <WorkbenchPanelDialog
         open={showSettingsPanel}
         onOpenChange={(open) => {
           if (open !== showSettingsPanel) toggleSettingsPanel()
         }}
+        title="参数面板"
       >
-        <DialogContent className="w-[92vw] max-w-[92vw] h-[85vh] max-h-[85vh] p-0 overflow-hidden">
-          <Sidebar variant="dialog" />
-        </DialogContent>
-      </Dialog>
+        <Sidebar variant="dialog" />
+      </WorkbenchPanelDialog>
     </div>
   )
 }

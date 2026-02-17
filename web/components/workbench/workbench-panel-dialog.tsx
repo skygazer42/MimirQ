@@ -59,7 +59,7 @@ export function WorkbenchPanelDialog({
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle className="text-base">{title}</DialogTitle>
         </DialogHeader>
-        <div className="min-h-0 overflow-hidden">{children}</div>
+        <div className="min-h-0 overflow-hidden flex flex-col">{children}</div>
       </DialogContent>
     </Dialog>
   )

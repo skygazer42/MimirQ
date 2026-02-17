@@ -46,7 +46,7 @@ import {
   Copy,
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import { WorkbenchScaffold } from '@/components/workbench'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -86,6 +86,9 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getFileTypeMeta } from '@/components/knowledge/file-type'
+import { KnowledgeSidebar } from '@/components/knowledge/knowledge-sidebar'
+import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -115,123 +118,6 @@ function docGridColumnsForViewportWidth(width: number): number {
   if (w >= 1024) return 3
   if (w >= 640) return 2
   return 1
-}
-
-type FileTypeStyle = {
-  icon: typeof FileText
-  label: string
-  color: string
-  bg: string
-  border: string
-}
-
-function getFileTypeStyle(doc: Pick<Document, 'filename' | 'file_type'>): FileTypeStyle {
-  const explicit = String(doc.file_type || '').trim().toLowerCase()
-  const fromName = String(doc.filename || '')
-    .trim()
-    .split('.')
-    .pop()
-    ?.toLowerCase()
-    ?.trim() || ''
-  const ext = explicit || fromName
-
-  const base = {
-    border: 'border-border/60',
-  }
-
-  switch (ext) {
-    case 'pdf':
-      return {
-        icon: FileText,
-        label: 'PDF',
-        color: 'text-red-600 dark:text-red-400',
-        bg: 'bg-red-50 dark:bg-red-900/20',
-        border: 'border-red-200/60 dark:border-red-500/30',
-      }
-    case 'docx':
-      return {
-        icon: FileType,
-        label: 'DOCX',
-        color: 'text-blue-600 dark:text-blue-400',
-        bg: 'bg-blue-50 dark:bg-blue-900/20',
-        border: 'border-blue-200/60 dark:border-blue-500/30',
-      }
-    case 'doc':
-      return {
-        icon: FileType,
-        label: 'DOC',
-        color: 'text-indigo-600 dark:text-indigo-400',
-        bg: 'bg-indigo-50 dark:bg-indigo-900/20',
-        border: 'border-indigo-200/60 dark:border-indigo-500/30',
-      }
-    case 'ppt':
-    case 'pptx':
-      return {
-        icon: Presentation,
-        label: ext.toUpperCase(),
-        color: 'text-rose-700 dark:text-rose-300',
-        bg: 'bg-rose-50 dark:bg-rose-900/20',
-        border: 'border-rose-200/60 dark:border-rose-500/30',
-      }
-    case 'xlsx':
-    case 'xls':
-      return {
-        icon: FileSpreadsheet,
-        label: ext.toUpperCase(),
-        color: 'text-emerald-700 dark:text-emerald-300',
-        bg: 'bg-emerald-50 dark:bg-emerald-900/20',
-        border: 'border-emerald-200/60 dark:border-emerald-500/30',
-      }
-    case 'csv':
-      return {
-        icon: FileSpreadsheet,
-        label: 'CSV',
-        color: 'text-teal-700 dark:text-teal-300',
-        bg: 'bg-teal-50 dark:bg-teal-900/20',
-        border: 'border-teal-200/60 dark:border-teal-500/30',
-      }
-    case 'md':
-      return {
-        icon: FileCode,
-        label: 'MD',
-        color: 'text-purple-700 dark:text-purple-300',
-        bg: 'bg-purple-50 dark:bg-purple-900/20',
-        border: 'border-purple-200/60 dark:border-purple-500/30',
-      }
-    case 'txt':
-      return {
-        icon: FileText,
-        label: 'TXT',
-        color: 'text-muted-foreground',
-        bg: 'bg-muted/40',
-        border: base.border,
-      }
-    case 'json':
-      return {
-        icon: FileCode,
-        label: 'JSON',
-        color: 'text-amber-700 dark:text-amber-300',
-        bg: 'bg-amber-50 dark:bg-amber-900/20',
-        border: 'border-amber-200/60 dark:border-amber-500/30',
-      }
-    case 'html':
-    case 'htm':
-      return {
-        icon: FileCode,
-        label: 'HTML',
-        color: 'text-orange-700 dark:text-orange-300',
-        bg: 'bg-orange-50 dark:bg-orange-900/20',
-        border: 'border-orange-200/60 dark:border-orange-500/30',
-      }
-    default:
-      return {
-        icon: FileIcon,
-        label: ext ? ext.toUpperCase() : 'FILE',
-        color: 'text-muted-foreground',
-        bg: 'bg-muted/40',
-        border: base.border,
-      }
-  }
 }
 
 export default function KnowledgePage() {
@@ -1105,11 +991,19 @@ export default function KnowledgePage() {
 
   return (
     <AppFrame>
-        <PageScaffold
+        <WorkbenchScaffold
           title="知识库管理"
           icon={Database}
           iconColor="text-primary"
           description="管理您的文档资产，构建专属知识大脑"
+          leftPanel={<KnowledgeSidebar />}
+          rightPanel={
+            <KnowledgeInspector selectedDocs={selectedDocs}>
+              {activeTab === 'retrieval' ? (
+                <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
+              ) : null}
+            </KnowledgeInspector>
+          }
           actions={
             <>
               <Dialog>
@@ -2203,7 +2097,7 @@ export default function KnowledgePage() {
 	                            const doc = filteredDocuments[virtualRow.index]
 	                            if (!doc) return null
 	                            const badge = getStatusBadge(doc.status)
-	                            const fileType = getFileTypeStyle(doc)
+	                            const fileType = getFileTypeMeta(doc)
 	                            const TypeIcon = fileType.icon
 	                            const userTags = getUserTagsFromDocument(doc)
 	                            return (
@@ -2297,7 +2191,9 @@ export default function KnowledgePage() {
 		          {/* 检索测试 */}
 		          {activeTab === 'retrieval' && (
 		            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none space-y-4">
-                <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
+                <div className="xl:hidden">
+                  <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
+                </div>
 
               <Panel padding="none" className="rounded-2xl p-6 text-left bg-background/60 border border-border/60">
                 <div className="flex items-start justify-between gap-4">
@@ -2619,8 +2515,8 @@ export default function KnowledgePage() {
                                         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/80"
                                         onClick={() =>
                                           setExpandedConnectorRunId((prev) => (prev === run.id ? null : run.id))
-                                        }
-                                      >
+          }
+        >
                                         {expandedConnectorRunId === run.id ? (
                                           <ChevronDown className="h-4 w-4" />
                                         ) : (
@@ -2765,7 +2661,7 @@ export default function KnowledgePage() {
               </Panel>
             </div>
           )}
-        </PageScaffold>
+        </WorkbenchScaffold>
     </AppFrame>
   )
 }
@@ -2788,7 +2684,7 @@ function DocumentCard({
 }) {
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const userTags = getUserTagsFromDocument(doc)
-  const fileType = getFileTypeStyle(doc)
+  const fileType = getFileTypeMeta(doc)
   const TypeIcon = fileType.icon
 
 	  return (

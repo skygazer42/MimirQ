@@ -862,7 +862,7 @@ export function DocumentViewerPanel() {
 	        )}
 	    >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-4 pb-3 pt-3 border-b border-border bg-muted/30 backdrop-blur-sm supports-[padding:env(safe-area-inset-top)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]">
         <div className="flex items-center gap-3 overflow-hidden">
             <div className="p-2 bg-primary/10 rounded-lg">
                 <FileText className="h-5 w-5 text-primary" />

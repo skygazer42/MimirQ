@@ -46,10 +46,13 @@ import {
 } from '@/components/ui/alert-dialog'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
-export function Sidebar() {
+type SidebarVariant = 'app' | 'workbench'
+
+export function Sidebar({ variant = 'app' }: { variant?: SidebarVariant } = {}) {
   const { documents, isLoading, uploadDocuments, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const parentRef = useRef<HTMLDivElement>(null)
+  const isWorkbench = variant === 'workbench'
 
   const { term, setTerm, results } = useLocalSearch(documents, {
     fields: ['filename', 'file_type'],
@@ -102,7 +105,12 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-80 h-dvh bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col shadow-strong relative z-20">
+    <aside
+      className={cn(
+        'bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col',
+        isWorkbench ? 'w-full h-full min-h-0 overflow-hidden' : 'w-80 h-dvh shadow-strong relative z-20'
+      )}
+    >
       {/* 头部 - 增加空间感 */}
       <div className="p-6 border-b border-border/60">
         <div className="flex items-center justify-between mb-6">
@@ -180,6 +188,7 @@ export function Sidebar() {
       {/* 文档列表 - 优化滚动体验 (虚拟列表 + 本地搜索) */}
       <div
         ref={parentRef}
+        data-page-scroll-container="true"
         className="flex-1 overflow-y-auto p-4 no-scrollbar"
       >
         {isLoading && documents.length === 0 ? (
@@ -241,6 +250,9 @@ export function Sidebar() {
     </aside>
   )
 }
+
+// Alias export: keep a stable, explicit name for the knowledge-library sidebar.
+export const KnowledgeSidebar = Sidebar
 
 // 文档卡片组件 - 玻璃拟态与微交互
 function DocumentCard({

@@ -69,8 +69,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { PageHeader } from '@/components/ui/page-header'
-import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
+import { PipelineRail, WorkbenchScaffold } from '@/components/workbench'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
@@ -794,28 +793,24 @@ export function DataGovernancePanel() {
   // 空状态 - 改为上传引导
   if (isLoaded && files.length === 0) {
     return (
-      <div className="flex-1 flex flex-col min-h-0">
-        <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
-          <PageHeader
-            title="数据治理工作台"
-            badge="Governance"
-            icon={ShieldCheck}
-            iconColor="text-primary"
-	            description={
-	              <span className="flex items-center gap-2">
-	                <span className="h-1.5 w-1.5 rounded-full bg-primary/20" />
-	                智能文档清洗、标注与结构化处理中心
-	              </span>
-	            }
-	          >
-	            <div className="hidden xl:flex items-center gap-3">
-	              <IngestionWorkflowStepper />
-	            </div>
-	          </PageHeader>
-	          {InboundBanner}
-	        </div>
-
-        <div className="flex-1 flex items-center justify-center p-6 relative">
+      <WorkbenchScaffold
+        title="数据治理工作台"
+        badge="Governance"
+        icon={ShieldCheck}
+        iconColor="text-primary"
+        description={
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/20" />
+            智能文档清洗、标注与结构化处理中心
+          </span>
+        }
+        size="full"
+        bodyClassName="px-0 pb-0"
+        top={InboundBanner}
+        pipelineRail={<PipelineRail />}
+        mainPanel={
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 flex items-center justify-center p-6 relative">
           <div
             className={cn(
               "group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none",
@@ -904,68 +899,67 @@ export function DataGovernancePanel() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
+            </div>
+          </div>
+        }
+      />
     )
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
-      <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
-        <PageHeader
-          title="数据治理工作台"
-          badge="Workbench"
-          icon={ShieldCheck}
-          iconColor="text-sky-400"
-	          description={
-	            <span className="flex items-center gap-2">
-	              <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse motion-reduce:animate-none" />
-	              智能文档结构化处理与质量修复
-	            </span>
-	          }
-	        >
-	          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              disabled={!governanceState || !governanceState.isModified}
-              className="gap-1.5 h-8 text-xs"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              重置
-            </Button>
-            <Button
-              variant="info"
-              size="sm"
-              onClick={handleSave}
-              disabled={!governanceState}
-              className="gap-2 h-8 text-xs"
-            >
-              <Save className="w-3.5 h-3.5" />
-              保存
-            </Button>
-            <div className="w-px h-4 bg-border dark:bg-card/10 mx-1" />
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handlePushToChunkPreview}
-              disabled={!isLoaded || files.length === 0}
-              className="gap-2 h-8 text-xs"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              推送切块预览
-            </Button>
-          </div>
-          <div className="hidden xl:flex items-center gap-3">
-            <div className="w-px h-4 bg-border/60 mx-1" />
-            <IngestionWorkflowStepper />
-	          </div>
-	        </PageHeader>
-	        {InboundBanner}
-	      </div>
-
-      <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
+    <WorkbenchScaffold
+      title="数据治理工作台"
+      badge="Workbench"
+      icon={ShieldCheck}
+      iconColor="text-sky-400"
+      description={
+        <span className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20" />
+          智能文档结构化处理与质量修复
+        </span>
+      }
+      actions={
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReset}
+            disabled={!governanceState || !governanceState.isModified}
+            className="gap-1.5 h-8 text-xs"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            重置
+          </Button>
+          <Button
+            variant="info"
+            size="sm"
+            onClick={handleSave}
+            disabled={!governanceState}
+            className="gap-2 h-8 text-xs"
+          >
+            <Save className="w-3.5 h-3.5" />
+            保存
+          </Button>
+          <div className="w-px h-4 bg-border dark:bg-card/10 mx-1" />
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handlePushToChunkPreview}
+            disabled={!isLoaded || files.length === 0}
+            className="gap-2 h-8 text-xs"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            推送切块预览
+          </Button>
+        </div>
+      }
+      size="full"
+      bodyClassName="px-0 pb-0"
+      top={InboundBanner}
+      pipelineRail={<PipelineRail />}
+      mainPanel={
+        <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
+          <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
         {/* 左侧文件列表 */}
 	        <aside
 	          ref={sidebarRef}
@@ -1520,7 +1514,9 @@ export function DataGovernancePanel() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        </AlertDialog>
+	    </div>
+      }
+    />
   )
 }
