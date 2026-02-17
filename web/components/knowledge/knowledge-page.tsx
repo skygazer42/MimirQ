@@ -1759,7 +1759,7 @@ export default function KnowledgePage() {
               ) : (
                 <>
                   {/* Filters */}
-                  <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+                  <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3">
                     <div className="flex w-full lg:max-w-2xl flex-col sm:flex-row gap-3">
 	                      <SearchInput
 	                        value={docFilter}
