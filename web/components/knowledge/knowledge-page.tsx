@@ -89,6 +89,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { KnowledgeSidebar } from '@/components/knowledge/knowledge-sidebar'
 import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
+import { useKnowledgeScrollContainer } from '@/components/knowledge/use-knowledge-scroll-container'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -310,11 +311,7 @@ export default function KnowledgePage() {
   // The backend already applies q/status/dataset filters; keep UI list consistent with server results.
   const filteredDocuments = useMemo(() => documents, [documents])
 
-  const [pageScrollEl, setPageScrollEl] = useState<HTMLElement | null>(null)
-
-  useEffect(() => {
-    setPageScrollEl(document.querySelector<HTMLElement>('[data-page-scroll-container="true"]'))
-  }, [])
+  const { sentinelRef: mainPaneSentinelRef, scrollEl: mainPaneScrollEl } = useKnowledgeScrollContainer()
 
   const [docGridColumns, setDocGridColumns] = useState(() => {
     if (typeof window === 'undefined') return 1
@@ -335,14 +332,14 @@ export default function KnowledgePage() {
 
   const docsGridVirtualizer = useVirtualizer({
     count: activeTab === 'documents' && viewMode === 'grid' ? docGridRowCount : 0,
-    getScrollElement: () => pageScrollEl,
+    getScrollElement: () => mainPaneScrollEl,
     estimateSize: () => 340,
     overscan: 6,
   })
 
   const docsTableVirtualizer = useVirtualizer({
     count: activeTab === 'documents' && viewMode === 'list' ? filteredDocuments.length : 0,
-    getScrollElement: () => pageScrollEl,
+    getScrollElement: () => mainPaneScrollEl,
     estimateSize: () => 72,
     overscan: 10,
     getItemKey: (idx) => filteredDocuments[idx]?.id ?? idx,
@@ -1695,6 +1692,12 @@ export default function KnowledgePage() {
           }
           bodyClassName="pt-6 scroll-smooth"
         >
+          <div
+            ref={mainPaneSentinelRef}
+            data-knowledge-main-scroll-sentinel="true"
+            aria-hidden="true"
+            className="h-0 w-0"
+          />
 	          {/* 文档列表 */}
 	          {activeTab === 'documents' && (
 	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
