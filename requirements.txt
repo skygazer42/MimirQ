@@ -45,15 +45,20 @@ minio==7.2.20
 
 
 # Document Parsing
-PyMuPDF==1.27.1
+# NOTE: magic-pdf currently requires PyMuPDF<1.25 (>=1.24.9). Keep this pin
+# compatible so `pip install -r requirements.txt` resolves in fresh envs.
+PyMuPDF==1.24.14
 unstructured==0.18.32
 python-magic==0.4.27
 markdown==3.10.2
 markitdown==0.1.4
-numpy==2.4.2
-pdfplumber==0.11.9
+# NOTE: Many scientific/ML deps still cap numpy<2. Keep on a stable 1.26.x line
+# until the stack fully supports numpy 2.x.
+numpy==1.26.4
+pdfplumber==0.11.7
 pypdf==6.7.0
-pandas==3.0.0
+# NOTE: docling currently requires pandas<3. Keep this pin compatible.
+pandas==2.2.2
 openpyxl==3.1.5
 python-docx==1.2.0
 python-pptx==1.0.2
@@ -61,9 +66,13 @@ chardet==5.2.0
 tiktoken==0.12.0
 trio==0.32.0
 xgboost==3.2.0
-huggingface-hub==1.4.1
-Pillow==12.1.1
-opencv-python-headless==4.13.0.92
+# NOTE: docling currently requires huggingface-hub<1. Keep this pin compatible.
+huggingface-hub==0.34.6
+# NOTE: docling currently requires pillow<12. Keep this pin compatible.
+Pillow==10.4.0
+# NOTE: opencv-python 4.12+ requires numpy>=2. Keep on 4.11.x while we pin
+# numpy==1.26.x (see note above).
+opencv-python==4.11.0.86
 onnxruntime==1.24.1
 rapidocr-onnxruntime==1.4.4
 pyclipper==1.4.0
@@ -93,8 +102,10 @@ passlib[bcrypt]==1.7.4
 
 # Utilities
 # LangChain 1.x
-pydantic==2.12.5
-pydantic-settings==2.12.0
+# NOTE: magic-pdf currently requires pydantic<2.11. Keep these pins compatible
+# so `pip install -r requirements.txt` resolves in fresh envs.
+pydantic==2.10.5
+pydantic-settings==2.10.1
 email-validator==2.3.0
 backports.tarfile==1.2.0
 strenum==0.4.15
@@ -120,10 +131,14 @@ httpx[http2]==0.28.1
 ragas==0.4.3
 
 # LlamaIndex (advanced chunking strategies)
-llama-index-core==0.14.14
+# NOTE: llama-index-core 0.14.x requires pydantic>=2.11.5, which currently
+# conflicts with magic-pdf's pydantic<2.11 requirement. Keep on 0.11.x until
+# those constraints converge.
+llama-index-core==0.11.14
 
 # Task Queue / Redis (ingest throughput: task queue, idempotency locks, cache)
-redis==7.1.1
+# NOTE: arq currently requires redis-py < 6.
+redis==5.3.1
 arq==0.27.0
 # Dev / test tooling
 pip-audit==2.10.0
