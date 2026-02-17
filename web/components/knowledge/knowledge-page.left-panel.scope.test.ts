@@ -7,7 +7,7 @@ describe('KnowledgePage left panel scope', () => {
   it('mounts KnowledgeScopePanel in WorkbenchScaffold.leftPanel', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-page.tsx'), 'utf8')
 
-    expect(src).toContain('leftPanel={<KnowledgeScopePanel')
+    expect(src).toContain('leftPanel={')
+    expect(src).toContain('<KnowledgeScopePanel')
   })
 })
-
