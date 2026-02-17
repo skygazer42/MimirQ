@@ -46,7 +46,7 @@ import {
   Copy,
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
-import { WorkbenchScaffold } from '@/components/workbench'
+import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -141,6 +141,7 @@ export default function KnowledgePage() {
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [batchLifecycleWorking, setBatchLifecycleWorking] = useState(false)
   const [batchReingestWorking, setBatchReingestWorking] = useState(false)
+  const [scopeOpen, setScopeOpen] = useState(false)
   const DATASET_ALL = '__all__'
   const DATASET_DEFAULT = '__default__'
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -1661,52 +1662,94 @@ export default function KnowledgePage() {
                 ))}
               </div>
 
-              {activeTab === 'documents' && (
-                <div className="flex items-center gap-2">
-                  <IconButton
-                    label="刷新列表"
-                    variant="ghost"
-                    onClick={() => loadDocuments()}
-                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              <div className="flex items-center gap-2">
+                <div className="lg:hidden">
+                  <WorkbenchPanelDialog
+                    open={scopeOpen}
+                    onOpenChange={setScopeOpen}
+                    title="范围筛选"
+                    trigger={
+                      <IconButton
+                        label="范围筛选"
+                        variant="ghost"
+                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                      >
+                        <Filter className="w-4 h-4" />
+                      </IconButton>
+                    }
                   >
-                    <RefreshCw className="w-4 h-4" />
-                  </IconButton>
-                  <IconButton
-                    label="预览分块"
-                    variant="ghost"
-                    onClick={() => window.open('/chunk-preview', '_blank')}
-                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </IconButton>
-                  <div className="bg-muted/40 border border-border/60 p-1 rounded-lg flex gap-1">
-                    <button
-                      aria-label="网格视图"
-                      onClick={() => setViewMode('grid')}
-                      className={cn(
-                        "p-1.5 rounded-md transition-colors focus-ring",
-                        viewMode === 'grid'
-                          ? "bg-background shadow-soft text-primary"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                      )}
-                    >
-                      <LayoutGrid className="w-4 h-4" />
-                    </button>
-                    <button
-                      aria-label="列表视图"
-                      onClick={() => setViewMode('list')}
-                      className={cn(
-                        "p-1.5 rounded-md transition-colors focus-ring",
-                        viewMode === 'list'
-                          ? "bg-background shadow-soft text-primary"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                      )}
-                    >
-                      <ListIcon className="w-4 h-4" />
-                    </button>
-                  </div>
+                    <KnowledgeScopePanel
+                      datasets={datasets}
+                      datasetsLoading={datasetsLoading}
+                      datasetScope={datasetScope}
+                      datasetAllValue={DATASET_ALL}
+                      selectedDatasetId={selectedDatasetId}
+                      lifecycleFilter={lifecycleFilter}
+                      setLifecycleFilter={setLifecycleFilter}
+                      folderPath={folderPath}
+                      setFolderPath={setFolderPath}
+                      statusFilter={statusFilter}
+                      setStatusFilter={setStatusFilter}
+                      totalDocs={totalDocs}
+                      completedDocsValue={completedDocsValue}
+                      processingDocsValue={processingDocsValue}
+                      failedDocsValue={failedDocsValue}
+                      quarantinedDocsValue={quarantinedDocsValue}
+                      setDatasetScope={(v) => {
+                        setDatasetScope(v)
+                        setFolderPath(null)
+                      }}
+                    />
+                  </WorkbenchPanelDialog>
                 </div>
-              )}
+
+                {activeTab === 'documents' ? (
+                  <>
+                    <IconButton
+                      label="刷新列表"
+                      variant="ghost"
+                      onClick={() => loadDocuments()}
+                      className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </IconButton>
+                    <IconButton
+                      label="预览分块"
+                      variant="ghost"
+                      onClick={() => window.open('/chunk-preview', '_blank')}
+                      className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </IconButton>
+                    <div className="bg-muted/40 border border-border/60 p-1 rounded-lg flex gap-1">
+                      <button
+                        aria-label="网格视图"
+                        onClick={() => setViewMode('grid')}
+                        className={cn(
+                          "p-1.5 rounded-md transition-colors focus-ring",
+                          viewMode === 'grid'
+                            ? "bg-background shadow-soft text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                        )}
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                      </button>
+                      <button
+                        aria-label="列表视图"
+                        onClick={() => setViewMode('list')}
+                        className={cn(
+                          "p-1.5 rounded-md transition-colors focus-ring",
+                          viewMode === 'list'
+                            ? "bg-background shadow-soft text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                        )}
+                      >
+                        <ListIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
             </div>
           }
           bodyClassName="pt-6 scroll-smooth"
