@@ -1,0 +1,472 @@
+'use client'
+
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileText,
+  Layers,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Settings,
+  Trash2,
+  Zap,
+} from 'lucide-react'
+import { toast } from 'sonner'
+
+import type { ConnectorRunOut } from '@/types'
+import { Panel } from '@/components/ui/panel'
+import { Button } from '@/components/ui/button'
+import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { cn, formatDate } from '@/lib/utils'
+
+type KnowledgeSettingsPanelProps = {
+  selectedDatasetId?: string
+
+  connectorRuns: ConnectorRunOut[]
+  connectorRunsLoading: boolean
+  onLoadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+
+  expandedConnectorRunId: string | null
+  onToggleExpandedConnectorRun: (runId: string) => void
+
+  onCancelConnectorRun: (runId: string) => void | Promise<void>
+  onResumeConnectorRun: (runId: string) => void | Promise<void>
+  onRetryFailedConnectorRun: (runId: string) => void | Promise<void>
+}
+
+function getConnectorRunBadge(status: string): { status: StatusBadgeStatus; label: string } {
+  switch (String(status || '').toLowerCase()) {
+    case 'pending':
+      return { status: 'pending', label: '等待' }
+    case 'running':
+      return { status: 'processing', label: '运行中' }
+    case 'completed':
+      return { status: 'completed', label: '已完成' }
+    case 'failed':
+      return { status: 'failed', label: '失败' }
+    case 'cancelled':
+      return { status: 'cancelled', label: '已取消' }
+    default:
+      return { status: 'pending', label: String(status || '等待') }
+  }
+}
+
+export function KnowledgeSettingsPanel({
+  selectedDatasetId,
+  connectorRuns,
+  connectorRunsLoading,
+  onLoadConnectorRuns,
+  expandedConnectorRunId,
+  onToggleExpandedConnectorRun,
+  onCancelConnectorRun,
+  onResumeConnectorRun,
+  onRetryFailedConnectorRun,
+}: KnowledgeSettingsPanelProps) {
+  const copyText = async (text: string, okMsg: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        toast.error('复制失败：浏览器不支持 Clipboard API')
+        return
+      }
+      await navigator.clipboard.writeText(text)
+      toast.success(okMsg)
+    } catch {
+      toast.error('复制失败')
+    }
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
+      <Panel padding="none" className="rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-border/60 bg-muted/20">
+          <h3 className="text-lg font-bold text-foreground">知识库参数配置</h3>
+          <p className="text-sm text-muted-foreground mt-1">调整 Embedding 模型、检索策略及相似度阈值</p>
+        </div>
+
+        <div className="p-8 space-y-8">
+          <div className="space-y-3">
+            <label className="text-sm font-semibold text-foreground">Embedding 模型</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {['text-embedding-v3', 'text-embedding-3-small', 'bge-large-zh'].map((model) => (
+                <div key={model} className="relative">
+                  <input type="radio" name="model" id={model} className="peer sr-only" defaultChecked={model === 'text-embedding-v3'} />
+                  <label
+                    htmlFor={model}
+                    className="flex flex-col p-4 border-2 border-border/60 rounded-xl cursor-pointer transition-colors hover:border-border peer-checked:border-primary peer-checked:bg-primary/10"
+                  >
+                    <span className="font-medium text-sm text-foreground">{model}</span>
+                    <span className="text-xs text-muted-foreground mt-1">768 维 / 中英支持</span>
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-px bg-border/60" />
+
+          <div className="space-y-3">
+            <label className="text-sm font-semibold text-foreground">检索模式</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { value: 'vector', label: '向量检索', desc: '基于语义相似度，适合模糊匹配', icon: Zap },
+                { value: 'fulltext', label: '全文检索', desc: '基于关键词匹配，适合专有名词', icon: FileText },
+                { value: 'hybrid', label: '混合检索', desc: '向量 + 全文加权，效果最佳', icon: Layers },
+              ].map((mode) => (
+                <div key={mode.value} className="relative">
+                  <input
+                    type="radio"
+                    name="retrieval_mode"
+                    id={mode.value}
+                    className="peer sr-only"
+                    defaultChecked={mode.value === 'hybrid'}
+                  />
+                  <label
+                    htmlFor={mode.value}
+                    className="flex flex-col p-4 border-2 border-border/60 rounded-xl cursor-pointer transition-colors hover:border-border peer-checked:border-primary peer-checked:bg-primary/10 h-full"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <mode.icon className="w-4 h-4 text-primary" />
+                      <span className="font-medium text-sm text-foreground">{mode.label}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground leading-relaxed">{mode.desc}</span>
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-px bg-border/60" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <label className="text-sm font-semibold text-foreground">召回数量 (Top K)</label>
+                <span className="text-sm font-mono text-primary">5</span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="20"
+                defaultValue="5"
+                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">单次检索返回的最大片段数，建议 3-8 之间</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <label className="text-sm font-semibold text-foreground">相似度阈值</label>
+                <span className="text-sm font-mono text-primary">0.7</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                defaultValue="0.7"
+                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">过滤低相关度的结果，值越大匹配越精准</p>
+            </div>
+          </div>
+
+          <div className="h-px bg-border/60" />
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <label className="text-sm font-semibold text-foreground">Connectors 导入任务</label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  用于批量 URL 导入/同步；仅展示你有写权限的数据集的运行记录。
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => void onLoadConnectorRuns({ datasetId: selectedDatasetId })}
+                  disabled={connectorRunsLoading}
+                >
+                  <RefreshCw className={cn('w-4 h-4', connectorRunsLoading && 'animate-spin motion-reduce:animate-none')} />
+                  刷新
+                </Button>
+              </div>
+            </div>
+
+            {connectorRunsLoading ? (
+              <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                正在加载导入任务...
+              </div>
+            ) : connectorRuns.length === 0 ? (
+              <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                暂无导入任务。可通过顶部“URL 批量导入”创建。
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {connectorRuns.map((run) => {
+                  const badge = getConnectorRunBadge(run.status)
+                  const stats = (run.stats || {}) as any
+                  const created = Number(stats.created || 0)
+                  const failed = Number(stats.failed || 0)
+                  const totalUrls = Number(stats.total_urls || stats.discovered || 0)
+                  const processedUrls = Number(stats.processed_urls || stats.cursor || 0)
+                  const progressPct =
+                    totalUrls > 0 ? Math.max(0, Math.min(100, Math.round((processedUrls / totalUrls) * 100))) : 0
+                  const errors: any[] = Array.isArray(stats.errors) ? stats.errors : []
+                  const errorGroups: any[] = Array.isArray(stats.error_groups) ? stats.error_groups : []
+                  const isActive = run.status === 'pending' || run.status === 'running'
+                  const canRetryFailed = !isActive && failed > 0
+                  const canResume =
+                    !isActive &&
+                    String(run.connector_id || '').toLowerCase() === 'url_batch' &&
+                    String(run.status || '').toLowerCase() === 'cancelled' &&
+                    totalUrls > processedUrls
+
+                  const hasDocs = Array.isArray((run as any).documents) && (run as any).documents.length > 0
+
+                  return (
+                    <div key={run.id} className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={badge.status} label={badge.label} dense />
+                            <span className="text-xs font-mono text-muted-foreground truncate">{run.id}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {formatDate(run.created_at)} · {run.connector_id} · dataset {run.dataset_id || '-'}
+                          </div>
+                          <div className="mt-2 text-xs text-foreground/80">
+                            created <span className="font-mono">{created}</span> · failed{' '}
+                            <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
+                          </div>
+
+                          {totalUrls > 0 ? (
+                            <div className="mt-2">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>progress</span>
+                                <span className="font-mono">
+                                  {processedUrls}/{totalUrls} ({progressPct}%)
+                                </span>
+                              </div>
+                              <div className="mt-1 h-2 w-full rounded-full bg-muted/60 overflow-hidden">
+                                <div
+                                  className={cn(
+                                    'h-2 w-full rounded-full origin-left transition-transform duration-200 ease-out motion-reduce:transition-none',
+                                    failed > 0 ? 'bg-destructive/70' : 'bg-primary/70'
+                                  )}
+                                  style={{ transform: `scaleX(${progressPct / 100})` }}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {run.error_message ? (
+                            <div className="mt-2 text-xs text-destructive">{run.error_message}</div>
+                          ) : null}
+
+                          {errorGroups.length > 0 ? (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              <div className="font-medium text-foreground/80">错误聚类：</div>
+                              <div className="mt-1 space-y-1">
+                                {errorGroups.slice(0, 3).map((g, idx) => (
+                                  <div key={idx} className="font-mono truncate">
+                                    [{String(g?.code || 'error')}] x{Number(g?.count || 0)} —{' '}
+                                    {String(g?.error || '').slice(0, 140)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {errors.length > 0 ? (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              <div className="font-medium text-foreground/80">错误示例：</div>
+                              <div className="mt-1 space-y-1">
+                                {errors.slice(0, 3).map((e, idx) => (
+                                  <div key={idx} className="font-mono truncate">
+                                    {String(e?.url || '').slice(0, 80)} — {e?.code ? `[${String(e.code)}] ` : ''}
+                                    {String(e?.error || '').slice(0, 120)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {hasDocs ? (
+                            <div className="mt-3">
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/80"
+                                onClick={() => onToggleExpandedConnectorRun(run.id)}
+                              >
+                                {expandedConnectorRunId === run.id ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                                产物列表（{(run as any).documents.length}）
+                              </button>
+
+                              {expandedConnectorRunId === run.id ? (
+                                <div className="mt-2 rounded-lg border border-border/60 bg-background/40 p-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="text-xs font-medium text-foreground/80">Documents</div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2 gap-1.5"
+                                      onClick={() => {
+                                        const ids = (run as any).documents
+                                          .map((d: any) => String(d?.document_id || '').trim())
+                                          .filter(Boolean)
+                                        void copyText(ids.join('\n'), '已复制文档 ID 列表')
+                                      }}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                      复制 IDs
+                                    </Button>
+                                  </div>
+                                  <div className="mt-2 space-y-1">
+                                    {(run as any).documents.slice(0, 15).map((d: any) => (
+                                      <div
+                                        key={String(d?.document_id)}
+                                        className="flex items-start justify-between gap-3"
+                                      >
+                                        <div className="min-w-0">
+                                          <div className="text-[11px] font-mono text-foreground/90 truncate">
+                                            {String(d?.document_id || '')}
+                                          </div>
+                                          {d?.source_ref ? (
+                                            <div className="mt-0.5 text-[10px] text-muted-foreground font-mono truncate">
+                                              {String(d.source_ref)}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                        <div className="shrink-0 text-[10px] font-mono rounded-full border border-border/60 bg-background px-2 py-0.5">
+                                          {String(d?.status || 'created')}
+                                        </div>
+                                      </div>
+                                    ))}
+                                    {(run as any).documents.length > 15 ? (
+                                      <div className="text-[10px] text-muted-foreground">
+                                        …(+{(run as any).documents.length - 15})
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          {!isActive ? (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="outline" className="gap-2">
+                                  <Trash2 className="w-4 h-4" />
+                                  取消
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>取消导入任务？</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    将标记任务为 cancelled（best-effort）。仅影响后端后续处理，不会删除已产出的文档。run_id：
+                                    <span className="font-mono"> {run.id.slice(0, 8)}</span>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>返回</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => void onCancelConnectorRun(run.id)}>
+                                    取消任务
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          ) : null}
+
+                          {canResume ? (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="outline" className="gap-2">
+                                  <Play className="w-4 h-4" />
+                                  续跑
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>续跑导入任务？</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    将从上次 cursor 位置创建一个新的导入任务（best-effort）。run_id：
+                                    <span className="font-mono"> {run.id.slice(0, 8)}</span>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>返回</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => void onResumeConnectorRun(run.id)}>续跑</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          ) : null}
+
+                          {canRetryFailed ? (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="outline" className="gap-2">
+                                  <RotateCcw className="w-4 h-4" />
+                                  只重试失败
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>只重试失败项？</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    将创建一个新的导入任务（best-effort），仅处理失败项。run_id：
+                                    <span className="font-mono"> {run.id.slice(0, 8)}</span>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>返回</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => void onRetryFailedConnectorRun(run.id)}>
+                                    创建重试任务
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-6 bg-muted/20 border-t border-border/60 flex justify-end">
+          <Button className="gap-2">
+            <Settings className="w-4 h-4" />
+            保存所有更改
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
