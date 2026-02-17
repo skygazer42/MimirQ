@@ -192,6 +192,27 @@ def get_builtin_governance_profiles() -> List[BuiltinGovernanceProfile]:
             ),
         ),
         BuiltinGovernanceProfile(
+            key="builtin:policy_manual_pdf",
+            name="制度/手册 PDF（条款结构友好）",
+            description="适用于制度/手册类 PDF：修复断行、去重页眉页脚/重复段落，尽量保留正文结构。",
+            payload=_p(
+                input_formats=["markdown"],
+                pipeline_patch={
+                    "governance_enabled": True,
+                    "governance_remove_toc_lines": True,
+                    "governance_remove_noise_lines": True,
+                    "governance_unwrap_lines": True,
+                    "governance_remove_common_lines": True,
+                    "governance_drop_duplicate_paragraphs": True,
+                    "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+                    "governance_drop_duplicate_paragraphs_min_chars": 40,
+                    "governance_drop_duplicate_paragraphs_max_chars": 1200,
+                    "governance_normalize_tables": True,
+                    "governance_max_blank_lines": 1,
+                },
+            ),
+        ),
+        BuiltinGovernanceProfile(
             key="builtin:pdf_scanned_ocr",
             name="PDF 扫描/OCR（更强容错）",
             description="适用于扫描件/OCR：开启解析兜底与更保守的噪声过滤（避免把正文删掉）。",

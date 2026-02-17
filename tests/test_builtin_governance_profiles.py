@@ -28,3 +28,10 @@ def test_builtin_governance_profiles_are_valid_and_unique():
         normalized = validate_and_normalize_payload(p.payload)
         assert normalized.version == "1"
         DocumentPipelineOptions(**(normalized.pipeline_patch or {}))
+
+
+def test_policy_manual_profile_exists() -> None:
+    from app.services.governance_profiles import get_builtin_governance_profiles
+
+    keys = {p.key for p in get_builtin_governance_profiles()}
+    assert "builtin:policy_manual_pdf" in keys
