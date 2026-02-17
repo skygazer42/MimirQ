@@ -5,6 +5,7 @@ import { PageBody } from "@/components/ui/page-body"
 import { PageContainer } from "@/components/ui/page-container"
 import { PageHeader } from "@/components/ui/page-header"
 import { PageHeaderBar } from "@/components/ui/page-header-bar"
+import { PageToolbar } from "@/components/ui/page-toolbar"
 import { cn } from "@/lib/utils"
 
 type PageScaffoldProps = {
@@ -74,7 +75,9 @@ export function PageScaffold({
       {toolbar ? (
         <PageHeaderBar className={cn("z-20", toolbarBarClassName)}>
           <div className={cn("px-6 md:px-8 py-3 md:py-4", toolbarClassName)}>
-            <PageContainer size={size}>{toolbar}</PageContainer>
+            <PageContainer size={size}>
+              <PageToolbar>{toolbar}</PageToolbar>
+            </PageContainer>
           </div>
         </PageHeaderBar>
       ) : null}
