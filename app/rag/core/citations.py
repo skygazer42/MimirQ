@@ -286,6 +286,12 @@ def build_citations_from_docs(
             "chunk_strategy": meta.get("chunk_strategy"),
             "chunk_role": meta.get("chunk_role"),
             "chunk_semantic_role": meta.get("chunk_semantic_role"),
+            # Policy/manual structured chunking (best-effort; present only for relevant docs).
+            "policy_clause_id": meta.get("policy_clause_id"),
+            "policy_clause_number": meta.get("policy_clause_number"),
+            "policy_path": meta.get("policy_path"),
+            "policy_path_str": meta.get("policy_path_str"),
+            "parent_id": meta.get("parent_id"),
             "retrieval_role": retrieval_role,
             "neighbor_of": neighbor_of,
             # Useful for audit/debug and for versioned retrieval UIs.
