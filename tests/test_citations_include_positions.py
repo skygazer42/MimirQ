@@ -31,3 +31,26 @@ def test_build_citations_includes_position_fields():  # noqa: ANN001
     assert c["doc_pipeline_key"] == "doc-1:abcd"
     assert c["pipeline_hash"] == "abcd"
 
+
+def test_build_citations_includes_policy_fields():  # noqa: ANN001
+    docs = [
+        Document(
+            page_content="第十二条 例外条件如下……",
+            metadata={
+                "document_id": "doc-1",
+                "source": "Policy.pdf",
+                "policy_clause_id": "clause-123",
+                "policy_clause_number": "第十二条",
+                "policy_path": ["第一章 总则", "第十二条"],
+                "policy_path_str": "第一章 总则 / 第十二条",
+                "parent_id": "parent-12",
+            },
+        )
+    ]
+    out = build_citations_from_docs(docs, retrieval_elapsed_sec=0.123, retrieval_mode="vector", query="第十二条")
+    assert len(out) == 1
+    c = out[0]
+    assert c.get("policy_clause_id") == "clause-123"
+    assert c.get("policy_clause_number") == "第十二条"
+    assert c.get("policy_path_str") == "第一章 总则 / 第十二条"
+    assert c.get("parent_id") == "parent-12"
