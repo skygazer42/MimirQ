@@ -653,6 +653,12 @@ export interface Citation {
   header_path?: string
   chunk_strategy?: string
   chunk_role?: string
+  chunk_semantic_role?: string
+  policy_clause_id?: string
+  policy_clause_number?: string
+  policy_path?: string[]
+  policy_path_str?: string
+  parent_id?: string
   retrieval_role?: string
   neighbor_of?: string
   doc_pipeline_key?: string
