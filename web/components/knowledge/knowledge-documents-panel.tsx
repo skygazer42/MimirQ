@@ -2,7 +2,9 @@
 
 import type { Document } from '@/types'
 
-import { Eye, Filter, Loader2, Trash2, Upload } from 'lucide-react'
+import { Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -14,6 +16,13 @@ import { DocumentTags } from '@/components/documents/document-tags'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   AlertDialog,
   AlertDialogContent,
   AlertDialogDescription,
@@ -22,6 +31,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
+import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { getUserTagsFromDocument } from '@/lib/document-user-tags'
@@ -143,6 +153,10 @@ export function KnowledgeDocumentsPanel({
   deleteDocument,
   handleFileUpload,
 }: KnowledgeDocumentsPanelProps) {
+  const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
+  const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
+  const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
+
   const docsGridVirtualRows = docsGridVirtualizer.getVirtualItems()
   const docsTableVirtualRows = docsTableVirtualizer.getVirtualItems()
   const docsTablePaddingTop = docsTableVirtualRows.length ? docsTableVirtualRows[0].start : 0
@@ -150,8 +164,104 @@ export function KnowledgeDocumentsPanel({
     ? docsTableVirtualizer.getTotalSize() - docsTableVirtualRows[docsTableVirtualRows.length - 1].end
     : 0
 
+  const singleDeleteTitle = useMemo(() => {
+    if (!singleDeleteDoc) return '确认删除'
+    return `删除文档？`
+  }, [singleDeleteDoc])
+
+  const singleDeleteDescription = useMemo(() => {
+    if (!singleDeleteDoc) return null
+    return (
+      <div className="space-y-2">
+        <div>
+          将删除文档 <span className="font-mono tabular-nums">{singleDeleteDoc.filename}</span>，此操作不可撤销。
+        </div>
+        <div className="text-xs text-muted-foreground font-mono break-all">{singleDeleteDoc.id}</div>
+      </div>
+    )
+  }, [singleDeleteDoc])
+
+  const confirmSingleDelete = useCallback(async () => {
+    const doc = singleDeleteDoc
+    if (!doc) return
+    if (singleDeleteWorking) return
+
+    setSingleDeleteWorking(true)
+    setSingleDeleteError(null)
+    try {
+      await deleteDocument(doc.id)
+      toast.success('已删除文档')
+      setSingleDeleteDoc(null)
+    } catch (err: any) {
+      console.error('Delete document failed:', err)
+      setSingleDeleteError(formatApiError(err, '删除失败'))
+    } finally {
+      setSingleDeleteWorking(false)
+    }
+  }, [deleteDocument, singleDeleteDoc, singleDeleteWorking])
+
+  const requestSingleDelete = useCallback((doc: Document) => {
+    setSingleDeleteError(null)
+    setSingleDeleteDoc(doc)
+  }, [])
+
+  const copyText = useCallback(async (text: string, okMsg: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        toast.error('复制失败：浏览器不支持 Clipboard API')
+        return
+      }
+      await navigator.clipboard.writeText(text)
+      toast.success(okMsg)
+    } catch {
+      toast.error('复制失败')
+    }
+  }, [])
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
+      <AlertDialog
+        open={Boolean(singleDeleteDoc)}
+        onOpenChange={(open) => {
+          if (open) return
+          setSingleDeleteDoc(null)
+          setSingleDeleteWorking(false)
+          setSingleDeleteError(null)
+        }}
+      >
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{singleDeleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {singleDeleteDescription}
+              {singleDeleteError ? (
+                <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive text-pretty">
+                  {singleDeleteError}
+                </div>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSingleDeleteDoc(null)}
+              disabled={singleDeleteWorking}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void confirmSingleDelete()}
+              disabled={singleDeleteWorking || !singleDeleteDoc}
+            >
+              {singleDeleteWorking ? '删除中…' : '确认删除'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {isLoading && documents.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
           <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3" />
@@ -388,7 +498,8 @@ export function KnowledgeDocumentsPanel({
                               doc={doc}
                               statusBadge={badge}
                               statusBarClassName={statusBarClassName(badge.status)}
-                              onDelete={deleteDocument}
+                              onRequestDelete={requestSingleDelete}
+                              copyText={copyText}
                               selected={selectedSet.has(doc.id)}
                               onToggleSelect={() => toggleDocSelection(doc.id)}
                             />
@@ -508,17 +619,46 @@ export function KnowledgeDocumentsPanel({
                               </IconButton>
                             }
                           />
-                          <IconButton
-                            label="删除文档"
-                            variant="ghost"
-                            className={cn(
-                              'h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-opacity',
-                              'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
-                            )}
-                            onClick={() => void deleteDocument(doc.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </IconButton>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton
+                                label="更多操作"
+                                variant="ghost"
+                                className={cn(
+                                  'h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity',
+                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
+                                )}
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </IconButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuItem onSelect={() => void copyText(doc.id, '已复制文档 ID')}>
+                                复制文档 ID
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => void copyText(doc.filename, '已复制文件名')}>
+                                复制文件名
+                              </DropdownMenuItem>
+                              {String((doc.metadata as any)?.source_path || '').trim() ? (
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    void copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path')
+                                  }
+                                >
+                                  复制 Source Path
+                                </DropdownMenuItem>
+                              ) : null}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onSelect={() => requestSingleDelete(doc)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                删除文档
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </td>
                       </tr>
                     )
@@ -543,14 +683,16 @@ function DocumentCard({
   doc,
   statusBadge,
   statusBarClassName,
-  onDelete,
+  onRequestDelete,
+  copyText,
   selected,
   onToggleSelect,
 }: {
   doc: Document
   statusBadge: { status: StatusBadgeStatus; label: string }
   statusBarClassName: string
-  onDelete: (id: string) => void | Promise<void>
+  onRequestDelete: (doc: Document) => void
+  copyText: (text: string, okMsg: string) => void | Promise<void>
   selected: boolean
   onToggleSelect: () => void
 }) {
@@ -642,17 +784,44 @@ function DocumentCard({
               </IconButton>
             }
           />
-          <IconButton
-            label="删除文档"
-            variant="ghost"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={(e) => {
-              e.stopPropagation()
-              void onDelete(doc.id)
-            }}
-          >
-            <Trash2 className="w-4 h-4" />
-          </IconButton>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton
+                label="更多操作"
+                variant="ghost"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="w-4 h-4" />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onSelect={() => void copyText(doc.id, '已复制文档 ID')}>
+                复制文档 ID
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void copyText(doc.filename, '已复制文件名')}>
+                复制文件名
+              </DropdownMenuItem>
+              {String((doc.metadata as any)?.source_path || '').trim() ? (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    void copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path')
+                  }
+                >
+                  复制 Source Path
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => onRequestDelete(doc)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                删除文档
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
