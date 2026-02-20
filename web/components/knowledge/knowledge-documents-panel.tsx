@@ -577,8 +577,8 @@ export function KnowledgeDocumentsPanel({
 	                    ) : null}
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">标签</th>
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">状态</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">分块</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">大小</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">分块</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">大小</th>
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">上传时间</th>
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">操作</th>
 	                  </tr>
@@ -673,8 +673,10 @@ export function KnowledgeDocumentsPanel({
 	                        <td className="px-4 py-3 align-middle">
 	                          <StatusBadge status={badge.status} label={badge.label} dense />
 	                        </td>
-	                        <td className="px-4 py-3 align-middle text-muted-foreground font-mono tabular-nums text-xs">{doc.chunk_count || '-'}</td>
-	                        <td className="px-4 py-3 align-middle text-muted-foreground font-mono tabular-nums text-xs">
+	                        <td className="px-4 py-3 align-middle text-right text-muted-foreground font-mono tabular-nums text-xs">
+	                          {doc.chunk_count ?? '-'}
+	                        </td>
+	                        <td className="px-4 py-3 align-middle text-right text-muted-foreground font-mono tabular-nums text-xs">
 	                          {formatFileSize(doc.file_size)}
 	                        </td>
 	                        <td className="px-4 py-3 align-middle text-muted-foreground font-mono tabular-nums text-xs">
@@ -835,10 +837,10 @@ function DocumentCard({
             <span>大小</span>
             <span className="font-mono">{formatFileSize(doc.file_size)}</span>
           </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>分块</span>
-            <span className="font-mono">{doc.chunk_count || '-'}</span>
-          </div>
+	          <div className="flex items-center justify-between text-xs text-muted-foreground">
+	            <span>分块</span>
+	            <span className="font-mono tabular-nums">{doc.chunk_count ?? '-'}</span>
+	          </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>时间</span>
             <span>{formatDate(doc.created_at)}</span>
