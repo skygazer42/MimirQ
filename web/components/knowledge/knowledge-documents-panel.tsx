@@ -14,12 +14,13 @@ import { DocumentTags } from '@/components/documents/document-tags'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
@@ -34,6 +35,8 @@ type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
   documents: Document[]
   filteredDocuments: Document[]
+
+  scopeSummary?: React.ReactNode
 
   docFilter: string
   setDocFilter: (value: string) => void
@@ -106,6 +109,7 @@ export function KnowledgeDocumentsPanel({
   isLoading,
   documents,
   filteredDocuments,
+  scopeSummary,
   docFilter,
   setDocFilter,
   onClearFilters,
@@ -214,6 +218,10 @@ export function KnowledgeDocumentsPanel({
                 </SelectContent>
               </Select>
             </div>
+
+            {scopeSummary ? (
+              <div className="text-xs text-muted-foreground">{scopeSummary}</div>
+            ) : null}
           </div>
 
           {selectedDocIds.length > 0 ? (
@@ -298,16 +306,21 @@ export function KnowledgeDocumentsPanel({
             </div>
           ) : null}
 
-          <Dialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>确认删除</DialogTitle>
-                <DialogDescription>
+          <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+            <AlertDialogContent className="max-w-md">
+              <AlertDialogHeader>
+                <AlertDialogTitle>确认删除</AlertDialogTitle>
+                <AlertDialogDescription>
                   将删除已选中的 <span className="font-mono tabular-nums">{selectedDocIds.length}</span> 份文档，此操作不可撤销。
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setBatchDeleteOpen(false)}
+                  disabled={batchDeleting}
+                >
                   取消
                 </Button>
                 <Button
@@ -318,9 +331,9 @@ export function KnowledgeDocumentsPanel({
                 >
                   {batchDeleting ? '删除中…' : '确认删除'}
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {filteredDocuments.length === 0 ? (
             <div className="py-10">
@@ -390,9 +403,9 @@ export function KnowledgeDocumentsPanel({
           ) : (
             <Panel padding="none" className="rounded-xl overflow-hidden">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/60">
+                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
                   <tr>
-                    <th className="px-4 py-4 font-medium w-10">
+                    <th className="sticky top-0 z-10 bg-card px-4 py-4 font-medium w-10">
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
@@ -401,13 +414,13 @@ export function KnowledgeDocumentsPanel({
                         aria-label="全选当前列表"
                       />
                     </th>
-                    <th className="px-6 py-4 font-medium">文档名称</th>
-                    <th className="px-6 py-4 font-medium">标签</th>
-                    <th className="px-6 py-4 font-medium">状态</th>
-                    <th className="px-6 py-4 font-medium">分块</th>
-                    <th className="px-6 py-4 font-medium">大小</th>
-                    <th className="px-6 py-4 font-medium">上传时间</th>
-                    <th className="px-6 py-4 font-medium text-right">操作</th>
+                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">文档名称</th>
+                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">标签</th>
+                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">状态</th>
+                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">分块</th>
+                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">大小</th>
+                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">上传时间</th>
+                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -471,9 +484,13 @@ export function KnowledgeDocumentsPanel({
                         <td className="px-6 py-4">
                           <StatusBadge status={badge.status} label={badge.label} />
                         </td>
-                        <td className="px-6 py-4 text-muted-foreground">{doc.chunk_count || '-'}</td>
-                        <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{formatFileSize(doc.file_size)}</td>
-                        <td className="px-6 py-4 text-muted-foreground">{formatDate(doc.created_at)}</td>
+                        <td className="px-6 py-4 text-muted-foreground font-mono tabular-nums text-xs">{doc.chunk_count || '-'}</td>
+                        <td className="px-6 py-4 text-muted-foreground font-mono tabular-nums text-xs">
+                          {formatFileSize(doc.file_size)}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground font-mono tabular-nums text-xs">
+                          {formatDate(doc.created_at)}
+                        </td>
                         <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                           <DocumentDetailDialog
                             document={doc}
@@ -481,7 +498,11 @@ export function KnowledgeDocumentsPanel({
                               <IconButton
                                 label="预览内容"
                                 variant="ghost"
-                                className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted opacity-0 group-hover:opacity-100"
+                                className={cn(
+                                  'h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity',
+                                  // Hover-only affordances fail on touch; reveal on small screens and on keyboard focus.
+                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
+                                )}
                               >
                                 <Eye className="w-4 h-4" />
                               </IconButton>
@@ -490,7 +511,10 @@ export function KnowledgeDocumentsPanel({
                           <IconButton
                             label="删除文档"
                             variant="ghost"
-                            className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100"
+                            className={cn(
+                              'h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-opacity',
+                              'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
+                            )}
                             onClick={() => void deleteDocument(doc.id)}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -643,4 +667,3 @@ function DocumentCard({
     </Panel>
   )
 }
-

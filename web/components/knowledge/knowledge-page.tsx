@@ -101,7 +101,8 @@ export default function KnowledgePage() {
 
   const { documents, total, isLoading, uploadDocuments, uploadDocumentFromUrl, deleteDocument, loadDocuments } = useDocuments()
   const [activeTab, setActiveTab] = useState<TabType>('documents')
-  const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  // Console-first: list is the primary work surface; grid is an explicit opt-in.
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
   const [docFilter, setDocFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<DocStatusFilter>('all')
@@ -709,6 +710,59 @@ export default function KnowledgePage() {
               isLoading={isLoading}
               documents={documents}
               filteredDocuments={filteredDocuments}
+              scopeSummary={
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
+                    数据集:{' '}
+                    <span className="font-medium ml-1">
+                      {selectedDatasetId
+                        ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
+                        : '全部'}
+                    </span>
+                  </span>
+
+                  {selectedDatasetId && folderPath ? (
+                    <span
+                      className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 max-w-xs truncate"
+                      title={folderPath}
+                    >
+                      目录: <span className="ml-1 truncate">{folderPath}</span>
+                    </span>
+                  ) : null}
+
+                  {statusFilter !== 'all' ? (
+                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
+                      状态:{' '}
+                      <span className="ml-1">
+                        {statusFilter === 'completed'
+                          ? '已就绪'
+                          : statusFilter === 'processing'
+                            ? '处理中'
+                            : statusFilter === 'failed'
+                              ? '失败'
+                              : statusFilter === 'quarantined'
+                                ? '隔离'
+                                : statusFilter}
+                      </span>
+                    </span>
+                  ) : null}
+
+                  {lifecycleFilter !== 'active' ? (
+                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
+                      生命周期:{' '}
+                      <span className="ml-1">
+                        {lifecycleFilter === 'archived'
+                          ? '已归档'
+                          : lifecycleFilter === 'disabled'
+                            ? '已禁用'
+                            : lifecycleFilter === 'all'
+                              ? '全部'
+                              : lifecycleFilter}
+                      </span>
+                    </span>
+                  ) : null}
+                </div>
+              }
 
               docFilter={docFilter}
               setDocFilter={setDocFilter}

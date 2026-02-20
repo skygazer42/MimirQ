@@ -27,7 +27,8 @@ export function parseKnowledgeQueryState(
 
   const state: KnowledgeQueryState = {
     activeTab: 'documents',
-    viewMode: 'grid',
+    // Console-first: list is the primary work surface; grid is an explicit opt-in.
+    viewMode: 'list',
     docFilter: '',
     statusFilter: 'all',
     lifecycleFilter: 'active',
@@ -79,7 +80,7 @@ export function serializeKnowledgeQueryState(
 
   const params = new URLSearchParams()
   if (state.activeTab !== 'documents') params.set('tab', state.activeTab)
-  if (state.viewMode !== 'grid') params.set('view', state.viewMode)
+  if (state.viewMode !== 'list') params.set('view', state.viewMode)
   if (state.docFilter.trim()) params.set('q', state.docFilter.trim())
   if (state.statusFilter !== 'all') params.set('status', state.statusFilter)
   if (state.lifecycleFilter !== 'active') params.set('lifecycle', state.lifecycleFilter)
@@ -89,4 +90,3 @@ export function serializeKnowledgeQueryState(
   if (state.sortDir !== 'desc') params.set('order_dir', state.sortDir)
   return params.toString()
 }
-

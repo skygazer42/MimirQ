@@ -8,7 +8,7 @@ describe('Knowledge query state helpers', () => {
 
     expect(state).toEqual({
       activeTab: 'documents',
-      viewMode: 'grid',
+      viewMode: 'list',
       docFilter: '',
       statusFilter: 'all',
       lifecycleFilter: 'active',
@@ -59,13 +59,13 @@ describe('Knowledge query state helpers', () => {
     })
 
     expect(qs).toBe(
-      'tab=retrieval&view=list&q=hello+world&status=processing&lifecycle=archived&dataset=ds1&folder=%2Fteam&order_by=filename&order_dir=asc'
+      'tab=retrieval&q=hello+world&status=processing&lifecycle=archived&dataset=ds1&folder=%2Fteam&order_by=filename&order_dir=asc'
     )
 
     expect(
       serializeKnowledgeQueryState({
         activeTab: 'documents',
-        viewMode: 'grid',
+        viewMode: 'list',
         docFilter: '',
         statusFilter: 'all',
         lifecycleFilter: 'active',
@@ -77,4 +77,3 @@ describe('Knowledge query state helpers', () => {
     ).toBe('')
   })
 })
-
