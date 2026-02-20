@@ -203,7 +203,7 @@ export function TopBar() {
   }
 
   return (
-	    <header className="flex-shrink-0 h-20 border-b border-border/60 flex justify-between items-center px-6 bg-card z-20 shadow-sm relative">
+	    <div className="flex items-center justify-between gap-4 min-w-0">
 	      <div className="flex items-center gap-4">
 	        {/* Logo Icon */}
 	        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 text-primary shadow-soft ring-1 ring-border/60">
@@ -759,7 +759,7 @@ export function TopBar() {
         initialSourceType="documents"
         initialDatasetId={datasetId || undefined}
         initialDocumentIds={createdDocumentId ? [createdDocumentId] : undefined}
-      />
-    </header>
-  )
+	      />
+	    </div>
+	  )
 }
