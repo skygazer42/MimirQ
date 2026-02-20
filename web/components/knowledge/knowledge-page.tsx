@@ -44,15 +44,14 @@ import { AppFrame } from '@/components/app-frame'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
-import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { toSourcePathPrefix } from '@/lib/document-folders'
-import type { ConnectorRunOut, Dataset, Document, DocumentStats, IndexAuditResponse } from '@/types'
-import { connectorApi, datasetApi, documentApi, observabilityApi } from '@/lib/api-client'
+import type { Dataset, Document, DocumentStats, IndexAuditResponse } from '@/types'
+import { datasetApi, documentApi, observabilityApi } from '@/lib/api-client'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { KnowledgeDocumentsPanel } from '@/components/knowledge/knowledge-documents-panel'
@@ -63,6 +62,7 @@ import { KnowledgeRetrievalPanel } from '@/components/knowledge/knowledge-retrie
 import { KnowledgeSettingsPanel } from '@/components/knowledge/knowledge-settings-panel'
 import { useKnowledgeScrollContainer } from '@/components/knowledge/use-knowledge-scroll-container'
 import { parseKnowledgeQueryState, serializeKnowledgeQueryState } from '@/components/knowledge/use-knowledge-query-state'
+import { useConnectorRuns } from '@/hooks/use-connector-runs'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -432,27 +432,16 @@ export default function KnowledgePage() {
       setBatchReingestWorking(false)
     }
   }, [loadDocuments, pipelineOptions, pipelineOverridesEnabled, selectedDocIds])
-  const [connectorRuns, setConnectorRuns] = useState<ConnectorRunOut[]>([])
-  const [connectorRunsLoading, setConnectorRunsLoading] = useState(false)
   const [expandedConnectorRunId, setExpandedConnectorRunId] = useState<string | null>(null)
 
-  const loadConnectorRuns = useCallback(
-    async (params?: { datasetId?: string }) => {
-      setConnectorRunsLoading(true)
-      try {
-        const res = await connectorApi.listRuns({
-          limit: 20,
-          dataset_id: params?.datasetId,
-        })
-        setConnectorRuns(res.items || [])
-      } catch (err) {
-        console.warn('Load connector runs failed:', err)
-      } finally {
-        setConnectorRunsLoading(false)
-      }
-    },
-    []
-  )
+  const {
+    connectorRuns,
+    connectorRunsLoading,
+    loadConnectorRuns,
+    cancelConnectorRun,
+    resumeConnectorRun,
+    retryFailedConnectorRun,
+  } = useConnectorRuns({ selectedDatasetId, loadDocuments })
 
   useEffect(() => {
     if (activeTab !== 'settings') return
@@ -477,50 +466,6 @@ export default function KnowledgePage() {
     e.target.value = ''
   }, [uploadDocuments])
 
-  const handleCancelConnectorRun = useCallback(
-    async (runId: string) => {
-      if (!runId) return
-      try {
-        await connectorApi.cancelRun(runId)
-        toast.success('已取消导入任务')
-        void loadConnectorRuns({ datasetId: selectedDatasetId })
-      } catch (err: any) {
-        toast.error(formatApiError(err, '取消导入任务失败'))
-      }
-    },
-    [loadConnectorRuns, selectedDatasetId]
-  )
-
-  const handleRetryFailedConnectorRun = useCallback(
-    async (runId: string) => {
-      if (!runId) return
-      try {
-        const next = await connectorApi.retryFailed(runId)
-        toast.success(`已创建重试任务：${String(next.id || '').slice(0, 8)}`)
-        void loadConnectorRuns({ datasetId: selectedDatasetId })
-        void loadDocuments()
-      } catch (err: any) {
-        toast.error(formatApiError(err, '重试失败项失败'))
-      }
-    },
-    [loadConnectorRuns, loadDocuments, selectedDatasetId]
-  )
-
-  const handleResumeConnectorRun = useCallback(
-    async (runId: string) => {
-      if (!runId) return
-      try {
-        const next = await connectorApi.resumeRun(runId)
-        toast.success(`已创建续跑任务：${String(next.id || '').slice(0, 8)}`)
-        void loadConnectorRuns({ datasetId: selectedDatasetId })
-        void loadDocuments()
-      } catch (err: any) {
-        toast.error(formatApiError(err, '续跑失败'))
-      }
-    },
-    [loadConnectorRuns, loadDocuments, selectedDatasetId]
-  )
-
   const handleRunIndexAudit = useCallback(async () => {
     if (!selectedDatasetId) {
       toast.error('请先选择数据集再运行 Index Audit')
@@ -539,23 +484,6 @@ export default function KnowledgePage() {
       setIndexAuditLoading(false)
     }
   }, [selectedDatasetId])
-
-  const getConnectorRunBadge = (status: string): { status: StatusBadgeStatus; label: string } => {
-    switch (String(status || '').toLowerCase()) {
-      case 'pending':
-        return { status: 'pending', label: '等待' }
-      case 'running':
-        return { status: 'processing', label: '运行中' }
-      case 'completed':
-        return { status: 'completed', label: '已完成' }
-      case 'failed':
-        return { status: 'failed', label: '失败' }
-      case 'cancelled':
-        return { status: 'cancelled', label: '已取消' }
-      default:
-        return { status: 'pending', label: String(status || '等待') }
-    }
-  }
 
   return (
     <AppFrame>
@@ -875,9 +803,9 @@ export default function KnowledgePage() {
 	              onToggleExpandedConnectorRun={(runId) =>
 	                setExpandedConnectorRunId((prev) => (prev === runId ? null : runId))
 	              }
-	              onCancelConnectorRun={handleCancelConnectorRun}
-	              onResumeConnectorRun={handleResumeConnectorRun}
-	              onRetryFailedConnectorRun={handleRetryFailedConnectorRun}
+	              onCancelConnectorRun={cancelConnectorRun}
+	              onResumeConnectorRun={resumeConnectorRun}
+	              onRetryFailedConnectorRun={retryFailedConnectorRun}
 	            />
 	          )}
 
