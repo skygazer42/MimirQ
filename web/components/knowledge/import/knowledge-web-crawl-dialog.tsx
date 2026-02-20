@@ -1,6 +1,6 @@
 'use client'
 
-import type { Dataset, DocumentAccessMode } from '@/types'
+import type { ConnectorRunOut, Dataset, DocumentAccessMode } from '@/types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -104,6 +104,7 @@ type KnowledgeWebCrawlDialogProps = {
 
   loadDocuments: () => void | Promise<void>
   loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  onRunCreated?: (run: ConnectorRunOut) => void
 }
 
 export function KnowledgeWebCrawlDialog({
@@ -115,6 +116,7 @@ export function KnowledgeWebCrawlDialog({
   datasetDefaultValue,
   loadDocuments,
   loadConnectorRuns,
+  onRunCreated,
 }: KnowledgeWebCrawlDialogProps) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
@@ -218,7 +220,14 @@ export function KnowledgeWebCrawlDialog({
         },
       })
 
-      toast.success(`Web crawl run created: ${run.id.slice(0, 8)}`)
+      toast.success(`已创建网页爬取任务：${run.id.slice(0, 8)}`, {
+        action: onRunCreated
+          ? {
+              label: '查看任务',
+              onClick: () => onRunCreated(run),
+            }
+          : undefined,
+      })
       onOpenChange(false)
       setStartUrls('')
       setFilename('')
@@ -276,6 +285,7 @@ export function KnowledgeWebCrawlDialog({
     selectedDatasetId,
     useSitemaps,
     userAgent,
+    onRunCreated,
   ])
 
   return (

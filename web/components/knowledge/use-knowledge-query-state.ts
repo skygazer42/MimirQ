@@ -15,6 +15,7 @@ export type KnowledgeQueryState = {
   folderPath: string | null
   sortKey: KnowledgeSortKey
   sortDir: KnowledgeSortDir
+  connectorRunId: string | null
 }
 
 const DEFAULT_DATASET_ALL = '__all__'
@@ -36,6 +37,7 @@ export function parseKnowledgeQueryState(
     folderPath: null,
     sortKey: 'created_at',
     sortDir: 'desc',
+    connectorRunId: null,
   }
 
   const tab = searchParams.get('tab')
@@ -69,6 +71,12 @@ export function parseKnowledgeQueryState(
   const orderDir = searchParams.get('order_dir')
   if (orderDir === 'asc' || orderDir === 'desc') state.sortDir = orderDir
 
+  const run = searchParams.get('run')
+  if (run && run.trim()) {
+    state.activeTab = 'settings'
+    state.connectorRunId = run.trim()
+  }
+
   return state
 }
 
@@ -88,5 +96,6 @@ export function serializeKnowledgeQueryState(
   if (state.datasetScope !== DATASET_ALL && state.folderPath) params.set('folder', state.folderPath)
   if (state.sortKey !== 'created_at') params.set('order_by', state.sortKey)
   if (state.sortDir !== 'desc') params.set('order_dir', state.sortDir)
+  if (state.activeTab === 'settings' && state.connectorRunId) params.set('run', state.connectorRunId)
   return params.toString()
 }

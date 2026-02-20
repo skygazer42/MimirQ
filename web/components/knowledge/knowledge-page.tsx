@@ -49,7 +49,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { toSourcePathPrefix } from '@/lib/document-folders'
-import type { Dataset, Document, DocumentStats } from '@/types'
+import type { ConnectorRunOut, Dataset, Document, DocumentStats } from '@/types'
 import { datasetApi, documentApi } from '@/lib/api-client'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
@@ -116,6 +116,7 @@ export default function KnowledgePage() {
   const [batchReingestWorking, setBatchReingestWorking] = useState(false)
   const [scopeOpen, setScopeOpen] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [expandedConnectorRunId, setExpandedConnectorRunId] = useState<string | null>(null)
   const DATASET_ALL = '__all__'
   const DATASET_DEFAULT = '__default__'
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -127,49 +128,64 @@ export default function KnowledgePage() {
   const [docStatsLoading, setDocStatsLoading] = useState(false)
   const docStatsSeqRef = useRef(0)
 
-	  // Init UI state from URL so filters are shareable/bookmarkable.
-	  useEffect(() => {
-	    if (didInitFromUrlRef.current) return
-	    didInitFromUrlRef.current = true
+  // Init UI state from URL so filters are shareable/bookmarkable.
+  useEffect(() => {
+    if (didInitFromUrlRef.current) return
+    didInitFromUrlRef.current = true
 
-	    const state = parseKnowledgeQueryState(new URLSearchParams(searchParams?.toString?.() || ''), {
-	      datasetAllValue: DATASET_ALL,
-	    })
+    const state = parseKnowledgeQueryState(new URLSearchParams(searchParams?.toString?.() || ''), {
+      datasetAllValue: DATASET_ALL,
+    })
 
-	    setActiveTab(state.activeTab)
-	    setViewMode(state.viewMode)
-	    setDocFilter(state.docFilter)
-	    setStatusFilter(state.statusFilter)
-	    setLifecycleFilter(state.lifecycleFilter)
-	    setDatasetScope(state.datasetScope)
-	    setFolderPath(state.folderPath)
-	    setSortKey(state.sortKey)
-	    setSortDir(state.sortDir)
-	  }, [searchParams])
+    setActiveTab(state.activeTab)
+    setViewMode(state.viewMode)
+    setDocFilter(state.docFilter)
+    setStatusFilter(state.statusFilter)
+    setLifecycleFilter(state.lifecycleFilter)
+    setDatasetScope(state.datasetScope)
+    setFolderPath(state.folderPath)
+    setSortKey(state.sortKey)
+    setSortDir(state.sortDir)
+    setExpandedConnectorRunId(state.connectorRunId)
+  }, [DATASET_ALL, searchParams])
 
-	  // Keep URL in sync (avoid window scroll; AppFrame handles internal scroll only).
-	  useEffect(() => {
-	    if (!didInitFromUrlRef.current) return
+  // Keep URL in sync (avoid window scroll; AppFrame handles internal scroll only).
+  useEffect(() => {
+    if (!didInitFromUrlRef.current) return
 
-	    const qs = serializeKnowledgeQueryState(
-	      {
-	        activeTab,
-	        viewMode,
-	        docFilter,
-	        statusFilter,
-	        lifecycleFilter,
-	        datasetScope,
-	        folderPath,
-	        sortKey,
-	        sortDir,
-	      },
-	      { datasetAllValue: DATASET_ALL }
-	    )
-	    const nextUrl = qs ? `/knowledge?${qs}` : '/knowledge'
-	    if (lastUrlRef.current === nextUrl) return
-	    lastUrlRef.current = nextUrl
-	    router.replace(nextUrl, { scroll: false })
-  }, [activeTab, viewMode, docFilter, statusFilter, lifecycleFilter, datasetScope, folderPath, sortKey, sortDir, router])
+    const qs = serializeKnowledgeQueryState(
+      {
+        activeTab,
+        viewMode,
+        docFilter,
+        statusFilter,
+        lifecycleFilter,
+        datasetScope,
+        folderPath,
+        sortKey,
+        sortDir,
+        connectorRunId: expandedConnectorRunId,
+      },
+      { datasetAllValue: DATASET_ALL }
+    )
+    const nextUrl = qs ? `/knowledge?${qs}` : '/knowledge'
+    if (lastUrlRef.current === nextUrl) return
+    lastUrlRef.current = nextUrl
+    router.replace(nextUrl, { scroll: false })
+  }, [
+    DATASET_ALL,
+    activeTab,
+    viewMode,
+    docFilter,
+    statusFilter,
+    lifecycleFilter,
+    datasetScope,
+    folderPath,
+    sortKey,
+    sortDir,
+    expandedConnectorRunId,
+    router,
+  ])
 
   const { sentinelRef: mainPaneSentinelRef, scrollEl: mainPaneScrollEl } = useKnowledgeScrollContainer()
 
@@ -427,11 +443,11 @@ export default function KnowledgePage() {
       setBatchReingestWorking(false)
     }
   }, [loadDocuments, pipelineOptions, pipelineOverridesEnabled, selectedDocIds])
-  const [expandedConnectorRunId, setExpandedConnectorRunId] = useState<string | null>(null)
 
   const {
     connectorRuns,
     connectorRunsLoading,
+    connectorRunsUpdatedAt,
     loadConnectorRuns,
     cancelConnectorRun,
     resumeConnectorRun,
@@ -442,6 +458,24 @@ export default function KnowledgePage() {
     if (activeTab !== 'settings') return
     void loadConnectorRuns({ datasetId: selectedDatasetId })
   }, [activeTab, loadConnectorRuns, selectedDatasetId])
+
+  const handleConnectorRunCreated = useCallback(
+    (run: ConnectorRunOut) => {
+      const runId = String(run?.id || '').trim()
+      if (!runId) return
+
+      const targetDatasetId = String(run?.dataset_id || '').trim()
+      if (targetDatasetId && selectedDatasetId && targetDatasetId !== selectedDatasetId) {
+        // Ensure the run is visible in the settings panel by switching the scope explicitly.
+        setDatasetScope(targetDatasetId)
+        setFolderPath(null)
+      }
+
+      setActiveTab('settings')
+      setExpandedConnectorRunId(runId)
+    },
+    [selectedDatasetId, setActiveTab, setDatasetScope, setExpandedConnectorRunId, setFolderPath]
+  )
 
   // 处理文件上传
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -510,6 +544,7 @@ export default function KnowledgePage() {
               uploadDocumentFromUrl={uploadDocumentFromUrl}
               loadDocuments={loadDocuments}
               loadConnectorRuns={loadConnectorRuns}
+              onConnectorRunCreated={handleConnectorRunCreated}
             />
           }
           top={
@@ -823,6 +858,7 @@ export default function KnowledgePage() {
 	              selectedDatasetId={selectedDatasetId}
 	              connectorRuns={connectorRuns}
 	              connectorRunsLoading={connectorRunsLoading}
+                connectorRunsUpdatedAt={connectorRunsUpdatedAt}
 	              onLoadConnectorRuns={loadConnectorRuns}
 	              expandedConnectorRunId={expandedConnectorRunId}
 	              onToggleExpandedConnectorRun={(runId) =>

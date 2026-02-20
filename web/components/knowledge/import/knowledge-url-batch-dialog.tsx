@@ -1,6 +1,6 @@
 'use client'
 
-import type { Dataset, DocumentAccessMode } from '@/types'
+import type { ConnectorRunOut, Dataset, DocumentAccessMode } from '@/types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -67,6 +67,7 @@ type KnowledgeUrlBatchDialogProps = {
 
   loadDocuments: () => void | Promise<void>
   loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  onRunCreated?: (run: ConnectorRunOut) => void
 }
 
 export function KnowledgeUrlBatchDialog({
@@ -78,6 +79,7 @@ export function KnowledgeUrlBatchDialog({
   datasetDefaultValue,
   loadDocuments,
   loadConnectorRuns,
+  onRunCreated,
 }: KnowledgeUrlBatchDialogProps) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
@@ -126,7 +128,14 @@ export function KnowledgeUrlBatchDialog({
         },
       })
 
-      toast.success(`已创建批量导入任务：${run.id.slice(0, 8)}`)
+      toast.success(`已创建批量导入任务：${run.id.slice(0, 8)}`, {
+        action: onRunCreated
+          ? {
+              label: '查看任务',
+              onClick: () => onRunCreated(run),
+            }
+          : undefined,
+      })
       onOpenChange(false)
       setUrls('')
       setFilename('')
@@ -154,6 +163,7 @@ export function KnowledgeUrlBatchDialog({
     pipelineOptions,
     pipelineOverridesEnabled,
     selectedDatasetId,
+    onRunCreated,
   ])
 
   return (
@@ -255,4 +265,3 @@ export function KnowledgeUrlBatchDialog({
     </Dialog>
   )
 }
-
