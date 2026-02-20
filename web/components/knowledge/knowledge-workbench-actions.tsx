@@ -1,6 +1,6 @@
 'use client'
 
-import type { Dataset } from '@/types'
+import type { ConnectorRunOut, Dataset } from '@/types'
 import type { ChangeEvent } from 'react'
 import { useCallback, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
@@ -27,6 +27,7 @@ type KnowledgeWorkbenchActionsProps = {
   uploadDocumentFromUrl: (params: { url: string; filename?: string; dataset_id?: string }) => Promise<unknown>
   loadDocuments: () => void | Promise<void>
   loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  onConnectorRunCreated?: (run: ConnectorRunOut) => void
   className?: string
 }
 
@@ -39,6 +40,7 @@ export function KnowledgeWorkbenchActions({
   uploadDocumentFromUrl,
   loadDocuments,
   loadConnectorRuns,
+  onConnectorRunCreated,
   className,
 }: KnowledgeWorkbenchActionsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -102,6 +104,7 @@ export function KnowledgeWorkbenchActions({
         datasetDefaultValue={datasetDefaultValue}
         loadDocuments={loadDocuments}
         loadConnectorRuns={loadConnectorRuns}
+        onRunCreated={onConnectorRunCreated}
       />
 
       <KnowledgeWebCrawlDialog
@@ -113,6 +116,7 @@ export function KnowledgeWorkbenchActions({
         datasetDefaultValue={datasetDefaultValue}
         loadDocuments={loadDocuments}
         loadConnectorRuns={loadConnectorRuns}
+        onRunCreated={onConnectorRunCreated}
       />
     </>
   )

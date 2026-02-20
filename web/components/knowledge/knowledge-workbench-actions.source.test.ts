@@ -10,6 +10,6 @@ describe('KnowledgeWorkbenchActions', () => {
     expect(src).toContain('export function KnowledgeWorkbenchActions')
     expect(src).toContain('DropdownMenu')
     expect(src).toContain('导入/新增')
+    expect(src).toContain('onRunCreated={onConnectorRunCreated}')
   })
 })
-

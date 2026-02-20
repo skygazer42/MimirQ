@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -39,6 +39,7 @@ type KnowledgeSettingsPanelProps = {
 
   connectorRuns: ConnectorRunOut[]
   connectorRunsLoading: boolean
+  connectorRunsUpdatedAt?: number | null
   onLoadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
 
   expandedConnectorRunId: string | null
@@ -72,6 +73,7 @@ export function KnowledgeSettingsPanel({
   selectedDatasetId,
   connectorRuns,
   connectorRunsLoading,
+  connectorRunsUpdatedAt,
   onLoadConnectorRuns,
   expandedConnectorRunId,
   onToggleExpandedConnectorRun,
@@ -80,6 +82,10 @@ export function KnowledgeSettingsPanel({
   onRetryFailedConnectorRun,
 }: KnowledgeSettingsPanelProps) {
   const [runStatusFilter, setRunStatusFilter] = useState<ConnectorRunStatusFilter>('all')
+
+  const runsUpdatedAtLabel = connectorRunsUpdatedAt
+    ? new Date(connectorRunsUpdatedAt).toLocaleTimeString()
+    : '—'
 
   const copyText = async (text: string, okMsg: string) => {
     try {
@@ -98,6 +104,17 @@ export function KnowledgeSettingsPanel({
     if (runStatusFilter === 'all') return connectorRuns
     return connectorRuns.filter((run) => String(run.status || '').toLowerCase() === runStatusFilter)
   }, [connectorRuns, runStatusFilter])
+
+  useEffect(() => {
+    if (!expandedConnectorRunId) return
+    if (!connectorRuns.length) return
+
+    const el = document.getElementById(`connector-run-${expandedConnectorRunId}`)
+    if (!el) return
+
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
+    el.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
+  }, [connectorRuns, expandedConnectorRunId])
 
   return (
     <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
@@ -229,6 +246,17 @@ export function KnowledgeSettingsPanel({
                 </Button>
               </div>
             </div>
+            <div className="text-[11px] text-muted-foreground">
+              范围:{' '}
+              <span
+                className="font-mono tabular-nums"
+                title={selectedDatasetId ? `dataset ${selectedDatasetId}` : 'all datasets'}
+              >
+                {selectedDatasetId ? selectedDatasetId : '全部数据集'}
+              </span>
+              <span className="text-muted-foreground/40"> · </span>
+              上次刷新: <span className="font-mono tabular-nums">{runsUpdatedAtLabel}</span>
+            </div>
 
             {connectorRunsLoading ? (
               <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
@@ -249,6 +277,7 @@ export function KnowledgeSettingsPanel({
               <div className="space-y-3">
                 {visibleConnectorRuns.map((run) => {
                   const badge = getConnectorRunBadge(run.status)
+                  const status = String(run.status || '').toLowerCase()
                   const stats = (run.stats || {}) as any
                   const created = Number(stats.created || 0)
                   const failed = Number(stats.failed || 0)
@@ -258,18 +287,25 @@ export function KnowledgeSettingsPanel({
                     totalUrls > 0 ? Math.max(0, Math.min(100, Math.round((processedUrls / totalUrls) * 100))) : 0
                   const errors: any[] = Array.isArray(stats.errors) ? stats.errors : []
                   const errorGroups: any[] = Array.isArray(stats.error_groups) ? stats.error_groups : []
-                  const isActive = run.status === 'pending' || run.status === 'running'
+                  const isActive = status === 'pending' || status === 'running'
                   const canRetryFailed = !isActive && failed > 0
                   const canResume =
                     !isActive &&
                     String(run.connector_id || '').toLowerCase() === 'url_batch' &&
-                    String(run.status || '').toLowerCase() === 'cancelled' &&
+                    status === 'cancelled' &&
                     totalUrls > processedUrls
 
                   const hasDocs = Array.isArray((run as any).documents) && (run as any).documents.length > 0
 
                   return (
-                    <div key={run.id} className="rounded-xl border border-border/60 bg-background/60 p-4">
+                    <div
+                      key={run.id}
+                      id={`connector-run-${run.id}`}
+                      className={cn(
+                        'rounded-xl border border-border/60 bg-background/60 p-4 scroll-mt-6',
+                        expandedConnectorRunId === run.id && 'ring-1 ring-primary/30'
+                      )}
+                    >
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -405,7 +441,7 @@ export function KnowledgeSettingsPanel({
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          {!isActive ? (
+                          {isActive ? (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" className="gap-2">

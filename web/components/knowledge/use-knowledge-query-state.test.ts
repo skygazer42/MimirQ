@@ -16,6 +16,7 @@ describe('Knowledge query state helpers', () => {
       folderPath: null,
       sortKey: 'created_at',
       sortDir: 'desc',
+      connectorRunId: null,
     })
   })
 
@@ -36,6 +37,7 @@ describe('Knowledge query state helpers', () => {
       folderPath: '/team',
       sortKey: 'filename',
       sortDir: 'asc',
+      connectorRunId: null,
     })
   })
 
@@ -56,6 +58,7 @@ describe('Knowledge query state helpers', () => {
       folderPath: '/team',
       sortKey: 'filename',
       sortDir: 'asc',
+      connectorRunId: null,
     })
 
     expect(qs).toBe(
@@ -73,7 +76,30 @@ describe('Knowledge query state helpers', () => {
         folderPath: null,
         sortKey: 'created_at',
         sortDir: 'desc',
+        connectorRunId: null,
       })
     ).toBe('')
+  })
+
+  it('supports deep links to a connector run in settings', () => {
+    const state = parseKnowledgeQueryState(new URLSearchParams('run=run_123'))
+
+    expect(state.activeTab).toBe('settings')
+    expect(state.connectorRunId).toBe('run_123')
+
+    expect(
+      serializeKnowledgeQueryState({
+        activeTab: 'settings',
+        viewMode: 'list',
+        docFilter: '',
+        statusFilter: 'all',
+        lifecycleFilter: 'active',
+        datasetScope: '__all__',
+        folderPath: null,
+        sortKey: 'created_at',
+        sortDir: 'desc',
+        connectorRunId: 'run_123',
+      })
+    ).toBe('tab=settings&run=run_123')
   })
 })

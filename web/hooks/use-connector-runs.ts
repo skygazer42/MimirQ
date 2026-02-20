@@ -24,6 +24,7 @@ type UseConnectorRunsOptions = {
 export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments }: UseConnectorRunsOptions) {
   const [connectorRuns, setConnectorRuns] = useState<ConnectorRunOut[]>([])
   const [connectorRunsLoading, setConnectorRunsLoading] = useState(false)
+  const [connectorRunsUpdatedAt, setConnectorRunsUpdatedAt] = useState<number | null>(null)
 
   const loadConnectorRuns = useCallback(
     async (params?: ConnectorRunsListParams) => {
@@ -34,6 +35,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
           dataset_id: params?.datasetId,
         })
         setConnectorRuns(res.items || [])
+        setConnectorRunsUpdatedAt(Date.now())
       } catch (err) {
         console.warn('Load connector runs failed:', err)
       } finally {
@@ -94,6 +96,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
   return {
     connectorRuns,
     connectorRunsLoading,
+    connectorRunsUpdatedAt,
     loadConnectorRuns,
     refreshSelectedDatasetRuns,
     cancelConnectorRun,
@@ -101,4 +104,3 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
     resumeConnectorRun,
   }
 }
-
