@@ -2,7 +2,7 @@
 
 import type { Document } from '@/types'
 
-import { Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
+import { Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -45,6 +45,11 @@ type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
   documents: Document[]
   filteredDocuments: Document[]
+
+  selectedDatasetId?: string
+  selectedDatasetLabel?: string
+  hasActiveFilters?: boolean
+  onSwitchToAllDatasets?: () => void
 
   scopeSummary?: React.ReactNode
 
@@ -119,6 +124,10 @@ export function KnowledgeDocumentsPanel({
   isLoading,
   documents,
   filteredDocuments,
+  selectedDatasetId,
+  selectedDatasetLabel,
+  hasActiveFilters = false,
+  onSwitchToAllDatasets,
   scopeSummary,
   docFilter,
   setDocFilter,
@@ -267,6 +276,40 @@ export function KnowledgeDocumentsPanel({
           <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3" />
           <p className="text-sm">正在加载文档库...</p>
         </div>
+      ) : documents.length === 0 && hasActiveFilters ? (
+        <div className="py-10">
+          <EmptyState
+            icon={Filter}
+            title="未找到匹配的文档"
+            description={<span className="text-muted-foreground">尝试清空筛选条件，重新查看范围内的全部文档。</span>}
+            className="bg-transparent shadow-none"
+          >
+            <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
+              清空筛选
+            </Button>
+          </EmptyState>
+        </div>
+      ) : documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets ? (
+        <div className="py-10">
+          <EmptyState
+            icon={Database}
+            title="该数据集暂无文档"
+            description={
+              <span className="text-muted-foreground">
+                当前范围为{' '}
+                <span className="font-mono tabular-nums">
+                  {selectedDatasetLabel ? selectedDatasetLabel : selectedDatasetId}
+                </span>
+                。可切换到全部数据集查看其他文档，或通过顶部“导入/新增”上传/导入。
+              </span>
+            }
+            className="bg-transparent shadow-none"
+          >
+            <Button type="button" variant="outline" className="rounded-xl" onClick={onSwitchToAllDatasets}>
+              切换到全部数据集
+            </Button>
+          </EmptyState>
+        </div>
       ) : documents.length === 0 ? (
         <div className="py-10">
           <EmptyState
@@ -294,14 +337,14 @@ export function KnowledgeDocumentsPanel({
         </div>
       ) : (
         <>
-          <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3">
+          <div className="mb-4 flex flex-col lg:flex-row lg:items-center gap-3">
             <div className="flex w-full lg:max-w-2xl flex-col sm:flex-row gap-3">
               <SearchInput
                 value={docFilter}
                 onValueChange={setDocFilter}
                 placeholder="搜索文档名称…"
                 containerClassName="w-full"
-                inputClassName="h-10 rounded-xl border-border/60 bg-background/60 backdrop-blur-sm placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40"
+                inputClassName="h-9 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"
               />
 
               <Select
@@ -313,7 +356,7 @@ export function KnowledgeDocumentsPanel({
                 }}
               >
                 <SelectTrigger
-                  className="h-10 w-full sm:w-[200px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm"
+                  className="h-9 w-full sm:w-[200px] rounded-lg border-border/60 bg-background"
                   aria-label="排序"
                 >
                   <SelectValue placeholder="排序" />
@@ -329,13 +372,11 @@ export function KnowledgeDocumentsPanel({
               </Select>
             </div>
 
-            {scopeSummary ? (
-              <div className="text-xs text-muted-foreground">{scopeSummary}</div>
-            ) : null}
+            {scopeSummary ? <div className="text-xs">{scopeSummary}</div> : null}
           </div>
 
           {selectedDocIds.length > 0 ? (
-            <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm px-4 py-3">
+            <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
               <div className="text-sm text-foreground">
                 已选 <span className="font-mono tabular-nums">{selectedDocIds.length}</span> 项
               </div>

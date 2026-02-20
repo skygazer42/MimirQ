@@ -547,65 +547,65 @@ export default function KnowledgePage() {
               onConnectorRunCreated={handleConnectorRunCreated}
             />
           }
-          top={
-            <StatsGrid className={showExtraCard ? "lg:grid-cols-5" : "lg:grid-cols-4"}>
-              <StatCard
-                icon={FileStack}
-                label="文档总数"
-                value={totalDocs}
-                color="sky"
-                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
-              />
-              <StatCard
-                icon={CheckCircle}
-                label="已就绪"
-                value={completedDocsValue}
-                color="green"
-                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
-              />
-              <StatCard
-                icon={Layers}
-                label="知识分块"
-                value={totalChunksValue}
-                color="teal"
-                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
-              />
-              <StatCard
-                icon={HardDrive}
-                label="存储占用"
-                value={totalSizeValue}
-                color="orange"
-                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
-              />
-              {showExtraCard && (
-                <StatCard
-                  icon={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? XCircle : AlertTriangle) : Loader2}
-                  label={(failedDocsCount + quarantinedDocsCount) > 0 ? '需关注' : '处理中'}
-                  value={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount + quarantinedDocsCount) : processingDocsCount}
-                  color={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? 'red' : 'amber') : 'sky'}
-                  className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
-                />
-              )}
-            </StatsGrid>
-          }
-          toolbar={
+	          top={
+	            <StatsGrid className={showExtraCard ? "lg:grid-cols-5" : "lg:grid-cols-4"}>
+	              <StatCard
+	                icon={FileStack}
+	                label="文档总数"
+	                value={totalDocs}
+	                color="sky"
+	                className="bg-card border-border/60 shadow-soft"
+	              />
+	              <StatCard
+	                icon={CheckCircle}
+	                label="已就绪"
+	                value={completedDocsValue}
+	                color="green"
+	                className="bg-card border-border/60 shadow-soft"
+	              />
+	              <StatCard
+	                icon={Layers}
+	                label="知识分块"
+	                value={totalChunksValue}
+	                color="teal"
+	                className="bg-card border-border/60 shadow-soft"
+	              />
+	              <StatCard
+	                icon={HardDrive}
+	                label="存储占用"
+	                value={totalSizeValue}
+	                color="orange"
+	                className="bg-card border-border/60 shadow-soft"
+	              />
+	              {showExtraCard && (
+	                <StatCard
+	                  icon={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? XCircle : AlertTriangle) : Loader2}
+	                  label={(failedDocsCount + quarantinedDocsCount) > 0 ? '需关注' : '处理中'}
+	                  value={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount + quarantinedDocsCount) : processingDocsCount}
+	                  color={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? 'red' : 'amber') : 'sky'}
+	                  className="bg-card border-border/60 shadow-soft"
+	                />
+	              )}
+	            </StatsGrid>
+	          }
+	          toolbar={
             <div className="flex items-center justify-between">
               <div className="flex gap-1 -mb-px">
                 {[
                   { key: 'documents' as TabType, label: '文档列表', icon: FileText },
                   { key: 'retrieval' as TabType, label: '检索测试', icon: Zap },
                   { key: 'settings' as TabType, label: '配置', icon: Settings },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={cn(
-                      'flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors focus-ring',
-                      activeTab === tab.key
-                        ? 'text-primary border-primary bg-primary/10'
-                        : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/30'
-                    )}
-                  >
+	                ].map((tab) => (
+	                  <button
+	                    key={tab.key}
+	                    onClick={() => setActiveTab(tab.key)}
+	                    className={cn(
+	                      'flex h-10 items-center gap-2 px-4 text-sm font-medium border-b-2 transition-colors focus-ring',
+	                      activeTab === tab.key
+	                        ? 'text-primary border-primary bg-primary/10'
+	                        : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/30'
+	                    )}
+	                  >
                     <tab.icon
                       className={cn(
                         "w-4 h-4",
@@ -740,56 +740,70 @@ export default function KnowledgePage() {
             aria-hidden="true"
             className="h-0 w-0"
           />
-          {activeTab === 'documents' ? (
-            <KnowledgeDocumentsPanel
-              isLoading={isLoading}
-              documents={documents}
-              filteredDocuments={filteredDocuments}
-              scopeSummary={
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
-                    数据集:{' '}
-                    <span className="font-medium ml-1">
-                      {selectedDatasetId
-                        ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
-                        : '全部'}
-                    </span>
-                  </span>
+	          {activeTab === 'documents' ? (
+	            <KnowledgeDocumentsPanel
+	              isLoading={isLoading}
+	              documents={documents}
+	              filteredDocuments={filteredDocuments}
+	              selectedDatasetId={selectedDatasetId}
+	              selectedDatasetLabel={
+	                selectedDatasetId
+	                  ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
+	                  : undefined
+	              }
+	              hasActiveFilters={Boolean(docFilter.trim()) || statusFilter !== 'all' || lifecycleFilter !== 'active' || Boolean(folderPath)}
+	              onSwitchToAllDatasets={() => {
+	                setDatasetScope(DATASET_ALL)
+	                setFolderPath(null)
+	              }}
+	              scopeSummary={
+	                <div className="flex flex-wrap items-center gap-2">
+	                  <span
+	                    className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground"
+	                    title={selectedDatasetId ? `dataset ${selectedDatasetId}` : 'all datasets'}
+	                  >
+	                    范围:
+	                    <span className="font-medium text-foreground ml-1">
+	                      {selectedDatasetId
+	                        ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
+	                        : '全部数据集'}
+	                    </span>
+	                  </span>
 
-                  {selectedDatasetId && folderPath ? (
-                    <span
-                      className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 max-w-xs truncate"
-                      title={folderPath}
-                    >
-                      目录: <span className="ml-1 truncate">{folderPath}</span>
-                    </span>
-                  ) : null}
+	                  {selectedDatasetId && folderPath ? (
+	                    <span
+	                      className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground max-w-xs truncate"
+	                      title={folderPath}
+	                    >
+	                      目录: <span className="ml-1 truncate font-medium text-foreground">{folderPath}</span>
+	                    </span>
+	                  ) : null}
 
-                  {statusFilter !== 'all' ? (
-                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
-                      状态:{' '}
-                      <span className="ml-1">
-                        {statusFilter === 'completed'
-                          ? '已就绪'
-                          : statusFilter === 'processing'
-                            ? '处理中'
-                            : statusFilter === 'failed'
+	                  {statusFilter !== 'all' ? (
+	                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
+	                      状态:
+	                      <span className="ml-1 font-medium text-foreground">
+	                        {statusFilter === 'completed'
+	                          ? '已就绪'
+	                          : statusFilter === 'processing'
+	                            ? '处理中'
+	                            : statusFilter === 'failed'
                               ? '失败'
                               : statusFilter === 'quarantined'
                                 ? '隔离'
                                 : statusFilter}
                       </span>
                     </span>
-                  ) : null}
+	                  ) : null}
 
-                  {lifecycleFilter !== 'active' ? (
-                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
-                      生命周期:{' '}
-                      <span className="ml-1">
-                        {lifecycleFilter === 'archived'
-                          ? '已归档'
-                          : lifecycleFilter === 'disabled'
-                            ? '已禁用'
+	                  {lifecycleFilter !== 'active' ? (
+	                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
+	                      生命周期:
+	                      <span className="ml-1 font-medium text-foreground">
+	                        {lifecycleFilter === 'archived'
+	                          ? '已归档'
+	                          : lifecycleFilter === 'disabled'
+	                            ? '已禁用'
                             : lifecycleFilter === 'all'
                               ? '全部'
                               : lifecycleFilter}
@@ -799,13 +813,14 @@ export default function KnowledgePage() {
                 </div>
               }
 
-              docFilter={docFilter}
-              setDocFilter={setDocFilter}
-              onClearFilters={() => {
-                setDocFilter('')
-                setStatusFilter('all')
-                setLifecycleFilter('active')
-              }}
+	              docFilter={docFilter}
+	              setDocFilter={setDocFilter}
+	              onClearFilters={() => {
+	                setDocFilter('')
+	                setStatusFilter('all')
+	                setLifecycleFilter('active')
+	                setFolderPath(null)
+	              }}
 
               sortKey={sortKey}
               sortDir={sortDir}
