@@ -3,41 +3,43 @@
  */
 'use client'
 
+import { Layers } from 'lucide-react'
+
 import { TopBar } from './top-bar'
 import { Sidebar } from './sidebar'
 import { OriginalPreview } from './preview/original-preview'
 import { ChunkList } from './preview/chunk-list'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { PipelineRail, WorkbenchPane, WorkbenchPanelDialog } from '@/components/workbench'
+import { PipelineRail, WorkbenchPane, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 
 export function Workbench() {
-  const { showOriginalPanel, showSettingsPanel, toggleSettingsPanel } = useChunkPreview()
+  const { currentFile, currentFileItem, showOriginalPanel, showSettingsPanel, toggleSettingsPanel } = useChunkPreview()
+  const toolbar = currentFile && currentFileItem ? <TopBar /> : null
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground font-sans">
-      {/* 顶部栏 */}
-      <TopBar />
-
-      <div className="px-4 py-3 border-b border-border/60 bg-background/70 flex-shrink-0">
-        <PipelineRail />
-      </div>
-
-      <div className="flex flex-1 min-h-0 overflow-hidden gap-4 p-4">
-        {/* Left: settings */}
-        <div className="hidden lg:flex min-h-0">
-          <WorkbenchPane className="w-80" bodyClassName="p-0">
+    <>
+      <WorkbenchScaffold
+        title="切片预览"
+        description="调整分块策略并预览结果"
+        icon={Layers}
+        iconColor="text-primary"
+        size="full"
+        pipelineRail={<PipelineRail />}
+        toolbar={toolbar}
+        leftPanel={
+          <WorkbenchPane bodyClassName="p-0">
             <Sidebar variant="pane" />
           </WorkbenchPane>
-        </div>
-
-        {/* Main: original vs chunks */}
-        <WorkbenchPane className="flex-1 min-w-0" bodyClassName="p-0 overflow-hidden">
-          <main className="flex h-full min-h-0 min-w-0 flex-col lg:flex-row overflow-hidden bg-background">
-            {showOriginalPanel ? <OriginalPreview /> : null}
-            <ChunkList />
-          </main>
-        </WorkbenchPane>
-      </div>
+        }
+        mainPanel={
+          <WorkbenchPane className="flex-1 min-w-0" bodyClassName="p-0 overflow-hidden">
+            <main className="flex h-full min-h-0 min-w-0 flex-col lg:flex-row overflow-hidden bg-background">
+              {showOriginalPanel ? <OriginalPreview /> : null}
+              <ChunkList />
+            </main>
+          </WorkbenchPane>
+        }
+      />
 
       {/* Mobile: settings panel as a modal (sheet-like) */}
       <WorkbenchPanelDialog
@@ -49,6 +51,6 @@ export function Workbench() {
       >
         <Sidebar variant="dialog" />
       </WorkbenchPanelDialog>
-    </div>
+    </>
   )
 }
