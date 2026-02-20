@@ -1,24 +1,18 @@
+'use client'
+
 import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
 
-import type { IndexAuditResponse } from '@/types'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
+import { useIndexAudit } from '@/hooks/use-index-audit'
 
 type KnowledgeRetrievalPanelProps = {
   selectedDatasetId?: string
-  indexAudit: IndexAuditResponse | null
-  indexAuditLoading: boolean
-  indexAuditError: string | null
-  onRunIndexAudit: () => void | Promise<void>
 }
 
-export function KnowledgeRetrievalPanel({
-  selectedDatasetId,
-  indexAudit,
-  indexAuditLoading,
-  indexAuditError,
-  onRunIndexAudit,
-}: KnowledgeRetrievalPanelProps) {
+export function KnowledgeRetrievalPanel({ selectedDatasetId }: KnowledgeRetrievalPanelProps) {
+  const { indexAudit, indexAuditError, indexAuditLoading, runIndexAudit } = useIndexAudit({ selectedDatasetId })
+
   return (
     <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none space-y-4">
       <Panel padding="none" className="rounded-2xl p-6 text-left bg-background/60 border border-border/60">
@@ -38,7 +32,7 @@ export function KnowledgeRetrievalPanel({
             type="button"
             variant="outline"
             className="h-9 rounded-xl border-border/60 bg-background/60 text-muted-foreground hover:bg-background gap-2"
-            onClick={() => void onRunIndexAudit()}
+            onClick={() => void runIndexAudit()}
             disabled={!selectedDatasetId || indexAuditLoading}
           >
             {indexAuditLoading ? (
@@ -118,4 +112,3 @@ export function KnowledgeRetrievalPanel({
     </div>
   )
 }
-
