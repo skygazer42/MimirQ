@@ -141,6 +141,16 @@ export function KnowledgeSettingsPanel({
     })
   }, [connectorRuns])
 
+  const expandedRun = useMemo(() => {
+    if (!expandedConnectorRunId) return null
+    return connectorRuns.find((r) => r.id === expandedConnectorRunId) ?? null
+  }, [connectorRuns, expandedConnectorRunId])
+
+  const expandedRunIsVisible = useMemo(() => {
+    if (!expandedConnectorRunId) return false
+    return visibleConnectorRuns.some((r) => r.id === expandedConnectorRunId)
+  }, [expandedConnectorRunId, visibleConnectorRuns])
+
   useEffect(() => {
     if (!autoRefreshRuns) return
     if (!hasActiveRuns) return
@@ -319,7 +329,11 @@ export function KnowledgeSettingsPanel({
               <span className="text-muted-foreground/40"> · </span>
               自动刷新:{' '}
               <span className="font-mono tabular-nums">
-                {autoRefreshRuns && hasActiveRuns ? `开（${Math.round(autoRefreshIntervalMs / 1000)}s）` : '关'}
+                {autoRefreshRuns
+                  ? hasActiveRuns
+                    ? `开（${Math.round(autoRefreshIntervalMs / 1000)}s）`
+                    : '开（等待任务）'
+                  : '关'}
               </span>
             </div>
 
@@ -340,6 +354,45 @@ export function KnowledgeSettingsPanel({
               </div>
             ) : (
               <div className="space-y-3">
+                {expandedConnectorRunId && !expandedRunIsVisible ? (
+                  <div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm">
+                    {expandedRun ? (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-muted-foreground">
+                          当前任务被筛选条件隐藏。run_id: <span className="font-mono tabular-nums">{expandedConnectorRunId}</span>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setRunStatusFilter('all')}>
+                          清除筛选
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-muted-foreground">
+                          未在当前列表中找到该任务。可能任务较旧，或当前范围不包含该数据集。run_id:{' '}
+                          <span className="font-mono tabular-nums">{expandedConnectorRunId}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void onLoadConnectorRuns({ datasetId: selectedDatasetId })}
+                          >
+                            刷新
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onToggleExpandedConnectorRun(expandedConnectorRunId)}
+                          >
+                            清除定位
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
                 {visibleConnectorRuns.map((run) => {
                   const badge = getConnectorRunBadge(run.status)
                   const status = String(run.status || '').toLowerCase()
