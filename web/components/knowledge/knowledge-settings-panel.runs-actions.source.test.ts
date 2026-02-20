@@ -9,6 +9,6 @@ describe('KnowledgeSettingsPanel connector runs actions', () => {
 
     expect(src).toContain('复制链接')
     expect(src).toContain('/knowledge?tab=settings&run=')
+    expect(src).toContain('自动刷新')
   })
 })
-

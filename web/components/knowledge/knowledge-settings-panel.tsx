@@ -94,6 +94,8 @@ export function KnowledgeSettingsPanel({
   onRetryFailedConnectorRun,
 }: KnowledgeSettingsPanelProps) {
   const [runStatusFilter, setRunStatusFilter] = useState<ConnectorRunStatusFilter>('all')
+  const [autoRefreshRuns, setAutoRefreshRuns] = useState(false)
+  const autoRefreshIntervalMs = 10_000
 
   const runsUpdatedAtLabel = connectorRunsUpdatedAt
     ? new Date(connectorRunsUpdatedAt).toLocaleTimeString()
@@ -131,6 +133,26 @@ export function KnowledgeSettingsPanel({
       return createdB - createdA
     })
   }, [connectorRuns, runStatusFilter])
+
+  const hasActiveRuns = useMemo(() => {
+    return connectorRuns.some((run) => {
+      const status = String(run.status || '').toLowerCase()
+      return status === 'pending' || status === 'running'
+    })
+  }, [connectorRuns])
+
+  useEffect(() => {
+    if (!autoRefreshRuns) return
+    if (!hasActiveRuns) return
+
+    const id = window.setInterval(() => {
+      if (document.hidden) return
+      if (connectorRunsLoading) return
+      void onLoadConnectorRuns({ datasetId: selectedDatasetId })
+    }, autoRefreshIntervalMs)
+
+    return () => window.clearInterval(id)
+  }, [autoRefreshIntervalMs, autoRefreshRuns, connectorRunsLoading, hasActiveRuns, onLoadConnectorRuns, selectedDatasetId])
 
   useEffect(() => {
     if (!expandedConnectorRunId) return
@@ -271,6 +293,17 @@ export function KnowledgeSettingsPanel({
                   <RefreshCw className={cn('w-4 h-4', connectorRunsLoading && 'animate-spin motion-reduce:animate-none')} />
                   刷新
                 </Button>
+                <Button
+                  type="button"
+                  variant={autoRefreshRuns ? 'secondary' : 'outline'}
+                  className="h-9"
+                  aria-pressed={autoRefreshRuns}
+                  onClick={() => setAutoRefreshRuns((v) => !v)}
+                  disabled={!hasActiveRuns && !autoRefreshRuns}
+                  title={!hasActiveRuns && !autoRefreshRuns ? '仅在有运行中任务时可开启' : undefined}
+                >
+                  自动刷新
+                </Button>
               </div>
             </div>
             <div className="text-[11px] text-muted-foreground">
@@ -283,6 +316,11 @@ export function KnowledgeSettingsPanel({
               </span>
               <span className="text-muted-foreground/40"> · </span>
               上次刷新: <span className="font-mono tabular-nums">{runsUpdatedAtLabel}</span>
+              <span className="text-muted-foreground/40"> · </span>
+              自动刷新:{' '}
+              <span className="font-mono tabular-nums">
+                {autoRefreshRuns && hasActiveRuns ? `开（${Math.round(autoRefreshIntervalMs / 1000)}s）` : '关'}
+              </span>
             </div>
 
             {connectorRunsLoading ? (
