@@ -124,6 +124,11 @@ export default function KnowledgePage() {
   const [folderPath, setFolderPath] = useState<string | null>(null)
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const selectedDatasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
+  const datasetLabelById = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const ds of datasets) out[ds.id] = ds.name
+    return out
+  }, [datasets])
   const [docStats, setDocStats] = useState<DocumentStats | null>(null)
   const [docStatsLoading, setDocStatsLoading] = useState(false)
   const docStatsSeqRef = useRef(0)
@@ -304,13 +309,13 @@ export default function KnowledgePage() {
     overscan: 6,
   })
 
-  const docsTableVirtualizer = useVirtualizer({
-    count: activeTab === 'documents' && viewMode === 'list' ? filteredDocuments.length : 0,
-    getScrollElement: () => mainPaneScrollEl,
-    estimateSize: () => 72,
-    overscan: 10,
-    getItemKey: (idx) => filteredDocuments[idx]?.id ?? idx,
-  })
+	  const docsTableVirtualizer = useVirtualizer({
+	    count: activeTab === 'documents' && viewMode === 'list' ? filteredDocuments.length : 0,
+	    getScrollElement: () => mainPaneScrollEl,
+	    estimateSize: () => 60,
+	    overscan: 10,
+	    getItemKey: (idx) => filteredDocuments[idx]?.id ?? idx,
+	  })
 
   const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
   const allVisibleSelected = filteredDocuments.length > 0 && filteredDocuments.every((d) => selectedSet.has(d.id))
@@ -751,6 +756,7 @@ export default function KnowledgePage() {
 	                  ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
 	                  : undefined
 	              }
+	              datasetLabelById={datasetLabelById}
 	              hasActiveFilters={Boolean(docFilter.trim()) || statusFilter !== 'all' || lifecycleFilter !== 'active' || Boolean(folderPath)}
 	              onSwitchToAllDatasets={() => {
 	                setDatasetScope(DATASET_ALL)
