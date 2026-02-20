@@ -48,6 +48,7 @@ type KnowledgeDocumentsPanelProps = {
 
   selectedDatasetId?: string
   selectedDatasetLabel?: string
+  datasetLabelById?: Record<string, string>
   hasActiveFilters?: boolean
   onSwitchToAllDatasets?: () => void
 
@@ -126,6 +127,7 @@ export function KnowledgeDocumentsPanel({
   filteredDocuments,
   selectedDatasetId,
   selectedDatasetLabel,
+  datasetLabelById,
   hasActiveFilters = false,
   onSwitchToAllDatasets,
   scopeSummary,
@@ -165,6 +167,9 @@ export function KnowledgeDocumentsPanel({
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
   const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
+
+  const showDatasetColumn = !selectedDatasetId
+  const tableColumnCount = showDatasetColumn ? 9 : 8
 
   const docsGridVirtualRows = docsGridVirtualizer.getVirtualItems()
   const docsTableVirtualRows = docsTableVirtualizer.getVirtualItems()
@@ -552,35 +557,38 @@ export function KnowledgeDocumentsPanel({
                 )
               })}
             </div>
-          ) : (
-            <Panel padding="none" className="rounded-xl overflow-hidden">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
-                  <tr>
-                    <th className="sticky top-0 z-10 bg-card px-4 py-4 font-medium w-10">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-                        checked={allVisibleSelected}
-                        onChange={toggleSelectAllVisible}
-                        aria-label="全选当前列表"
-                      />
-                    </th>
-                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">文档名称</th>
-                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">标签</th>
-                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">状态</th>
-                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">分块</th>
-                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">大小</th>
-                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium">上传时间</th>
-                    <th className="sticky top-0 z-10 bg-card px-6 py-4 font-medium text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {docsTablePaddingTop > 0 ? (
-                    <tr aria-hidden="true">
-                      <td colSpan={8} className="p-0" style={{ height: `${docsTablePaddingTop}px` }} />
-                    </tr>
-                  ) : null}
+	          ) : (
+	            <Panel padding="none" className="rounded-xl overflow-hidden">
+	              <table className="w-full text-sm text-left">
+	                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
+	                  <tr>
+	                    <th className="sticky top-0 z-10 bg-card px-3 py-3 font-medium w-10">
+	                      <input
+	                        type="checkbox"
+	                        className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+	                        checked={allVisibleSelected}
+	                        onChange={toggleSelectAllVisible}
+	                        aria-label="全选当前列表"
+	                      />
+	                    </th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">文档名称</th>
+	                    {showDatasetColumn ? (
+	                      <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">数据集</th>
+	                    ) : null}
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">标签</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">状态</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">分块</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">大小</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">上传时间</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">操作</th>
+	                  </tr>
+	                </thead>
+	                <tbody className="divide-y divide-border/60">
+	                  {docsTablePaddingTop > 0 ? (
+	                    <tr aria-hidden="true">
+	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }} />
+	                    </tr>
+	                  ) : null}
 
                   {docsTableVirtualRows.map((virtualRow: any) => {
                     const doc = filteredDocuments[virtualRow.index]
@@ -590,90 +598,104 @@ export function KnowledgeDocumentsPanel({
                     const TypeIcon = fileType.icon
                     const userTags = getUserTagsFromDocument(doc)
                     return (
-                      <tr
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={docsTableVirtualizer.measureElement}
-                        className="hover:bg-muted/20 transition-colors group"
-                      >
-                        <td className="px-4 py-4 align-top">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-                            checked={selectedSet.has(doc.id)}
-                            onChange={() => toggleDocSelection(doc.id)}
-                            aria-label={`选择文档 ${doc.filename}`}
-                          />
-                        </td>
-                        <td className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
-                          <div className={cn('p-2 rounded-lg border', fileType.bg, fileType.border, fileType.color)}>
-                            <TypeIcon className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0 flex items-center gap-2">
-                            <span className="truncate max-w-[200px]" title={doc.filename}>
-                              {doc.filename}
-                            </span>
-                            <span
-                              className={cn(
-                                'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ',
-                                fileType.bg,
-                                fileType.border,
-                                fileType.color
-                              )}
-                              title={fileType.label}
-                            >
-                              {fileType.label}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 align-top">
-                          {userTags.length ? (
-                            <DocumentTags tags={userTags} max={3} dense />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <StatusBadge status={badge.status} label={badge.label} />
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground font-mono tabular-nums text-xs">{doc.chunk_count || '-'}</td>
-                        <td className="px-6 py-4 text-muted-foreground font-mono tabular-nums text-xs">
-                          {formatFileSize(doc.file_size)}
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground font-mono tabular-nums text-xs">
-                          {formatDate(doc.created_at)}
-                        </td>
-                        <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                          <DocumentDetailDialog
-                            document={doc}
-                            trigger={
-                              <IconButton
-                                label="预览内容"
-                                variant="ghost"
-                                className={cn(
-                                  'h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity',
-                                  // Hover-only affordances fail on touch; reveal on small screens and on keyboard focus.
-                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
-                                )}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </IconButton>
-                            }
-                          />
+	                      <tr
+	                        key={virtualRow.key}
+	                        data-index={virtualRow.index}
+	                        ref={docsTableVirtualizer.measureElement}
+	                        className="hover:bg-muted/20 transition-colors group"
+	                      >
+	                        <td className="px-3 py-3 align-middle">
+	                          <input
+	                            type="checkbox"
+	                            className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+	                            checked={selectedSet.has(doc.id)}
+	                            onChange={() => toggleDocSelection(doc.id)}
+	                            aria-label={`选择文档 ${doc.filename}`}
+	                          />
+	                        </td>
+	                        <td className="px-4 py-3 font-medium text-foreground flex items-center gap-3">
+	                          <div className={cn('p-1.5 rounded-md border', fileType.bg, fileType.border, fileType.color)}>
+	                            <TypeIcon className="w-4 h-4" />
+	                          </div>
+	                          <div className="min-w-0 flex items-center gap-2">
+	                            <span className="truncate max-w-[260px]" title={doc.filename}>
+	                              {doc.filename}
+	                            </span>
+	                            <span
+	                              className={cn(
+	                                'inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ',
+	                                fileType.bg,
+	                                fileType.border,
+	                                fileType.color
+	                              )}
+	                              title={fileType.label}
+	                            >
+	                              {fileType.label}
+	                            </span>
+	                          </div>
+	                        </td>
+	                        {showDatasetColumn ? (
+	                          <td className="px-4 py-3 align-middle">
+	                            {doc.dataset_id ? (
+	                              <span
+	                                className="text-xs text-muted-foreground truncate block max-w-[180px]"
+	                                title={doc.dataset_id}
+	                              >
+	                                {datasetLabelById?.[doc.dataset_id] ?? doc.dataset_id}
+	                              </span>
+	                            ) : (
+	                              <span className="text-xs text-muted-foreground">—</span>
+	                            )}
+	                          </td>
+	                        ) : null}
+	                        <td className="px-4 py-3 align-middle">
+	                          {userTags.length ? (
+	                            <DocumentTags tags={userTags} max={3} dense />
+	                          ) : (
+	                            <span className="text-xs text-muted-foreground">—</span>
+	                          )}
+	                        </td>
+	                        <td className="px-4 py-3 align-middle">
+	                          <StatusBadge status={badge.status} label={badge.label} dense />
+	                        </td>
+	                        <td className="px-4 py-3 align-middle text-muted-foreground font-mono tabular-nums text-xs">{doc.chunk_count || '-'}</td>
+	                        <td className="px-4 py-3 align-middle text-muted-foreground font-mono tabular-nums text-xs">
+	                          {formatFileSize(doc.file_size)}
+	                        </td>
+	                        <td className="px-4 py-3 align-middle text-muted-foreground font-mono tabular-nums text-xs">
+	                          {formatDate(doc.created_at)}
+	                        </td>
+	                        <td className="px-4 py-3 align-middle text-right flex items-center justify-end gap-1">
+	                          <DocumentDetailDialog
+	                            document={doc}
+	                            trigger={
+	                              <IconButton
+	                                label="预览内容"
+	                                variant="ghost"
+	                                className={cn(
+	                                  'h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity',
+	                                  // Hover-only affordances fail on touch; reveal on small screens and on keyboard focus.
+	                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
+	                                )}
+	                              >
+	                                <Eye className="h-4 w-4" />
+	                              </IconButton>
+	                            }
+	                          />
 
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <IconButton
-                                label="更多操作"
-                                variant="ghost"
-                                className={cn(
-                                  'h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity',
-                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
-                                )}
-                              >
-                                <MoreVertical className="w-4 h-4" />
-                              </IconButton>
-                            </DropdownMenuTrigger>
+	                            <DropdownMenuTrigger asChild>
+	                              <IconButton
+	                                label="更多操作"
+	                                variant="ghost"
+	                                className={cn(
+	                                  'h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity',
+	                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
+	                                )}
+	                              >
+	                                <MoreVertical className="h-4 w-4" />
+	                              </IconButton>
+	                            </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
                               <DropdownMenuItem onSelect={() => void copyText(doc.id, '已复制文档 ID')}>
                                 复制文档 ID
@@ -705,14 +727,14 @@ export function KnowledgeDocumentsPanel({
                     )
                   })}
 
-                  {docsTablePaddingBottom > 0 ? (
-                    <tr aria-hidden="true">
-                      <td colSpan={8} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }} />
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </Panel>
+	                  {docsTablePaddingBottom > 0 ? (
+	                    <tr aria-hidden="true">
+	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }} />
+	                    </tr>
+	                  ) : null}
+	                </tbody>
+	              </table>
+	            </Panel>
           )}
         </>
       )}
