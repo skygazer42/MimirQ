@@ -24,7 +24,6 @@ import {
   RotateCcw,
   Trash2,
   RefreshCw,
-  BarChart3,
   Layers,
   HardDrive,
   FileStack,
@@ -50,8 +49,8 @@ import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { toSourcePathPrefix } from '@/lib/document-folders'
-import type { Dataset, Document, DocumentStats, IndexAuditResponse } from '@/types'
-import { datasetApi, documentApi, observabilityApi } from '@/lib/api-client'
+import type { Dataset, Document, DocumentStats } from '@/types'
+import { datasetApi, documentApi } from '@/lib/api-client'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { KnowledgeDocumentsPanel } from '@/components/knowledge/knowledge-documents-panel'
@@ -247,11 +246,6 @@ export default function KnowledgePage() {
 
     return () => window.clearTimeout(t)
   }, [activeTab, docFilter, selectedDatasetId, lifecycleFilter])
-
-  // 检索相关（Index Audit）
-  const [indexAudit, setIndexAudit] = useState<IndexAuditResponse | null>(null)
-  const [indexAuditLoading, setIndexAuditLoading] = useState(false)
-  const [indexAuditError, setIndexAuditError] = useState<string | null>(null)
 
   const totalDocs = docStats?.total ?? total ?? documents.length
   const byStatus = docStats?.by_status || {}
@@ -465,25 +459,6 @@ export default function KnowledgePage() {
     }
     e.target.value = ''
   }, [uploadDocuments])
-
-  const handleRunIndexAudit = useCallback(async () => {
-    if (!selectedDatasetId) {
-      toast.error('请先选择数据集再运行 Index Audit')
-      return
-    }
-    setIndexAuditLoading(true)
-    setIndexAuditError(null)
-    try {
-      const res = await observabilityApi.getIndexAudit({ dataset_id: selectedDatasetId })
-      setIndexAudit(res)
-      toast.success('Index Audit 完成')
-    } catch (err: any) {
-      console.error('Index audit failed:', err)
-      setIndexAuditError(formatApiError(err, 'Index Audit 失败'))
-    } finally {
-      setIndexAuditLoading(false)
-    }
-  }, [selectedDatasetId])
 
   return (
     <AppFrame>
@@ -785,10 +760,6 @@ export default function KnowledgePage() {
 			          {activeTab === 'retrieval' && (
 			            <KnowledgeRetrievalPanel
 			              selectedDatasetId={selectedDatasetId}
-			              indexAudit={indexAudit}
-			              indexAuditLoading={indexAuditLoading}
-			              indexAuditError={indexAuditError}
-			              onRunIndexAudit={handleRunIndexAudit}
 			            />
 			          )}
 
