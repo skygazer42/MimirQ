@@ -597,13 +597,14 @@ export function KnowledgeDocumentsPanel({
                     const fileType = getFileTypeMeta(doc)
                     const TypeIcon = fileType.icon
                     const userTags = getUserTagsFromDocument(doc)
+                    const sourcePath = String((doc.metadata as any)?.source_path || '').trim()
                     return (
-	                      <tr
-	                        key={virtualRow.key}
-	                        data-index={virtualRow.index}
-	                        ref={docsTableVirtualizer.measureElement}
-	                        className="hover:bg-muted/20 transition-colors group"
-	                      >
+                      <tr
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={docsTableVirtualizer.measureElement}
+                        className="hover:bg-muted/20 transition-colors group"
+                      >
 	                        <td className="px-3 py-3 align-middle">
 	                          <input
 	                            type="checkbox"
@@ -613,27 +614,41 @@ export function KnowledgeDocumentsPanel({
 	                            aria-label={`选择文档 ${doc.filename}`}
 	                          />
 	                        </td>
-	                        <td className="px-4 py-3 font-medium text-foreground flex items-center gap-3">
-	                          <div className={cn('p-1.5 rounded-md border', fileType.bg, fileType.border, fileType.color)}>
-	                            <TypeIcon className="w-4 h-4" />
-	                          </div>
-	                          <div className="min-w-0 flex items-center gap-2">
-	                            <span className="truncate max-w-[260px]" title={doc.filename}>
-	                              {doc.filename}
-	                            </span>
-	                            <span
-	                              className={cn(
-	                                'inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ',
-	                                fileType.bg,
-	                                fileType.border,
-	                                fileType.color
-	                              )}
-	                              title={fileType.label}
-	                            >
-	                              {fileType.label}
-	                            </span>
-	                          </div>
-	                        </td>
+                        <td className="px-4 py-3 font-medium text-foreground">
+                          <div className="flex items-start gap-3">
+                            <div className={cn('mt-0.5 p-1.5 rounded-md border', fileType.bg, fileType.border, fileType.color)}>
+                              <TypeIcon className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate max-w-[260px]" title={doc.filename}>
+                                  {doc.filename}
+                                </span>
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ',
+                                    fileType.bg,
+                                    fileType.border,
+                                    fileType.color
+                                  )}
+                                  title={fileType.label}
+                                >
+                                  {fileType.label}
+                                </span>
+                              </div>
+                              {sourcePath ? (
+                                <button
+                                  type="button"
+                                  className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4"
+                                  onClick={() => void copyText(sourcePath, '已复制 Source Path')}
+                                  title="点击复制 Source Path"
+                                >
+                                  {sourcePath}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
 	                        {showDatasetColumn ? (
 	                          <td className="px-4 py-3 align-middle">
 	                            {doc.dataset_id ? (
