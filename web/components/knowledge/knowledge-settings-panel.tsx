@@ -7,6 +7,7 @@ import {
   Copy,
   FileText,
   Layers,
+  Link2,
   Play,
   RefreshCw,
   RotateCcw,
@@ -69,6 +70,17 @@ function getConnectorRunBadge(status: string): { status: StatusBadgeStatus; labe
   }
 }
 
+function formatDurationMs(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const s = totalSeconds % 60
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  const m = totalMinutes % 60
+  const h = Math.floor(totalMinutes / 60)
+  if (h > 0) return `${h}h${String(m).padStart(2, '0')}m`
+  if (m > 0) return `${m}m${String(s).padStart(2, '0')}s`
+  return `${s}s`
+}
+
 export function KnowledgeSettingsPanel({
   selectedDatasetId,
   connectorRuns,
@@ -101,8 +113,23 @@ export function KnowledgeSettingsPanel({
   }
 
   const visibleConnectorRuns = useMemo(() => {
-    if (runStatusFilter === 'all') return connectorRuns
-    return connectorRuns.filter((run) => String(run.status || '').toLowerCase() === runStatusFilter)
+    const filtered =
+      runStatusFilter === 'all'
+        ? connectorRuns
+        : connectorRuns.filter((run) => String(run.status || '').toLowerCase() === runStatusFilter)
+
+    // Operational ordering: keep active runs on top; then newest first.
+    return [...filtered].sort((a, b) => {
+      const statusA = String(a.status || '').toLowerCase()
+      const statusB = String(b.status || '').toLowerCase()
+      const activeA = statusA === 'pending' || statusA === 'running'
+      const activeB = statusB === 'pending' || statusB === 'running'
+      if (activeA !== activeB) return activeA ? -1 : 1
+
+      const createdA = Number.isFinite(Date.parse(a.created_at)) ? Date.parse(a.created_at) : 0
+      const createdB = Number.isFinite(Date.parse(b.created_at)) ? Date.parse(b.created_at) : 0
+      return createdB - createdA
+    })
   }, [connectorRuns, runStatusFilter])
 
   useEffect(() => {
@@ -283,6 +310,14 @@ export function KnowledgeSettingsPanel({
                   const failed = Number(stats.failed || 0)
                   const totalUrls = Number(stats.total_urls || stats.discovered || 0)
                   const processedUrls = Number(stats.processed_urls || stats.cursor || 0)
+                  const durationStartAt = run.started_at ?? run.created_at
+                  const durationEndAt = run.finished_at ? run.finished_at : new Date().toISOString()
+                  const durationStartMs = Number.isFinite(Date.parse(durationStartAt)) ? Date.parse(durationStartAt) : null
+                  const durationEndMs = Number.isFinite(Date.parse(durationEndAt)) ? Date.parse(durationEndAt) : null
+                  const durationLabel =
+                    durationStartMs !== null && durationEndMs !== null && durationEndMs >= durationStartMs
+                      ? formatDurationMs(durationEndMs - durationStartMs)
+                      : null
                   const progressPct =
                     totalUrls > 0 ? Math.max(0, Math.min(100, Math.round((processedUrls / totalUrls) * 100))) : 0
                   const errors: any[] = Array.isArray(stats.errors) ? stats.errors : []
@@ -310,14 +345,43 @@ export function KnowledgeSettingsPanel({
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusBadge status={badge.status} label={badge.label} dense />
-                            <span className="text-xs font-mono text-muted-foreground truncate">{run.id}</span>
+                            <button
+                              type="button"
+                              className="text-xs font-mono text-muted-foreground truncate hover:text-foreground underline underline-offset-4"
+                              onClick={() => void copyText(run.id, '已复制 run_id')}
+                              title="点击复制 run_id"
+                            >
+                              {run.id}
+                            </button>
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {formatDate(run.created_at)} · {run.connector_id} · dataset {run.dataset_id || '-'}
+                            {durationLabel ? (
+                              <>
+                                <span className="text-muted-foreground/40"> · </span>
+                                耗时 <span className="font-mono tabular-nums">{durationLabel}</span>
+                              </>
+                            ) : null}
                           </div>
                           <div className="mt-2 text-xs text-foreground/80">
                             created <span className="font-mono">{created}</span> · failed{' '}
                             <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 gap-1.5"
+                              onClick={() => {
+                                const url = new URL(`/knowledge?tab=settings&run=${run.id}`, window.location.origin).toString()
+                                void copyText(url, '已复制任务链接')
+                              }}
+                            >
+                              <Link2 className="h-3.5 w-3.5" />
+                              复制链接
+                            </Button>
                           </div>
 
                           {totalUrls > 0 ? (
