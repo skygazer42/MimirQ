@@ -2605,6 +2605,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evidence/suites/{suite_id}/repair-reference-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Repair Evidence Suite Reference Sources
+         * @description Best-effort repair for drifted `reference_sources`.
+         *
+         *     Repair strategy:
+         *     1) (doc_pipeline_key + chunk_index) exact relink
+         *     2) quote needle match (within active pipeline chunks when available)
+         *
+         *     Safety:
+         *     - Does not mutate approved items unless `allow_approved=true`.
+         *     - Dry-run by default (`apply=false`).
+         */
+        post: operations["repair_evidence_suite_reference_sources_api_v1_evidence_suites__suite_id__repair_reference_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evidence/suites": {
         parameters: {
             query?: never;
@@ -2641,6 +2669,62 @@ export interface paths {
         patch: operations["patch_evidence_suite_api_v1_evidence_suites__suite_id__patch"];
         trace?: never;
     };
+    "/api/v1/evidence/suites/{suite_id}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence Suite Dashboard
+         * @description Suite-level dashboard: status counts + slice coverage + throughput metrics.
+         *
+         *     Coverage is derived from reference_sources by resolving referenced documents.
+         */
+        get: operations["get_evidence_suite_dashboard_api_v1_evidence_suites__suite_id__dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/suites/{suite_id}/drift-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Evidence Suite Reference Sources Drift */
+        get: operations["audit_evidence_suite_reference_sources_drift_api_v1_evidence_suites__suite_id__drift_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/datasets/{dataset_id}/drift-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Dataset Reference Sources Drift */
+        get: operations["audit_dataset_reference_sources_drift_api_v1_evidence_datasets__dataset_id__drift_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evidence/suites/{suite_id}/items": {
         parameters: {
             query?: never;
@@ -2653,6 +2737,31 @@ export interface paths {
         put?: never;
         /** Create Evidence Item */
         post: operations["create_evidence_item_api_v1_evidence_suites__suite_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/suites/{suite_id}/items/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Evidence Items
+         * @description Import QA/FAQ rows (CSV/JSONL) as draft EvidenceItems.
+         *
+         *     Notes:
+         *     - Imported items are created in `draft` status.
+         *     - reference_sources starts empty; users can later label evidence and progress review/approve.
+         *     - Dedupes by query (query.strip(), whitespace-collapsed) within the suite.
+         */
+        post: operations["import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4266,6 +4375,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/datasets/{dataset_id}/export-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Dataset Report Bundle Zip
+         * @description One-click export bundle (zip) containing:
+         *     - report.json (redacted when redact=true)
+         *     - report.html
+         *     - rag_audit.html
+         *     - manifest.json
+         */
+        get: operations["export_dataset_report_bundle_zip_api_v1_reports_datasets__dataset_id__export_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/rag-metrics/summary": {
         parameters: {
             query?: never;
@@ -4452,9 +4585,7 @@ export interface components {
              * Details
              * @default {}
              */
-            details: {
-                [key: string]: unknown;
-            };
+            details: Record<string, never>;
             /**
              * Created At
              * Format: date-time
@@ -4559,6 +4690,14 @@ export interface components {
              * @default true
              */
             replace: boolean;
+        };
+        /** Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post */
+        Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
         };
         /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
         Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
@@ -4868,6 +5007,11 @@ export interface components {
             entity_vector_enabled?: boolean | null;
             /** Dataset Id */
             dataset_id?: string | null;
+            /**
+             * Precheck First
+             * @default false
+             */
+            precheck_first: boolean;
             /** User Metadata Map */
             user_metadata_map?: string | null;
             /**
@@ -5031,9 +5175,7 @@ export interface components {
              */
             visible_evidence_only: boolean;
             /** Metadata Filter */
-            metadata_filter?: {
-                [key: string]: unknown;
-            } | null;
+            metadata_filter?: Record<string, never> | null;
         };
         /**
          * ChatRequest
@@ -5106,6 +5248,8 @@ export interface components {
              * @default 0
              */
             total_tokens: number;
+            /** @description Best-effort token usage metadata; currently may be an assistant-only estimate. */
+            usage?: components["schemas"]["TokenUsage"] | null;
             /**
              * Total Chars
              * @default 0
@@ -5116,9 +5260,7 @@ export interface components {
             /** Vector Backend */
             vector_backend?: string | null;
             /** Metrics */
-            metrics?: {
-                [key: string]: unknown;
-            };
+            metrics?: Record<string, never>;
             /**
              * Structured
              * @default false
@@ -5198,13 +5340,9 @@ export interface components {
             /** Next */
             next?: unknown;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
+            metadata?: Record<string, never> | null;
             /** Values */
-            values?: {
-                [key: string]: unknown;
-            } | null;
+            values?: Record<string, never> | null;
         };
         /** CheckpointItem */
         CheckpointItem: {
@@ -5220,13 +5358,9 @@ export interface components {
             /** Next */
             next?: unknown;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
+            metadata?: Record<string, never> | null;
             /** Values */
-            values?: {
-                [key: string]: unknown;
-            } | null;
+            values?: Record<string, never> | null;
         };
         /** CheckpointListResponse */
         CheckpointListResponse: {
@@ -5261,9 +5395,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            };
+            payload?: Record<string, never>;
         };
         /** ChunkPresetListResponse */
         ChunkPresetListResponse: {
@@ -5279,9 +5411,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            };
+            payload?: Record<string, never>;
         };
         /** ChunkPresetUpdateRequest */
         ChunkPresetUpdateRequest: {
@@ -5290,9 +5420,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            };
+            payload?: Record<string, never>;
         };
         /**
          * ChunkPreviewHistogramBin
@@ -5334,9 +5462,7 @@ export interface components {
             /** Page Number */
             page_number?: number | null;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
         };
         /**
          * ChunkPreviewParams
@@ -5365,9 +5491,7 @@ export interface components {
              * Strategy Params
              * @description Best-effort strategy-specific params for reproducibility (e.g. separator/parent_child).
              */
-            strategy_params?: {
-                [key: string]: unknown;
-            };
+            strategy_params?: Record<string, never>;
         };
         /**
          * ChunkPreviewQualityGate
@@ -5401,9 +5525,7 @@ export interface components {
             /** Message */
             message: string;
             /** Meta */
-            meta?: {
-                [key: string]: unknown;
-            };
+            meta?: Record<string, never>;
         };
         /**
          * ChunkPreviewRecommendationPatch
@@ -5429,14 +5551,19 @@ export interface components {
              * Patch
              * @description Patch object; shape depends on target.
              */
-            patch?: {
-                [key: string]: unknown;
-            };
+            patch?: Record<string, never>;
         };
         /** ChunkPreviewRequest */
         ChunkPreviewRequest: {
             /** Markdown */
             markdown: string;
+        };
+        /** ChunkPreviewResponse */
+        ChunkPreviewResponse: {
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ChunkItem"][];
+            /** Sentences */
+            sentences: components["schemas"]["ChunkItem"][];
         };
         /**
          * ChunkPreviewReviewSignals
@@ -5946,9 +6073,7 @@ export interface components {
                 [key: string]: number;
             } | null;
             /** Frontmatter */
-            frontmatter?: {
-                [key: string]: unknown;
-            } | null;
+            frontmatter?: Record<string, never> | null;
             /** Title */
             title?: string | null;
             /** Tags */
@@ -6019,9 +6144,7 @@ export interface components {
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
             /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            suggested_pipeline_patch?: Record<string, never>;
         };
         /** CleanPreviewRuleStat */
         CleanPreviewRuleStat: {
@@ -6103,9 +6226,7 @@ export interface components {
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
         };
         /** ConnectorConfigListResponse */
         ConnectorConfigListResponse: {
@@ -6140,13 +6261,9 @@ export interface components {
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /** State */
-            state?: {
-                [key: string]: unknown;
-            };
+            state?: Record<string, never>;
             /** Last Run At */
             last_run_at?: string | null;
             /** Last Error */
@@ -6171,13 +6288,9 @@ export interface components {
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            } | null;
+            config?: Record<string, never> | null;
             /** State */
-            state?: {
-                [key: string]: unknown;
-            } | null;
+            state?: Record<string, never> | null;
         };
         /** ConnectorInfo */
         ConnectorInfo: {
@@ -6206,9 +6319,7 @@ export interface components {
             /** Dataset Id */
             dataset_id?: string | null;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
         };
         /** ConnectorRunDocumentOut */
         ConnectorRunDocumentOut: {
@@ -6256,13 +6367,9 @@ export interface components {
              */
             status: "pending" | "running" | "completed" | "failed" | "cancelled";
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /** Stats */
-            stats?: {
-                [key: string]: unknown;
-            };
+            stats?: Record<string, never>;
             /** Error Message */
             error_message?: string | null;
             /** Task Id */
@@ -6300,9 +6407,7 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
             /** Stats */
-            stats?: {
-                [key: string]: unknown;
-            };
+            stats?: Record<string, never>;
         };
         /**
          * ConnectorValidateRequest
@@ -6319,9 +6424,7 @@ export interface components {
              */
             connector_id: string;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /**
              * Check Connectivity
              * @default true
@@ -6335,21 +6438,13 @@ export interface components {
             /** Connector Id */
             connector_id: string;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /** Errors */
-            errors?: {
-                [key: string]: unknown;
-            }[];
+            errors?: Record<string, never>[];
             /** Warnings */
-            warnings?: {
-                [key: string]: unknown;
-            }[];
+            warnings?: Record<string, never>[];
             /** Checks */
-            checks?: {
-                [key: string]: unknown;
-            };
+            checks?: Record<string, never>;
         };
         /**
          * ConversationCreate
@@ -6603,6 +6698,70 @@ export interface components {
              */
             token_stats_missing_documents: number;
         };
+        /**
+         * DatasetChunkTargetsV2
+         * @description Per-dataset chunk target distribution spec (v2).
+         *
+         *     This is used by:
+         *     - Dataset profile "chunk_targets" checks (objective signals + suggestions)
+         *     - Chunking auto-tune tooling (search chunk_strategy/size/overlap)
+         *
+         *     Notes:
+         *     - This is intentionally small and declarative.
+         *     - Values are "best-effort" targets; they do not directly change ingestion behavior.
+         */
+        DatasetChunkTargetsV2: {
+            /**
+             * Token P50 Min
+             * @description Target P50 chunk token length (min)
+             */
+            token_p50_min?: number | null;
+            /**
+             * Token P50 Max
+             * @description Target P50 chunk token length (max)
+             */
+            token_p50_max?: number | null;
+            /**
+             * Short Pct Warn
+             * @description Warn threshold for short chunk ratio (<=100 tokens)
+             */
+            short_pct_warn?: number | null;
+            /**
+             * Short Pct Fail
+             * @description Fail threshold for short chunk ratio (<=100 tokens)
+             */
+            short_pct_fail?: number | null;
+            /**
+             * Long Pct Warn
+             * @description Warn threshold for long chunk ratio (>=800 tokens)
+             */
+            long_pct_warn?: number | null;
+            /**
+             * Long Pct Fail
+             * @description Fail threshold for long chunk ratio (>=800 tokens)
+             */
+            long_pct_fail?: number | null;
+            /**
+             * Overlap Waste P50 Warn
+             * @description Warn threshold for overlap waste P50 (%)
+             */
+            overlap_waste_p50_warn?: number | null;
+            /**
+             * Overlap Waste P50 Fail
+             * @description Fail threshold for overlap waste P50 (%)
+             */
+            overlap_waste_p50_fail?: number | null;
+            /**
+             * Coverage P50 Warn
+             * @description Warn threshold for coverage P50 (%)
+             */
+            coverage_p50_warn?: number | null;
+            /**
+             * Coverage P50 Fail
+             * @description Fail threshold for coverage P50 (%)
+             */
+            coverage_p50_fail?: number | null;
+        };
         /** DatasetCloneRequest */
         DatasetCloneRequest: {
             /** Name */
@@ -6639,8 +6798,10 @@ export interface components {
             default_prompt_template_key?: string | null;
             /** Default Prompt Ab Experiment Key */
             default_prompt_ab_experiment_key?: string | null;
+            chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
             ingestion_policy?: components["schemas"]["IngestionPolicy-Input"] | null;
+            fls_policy?: components["schemas"]["FlsPolicy"] | null;
         };
         /**
          * DatasetConfigBundle
@@ -6661,8 +6822,10 @@ export interface components {
             default_prompt_template_key?: string | null;
             /** Default Prompt Ab Experiment Key */
             default_prompt_ab_experiment_key?: string | null;
+            chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
             ingestion_policy?: components["schemas"]["IngestionPolicy-Output"] | null;
+            fls_policy?: components["schemas"]["FlsPolicy"] | null;
         };
         /** DatasetConfigExport */
         DatasetConfigExport: {
@@ -6715,6 +6878,7 @@ export interface components {
             default_prompt_template_key?: string | null;
             /** Default Prompt Ab Experiment Key */
             default_prompt_ab_experiment_key?: string | null;
+            chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
@@ -7154,6 +7318,7 @@ export interface components {
             default_prompt_template_key?: string | null;
             /** Default Prompt Ab Experiment Key */
             default_prompt_ab_experiment_key?: string | null;
+            chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
@@ -7359,7 +7524,10 @@ export interface components {
              * Format: date-time
              */
             generated_at: string;
+            before_policy?: components["schemas"]["IngestionPolicy-Output"] | null;
             policy: components["schemas"]["IngestionPolicy-Output"];
+            /** Policy Diff */
+            policy_diff?: Record<string, never>;
             /** Notes */
             notes?: string[];
             /** Manual Review */
@@ -7435,6 +7603,44 @@ export interface components {
             clusters?: components["schemas"]["DatasetPrecheckNearDupCluster"][];
             /** Pairs */
             pairs?: components["schemas"]["DatasetPrecheckNearDupPair"][];
+        };
+        /**
+         * DatasetPrecheckNearDupSummary
+         * @description Compact near-duplicate stats summary (for reports/dashboards).
+         */
+        DatasetPrecheckNearDupSummary: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Threshold
+             * @default 0
+             */
+            threshold: number;
+            /**
+             * Pairs
+             * @default 0
+             */
+            pairs: number;
+            /**
+             * Clusters
+             * @default 0
+             */
+            clusters: number;
+            /**
+             * Affected Files
+             * @default 0
+             */
+            affected_files: number;
+            /**
+             * Largest Cluster Size
+             * @default 0
+             */
+            largest_cluster_size: number;
+            /** Keep Candidates Sample */
+            keep_candidates_sample?: string[];
         };
         /**
          * DatasetPrecheckPdfPageBreakdown
@@ -7680,17 +7886,11 @@ export interface components {
             /** Progress */
             progress: number;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /** Summary */
-            summary?: {
-                [key: string]: unknown;
-            };
+            summary?: Record<string, never>;
             /** Artifacts */
-            artifacts?: {
-                [key: string]: unknown;
-            };
+            artifacts?: Record<string, never>;
             /** Error Message */
             error_message?: string | null;
             /** Started At */
@@ -7754,12 +7954,12 @@ export interface components {
             generated_at: string;
             /**
              * Schema Id
-             * @default mimirq.dataset_precheck_summary.v2
+             * @default mimirq.dataset_precheck_summary.v3
              */
             schema_id: string;
             /**
              * Schema Version
-             * @default 2
+             * @default 3
              */
             schema_version: number;
             /**
@@ -7803,9 +8003,12 @@ export interface components {
             token_histogram?: components["schemas"]["DatasetPrecheckHistogramBin"][];
             pdf_scan?: components["schemas"]["DatasetPrecheckPdfScanStats"];
             /** Pdf Detection */
-            pdf_detection?: {
-                [key: string]: unknown;
+            pdf_detection?: Record<string, never>;
+            /** Risk Buckets */
+            risk_buckets?: {
+                [key: string]: number;
             };
+            near_dup_summary?: components["schemas"]["DatasetPrecheckNearDupSummary"];
             /** Pii Hits Total */
             pii_hits_total?: {
                 [key: string]: number;
@@ -7861,9 +8064,7 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
             /** Preview */
             preview?: string | null;
             /**
@@ -8055,13 +8256,9 @@ export interface components {
             /** Progress */
             progress: number;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /** Summary */
-            summary?: {
-                [key: string]: unknown;
-            };
+            summary?: Record<string, never>;
             /** Error Message */
             error_message?: string | null;
             /** Started At */
@@ -8214,13 +8411,9 @@ export interface components {
              */
             status: "pass" | "warn" | "fail";
             /** Observed */
-            observed?: {
-                [key: string]: unknown;
-            };
+            observed?: Record<string, never>;
             /** Target */
-            target?: {
-                [key: string]: unknown;
-            };
+            target?: Record<string, never>;
             /** Message */
             message?: string | null;
             /** Suggestions */
@@ -8291,13 +8484,9 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: {
-                [key: string]: unknown;
-            };
+            params?: Record<string, never>;
             /** Summary */
-            summary?: {
-                [key: string]: unknown;
-            };
+            summary?: Record<string, never>;
             /** Error Message */
             error_message?: string | null;
             /** Created At */
@@ -8328,15 +8517,11 @@ export interface components {
             /** Pipeline Versions */
             pipeline_versions?: components["schemas"]["PipelineVersionSummary"][];
             /** Pipeline Snapshots */
-            pipeline_snapshots?: {
-                [key: string]: unknown;
-            };
+            pipeline_snapshots?: Record<string, never>;
             /** Connectors */
             connectors?: components["schemas"]["ConnectorRunSummary"][];
             /** Dataset Metadata */
-            dataset_metadata?: {
-                [key: string]: unknown;
-            };
+            dataset_metadata?: Record<string, never>;
             folder_tree?: components["schemas"]["DocumentFolderTreeResponse"] | null;
             governance_metrics?: components["schemas"]["DatasetGovernanceMetricsOut"] | null;
             governance_audit?: components["schemas"]["DatasetGovernanceAuditOut"] | null;
@@ -8344,9 +8529,7 @@ export interface components {
             kg_stats?: components["schemas"]["DatasetKGStatsOut"] | null;
             latest_regression_run?: components["schemas"]["DatasetRegressionRunSummaryOut"] | null;
             /** Precheck Summary */
-            precheck_summary?: {
-                [key: string]: unknown;
-            } | null;
+            precheck_summary?: Record<string, never> | null;
         };
         /** DatasetTablesListResponse */
         DatasetTablesListResponse: {
@@ -8375,6 +8558,7 @@ export interface components {
             default_prompt_template_key?: string | null;
             /** Default Prompt Ab Experiment Key */
             default_prompt_ab_experiment_key?: string | null;
+            chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /** DbCatalogColumnOut */
@@ -8505,13 +8689,9 @@ export interface components {
             /** Entitlement Hash */
             entitlement_hash: string;
             /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            };
+            profile?: Record<string, never>;
             /** Sample Meta */
-            sample_meta?: {
-                [key: string]: unknown;
-            };
+            sample_meta?: Record<string, never>;
             /**
              * Created At
              * Format: date-time
@@ -8807,9 +8987,7 @@ export interface components {
             /** Document Ids */
             document_ids: string[];
             /** Patch */
-            patch?: {
-                [key: string]: unknown;
-            };
+            patch?: Record<string, never>;
             /**
              * Replace
              * @default false
@@ -8842,9 +9020,7 @@ export interface components {
             /** End Char */
             end_char?: number | null;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
         };
         /**
          * DocumentChunkList
@@ -8940,9 +9116,7 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
         };
         /**
          * DocumentChunkUpdateRequest
@@ -8965,9 +9139,7 @@ export interface components {
              * Metadata
              * @description Chunk metadata patch (null values delete keys)
              */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
+            metadata?: Record<string, never> | null;
         };
         /**
          * DocumentDetail
@@ -9018,9 +9190,7 @@ export interface components {
             /** Dataset Id */
             dataset_id?: string | null;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
             governance?: components["schemas"]["GovernanceInfo"];
             pipeline?: components["schemas"]["DocumentPipelineProvenance"] | null;
             /** Chunks */
@@ -9146,9 +9316,7 @@ export interface components {
              */
             original_markdown_content: string;
             /** Persisted Meta */
-            persisted_meta?: {
-                [key: string]: unknown;
-            };
+            persisted_meta?: Record<string, never>;
             /**
              * Markdown Truncated
              * @default false
@@ -9437,9 +9605,7 @@ export interface components {
              * Chunk Strategy Params
              * @description Chunking strategy parameters (best-effort, strategy-specific). Only small JSON objects are allowed (primitive values only).
              */
-            chunk_strategy_params?: {
-                [key: string]: unknown;
-            } | null;
+            chunk_strategy_params?: Record<string, never> | null;
             /**
              * Embedding Context Prefix Enabled
              * @description Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).
@@ -9546,9 +9712,7 @@ export interface components {
             pipeline_effective?: components["schemas"]["PipelineEffectiveSnapshot"];
             analytics_raw?: components["schemas"]["DocumentAnalyticsSchema"];
             /** Parsed Text Quality */
-            parsed_text_quality?: {
-                [key: string]: unknown;
-            };
+            parsed_text_quality?: Record<string, never>;
         };
         /** DocumentQAGenerateRequest */
         DocumentQAGenerateRequest: {
@@ -9680,9 +9844,7 @@ export interface components {
             /** Progress */
             progress?: number | null;
             /** Details */
-            details?: {
-                [key: string]: unknown;
-            };
+            details?: Record<string, never>;
         };
         /** DocumentTimelineResponse */
         DocumentTimelineResponse: {
@@ -9707,9 +9869,7 @@ export interface components {
              * Patch
              * @description User metadata patch; null values remove keys.
              */
-            patch?: {
-                [key: string]: unknown;
-            };
+            patch?: Record<string, never>;
             /**
              * Replace
              * @description Replace entire metadata.user instead of merging
@@ -9761,13 +9921,9 @@ export interface components {
             /** Removed Hashes */
             removed_hashes?: string[];
             /** From Provenance */
-            from_provenance?: {
-                [key: string]: unknown;
-            } | null;
+            from_provenance?: Record<string, never> | null;
             /** To Provenance */
-            to_provenance?: {
-                [key: string]: unknown;
-            } | null;
+            to_provenance?: Record<string, never> | null;
             /**
              * Changed Transforms
              * @description Transform step ids whose transform hash differs between from/to.
@@ -9904,6 +10060,62 @@ export interface components {
              */
             filter_page_header_footer: boolean;
         };
+        /** EvidenceCoverageBucket */
+        EvidenceCoverageBucket: {
+            /** Key */
+            key: string;
+            /**
+             * Items
+             * @default 0
+             */
+            items: number;
+            /**
+             * References
+             * @default 0
+             */
+            references: number;
+        };
+        /** EvidenceCoverageHeatmap */
+        EvidenceCoverageHeatmap: {
+            /** X */
+            x?: string[];
+            /** Y */
+            y?: string[];
+            /** Z */
+            z?: number[][];
+            /**
+             * Metric
+             * @default items
+             */
+            metric: string;
+        };
+        /** EvidenceDriftSliceBucketOut */
+        EvidenceDriftSliceBucketOut: {
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Ok
+             * @default 0
+             */
+            ok: number;
+            /**
+             * Drift
+             * @default 0
+             */
+            drift: number;
+            /**
+             * Drift Rate
+             * @default 0
+             */
+            drift_rate: number;
+            /** Reasons */
+            reasons?: {
+                [key: string]: number;
+            };
+        };
         /** EvidenceItemCreateRequest */
         EvidenceItemCreateRequest: {
             /**
@@ -9920,18 +10132,48 @@ export interface components {
             query: string;
             /** Expected Answer */
             expected_answer?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Source Metadata */
+            source_metadata?: Record<string, never>;
             /** Reference Sources */
             reference_sources: components["schemas"]["ReferenceSource"][];
             /** Retrieval Snapshot */
-            retrieval_snapshot?: {
-                [key: string]: unknown;
-            };
+            retrieval_snapshot?: Record<string, never>;
             /** Rag Config Snapshot */
-            rag_config_snapshot?: {
-                [key: string]: unknown;
-            };
+            rag_config_snapshot?: Record<string, never>;
             /** Notes */
             notes?: string | null;
+        };
+        /** EvidenceItemImportResponse */
+        EvidenceItemImportResponse: {
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Parsed
+             * @default 0
+             */
+            parsed: number;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Errors */
+            errors?: Record<string, never>[];
         };
         /** EvidenceItemList */
         EvidenceItemList: {
@@ -9971,16 +10213,16 @@ export interface components {
             query: string;
             /** Expected Answer */
             expected_answer?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Source Metadata */
+            source_metadata?: Record<string, never>;
             /** Reference Sources */
             reference_sources?: components["schemas"]["ReferenceSource"][];
             /** Retrieval Snapshot */
-            retrieval_snapshot?: {
-                [key: string]: unknown;
-            };
+            retrieval_snapshot?: Record<string, never>;
             /** Rag Config Snapshot */
-            rag_config_snapshot?: {
-                [key: string]: unknown;
-            };
+            rag_config_snapshot?: Record<string, never>;
             /** Notes */
             notes?: string | null;
             /** Regression Case Id */
@@ -10016,18 +10258,262 @@ export interface components {
             query?: string | null;
             /** Expected Answer */
             expected_answer?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Source Metadata */
+            source_metadata?: Record<string, never> | null;
             /** Reference Sources */
             reference_sources?: components["schemas"]["ReferenceSource"][] | null;
             /** Retrieval Snapshot */
-            retrieval_snapshot?: {
-                [key: string]: unknown;
-            } | null;
+            retrieval_snapshot?: Record<string, never> | null;
             /** Rag Config Snapshot */
-            rag_config_snapshot?: {
-                [key: string]: unknown;
-            } | null;
+            rag_config_snapshot?: Record<string, never> | null;
             /** Notes */
             notes?: string | null;
+        };
+        /** EvidenceLeadTimeStats */
+        EvidenceLeadTimeStats: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** P50 Sec */
+            p50_sec?: number | null;
+            /** P90 Sec */
+            p90_sec?: number | null;
+            /** Mean Sec */
+            mean_sec?: number | null;
+        };
+        /** EvidenceReferenceDriftAuditOut */
+        EvidenceReferenceDriftAuditOut: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Suite Id */
+            suite_id?: string | null;
+            /**
+             * Total Items
+             * @default 0
+             */
+            total_items: number;
+            /**
+             * Total References
+             * @default 0
+             */
+            total_references: number;
+            /**
+             * Ok References
+             * @default 0
+             */
+            ok_references: number;
+            /**
+             * Drift References
+             * @default 0
+             */
+            drift_references: number;
+            /**
+             * Drift Rate
+             * @default 0
+             */
+            drift_rate: number;
+            /** Reasons */
+            reasons?: {
+                [key: string]: number;
+            };
+            /** Slices */
+            slices?: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["EvidenceDriftSliceBucketOut"];
+                };
+            };
+            /**
+             * Details Truncated
+             * @default false
+             */
+            details_truncated: boolean;
+            /** Drifted References */
+            drifted_references?: components["schemas"]["EvidenceReferenceDriftDetailOut"][];
+        };
+        /** EvidenceReferenceDriftDetailOut */
+        EvidenceReferenceDriftDetailOut: {
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Item Status */
+            item_status: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Reason */
+            reason: string;
+            /** Expected */
+            expected?: Record<string, never>;
+            /** Observed */
+            observed?: Record<string, never>;
+            /** Slice */
+            slice?: {
+                [key: string]: string;
+            };
+        };
+        /** EvidenceReferenceRepairChangeOut */
+        EvidenceReferenceRepairChangeOut: {
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Item Status */
+            item_status: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Chunk Id Before
+             * Format: uuid
+             */
+            chunk_id_before: string;
+            /** Chunk Id After */
+            chunk_id_after?: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Repaired
+             * @default false
+             */
+            repaired: boolean;
+            /** Method */
+            method?: string | null;
+            /** Meta */
+            meta?: Record<string, never>;
+        };
+        /**
+         * EvidenceReferenceRepairRequest
+         * @description Repair drifted evidence pointers (best-effort).
+         *
+         *     Safety:
+         *     - `apply=false` is a dry-run and will not modify any evidence items.
+         *     - `allow_approved=false` prevents mutating approved items by default.
+         */
+        EvidenceReferenceRepairRequest: {
+            /**
+             * Apply
+             * @default false
+             */
+            apply: boolean;
+            /**
+             * Allow Approved
+             * @default false
+             */
+            allow_approved: boolean;
+            /**
+             * Include Archived Items
+             * @default false
+             */
+            include_archived_items: boolean;
+            /**
+             * Max Items
+             * @default 5000
+             */
+            max_items: number;
+            /**
+             * Max Refs Per Item
+             * @default 50
+             */
+            max_refs_per_item: number;
+            /**
+             * Max Changes
+             * @default 500
+             */
+            max_changes: number;
+        };
+        /** EvidenceReferenceRepairResponse */
+        EvidenceReferenceRepairResponse: {
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /**
+             * Scanned Items
+             * @default 0
+             */
+            scanned_items: number;
+            /**
+             * Scanned References
+             * @default 0
+             */
+            scanned_references: number;
+            /**
+             * Drifted References
+             * @default 0
+             */
+            drifted_references: number;
+            /**
+             * Repaired References
+             * @default 0
+             */
+            repaired_references: number;
+            /**
+             * Skipped Approved Items
+             * @default 0
+             */
+            skipped_approved_items: number;
+            /**
+             * Skipped Archived Items
+             * @default 0
+             */
+            skipped_archived_items: number;
+            /**
+             * Changes Truncated
+             * @default false
+             */
+            changes_truncated: boolean;
+            /** Changes */
+            changes?: components["schemas"]["EvidenceReferenceRepairChangeOut"][];
         };
         /**
          * EvidenceRetrieveRequest
@@ -10052,13 +10538,9 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Citations */
-            citations: {
-                [key: string]: unknown;
-            }[];
+            citations: Record<string, never>[];
             /** Metrics */
-            metrics?: {
-                [key: string]: unknown;
-            };
+            metrics?: Record<string, never>;
             /**
              * Has Evidence
              * @default false
@@ -10072,9 +10554,22 @@ export interface components {
             /** Abstain Reason */
             abstain_reason?: string | null;
             /** Query Debug */
-            query_debug?: {
-                [key: string]: unknown;
-            } | null;
+            query_debug?: Record<string, never> | null;
+        };
+        /** EvidenceSuiteCoverage */
+        EvidenceSuiteCoverage: {
+            /** Language */
+            language?: components["schemas"]["EvidenceCoverageBucket"][];
+            /** File Type */
+            file_type?: components["schemas"]["EvidenceCoverageBucket"][];
+            /** Quality Bucket */
+            quality_bucket?: components["schemas"]["EvidenceCoverageBucket"][];
+            /** Channel */
+            channel?: components["schemas"]["EvidenceCoverageBucket"][];
+            /** Heatmaps */
+            heatmaps?: {
+                [key: string]: components["schemas"]["EvidenceCoverageHeatmap"];
+            };
         };
         /** EvidenceSuiteCreateRequest */
         EvidenceSuiteCreateRequest: {
@@ -10090,9 +10585,31 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Config */
-            config?: {
-                [key: string]: unknown;
+            config?: Record<string, never>;
+        };
+        /** EvidenceSuiteDashboardOut */
+        EvidenceSuiteDashboardOut: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Item Counts */
+            item_counts?: {
+                [key: string]: number;
             };
+            coverage?: components["schemas"]["EvidenceSuiteCoverage"];
+            throughput?: components["schemas"]["EvidenceSuiteThroughput"];
         };
         /** EvidenceSuiteExportV1 */
         EvidenceSuiteExportV1: {
@@ -10109,13 +10626,9 @@ export interface components {
              */
             dataset_id: string;
             /** Suite */
-            suite: {
-                [key: string]: unknown;
-            };
+            suite: Record<string, never>;
             /** Items */
-            items: {
-                [key: string]: unknown;
-            }[];
+            items: Record<string, never>[];
         };
         /** EvidenceSuiteList */
         EvidenceSuiteList: {
@@ -10148,9 +10661,7 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /** Created By */
             created_by?: string | null;
             /**
@@ -10179,9 +10690,7 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            } | null;
+            config?: Record<string, never> | null;
             /** Archived At */
             archived_at?: string | null;
         };
@@ -10213,9 +10722,37 @@ export interface components {
              */
             skipped: number;
             /** Errors */
-            errors?: {
-                [key: string]: unknown;
-            }[];
+            errors?: Record<string, never>[];
+        };
+        /** EvidenceSuiteThroughput */
+        EvidenceSuiteThroughput: {
+            /**
+             * Window Days
+             * @default 7
+             */
+            window_days: number;
+            last_window?: components["schemas"]["EvidenceThroughputWindow"];
+            draft_to_reviewed?: components["schemas"]["EvidenceLeadTimeStats"];
+            reviewed_to_approved?: components["schemas"]["EvidenceLeadTimeStats"];
+            draft_to_approved?: components["schemas"]["EvidenceLeadTimeStats"];
+        };
+        /** EvidenceThroughputWindow */
+        EvidenceThroughputWindow: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Reviewed
+             * @default 0
+             */
+            reviewed: number;
+            /**
+             * Approved
+             * @default 0
+             */
+            approved: number;
         };
         /**
          * FeatureFlags
@@ -10289,9 +10826,47 @@ export interface components {
              * Extra
              * @default {}
              */
-            extra: {
-                [key: string]: unknown;
-            };
+            extra: Record<string, never>;
+        };
+        /** FlsPolicy */
+        FlsPolicy: {
+            /**
+             * Version
+             * @description Policy schema version
+             * @default 1
+             */
+            version: string;
+            /** Rules */
+            rules?: components["schemas"]["FlsRule"][];
+        };
+        /**
+         * FlsRule
+         * @description One FLS rule.
+         *
+         *     Semantics:
+         *     - If the rule matches a field/column name for a given source, and the current user is not allowed,
+         *       the field is redacted using the configured mask.
+         */
+        FlsRule: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Sources */
+            sources?: string[];
+            /** Column Name Regex */
+            column_name_regex: string;
+            /** Allow Roles */
+            allow_roles?: string[];
+            /** Allow Account Ids */
+            allow_account_ids?: string[];
+            /** Mask */
+            mask?: string | null;
         };
         /**
          * GeneratedQuestion
@@ -10327,9 +10902,7 @@ export interface components {
              * Metadata
              * @description Additional metadata
              */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
         };
         /** GovernanceAnalyzeRequest */
         GovernanceAnalyzeRequest: {
@@ -10425,9 +10998,7 @@ export interface components {
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
             /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            suggested_pipeline_patch?: Record<string, never>;
         };
         /** GovernanceCommonLineCandidate */
         GovernanceCommonLineCandidate: {
@@ -10592,9 +11163,7 @@ export interface components {
              * Suggested Pipeline Patch
              * @description Best-effort suggested pipeline patch (DocumentPipelineOptions shape).
              */
-            suggested_pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            suggested_pipeline_patch?: Record<string, never>;
         };
         /** GovernanceProfileCreate */
         GovernanceProfileCreate: {
@@ -10677,11 +11246,9 @@ export interface components {
              */
             input_formats?: ("markdown" | "html")[];
             /** Pipeline Patch */
-            pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            pipeline_patch?: Record<string, never>;
             /** Regex Rules */
-            regex_rules?: components["schemas"]["app__api__schemas__governance_profile__RegexRuleModel"][];
+            regex_rules?: components["schemas"]["RegexRuleModel"][];
         };
         /**
          * GovernanceProfileResolvedResponse
@@ -10928,9 +11495,7 @@ export interface components {
             /** Id */
             id: string;
             /** Params */
-            params?: {
-                [key: string]: unknown;
-            };
+            params?: Record<string, never>;
         };
         /** IngestionPreviewResponse */
         IngestionPreviewResponse: {
@@ -10939,9 +11504,7 @@ export interface components {
             parse: components["schemas"]["ParsePreviewResponse"];
             clean: components["schemas"]["CleanPreviewResponse"];
             /** Explain */
-            explain?: {
-                [key: string]: unknown;
-            };
+            explain?: Record<string, never>;
         };
         /** IngestionPreviewRule */
         IngestionPreviewRule: {
@@ -10957,9 +11520,7 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Preprocess Steps */
-            preprocess_steps?: {
-                [key: string]: unknown;
-            }[];
+            preprocess_steps?: Record<string, never>[];
             /**
              * Parser Backend
              * @default auto
@@ -10991,9 +11552,7 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Pipeline Patch */
-            pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            pipeline_patch?: Record<string, never>;
         };
         /** IngestionRule */
         "IngestionRule-Output": {
@@ -11015,9 +11574,7 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Pipeline Patch */
-            pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            pipeline_patch?: Record<string, never>;
         };
         /**
          * IngestionRuleMatch
@@ -11037,9 +11594,7 @@ export interface components {
             run_a: components["schemas"]["IngestionRunOut"];
             run_b: components["schemas"]["IngestionRunOut"];
             /** Diff */
-            diff?: {
-                [key: string]: unknown;
-            };
+            diff?: Record<string, never>;
         };
         /** IngestionRunDocumentOut */
         IngestionRunDocumentOut: {
@@ -11083,13 +11638,9 @@ export interface components {
             /** Status */
             status: string;
             /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            config?: Record<string, never>;
             /** Stats */
-            stats?: {
-                [key: string]: unknown;
-            };
+            stats?: Record<string, never>;
             /** Error Message */
             error_message?: string | null;
             /** Created At */
@@ -11163,9 +11714,7 @@ export interface components {
             /** Neighbors */
             neighbors?: components["schemas"]["KGEntityNeighbor"][];
             /** Stats */
-            stats?: {
-                [key: string]: unknown;
-            };
+            stats?: Record<string, never>;
         };
         /**
          * KGEntityItem
@@ -11186,9 +11735,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Extra Data */
-            extra_data?: {
-                [key: string]: unknown;
-            };
+            extra_data?: Record<string, never>;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -11235,9 +11782,7 @@ export interface components {
             /** Role */
             role?: string | null;
             /** Extra Data */
-            extra_data?: {
-                [key: string]: unknown;
-            };
+            extra_data?: Record<string, never>;
         };
         /**
          * KGEventItem
@@ -11260,13 +11805,9 @@ export interface components {
             /** Chunk Id */
             chunk_id?: string | null;
             /** References */
-            references?: {
-                [key: string]: unknown;
-            };
+            references?: Record<string, never>;
             /** Extra Data */
-            extra_data?: {
-                [key: string]: unknown;
-            };
+            extra_data?: Record<string, never>;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -11312,9 +11853,7 @@ export interface components {
              */
             weight: number;
             /** Meta */
-            meta?: {
-                [key: string]: unknown;
-            };
+            meta?: Record<string, never>;
         };
         /**
          * KGGraphNode
@@ -11336,9 +11875,7 @@ export interface components {
              */
             val: number;
             /** Meta */
-            meta?: {
-                [key: string]: unknown;
-            };
+            meta?: Record<string, never>;
         };
         /**
          * KGGraphResponse
@@ -11350,9 +11887,7 @@ export interface components {
             /** Links */
             links: components["schemas"]["KGGraphLink"][];
             /** Stats */
-            stats?: {
-                [key: string]: unknown;
-            };
+            stats?: Record<string, never>;
         };
         /**
          * KGSearchRequest
@@ -11377,9 +11912,7 @@ export interface components {
          */
         KGSearchResponse: {
             /** Result */
-            result: {
-                [key: string]: unknown;
-            };
+            result: Record<string, never>;
             /** Query */
             query: string;
         };
@@ -11577,9 +12110,7 @@ export interface components {
             /** End Char */
             end_char?: number | null;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
         };
         /**
          * ManualDocumentCreate
@@ -11597,9 +12128,7 @@ export interface components {
             /** Chunks */
             chunks: components["schemas"]["ManualChunkCreate"][];
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
@@ -11653,9 +12182,7 @@ export interface components {
              * Extra
              * @description Extension fields (optional)
              */
-            extra?: {
-                [key: string]: unknown;
-            };
+            extra?: Record<string, never>;
         };
         /** MessageFeedbackEnrichedList */
         MessageFeedbackEnrichedList: {
@@ -11700,9 +12227,7 @@ export interface components {
             /** Expected Answer */
             expected_answer: string | null;
             /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            };
+            extra?: Record<string, never>;
             /**
              * Created At
              * Format: date-time
@@ -11760,9 +12285,7 @@ export interface components {
             /** Expected Answer */
             expected_answer: string | null;
             /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            };
+            extra?: Record<string, never>;
             /**
              * Created At
              * Format: date-time
@@ -11794,9 +12317,7 @@ export interface components {
              */
             citations: components["schemas"]["Citation"][];
             /** Message Metadata */
-            message_metadata?: {
-                [key: string]: unknown;
-            } | null;
+            message_metadata?: Record<string, never> | null;
             /**
              * Created At
              * Format: date-time
@@ -12040,9 +12561,7 @@ export interface components {
             /** Page Number */
             page_number?: number | null;
             /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            metadata?: Record<string, never>;
         };
         /** ParserBackendInfo */
         ParserBackendInfo: {
@@ -12082,9 +12601,7 @@ export interface components {
             /** Parse Duration Sec */
             parse_duration_sec?: number | null;
             /** Pdf Quality */
-            pdf_quality?: {
-                [key: string]: unknown;
-            } | null;
+            pdf_quality?: Record<string, never> | null;
             quality_gate?: components["schemas"]["ParsingQualityGate"] | null;
         };
         /** ParsingContentUpdateRequest */
@@ -12116,9 +12633,7 @@ export interface components {
             /** Reasons */
             reasons?: string[];
             /** Evidence */
-            evidence?: {
-                [key: string]: unknown;
-            };
+            evidence?: Record<string, never>;
         };
         /** PipelineCapabilitiesResponse */
         PipelineCapabilitiesResponse: {
@@ -12202,9 +12717,7 @@ export interface components {
              */
             chunk_merge_small_min_chars: number;
             /** Chunk Strategy Params */
-            chunk_strategy_params?: {
-                [key: string]: unknown;
-            };
+            chunk_strategy_params?: Record<string, never>;
             /**
              * Chunk Vector Enabled
              * @default false
@@ -12254,6 +12767,21 @@ export interface components {
              * @default
              */
             note: string;
+            /**
+             * Bytes Before
+             * @default 0
+             */
+            bytes_before: number;
+            /**
+             * Bytes After
+             * @default 0
+             */
+            bytes_after: number;
+            /**
+             * Elapsed Ms
+             * @default 0
+             */
+            elapsed_ms: number;
         };
         /** PreprocessSummary */
         PreprocessSummary: {
@@ -12307,23 +12835,15 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Prompt Messages */
-            prompt_messages: {
-                [key: string]: unknown;
-            }[];
+            prompt_messages: Record<string, never>[];
             /** Prompt Text */
             prompt_text: string;
             /** Variables */
-            variables: {
-                [key: string]: unknown;
-            };
+            variables: Record<string, never>;
             /** Citations */
-            citations?: {
-                [key: string]: unknown;
-            }[];
+            citations?: Record<string, never>[];
             /** Metrics */
-            metrics?: {
-                [key: string]: unknown;
-            };
+            metrics?: Record<string, never>;
             /** Prompt Template Id */
             prompt_template_id?: string | null;
             /** Prompt Template Key */
@@ -12840,9 +13360,7 @@ export interface components {
             /** Ok */
             ok?: boolean | null;
             /** Retriever Debug */
-            retriever_debug?: {
-                [key: string]: unknown;
-            } | null;
+            retriever_debug?: Record<string, never> | null;
         };
         /** RagTraceStep */
         RagTraceStep: {
@@ -12853,9 +13371,7 @@ export interface components {
             /** Elapsed Sec */
             elapsed_sec?: number | null;
             /** Meta */
-            meta?: {
-                [key: string]: unknown;
-            };
+            meta?: Record<string, never>;
         };
         /**
          * RagasItemSchema
@@ -12885,13 +13401,9 @@ export interface components {
             /** Retrieved Contexts */
             retrieved_contexts?: string[] | null;
             /** Citations */
-            citations?: {
-                [key: string]: unknown;
-            }[];
+            citations?: Record<string, never>[];
             /** Scores */
-            scores?: {
-                [key: string]: unknown;
-            };
+            scores?: Record<string, never>;
             /**
              * Created At
              * Format: date-time
@@ -12949,9 +13461,7 @@ export interface components {
              * Extra
              * @description Extension fields (optional)
              */
-            extra?: {
-                [key: string]: unknown;
-            };
+            extra?: Record<string, never>;
         };
         /**
          * RagasRegressionCaseImportRequest
@@ -13008,9 +13518,7 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            };
+            extra?: Record<string, never>;
             /** Created By */
             created_by?: string | null;
             /**
@@ -13043,9 +13551,7 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
             /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            } | null;
+            extra?: Record<string, never> | null;
         };
         /** RagasRegressionItemSchema */
         RagasRegressionItemSchema: {
@@ -13071,13 +13577,9 @@ export interface components {
             /** Retrieved Contexts */
             retrieved_contexts?: string[] | null;
             /** Citations */
-            citations?: {
-                [key: string]: unknown;
-            }[];
+            citations?: Record<string, never>[];
             /** Scores */
-            scores?: {
-                [key: string]: unknown;
-            };
+            scores?: Record<string, never>;
             /**
              * Created At
              * Format: date-time
@@ -13204,13 +13706,9 @@ export interface components {
              */
             generated_at: string;
             /** Base Params */
-            base_params?: {
-                [key: string]: unknown;
-            };
+            base_params?: Record<string, never>;
             /** Target Params */
-            target_params?: {
-                [key: string]: unknown;
-            };
+            target_params?: Record<string, never>;
             /** Metric Diffs */
             metric_diffs?: components["schemas"]["RegressionRunMetricDiff"][];
             /** Slice Diffs */
@@ -13246,13 +13744,9 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: {
-                [key: string]: unknown;
-            };
+            params?: Record<string, never>;
             /** Summary */
-            summary?: {
-                [key: string]: unknown;
-            };
+            summary?: Record<string, never>;
             /** Error Message */
             error_message?: string | null;
             /**
@@ -13330,13 +13824,9 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: {
-                [key: string]: unknown;
-            };
+            params?: Record<string, never>;
             /** Summary */
-            summary?: {
-                [key: string]: unknown;
-            };
+            summary?: Record<string, never>;
             /** Error Message */
             error_message?: string | null;
             /**
@@ -13432,6 +13922,21 @@ export interface components {
              */
             label?: string | null;
         };
+        /** RegexRuleModel */
+        RegexRuleModel: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
+        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -13504,13 +14009,9 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Citations */
-            citations: {
-                [key: string]: unknown;
-            }[];
+            citations: Record<string, never>[];
             /** Metrics */
-            metrics?: {
-                [key: string]: unknown;
-            };
+            metrics?: Record<string, never>;
         };
         /** RuntimeMeta */
         RuntimeMeta: {
@@ -13548,9 +14049,7 @@ export interface components {
              */
             success: boolean;
             /** Result */
-            result?: {
-                [key: string]: unknown;
-            } | null;
+            result?: Record<string, never> | null;
             /** Message */
             message?: string | null;
             /** Error */
@@ -13573,9 +14072,7 @@ export interface components {
             /** Count */
             count: number;
             /** Meta */
-            meta?: {
-                [key: string]: unknown;
-            };
+            meta?: Record<string, never>;
         };
         /** SimilarityCollectionsResponse */
         SimilarityCollectionsResponse: {
@@ -13698,9 +14195,7 @@ export interface components {
             /** Columns */
             columns?: components["schemas"]["TableColumnOut"][];
             /** Sample Rows */
-            sample_rows?: {
-                [key: string]: unknown;
-            }[];
+            sample_rows?: Record<string, never>[];
         };
         /** TableColumnOut */
         TableColumnOut: {
@@ -13858,6 +14353,33 @@ export interface components {
             token_type: string;
             /** Expires In */
             expires_in: number;
+        };
+        /**
+         * TokenUsage
+         * @description Token usage metadata for a single response.
+         */
+        TokenUsage: {
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /**
+             * Total Tokens
+             * @default 0
+             */
+            total_tokens: number;
+            /**
+             * Source
+             * @default estimate
+             * @enum {string}
+             */
+            source: "provider" | "mock" | "estimate";
         };
         /**
          * UpdateSettingsRequest
@@ -14065,6 +14587,8 @@ export interface components {
             /** Chunks */
             chunks: components["schemas"]["ChunkPreviewItem"][];
             stats?: components["schemas"]["ChunkPreviewStats"] | null;
+            /** Chunking Stats Tokens */
+            chunking_stats_tokens?: Record<string, never> | null;
             /** Auto Selected Strategy */
             auto_selected_strategy?: string | null;
             /** Warnings */
@@ -14098,28 +14622,6 @@ export interface components {
             parser_backend: string;
             /** Chunk Strategy */
             chunk_strategy: string;
-        };
-        /** RegexRuleModel */
-        app__api__schemas__governance_profile__RegexRuleModel: {
-            /** Pattern */
-            pattern: string;
-            /**
-             * Repl
-             * @default
-             */
-            repl: string;
-            /**
-             * Flags
-             * @default 0
-             */
-            flags: number;
-        };
-        /** ChunkPreviewResponse */
-        app__api__schemas__pipeline__ChunkPreviewResponse: {
-            /** Paragraphs */
-            paragraphs: components["schemas"]["ChunkItem"][];
-            /** Sentences */
-            sentences: components["schemas"]["ChunkItem"][];
         };
         /** RegexRuleModel */
         app__api__schemas__pipeline__RegexRuleModel: {
@@ -14277,6 +14779,7 @@ export interface operations {
             header?: {
                 authorization?: string | null;
                 "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -19608,6 +20111,45 @@ export interface operations {
             };
         };
     };
+    repair_evidence_suite_reference_sources_api_v1_evidence_suites__suite_id__repair_reference_sources_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceReferenceRepairRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceReferenceRepairResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_evidence_suites_api_v1_evidence_suites_get: {
         parameters: {
             query?: {
@@ -19757,6 +20299,125 @@ export interface operations {
             };
         };
     };
+    get_evidence_suite_dashboard_api_v1_evidence_suites__suite_id__dashboard_get: {
+        parameters: {
+            query?: {
+                include_archived_items?: boolean;
+                top_n?: number;
+                heatmap_top_n?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSuiteDashboardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_evidence_suite_reference_sources_drift_api_v1_evidence_suites__suite_id__drift_audit_get: {
+        parameters: {
+            query?: {
+                include_archived_items?: boolean;
+                include_details?: boolean;
+                details_limit?: number;
+                slice_top_n?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceReferenceDriftAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_dataset_reference_sources_drift_api_v1_evidence_datasets__dataset_id__drift_audit_get: {
+        parameters: {
+            query?: {
+                include_archived_items?: boolean;
+                include_details?: boolean;
+                details_limit?: number;
+                slice_top_n?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceReferenceDriftAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_evidence_items_api_v1_evidence_suites__suite_id__items_get: {
         parameters: {
             query?: {
@@ -19822,6 +20483,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
+        parameters: {
+            query?: {
+                max_items?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceItemImportResponse"];
                 };
             };
             /** @description Validation Error */
@@ -21682,7 +22384,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__api__schemas__pipeline__ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -22952,6 +23654,46 @@ export interface operations {
         };
     };
     export_dataset_rag_audit_html_api_v1_reports_datasets__dataset_id__rag_audit_export_html_get: {
+        parameters: {
+            query?: {
+                pipeline_hash?: string | null;
+                connector_runs_limit?: number;
+                /** @description Whether to redact dataset name/id for sharing */
+                redact?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_report_bundle_zip_api_v1_reports_datasets__dataset_id__export_bundle_get: {
         parameters: {
             query?: {
                 pipeline_hash?: string | null;
