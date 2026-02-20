@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -19,6 +20,7 @@ import type { ConnectorRunOut } from '@/types'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +48,8 @@ type KnowledgeSettingsPanelProps = {
   onResumeConnectorRun: (runId: string) => void | Promise<void>
   onRetryFailedConnectorRun: (runId: string) => void | Promise<void>
 }
+
+type ConnectorRunStatusFilter = 'all' | 'pending' | 'running' | 'failed' | 'completed' | 'cancelled'
 
 function getConnectorRunBadge(status: string): { status: StatusBadgeStatus; label: string } {
   switch (String(status || '').toLowerCase()) {
@@ -75,6 +79,8 @@ export function KnowledgeSettingsPanel({
   onResumeConnectorRun,
   onRetryFailedConnectorRun,
 }: KnowledgeSettingsPanelProps) {
+  const [runStatusFilter, setRunStatusFilter] = useState<ConnectorRunStatusFilter>('all')
+
   const copyText = async (text: string, okMsg: string) => {
     try {
       if (!navigator.clipboard?.writeText) {
@@ -87,6 +93,11 @@ export function KnowledgeSettingsPanel({
       toast.error('复制失败')
     }
   }
+
+  const visibleConnectorRuns = useMemo(() => {
+    if (runStatusFilter === 'all') return connectorRuns
+    return connectorRuns.filter((run) => String(run.status || '').toLowerCase() === runStatusFilter)
+  }, [connectorRuns, runStatusFilter])
 
   return (
     <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
@@ -194,6 +205,19 @@ export function KnowledgeSettingsPanel({
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <Select value={runStatusFilter} onValueChange={(v) => setRunStatusFilter(v as ConnectorRunStatusFilter)}>
+                  <SelectTrigger className="h-9 w-40" aria-label="筛选运行状态">
+                    <SelectValue placeholder="状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部状态</SelectItem>
+                    <SelectItem value="pending">等待</SelectItem>
+                    <SelectItem value="running">运行中</SelectItem>
+                    <SelectItem value="failed">失败</SelectItem>
+                    <SelectItem value="completed">已完成</SelectItem>
+                    <SelectItem value="cancelled">已取消</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   className="gap-2"
@@ -212,11 +236,18 @@ export function KnowledgeSettingsPanel({
               </div>
             ) : connectorRuns.length === 0 ? (
               <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                暂无导入任务。可通过顶部“URL 批量导入”创建。
+                暂无导入任务。可通过顶部“导入/新增”创建批量导入/同步任务。
+              </div>
+            ) : visibleConnectorRuns.length === 0 ? (
+              <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground flex items-center justify-between gap-3">
+                <div>当前筛选条件下暂无任务。</div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setRunStatusFilter('all')}>
+                  清除筛选
+                </Button>
               </div>
             ) : (
               <div className="space-y-3">
-                {connectorRuns.map((run) => {
+                {visibleConnectorRuns.map((run) => {
                   const badge = getConnectorRunBadge(run.status)
                   const stats = (run.stats || {}) as any
                   const created = Number(stats.created || 0)
@@ -469,4 +500,3 @@ export function KnowledgeSettingsPanel({
     </div>
   )
 }
-

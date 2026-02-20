@@ -90,6 +90,7 @@ export function KnowledgeWorkbenchActions({
         selectedDatasetId={selectedDatasetId}
         datasetDefaultValue={datasetDefaultValue}
         uploadDocumentFromUrl={uploadDocumentFromUrl}
+        onAfterImport={loadDocuments}
       />
 
       <KnowledgeUrlBatchDialog
