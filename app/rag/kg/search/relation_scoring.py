@@ -51,6 +51,11 @@ _DEFAULT_PREDICATE_PRIORS: dict[str, PredicatePrior] = {
     # Software / systems.
     "uses": PredicatePrior(weight=0.85, forward=1.0, reverse=0.75),
     "depends_on": PredicatePrior(weight=0.9, forward=1.0, reverse=0.75),
+    # SkillNet-style taxonomy / composition.
+    # - "belong_to": Skill -> SkillTag / SkillCategory edges (reverse direction is often more useful for recall).
+    "belong_to": PredicatePrior(weight=0.85, forward=0.6, reverse=1.0),
+    # - "compose_with": Skill -> Skill edges indicating composability (symmetric).
+    "compose_with": PredicatePrior(weight=0.65, forward=1.0, reverse=1.0),
     "implements": PredicatePrior(weight=0.8, forward=1.0, reverse=0.7),
     "supports": PredicatePrior(weight=0.8, forward=1.0, reverse=0.7),
     # Causal-ish edges (directional).
@@ -87,4 +92,3 @@ def relation_multiplier(predicate: str, *, from_is_subject: bool) -> float:
 
 
 __all__ = ["PredicatePrior", "relation_multiplier"]
-
