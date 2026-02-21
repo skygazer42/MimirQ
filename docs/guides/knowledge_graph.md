@@ -56,3 +56,22 @@ KG API 默认按 tenant + 文档权限进行过滤：
 - `document_ids` 会进行去重与可访问性校验。
 - KG 节点搜索/详情接口会限制到“当前可访问文档”的事件/实体集合，避免跨数据集/跨文档泄漏。
 
+## KG Diagnostics（评测 / 诊断）
+
+MimirQ 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用于提升抽取/搜索质量并可回归：
+
+- API：`POST /api/v1/evaluations/kg/search/diagnostics`
+- Seed：使用 RAGAS regression cases（`reference_sources.chunk_id` 作为 evidence ground truth）
+
+### 常用参数
+- `dataset_id`（必填）
+- `max_cases`：最多评测多少个 case（默认 50）
+- `k`：Hit@K / MRR@K / Recall@K 的 cutoff（默认 10）
+- `auto_extract_kg=true`：评测前自动补齐 evidence 文档的 KG 抽取（默认开启）
+- `hardcase_mode=llm`：对 baseline 失败 case 自动生成 hardcases（knowledge pressure + reasoning pressure）
+
+### 影响结果的开关（建议同时关注）
+- `KG_ENABLED=true`：KG 总开关
+- `KG_SKILL_ENABLED=true` 或请求 `extract_skills=true`：启用 Skill/SOP 抽取（SkillNet 风格 know-how 节点）
+- `KG_RELATION_ENABLED=true` 或请求 `extract_relations=true`：启用 triples / taxonomy edges（关系扩展的重要前置）
+- `KG_SEARCH_RELATION_EXPANSION_ENABLED=true`：KG search 召回阶段启用 relation-driven expansion
