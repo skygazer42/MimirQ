@@ -47,6 +47,12 @@ class RecallSearcher:
                 tenant_id=tenant_id,
                 k=config.recall.vector_candidates,
             )
+            if not bool(getattr(config, "include_skill_entities", True)):
+                raw_entities = [
+                    e
+                    for e in (raw_entities or [])
+                    if str((e or {}).get("type") or "").strip() not in {"Skill", "SkillTag", "SkillCategory"}
+                ]
             if raw_entities and (config.document_ids or config.dataset_id):
                 # Prevent cross-document leakage within tenant: only keep entities that appear
                 # in events scoped by the requested documents or dataset.
