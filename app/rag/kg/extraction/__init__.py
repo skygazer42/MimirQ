@@ -3,6 +3,7 @@ from app.rag.kg.extraction.config import ExtractBaseConfig, ExtractConfig
 from app.rag.kg.extraction.extractor import EventExtractor
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.extraction.processor import EventProcessor
+from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
 
 __all__ = [
     "ExtractConfig",
@@ -10,4 +11,6 @@ __all__ = [
     "EventExtractor",
     "EventProcessor",
     "EntityValueParser",
+    "CandidateEntity",
+    "RelationProcessor",
 ]

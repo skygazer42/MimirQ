@@ -1,0 +1,205 @@
+"""
+Relation processor: extract entity->entity relations ("triples") from chunk text.
+
+Key goals:
+- Constrain generation to candidate entities to reduce hallucinations.
+- Normalize predicates against an allowlist (lightweight ontology v1).
+- Return a compact, provenance-friendly payload to be persisted in `kg_relations`.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Any, Dict, Iterable, List, Sequence
+
+from app.rag.kg.utils import get_logger
+from app.rag.llm.base import BaseLLMClient
+from app.rag.llm.models import LLMMessage, LLMRole
+
+logger = get_logger("kg.extract.relations")
+
+
+_PRED_SAFE_RE = re.compile(r"[^a-z0-9_]+")
+
+
+def normalize_predicate(value: str) -> str:
+    """
+    Normalize predicate keys to a stable snake_case-ish form.
+
+    Examples:
+    - "Works With" -> "works_with"
+    - "located-in" -> "located_in"
+    """
+    text = (value or "").strip().casefold()
+    text = re.sub(r"\s+", "_", text)
+    text = text.replace("-", "_").replace(":", "_").replace("/", "_")
+    text = _PRED_SAFE_RE.sub("", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+    return text or "unknown"
+
+
+def _clamp01(value: object, *, default: float) -> float:
+    try:
+        f = float(value)  # type: ignore[arg-type]
+    except Exception:
+        return float(default)
+    if f != f:  # NaN
+        return float(default)
+    return max(0.0, min(1.0, float(f)))
+
+
+@dataclass(frozen=True)
+class CandidateEntity:
+    """
+    A single candidate entity visible to the relation extractor.
+
+    `cid` should be a stable local id like "E1" to avoid string matching issues.
+    """
+
+    cid: str
+    name: str
+    type: str = "unknown"
+    normalized_name: str = ""
+
+
+class RelationProcessor:
+    def __init__(
+        self,
+        llm_client: BaseLLMClient,
+        *,
+        allowed_predicates: Sequence[str] | None = None,
+    ):
+        self.llm_client = llm_client
+        # Store normalized allowlist for fast membership checks.
+        allow = [normalize_predicate(p) for p in (allowed_predicates or []) if str(p or "").strip()]
+        self.allowed_predicates = set(allow)
+
+    async def extract_relations(
+        self,
+        *,
+        text: str,
+        candidates: Sequence[CandidateEntity],
+        max_relations: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return normalized relation dicts:
+        - subject_id (candidate cid)
+        - predicate (normalized, allowlisted or "unknown")
+        - predicate_raw (optional)
+        - object_id (candidate cid)
+        - confidence (0..1)
+        - qualifiers (dict | None)
+        """
+        clean_text = (text or "").strip()
+        if not clean_text:
+            return []
+
+        cand_list = list(candidates or [])
+        if not cand_list:
+            return []
+
+        max_rels = max(0, int(max_relations or 0))
+        if max_rels <= 0:
+            return []
+
+        # Build candidate table for the prompt. Keep it compact.
+        cand_lines: List[str] = []
+        for c in cand_list:
+            cid = str(getattr(c, "cid", "") or "").strip()
+            if not cid:
+                continue
+            name = str(getattr(c, "name", "") or "").strip()
+            if not name:
+                continue
+            etype = str(getattr(c, "type", "") or "unknown").strip() or "unknown"
+            cand_lines.append(f"{cid}: {name} ({etype})")
+
+        if not cand_lines:
+            return []
+
+        allowlist = sorted(self.allowed_predicates) if self.allowed_predicates else []
+        allow_hint = ", ".join(allowlist[:200]) if allowlist else ""
+
+        schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "relations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "subject_id": {"type": "string"},
+                            "predicate": {"type": "string"},
+                            "object_id": {"type": "string"},
+                            "confidence": {"type": "number"},
+                            "qualifiers": {"type": "object"},
+                        },
+                        "required": ["subject_id", "predicate", "object_id"],
+                    },
+                }
+            },
+        }
+
+        prompt = (
+            "Extract entity-to-entity relations (triples) from the text.\n"
+            "Return JSON only.\n"
+            "Constraints:\n"
+            "- subject_id and object_id MUST be chosen from the candidate list ids.\n"
+            "- If unsure about predicate, use \"unknown\".\n"
+            "- Prefer concise, ontology-friendly predicate keys (snake_case).\n"
+            f"- Allowed predicates (if applicable): {allow_hint}\n\n"
+            "Candidates:\n"
+            f"{chr(10).join(cand_lines)}\n\n"
+            "Text:\n"
+            f"{clean_text}\n"
+        )
+
+        messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
+        result = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)
+
+        rels_raw = result.get("relations") if isinstance(result, dict) else None
+        if not isinstance(rels_raw, list):
+            return []
+
+        valid_ids = {c.cid for c in cand_list if str(getattr(c, "cid", "") or "").strip()}
+
+        out: List[Dict[str, Any]] = []
+        for raw in rels_raw:
+            if not isinstance(raw, dict):
+                continue
+            subj = str(raw.get("subject_id") or "").strip()
+            obj = str(raw.get("object_id") or "").strip()
+            pred_in = str(raw.get("predicate") or "").strip()
+            if not subj or not obj or not pred_in:
+                continue
+            if subj not in valid_ids or obj not in valid_ids:
+                continue
+            if subj == obj:
+                continue
+
+            pred_norm = normalize_predicate(pred_in)
+            pred_raw: str | None = None
+            if self.allowed_predicates and pred_norm not in self.allowed_predicates:
+                pred_raw = pred_in
+                pred_norm = "unknown"
+
+            out.append(
+                {
+                    "subject_id": subj,
+                    "predicate": pred_norm,
+                    "predicate_raw": pred_raw,
+                    "object_id": obj,
+                    "confidence": _clamp01(raw.get("confidence"), default=0.5),
+                    "qualifiers": raw.get("qualifiers") if isinstance(raw.get("qualifiers"), dict) else None,
+                }
+            )
+            if len(out) >= max_rels:
+                break
+
+        logger.info("Extracted %s relations (candidates=%s)", len(out), len(cand_list))
+        return out
+
+
+__all__ = ["CandidateEntity", "RelationProcessor", "normalize_predicate"]
+
