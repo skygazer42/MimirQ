@@ -1155,6 +1155,22 @@ async def delete_kg_for_document(
 
     from app.services.indexer import Indexer
 
+    # Best-effort: also delete relation edges derived from this document so pruning can
+    # correctly remove orphan entities after event deletion.
+    try:
+        from app.rag.kg.models import KgRelation
+
+        db.query(KgRelation).filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.document_id == document_id,
+        ).delete(synchronize_session=False)
+        db.flush()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
     stats = Indexer(db).delete_event_indexes(
         tenant_id=tenant_id,
         document_id=document_id,
