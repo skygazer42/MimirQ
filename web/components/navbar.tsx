@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -125,6 +125,10 @@ export function Navbar({
   isSidebarOpen?: boolean
   setSidebarOpen?: (isOpen: boolean) => void
 } = {}) {
+  const navRef = useRef<HTMLElement | null>(null)
+  const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
+  const firstActionRef = useRef<HTMLButtonElement | null>(null)
+  const prevIsSidebarOpenRef = useRef<boolean | null>(null)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
@@ -145,6 +149,72 @@ export function Navbar({
       // ignore
     }
   }, [setSidebarOpen])
+
+  // Accessibility: prevent focus from entering the sidebar when collapsed/hidden.
+  useEffect(() => {
+    const el = navRef.current as any
+    if (!el) return
+    const inertNow = !isSidebarOpen
+    try {
+      el.inert = inertNow
+    } catch {
+      // ignore: inert is not supported in all environments
+    }
+  }, [isSidebarOpen])
+
+  // Accessibility: close the mobile overlay with Escape.
+  useEffect(() => {
+    if (!isSidebarOpen) return
+    if (typeof window === 'undefined') return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      if (e.key !== 'Escape') return
+      try {
+        // Only treat as an overlay on small screens.
+        if (!window.matchMedia('(max-width: 768px)').matches) return
+      } catch {
+        return
+      }
+      e.preventDefault()
+      setSidebarOpen(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isSidebarOpen, setSidebarOpen])
+
+  // Accessibility: restore focus to the toggle on close; move focus into the sidebar on open.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (prevIsSidebarOpenRef.current === null) {
+      prevIsSidebarOpenRef.current = isSidebarOpen
+      return
+    }
+
+    const prev = prevIsSidebarOpenRef.current
+    prevIsSidebarOpenRef.current = isSidebarOpen
+    if (prev === isSidebarOpen) return
+
+    const active = document.activeElement
+    if (isSidebarOpen) {
+      // Only move focus when the user opened the sidebar from the toggle (keyboard).
+      if (active && toggleButtonRef.current && active !== toggleButtonRef.current) return
+      requestAnimationFrame(() => {
+        firstActionRef.current?.focus()
+      })
+      return
+    }
+
+    const navEl = navRef.current
+    const shouldRestore =
+      !active || active === document.body || Boolean(navEl && active instanceof Node && navEl.contains(active))
+    if (!shouldRestore) return
+
+    requestAnimationFrame(() => {
+      toggleButtonRef.current?.focus()
+    })
+  }, [isSidebarOpen])
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {
@@ -237,7 +307,10 @@ export function Navbar({
       ) : null}
 
       <nav
+        id="mimirq-sidebar"
+        ref={navRef}
         aria-label="主导航"
+        aria-hidden={!isSidebarOpen}
         className={cn(
           'peer flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col transition-transform duration-200 ease-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
@@ -260,6 +333,7 @@ export function Navbar({
         {/* 新对话按钮 */}
         <div className="p-4 pb-2">
           <Button
+            ref={firstActionRef}
             className={cn(
               "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-colors duration-200",
               "bg-card border border-border shadow-sm text-foreground",
@@ -478,14 +552,17 @@ export function Navbar({
 
       {/* 侧边栏折叠按钮 */}
       <Button
+        ref={toggleButtonRef}
         variant="ghost"
         size="icon"
+        aria-controls="mimirq-sidebar"
+        aria-expanded={isSidebarOpen}
         aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         className={cn(
           'fixed bottom-4 z-50 size-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-colors duration-200 ease-out sm:size-10 supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)]',
           isSidebarOpen
-            ? 'left-[260px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto'
+            ? 'left-[260px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto'
             : 'left-4 opacity-100 supports-[padding:env(safe-area-inset-left)]:left-[calc(env(safe-area-inset-left)+1rem)]'
         )}
         onClick={() => setSidebarOpen(!isSidebarOpen)}
