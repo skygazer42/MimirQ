@@ -62,7 +62,7 @@ async def test_kg_extract_replace_existing_deletes_relations_when_no_events_extr
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _extract_no_events(self, sections, batch_index):  # noqa: ANN001
+    async def _extract_no_events(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0)
         return []
 
@@ -100,4 +100,3 @@ async def test_kg_extract_replace_existing_deletes_relations_when_no_events_extr
 
     assert out == []
     assert call_log == ["delete_relations", "delete_events"]
-

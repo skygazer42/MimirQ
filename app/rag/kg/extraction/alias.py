@@ -30,6 +30,8 @@ class AliasCandidate:
     a: str
     b: str
     method: str = "unknown"
+    # Best-effort evidence snippet (matched substring from the source text).
+    quote: str | None = None
 
 
 _WS_RE = re.compile(r"\s+")
@@ -335,6 +337,9 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> List[Ali
     seen: set[tuple[str, str, str]] = set()
 
     def _push(a: str, b: str, method: str) -> None:
+        _push_with_quote(a, b, method, quote=None)
+
+    def _push_with_quote(a: str, b: str, method: str, *, quote: str | None) -> None:
         if len(out) >= lim:
             return
         a2 = _clean_surface(a)
@@ -349,22 +354,25 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> List[Ali
         if key in seen:
             return
         seen.add(key)
-        out.append(AliasCandidate(a=a2, b=b2, method=method))
+        q = _clean_surface(quote or "") if quote else None
+        if q:
+            q = q[:240]
+        out.append(AliasCandidate(a=a2, b=b2, method=method, quote=q))
 
     for m in _PARENS_RE.finditer(clean):
-        _push(m.group("long"), m.group("short"), method="parentheses")
+        _push_with_quote(m.group("long"), m.group("short"), method="parentheses", quote=m.group(0))
         if len(out) >= lim:
             break
 
     if len(out) < lim:
         for m in _ZH_ABBR_RE.finditer(clean):
-            _push(m.group("long"), m.group("short"), method="zh_abbr")
+            _push_with_quote(m.group("long"), m.group("short"), method="zh_abbr", quote=m.group(0))
             if len(out) >= lim:
                 break
 
     if len(out) < lim:
         for m in _EN_AKA_RE.finditer(clean):
-            _push(m.group("long"), m.group("short"), method="en_aka")
+            _push_with_quote(m.group("long"), m.group("short"), method="en_aka", quote=m.group(0))
             if len(out) >= lim:
                 break
 

@@ -43,7 +43,7 @@ async def test_event_extractor_enforces_per_chunk_timeout(monkeypatch):
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _slow_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _slow_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0.05)
         return []
 

@@ -64,6 +64,10 @@ class EventEntityInput:
     description: Optional[str] = None
     vector: Optional[List[float]] = None
     role: Optional[str] = None
+    # Optional evidence grounding (best-effort; used for KG quality + debugging).
+    evidence_quote: Optional[str] = None
+    evidence_start_char: Optional[int] = None
+    evidence_end_char: Optional[int] = None
 
 
 @dataclass(frozen=True)

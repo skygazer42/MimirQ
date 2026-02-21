@@ -58,7 +58,7 @@ async def test_kg_extract_skips_short_chunks(monkeypatch):
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _should_not_be_called(self, sections, batch_index):  # noqa: ANN001
+    async def _should_not_be_called(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         raise AssertionError("LLM should not be called for short chunks")
 
     monkeypatch.setattr(EventProcessor, "extract_from_sections", _should_not_be_called, raising=True)
@@ -96,7 +96,7 @@ async def test_kg_extract_retries_transient_failures(monkeypatch):
 
     calls = {"count": 0}
 
-    async def _flaky_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _flaky_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         calls["count"] += 1
         if calls["count"] == 1:
             raise RuntimeError("transient")
@@ -116,4 +116,3 @@ async def test_kg_extract_retries_transient_failures(monkeypatch):
 
     assert out == []
     assert calls["count"] == 2
-

@@ -20,9 +20,12 @@ from app.rag.kg.extraction.alias import (
     split_trailing_parenthetical_alias,
 )
 from app.rag.kg.extraction.config import ExtractConfig
+from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
+from app.rag.kg.extraction.evidence import coerce_evidence
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.extraction.processor import EventProcessor
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
+from app.rag.kg.extraction.relation_verifier import RelationCandidate, RelationVerifier
 from app.rag.kg.extraction.skill_processor import SkillProcessor
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.models import KgEventEntity, KgRelation, KgSourceEvent
@@ -146,6 +149,7 @@ def _canonicalize_entities_for_chunk(
         ent_type = parser.normalize_type(raw_type)
         desc = str(ent.get("description") or "").strip()
         role = ent.get("role")
+        evidence_quote = str(ent.get("evidence_quote") or "").strip() or None
 
         split = split_trailing_parenthetical_alias(raw_name)
         if split:
@@ -163,6 +167,7 @@ def _canonicalize_entities_for_chunk(
                             "type": ent_type,
                             "description": desc,
                             "role": role,
+                            "evidence_quote": evidence_quote,
                         }
                     )
                     expanded.append(
@@ -172,6 +177,7 @@ def _canonicalize_entities_for_chunk(
                             "type": ent_type,
                             "description": "",
                             "role": role,
+                            "evidence_quote": evidence_quote,
                         }
                     )
                     continue
@@ -183,6 +189,7 @@ def _canonicalize_entities_for_chunk(
                 "type": ent_type,
                 "description": desc,
                 "role": role,
+                "evidence_quote": evidence_quote,
             }
         )
 
@@ -203,6 +210,10 @@ def _canonicalize_entities_for_chunk(
             continue
         if len(str(ent.get("description") or "")) > len(str(existing.get("description") or "")):
             existing["description"] = ent.get("description") or ""
+        if not str(existing.get("evidence_quote") or "").strip():
+            eq = str(ent.get("evidence_quote") or "").strip()
+            if eq:
+                existing["evidence_quote"] = eq
 
     return deduped[:lim]
 
@@ -461,7 +472,12 @@ class EventExtractor:
                     try:
                         async with sem:
                             llm_called_chunk_ids.add(chunk.id)
-                            coro = processor.extract_from_sections(_build_sections(chunk), batch_index=batch_index)
+                            coro = processor.extract_from_sections(
+                                _build_sections(chunk),
+                                batch_index=batch_index,
+                                max_events=max_events_per_chunk,
+                                max_entities_per_event=max_entities_per_event,
+                            )
                             if chunk_timeout_sec > 0:
                                 data = await asyncio.wait_for(coro, timeout=chunk_timeout_sec)
                             else:
@@ -561,6 +577,246 @@ class EventExtractor:
                     )
                     kept += 1
 
+            # Optional: entity verification + evidence grounding (higher quality, higher cost).
+            entity_verify_enabled = bool(getattr(settings, "KG_EXTRACT_ENTITY_VERIFY_ENABLED", False))
+            relation_verify_enabled = bool(getattr(settings, "KG_EXTRACT_RELATION_VERIFY_ENABLED", False))
+            evidence_required = bool(getattr(settings, "KG_EXTRACT_EVIDENCE_REQUIRED", False)) or bool(
+                entity_verify_enabled or relation_verify_enabled
+            )
+
+            # Assign stable candidate ids per chunk so we can:
+            # - verify/filter entities (LLM pass)
+            # - later reuse the same ids for relation extraction and alias edges
+            entity_candidates_by_chunk: dict[object, list[EntityCandidate]] = {}
+            entity_key_to_cid_by_chunk: dict[object, dict[tuple[str, str], str]] = {}
+
+            for chunk, ev in processed_events:
+                ent_list = ev.get("entities") if isinstance(ev, dict) else None
+                if not isinstance(ent_list, list) or not ent_list:
+                    continue
+                cid_by_key = entity_key_to_cid_by_chunk.setdefault(chunk.id, {})
+                cand_list = entity_candidates_by_chunk.setdefault(chunk.id, [])
+
+                for ent in ent_list:
+                    if not isinstance(ent, dict):
+                        continue
+                    name = str(ent.get("name") or "").strip()
+                    if not name:
+                        continue
+                    norm = str(ent.get("normalized_name") or "").strip()
+                    if not norm:
+                        norm = entity_parser.normalize_name(name)
+                        ent["normalized_name"] = norm
+                    etype = str(ent.get("type") or "unknown").strip() or "unknown"
+                    key = (etype, norm)
+                    cid = cid_by_key.get(key)
+                    if not cid:
+                        cid = f"E{len(cid_by_key) + 1}"
+                        cid_by_key[key] = cid
+                        cand_list.append(
+                            EntityCandidate(
+                                cid=cid,
+                                name=name,
+                                type=etype,
+                                description=str(ent.get("description") or "").strip(),
+                                evidence_quote=str(ent.get("evidence_quote") or "").strip() or None,
+                            )
+                        )
+                    ent["_cid"] = cid
+
+            llm_aliases_by_chunk: dict[object, list[dict[str, object]]] = {}
+            if entity_verify_enabled and entity_candidates_by_chunk:
+                try:
+                    verifier = EntityVerifier(llm_client=llm_client)
+                    chunk_by_id_for_verify = {c.id: c for c in resolved_chunks if getattr(c, "id", None) is not None}
+
+                    async def _verify_entities_for_chunk(chunk_id: object):
+                        ch = chunk_by_id_for_verify.get(chunk_id)
+                        if ch is None:
+                            return chunk_id, {"kept": [], "aliases": []}, False
+                        candidates = entity_candidates_by_chunk.get(chunk_id) or []
+                        if not candidates:
+                            return chunk_id, {"kept": [], "aliases": []}, True
+                        try:
+                            async with sem:
+                                coro = verifier.verify(
+                                    text=(ch.content or ""),
+                                    candidates=candidates,
+                                    max_keep=max(5, int(max_entities_per_event or 0)),
+                                    max_alias_edges=10,
+                                )
+                                if chunk_timeout_sec > 0:
+                                    out = await asyncio.wait_for(coro, timeout=chunk_timeout_sec)
+                                else:
+                                    out = await coro
+                            return chunk_id, out if isinstance(out, dict) else {"kept": [], "aliases": []}, True
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "KG entity verify failed for chunk %s: %s",
+                                str(getattr(ch, "id", "") or ""),
+                                str(exc)[:200],
+                            )
+                            return chunk_id, {"kept": [], "aliases": []}, False
+
+                    verify_results = await asyncio.gather(
+                        *[_verify_entities_for_chunk(cid) for cid in entity_candidates_by_chunk.keys()],
+                    )
+
+                    keep_map_by_chunk: dict[object, dict[str, dict[str, object]]] = {}
+                    for chunk_id, out, ok in verify_results:
+                        if not ok:
+                            continue
+                        kept = out.get("kept") if isinstance(out, dict) else None
+                        if isinstance(kept, list) and kept:
+                            keep_map: dict[str, dict[str, object]] = {}
+                            for item in kept:
+                                if not isinstance(item, dict):
+                                    continue
+                                cid = str(item.get("id") or "").strip()
+                                if not cid:
+                                    continue
+                                keep_map[cid] = dict(item)
+                            if keep_map:
+                                keep_map_by_chunk[chunk_id] = keep_map
+
+                        aliases = out.get("aliases") if isinstance(out, dict) else None
+                        if isinstance(aliases, list) and aliases:
+                            cleaned: list[dict[str, object]] = []
+                            for item in aliases:
+                                if not isinstance(item, dict):
+                                    continue
+                                a = str(item.get("alias_id") or "").strip()
+                                c = str(item.get("canonical_id") or "").strip()
+                                if not a or not c or a == c:
+                                    continue
+                                cleaned.append(dict(item))
+                            if cleaned:
+                                llm_aliases_by_chunk[chunk_id] = cleaned
+
+                    if keep_map_by_chunk:
+                        for chunk, ev in processed_events:
+                            keep_map = keep_map_by_chunk.get(chunk.id)
+                            if not keep_map:
+                                continue
+                            ent_list = ev.get("entities") if isinstance(ev, dict) else None
+                            if not isinstance(ent_list, list) or not ent_list:
+                                continue
+                            kept_entities: list[dict] = []
+                            for ent in ent_list:
+                                if not isinstance(ent, dict):
+                                    continue
+                                cid = str(ent.get("_cid") or "").strip()
+                                if not cid or cid not in keep_map:
+                                    continue
+                                info = keep_map.get(cid) or {}
+                                # Apply verifier corrections (best-effort).
+                                if info.get("type"):
+                                    ent["type"] = info.get("type")
+                                if info.get("description"):
+                                    ent["description"] = info.get("description")
+                                if info.get("evidence_quote"):
+                                    ent["evidence_quote"] = info.get("evidence_quote")
+                                if info.get("confidence") is not None:
+                                    ent["_confidence"] = info.get("confidence")
+                                kept_entities.append(ent)
+                            ev["entities"] = kept_entities
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("KG entity verify pass failed; continuing without verification: %s", str(exc)[:200])
+
+            # Deterministic evidence gating for entities (quote + span).
+            # We store evidence fields in the entity dict so they can be persisted on KgEventEntity.extra_data.
+            _stop_norm = {
+                "i",
+                "me",
+                "my",
+                "we",
+                "our",
+                "you",
+                "your",
+                "he",
+                "she",
+                "they",
+                "it",
+                "this",
+                "that",
+                "these",
+                "those",
+                "the",
+                "a",
+                "an",
+                "and",
+                "or",
+                "but",
+                "so",
+                "because",
+                "there",
+                "here",
+                "what",
+                "which",
+                "who",
+                "whom",
+                "whose",
+                "where",
+                "when",
+                "why",
+                "how",
+                "我们",
+                "你",
+                "你们",
+                "他们",
+                "她们",
+                "它们",
+                "这",
+                "那",
+                "该",
+                "本",
+                "此",
+            }
+            entity_evidence_stats: dict[str, int] = {
+                "total_raw": 0,
+                "kept": 0,
+                "dropped_stopword": 0,
+                "dropped_no_evidence": 0,
+            }
+            for chunk, ev in processed_events:
+                ent_list = ev.get("entities") if isinstance(ev, dict) else None
+                if not isinstance(ent_list, list) or not ent_list:
+                    continue
+                cleaned: list[dict] = []
+                for ent in ent_list:
+                    if not isinstance(ent, dict):
+                        continue
+                    name = str(ent.get("name") or "").strip()
+                    if not name:
+                        continue
+                    norm = str(ent.get("normalized_name") or "").strip()
+                    if not norm:
+                        norm = entity_parser.normalize_name(name)
+                        ent["normalized_name"] = norm
+
+                    entity_evidence_stats["total_raw"] += 1
+                    if norm in _stop_norm:
+                        entity_evidence_stats["dropped_stopword"] += 1
+                        continue
+
+                    evq = ent.get("evidence_quote")
+                    evidence = coerce_evidence(
+                        text=(chunk.content or ""),
+                        evidence_quote=(str(evq).strip() if isinstance(evq, str) else None),
+                        fallback_mention=name,
+                        max_quote_chars=240,
+                    )
+                    if evidence is None and evidence_required:
+                        entity_evidence_stats["dropped_no_evidence"] += 1
+                        continue
+                    if evidence is not None:
+                        ent["evidence_quote"] = evidence.quote
+                        ent["evidence_start_char"] = int(evidence.start_char)
+                        ent["evidence_end_char"] = int(evidence.end_char)
+                    cleaned.append(ent)
+                    entity_evidence_stats["kept"] += 1
+                ev["entities"] = cleaned
+
             embed_cache: Dict[str, List[float]] = {}
 
             def _iter_batches(items: List[str], size: int):
@@ -620,6 +876,15 @@ class EventExtractor:
                             description=(ent.get("description") or "").strip() or None,
                             vector=entity_vec,
                             role=ent.get("role"),
+                            evidence_quote=(str(ent.get("evidence_quote") or "").strip() or None),
+                            evidence_start_char=(
+                                int(ent.get("evidence_start_char"))
+                                if ent.get("evidence_start_char") is not None
+                                else None
+                            ),
+                            evidence_end_char=(
+                                int(ent.get("evidence_end_char")) if ent.get("evidence_end_char") is not None else None
+                            ),
                         )
                     )
                 entity_total += len(entity_inputs)
@@ -715,6 +980,8 @@ class EventExtractor:
                         "event_kept": int(len(events)),
                         "event_total": int(len(events)),
                         "alias_heuristics": dict(alias_diag),
+                        "evidence_required": bool(evidence_required),
+                        "entity_evidence": dict(entity_evidence_stats),
                         "elapsed_sec": round(float(elapsed), 3),
                     }
                 )
@@ -745,10 +1012,16 @@ class EventExtractor:
             # This runs after event/entity indexing so we can map candidate entities to persisted KgEntity ids.
             # IMPORTANT: commit relations before deleting old events when pruning is enabled; otherwise,
             # relation-referenced entities could be pruned prematurely.
+            relation_evidence_stats: dict[str, int] = {
+                "total_raw": 0,
+                "kept": 0,
+                "dropped_no_evidence": 0,
+                "dropped_missing_endpoints": 0,
+            }
             if extract_relations_enabled and cleanup_chunk_ids:
                 try:
                     # 1) Build candidates per chunk based on extracted entities.
-                    candidate_rows_by_chunk: dict[object, list[tuple[str, str, str]]] = {}
+                    candidate_rows_by_chunk: dict[object, list[tuple[str, str, str, str]]] = {}
                     seen_by_chunk: dict[object, set[tuple[str, str]]] = {}
                     for chunk, ev in processed_events:
                         if chunk.id not in cleanup_chunk_ids:
@@ -771,14 +1044,17 @@ class EventExtractor:
                             if key in seen:
                                 continue
                             seen.add(key)
-                            rows.append((name, ent_type, normalized))
+                            cid = str(ent.get("_cid") or "").strip()
+                            if not cid:
+                                cid = f"E{len(seen)}"
+                            rows.append((cid, name, ent_type, normalized))
 
                     candidates_by_chunk: dict[object, list[CandidateEntity]] = {}
                     for chunk_id in cleanup_chunk_ids:
                         rows = candidate_rows_by_chunk.get(chunk_id) or []
                         candidates_by_chunk[chunk_id] = [
-                            CandidateEntity(cid=f"E{i}", name=name, type=ent_type, normalized_name=normalized)
-                            for i, (name, ent_type, normalized) in enumerate(rows, 1)
+                            CandidateEntity(cid=cid, name=name, type=ent_type, normalized_name=normalized)
+                            for (cid, name, ent_type, normalized) in rows
                         ]
 
                     # 2) Build lookup from (type, normalized_name) to KgEntity.id from the indexing result.
@@ -807,7 +1083,7 @@ class EventExtractor:
                         alias_conf = 0.95
                     alias_conf = max(0.0, min(alias_conf, 1.0))
 
-                    alias_specs_by_chunk: dict[object, list[tuple[str, str, str, str]]] = {}
+                    alias_specs_by_chunk: dict[object, list[tuple[str, str, str, str, str]]] = {}
                     missing_entities: dict[tuple[str, str], str] = {}
 
                     chunk_by_id = {c.id: c for c in resolved_chunks if getattr(c, "id", None) is not None}
@@ -854,7 +1130,7 @@ class EventExtractor:
                                 _alias_bump(ch.document_id, f"kg_alias_candidates_{method}", 1)
                             _alias_bump(ch.document_id, "kg_alias_candidates_total", len(alias_candidates))
 
-                            per_chunk_specs: list[tuple[str, str, str, str]] = []
+                            per_chunk_specs: list[tuple[str, str, str, str, str]] = []
                             for cand in alias_candidates:
                                 direction = choose_alias_direction(cand.a, cand.b)
                                 if not direction:
@@ -927,7 +1203,13 @@ class EventExtractor:
                                         continue
 
                                 per_chunk_specs.append(
-                                    (inferred_type, alias_norm, canonical_norm, str(cand.method or ""))
+                                    (
+                                        inferred_type,
+                                        alias_norm,
+                                        canonical_norm,
+                                        str(cand.method or ""),
+                                        str(getattr(cand, "quote", "") or "").strip(),
+                                    )
                                 )
 
                             if per_chunk_specs:
@@ -1031,6 +1313,102 @@ class EventExtractor:
 
                     rel_results = await asyncio.gather(*[_extract_relations_for_chunk(cid) for cid in cleanup_chunk_ids])
 
+                    # Optional verification pass: re-check extracted relations against the text and predicate allowlist.
+                    rels_by_chunk: dict[object, list[dict[str, object]]] = {}
+                    for chunk_id, rels, ok in rel_results:
+                        if not ok:
+                            continue
+                        if isinstance(rels, list) and rels:
+                            rels_by_chunk[chunk_id] = [r for r in rels if isinstance(r, dict)]
+
+                    if relation_verify_enabled and rels_by_chunk:
+                        try:
+                            verifier = RelationVerifier(llm_client=llm_client, allowed_predicates=allowed_predicates)
+
+                            async def _verify_relations_for_chunk(chunk_id: object):
+                                ch = chunk_by_id.get(chunk_id)
+                                if ch is None:
+                                    return chunk_id, None, False
+                                rels0 = rels_by_chunk.get(chunk_id) or []
+                                if not rels0:
+                                    return chunk_id, [], True
+
+                                rel_cands: list[RelationCandidate] = []
+                                by_rid: dict[str, dict[str, object]] = {}
+                                for i, rel in enumerate(rels0, 1):
+                                    if not isinstance(rel, dict):
+                                        continue
+                                    rid = f"R{i}"
+                                    by_rid[rid] = rel
+                                    rel_cands.append(
+                                        RelationCandidate(
+                                            rid=rid,
+                                            subject_id=str(rel.get("subject_id") or "").strip(),
+                                            predicate=str(rel.get("predicate") or "").strip() or "unknown",
+                                            object_id=str(rel.get("object_id") or "").strip(),
+                                            confidence=float(rel.get("confidence") or 0.5),
+                                            evidence_quote=str(rel.get("evidence_quote") or "").strip() or None,
+                                        )
+                                    )
+
+                                if not rel_cands:
+                                    return chunk_id, [], True
+
+                                try:
+                                    async with sem:
+                                        coro = verifier.verify(
+                                            text=(ch.content or ""),
+                                            candidates=rel_cands,
+                                            max_keep=max_relations_per_chunk,
+                                        )
+                                        if chunk_timeout_sec > 0:
+                                            out = await asyncio.wait_for(coro, timeout=chunk_timeout_sec)
+                                        else:
+                                            out = await coro
+                                    kept = out.get("kept") if isinstance(out, dict) else None
+                                    if not isinstance(kept, list) or not kept:
+                                        # Fail-open: keep original extraction if verifier returns nothing.
+                                        return chunk_id, None, True
+
+                                    verified: list[dict[str, object]] = []
+                                    for item in kept:
+                                        if not isinstance(item, dict):
+                                            continue
+                                        rid = str(item.get("rid") or "").strip()
+                                        src = by_rid.get(rid)
+                                        if not rid or src is None:
+                                            continue
+                                        dst = dict(src)
+                                        if item.get("predicate"):
+                                            dst["predicate"] = item.get("predicate")
+                                        if item.get("confidence") is not None:
+                                            dst["confidence"] = item.get("confidence")
+                                        if item.get("evidence_quote"):
+                                            dst["evidence_quote"] = item.get("evidence_quote")
+                                        verified.append(dst)
+                                        if len(verified) >= max_relations_per_chunk:
+                                            break
+                                    return chunk_id, verified, True
+                                except Exception as exc:  # noqa: BLE001
+                                    logger.warning(
+                                        "KG relation verify failed for chunk %s: %s",
+                                        str(getattr(ch, "id", "") or ""),
+                                        str(exc)[:200],
+                                    )
+                                    return chunk_id, None, False
+
+                            verify_results = await asyncio.gather(
+                                *[_verify_relations_for_chunk(cid) for cid in list(rels_by_chunk.keys())]
+                            )
+                            for chunk_id, verified, ok in verify_results:
+                                if not ok:
+                                    continue
+                                if verified is None:
+                                    continue
+                                rels_by_chunk[chunk_id] = verified
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("KG relation verify pass failed; continuing without verification: %s", str(exc)[:200])
+
                     succeeded_rel_chunk_ids: list[object] = []
                     rel_rows: list[KgRelation] = []
 
@@ -1038,6 +1416,8 @@ class EventExtractor:
                         ch = chunk_by_id.get(chunk_id)
                         if ch is None:
                             continue
+                        if ok and chunk_id in rels_by_chunk:
+                            rels = rels_by_chunk.get(chunk_id) or []
                         if ok:
                             succeeded_rel_chunk_ids.append(chunk_id)
 
@@ -1059,7 +1439,8 @@ class EventExtractor:
                         # If LLM extraction failed, we do not replace old relations. To keep the alias heuristic
                         # idempotent, skip inserting alias edges that already exist for this chunk.
                         alias_specs = alias_specs_by_chunk.get(chunk_id) or []
-                        if (not ok) and alias_specs:
+                        llm_aliases_existing = llm_aliases_by_chunk.get(chunk_id) or []
+                        if (not ok) and (alias_specs or llm_aliases_existing):
                             try:
                                 existing = (
                                     session.query(
@@ -1082,11 +1463,12 @@ class EventExtractor:
                                 # Best-effort: if the DB can't answer, proceed without dedupe.
                                 pass
 
+                        cand_map = {c.cid: c for c in (candidates_by_chunk.get(chunk_id) or [])}
                         if ok:
-                            cand_map = {c.cid: c for c in (candidates_by_chunk.get(chunk_id) or [])}
                             for rel in rels or []:
                                 if not isinstance(rel, dict):
                                     continue
+                                relation_evidence_stats["total_raw"] += 1
                                 subj_cid = str(rel.get("subject_id") or "").strip()
                                 obj_cid = str(rel.get("object_id") or "").strip()
                                 pred = str(rel.get("predicate") or "").strip() or "unknown"
@@ -1122,6 +1504,36 @@ class EventExtractor:
                                     conf = 0.5
                                 conf = max(0.0, min(1.0, conf))
 
+                                # Evidence gating (optional but recommended): require an in-text quote for the relation.
+                                rel_refs = dict(refs)
+                                evq = rel.get("evidence_quote")
+                                evidence = coerce_evidence(
+                                    text=(ch.content or ""),
+                                    evidence_quote=(str(evq).strip() if isinstance(evq, str) else None),
+                                    fallback_mention=None,
+                                    max_quote_chars=240,
+                                )
+                                if evidence is None and evidence_required:
+                                    relation_evidence_stats["dropped_no_evidence"] += 1
+                                    continue
+                                if evidence is not None:
+                                    # Best-effort: ensure both endpoints appear in the quote to reduce "two entities exist"
+                                    # false positives.
+                                    q_fold = evidence.quote.casefold()
+                                    subj_ok = (str(subj_cand.name or "").casefold() in q_fold) or (
+                                        str(subj_cand.normalized_name or "").casefold() in q_fold
+                                    )
+                                    obj_ok = (str(obj_cand.name or "").casefold() in q_fold) or (
+                                        str(obj_cand.normalized_name or "").casefold() in q_fold
+                                    )
+                                    if evidence_required and not (subj_ok and obj_ok):
+                                        relation_evidence_stats["dropped_missing_endpoints"] += 1
+                                        continue
+                                    rel_refs["evidence_quote"] = evidence.quote
+                                    rel_refs["evidence_start_char"] = int(evidence.start_char)
+                                    rel_refs["evidence_end_char"] = int(evidence.end_char)
+
+                                relation_evidence_stats["kept"] += 1
                                 rel_rows.append(
                                     KgRelation(
                                         tenant_id=tenant_id,
@@ -1134,7 +1546,7 @@ class EventExtractor:
                                         object_entity_id=obj_ent_id,
                                         confidence=conf,
                                         qualifiers=rel.get("qualifiers") if isinstance(rel.get("qualifiers"), dict) else None,
-                                        references=refs,
+                                        references=rel_refs,
                                         extra_data={
                                             "kg_prompt_template_id": chosen_template_id,
                                             "kg_prompt_template_key": config.prompt_template_key,
@@ -1144,7 +1556,7 @@ class EventExtractor:
                                 )
 
                         # Insert heuristic alias_of edges (best-effort; may run even if LLM failed).
-                        for etype, alias_norm, canonical_norm, method in alias_specs:
+                        for etype, alias_norm, canonical_norm, method, alias_quote in alias_specs:
                             subj_ent_id = entity_id_by_key.get((etype, alias_norm))
                             obj_ent_id = entity_id_by_key.get((etype, canonical_norm))
                             if subj_ent_id is None or obj_ent_id is None or subj_ent_id == obj_ent_id:
@@ -1164,6 +1576,20 @@ class EventExtractor:
 
                             alias_diag["edges_appended"] = int(alias_diag.get("edges_appended", 0) or 0) + 1
                             _alias_bump(ch.document_id, "kg_alias_edges_appended", 1)
+
+                            alias_refs = dict(refs)
+                            evidence = coerce_evidence(
+                                text=(ch.content or ""),
+                                evidence_quote=(str(alias_quote).strip() or None),
+                                fallback_mention=None,
+                                max_quote_chars=240,
+                            )
+                            if evidence is None and evidence_required:
+                                continue
+                            if evidence is not None:
+                                alias_refs["evidence_quote"] = evidence.quote
+                                alias_refs["evidence_start_char"] = int(evidence.start_char)
+                                alias_refs["evidence_end_char"] = int(evidence.end_char)
                             rel_rows.append(
                                 KgRelation(
                                     tenant_id=tenant_id,
@@ -1176,7 +1602,78 @@ class EventExtractor:
                                     object_entity_id=obj_ent_id,
                                     confidence=float(alias_conf),
                                     qualifiers={"method": "heuristic_alias", "pattern": str(method or "")},
-                                    references=refs,
+                                    references=alias_refs,
+                                    extra_data={
+                                        "kg_prompt_template_id": chosen_template_id,
+                                        "kg_prompt_template_key": config.prompt_template_key,
+                                        "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                                    },
+                                    )
+                                )
+
+                        # Insert LLM-derived alias_of edges from the entity verification pass (best-effort).
+                        llm_aliases = llm_aliases_by_chunk.get(chunk_id) or []
+                        for item in llm_aliases:
+                            if not isinstance(item, dict):
+                                continue
+                            alias_cid = str(item.get("alias_id") or "").strip()
+                            canon_cid = str(item.get("canonical_id") or "").strip()
+                            if not alias_cid or not canon_cid or alias_cid == canon_cid:
+                                continue
+                            alias_cand = cand_map.get(alias_cid)
+                            canon_cand = cand_map.get(canon_cid)
+                            if alias_cand is None or canon_cand is None:
+                                continue
+
+                            etype = str(alias_cand.type or "unknown").strip() or "unknown"
+                            if str(canon_cand.type or "unknown").strip() != etype:
+                                continue
+
+                            alias_key = (etype, str(alias_cand.normalized_name or "").strip())
+                            canon_key = (etype, str(canon_cand.normalized_name or "").strip())
+                            subj_ent_id = entity_id_by_key.get(alias_key)
+                            obj_ent_id = entity_id_by_key.get(canon_key)
+                            if subj_ent_id is None or obj_ent_id is None or subj_ent_id == obj_ent_id:
+                                continue
+
+                            rel_key = (subj_ent_id, "alias_of", obj_ent_id)
+                            if rel_key in seen_rel_keys or (obj_ent_id, "alias_of", subj_ent_id) in seen_rel_keys:
+                                continue
+                            seen_rel_keys.add(rel_key)
+
+                            llm_refs = dict(refs)
+                            evidence = coerce_evidence(
+                                text=(ch.content or ""),
+                                evidence_quote=(str(item.get("evidence_quote") or "").strip() or None),
+                                fallback_mention=None,
+                                max_quote_chars=240,
+                            )
+                            if evidence is None and evidence_required:
+                                continue
+                            if evidence is not None:
+                                llm_refs["evidence_quote"] = evidence.quote
+                                llm_refs["evidence_start_char"] = int(evidence.start_char)
+                                llm_refs["evidence_end_char"] = int(evidence.end_char)
+
+                            try:
+                                conf = float(item.get("confidence") or 0.9)
+                            except Exception:
+                                conf = 0.9
+                            conf = max(0.0, min(1.0, conf))
+
+                            rel_rows.append(
+                                KgRelation(
+                                    tenant_id=tenant_id,
+                                    document_id=ch.document_id,
+                                    chunk_id=ch.id,
+                                    event_id=None,
+                                    subject_entity_id=subj_ent_id,
+                                    predicate="alias_of",
+                                    predicate_raw=None,
+                                    object_entity_id=obj_ent_id,
+                                    confidence=conf,
+                                    qualifiers={"method": "llm_entity_verify", "kind": "alias"},
+                                    references=llm_refs,
                                     extra_data={
                                         "kg_prompt_template_id": chosen_template_id,
                                         "kg_prompt_template_key": config.prompt_template_key,
@@ -1746,6 +2243,9 @@ class EventExtractor:
                     "event_total": int(len(events)),
                     "entity_count_new": int(entity_total),
                     "alias_heuristics": dict(alias_diag),
+                    "evidence_required": bool(evidence_required),
+                    "entity_evidence": dict(entity_evidence_stats),
+                    "relation_evidence": dict(relation_evidence_stats),
                     "max_concurrency": int(max_concurrency),
                     "elapsed_sec": round(float(elapsed), 3),
                 }

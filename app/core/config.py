@@ -912,6 +912,15 @@ class Settings(BaseSettings):
     # Optional incremental extraction: skip unchanged chunks when prompt selection matches.
     # Default false to preserve backward-compatible behavior (prompt changes should re-extract).
     KG_EXTRACT_SKIP_UNCHANGED_CHUNKS: bool = False
+    # Evidence-first extraction (optional; improves KG precision and debuggability).
+    # When enabled, the extractor will attempt to ground each entity/relation to a chunk-local evidence quote/span.
+    #
+    # NOTE: Default is True because ungrounded entities/relations degrade relation-driven recall expansion and
+    # downstream RAG quality more than a smaller-but-correct graph.
+    KG_EXTRACT_EVIDENCE_REQUIRED: bool = True
+    # Multi-pass verification (optional; higher quality, higher cost).
+    KG_EXTRACT_ENTITY_VERIFY_ENABLED: bool = False
+    KG_EXTRACT_RELATION_VERIFY_ENABLED: bool = False
     # Graph co-occurrence computation guardrail: cap entity count per event when building co-occurrence edges.
     KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT: int = 60
     # KG API guardrails.

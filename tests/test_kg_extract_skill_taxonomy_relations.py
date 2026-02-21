@@ -83,7 +83,7 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _fake_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _fake_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0)
         # Single entity => relation LLM won't be called (<2 candidates).
         return [

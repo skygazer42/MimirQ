@@ -54,7 +54,7 @@ async def test_relation_allowlist_can_be_overridden_via_settings(monkeypatch: py
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _fake_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _fake_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0)
         return [
             {
@@ -112,4 +112,3 @@ async def test_relation_allowlist_can_be_overridden_via_settings(monkeypatch: py
     await extractor.extract(cfg, chunks=[chunk])
 
     assert captured.get("allowed_predicates") == ["works_with", "located_in"]
-
