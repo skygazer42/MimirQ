@@ -43,11 +43,26 @@ class ExpandSearcher:
             relation_repo = RelationRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
 
+            include_skills = bool(getattr(config, "include_skill_entities", True))
+            skill_types = {"Skill", "SkillTag", "SkillCategory"}
+
             known_entities: Set[str] = {e["entity_id"] for e in recall_result.key_final if e.get("entity_id")}
+            if not include_skills:
+                known_entities = {
+                    e["entity_id"]
+                    for e in (recall_result.key_final or [])
+                    if e.get("entity_id") and str(e.get("type") or "").strip() not in skill_types
+                }
             entity_weights = dict(recall_result.key_weights)
             discovered_events: List[str] = list(recall_result.event_ids or [])
             discovered_event_ids: Set[str] = set(discovered_events)
             current_entities = [e["entity_id"] for e in (recall_result.key_final or []) if e.get("entity_id")]
+            if not include_skills:
+                current_entities = [
+                    e["entity_id"]
+                    for e in (recall_result.key_final or [])
+                    if e.get("entity_id") and str(e.get("type") or "").strip() not in skill_types
+                ]
             max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
 
             for hop in range(config.expand.max_hops):
@@ -64,11 +79,14 @@ class ExpandSearcher:
                     limit = max(1, min(limit, remaining))
 
                 seed_entities = list(current_entities)
-                if (
-                    bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False))
-                    and bool(getattr(settings, "KG_RELATION_ENABLED", False))
-                    and seed_entities
-                ):
+                if config.relation_expansion_enabled is None:
+                    relation_enabled = bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)) and bool(
+                        getattr(settings, "KG_RELATION_ENABLED", False)
+                    )
+                else:
+                    relation_enabled = bool(config.relation_expansion_enabled)
+
+                if relation_enabled and seed_entities:
                     max_neighbors = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0))
                     if max_neighbors > 0:
                         min_confidence = float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0)
@@ -158,6 +176,16 @@ class ExpandSearcher:
 
                             sorted_neighbors = sorted(neighbor_weights.items(), key=lambda x: x[1], reverse=True)
                             sorted_neighbors = sorted_neighbors[:max_neighbors]
+                            if sorted_neighbors and not include_skills:
+                                # Filter out Skill-like neighbor nodes for "skills_off" ablations.
+                                try:
+                                    neighbor_ids = [eid for eid, _w in sorted_neighbors]
+                                    objs = entity_repo.get_entities_by_ids(neighbor_ids, tenant_id=tenant_id)
+                                    non_skill = {str(o.id) for o in (objs or []) if str(getattr(o, "type", "") or "") not in skill_types}
+                                    sorted_neighbors = [(eid, w) for eid, w in sorted_neighbors if eid in non_skill]
+                                except Exception:
+                                    # Best-effort: if filtering fails, keep original neighbors.
+                                    pass
                             for ent_id, w in sorted_neighbors:
                                 if ent_id not in seed_set:
                                     seed_set.add(ent_id)
@@ -203,6 +231,8 @@ class ExpandSearcher:
                         ent_id = str(ent.id)
                         if ent_id in known_entities:
                             continue
+                        if not include_skills and str(getattr(ent, "type", "") or "") in skill_types:
+                            continue
                         weight = recall_result.event_scores.get(ev_id, 0.0)
                         new_entities[ent_id] = new_entities.get(ent_id, 0.0) + weight
                         tracker.add_clue(
@@ -239,6 +269,8 @@ class ExpandSearcher:
             key_final: List[Dict[str, Any]] = []
             ent_objects = entity_repo.get_entities_by_ids(list(known_entities), tenant_id=tenant_id)
             for ent in ent_objects:
+                if not include_skills and str(getattr(ent, "type", "") or "") in skill_types:
+                    continue
                 key_final.append(
                     {
                         "entity_id": str(ent.id),
