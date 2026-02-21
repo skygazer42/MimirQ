@@ -142,7 +142,7 @@ export function DatasetFolderTreeView({
 
 type DatasetFolderTreeProps = {
   datasetId: string
-  lifecycle?: 'active' | 'archived' | 'disabled' | 'all' | string
+  lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
   maxDepth?: number
   selectedPath: string | null
   onSelect: (path: string | null) => void

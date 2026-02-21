@@ -760,11 +760,11 @@ export interface LLMCleanPreviewRequest {
 export interface LLMCleanPreviewResponse {
   markdown: string
   changed: boolean
-  model_used?: string
-  prompt_template_id?: string
-  template_key?: string
-  ab_experiment_key?: string
-  ab_variant?: string
+  model_used?: string | null
+  prompt_template_id?: string | null
+  template_key?: string | null
+  ab_experiment_key?: string | null
+  ab_variant?: string | null
   warnings?: string[]
 }
 
@@ -1636,8 +1636,8 @@ export interface BatchTaskStatus {
   completed_files: number
   failed_files: number
   progress: number
-  result_url?: string
-  error?: string
+  result_url?: string | null
+  error?: string | null
 }
 
 export type DocumentBatchUploadSuccess = import('./backend').DocumentBatchUploadSuccess
