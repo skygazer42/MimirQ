@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.core.config import settings
 from app.api.schemas.evaluation import (
     GeneratedQuestion,
     RagasItemSchema,
@@ -36,6 +37,10 @@ from app.api.schemas.regression import (
     RagasRegressionRunDiffResponse,
     RagasRegressionRunList,
     RagasRegressionRunSchema,
+)
+from app.api.schemas.kg_diagnostics import (
+    KGSearchDiagnosticsRequest,
+    KGSearchDiagnosticsResponse,
 )
 from app.core.database import get_db
 from app.models.chat import Conversation
@@ -944,6 +949,31 @@ async def generate_test_cases_from_documents(
             saved_case_ids=[],
             error_message=str(e),
         )
+
+
+@router.post("/kg/search/diagnostics", response_model=KGSearchDiagnosticsResponse)
+async def run_kg_search_diagnostics(
+    payload: KGSearchDiagnosticsRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Run a Dynamic OneEval-style diagnostics pass for KG search.
+
+    Seed source: RAGAS regression cases (human-verified evidence pointers).
+    """
+    if not bool(getattr(settings, "KG_ENABLED", False)):
+        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    # Lazy import to keep module import side-effects smaller (Milvus/LLM config, etc).
+    from app.rag.evaluation.kg_search_diagnostics import run_kg_search_diagnostics as run_impl
+
+    return await run_impl(db=db, tenant_id=tenant_id, account_id=account_id, req=payload)
 
 
 @router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse)
