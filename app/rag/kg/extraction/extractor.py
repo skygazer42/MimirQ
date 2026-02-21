@@ -524,6 +524,14 @@ class EventExtractor:
                 cleanup_chunk_ids = [cid for cid in succeeded_chunk_ids if cid not in skipped_chunk_ids]
                 if replace_existing and cleanup_chunk_ids:
                     try:
+                        # Keep relation data consistent with events: if we replace extraction for a chunk,
+                        # remove any prior relations derived from that chunk before pruning entities.
+                        if bool(getattr(settings, "KG_RELATION_ENABLED", False)):
+                            RelationRepository(session).delete_relations_for_chunks(
+                                cleanup_chunk_ids,
+                                tenant_id=tenant_id,
+                                commit=False,
+                            )
                         Indexer(session).delete_event_indexes_for_chunks(
                             tenant_id=tenant_id,
                             chunk_ids=list(cleanup_chunk_ids),
