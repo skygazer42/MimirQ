@@ -187,16 +187,16 @@ class EventExtractor:
 
             # Per-request overrides (if provided) take precedence over global settings.
             extract_relations_enabled: bool
-            if getattr(config, "extract_relations", None) is None:
+            if config.extract_relations is None:
                 extract_relations_enabled = bool(getattr(settings, "KG_RELATION_ENABLED", False))
             else:
-                extract_relations_enabled = bool(getattr(config, "extract_relations"))
+                extract_relations_enabled = bool(config.extract_relations)
 
             extract_skills_enabled: bool
-            if getattr(config, "extract_skills", None) is None:
+            if config.extract_skills is None:
                 extract_skills_enabled = bool(getattr(settings, "KG_SKILL_ENABLED", False))
             else:
-                extract_skills_enabled = bool(getattr(config, "extract_skills"))
+                extract_skills_enabled = bool(config.extract_skills)
 
             failed_chunks = 0
             timed_out_chunks = 0
@@ -942,7 +942,7 @@ class EventExtractor:
                             except Exception:
                                 item["_confidence"] = 0.6
 
-                    for chunk_id, items in skills_by_chunk.items():
+                    for _chunk_id, items in skills_by_chunk.items():
                         for item in items:
                             skill_entity_inputs.append(item)
 
