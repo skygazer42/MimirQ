@@ -12,6 +12,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
+from app.rag.kg.extraction.alias import (
+    best_suffix_match,
+    choose_alias_direction,
+    extract_alias_candidates,
+    is_abbrev_token,
+    split_trailing_parenthetical_alias,
+)
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.extraction.processor import EventProcessor
@@ -102,6 +109,102 @@ def _is_chunk_unchanged(
                 return False
 
     return True
+
+
+def _canonicalize_entities_for_chunk(
+    entities: list[dict],
+    *,
+    chunk_text: str,
+    max_entities: int,
+    parser: EntityValueParser,
+) -> list[dict]:
+    """
+    Best-effort entity canonicalization to reduce fragmentation:
+    - "Long Form (ABBR)" becomes two entities: "Long Form" and "ABBR"
+    - Only triggers when the chunk text contains both surfaces (evidence guard).
+    """
+    if not entities:
+        return []
+    if not bool(getattr(settings, "KG_ENTITY_CANONICALIZE_PARENTHESES_ALIAS", True)):
+        return entities[: max(0, int(max_entities or 0))] if max_entities else list(entities)
+
+    lim = max(0, int(max_entities or 0))
+    if lim <= 0:
+        return []
+
+    text_raw = str(chunk_text or "")
+    text_fold = text_raw.casefold()
+
+    expanded: list[dict] = []
+    for ent in entities:
+        if not isinstance(ent, dict):
+            continue
+        raw_name = str(ent.get("name") or "").strip()
+        if not raw_name:
+            continue
+        raw_type = str(ent.get("type") or "unknown").strip() or "unknown"
+        ent_type = parser.normalize_type(raw_type)
+        desc = str(ent.get("description") or "").strip()
+        role = ent.get("role")
+
+        split = split_trailing_parenthetical_alias(raw_name)
+        if split:
+            head, tail = split
+            direction = choose_alias_direction(head, tail)
+            if direction:
+                alias_surface, canonical_surface = direction
+                alias_fold = alias_surface.casefold()
+                canon_fold = canonical_surface.casefold()
+                if canon_fold in text_fold and alias_fold in text_fold:
+                    expanded.append(
+                        {
+                            "name": canonical_surface,
+                            "normalized_name": parser.normalize_name(canonical_surface),
+                            "type": ent_type,
+                            "description": desc,
+                            "role": role,
+                        }
+                    )
+                    expanded.append(
+                        {
+                            "name": alias_surface,
+                            "normalized_name": parser.normalize_name(alias_surface),
+                            "type": ent_type,
+                            "description": "",
+                            "role": role,
+                        }
+                    )
+                    continue
+
+        expanded.append(
+            {
+                "name": raw_name,
+                "normalized_name": str(ent.get("normalized_name") or parser.normalize_name(raw_name)).strip(),
+                "type": ent_type,
+                "description": desc,
+                "role": role,
+            }
+        )
+
+    # Dedupe while preserving order; keep longer descriptions.
+    deduped: list[dict] = []
+    seen: dict[tuple[str, str], dict] = {}
+    for ent in expanded:
+        etype = str(ent.get("type") or "unknown").strip() or "unknown"
+        norm = str(ent.get("normalized_name") or "").strip()
+        name = str(ent.get("name") or "").strip()
+        if not name or not norm:
+            continue
+        key = (etype, norm)
+        existing = seen.get(key)
+        if existing is None:
+            seen[key] = ent
+            deduped.append(ent)
+            continue
+        if len(str(ent.get("description") or "")) > len(str(existing.get("description") or "")):
+            existing["description"] = ent.get("description") or ""
+
+    return deduped[:lim]
 
 
 class EventExtractor:
@@ -378,6 +481,7 @@ class EventExtractor:
 
             # Build normalized events first, then embed in batch.
             processed_events: List[Tuple[DocumentChunk, Dict]] = []
+            entity_parser = EntityValueParser()
             for chunk, events_data in extracted:
                 if not events_data:
                     continue
@@ -411,6 +515,12 @@ class EventExtractor:
                     entities = [e for e in entities if isinstance(e, dict)]
                     if len(entities) > max_entities_per_event:
                         entities = entities[:max_entities_per_event]
+                    entities = _canonicalize_entities_for_chunk(
+                        entities,
+                        chunk_text=(chunk.content or ""),
+                        max_entities=max_entities_per_event,
+                        parser=entity_parser,
+                    )
 
                     processed_events.append(
                         (
@@ -652,6 +762,155 @@ class EventExtractor:
                         if norm and ent_id is not None:
                             entity_id_by_key[(etype, norm)] = ent_id
 
+                    # 2.5) Heuristic alias pass (high precision): detect explicit alias definitions in the chunk
+                    # and ensure both sides exist as entities + create alias_of relations.
+                    #
+                    # This reduces entity fragmentation across docs, which directly improves KG-assisted recall
+                    # and downstream RAG query expansion / chunk injection.
+                    alias_enabled = bool(getattr(settings, "KG_RELATION_ALIAS_HEURISTIC_ENABLED", True))
+                    alias_max_candidates = max(
+                        0,
+                        int(getattr(settings, "KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK", 10) or 10),
+                    )
+                    alias_conf_raw = getattr(settings, "KG_RELATION_ALIAS_CONFIDENCE", 0.95)
+                    try:
+                        alias_conf = float(alias_conf_raw) if alias_conf_raw is not None else 0.95
+                    except Exception:
+                        alias_conf = 0.95
+                    alias_conf = max(0.0, min(alias_conf, 1.0))
+
+                    alias_specs_by_chunk: dict[object, list[tuple[str, str, str, str]]] = {}
+                    missing_entities: dict[tuple[str, str], str] = {}
+
+                    chunk_by_id = {c.id: c for c in resolved_chunks if getattr(c, "id", None) is not None}
+                    alias_parser = EntityValueParser()
+
+                    if alias_enabled and alias_max_candidates > 0:
+                        for chunk_id in cleanup_chunk_ids:
+                            ch = chunk_by_id.get(chunk_id)
+                            if ch is None:
+                                continue
+                            candidates = candidates_by_chunk.get(chunk_id) or []
+                            if not candidates:
+                                continue
+
+                            # Match alias candidates to extracted entities in this chunk via normalized_name.
+                            cand_by_norm: dict[str, tuple[str, str]] = {}
+                            for c in candidates:
+                                norm = str(getattr(c, "normalized_name", "") or "").strip() or alias_parser.normalize_name(
+                                    str(getattr(c, "name", "") or "")
+                                )
+                                etype = str(getattr(c, "type", "") or "unknown").strip() or "unknown"
+                                name = str(getattr(c, "name", "") or "").strip()
+                                if not norm or not name:
+                                    continue
+                                cand_by_norm.setdefault(norm, (etype, name))
+
+                            alias_candidates = extract_alias_candidates(
+                                text=(ch.content or ""),
+                                max_candidates=alias_max_candidates,
+                            )
+                            if not alias_candidates:
+                                continue
+
+                            per_chunk_specs: list[tuple[str, str, str, str]] = []
+                            for cand in alias_candidates:
+                                direction = choose_alias_direction(cand.a, cand.b)
+                                if not direction:
+                                    continue
+                                alias_surface, canonical_surface = direction
+                                alias_norm_raw = alias_parser.normalize_name(alias_surface)
+                                canonical_norm_raw = alias_parser.normalize_name(canonical_surface)
+                                if not alias_norm_raw or not canonical_norm_raw:
+                                    continue
+                                if alias_norm_raw == canonical_norm_raw:
+                                    continue
+
+                                # Anchor canonical_surface to an extracted entity for this chunk (precision guard).
+                                # Parentheses/abbr patterns can capture leading context (especially in CJK), so
+                                # we also attempt a suffix alignment to the extracted entity surfaces.
+                                canonical_norm = canonical_norm_raw
+                                canonical_surface_resolved = canonical_surface
+                                if canonical_norm not in cand_by_norm:
+                                    match = best_suffix_match(canonical_norm, list(cand_by_norm.keys()), min_chars=2)
+                                    if match and match in cand_by_norm:
+                                        canonical_norm = match
+                                        canonical_surface_resolved = cand_by_norm[match][1]
+
+                                if canonical_norm not in cand_by_norm:
+                                    # Do not create entities from long, context-y surfaces like "我们使用清华大学".
+                                    continue
+
+                                inferred_type: str = cand_by_norm[canonical_norm][0]
+
+                                alias_norm = alias_norm_raw
+                                alias_surface_resolved = alias_surface
+                                if alias_norm in cand_by_norm:
+                                    alias_surface_resolved = cand_by_norm[alias_norm][1]
+
+                                # Ensure both sides exist as entities (best-effort upsert with vectors).
+                                if (inferred_type, canonical_norm) not in entity_id_by_key:
+                                    missing_entities[(inferred_type, canonical_norm)] = canonical_surface_resolved
+
+                                if (inferred_type, alias_norm) not in entity_id_by_key:
+                                    # Only upsert missing aliases if they actually look like abbreviations.
+                                    # This keeps the heuristic high-precision and avoids injecting "sentence fragments"
+                                    # as entities when regex capture is too broad.
+                                    if alias_norm in cand_by_norm or is_abbrev_token(alias_surface_resolved):
+                                        missing_entities[(inferred_type, alias_norm)] = alias_surface_resolved
+                                    else:
+                                        continue
+
+                                per_chunk_specs.append(
+                                    (inferred_type, alias_norm, canonical_norm, str(cand.method or ""))
+                                )
+
+                            if per_chunk_specs:
+                                alias_specs_by_chunk[chunk_id] = per_chunk_specs
+
+                        # Best-effort: upsert any missing alias entities so we can create alias_of relations.
+                        if missing_entities:
+                            alias_texts = list(missing_entities.values())
+                            vectors: list[list[float]] = []
+                            try:
+                                vectors = await embedder.generate_batch(alias_texts)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning("KG alias embedding failed; proceeding without vectors: %s", str(exc)[:200])
+                                vectors = [[] for _ in alias_texts]
+
+                            to_upsert: list[dict] = []
+                            for (etype, norm), surface, vec in zip(
+                                list(missing_entities.keys()),
+                                alias_texts,
+                                vectors,
+                                strict=False,
+                            ):
+                                item = {
+                                    "name": surface,
+                                    "normalized_name": norm,
+                                    "type": etype,
+                                    "description": None,
+                                    "vector": list(vec) if isinstance(vec, list) and vec else None,
+                                    "extra_data": {"source": "alias_heuristic"},
+                                }
+                                to_upsert.append(item)
+
+                            try:
+                                upserted = indexer.upsert_entities(
+                                    tenant_id=tenant_id,
+                                    entities=to_upsert,
+                                    options=index_options,
+                                    commit=True,
+                                )
+                                for ent in upserted or []:
+                                    norm = str(getattr(ent, "normalized_name", "") or "").strip()
+                                    etype = str(getattr(ent, "type", "") or "unknown").strip() or "unknown"
+                                    ent_id = getattr(ent, "id", None)
+                                    if norm and ent_id is not None:
+                                        entity_id_by_key[(etype, norm)] = ent_id
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning("KG alias entity upsert failed; continuing: %s", str(exc)[:200])
+
                     # 3) Run LLM extraction for chunks with at least 2 candidates.
                     allowed_predicates: Sequence[str] = _DEFAULT_RELATION_PREDICATES
                     raw_predicates = str(getattr(settings, "KG_RELATION_ALLOWED_PREDICATES", "") or "").strip()
@@ -670,8 +929,6 @@ class EventExtractor:
                     )
                     if max_relations_per_chunk <= 0:
                         raise RuntimeError("KG_RELATION_MAX_RELATIONS_PER_CHUNK must be > 0 when relations are enabled")
-
-                    chunk_by_id = {c.id: c for c in resolved_chunks if getattr(c, "id", None) is not None}
 
                     async def _extract_relations_for_chunk(chunk_id: object):
                         ch = chunk_by_id.get(chunk_id)
@@ -707,12 +964,11 @@ class EventExtractor:
                     rel_rows: list[KgRelation] = []
 
                     for chunk_id, rels, ok in rel_results:
-                        if not ok:
-                            continue
-                        succeeded_rel_chunk_ids.append(chunk_id)
                         ch = chunk_by_id.get(chunk_id)
                         if ch is None:
                             continue
+                        if ok:
+                            succeeded_rel_chunk_ids.append(chunk_id)
 
                         refs: Dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
                         if getattr(ch, "start_char", None) is not None:
@@ -728,39 +984,104 @@ class EventExtractor:
                         refs["content_hash"] = chunk_hash_by_id.get(ch.id) or ""
                         refs["content_len"] = int(chunk_len_by_id.get(ch.id, 0) or 0)
 
-                        cand_map = {c.cid: c for c in (candidates_by_chunk.get(chunk_id) or [])}
                         seen_rel_keys: set[tuple[object, str, object]] = set()
-                        for rel in rels or []:
-                            if not isinstance(rel, dict):
-                                continue
-                            subj_cid = str(rel.get("subject_id") or "").strip()
-                            obj_cid = str(rel.get("object_id") or "").strip()
-                            pred = str(rel.get("predicate") or "").strip() or "unknown"
-                            if not subj_cid or not obj_cid:
-                                continue
-                            subj_cand = cand_map.get(subj_cid)
-                            obj_cand = cand_map.get(obj_cid)
-                            if subj_cand is None or obj_cand is None:
-                                continue
+                        # If LLM extraction failed, we do not replace old relations. To keep the alias heuristic
+                        # idempotent, skip inserting alias edges that already exist for this chunk.
+                        alias_specs = alias_specs_by_chunk.get(chunk_id) or []
+                        if (not ok) and alias_specs:
+                            try:
+                                existing = (
+                                    session.query(
+                                        KgRelation.subject_entity_id,
+                                        KgRelation.predicate,
+                                        KgRelation.object_entity_id,
+                                    )
+                                    .filter(
+                                        KgRelation.tenant_id == tenant_id,
+                                        KgRelation.chunk_id == ch.id,
+                                        KgRelation.predicate.in_(["alias_of", "same_as"]),
+                                    )
+                                    .all()
+                                )
+                                for subj_id, pred, obj_id in existing:
+                                    if subj_id is None or obj_id is None:
+                                        continue
+                                    seen_rel_keys.add((subj_id, str(pred or "").strip(), obj_id))
+                            except Exception:
+                                # Best-effort: if the DB can't answer, proceed without dedupe.
+                                pass
 
-                            subj_key = (str(subj_cand.type or "unknown").strip() or "unknown", str(subj_cand.normalized_name or "").strip())
-                            obj_key = (str(obj_cand.type or "unknown").strip() or "unknown", str(obj_cand.normalized_name or "").strip())
-                            subj_ent_id = entity_id_by_key.get(subj_key)
-                            obj_ent_id = entity_id_by_key.get(obj_key)
-                            if subj_ent_id is None or obj_ent_id is None:
-                                continue
+                        if ok:
+                            cand_map = {c.cid: c for c in (candidates_by_chunk.get(chunk_id) or [])}
+                            for rel in rels or []:
+                                if not isinstance(rel, dict):
+                                    continue
+                                subj_cid = str(rel.get("subject_id") or "").strip()
+                                obj_cid = str(rel.get("object_id") or "").strip()
+                                pred = str(rel.get("predicate") or "").strip() or "unknown"
+                                if not subj_cid or not obj_cid:
+                                    continue
+                                subj_cand = cand_map.get(subj_cid)
+                                obj_cand = cand_map.get(obj_cid)
+                                if subj_cand is None or obj_cand is None:
+                                    continue
 
-                            rel_key = (subj_ent_id, pred, obj_ent_id)
-                            if rel_key in seen_rel_keys:
+                                subj_key = (
+                                    str(subj_cand.type or "unknown").strip() or "unknown",
+                                    str(subj_cand.normalized_name or "").strip(),
+                                )
+                                obj_key = (
+                                    str(obj_cand.type or "unknown").strip() or "unknown",
+                                    str(obj_cand.normalized_name or "").strip(),
+                                )
+                                subj_ent_id = entity_id_by_key.get(subj_key)
+                                obj_ent_id = entity_id_by_key.get(obj_key)
+                                if subj_ent_id is None or obj_ent_id is None:
+                                    continue
+
+                                rel_key = (subj_ent_id, pred, obj_ent_id)
+                                if rel_key in seen_rel_keys:
+                                    continue
+                                seen_rel_keys.add(rel_key)
+
+                                conf_raw = rel.get("confidence")
+                                try:
+                                    conf = float(conf_raw) if conf_raw is not None else 0.5
+                                except Exception:
+                                    conf = 0.5
+                                conf = max(0.0, min(1.0, conf))
+
+                                rel_rows.append(
+                                    KgRelation(
+                                        tenant_id=tenant_id,
+                                        document_id=ch.document_id,
+                                        chunk_id=ch.id,
+                                        event_id=None,
+                                        subject_entity_id=subj_ent_id,
+                                        predicate=pred,
+                                        predicate_raw=(str(rel.get("predicate_raw") or "").strip() or None),
+                                        object_entity_id=obj_ent_id,
+                                        confidence=conf,
+                                        qualifiers=rel.get("qualifiers") if isinstance(rel.get("qualifiers"), dict) else None,
+                                        references=refs,
+                                        extra_data={
+                                            "kg_prompt_template_id": chosen_template_id,
+                                            "kg_prompt_template_key": config.prompt_template_key,
+                                            "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                                        },
+                                    )
+                                )
+
+                        # Insert heuristic alias_of edges (best-effort; may run even if LLM failed).
+                        for etype, alias_norm, canonical_norm, method in alias_specs:
+                            subj_ent_id = entity_id_by_key.get((etype, alias_norm))
+                            obj_ent_id = entity_id_by_key.get((etype, canonical_norm))
+                            if subj_ent_id is None or obj_ent_id is None or subj_ent_id == obj_ent_id:
+                                continue
+                            rel_key = (subj_ent_id, "alias_of", obj_ent_id)
+                            if rel_key in seen_rel_keys or (obj_ent_id, "alias_of", subj_ent_id) in seen_rel_keys:
                                 continue
                             seen_rel_keys.add(rel_key)
-
-                            conf_raw = rel.get("confidence")
-                            try:
-                                conf = float(conf_raw) if conf_raw is not None else 0.5
-                            except Exception:
-                                conf = 0.5
-                            conf = max(0.0, min(1.0, conf))
 
                             rel_rows.append(
                                 KgRelation(
@@ -769,11 +1090,11 @@ class EventExtractor:
                                     chunk_id=ch.id,
                                     event_id=None,
                                     subject_entity_id=subj_ent_id,
-                                    predicate=pred,
-                                    predicate_raw=(str(rel.get("predicate_raw") or "").strip() or None),
+                                    predicate="alias_of",
+                                    predicate_raw=None,
                                     object_entity_id=obj_ent_id,
-                                    confidence=conf,
-                                    qualifiers=rel.get("qualifiers") if isinstance(rel.get("qualifiers"), dict) else None,
+                                    confidence=float(alias_conf),
+                                    qualifiers={"method": "heuristic_alias", "pattern": str(method or "")},
                                     references=refs,
                                     extra_data={
                                         "kg_prompt_template_id": chosen_template_id,
@@ -791,7 +1112,7 @@ class EventExtractor:
                             commit=False,
                         )
 
-                    if succeeded_rel_chunk_ids:
+                    if succeeded_rel_chunk_ids or rel_rows:
                         if rel_rows:
                             session.add_all(rel_rows)
                         session.commit()

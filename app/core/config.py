@@ -875,6 +875,11 @@ class Settings(BaseSettings):
     KG_RELATION_MAX_RELATIONS_PER_CHUNK: int = 20
     # Comma/newline separated predicate allowlist override (optional). When empty, defaults are used.
     KG_RELATION_ALLOWED_PREDICATES: str = ""
+    # Heuristics for alias/canonicalization (high precision; helps reduce entity fragmentation).
+    KG_RELATION_ALIAS_HEURISTIC_ENABLED: bool = True
+    KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK: int = 10
+    KG_RELATION_ALIAS_CONFIDENCE: float = 0.95
+    KG_ENTITY_CANONICALIZE_PARENTHESES_ALIAS: bool = True
     KG_SKILL_ENABLED: bool = False
     KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
     # KG extraction prompt selector (optional; tenant-scoped PromptTemplate).
