@@ -1462,10 +1462,14 @@ export const pipelineApi = {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('overwrite', overwrite ? 'true' : 'false')
-    const { data } = await apiClient.post('/pipeline/governance-profiles/import', formData, {
-      timeout: API_LONG_TIMEOUT_MS,
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/governance-profiles/import',
+      method: 'post',
+      contentType: 'multipart/form-data',
+      body: formData,
+      timeoutMs: API_LONG_TIMEOUT_MS,
     })
-    return data
+    return { ...data, items: data.items ?? [] }
   },
 
   async exportGovernanceProfile(profileRef: string): Promise<Blob> {
