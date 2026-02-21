@@ -92,6 +92,7 @@ class SkillProcessor:
                         "type": "object",
                         "properties": {
                             "name": {"type": "string"},
+                            "category": {"type": "string"},
                             "summary": {"type": "string"},
                             "steps": {"type": "array", "items": {"type": "string"}},
                             "inputs": {"type": "array", "items": {"type": "string"}},
@@ -112,6 +113,8 @@ class SkillProcessor:
             f"Constraints:\n- Extract at most {max_items} skills.\n"
             "- Only include skills that are directly supported by the text.\n"
             "- Prefer concrete, executable steps.\n\n"
+            "Optional fields:\n"
+            "- category: a coarse category label (short phrase), e.g. Development / Data / AIGC / Science.\n\n"
             "Text:\n"
             f"{clean_text}\n"
         )
@@ -131,6 +134,7 @@ class SkillProcessor:
             if not name:
                 continue
 
+            category = str(raw.get("category") or "").strip() or None
             summary = str(raw.get("summary") or "").strip() or None
             steps = _coerce_str_list(raw.get("steps"), max_items=30)
             inputs = _coerce_str_list(raw.get("inputs"), max_items=30)
@@ -141,6 +145,7 @@ class SkillProcessor:
             out.append(
                 {
                     "name": name,
+                    "category": category,
                     "summary": summary,
                     "steps": steps,
                     "inputs": inputs,
@@ -159,4 +164,3 @@ class SkillProcessor:
 
 
 __all__ = ["SkillProcessor"]
-

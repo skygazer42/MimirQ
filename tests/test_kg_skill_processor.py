@@ -51,3 +51,28 @@ async def test_skill_processor_coerces_steps_to_list() -> None:
         "pip install -r requirements.txt",
     ]
     assert out[0]["inputs"] == ["requirements.txt"]
+
+
+@pytest.mark.asyncio
+async def test_skill_processor_passes_through_category() -> None:
+    from app.rag.kg.extraction.skill_processor import SkillProcessor
+
+    proc = SkillProcessor(
+        _FakeLLM(
+            {
+                "skills": [
+                    {
+                        "name": "Setup Python venv",
+                        "category": "Development",
+                        "summary": "Create and activate a virtual environment.",
+                        "steps": ["python -m venv .venv"],
+                        "tags": ["python", "environment"],
+                    }
+                ]
+            }
+        )
+    )
+
+    out = await proc.extract_skills(text="...", max_skills=3)
+    assert len(out) == 1
+    assert out[0].get("category") == "Development"

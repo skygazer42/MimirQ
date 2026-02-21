@@ -223,6 +223,32 @@ class EventExtractor:
         t0 = time.perf_counter()
         session = SessionLocal()
         try:
+            alias_diag: dict[str, object] = {
+                "enabled": False,
+                "chunks_considered": 0,
+                "candidates_total": 0,
+                "candidates_by_method": {},
+                "direction_ok": 0,
+                "direction_skipped": 0,
+                "canonical_anchor_exact": 0,
+                "canonical_anchor_suffix": 0,
+                "canonical_anchor_failed": 0,
+                "alias_skipped_non_abbrev": 0,
+                "entities_upsert_attempted": 0,
+                "entities_upserted": 0,
+                "edges_planned": 0,
+                "edges_appended": 0,
+                "edges_skipped_missing_entities": 0,
+                "edges_skipped_duplicate": 0,
+            }
+            alias_stats_by_doc: dict[object, dict[str, int]] = {}
+
+            def _alias_bump(doc_id: object | None, key: str, n: int = 1) -> None:
+                if not doc_id or not key:
+                    return
+                cur = alias_stats_by_doc.setdefault(doc_id, {})
+                cur[key] = int(cur.get(key, 0) or 0) + int(n)
+
             # Load chunks (or reuse provided ones to avoid duplicate DB reads)
             resolved_chunks: List[DocumentChunk]
             if chunks is None:
@@ -688,6 +714,7 @@ class EventExtractor:
                         "event_new": 0,
                         "event_kept": int(len(events)),
                         "event_total": int(len(events)),
+                        "alias_heuristics": dict(alias_diag),
                         "elapsed_sec": round(float(elapsed), 3),
                     }
                 )
@@ -700,6 +727,7 @@ class EventExtractor:
                     skipped_short_chunk_ids=skipped_short_chunk_ids,
                     failed_chunk_ids=failed_chunk_ids,
                     retry_chunk_ids=retry_chunk_ids,
+                    alias_stats_by_doc=alias_stats_by_doc,
                 )
                 return events
 
@@ -786,6 +814,7 @@ class EventExtractor:
                     alias_parser = EntityValueParser()
 
                     if alias_enabled and alias_max_candidates > 0:
+                        alias_diag["enabled"] = True
                         for chunk_id in cleanup_chunk_ids:
                             ch = chunk_by_id.get(chunk_id)
                             if ch is None:
@@ -813,11 +842,27 @@ class EventExtractor:
                             if not alias_candidates:
                                 continue
 
+                            alias_diag["chunks_considered"] = int(alias_diag.get("chunks_considered", 0) or 0) + 1
+                            alias_diag["candidates_total"] = int(alias_diag.get("candidates_total", 0) or 0) + int(
+                                len(alias_candidates)
+                            )
+                            for cand in alias_candidates:
+                                method = str(getattr(cand, "method", "") or "").strip() or "unknown"
+                                by_method = alias_diag.get("candidates_by_method")
+                                if isinstance(by_method, dict):
+                                    by_method[method] = int(by_method.get(method, 0) or 0) + 1
+                                _alias_bump(ch.document_id, f"kg_alias_candidates_{method}", 1)
+                            _alias_bump(ch.document_id, "kg_alias_candidates_total", len(alias_candidates))
+
                             per_chunk_specs: list[tuple[str, str, str, str]] = []
                             for cand in alias_candidates:
                                 direction = choose_alias_direction(cand.a, cand.b)
                                 if not direction:
+                                    alias_diag["direction_skipped"] = int(alias_diag.get("direction_skipped", 0) or 0) + 1
+                                    _alias_bump(ch.document_id, "kg_alias_direction_skipped", 1)
                                     continue
+                                alias_diag["direction_ok"] = int(alias_diag.get("direction_ok", 0) or 0) + 1
+                                _alias_bump(ch.document_id, "kg_alias_direction_ok", 1)
                                 alias_surface, canonical_surface = direction
                                 alias_norm_raw = alias_parser.normalize_name(alias_surface)
                                 canonical_norm_raw = alias_parser.normalize_name(canonical_surface)
@@ -831,15 +876,31 @@ class EventExtractor:
                                 # we also attempt a suffix alignment to the extracted entity surfaces.
                                 canonical_norm = canonical_norm_raw
                                 canonical_surface_resolved = canonical_surface
+                                anchored = "exact" if canonical_norm in cand_by_norm else ""
                                 if canonical_norm not in cand_by_norm:
                                     match = best_suffix_match(canonical_norm, list(cand_by_norm.keys()), min_chars=2)
                                     if match and match in cand_by_norm:
                                         canonical_norm = match
                                         canonical_surface_resolved = cand_by_norm[match][1]
+                                        anchored = "suffix"
 
                                 if canonical_norm not in cand_by_norm:
+                                    alias_diag["canonical_anchor_failed"] = (
+                                        int(alias_diag.get("canonical_anchor_failed", 0) or 0) + 1
+                                    )
+                                    _alias_bump(ch.document_id, "kg_alias_anchor_failed", 1)
                                     # Do not create entities from long, context-y surfaces like "我们使用清华大学".
                                     continue
+                                if anchored == "exact":
+                                    alias_diag["canonical_anchor_exact"] = (
+                                        int(alias_diag.get("canonical_anchor_exact", 0) or 0) + 1
+                                    )
+                                    _alias_bump(ch.document_id, "kg_alias_anchor_exact", 1)
+                                elif anchored == "suffix":
+                                    alias_diag["canonical_anchor_suffix"] = (
+                                        int(alias_diag.get("canonical_anchor_suffix", 0) or 0) + 1
+                                    )
+                                    _alias_bump(ch.document_id, "kg_alias_anchor_suffix", 1)
 
                                 inferred_type: str = cand_by_norm[canonical_norm][0]
 
@@ -859,6 +920,10 @@ class EventExtractor:
                                     if alias_norm in cand_by_norm or is_abbrev_token(alias_surface_resolved):
                                         missing_entities[(inferred_type, alias_norm)] = alias_surface_resolved
                                     else:
+                                        alias_diag["alias_skipped_non_abbrev"] = (
+                                            int(alias_diag.get("alias_skipped_non_abbrev", 0) or 0) + 1
+                                        )
+                                        _alias_bump(ch.document_id, "kg_alias_skipped_non_abbrev", 1)
                                         continue
 
                                 per_chunk_specs.append(
@@ -867,9 +932,14 @@ class EventExtractor:
 
                             if per_chunk_specs:
                                 alias_specs_by_chunk[chunk_id] = per_chunk_specs
+                                alias_diag["edges_planned"] = int(alias_diag.get("edges_planned", 0) or 0) + int(
+                                    len(per_chunk_specs)
+                                )
+                                _alias_bump(ch.document_id, "kg_alias_edges_planned", len(per_chunk_specs))
 
                         # Best-effort: upsert any missing alias entities so we can create alias_of relations.
                         if missing_entities:
+                            alias_diag["entities_upsert_attempted"] = int(len(missing_entities))
                             alias_texts = list(missing_entities.values())
                             vectors: list[list[float]] = []
                             try:
@@ -902,6 +972,7 @@ class EventExtractor:
                                     options=index_options,
                                     commit=True,
                                 )
+                                alias_diag["entities_upserted"] = int(len(upserted or []))
                                 for ent in upserted or []:
                                     norm = str(getattr(ent, "normalized_name", "") or "").strip()
                                     etype = str(getattr(ent, "type", "") or "unknown").strip() or "unknown"
@@ -1077,12 +1148,22 @@ class EventExtractor:
                             subj_ent_id = entity_id_by_key.get((etype, alias_norm))
                             obj_ent_id = entity_id_by_key.get((etype, canonical_norm))
                             if subj_ent_id is None or obj_ent_id is None or subj_ent_id == obj_ent_id:
+                                alias_diag["edges_skipped_missing_entities"] = (
+                                    int(alias_diag.get("edges_skipped_missing_entities", 0) or 0) + 1
+                                )
+                                _alias_bump(ch.document_id, "kg_alias_edges_skipped_missing_entities", 1)
                                 continue
                             rel_key = (subj_ent_id, "alias_of", obj_ent_id)
                             if rel_key in seen_rel_keys or (obj_ent_id, "alias_of", subj_ent_id) in seen_rel_keys:
+                                alias_diag["edges_skipped_duplicate"] = (
+                                    int(alias_diag.get("edges_skipped_duplicate", 0) or 0) + 1
+                                )
+                                _alias_bump(ch.document_id, "kg_alias_edges_skipped_duplicate", 1)
                                 continue
                             seen_rel_keys.add(rel_key)
 
+                            alias_diag["edges_appended"] = int(alias_diag.get("edges_appended", 0) or 0) + 1
+                            _alias_bump(ch.document_id, "kg_alias_edges_appended", 1)
                             rel_rows.append(
                                 KgRelation(
                                     tenant_id=tenant_id,
@@ -1203,6 +1284,7 @@ class EventExtractor:
                             seen_norm.add(norm)
 
                             summary = str(raw.get("summary") or "").strip() or None
+                            category = str(raw.get("category") or "").strip() or None
                             steps = raw.get("steps") if isinstance(raw.get("steps"), list) else []
                             inputs = raw.get("inputs") if isinstance(raw.get("inputs"), list) else []
                             outputs = raw.get("outputs") if isinstance(raw.get("outputs"), list) else []
@@ -1225,11 +1307,12 @@ class EventExtractor:
                                     "vector": None,  # filled after embedding
                                     "extra_data": {
                                         "summary": summary,
+                                        "category": category,
                                         "steps": [str(s).strip() for s in steps if str(s).strip()][:50],
                                         "inputs": [str(s).strip() for s in inputs if str(s).strip()][:50],
                                         "outputs": [str(s).strip() for s in outputs if str(s).strip()][:50],
                                         "tools": [str(s).strip() for s in tools if str(s).strip()][:50],
-                                        "tags": [str(s).strip() for s in tags if str(s).strip()][:50],
+                                        "tags": [str(s).strip() for s in tags if str(s).strip()][:10],
                                         "confidence": raw.get("confidence"),
                                     },
                                     "_embed_text": embed_text,
@@ -1296,8 +1379,128 @@ class EventExtractor:
                             if norm:
                                 skill_id_by_norm[norm] = getattr(ent, "id", None)
 
+                        # Optional: SkillNet-style taxonomy nodes + relations.
+                        # Note: these are stored in kg_relations, so we only run them when relations are enabled.
+                        tag_id_by_norm: dict[str, object] = {}
+                        category_id_by_norm: dict[str, object] = {}
+                        if extract_relations_enabled:
+                            try:
+                                tag_surface_by_norm: dict[str, str] = {}
+                                category_surface_by_norm: dict[str, str] = {}
+
+                                for _chunk_id, items in skills_by_chunk.items():
+                                    for item in items or []:
+                                        if not isinstance(item, dict):
+                                            continue
+                                        extra = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
+                                        tags = extra.get("tags") if isinstance(extra.get("tags"), list) else []
+                                        for tag in tags:
+                                            t = str(tag or "").strip()
+                                            if not t:
+                                                continue
+                                            t_norm = parser.normalize_name(t)
+                                            if not t_norm:
+                                                continue
+                                            tag_surface_by_norm.setdefault(t_norm, t)
+
+                                        cat = str(extra.get("category") or "").strip()
+                                        if cat:
+                                            c_norm = parser.normalize_name(cat)
+                                            if c_norm:
+                                                category_surface_by_norm.setdefault(c_norm, cat)
+
+                                tag_vectors_by_norm: dict[str, list[float]] = {}
+                                category_vectors_by_norm: dict[str, list[float]] = {}
+
+                                to_embed: list[str] = list(tag_surface_by_norm.values()) + list(
+                                    category_surface_by_norm.values()
+                                )
+                                if to_embed:
+                                    try:
+                                        vectors = await embedder.generate_batch(to_embed)
+                                    except Exception as exc:  # noqa: BLE001
+                                        logger.warning(
+                                            "KG skill taxonomy embedding failed; proceeding without vectors: %s",
+                                            str(exc)[:200],
+                                        )
+                                        vectors = [[] for _ in to_embed]
+
+                                    for idx, vec in enumerate(list(vectors or [])):
+                                        surface = str(to_embed[idx] or "").strip()
+                                        if not surface:
+                                            continue
+                                        norm = parser.normalize_name(surface)
+                                        if not norm:
+                                            continue
+                                        if surface in tag_surface_by_norm.values():
+                                            if vec:
+                                                tag_vectors_by_norm[norm] = list(vec)
+                                        elif surface in category_surface_by_norm.values():
+                                            if vec:
+                                                category_vectors_by_norm[norm] = list(vec)
+
+                                tag_inputs: list[dict] = []
+                                for norm, surface in tag_surface_by_norm.items():
+                                    tag_inputs.append(
+                                        {
+                                            "name": surface,
+                                            "normalized_name": norm,
+                                            "type": "SkillTag",
+                                            "description": None,
+                                            "vector": tag_vectors_by_norm.get(norm),
+                                            "extra_data": {"source": "skill_taxonomy"},
+                                        }
+                                    )
+
+                                category_inputs: list[dict] = []
+                                for norm, surface in category_surface_by_norm.items():
+                                    category_inputs.append(
+                                        {
+                                            "name": surface,
+                                            "normalized_name": norm,
+                                            "type": "SkillCategory",
+                                            "description": None,
+                                            "vector": category_vectors_by_norm.get(norm),
+                                            "extra_data": {"source": "skill_taxonomy"},
+                                        }
+                                    )
+
+                                if tag_inputs:
+                                    upserted_tags = indexer.upsert_entities(
+                                        tenant_id=tenant_id,
+                                        entities=tag_inputs,
+                                        options=index_options,
+                                        commit=True,
+                                    )
+                                    for ent in upserted_tags or []:
+                                        if str(getattr(ent, "type", "") or "") != "SkillTag":
+                                            continue
+                                        norm = str(getattr(ent, "normalized_name", "") or "").strip()
+                                        if norm:
+                                            tag_id_by_norm[norm] = getattr(ent, "id", None)
+
+                                if category_inputs:
+                                    upserted_categories = indexer.upsert_entities(
+                                        tenant_id=tenant_id,
+                                        entities=category_inputs,
+                                        options=index_options,
+                                        commit=True,
+                                    )
+                                    for ent in upserted_categories or []:
+                                        if str(getattr(ent, "type", "") or "") != "SkillCategory":
+                                            continue
+                                        norm = str(getattr(ent, "normalized_name", "") or "").strip()
+                                        if norm:
+                                            category_id_by_norm[norm] = getattr(ent, "id", None)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning(
+                                    "KG skill taxonomy upsert failed; continuing without taxonomy nodes: %s",
+                                    str(exc)[:200],
+                                )
+
                         # Link: event -> skill (role="skill") with provenance.
                         links: list[KgEventEntity] = []
+                        skill_rel_rows: list[KgRelation] = []
                         for chunk_id, items in skills_by_chunk.items():
                             ch = chunk_by_id.get(chunk_id)
                             if ch is None:
@@ -1323,6 +1526,142 @@ class EventExtractor:
                                 references=refs,
                             )
 
+                            # Skill taxonomy relations: Skill -> belong_to -> (SkillTag/SkillCategory)
+                            # and Skill -> compose_with -> Skill (co-extracted within the same chunk).
+                            if extract_relations_enabled:
+                                seen_skill_rel_keys: set[tuple[object, str, object]] = set()
+                                # Dedupe against existing rows on best-effort basis (only needed when relation extraction
+                                # failed earlier and we didn't replace relations for this chunk).
+                                try:
+                                    existing = (
+                                        session.query(
+                                            KgRelation.subject_entity_id,
+                                            KgRelation.predicate,
+                                            KgRelation.object_entity_id,
+                                        )
+                                        .filter(
+                                            KgRelation.tenant_id == tenant_id,
+                                            KgRelation.chunk_id == ch.id,
+                                            KgRelation.predicate.in_(["belong_to", "compose_with", "depends_on"]),
+                                        )
+                                        .all()
+                                    )
+                                    for subj_id, pred, obj_id in existing:
+                                        if subj_id is None or obj_id is None:
+                                            continue
+                                        seen_skill_rel_keys.add((subj_id, str(pred or "").strip(), obj_id))
+                                except Exception:
+                                    pass
+
+                                skill_ids_in_chunk: list[tuple[object, float, dict]] = []
+                                for item in items:
+                                    if not isinstance(item, dict):
+                                        continue
+                                    norm = str(item.get("normalized_name") or "").strip()
+                                    skill_id = skill_id_by_norm.get(norm)
+                                    if not skill_id:
+                                        continue
+                                    conf = float(item.get("_confidence") or 0.6)
+                                    conf = max(0.0, min(1.0, conf))
+                                    skill_ids_in_chunk.append((skill_id, conf, item))
+
+                                    extra = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
+                                    tags = extra.get("tags") if isinstance(extra.get("tags"), list) else []
+                                    for tag in tags:
+                                        surface = str(tag or "").strip()
+                                        if not surface:
+                                            continue
+                                        t_norm = parser.normalize_name(surface)
+                                        tag_id = tag_id_by_norm.get(t_norm)
+                                        if not tag_id:
+                                            continue
+                                        rel_key = (skill_id, "belong_to", tag_id)
+                                        if rel_key in seen_skill_rel_keys:
+                                            continue
+                                        seen_skill_rel_keys.add(rel_key)
+                                        skill_rel_rows.append(
+                                            KgRelation(
+                                                tenant_id=tenant_id,
+                                                document_id=ch.document_id,
+                                                chunk_id=ch.id,
+                                                event_id=None,
+                                                subject_entity_id=skill_id,
+                                                predicate="belong_to",
+                                                predicate_raw=None,
+                                                object_entity_id=tag_id,
+                                                confidence=conf,
+                                                qualifiers={"method": "skill_taxonomy", "kind": "tag"},
+                                                references=refs,
+                                                extra_data={
+                                                    "kg_prompt_template_id": chosen_template_id,
+                                                    "kg_prompt_template_key": config.prompt_template_key,
+                                                    "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                                                },
+                                            )
+                                        )
+
+                                    cat = str(extra.get("category") or "").strip()
+                                    if cat:
+                                        c_norm = parser.normalize_name(cat)
+                                        cat_id = category_id_by_norm.get(c_norm)
+                                        if cat_id:
+                                            rel_key = (skill_id, "belong_to", cat_id)
+                                            if rel_key not in seen_skill_rel_keys:
+                                                seen_skill_rel_keys.add(rel_key)
+                                                skill_rel_rows.append(
+                                                    KgRelation(
+                                                        tenant_id=tenant_id,
+                                                        document_id=ch.document_id,
+                                                        chunk_id=ch.id,
+                                                        event_id=None,
+                                                        subject_entity_id=skill_id,
+                                                        predicate="belong_to",
+                                                        predicate_raw=None,
+                                                        object_entity_id=cat_id,
+                                                        confidence=conf,
+                                                        qualifiers={"method": "skill_taxonomy", "kind": "category"},
+                                                        references=refs,
+                                                        extra_data={
+                                                            "kg_prompt_template_id": chosen_template_id,
+                                                            "kg_prompt_template_key": config.prompt_template_key,
+                                                            "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                                                        },
+                                                    )
+                                                )
+
+                                # compose_with edges between skills co-extracted in the same chunk (bounded by max_skills_per_chunk)
+                                if len(skill_ids_in_chunk) >= 2:
+                                    for i in range(len(skill_ids_in_chunk)):
+                                        for j in range(i + 1, len(skill_ids_in_chunk)):
+                                            a_id, a_conf, _a_item = skill_ids_in_chunk[i]
+                                            b_id, b_conf, _b_item = skill_ids_in_chunk[j]
+                                            conf = max(0.0, min(1.0, float(min(a_conf, b_conf) * 0.8)))
+                                            for subj, obj in ((a_id, b_id), (b_id, a_id)):
+                                                rel_key = (subj, "compose_with", obj)
+                                                if rel_key in seen_skill_rel_keys:
+                                                    continue
+                                                seen_skill_rel_keys.add(rel_key)
+                                                skill_rel_rows.append(
+                                                    KgRelation(
+                                                        tenant_id=tenant_id,
+                                                        document_id=ch.document_id,
+                                                        chunk_id=ch.id,
+                                                        event_id=None,
+                                                        subject_entity_id=subj,
+                                                        predicate="compose_with",
+                                                        predicate_raw=None,
+                                                        object_entity_id=obj,
+                                                        confidence=conf,
+                                                        qualifiers={"method": "skill_taxonomy", "kind": "compose_with"},
+                                                        references=refs,
+                                                        extra_data={
+                                                            "kg_prompt_template_id": chosen_template_id,
+                                                            "kg_prompt_template_key": config.prompt_template_key,
+                                                            "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                                                        },
+                                                    )
+                                                )
+
                             for ev in events_by_chunk.get(chunk_id, []) or []:
                                 ev_id = getattr(ev, "id", None)
                                 if ev_id is None:
@@ -1341,11 +1680,14 @@ class EventExtractor:
                                             weight=conf,
                                             role="skill",
                                             extra_data=(link_extra or None),
-                                        )
+                                            )
                                     )
 
-                        if links:
-                            session.add_all(links)
+                        if links or skill_rel_rows:
+                            if links:
+                                session.add_all(links)
+                            if skill_rel_rows:
+                                session.add_all(skill_rel_rows)
                             session.commit()
                 except Exception as exc:  # noqa: BLE001
                     try:
@@ -1403,6 +1745,7 @@ class EventExtractor:
                     "event_kept": int(len(kept_events) + len(kept_on_failure)),
                     "event_total": int(len(events)),
                     "entity_count_new": int(entity_total),
+                    "alias_heuristics": dict(alias_diag),
                     "max_concurrency": int(max_concurrency),
                     "elapsed_sec": round(float(elapsed), 3),
                 }
@@ -1416,6 +1759,7 @@ class EventExtractor:
                 skipped_short_chunk_ids=skipped_short_chunk_ids,
                 failed_chunk_ids=failed_chunk_ids,
                 retry_chunk_ids=retry_chunk_ids,
+                alias_stats_by_doc=alias_stats_by_doc,
             )
             return events
         except Exception:
@@ -1435,6 +1779,7 @@ class EventExtractor:
         skipped_short_chunk_ids: set[object],
         failed_chunk_ids: set[object],
         retry_chunk_ids: set[object],
+        alias_stats_by_doc: dict[object, dict[str, int]] | None = None,
     ) -> None:
         try:
             from app.models.document import Document as DBDocument
@@ -1497,6 +1842,14 @@ class EventExtractor:
                 meta["kg_failed_chunks"] = int(failed_count_by_doc.get(doc.id, 0))
                 meta["kg_retry_chunks"] = int(retry_count_by_doc.get(doc.id, 0))
                 meta["kg_extracted_at"] = extracted_at
+                alias_stats = alias_stats_by_doc.get(doc.id, {}) if isinstance(alias_stats_by_doc, dict) else {}
+                for key, val in (alias_stats.items() if isinstance(alias_stats, dict) else []):
+                    if not key:
+                        continue
+                    try:
+                        meta[str(key)] = int(val or 0)
+                    except Exception:
+                        continue
                 doc.doc_metadata = meta
             session.commit()
         except Exception as exc:  # noqa: BLE001
