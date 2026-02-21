@@ -109,11 +109,17 @@ class RecallSearcher:
             # === Optional Step1.5: keys -> neighbor entities (relations) ===
             relation_neighbor_ids: List[str] = []
             relation_debug: Dict[str, Any] = {"enabled": False}
-            if (
-                bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False))
-                and bool(getattr(settings, "KG_RELATION_ENABLED", False))
-                and key_query_related
-            ):
+            if config.relation_expansion_enabled is None:
+                relation_enabled = bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)) and bool(
+                    getattr(settings, "KG_RELATION_ENABLED", False)
+                )
+            else:
+                # Per-call override (used by diagnostics/ablations). This intentionally bypasses
+                # the global KG_RELATION_ENABLED guard so experiments can be run safely without
+                # mutating process-wide settings.
+                relation_enabled = bool(config.relation_expansion_enabled)
+
+            if relation_enabled and key_query_related:
                 max_neighbors = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0))
                 if max_neighbors > 0:
                     min_confidence = float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0)
