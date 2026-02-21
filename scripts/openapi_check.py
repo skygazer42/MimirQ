@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -56,10 +57,44 @@ def main() -> int:
         print("[openapi-check] Run `make openapi-types` and commit changes.")
         return 1
 
+    # Schema sanity: empty `type: object` schemas generate `Record<string, never>` in openapi-typescript,
+    # which is almost always unintended (dict-like payloads should use additionalProperties).
+    try:
+        spec = json.loads((repo_root / "web/openapi.json").read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[openapi-check] FAIL: could not parse web/openapi.json: {exc}")
+        return 1
+
+    empty_object_paths: list[str] = []
+
+    def walk(node: object, path: list[str]) -> None:
+        if isinstance(node, dict):
+            if "$ref" not in node and node.get("type") == "object":
+                props = node.get("properties")
+                if (not props) and ("additionalProperties" not in node):
+                    empty_object_paths.append("/".join(path))
+            for k, v in node.items():
+                walk(v, path + [str(k)])
+            return
+        if isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, path + [str(i)])
+
+    walk(spec.get("components", {}).get("schemas", {}), ["components", "schemas"])
+
+    if empty_object_paths:
+        empty_object_paths.sort()
+        print(f"[openapi-check] FAIL: found {len(empty_object_paths)} empty object schemas (missing additionalProperties)")
+        for p in empty_object_paths[:200]:
+            print(f"  - {p}")
+        if len(empty_object_paths) > 200:
+            print(f"  ...and {len(empty_object_paths) - 200} more")
+        print("[openapi-check] Hint: for dict-like schemas, set additionalProperties (or patch OpenAPI export).")
+        return 1
+
     print("[openapi-check] OK")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -4585,7 +4585,9 @@ export interface components {
              * Details
              * @default {}
              */
-            details: Record<string, never>;
+            details: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -5175,7 +5177,9 @@ export interface components {
              */
             visible_evidence_only: boolean;
             /** Metadata Filter */
-            metadata_filter?: Record<string, never> | null;
+            metadata_filter?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ChatRequest
@@ -5260,7 +5264,9 @@ export interface components {
             /** Vector Backend */
             vector_backend?: string | null;
             /** Metrics */
-            metrics?: Record<string, never>;
+            metrics?: {
+                [key: string]: unknown;
+            };
             /**
              * Structured
              * @default false
@@ -5340,9 +5346,13 @@ export interface components {
             /** Next */
             next?: unknown;
             /** Metadata */
-            metadata?: Record<string, never> | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** Values */
-            values?: Record<string, never> | null;
+            values?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** CheckpointItem */
         CheckpointItem: {
@@ -5358,9 +5368,13 @@ export interface components {
             /** Next */
             next?: unknown;
             /** Metadata */
-            metadata?: Record<string, never> | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** Values */
-            values?: Record<string, never> | null;
+            values?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** CheckpointListResponse */
         CheckpointListResponse: {
@@ -5395,7 +5409,9 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Payload */
-            payload?: Record<string, never>;
+            payload?: {
+                [key: string]: unknown;
+            };
         };
         /** ChunkPresetListResponse */
         ChunkPresetListResponse: {
@@ -5411,7 +5427,9 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Payload */
-            payload?: Record<string, never>;
+            payload?: {
+                [key: string]: unknown;
+            };
         };
         /** ChunkPresetUpdateRequest */
         ChunkPresetUpdateRequest: {
@@ -5420,7 +5438,9 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Payload */
-            payload?: Record<string, never>;
+            payload?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChunkPreviewHistogramBin
@@ -5462,7 +5482,9 @@ export interface components {
             /** Page Number */
             page_number?: number | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChunkPreviewParams
@@ -5491,7 +5513,9 @@ export interface components {
              * Strategy Params
              * @description Best-effort strategy-specific params for reproducibility (e.g. separator/parent_child).
              */
-            strategy_params?: Record<string, never>;
+            strategy_params?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChunkPreviewQualityGate
@@ -5525,7 +5549,9 @@ export interface components {
             /** Message */
             message: string;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChunkPreviewRecommendationPatch
@@ -5551,19 +5577,102 @@ export interface components {
              * Patch
              * @description Patch object; shape depends on target.
              */
-            patch?: Record<string, never>;
+            patch?: {
+                [key: string]: unknown;
+            };
         };
-        /** ChunkPreviewRequest */
-        ChunkPreviewRequest: {
-            /** Markdown */
-            markdown: string;
-        };
-        /** ChunkPreviewResponse */
+        /**
+         * ChunkPreviewResponse
+         * @description Chunk preview response.
+         */
         ChunkPreviewResponse: {
-            /** Paragraphs */
-            paragraphs: components["schemas"]["ChunkItem"][];
-            /** Sentences */
-            sentences: components["schemas"]["ChunkItem"][];
+            /** Filename */
+            filename: string;
+            /** File Type */
+            file_type: string;
+            /** File Size */
+            file_size: number;
+            /** File Sha256 */
+            file_sha256?: string | null;
+            /**
+             * Parse Cache Hit
+             * @default false
+             */
+            parse_cache_hit: boolean;
+            /** Parse Cache Age Ms */
+            parse_cache_age_ms?: number | null;
+            /** Preview Duration Ms */
+            preview_duration_ms?: number | null;
+            /** Upload Duration Ms */
+            upload_duration_ms?: number | null;
+            /** Parse Duration Ms */
+            parse_duration_ms?: number | null;
+            /** Governance Duration Ms */
+            governance_duration_ms?: number | null;
+            /** Chunking Duration Ms */
+            chunking_duration_ms?: number | null;
+            /** Stats Duration Ms */
+            stats_duration_ms?: number | null;
+            /** Total Chunks */
+            total_chunks: number;
+            /**
+             * Total Chunks Full
+             * @default 0
+             */
+            total_chunks_full: number;
+            /**
+             * Chunks Truncated
+             * @default false
+             */
+            chunks_truncated: boolean;
+            /**
+             * Chunks Max Count
+             * @default 0
+             */
+            chunks_max_count: number;
+            /** Total Characters */
+            total_characters: number;
+            params: components["schemas"]["ChunkPreviewParams"];
+            /** Chunks */
+            chunks: components["schemas"]["ChunkPreviewItem"][];
+            stats?: components["schemas"]["ChunkPreviewStats"] | null;
+            /** Chunking Stats Tokens */
+            chunking_stats_tokens?: {
+                [key: string]: unknown;
+            } | null;
+            /** Auto Selected Strategy */
+            auto_selected_strategy?: string | null;
+            /** Warnings */
+            warnings?: string[];
+            review_signals?: components["schemas"]["ChunkPreviewReviewSignals"] | null;
+            quality_gate?: components["schemas"]["ChunkPreviewQualityGate"] | null;
+            /** Recommendations */
+            recommendations?: string[];
+            /** Recommendation Patches */
+            recommendation_patches?: components["schemas"]["ChunkPreviewRecommendationPatch"][];
+            /** Original Text */
+            original_text?: string | null;
+            /** Original Text Cleaned */
+            original_text_cleaned?: string | null;
+            /**
+             * Original Text Included
+             * @default false
+             */
+            original_text_included: boolean;
+            /**
+             * Original Text Truncated
+             * @default false
+             */
+            original_text_truncated: boolean;
+            /**
+             * Original Text Max Chars
+             * @default 100000
+             */
+            original_text_max_chars: number;
+            /** Parser Backend */
+            parser_backend: string;
+            /** Chunk Strategy */
+            chunk_strategy: string;
         };
         /**
          * ChunkPreviewReviewSignals
@@ -5799,7 +5908,7 @@ export interface components {
             /** Markdown */
             markdown: string;
             /** Rules */
-            rules?: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
+            rules?: components["schemas"]["CleanRegexRuleModel"][];
             /**
              * Rule Packs
              * @description Optional named governance rule packs (server-defined presets). Default off.
@@ -6073,7 +6182,9 @@ export interface components {
                 [key: string]: number;
             } | null;
             /** Frontmatter */
-            frontmatter?: Record<string, never> | null;
+            frontmatter?: {
+                [key: string]: unknown;
+            } | null;
             /** Title */
             title?: string | null;
             /** Tags */
@@ -6144,7 +6255,9 @@ export interface components {
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
             /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: Record<string, never>;
+            suggested_pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** CleanPreviewRuleStat */
         CleanPreviewRuleStat: {
@@ -6178,10 +6291,25 @@ export interface components {
              */
             pack?: string | null;
         };
+        /** CleanRegexRuleModel */
+        CleanRegexRuleModel: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
+        };
         /** CleanRulesResponse */
         CleanRulesResponse: {
             /** Rules */
-            rules: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
+            rules: components["schemas"]["CleanRegexRuleModel"][];
         };
         /**
          * ComplianceSummary
@@ -6226,7 +6354,9 @@ export interface components {
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
         };
         /** ConnectorConfigListResponse */
         ConnectorConfigListResponse: {
@@ -6261,9 +6391,13 @@ export interface components {
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /** State */
-            state?: Record<string, never>;
+            state?: {
+                [key: string]: unknown;
+            };
             /** Last Run At */
             last_run_at?: string | null;
             /** Last Error */
@@ -6288,9 +6422,13 @@ export interface components {
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Config */
-            config?: Record<string, never> | null;
+            config?: {
+                [key: string]: unknown;
+            } | null;
             /** State */
-            state?: Record<string, never> | null;
+            state?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ConnectorInfo */
         ConnectorInfo: {
@@ -6319,7 +6457,9 @@ export interface components {
             /** Dataset Id */
             dataset_id?: string | null;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
         };
         /** ConnectorRunDocumentOut */
         ConnectorRunDocumentOut: {
@@ -6367,9 +6507,13 @@ export interface components {
              */
             status: "pending" | "running" | "completed" | "failed" | "cancelled";
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /** Stats */
-            stats?: Record<string, never>;
+            stats?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /** Task Id */
@@ -6407,7 +6551,9 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
             /** Stats */
-            stats?: Record<string, never>;
+            stats?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ConnectorValidateRequest
@@ -6424,7 +6570,9 @@ export interface components {
              */
             connector_id: string;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /**
              * Check Connectivity
              * @default true
@@ -6438,13 +6586,21 @@ export interface components {
             /** Connector Id */
             connector_id: string;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /** Errors */
-            errors?: Record<string, never>[];
+            errors?: {
+                [key: string]: unknown;
+            }[];
             /** Warnings */
-            warnings?: Record<string, never>[];
+            warnings?: {
+                [key: string]: unknown;
+            }[];
             /** Checks */
-            checks?: Record<string, never>;
+            checks?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ConversationCreate
@@ -7527,7 +7683,9 @@ export interface components {
             before_policy?: components["schemas"]["IngestionPolicy-Output"] | null;
             policy: components["schemas"]["IngestionPolicy-Output"];
             /** Policy Diff */
-            policy_diff?: Record<string, never>;
+            policy_diff?: {
+                [key: string]: unknown;
+            };
             /** Notes */
             notes?: string[];
             /** Manual Review */
@@ -7886,11 +8044,17 @@ export interface components {
             /** Progress */
             progress: number;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /** Summary */
-            summary?: Record<string, never>;
+            summary?: {
+                [key: string]: unknown;
+            };
             /** Artifacts */
-            artifacts?: Record<string, never>;
+            artifacts?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /** Started At */
@@ -8003,7 +8167,9 @@ export interface components {
             token_histogram?: components["schemas"]["DatasetPrecheckHistogramBin"][];
             pdf_scan?: components["schemas"]["DatasetPrecheckPdfScanStats"];
             /** Pdf Detection */
-            pdf_detection?: Record<string, never>;
+            pdf_detection?: {
+                [key: string]: unknown;
+            };
             /** Risk Buckets */
             risk_buckets?: {
                 [key: string]: number;
@@ -8064,7 +8230,9 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
             /** Preview */
             preview?: string | null;
             /**
@@ -8256,9 +8424,13 @@ export interface components {
             /** Progress */
             progress: number;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /** Summary */
-            summary?: Record<string, never>;
+            summary?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /** Started At */
@@ -8411,9 +8583,13 @@ export interface components {
              */
             status: "pass" | "warn" | "fail";
             /** Observed */
-            observed?: Record<string, never>;
+            observed?: {
+                [key: string]: unknown;
+            };
             /** Target */
-            target?: Record<string, never>;
+            target?: {
+                [key: string]: unknown;
+            };
             /** Message */
             message?: string | null;
             /** Suggestions */
@@ -8484,9 +8660,13 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: Record<string, never>;
+            params?: {
+                [key: string]: unknown;
+            };
             /** Summary */
-            summary?: Record<string, never>;
+            summary?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /** Created At */
@@ -8517,11 +8697,15 @@ export interface components {
             /** Pipeline Versions */
             pipeline_versions?: components["schemas"]["PipelineVersionSummary"][];
             /** Pipeline Snapshots */
-            pipeline_snapshots?: Record<string, never>;
+            pipeline_snapshots?: {
+                [key: string]: unknown;
+            };
             /** Connectors */
             connectors?: components["schemas"]["ConnectorRunSummary"][];
             /** Dataset Metadata */
-            dataset_metadata?: Record<string, never>;
+            dataset_metadata?: {
+                [key: string]: unknown;
+            };
             folder_tree?: components["schemas"]["DocumentFolderTreeResponse"] | null;
             governance_metrics?: components["schemas"]["DatasetGovernanceMetricsOut"] | null;
             governance_audit?: components["schemas"]["DatasetGovernanceAuditOut"] | null;
@@ -8529,7 +8713,9 @@ export interface components {
             kg_stats?: components["schemas"]["DatasetKGStatsOut"] | null;
             latest_regression_run?: components["schemas"]["DatasetRegressionRunSummaryOut"] | null;
             /** Precheck Summary */
-            precheck_summary?: Record<string, never> | null;
+            precheck_summary?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** DatasetTablesListResponse */
         DatasetTablesListResponse: {
@@ -8689,9 +8875,13 @@ export interface components {
             /** Entitlement Hash */
             entitlement_hash: string;
             /** Profile */
-            profile?: Record<string, never>;
+            profile?: {
+                [key: string]: unknown;
+            };
             /** Sample Meta */
-            sample_meta?: Record<string, never>;
+            sample_meta?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -8987,7 +9177,9 @@ export interface components {
             /** Document Ids */
             document_ids: string[];
             /** Patch */
-            patch?: Record<string, never>;
+            patch?: {
+                [key: string]: unknown;
+            };
             /**
              * Replace
              * @default false
@@ -9020,7 +9212,9 @@ export interface components {
             /** End Char */
             end_char?: number | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * DocumentChunkList
@@ -9116,7 +9310,9 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * DocumentChunkUpdateRequest
@@ -9139,7 +9335,9 @@ export interface components {
              * Metadata
              * @description Chunk metadata patch (null values delete keys)
              */
-            metadata?: Record<string, never> | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * DocumentDetail
@@ -9157,10 +9355,11 @@ export interface components {
             file_type: string;
             /** File Size */
             file_size: number;
-            /** Status */
-            status: string;
+            status: components["schemas"]["DocumentStatusEnum"];
             /** Processing Progress */
             processing_progress: number;
+            /** Current Stage */
+            current_stage?: string | null;
             /** Chunk Count */
             chunk_count: number;
             /** Total Characters */
@@ -9190,7 +9389,9 @@ export interface components {
             /** Dataset Id */
             dataset_id?: string | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
             governance?: components["schemas"]["GovernanceInfo"];
             pipeline?: components["schemas"]["DocumentPipelineProvenance"] | null;
             /** Chunks */
@@ -9316,7 +9517,9 @@ export interface components {
              */
             original_markdown_content: string;
             /** Persisted Meta */
-            persisted_meta?: Record<string, never>;
+            persisted_meta?: {
+                [key: string]: unknown;
+            };
             /**
              * Markdown Truncated
              * @default false
@@ -9605,7 +9808,9 @@ export interface components {
              * Chunk Strategy Params
              * @description Chunking strategy parameters (best-effort, strategy-specific). Only small JSON objects are allowed (primitive values only).
              */
-            chunk_strategy_params?: Record<string, never> | null;
+            chunk_strategy_params?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Embedding Context Prefix Enabled
              * @description Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).
@@ -9712,7 +9917,9 @@ export interface components {
             pipeline_effective?: components["schemas"]["PipelineEffectiveSnapshot"];
             analytics_raw?: components["schemas"]["DocumentAnalyticsSchema"];
             /** Parsed Text Quality */
-            parsed_text_quality?: Record<string, never>;
+            parsed_text_quality?: {
+                [key: string]: unknown;
+            };
         };
         /** DocumentQAGenerateRequest */
         DocumentQAGenerateRequest: {
@@ -9807,8 +10014,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["DocumentStatusEnum"];
             /** Processing Progress */
             processing_progress: number;
             /** Current Stage */
@@ -9816,6 +10022,12 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
+        /**
+         * DocumentStatusEnum
+         * @description Document processing status enum for API contract stability.
+         * @enum {string}
+         */
+        DocumentStatusEnum: "pending" | "processing" | "completed" | "failed" | "quarantined" | "cancelled";
         /** DocumentTimelineItem */
         DocumentTimelineItem: {
             /** Id */
@@ -9844,7 +10056,9 @@ export interface components {
             /** Progress */
             progress?: number | null;
             /** Details */
-            details?: Record<string, never>;
+            details?: {
+                [key: string]: unknown;
+            };
         };
         /** DocumentTimelineResponse */
         DocumentTimelineResponse: {
@@ -9869,7 +10083,9 @@ export interface components {
              * Patch
              * @description User metadata patch; null values remove keys.
              */
-            patch?: Record<string, never>;
+            patch?: {
+                [key: string]: unknown;
+            };
             /**
              * Replace
              * @description Replace entire metadata.user instead of merging
@@ -9921,9 +10137,13 @@ export interface components {
             /** Removed Hashes */
             removed_hashes?: string[];
             /** From Provenance */
-            from_provenance?: Record<string, never> | null;
+            from_provenance?: {
+                [key: string]: unknown;
+            } | null;
             /** To Provenance */
-            to_provenance?: Record<string, never> | null;
+            to_provenance?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Changed Transforms
              * @description Transform step ids whose transform hash differs between from/to.
@@ -10135,13 +10355,19 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Source Metadata */
-            source_metadata?: Record<string, never>;
+            source_metadata?: {
+                [key: string]: unknown;
+            };
             /** Reference Sources */
             reference_sources: components["schemas"]["ReferenceSource"][];
             /** Retrieval Snapshot */
-            retrieval_snapshot?: Record<string, never>;
+            retrieval_snapshot?: {
+                [key: string]: unknown;
+            };
             /** Rag Config Snapshot */
-            rag_config_snapshot?: Record<string, never>;
+            rag_config_snapshot?: {
+                [key: string]: unknown;
+            };
             /** Notes */
             notes?: string | null;
         };
@@ -10173,7 +10399,9 @@ export interface components {
              */
             skipped: number;
             /** Errors */
-            errors?: Record<string, never>[];
+            errors?: {
+                [key: string]: unknown;
+            }[];
         };
         /** EvidenceItemList */
         EvidenceItemList: {
@@ -10216,13 +10444,19 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Source Metadata */
-            source_metadata?: Record<string, never>;
+            source_metadata?: {
+                [key: string]: unknown;
+            };
             /** Reference Sources */
             reference_sources?: components["schemas"]["ReferenceSource"][];
             /** Retrieval Snapshot */
-            retrieval_snapshot?: Record<string, never>;
+            retrieval_snapshot?: {
+                [key: string]: unknown;
+            };
             /** Rag Config Snapshot */
-            rag_config_snapshot?: Record<string, never>;
+            rag_config_snapshot?: {
+                [key: string]: unknown;
+            };
             /** Notes */
             notes?: string | null;
             /** Regression Case Id */
@@ -10261,13 +10495,19 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
             /** Source Metadata */
-            source_metadata?: Record<string, never> | null;
+            source_metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** Reference Sources */
             reference_sources?: components["schemas"]["ReferenceSource"][] | null;
             /** Retrieval Snapshot */
-            retrieval_snapshot?: Record<string, never> | null;
+            retrieval_snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /** Rag Config Snapshot */
-            rag_config_snapshot?: Record<string, never> | null;
+            rag_config_snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /** Notes */
             notes?: string | null;
         };
@@ -10374,9 +10614,13 @@ export interface components {
             /** Reason */
             reason: string;
             /** Expected */
-            expected?: Record<string, never>;
+            expected?: {
+                [key: string]: unknown;
+            };
             /** Observed */
-            observed?: Record<string, never>;
+            observed?: {
+                [key: string]: unknown;
+            };
             /** Slice */
             slice?: {
                 [key: string]: string;
@@ -10418,7 +10662,9 @@ export interface components {
             /** Method */
             method?: string | null;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * EvidenceReferenceRepairRequest
@@ -10538,9 +10784,13 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Citations */
-            citations: Record<string, never>[];
+            citations: {
+                [key: string]: unknown;
+            }[];
             /** Metrics */
-            metrics?: Record<string, never>;
+            metrics?: {
+                [key: string]: unknown;
+            };
             /**
              * Has Evidence
              * @default false
@@ -10554,7 +10804,9 @@ export interface components {
             /** Abstain Reason */
             abstain_reason?: string | null;
             /** Query Debug */
-            query_debug?: Record<string, never> | null;
+            query_debug?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** EvidenceSuiteCoverage */
         EvidenceSuiteCoverage: {
@@ -10585,7 +10837,9 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
         };
         /** EvidenceSuiteDashboardOut */
         EvidenceSuiteDashboardOut: {
@@ -10626,9 +10880,13 @@ export interface components {
              */
             dataset_id: string;
             /** Suite */
-            suite: Record<string, never>;
+            suite: {
+                [key: string]: unknown;
+            };
             /** Items */
-            items: Record<string, never>[];
+            items: {
+                [key: string]: unknown;
+            }[];
         };
         /** EvidenceSuiteList */
         EvidenceSuiteList: {
@@ -10661,7 +10919,9 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /** Created By */
             created_by?: string | null;
             /**
@@ -10690,7 +10950,9 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
             /** Config */
-            config?: Record<string, never> | null;
+            config?: {
+                [key: string]: unknown;
+            } | null;
             /** Archived At */
             archived_at?: string | null;
         };
@@ -10722,7 +10984,9 @@ export interface components {
              */
             skipped: number;
             /** Errors */
-            errors?: Record<string, never>[];
+            errors?: {
+                [key: string]: unknown;
+            }[];
         };
         /** EvidenceSuiteThroughput */
         EvidenceSuiteThroughput: {
@@ -10826,7 +11090,9 @@ export interface components {
              * Extra
              * @default {}
              */
-            extra: Record<string, never>;
+            extra: {
+                [key: string]: unknown;
+            };
         };
         /** FlsPolicy */
         FlsPolicy: {
@@ -10902,7 +11168,9 @@ export interface components {
              * Metadata
              * @description Additional metadata
              */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /** GovernanceAnalyzeRequest */
         GovernanceAnalyzeRequest: {
@@ -10998,7 +11266,9 @@ export interface components {
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
             /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: Record<string, never>;
+            suggested_pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** GovernanceCommonLineCandidate */
         GovernanceCommonLineCandidate: {
@@ -11163,7 +11433,9 @@ export interface components {
              * Suggested Pipeline Patch
              * @description Best-effort suggested pipeline patch (DocumentPipelineOptions shape).
              */
-            suggested_pipeline_patch?: Record<string, never>;
+            suggested_pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** GovernanceProfileCreate */
         GovernanceProfileCreate: {
@@ -11246,7 +11518,9 @@ export interface components {
              */
             input_formats?: ("markdown" | "html")[];
             /** Pipeline Patch */
-            pipeline_patch?: Record<string, never>;
+            pipeline_patch?: {
+                [key: string]: unknown;
+            };
             /** Regex Rules */
             regex_rules?: components["schemas"]["RegexRuleModel"][];
         };
@@ -11495,7 +11769,9 @@ export interface components {
             /** Id */
             id: string;
             /** Params */
-            params?: Record<string, never>;
+            params?: {
+                [key: string]: unknown;
+            };
         };
         /** IngestionPreviewResponse */
         IngestionPreviewResponse: {
@@ -11504,7 +11780,9 @@ export interface components {
             parse: components["schemas"]["ParsePreviewResponse"];
             clean: components["schemas"]["CleanPreviewResponse"];
             /** Explain */
-            explain?: Record<string, never>;
+            explain?: {
+                [key: string]: unknown;
+            };
         };
         /** IngestionPreviewRule */
         IngestionPreviewRule: {
@@ -11520,7 +11798,9 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Preprocess Steps */
-            preprocess_steps?: Record<string, never>[];
+            preprocess_steps?: {
+                [key: string]: unknown;
+            }[];
             /**
              * Parser Backend
              * @default auto
@@ -11552,7 +11832,9 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Pipeline Patch */
-            pipeline_patch?: Record<string, never>;
+            pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** IngestionRule */
         "IngestionRule-Output": {
@@ -11574,7 +11856,9 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Pipeline Patch */
-            pipeline_patch?: Record<string, never>;
+            pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * IngestionRuleMatch
@@ -11594,7 +11878,9 @@ export interface components {
             run_a: components["schemas"]["IngestionRunOut"];
             run_b: components["schemas"]["IngestionRunOut"];
             /** Diff */
-            diff?: Record<string, never>;
+            diff?: {
+                [key: string]: unknown;
+            };
         };
         /** IngestionRunDocumentOut */
         IngestionRunDocumentOut: {
@@ -11638,9 +11924,13 @@ export interface components {
             /** Status */
             status: string;
             /** Config */
-            config?: Record<string, never>;
+            config?: {
+                [key: string]: unknown;
+            };
             /** Stats */
-            stats?: Record<string, never>;
+            stats?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /** Created At */
@@ -11714,7 +12004,9 @@ export interface components {
             /** Neighbors */
             neighbors?: components["schemas"]["KGEntityNeighbor"][];
             /** Stats */
-            stats?: Record<string, never>;
+            stats?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGEntityItem
@@ -11735,7 +12027,9 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Extra Data */
-            extra_data?: Record<string, never>;
+            extra_data?: {
+                [key: string]: unknown;
+            };
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -11782,7 +12076,9 @@ export interface components {
             /** Role */
             role?: string | null;
             /** Extra Data */
-            extra_data?: Record<string, never>;
+            extra_data?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGEventItem
@@ -11805,9 +12101,13 @@ export interface components {
             /** Chunk Id */
             chunk_id?: string | null;
             /** References */
-            references?: Record<string, never>;
+            references?: {
+                [key: string]: unknown;
+            };
             /** Extra Data */
-            extra_data?: Record<string, never>;
+            extra_data?: {
+                [key: string]: unknown;
+            };
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -11853,7 +12153,9 @@ export interface components {
              */
             weight: number;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGGraphNode
@@ -11875,7 +12177,9 @@ export interface components {
              */
             val: number;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGGraphResponse
@@ -11887,7 +12191,9 @@ export interface components {
             /** Links */
             links: components["schemas"]["KGGraphLink"][];
             /** Stats */
-            stats?: Record<string, never>;
+            stats?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGSearchRequest
@@ -11912,7 +12218,9 @@ export interface components {
          */
         KGSearchResponse: {
             /** Result */
-            result: Record<string, never>;
+            result: {
+                [key: string]: unknown;
+            };
             /** Query */
             query: string;
         };
@@ -12110,7 +12418,9 @@ export interface components {
             /** End Char */
             end_char?: number | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ManualDocumentCreate
@@ -12128,7 +12438,9 @@ export interface components {
             /** Chunks */
             chunks: components["schemas"]["ManualChunkCreate"][];
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
@@ -12182,7 +12494,9 @@ export interface components {
              * Extra
              * @description Extension fields (optional)
              */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
         };
         /** MessageFeedbackEnrichedList */
         MessageFeedbackEnrichedList: {
@@ -12227,7 +12541,9 @@ export interface components {
             /** Expected Answer */
             expected_answer: string | null;
             /** Extra */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -12285,7 +12601,9 @@ export interface components {
             /** Expected Answer */
             expected_answer: string | null;
             /** Extra */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -12317,7 +12635,9 @@ export interface components {
              */
             citations: components["schemas"]["Citation"][];
             /** Message Metadata */
-            message_metadata?: Record<string, never> | null;
+            message_metadata?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Created At
              * Format: date-time
@@ -12561,7 +12881,9 @@ export interface components {
             /** Page Number */
             page_number?: number | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /** ParserBackendInfo */
         ParserBackendInfo: {
@@ -12601,7 +12923,9 @@ export interface components {
             /** Parse Duration Sec */
             parse_duration_sec?: number | null;
             /** Pdf Quality */
-            pdf_quality?: Record<string, never> | null;
+            pdf_quality?: {
+                [key: string]: unknown;
+            } | null;
             quality_gate?: components["schemas"]["ParsingQualityGate"] | null;
         };
         /** ParsingContentUpdateRequest */
@@ -12633,7 +12957,9 @@ export interface components {
             /** Reasons */
             reasons?: string[];
             /** Evidence */
-            evidence?: Record<string, never>;
+            evidence?: {
+                [key: string]: unknown;
+            };
         };
         /** PipelineCapabilitiesResponse */
         PipelineCapabilitiesResponse: {
@@ -12645,6 +12971,18 @@ export interface components {
             pdf_backends?: components["schemas"]["ParserBackendInfo"][];
             /** Chunk Strategies */
             chunk_strategies?: components["schemas"]["ChunkStrategyInfo"][];
+        };
+        /** PipelineChunkPreviewRequest */
+        PipelineChunkPreviewRequest: {
+            /** Markdown */
+            markdown: string;
+        };
+        /** PipelineChunkPreviewResponse */
+        PipelineChunkPreviewResponse: {
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ChunkItem"][];
+            /** Sentences */
+            sentences: components["schemas"]["ChunkItem"][];
         };
         /**
          * PipelineEffectiveSnapshot
@@ -12717,7 +13055,9 @@ export interface components {
              */
             chunk_merge_small_min_chars: number;
             /** Chunk Strategy Params */
-            chunk_strategy_params?: Record<string, never>;
+            chunk_strategy_params?: {
+                [key: string]: unknown;
+            };
             /**
              * Chunk Vector Enabled
              * @default false
@@ -12835,15 +13175,23 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Prompt Messages */
-            prompt_messages: Record<string, never>[];
+            prompt_messages: {
+                [key: string]: unknown;
+            }[];
             /** Prompt Text */
             prompt_text: string;
             /** Variables */
-            variables: Record<string, never>;
+            variables: {
+                [key: string]: unknown;
+            };
             /** Citations */
-            citations?: Record<string, never>[];
+            citations?: {
+                [key: string]: unknown;
+            }[];
             /** Metrics */
-            metrics?: Record<string, never>;
+            metrics?: {
+                [key: string]: unknown;
+            };
             /** Prompt Template Id */
             prompt_template_id?: string | null;
             /** Prompt Template Key */
@@ -13360,7 +13708,9 @@ export interface components {
             /** Ok */
             ok?: boolean | null;
             /** Retriever Debug */
-            retriever_debug?: Record<string, never> | null;
+            retriever_debug?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RagTraceStep */
         RagTraceStep: {
@@ -13371,7 +13721,9 @@ export interface components {
             /** Elapsed Sec */
             elapsed_sec?: number | null;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * RagasItemSchema
@@ -13401,9 +13753,13 @@ export interface components {
             /** Retrieved Contexts */
             retrieved_contexts?: string[] | null;
             /** Citations */
-            citations?: Record<string, never>[];
+            citations?: {
+                [key: string]: unknown;
+            }[];
             /** Scores */
-            scores?: Record<string, never>;
+            scores?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -13461,7 +13817,9 @@ export interface components {
              * Extra
              * @description Extension fields (optional)
              */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * RagasRegressionCaseImportRequest
@@ -13518,7 +13876,9 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Extra */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
             /** Created By */
             created_by?: string | null;
             /**
@@ -13551,7 +13911,9 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
             /** Extra */
-            extra?: Record<string, never> | null;
+            extra?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RagasRegressionItemSchema */
         RagasRegressionItemSchema: {
@@ -13577,9 +13939,13 @@ export interface components {
             /** Retrieved Contexts */
             retrieved_contexts?: string[] | null;
             /** Citations */
-            citations?: Record<string, never>[];
+            citations?: {
+                [key: string]: unknown;
+            }[];
             /** Scores */
-            scores?: Record<string, never>;
+            scores?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -13706,9 +14072,13 @@ export interface components {
              */
             generated_at: string;
             /** Base Params */
-            base_params?: Record<string, never>;
+            base_params?: {
+                [key: string]: unknown;
+            };
             /** Target Params */
-            target_params?: Record<string, never>;
+            target_params?: {
+                [key: string]: unknown;
+            };
             /** Metric Diffs */
             metric_diffs?: components["schemas"]["RegressionRunMetricDiff"][];
             /** Slice Diffs */
@@ -13744,9 +14114,13 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: Record<string, never>;
+            params?: {
+                [key: string]: unknown;
+            };
             /** Summary */
-            summary?: Record<string, never>;
+            summary?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /**
@@ -13824,9 +14198,13 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: Record<string, never>;
+            params?: {
+                [key: string]: unknown;
+            };
             /** Summary */
-            summary?: Record<string, never>;
+            summary?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /**
@@ -14009,9 +14387,13 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Citations */
-            citations: Record<string, never>[];
+            citations: {
+                [key: string]: unknown;
+            }[];
             /** Metrics */
-            metrics?: Record<string, never>;
+            metrics?: {
+                [key: string]: unknown;
+            };
         };
         /** RuntimeMeta */
         RuntimeMeta: {
@@ -14049,7 +14431,9 @@ export interface components {
              */
             success: boolean;
             /** Result */
-            result?: Record<string, never> | null;
+            result?: {
+                [key: string]: unknown;
+            } | null;
             /** Message */
             message?: string | null;
             /** Error */
@@ -14072,7 +14456,9 @@ export interface components {
             /** Count */
             count: number;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /** SimilarityCollectionsResponse */
         SimilarityCollectionsResponse: {
@@ -14195,7 +14581,9 @@ export interface components {
             /** Columns */
             columns?: components["schemas"]["TableColumnOut"][];
             /** Sample Rows */
-            sample_rows?: Record<string, never>[];
+            sample_rows?: {
+                [key: string]: unknown;
+            }[];
         };
         /** TableColumnOut */
         TableColumnOut: {
@@ -14531,112 +14919,6 @@ export interface components {
             dataset_id: string;
             /** Document Id */
             document_id: string;
-        };
-        /**
-         * ChunkPreviewResponse
-         * @description Chunk preview response.
-         */
-        app__api__schemas__document__ChunkPreviewResponse: {
-            /** Filename */
-            filename: string;
-            /** File Type */
-            file_type: string;
-            /** File Size */
-            file_size: number;
-            /** File Sha256 */
-            file_sha256?: string | null;
-            /**
-             * Parse Cache Hit
-             * @default false
-             */
-            parse_cache_hit: boolean;
-            /** Parse Cache Age Ms */
-            parse_cache_age_ms?: number | null;
-            /** Preview Duration Ms */
-            preview_duration_ms?: number | null;
-            /** Upload Duration Ms */
-            upload_duration_ms?: number | null;
-            /** Parse Duration Ms */
-            parse_duration_ms?: number | null;
-            /** Governance Duration Ms */
-            governance_duration_ms?: number | null;
-            /** Chunking Duration Ms */
-            chunking_duration_ms?: number | null;
-            /** Stats Duration Ms */
-            stats_duration_ms?: number | null;
-            /** Total Chunks */
-            total_chunks: number;
-            /**
-             * Total Chunks Full
-             * @default 0
-             */
-            total_chunks_full: number;
-            /**
-             * Chunks Truncated
-             * @default false
-             */
-            chunks_truncated: boolean;
-            /**
-             * Chunks Max Count
-             * @default 0
-             */
-            chunks_max_count: number;
-            /** Total Characters */
-            total_characters: number;
-            params: components["schemas"]["ChunkPreviewParams"];
-            /** Chunks */
-            chunks: components["schemas"]["ChunkPreviewItem"][];
-            stats?: components["schemas"]["ChunkPreviewStats"] | null;
-            /** Chunking Stats Tokens */
-            chunking_stats_tokens?: Record<string, never> | null;
-            /** Auto Selected Strategy */
-            auto_selected_strategy?: string | null;
-            /** Warnings */
-            warnings?: string[];
-            review_signals?: components["schemas"]["ChunkPreviewReviewSignals"] | null;
-            quality_gate?: components["schemas"]["ChunkPreviewQualityGate"] | null;
-            /** Recommendations */
-            recommendations?: string[];
-            /** Recommendation Patches */
-            recommendation_patches?: components["schemas"]["ChunkPreviewRecommendationPatch"][];
-            /** Original Text */
-            original_text?: string | null;
-            /** Original Text Cleaned */
-            original_text_cleaned?: string | null;
-            /**
-             * Original Text Included
-             * @default false
-             */
-            original_text_included: boolean;
-            /**
-             * Original Text Truncated
-             * @default false
-             */
-            original_text_truncated: boolean;
-            /**
-             * Original Text Max Chars
-             * @default 100000
-             */
-            original_text_max_chars: number;
-            /** Parser Backend */
-            parser_backend: string;
-            /** Chunk Strategy */
-            chunk_strategy: string;
-        };
-        /** RegexRuleModel */
-        app__api__schemas__pipeline__RegexRuleModel: {
-            /** Pattern */
-            pattern: string;
-            /**
-             * Repl
-             * @default
-             */
-            repl: string;
-            /**
-             * Flags
-             * @default 0
-             */
-            flags: number;
         };
     };
     responses: never;
@@ -16589,7 +16871,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__api__schemas__document__ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16635,7 +16917,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__api__schemas__document__ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -22374,7 +22656,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ChunkPreviewRequest"];
+                "application/json": components["schemas"]["PipelineChunkPreviewRequest"];
             };
         };
         responses: {
@@ -22384,7 +22666,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["PipelineChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */

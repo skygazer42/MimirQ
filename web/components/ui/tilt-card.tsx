@@ -16,6 +16,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
+  const interactive = typeof onClick === "function"
 
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -74,6 +75,16 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     onMouseLeave?.()
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!interactive) return
+    // Only trigger when the card itself is focused, not when a nested control is.
+    if (e.currentTarget !== e.target) return
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      onClick?.()
+    }
+  }
+
   if (!enabled) {
     return (
       <div
@@ -81,6 +92,9 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={onClick}
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onKeyDown={interactive ? handleKeyDown : undefined}
         className={cn("relative", className)}
       >
         {children}
@@ -95,6 +109,9 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
       onMouseEnter={onMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={onClick}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
       style={{
         rotateX,
         rotateY,

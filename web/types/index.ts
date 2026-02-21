@@ -9,125 +9,24 @@ export type DocumentAccessMode = 'inherit' | PermissionEnum
 
 // ==================== 文档相关类型 ====================
 
-export interface Document {
-  id: string
-  filename: string
-  file_type: string
-  file_size: number
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'quarantined'
-  processing_progress: number
-  chunk_count: number
-  total_characters: number
-  owner_id?: string | null
-  access_mode?: DocumentAccessMode | null
-  archived_at?: string | null
-  disabled_at?: string | null
-  created_at: string
-  updated_at: string
-  current_stage?: string
-  error_message?: string
-  metadata?: Record<string, any>
-  governance?: GovernanceInfo
-  chunks?: DocumentChunk[]
-  dataset_id?: string
-}
-
-export interface GovernanceInfo {
-  enabled: boolean
-  documents: number
-  changed_documents: number
-  rules_applied: number
-  dropped_documents?: number
-  drop_reasons?: Record<string, number>
-}
-
-export interface DocumentStatus {
-  id: string
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
-  processing_progress: number
-  current_stage?: string
-  error_message?: string
-}
-
-export interface DocumentTimelineItem {
-  id: string
-  action: string
-  created_at: string
-  source: 'audit' | 'synthetic'
-  actor_id?: string | null
-  request_id?: string | null
-  stage?: string | null
-  status?: string | null
-  progress?: number | null
-  details?: Record<string, any>
-}
-
-export interface DocumentTimelineResponse {
-  total: number
-  items: DocumentTimelineItem[]
-}
-
-export interface DocumentVersionInfo {
-  pipeline_hash: string
-  doc_pipeline_key: string
-  chunk_count: number
-  first_chunk_at?: string | null
-  last_chunk_at?: string | null
-  active: boolean
-}
-
-export interface DocumentVersionList {
-  document_id: string
-  active_pipeline_hash?: string | null
-  pipeline_hash?: string | null
-  items: DocumentVersionInfo[]
-}
-
-export interface DocumentVersionDiff {
-  document_id: string
-  from_pipeline_hash: string
-  to_pipeline_hash: string
-  from_chunk_count: number
-  to_chunk_count: number
-  unchanged_chunks: number
-  added_chunks: number
-  removed_chunks: number
-  added_hashes: string[]
-  removed_hashes: string[]
-  from_provenance?: Record<string, any> | null
-  to_provenance?: Record<string, any> | null
-  changed_transforms: string[]
-}
-
-export interface DocumentAccessInfo {
-  mode: DocumentAccessMode
-  owner_id?: string | null
-  partial_member_list?: string[] | null
-}
-
-export interface DocumentAccessUpdateRequest {
-  mode: DocumentAccessMode
-  partial_member_list?: string[] | null
-}
-
-export interface DocumentFolderNode {
-  name: string
-  path: string
-  depth: number
-  documents: number
-  children: DocumentFolderNode[]
-}
-
-export interface DocumentFolderTreeResponse {
-  dataset_id: string
-  total_documents: number
-  total_with_source_path: number
-  root: DocumentFolderNode
-}
+export type Document = import('./backend').Document
+export type DocumentList = import('./backend').DocumentList
+export type GovernanceInfo = import('./backend').GovernanceInfo
+export type DocumentStatus = import('./backend').DocumentStatus
+export type DocumentTimelineItem = import('./backend').DocumentTimelineItem
+export type DocumentTimelineResponse = import('./backend').DocumentTimelineResponse
+export type DocumentVersionInfo = import('./backend').DocumentVersionInfo
+export type DocumentVersionList = import('./backend').DocumentVersionList
+export type DocumentVersionDiff = import('./backend').DocumentVersionDiff
+export type DocumentAccessInfo = import('./backend').DocumentAccessInfo
+export type DocumentAccessUpdateRequest = import('./backend').DocumentAccessUpdateRequest
+export type DocumentFolderNode = import('./backend').DocumentFolderNode
+export type DocumentFolderTreeResponse = import('./backend').DocumentFolderTreeResponse
 
 // ==================== Connectors ====================
 
-export type ConnectorId = 'url_batch' | 'web_crawl'
+// Backend may add connector ids over time; keep this open-ended.
+export type ConnectorId = string
 export type ConnectorRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface ConnectorInfo {
@@ -138,6 +37,7 @@ export interface ConnectorInfo {
 }
 
 export interface UrlBatchConnectorConfig {
+  [key: string]: unknown
   urls: string[]
   filename?: string | null
   parser_backend?: string
@@ -155,6 +55,7 @@ export interface WebCrawlAuthConfig {
 }
 
 export interface WebCrawlConnectorConfig {
+  [key: string]: unknown
   start_urls: string[]
   max_pages?: number
   max_depth?: number
@@ -176,6 +77,7 @@ export interface WebCrawlConnectorConfig {
 }
 
 export interface MySQLCatalogConnectorConfig {
+  [key: string]: unknown
   host: string
   port?: number
   database: string
@@ -188,6 +90,7 @@ export interface MySQLCatalogConnectorConfig {
 }
 
 export interface SQLServerCatalogConnectorConfig {
+  [key: string]: unknown
   host: string
   port?: number
   database: string
@@ -223,17 +126,17 @@ export type ConnectorRunCreateRequest =
 
 export interface ConnectorValidateRequest {
   connector_id: string
-  config?: Record<string, any>
-  check_connectivity?: boolean
+  config?: Record<string, unknown>
+  check_connectivity: boolean
 }
 
 export interface ConnectorValidateResponse {
   ok: boolean
   connector_id: string
-  config: Record<string, any>
-  errors: Record<string, any>[]
-  warnings: Record<string, any>[]
-  checks: Record<string, any>
+  config?: Record<string, unknown>
+  errors?: Record<string, unknown>[]
+  warnings?: Record<string, unknown>[]
+  checks?: Record<string, unknown>
 }
 
 export interface ConnectorRunDocumentOut {
@@ -304,17 +207,17 @@ export interface ConnectorConfigCreateRequest {
   connector_id: string
   dataset_id: string
   name: string
-  enabled?: boolean
+  enabled: boolean
   schedule_cron?: string | null
-  config?: Record<string, any>
+  config?: Record<string, unknown>
 }
 
 export interface ConnectorConfigUpdateRequest {
   name?: string | null
-  enabled?: boolean
+  enabled?: boolean | null
   schedule_cron?: string | null
-  config?: Record<string, any> | null
-  state?: Record<string, any> | null
+  config?: Record<string, unknown> | null
+  state?: Record<string, unknown> | null
 }
 
 export interface ConnectorConfigOut {
@@ -325,8 +228,8 @@ export interface ConnectorConfigOut {
   name: string
   enabled: boolean
   schedule_cron?: string | null
-  config: Record<string, any>
-  state: Record<string, any>
+  config?: Record<string, unknown>
+  state?: Record<string, unknown>
   last_run_at?: string | null
   last_error?: string | null
   created_at: string
@@ -338,92 +241,23 @@ export interface ConnectorConfigListResponse {
   items: ConnectorConfigOut[]
 }
 
-export interface ConnectorScheduledTickResponse {
-  enqueued: number
-  skipped: number
-}
+export type ConnectorScheduledTickResponse = unknown
 
-export interface DocumentStats {
-  total: number
-  by_status: Record<string, number>
-  total_chunks: number
-  total_size: number
-}
+export type DocumentStats = import('./backend').DocumentStats
+export type DocumentBatchLifecycleRequest = import('./backend').DocumentBatchLifecycleRequest
+export type DocumentBatchLifecycleResponse = import('./backend').DocumentBatchLifecycleResponse
+export type DocumentBatchRetryRequest = import('./backend').DocumentBatchRetryRequest
+export type DocumentBatchReingestRequest = import('./backend').DocumentBatchReingestRequest
+export type DocumentBatchRetryResponse = import('./backend').DocumentBatchRetryResponse
 
-export interface DocumentBatchLifecycleRequest {
-  document_ids: string[]
-}
+export type DocumentBatchMoveRequest = import('./backend').DocumentBatchMoveRequest
+export type DocumentBatchMoveResponse = import('./backend').DocumentBatchMoveResponse
+export type DocumentBatchAccessUpdateRequest = import('./backend').DocumentBatchAccessUpdateRequest
+export type DocumentBatchAccessUpdateResponse = import('./backend').DocumentBatchAccessUpdateResponse
 
-export interface DocumentBatchLifecycleResponse {
-  updated: number
-  not_found: string[]
-  denied: string[]
-  conflicts: string[]
-}
-
-export interface DocumentBatchRetryRequest {
-  document_ids: string[]
-  force?: boolean
-  skip_if_unchanged?: boolean
-}
-
-export interface DocumentBatchReingestRequest {
-  document_ids: string[]
-  patch?: DocumentPipelineOptions
-  replace?: boolean
-  force?: boolean
-  skip_if_unchanged?: boolean
-}
-
-export interface DocumentBatchRetryResponse {
-  queued: number
-  skipped: number
-  not_found: string[]
-  denied: string[]
-  conflicts: string[]
-}
-
-export interface DocumentBatchMoveRequest {
-  document_ids: string[]
-  target_dataset_id?: string | null
-}
-
-export interface DocumentBatchMoveResponse {
-  moved: number
-  not_found: string[]
-  denied: string[]
-  conflicts: string[]
-}
-
-export interface DocumentBatchAccessUpdateRequest {
-  document_ids: string[]
-  access: DocumentAccessUpdateRequest
-}
-
-export interface DocumentBatchAccessUpdateResponse {
-  updated: number
-  not_found: string[]
-  denied: string[]
-}
-
-export interface DuplicateDocumentItem {
-  id: string
-  filename: string
-  status: string
-  dataset_id?: string | null
-  created_at: string
-}
-
-export interface DocumentDuplicateGroup {
-  file_sha256: string
-  count: number
-  documents: DuplicateDocumentItem[]
-}
-
-export interface DocumentDuplicateList {
-  total: number
-  items: DocumentDuplicateGroup[]
-}
+export type DuplicateDocumentItem = import('./backend').DuplicateDocumentItem
+export type DocumentDuplicateGroup = import('./backend').DocumentDuplicateGroup
+export type DocumentDuplicateList = import('./backend').DocumentDuplicateList
 
 // ==================== Observability ====================
 
@@ -462,181 +296,25 @@ export interface IndexAuditResponse {
   milvus_orphan_ids_sample: string[]
 }
 
-export interface DocumentUserMetadataPatchRequest {
-  patch: Record<string, any>
-  replace?: boolean
-}
+export type DocumentUserMetadataPatchRequest = import('./backend').DocumentUserMetadataPatchRequest
+export type DocumentBatchUserMetadataPatchRequest = import('./backend').DocumentBatchUserMetadataPatchRequest
+export type DocumentBatchUserMetadataPatchResponse = import('./backend').DocumentBatchUserMetadataPatchResponse
 
-export interface DocumentBatchUserMetadataPatchRequest {
-  document_ids: string[]
-  patch: Record<string, any>
-  replace?: boolean
-}
+export type DocumentChunk = import('./backend').DocumentChunk
+export type DocumentChunkList = import('./backend').DocumentChunkList
+export type DocumentChunkUpdateRequest = import('./backend').DocumentChunkUpdateRequest
+export type DocumentChunkCreateRequest = import('./backend').DocumentChunkCreateRequest
+export type DocumentChunkMatch = import('./backend').DocumentChunkMatch
+export type DocumentChunkMatchList = import('./backend').DocumentChunkMatchList
+export type DocumentChunkReembedRequest = import('./backend').DocumentChunkReembedRequest
+export type DocumentChunkReembedResponse = import('./backend').DocumentChunkReembedResponse
 
-export interface DocumentBatchUserMetadataPatchResponse {
-  updated: number
-  not_found: string[]
-  denied: string[]
-}
+export type DocumentPipelineOptions = import('./backend').DocumentPipelineOptions
+export type DocumentPipelinePatchRequest = import('./backend').DocumentPipelinePatchRequest
 
-export interface DocumentChunk {
-  id: string
-  content: string
-  page_number?: number
-  start_char?: number
-  end_char?: number
-  chunk_index: number
-  disabled_at?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  metadata?: Record<string, any>
-}
-
-export interface DocumentChunkUpdateRequest {
-  content?: string
-  page_number?: number
-  start_char?: number
-  end_char?: number
-  metadata?: Record<string, any> | null
-}
-
-export interface DocumentChunkCreateRequest {
-  content: string
-  page_number?: number
-  start_char?: number
-  end_char?: number
-  metadata?: Record<string, any>
-}
-
-export interface QAPairPreview {
-  question: string
-  answer: string
-}
-
-export interface DocumentQAGenerateRequest {
-  num_pairs?: number
-  replace_existing?: boolean
-  prefer_llm?: boolean
-  max_source_chars?: number
-  preview_pairs?: number
-}
-
-export interface DocumentQAGenerateResponse {
-  document_id: string
-  mode: string
-  deleted: number
-  created: number
-  chunk_ids: string[]
-  preview: QAPairPreview[]
-}
-
-export interface DocumentChunkMatch {
-  id: string
-  chunk_index: number
-  page_number?: number
-}
-
-export interface DocumentChunkMatchList {
-  total: number
-  truncated: boolean
-  items: DocumentChunkMatch[]
-}
-
-export interface DocumentChunkReembedRequest {
-  chunk_ids: string[]
-  include_disabled?: boolean
-}
-
-export interface DocumentChunkReembedResponse {
-  reembedded: number
-  not_found: string[]
-  denied: string[]
-  conflicts: string[]
-}
-
-export interface DocumentPipelineOptions {
-  governance_enabled?: boolean
-  governance_remove_toc_lines?: boolean
-  governance_remove_noise_lines?: boolean
-  governance_unwrap_lines?: boolean
-  governance_remove_common_lines?: boolean
-  governance_remove_boilerplate?: boolean
-  governance_remove_images?: 'none' | 'decorative' | 'all' | string
-  governance_rule_packs?: string[]
-  governance_regex_rules?: RegexRuleModel[]
-  governance_extract_frontmatter?: boolean
-  governance_strip_frontmatter?: boolean
-  governance_detect_language?: boolean
-  governance_language_min_chars?: number
-  governance_normalize_urls?: boolean
-  governance_normalize_urls_strip_tracking?: boolean
-  governance_drop_duplicate_paragraphs?: boolean
-  governance_drop_duplicate_paragraphs_min_occurrences?: number
-  governance_drop_duplicate_paragraphs_min_chars?: number
-  governance_drop_duplicate_paragraphs_max_chars?: number
-  governance_trim_references?: boolean
-  governance_extract_keywords?: boolean
-  governance_keywords_provider?: string
-  governance_keywords_top_k?: number
-  governance_keywords_max_chars?: number
-  governance_normalize_tables?: boolean
-  governance_strip_code_line_numbers?: boolean
-  governance_pii_anonymize?: boolean
-  governance_pii_mode?: 'mask' | 'token' | string
-  governance_pii_mask?: string
-  governance_pii_max_hits?: number
-  governance_secrets_redact?: boolean
-  governance_secrets_mode?: 'mask' | 'token' | string
-  governance_secrets_mask?: string
-  governance_secrets_max_hits?: number
-  governance_max_blank_lines?: number
-  governance_html_xpath?: string
-  governance_drop_outline_only?: boolean
-  governance_drop_outline_min_content_chars?: number
-  governance_drop_outline_max_heading_ratio?: number
-  governance_drop_low_density?: boolean
-  governance_drop_low_density_threshold?: number
-  governance_quarantine_on_drop?: boolean
-  governance_unwrap_max_line_length?: number
-  governance_noise_min_chars?: number
-  governance_noise_ratio_threshold?: number
-  governance_common_lines_min_docs?: number
-  governance_common_lines_min_ratio?: number
-  parse_fallback_enabled?: boolean
-  parse_fallback_min_content_chars?: number
-  parse_fallback_max_retries?: number
-  persist_parsed_content?: boolean
-  persist_parsed_content_max_chars?: number
-  near_dedup_enabled?: boolean
-  near_dedup_hamming_threshold?: number
-  near_dedup_max_bucket_size?: number
-  chunk_size?: number
-  chunk_overlap?: number
-  chunk_merge_small_min_chars?: number
-  chunk_strategy_params?: Record<string, any>
-  embedding_context_prefix_enabled?: boolean
-  chunk_vector_enabled?: boolean
-  bm25_index_enabled?: boolean
-  kg_enabled?: boolean
-  event_vector_enabled?: boolean
-  entity_vector_enabled?: boolean
-  // Structured table store (TAG)
-  table_store_enabled?: boolean
-  table_store_max_rows?: number
-  table_store_max_cols?: number
-  table_store_sample_rows?: number
-  // Auto routing (TAG vs RAG) for table-like docs when table_store_enabled=true
-  table_store_auto_route?: boolean
-  table_store_auto_row_threshold?: number
-  table_store_auto_col_threshold?: number
-  table_store_auto_sheet_threshold?: number
-  table_store_auto_file_bytes_threshold?: number
-}
-
-export interface DocumentPipelinePatchRequest {
-  patch: DocumentPipelineOptions
-  replace?: boolean
-}
+export type QAPairPreview = import('./backend').QAPairPreview
+export type DocumentQAGenerateRequest = import('./backend').DocumentQAGenerateRequest
+export type DocumentQAGenerateResponse = import('./backend').DocumentQAGenerateResponse
 
 export interface Citation {
   document_id: string
@@ -696,16 +374,7 @@ export interface DocumentPreview {
   parser_backend: string
 }
 
-export interface DocumentParsedContentResponse {
-  document_id: string
-  available: boolean
-  markdown_content: string
-  original_markdown_content: string
-  persisted_meta: Record<string, any>
-  markdown_truncated: boolean
-  original_markdown_truncated: boolean
-  max_chars: number
-}
+export type DocumentParsedContentResponse = import('./backend').DocumentParsedContentResponse
 
 export interface ManualChunk {
   content: string
@@ -1198,11 +867,11 @@ export interface IngestionPreprocessStep {
 
 export interface IngestionPreprocessConfig {
   enabled: boolean
-  steps: IngestionPreprocessStep[]
+  steps?: IngestionPreprocessStep[]
 }
 
 export interface IngestionRuleMatch {
-  extensions: string[]
+  extensions?: string[]
   filename_regex?: string | null
 }
 
@@ -1210,8 +879,8 @@ export interface IngestionRule {
   id: string
   name: string
   enabled: boolean
-  match: IngestionRuleMatch
-  preprocess: IngestionPreprocessConfig
+  match?: IngestionRuleMatch
+  preprocess?: IngestionPreprocessConfig
   parser_backend?: string | null
   chunk_strategy?: string | null
   governance_profile_ref?: string | null
@@ -1220,7 +889,7 @@ export interface IngestionRule {
 
 export interface IngestionPolicy {
   version: string
-  rules: IngestionRule[]
+  rules?: IngestionRule[]
 }
 
 export interface IngestionPolicyImportResponse {
@@ -1241,7 +910,7 @@ export interface IngestionPolicyVersion {
 
 export interface IngestionPolicyVersionListResponse {
   current_version_id?: string | null
-  items: IngestionPolicyVersion[]
+  items?: IngestionPolicyVersion[]
 }
 
 export interface IngestionPolicyRollbackRequest {
@@ -1287,26 +956,26 @@ export interface Dataset {
   id: string
   tenant_id: string
   name: string
-  description?: string
+  description?: string | null
   permission: PermissionEnum
-  owner_id?: string
-  partial_member_list?: string[]
+  owner_id?: string | null
+  partial_member_list?: string[] | null
   pipeline?: DocumentPipelineOptions | null
 }
 
 export interface DatasetCreate {
   name: string
-  description?: string
-  permission?: PermissionEnum
-  partial_member_list?: string[]
+  description?: string | null
+  permission: PermissionEnum
+  partial_member_list?: string[] | null
   pipeline?: DocumentPipelineOptions | null
 }
 
 export interface DatasetUpdate {
-  name?: string
-  description?: string
-  permission?: PermissionEnum
-  partial_member_list?: string[]
+  name?: string | null
+  description?: string | null
+  permission?: PermissionEnum | null
+  partial_member_list?: string[] | null
   pipeline?: DocumentPipelineOptions | null
 }
 
@@ -1322,7 +991,7 @@ export interface DatasetCategoryNode {
   sort_order: number
   depth: number
   datasets: number
-  children: DatasetCategoryNode[]
+  children?: DatasetCategoryNode[]
 }
 
 export interface DatasetCategoryTreeResponse {
@@ -1357,18 +1026,18 @@ export interface DatasetCategoryOut {
 }
 
 export interface DatasetCategoryAssignmentRequest {
-  category_ids: string[]
+  category_ids?: string[]
 }
 
 export interface DatasetCategoryAssignmentResponse {
   dataset_id: string
-  category_ids: string[]
+  category_ids?: string[]
 }
 
 export interface DatasetIngestionStats {
   dataset_id: string
   total_documents: number
-  by_status: Record<string, number>
+  by_status?: Record<string, number>
   total_chunks: number
   total_size: number
   total_characters: number
@@ -1377,7 +1046,7 @@ export interface DatasetIngestionStats {
 
 export interface DatasetHealthIngestionSummary {
   total_documents: number
-  by_status: Record<string, number>
+  by_status?: Record<string, number>
   pending: number
   processing: number
   completed: number
@@ -1386,12 +1055,7 @@ export interface DatasetHealthIngestionSummary {
   cancelled: number
 }
 
-export interface DatasetHealthResponse {
-  dataset_id: string
-  generated_at: string
-  profile: DatasetProfileSummary
-  ingestion: DatasetHealthIngestionSummary
-}
+export type DatasetHealthResponse = import('./backend').DatasetHealthResponse
 
 export interface DatasetReportCompliance {
   pii_hits_total: Record<string, number>
@@ -1480,7 +1144,7 @@ export interface DatasetConfigBundle {
   default_prompt_template_key?: string | null
   default_prompt_ab_experiment_key?: string | null
   pipeline?: DocumentPipelineOptions | null
-  ingestion_policy?: Record<string, any> | null
+  ingestion_policy?: IngestionPolicy | null
 }
 
 export interface DatasetConfigExport {
@@ -1493,14 +1157,14 @@ export interface DatasetConfigExport {
 
 export interface DatasetConfigImportRequest {
   config: DatasetConfigBundle
-  replace?: boolean
+  replace: boolean
 }
 
 export interface DatasetCloneRequest {
   name: string
   description?: string | null
-  copy_permission?: boolean
-  copy_partial_members?: boolean
+  copy_permission: boolean
+  copy_partial_members: boolean
 }
 
 // ==================== 对话相关类型 ====================
@@ -1816,36 +1480,11 @@ export interface MessageFeedbackEnrichedListResponse {
 
 // ==================== Auth ====================
 
-export interface UserProfile {
-  id: string
-  email: string
-  username: string
-  is_active: boolean
-  created_at: string
-  last_login_at?: string | null
-}
-
-export interface AuthToken {
-  access_token: string
-  token_type: string
-  expires_in: number
-}
-
-export interface AuthResponse {
-  user: UserProfile
-  token: AuthToken
-}
-
-export interface RegisterRequest {
-  email: string
-  username: string
-  password: string
-}
-
-export interface LoginRequest {
-  identifier: string
-  password: string
-}
+export type UserProfile = import('./backend').UserProfile
+export type AuthToken = import('./backend').AuthToken
+export type AuthResponse = import('./backend').AuthResponse
+export type RegisterRequest = import('./backend').RegisterRequest
+export type LoginRequest = import('./backend').LoginRequest
 
 // ==================== Health ====================
 
@@ -1965,53 +1604,12 @@ export interface KGDeleteResponse {
 
 // ==================== RAG 调试相关类型 ====================
 
-export interface RetrievePreviewRequest {
-  query: string
-  history?: ChatHistoryMessage[]
-  dataset_id?: string
-  document_ids?: string[]
-  rag_config?: ChatRequest['rag_config']
-}
-
-export interface RetrievePreviewResponse {
-  query_for_retrieval: string
-  citations: Citation[]
-  metrics: Record<string, any>
-}
-
-export type EvidenceRetrieveRequest = RetrievePreviewRequest
-
-export interface EvidenceRetrieveResponse extends RetrievePreviewResponse {
-  has_evidence: boolean
-  abstain_triggered: boolean
-  abstain_reason?: string | null
-}
-
-export interface PromptPreviewRequest {
-  query: string
-  history?: ChatHistoryMessage[]
-  dataset_id?: string
-  document_ids?: string[]
-  rag_config?: ChatRequest['rag_config']
-  structured_output?: boolean
-  structured_preset?: string
-  prompt_template_id?: string
-  prompt_template_key?: string
-  prompt_ab_experiment_key?: string
-}
-
-export interface PromptPreviewResponse {
-  query_for_retrieval: string
-  prompt_messages: Array<{ type: string; content: any }>
-  prompt_text: string
-  variables: Record<string, any>
-  citations: Citation[]
-  metrics: Record<string, any>
-  prompt_template_id?: string
-  prompt_template_key?: string
-  prompt_ab_experiment_key?: string
-  prompt_ab_variant?: string
-}
+export type RetrievePreviewRequest = import('./backend').RetrievePreviewRequest
+export type RetrievePreviewResponse = import('./backend').RetrievePreviewResponse
+export type EvidenceRetrieveRequest = import('./backend').EvidenceRetrieveRequest
+export type EvidenceRetrieveResponse = import('./backend').EvidenceRetrieveResponse
+export type PromptPreviewRequest = import('./backend').PromptPreviewRequest
+export type PromptPreviewResponse = import('./backend').PromptPreviewResponse
 
 // ==================== 批量上传相关类型 ====================
 
@@ -2042,26 +1640,9 @@ export interface BatchTaskStatus {
   error?: string
 }
 
-export interface DocumentBatchUploadSuccess {
-  document_id: string
-  filename: string
-  status: string
-  source_path?: string | null
-}
-
-export interface DocumentBatchUploadFailure {
-  filename: string
-  error: string
-  source_path?: string | null
-}
-
-export interface DocumentBatchUploadResponse {
-  total: number
-  successful_count: number
-  failed_count: number
-  successful: DocumentBatchUploadSuccess[]
-  failed: DocumentBatchUploadFailure[]
-}
+export type DocumentBatchUploadSuccess = import('./backend').DocumentBatchUploadSuccess
+export type DocumentBatchUploadFailure = import('./backend').DocumentBatchUploadFailure
+export type DocumentBatchUploadResponse = import('./backend').DocumentBatchUploadResponse
 
 // ==================== RAGAS 回归测试相关类型 ====================
 
@@ -2144,255 +1725,34 @@ export interface RegressionCaseList {
 
 export type EvidenceItemStatus = 'draft' | 'reviewed' | 'approved' | 'archived'
 
-export interface EvidenceSuite {
-  id: string
-  tenant_id: string
-  dataset_id: string
-  name: string
-  description?: string | null
-  tags: string[]
-  config: Record<string, any>
-  created_by?: string | null
-  created_at: string
-  updated_at: string
-  archived_at?: string | null
-  item_counts?: Record<string, number> | null
-}
+export type EvidenceSuite = import('./backend').EvidenceSuite
+export type EvidenceSuiteCreate = import('./backend').EvidenceSuiteCreate
+export type EvidenceSuitePatch = import('./backend').EvidenceSuitePatch
+export type EvidenceSuiteList = import('./backend').EvidenceSuiteList
+export type EvidenceSuiteCoverage = import('./backend').EvidenceSuiteCoverage
+export type EvidenceSuiteThroughput = import('./backend').EvidenceSuiteThroughput
+export type EvidenceSuiteDashboard = import('./backend').EvidenceSuiteDashboard
+export type EvidenceSuiteSyncRegressionResponse = import('./backend').EvidenceSuiteSyncRegressionResponse
+export type EvidenceSuiteExportV1 = import('./backend').EvidenceSuiteExportV1
 
-export interface EvidenceSuiteCreate {
-  dataset_id: string
-  name: string
-  description?: string | null
-  tags?: string[]
-  config?: Record<string, any>
-}
+export type EvidenceItem = import('./backend').EvidenceItem
+export type EvidenceItemCreate = import('./backend').EvidenceItemCreate
+export type EvidenceItemPatch = import('./backend').EvidenceItemPatch
+export type EvidenceItemList = import('./backend').EvidenceItemList
+export type EvidenceItemImportResponse = import('./backend').EvidenceItemImportResponse
 
-export interface EvidenceSuitePatch {
-  name?: string
-  description?: string | null
-  tags?: string[] | null
-  config?: Record<string, any> | null
-  archived_at?: string | null
-}
+export type EvidenceCoverageBucket = import('./backend').EvidenceCoverageBucket
+export type EvidenceCoverageHeatmap = import('./backend').EvidenceCoverageHeatmap
+export type EvidenceThroughputWindow = import('./backend').EvidenceThroughputWindow
+export type EvidenceLeadTimeStats = import('./backend').EvidenceLeadTimeStats
 
-export interface EvidenceSuiteList {
-  total: number
-  items: EvidenceSuite[]
-}
+export type EvidenceDriftSliceBucket = import('./backend').EvidenceDriftSliceBucket
+export type EvidenceReferenceDriftDetail = import('./backend').EvidenceReferenceDriftDetail
+export type EvidenceReferenceDriftAudit = import('./backend').EvidenceReferenceDriftAudit
 
-export interface EvidenceItem {
-  id: string
-  tenant_id: string
-  dataset_id: string
-  suite_id: string
-  status: EvidenceItemStatus
-
-  query: string
-  expected_answer?: string | null
-  tags: string[]
-  source_metadata: Record<string, any>
-  reference_sources: ReferenceSource[]
-  retrieval_snapshot: Record<string, any>
-  rag_config_snapshot: Record<string, any>
-  notes?: string | null
-
-  regression_case_id?: string | null
-
-  created_by?: string | null
-  reviewed_by?: string | null
-  approved_by?: string | null
-  archived_by?: string | null
-
-  reviewed_at?: string | null
-  approved_at?: string | null
-  archived_at?: string | null
-
-  created_at: string
-  updated_at: string
-}
-
-export interface EvidenceItemCreate {
-  suite_id: string
-  dataset_id: string
-  query: string
-  expected_answer?: string | null
-  tags?: string[]
-  source_metadata?: Record<string, any>
-  reference_sources: ReferenceSource[]
-  retrieval_snapshot?: Record<string, any>
-  rag_config_snapshot?: Record<string, any>
-  notes?: string | null
-}
-
-export interface EvidenceItemPatch {
-  query?: string
-  expected_answer?: string | null
-  tags?: string[] | null
-  source_metadata?: Record<string, any> | null
-  reference_sources?: ReferenceSource[]
-  retrieval_snapshot?: Record<string, any>
-  rag_config_snapshot?: Record<string, any>
-  notes?: string | null
-}
-
-export interface EvidenceItemList {
-  total: number
-  items: EvidenceItem[]
-}
-
-export interface EvidenceSuiteSyncRegressionResponse {
-  suite_id: string
-  dataset_id: string
-  created: number
-  updated: number
-  skipped: number
-  errors: Array<Record<string, any>>
-}
-
-export interface EvidenceSuiteExportV1 {
-  schema: string
-  exported_at: string
-  dataset_id: string
-  suite: Record<string, any>
-  items: Array<Record<string, any>>
-}
-
-export interface EvidenceItemImportResponse {
-  suite_id: string
-  dataset_id: string
-  parsed: number
-  created: number
-  skipped: number
-  errors: Array<Record<string, any>>
-}
-
-export interface EvidenceCoverageBucket {
-  key: string
-  items: number
-  references: number
-}
-
-export interface EvidenceCoverageHeatmap {
-  x: string[]
-  y: string[]
-  z: number[][]
-  metric: string
-}
-
-export interface EvidenceSuiteCoverage {
-  language: EvidenceCoverageBucket[]
-  file_type: EvidenceCoverageBucket[]
-  quality_bucket: EvidenceCoverageBucket[]
-  channel: EvidenceCoverageBucket[]
-  heatmaps: Record<string, EvidenceCoverageHeatmap>
-}
-
-export interface EvidenceThroughputWindow {
-  created: number
-  reviewed: number
-  approved: number
-}
-
-export interface EvidenceLeadTimeStats {
-  count: number
-  p50_sec?: number | null
-  p90_sec?: number | null
-  mean_sec?: number | null
-}
-
-export interface EvidenceSuiteThroughput {
-  window_days: number
-  last_window: EvidenceThroughputWindow
-  draft_to_reviewed: EvidenceLeadTimeStats
-  reviewed_to_approved: EvidenceLeadTimeStats
-  draft_to_approved: EvidenceLeadTimeStats
-}
-
-export interface EvidenceSuiteDashboard {
-  generated_at: string
-  suite_id: string
-  dataset_id: string
-  item_counts: Record<string, number>
-  coverage: EvidenceSuiteCoverage
-  throughput: EvidenceSuiteThroughput
-}
-
-export interface EvidenceDriftSliceBucket {
-  total: number
-  ok: number
-  drift: number
-  drift_rate: number
-  reasons: Record<string, number>
-}
-
-export interface EvidenceReferenceDriftDetail {
-  suite_id: string
-  item_id: string
-  item_status: string
-  dataset_id: string
-  document_id: string
-  chunk_id: string
-  reason: string
-  expected: Record<string, any>
-  observed: Record<string, any>
-  slice: Record<string, string>
-}
-
-export interface EvidenceReferenceDriftAudit {
-  generated_at: string
-  dataset_id: string
-  suite_id?: string | null
-
-  total_items: number
-  total_references: number
-  ok_references: number
-  drift_references: number
-  drift_rate: number
-
-  reasons: Record<string, number>
-  slices: Record<string, Record<string, EvidenceDriftSliceBucket>>
-
-  details_truncated: boolean
-  drifted_references: EvidenceReferenceDriftDetail[]
-}
-
-export interface EvidenceReferenceRepairRequest {
-  apply?: boolean
-  allow_approved?: boolean
-  include_archived_items?: boolean
-  max_items?: number
-  max_refs_per_item?: number
-  max_changes?: number
-}
-
-export interface EvidenceReferenceRepairChange {
-  suite_id: string
-  item_id: string
-  item_status: string
-  document_id: string
-  chunk_id_before: string
-  chunk_id_after?: string | null
-  reason: string
-  repaired: boolean
-  method?: string | null
-  meta: Record<string, any>
-}
-
-export interface EvidenceReferenceRepairResponse {
-  suite_id: string
-  dataset_id: string
-  applied: boolean
-
-  scanned_items: number
-  scanned_references: number
-  drifted_references: number
-  repaired_references: number
-  skipped_approved_items: number
-  skipped_archived_items: number
-
-  changes_truncated: boolean
-  changes: EvidenceReferenceRepairChange[]
-}
+export type EvidenceReferenceRepairRequest = import('./backend').EvidenceReferenceRepairRequest
+export type EvidenceReferenceRepairChange = import('./backend').EvidenceReferenceRepairChange
+export type EvidenceReferenceRepairResponse = import('./backend').EvidenceReferenceRepairResponse
 
 export interface GeneratedQuestion {
   question: string

@@ -277,7 +277,12 @@ export default function DatasetHealthPage() {
               <StatCard icon={BarChart3} label="总大小" value={profile ? formatFileSize(profile.total_size_bytes || 0) : isLoading ? '…' : '-'} color="teal" />
               <StatCard icon={ShieldAlert} label="失败" value={ingestion?.failed ?? (isLoading ? '…' : 0)} color="rose" />
               <StatCard icon={ShieldAlert} label="隔离" value={ingestion?.quarantined ?? (isLoading ? '…' : 0)} color="amber" />
-              <StatCard icon={Activity} label="扫描 PDF" value={profile ? `${profile.pdf_scan.scanned}/${pdfScanTotal || 0}` : isLoading ? '…' : '-'} color="orange" />
+              <StatCard
+                icon={Activity}
+                label="扫描 PDF"
+                value={profile ? `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}` : isLoading ? '…' : '-'}
+                color="orange"
+              />
               <StatCard icon={ShieldAlert} label="PII" value={profile ? piiTotal : isLoading ? '…' : 0} color="sky" />
               <StatCard icon={ShieldAlert} label="Secrets" value={profile ? secretsTotal : isLoading ? '…' : 0} color="sky" />
             </StatsGrid>

@@ -28,6 +28,13 @@ export function normalizeRoute(routePath) {
   return p
 }
 
+function stripApiV1Prefix(normalizedPath) {
+  const p = String(normalizedPath || '')
+  if (p === '/api/v1') return '/'
+  if (p.startsWith('/api/v1/')) return p.slice('/api/v1'.length)
+  return p
+}
+
 export function parseBackendPrefixes() {
   const initPy = readText('app/api/v1/__init__.py')
   const map = new Map()
@@ -102,6 +109,22 @@ export function extractFrontendRoutesFromFile(rel) {
     const method = String(m[1] || '').toUpperCase()
     const rawPath = m[2] ?? m[3] ?? m[4] ?? ''
     out.push({ method, path: normalizeRoute(rawPath), src: rel })
+  }
+
+  // openapiRequest({ path: '/api/v1/...', method: 'get', ... })
+  //
+  // This is an incremental migration target for the web API client, so the
+  // contract/coverage scripts must understand it.
+  const openapiReqRe =
+    /openapiRequest\(\s*\{[\s\S]*?\bpath\s*:\s*(?:`([^`]+)`|"([^"]+)"|'([^']+)')[\s\S]*?\bmethod\s*:\s*(?:`([^`]+)`|"([^"]+)"|'([^']+)')/g
+  while ((m = openapiReqRe.exec(text))) {
+    const rawPath = m[1] ?? m[2] ?? m[3] ?? ''
+    const rawMethod = m[4] ?? m[5] ?? m[6] ?? ''
+    const method = String(rawMethod || 'GET').toUpperCase()
+    const normalized = normalizeRoute(rawPath)
+    // Backend route parsing (from app/api/v1/*) does not include the /api/v1 prefix,
+    // so strip it here for stable matching.
+    out.push({ method, path: stripApiV1Prefix(normalized), src: rel })
   }
 
   // fetch(`${API_V1_BASE_URL}/...`, { method: 'GET' })

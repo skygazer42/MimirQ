@@ -31,11 +31,10 @@ from app.api.schemas.governance_profile import (
 )
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
 from app.api.schemas.pipeline import (
-    ChunkPreviewRequest,
-    ChunkPreviewResponse,
     ChunkStrategyInfo,
     CleanPreviewRequest,
     CleanPreviewResponse,
+    CleanRegexRuleModel,
     CleanRulesResponse,
     GovernanceAnalyzeRequest,
     GovernanceAnalyzeResponse,
@@ -51,7 +50,8 @@ from app.api.schemas.pipeline import (
     ParsePreviewResponse,
     ParserBackendInfo,
     PipelineCapabilitiesResponse,
-    RegexRuleModel,
+    PipelineChunkPreviewRequest,
+    PipelineChunkPreviewResponse,
     ZipWithImagesResponse,
 )
 from app.api.utils.upload import save_upload_file
@@ -1229,7 +1229,7 @@ async def ingestion_preview(
         # Governance clean preview (issues + diff).
         clean_body = CleanPreviewRequest(
             markdown=str(parsed.get("markdown") or ""),
-            rules=[RegexRuleModel(**r) for r in (getattr(effective, "governance_regex_rules", None) or [])],
+            rules=[CleanRegexRuleModel(**r) for r in (getattr(effective, "governance_regex_rules", None) or [])],
             use_default_rules=True,
             include_diff=True,
             diff_max_lines=int(diff_max_lines or 0),
@@ -1333,9 +1333,9 @@ async def ingestion_preview(
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-@router.post("/chunk-preview", response_model=ChunkPreviewResponse)
+@router.post("/chunk-preview", response_model=PipelineChunkPreviewResponse)
 async def chunk_preview(
-    body: ChunkPreviewRequest,
+    body: PipelineChunkPreviewRequest,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -1345,7 +1345,7 @@ async def chunk_preview(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     chunks = hierarchical_chunk_markdown(body.markdown)
-    return ChunkPreviewResponse(**chunks)
+    return PipelineChunkPreviewResponse(**chunks)
 
 
 @router.post("/clean-preview", response_model=CleanPreviewResponse)
@@ -1879,7 +1879,7 @@ async def list_clean_rules(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     return CleanRulesResponse(
-        rules=[RegexRuleModel(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in DEFAULT_MARKDOWN_RULES]
+        rules=[CleanRegexRuleModel(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in DEFAULT_MARKDOWN_RULES]
     )
 
 

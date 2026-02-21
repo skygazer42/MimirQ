@@ -44,6 +44,21 @@ function titleForCitation(c: Citation): string {
   return parts.join(' · ') || (c.document_id ? String(c.document_id) : 'Citation')
 }
 
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function toCitation(value: unknown): Citation | null {
+  if (!isRecord(value)) return null
+  const document_id = typeof value.document_id === 'string' ? value.document_id : ''
+  const document_name = typeof value.document_name === 'string' ? value.document_name : ''
+  const chunk_content = typeof value.chunk_content === 'string' ? value.chunk_content : ''
+  const relevance_score =
+    typeof value.relevance_score === 'number' ? value.relevance_score : Number(value.relevance_score ?? 0) || 0
+  if (!document_id || !document_name) return null
+  return { ...(value as any), document_id, document_name, chunk_content, relevance_score } as Citation
+}
+
 export function EvidenceWorkbench() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetsLoading, setDatasetsLoading] = useState(false)
@@ -105,6 +120,15 @@ export function EvidenceWorkbench() {
         rag_config: {
           // Use presets so the backend can apply the full recall profile contract (not just top_k).
           retrieval_profile: profile,
+          // Satisfy the strict OpenAPI schema (backend applies its own defaults anyway).
+          max_tokens: 2000,
+          retrieval_mode: 'hybrid',
+          alpha: 0.6,
+          enable_weight_rerank: true,
+          vector_weight: 0.6,
+          keyword_weight: 0.4,
+          use_graph: false,
+          visible_evidence_only: false,
         },
       })
 
@@ -149,7 +173,11 @@ export function EvidenceWorkbench() {
     toast.success('已导出 Evidence Pack')
   }, [datasetId, profile, query, result])
 
-  const citations: Citation[] = result?.citations || []
+  const citations: Citation[] = useMemo(() => {
+    const raw = result?.citations
+    if (!Array.isArray(raw)) return []
+    return raw.map(toCitation).filter(Boolean) as Citation[]
+  }, [result?.citations])
   const metrics = result?.metrics || null
   const topRel = (metrics as any)?.top_relevance_score
   const elapsed = (metrics as any)?.retrieval_elapsed_sec
@@ -358,4 +386,3 @@ export function EvidenceWorkbench() {
     </div>
   )
 }
-

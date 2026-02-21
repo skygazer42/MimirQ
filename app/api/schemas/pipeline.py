@@ -89,16 +89,16 @@ class ChunkItem(BaseModel):
     parent_id: Optional[str] = None
 
 
-class ChunkPreviewRequest(BaseModel):
+class PipelineChunkPreviewRequest(BaseModel):
     markdown: str
 
 
-class ChunkPreviewResponse(BaseModel):
+class PipelineChunkPreviewResponse(BaseModel):
     paragraphs: List[ChunkItem]
     sentences: List[ChunkItem]
 
 
-class RegexRuleModel(BaseModel):
+class CleanRegexRuleModel(BaseModel):
     pattern: str
     repl: str = ""
     flags: int = 0
@@ -155,7 +155,7 @@ class GovernanceCommonLinesLearnResponse(BaseModel):
 
 class CleanPreviewRequest(BaseModel):
     markdown: str
-    rules: List[RegexRuleModel] = Field(default_factory=list)
+    rules: List[CleanRegexRuleModel] = Field(default_factory=list)
     rule_packs: List[str] = Field(
         default_factory=list,
         description="Optional named governance rule packs (server-defined presets). Default off.",
@@ -265,7 +265,7 @@ class CleanPreviewResponse(BaseModel):
 
 
 class CleanRulesResponse(BaseModel):
-    rules: List[RegexRuleModel]
+    rules: List[CleanRegexRuleModel]
 
 
 class KeywordExtractRequest(BaseModel):

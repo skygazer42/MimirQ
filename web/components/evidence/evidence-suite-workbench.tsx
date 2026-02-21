@@ -140,6 +140,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
   const [dashboardError, setDashboardError] = useState<string | null>(null)
   const [dashboard, setDashboard] = useState<EvidenceSuiteDashboard | null>(null)
   const [dashboardIncludeArchived, setDashboardIncludeArchived] = useState(false)
+  const dashboardThroughput = dashboard?.throughput
+  const dashboardCoverage = dashboard?.coverage
 
   // Create suite dialog
   const [createSuiteOpen, setCreateSuiteOpen] = useState(false)
@@ -359,7 +361,17 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
         history: [],
         dataset_id: datasetId,
         document_ids: [],
-        rag_config: { retrieval_profile: profile },
+        rag_config: {
+          retrieval_profile: profile,
+          max_tokens: 2000,
+          retrieval_mode: 'hybrid',
+          alpha: 0.6,
+          enable_weight_rerank: true,
+          vector_weight: 0.6,
+          keyword_weight: 0.4,
+          use_graph: false,
+          visible_evidence_only: false,
+        },
       })
       setRetrieveRes(res || null)
       if (res?.has_evidence) toast.success('找到证据')
@@ -1163,183 +1175,192 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 </div>
               ) : dashboard ? (
                 <>
-                  <div>
-                    <div className="text-xs font-medium text-muted-foreground mb-2">
-                      Throughput (last {dashboard.throughput.window_days}d)
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <Badge variant="outline" className="font-mono tabular-nums">
-                        created {dashboard.throughput.last_window.created}
-                      </Badge>
-                      <Badge variant="secondary" className="font-mono tabular-nums">
-                        reviewed {dashboard.throughput.last_window.reviewed}
-                      </Badge>
-                      <Badge variant="soft" className="font-mono tabular-nums">
-                        approved {dashboard.throughput.last_window.approved}
-                      </Badge>
-                    </div>
+                  {dashboardThroughput ? (
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-2">
+                        Throughput (last {dashboardThroughput.window_days}d)
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <Badge variant="outline" className="font-mono tabular-nums">
+                          created {dashboardThroughput.last_window?.created ?? 0}
+                        </Badge>
+                        <Badge variant="secondary" className="font-mono tabular-nums">
+                          reviewed {dashboardThroughput.last_window?.reviewed ?? 0}
+                        </Badge>
+                        <Badge variant="soft" className="font-mono tabular-nums">
+                          approved {dashboardThroughput.last_window?.approved ?? 0}
+                        </Badge>
+                      </div>
 
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <Panel className="p-3">
-                        <div className="text-xs font-medium text-muted-foreground mb-1">draft → reviewed</div>
-                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                          n {dashboard.throughput.draft_to_reviewed.count}
-                        </div>
-                        <div className="mt-1 text-xs font-mono tabular-nums">
-                          p50 {formatDurationSec(dashboard.throughput.draft_to_reviewed.p50_sec)} · p90{' '}
-                          {formatDurationSec(dashboard.throughput.draft_to_reviewed.p90_sec)} · mean{' '}
-                          {formatDurationSec(dashboard.throughput.draft_to_reviewed.mean_sec)}
-                        </div>
-                      </Panel>
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <Panel className="p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-1">draft → reviewed</div>
+                          <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                            n {dashboardThroughput.draft_to_reviewed?.count ?? 0}
+                          </div>
+                          <div className="mt-1 text-xs font-mono tabular-nums">
+                            p50 {formatDurationSec(dashboardThroughput.draft_to_reviewed?.p50_sec ?? 0)} · p90{' '}
+                            {formatDurationSec(dashboardThroughput.draft_to_reviewed?.p90_sec ?? 0)} · mean{' '}
+                            {formatDurationSec(dashboardThroughput.draft_to_reviewed?.mean_sec ?? 0)}
+                          </div>
+                        </Panel>
 
-                      <Panel className="p-3">
-                        <div className="text-xs font-medium text-muted-foreground mb-1">reviewed → approved</div>
-                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                          n {dashboard.throughput.reviewed_to_approved.count}
-                        </div>
-                        <div className="mt-1 text-xs font-mono tabular-nums">
-                          p50 {formatDurationSec(dashboard.throughput.reviewed_to_approved.p50_sec)} · p90{' '}
-                          {formatDurationSec(dashboard.throughput.reviewed_to_approved.p90_sec)} · mean{' '}
-                          {formatDurationSec(dashboard.throughput.reviewed_to_approved.mean_sec)}
-                        </div>
-                      </Panel>
+                        <Panel className="p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-1">reviewed → approved</div>
+                          <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                            n {dashboardThroughput.reviewed_to_approved?.count ?? 0}
+                          </div>
+                          <div className="mt-1 text-xs font-mono tabular-nums">
+                            p50 {formatDurationSec(dashboardThroughput.reviewed_to_approved?.p50_sec ?? 0)} · p90{' '}
+                            {formatDurationSec(dashboardThroughput.reviewed_to_approved?.p90_sec ?? 0)} · mean{' '}
+                            {formatDurationSec(dashboardThroughput.reviewed_to_approved?.mean_sec ?? 0)}
+                          </div>
+                        </Panel>
 
-                      <Panel className="p-3">
-                        <div className="text-xs font-medium text-muted-foreground mb-1">draft → approved</div>
-                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                          n {dashboard.throughput.draft_to_approved.count}
-                        </div>
-                        <div className="mt-1 text-xs font-mono tabular-nums">
-                          p50 {formatDurationSec(dashboard.throughput.draft_to_approved.p50_sec)} · p90{' '}
-                          {formatDurationSec(dashboard.throughput.draft_to_approved.p90_sec)} · mean{' '}
-                          {formatDurationSec(dashboard.throughput.draft_to_approved.mean_sec)}
-                        </div>
-                      </Panel>
+                        <Panel className="p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-1">draft → approved</div>
+                          <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                            n {dashboardThroughput.draft_to_approved?.count ?? 0}
+                          </div>
+                          <div className="mt-1 text-xs font-mono tabular-nums">
+                            p50 {formatDurationSec(dashboardThroughput.draft_to_approved?.p50_sec ?? 0)} · p90{' '}
+                            {formatDurationSec(dashboardThroughput.draft_to_approved?.p90_sec ?? 0)} · mean{' '}
+                            {formatDurationSec(dashboardThroughput.draft_to_approved?.mean_sec ?? 0)}
+                          </div>
+                        </Panel>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground text-pretty">No throughput data.</div>
+                  )}
 
                   <Separator />
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Panel className="p-3">
-                      <div className="text-xs font-medium text-muted-foreground mb-2">Language coverage</div>
-                      <div className="space-y-1">
-                        {(dashboard.coverage.language || []).map((b) => (
-                          <div key={`lang:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                            <div className="min-w-0 truncate font-mono">{b.key}</div>
-                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                              <span>refs {b.references}</span>
-                              <span>items {b.items}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Panel>
-
-                    <Panel className="p-3">
-                      <div className="text-xs font-medium text-muted-foreground mb-2">File type coverage</div>
-                      <div className="space-y-1">
-                        {(dashboard.coverage.file_type || []).map((b) => (
-                          <div key={`ft:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                            <div className="min-w-0 truncate font-mono">{b.key}</div>
-                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                              <span>refs {b.references}</span>
-                              <span>items {b.items}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Panel>
-
-                    <Panel className="p-3">
-                      <div className="text-xs font-medium text-muted-foreground mb-2">Quality bucket coverage</div>
-                      <div className="space-y-1">
-                        {(dashboard.coverage.quality_bucket || []).map((b) => (
-                          <div key={`qb:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                            <div className="min-w-0 truncate font-mono">{b.key}</div>
-                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                              <span>refs {b.references}</span>
-                              <span>items {b.items}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Panel>
-
-                    <Panel className="p-3">
-                      <div className="text-xs font-medium text-muted-foreground mb-2">Channel (hit_type) coverage</div>
-                      <div className="space-y-1">
-                        {(dashboard.coverage.channel || []).map((b) => (
-                          <div key={`ch:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                            <div className="min-w-0 truncate font-mono">{b.key}</div>
-                            <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                              <span>refs {b.references}</span>
-                              <span>items {b.items}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Panel>
-                  </div>
-
-                  <Panel className="p-3">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">
-                      Heatmap: language × file_type (unique items)
-                    </div>
-                    {dashboard.coverage.heatmaps?.['language_x_file_type'] ? (
-                      <div className="overflow-x-auto">
-                        {(() => {
-                          const hm = dashboard.coverage.heatmaps['language_x_file_type']
-                          const x = hm?.x || []
-                          const y = hm?.y || []
-                          const z = hm?.z || []
-                          let max = 0
-                          for (const row of z) {
-                            for (const v of row) {
-                              const n = Number(v) || 0
-                              if (n > max) max = n
-                            }
-                          }
-                          const cols = x.length
-                          return (
-                            <div
-                              className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60"
-                              style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}
-                            >
-                              <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">
-                                lang \\ ft
-                              </div>
-                              {x.map((ft) => (
-                                <div key={`hm-x:${ft}`} className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate">
-                                  {ft}
+                  {dashboardCoverage ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Panel className="p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-2">Language coverage</div>
+                          <div className="space-y-1">
+                            {(dashboardCoverage.language || []).map((b) => (
+                              <div key={`lang:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                                <div className="min-w-0 truncate font-mono">{b.key}</div>
+                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                                  <span>refs {b.references}</span>
+                                  <span>items {b.items}</span>
                                 </div>
-                              ))}
-                              {y.map((lang, rowIdx) => (
-                                <div key={`hm-row:${lang}`} className="contents">
-                                  <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">
-                                    {lang}
+                              </div>
+                            ))}
+                          </div>
+                        </Panel>
+
+                        <Panel className="p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-2">File type coverage</div>
+                          <div className="space-y-1">
+                            {(dashboardCoverage.file_type || []).map((b) => (
+                              <div key={`ft:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                                <div className="min-w-0 truncate font-mono">{b.key}</div>
+                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                                  <span>refs {b.references}</span>
+                                  <span>items {b.items}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </Panel>
+
+                        <Panel className="p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-2">Quality bucket coverage</div>
+                          <div className="space-y-1">
+                            {(dashboardCoverage.quality_bucket || []).map((b) => (
+                              <div key={`qb:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                                <div className="min-w-0 truncate font-mono">{b.key}</div>
+                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                                  <span>refs {b.references}</span>
+                                  <span>items {b.items}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </Panel>
+
+                        <Panel className="p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-2">Channel (hit_type) coverage</div>
+                          <div className="space-y-1">
+                            {(dashboardCoverage.channel || []).map((b) => (
+                              <div key={`ch:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                                <div className="min-w-0 truncate font-mono">{b.key}</div>
+                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                                  <span>refs {b.references}</span>
+                                  <span>items {b.items}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </Panel>
+                      </div>
+
+                      <Panel className="p-3">
+                        <div className="text-xs font-medium text-muted-foreground mb-2">
+                          Heatmap: language × file_type (unique items)
+                        </div>
+                        {dashboardCoverage.heatmaps?.['language_x_file_type'] ? (
+                          <div className="overflow-x-auto">
+                            {(() => {
+                              const hm = dashboardCoverage.heatmaps['language_x_file_type']
+                              const x = hm?.x || []
+                              const y = hm?.y || []
+                              const z = hm?.z || []
+                              let max = 0
+                              for (const row of z) {
+                                for (const v of row) {
+                                  const n = Number(v) || 0
+                                  if (n > max) max = n
+                                }
+                              }
+                              const cols = x.length
+                              return (
+                                <div
+                                  className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60"
+                                  style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}
+                                >
+                                  <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">
+                                    lang \\ ft
                                   </div>
-                                  {x.map((ft, colIdx) => {
-                                    const v = Number(z?.[rowIdx]?.[colIdx] ?? 0) || 0
-                                    const ratio = max > 0 ? v / max : 0
-                                    const cellBg =
-                                      v === 0
-                                        ? 'bg-muted/20'
-                                        : ratio >= 0.75
-                                          ? 'bg-primary/30'
-                                          : ratio >= 0.5
-                                            ? 'bg-primary/20'
-                                            : ratio >= 0.25
-                                              ? 'bg-primary/10'
-                                              : 'bg-primary/5'
-                                    return (
-                                      <div
-                                        key={`hm-cell:${lang}:${ft}`}
-                                        className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}
-                                      >
-                                        {v}
+                                  {x.map((ft) => (
+                                    <div
+                                      key={`hm-x:${ft}`}
+                                      className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate"
+                                    >
+                                      {ft}
+                                    </div>
+                                  ))}
+                                  {y.map((lang, rowIdx) => (
+                                    <div key={`hm-row:${lang}`} className="contents">
+                                      <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">
+                                        {lang}
                                       </div>
-                                    )
+                                      {x.map((ft, colIdx) => {
+                                        const v = Number(z?.[rowIdx]?.[colIdx] ?? 0) || 0
+                                        const ratio = max > 0 ? v / max : 0
+                                        const cellBg =
+                                          v === 0
+                                            ? 'bg-muted/20'
+                                            : ratio >= 0.75
+                                              ? 'bg-primary/30'
+                                              : ratio >= 0.5
+                                                ? 'bg-primary/20'
+                                                : ratio >= 0.25
+                                                  ? 'bg-primary/10'
+                                                  : 'bg-primary/5'
+                                        return (
+                                          <div
+                                            key={`hm-cell:${lang}:${ft}`}
+                                            className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}
+                                          >
+                                            {v}
+                                          </div>
+                                        )
                                   })}
                                 </div>
                               ))}
@@ -1351,6 +1372,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                       <div className="text-xs text-muted-foreground">No heatmap data.</div>
                     )}
                   </Panel>
+                    </>
+                  ) : (
+                    <div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>
+                  )}
                 </>
               ) : (
                 <div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>

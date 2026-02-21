@@ -102,9 +102,10 @@ export function IngestionDetailDialog({
 
   const runtime = useMemo(() => {
     if (!doc) return []
-    const meta = doc.metadata || {}
-    const pipeline = meta.pipeline || {}
-    const user = meta.user || {}
+    const meta = (doc.metadata ?? {}) as Record<string, unknown>
+    const pipeline = (meta.pipeline ?? {}) as unknown
+    const user = (meta.user ?? {}) as Record<string, unknown>
+    const userTags = user.tags as unknown
     return [
       { k: 'Document ID', v: doc.id },
       { k: 'Dataset ID', v: doc.dataset_id || '-' },
@@ -118,8 +119,8 @@ export function IngestionDetailDialog({
       { k: 'Pipeline Hash', v: String(meta.pipeline_hash || '-') },
       { k: 'Task ID', v: String(meta.task_id || '-') },
       { k: 'KG Task ID', v: String(meta.kg_task_id || '-') },
-      { k: 'User Tags', v: Array.isArray(user.tags) ? user.tags.join(', ') || '-' : String(user.tags || '-') },
-      { k: 'Pipeline', v: typeof pipeline === 'object' ? JSON.stringify(pipeline) : String(pipeline || '-') },
+      { k: 'User Tags', v: Array.isArray(userTags) ? userTags.join(', ') || '-' : String(userTags ?? '-') },
+      { k: 'Pipeline', v: typeof pipeline === 'object' ? JSON.stringify(pipeline) : String(pipeline ?? '-') },
     ]
   }, [doc])
 

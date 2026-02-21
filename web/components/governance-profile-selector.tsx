@@ -92,9 +92,19 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
       return
     }
 
+    const normalizedRegexRules = Array.isArray(effective.regex_rules)
+      ? effective.regex_rules
+          .map((r) => ({
+            pattern: String((r as any)?.pattern || '').trim(),
+            repl: String((r as any)?.repl ?? ''),
+            flags: Number((r as any)?.flags ?? 0),
+          }))
+          .filter((r) => r.pattern.length > 0)
+      : []
+
     const patch: Partial<DocumentPipelineOptions> = {
       ...(effective.pipeline_patch || {}),
-      governance_regex_rules: Array.isArray(effective.regex_rules) ? effective.regex_rules : [],
+      governance_regex_rules: normalizedRegexRules,
       governance_enabled: true,
     }
     onApplyPatch(patch)

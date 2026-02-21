@@ -233,7 +233,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       if (!canMutateChunks) return
       setChunkOpWorkingId(chunk.id)
       try {
-        const res = await documentApi.reembedChunks(initialDocument.id, { chunk_ids: [chunk.id] })
+        const res = await documentApi.reembedChunks(initialDocument.id, {
+          chunk_ids: [chunk.id],
+          include_disabled: Boolean(chunk.disabled_at),
+        })
         toast.success(`已重新嵌入 ${res.reembedded} 个切片`)
       } catch (err) {
         console.error('Re-embed chunk failed:', err)
