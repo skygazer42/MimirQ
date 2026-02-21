@@ -10,13 +10,11 @@ This module is designed to be unit-testable with a mocked LLM client.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Literal
 
 from app.rag.llm.models import LLMMessage, LLMRole
-
 
 HardcaseKind = Literal["knowledge_pressure", "reasoning_pressure"]
 
@@ -191,4 +189,3 @@ async def generate_hardcases_llm(
 
 
 __all__ = ["Hardcase", "HardcaseKind", "generate_hardcases_llm", "sanitize_hardcases"]
-
