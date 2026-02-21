@@ -17,6 +17,7 @@ from typing import Any, Iterable, Sequence
 from uuid import UUID
 
 from sqlalchemy import func
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas.kg_diagnostics import (
@@ -35,9 +36,10 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.evaluation import RagasRegressionCase
+from app.rag.evaluation.kg_hardcase_deterministic import generate_hardcases_deterministic
 from app.rag.evaluation.kg_hardcase_generator import generate_hardcases_llm
 from app.rag.evaluation.kg_search_diagnostics_metrics import compute_kg_hit_metrics
-from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.searcher import KGSearcher
 from app.rag.kg.utils import get_logger
@@ -263,6 +265,150 @@ def _entity_hints_for_events(
     return out
 
 
+def _dedupe_strs(values: Sequence[Any], *, limit: int) -> list[str]:
+    lim = max(0, int(limit or 0))
+    if lim <= 0:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in values or []:
+        s = _collapse_ws(v)
+        if not s:
+            continue
+        key = s.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+        if len(out) >= lim:
+            break
+    return out
+
+
+def _deterministic_hardcase_candidates(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    ground_truth_event_ids: Sequence[str],
+) -> tuple[list[tuple[str, str]], list[str], list[str]]:
+    """
+    Collect KG-derived candidates for deterministic hardcase generation.
+
+    Returns: (alias_pairs, skills, tags)
+    """
+    ev_ids = _coerce_uuid_list(ground_truth_event_ids)
+    if not ev_ids:
+        return [], [], []
+
+    # 1) Entities linked to the ground-truth events (stable ordering by weight desc, then name asc).
+    ent_rows = (
+        db.query(
+            KgEntity.id,
+            KgEntity.name,
+            KgEntity.type,
+            func.max(KgEventEntity.weight).label("w"),
+        )
+        .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+        .filter(KgEntity.tenant_id == tenant_id, KgEventEntity.event_id.in_(ev_ids))
+        .group_by(KgEntity.id, KgEntity.name, KgEntity.type)
+        .order_by(func.max(KgEventEntity.weight).desc(), KgEntity.name.asc())
+        .limit(80)
+        .all()
+    )
+    ent_ids = [r[0] for r in ent_rows if r and r[0] is not None]
+    ent_names = [r[1] for r in ent_rows if r and r[1]]
+
+    skill_names = [r[1] for r in ent_rows if r and str(r[2] or "").strip() == "Skill" and r[1]]
+    skill_names = _dedupe_strs(skill_names, limit=20)
+
+    # 2) Alias pairs from relation edges around those entities.
+    alias_pairs: list[tuple[str, str]] = []
+    if ent_ids:
+        try:
+            from sqlalchemy.orm import aliased
+
+            subj = aliased(KgEntity)
+            obj = aliased(KgEntity)
+            rel_rows = (
+                db.query(
+                    KgRelation.confidence,
+                    subj.name,
+                    obj.name,
+                )
+                .join(subj, subj.id == KgRelation.subject_entity_id)
+                .join(obj, obj.id == KgRelation.object_entity_id)
+                .filter(
+                    KgRelation.tenant_id == tenant_id,
+                    KgRelation.predicate.in_(["alias_of", "same_as"]),
+                    or_(KgRelation.subject_entity_id.in_(ent_ids), KgRelation.object_entity_id.in_(ent_ids)),
+                )
+                .order_by(KgRelation.confidence.desc(), subj.name.asc(), obj.name.asc())
+                .limit(60)
+                .all()
+            )
+            for _conf, a, b in rel_rows:
+                a_s = _collapse_ws(a)
+                b_s = _collapse_ws(b)
+                if a_s and b_s and a_s.casefold() != b_s.casefold():
+                    alias_pairs.append((a_s, b_s))
+        except Exception:
+            alias_pairs = []
+
+    # Fallback: infer alias pairs from trailing parentheticals in entity surfaces.
+    if not alias_pairs and ent_names:
+        try:
+            from app.rag.kg.extraction.alias import choose_alias_direction, split_trailing_parenthetical_alias
+
+            for name in ent_names:
+                split = split_trailing_parenthetical_alias(str(name or ""))
+                if not split:
+                    continue
+                head, tail = split
+                direction = choose_alias_direction(head, tail)
+                if not direction:
+                    continue
+                alias_surface, canonical_surface = direction
+                a_s = _collapse_ws(alias_surface)
+                b_s = _collapse_ws(canonical_surface)
+                if a_s and b_s and a_s.casefold() != b_s.casefold():
+                    alias_pairs.append((a_s, b_s))
+        except Exception:
+            pass
+
+    # 3) Tags/categories for the skills (Skill -> belong_to -> Tag/Category).
+    tags: list[str] = []
+    if ent_ids and skill_names:
+        # Map skill names back to ids via the collected ent_rows to avoid extra queries.
+        skill_ids = [r[0] for r in ent_rows if r and str(r[2] or "").strip() == "Skill" and r[0] is not None]
+        skill_ids = list(dict.fromkeys(skill_ids))[:50]
+        if skill_ids:
+            try:
+                from sqlalchemy.orm import aliased
+
+                obj = aliased(KgEntity)
+                tag_rows = (
+                    db.query(KgRelation.confidence, obj.name)
+                    .join(obj, obj.id == KgRelation.object_entity_id)
+                    .filter(
+                        KgRelation.tenant_id == tenant_id,
+                        KgRelation.subject_entity_id.in_(skill_ids),
+                        KgRelation.predicate == "belong_to",
+                        obj.type.in_(["SkillTag", "SkillCategory"]),
+                    )
+                    .order_by(KgRelation.confidence.desc(), obj.name.asc())
+                    .limit(40)
+                    .all()
+                )
+                tags = [name for _conf, name in tag_rows if name]
+            except Exception:
+                tags = []
+
+    tags = _dedupe_strs(tags, limit=40)
+    alias_pairs = list(dict.fromkeys(alias_pairs))[:60]
+
+    return alias_pairs, skill_names, tags
+
+
 def _pick_primary_cause(
     *,
     gt_event_count: int,
@@ -436,6 +582,7 @@ async def run_kg_search_diagnostics(
     hardcases_generated = 0
 
     failed_for_hardcase: list[tuple[RagasRegressionCase, dict[str, Any]]] = []
+    deterministic_failed_cases_used = 0
 
     for case in cases:
         question = str(case.question or "").strip()
@@ -541,6 +688,69 @@ async def run_kg_search_diagnostics(
         baseline_hits.append(1.0 if metrics.hit_at_k else 0.0)
         baseline_mrrs.append(float(metrics.mrr))
         baseline_recalls.append(float(metrics.recall))
+
+        if (
+            hardcase_mode == "deterministic"
+            and not metrics.hit_at_k
+            and int(len(gt_event_ids)) > 0
+            and hardcases_per_failed > 0
+            and int(deterministic_failed_cases_used) < int(max_failed_for_hardcase)
+        ):
+            alias_pairs, skills, tags = _deterministic_hardcase_candidates(
+                db,
+                tenant_id=tenant_id,
+                ground_truth_event_ids=gt_event_ids,
+            )
+            hardcases = generate_hardcases_deterministic(
+                question=question,
+                alias_pairs=alias_pairs,
+                skills=skills,
+                tags=tags,
+                max_items=hardcases_per_failed,
+            )
+            if hardcases:
+                deterministic_failed_cases_used += 1
+            for hc in hardcases:
+                hardcases_generated += 1
+                try:
+                    cfg = SearchConfig(
+                        query=str(hc.question),
+                        tenant_id=tenant_id,
+                        dataset_id=(None if scope_doc_uuids else ds_id),
+                        account_id=account_id,
+                        document_ids=scope_doc_uuids or None,
+                    )
+                    cfg.rerank.max_results = int(diag_max_results)
+                    raw = await searcher.search(cfg)
+                    raw_events = list((raw or {}).get("events") or [])
+                    raw_entities = list((raw or {}).get("entities") or [])
+                    raw_clues = list((raw or {}).get("clues") or [])
+                    raw_stats = dict((raw or {}).get("stats") or {})
+                    err = None
+                except Exception as exc:  # noqa: BLE001
+                    raw_events = []
+                    raw_entities = []
+                    raw_clues = []
+                    raw_stats = {}
+                    err = str(exc)[:200]
+
+                metrics_dict = compute_kg_hit_metrics(events=raw_events, evidence_chunk_ids=set(evidence_set), k=k)
+                metrics2 = KGSearchRunMetrics(**metrics_dict)
+
+                hardcase_hits.append(1.0 if metrics2.hit_at_k else 0.0)
+                hardcase_mrrs.append(float(metrics2.mrr))
+                hardcase_recalls.append(float(metrics2.recall))
+
+                run = KGSearchRunResult(
+                    query=str(hc.question),
+                    events=[_event_out(e) for e in raw_events if isinstance(e, dict)],
+                    entities=[_entity_out(e) for e in raw_entities if isinstance(e, dict)],
+                    clues=[c for c in raw_clues if isinstance(c, dict)],
+                    stats=raw_stats,
+                    metrics=metrics2,
+                    error=err,
+                )
+                item.hardcases.append(KGHardcaseOut(kind=hc.kind, question=hc.question, rationale=hc.rationale, run=run))
 
         if (
             hardcase_mode == "llm"
