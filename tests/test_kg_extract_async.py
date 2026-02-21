@@ -78,6 +78,10 @@ async def test_kg_extract_async_requires_queue_enabled(monkeypatch):
         await run_kg_extraction_for_document(
             document_id=UUID(int=2),
             async_mode=True,
+            replace_existing=None,
+            prune_orphan_entities=None,
+            extract_relations=None,
+            extract_skills=None,
             prompt_template_id=None,
             prompt_template_key=None,
             prompt_ab_experiment_key=None,
@@ -105,11 +109,15 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
         job_id=None,
         replace_existing=None,
         prune_orphan_entities=None,
+        extract_relations=None,
+        extract_skills=None,
     ):
         assert requested_by == "u"
         assert job_id and job_id.startswith("kg:")
         assert replace_existing is True
         assert prune_orphan_entities is True
+        assert extract_relations is None
+        assert extract_skills is None
         return "task-1"
 
     import app.tasks.queue as queue_mod
@@ -123,6 +131,10 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
     out = await run_kg_extraction_for_document(
         document_id=UUID(int=2),
         async_mode=True,
+        replace_existing=None,
+        prune_orphan_entities=None,
+        extract_relations=None,
+        extract_skills=None,
         prompt_template_id=None,
         prompt_template_key=None,
         prompt_ab_experiment_key=None,
@@ -135,5 +147,4 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
     assert resp.headers.get("X-Task-Id") == "task-1"
     assert out.event_count == 0
     assert out.chunk_count == 2
-
 

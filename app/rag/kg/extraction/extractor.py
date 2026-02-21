@@ -185,6 +185,19 @@ class EventExtractor:
             replace_existing = bool(getattr(config, "replace_existing", False))
             skip_unchanged = bool(getattr(settings, "KG_EXTRACT_SKIP_UNCHANGED_CHUNKS", False)) and bool(replace_existing)
 
+            # Per-request overrides (if provided) take precedence over global settings.
+            extract_relations_enabled: bool
+            if getattr(config, "extract_relations", None) is None:
+                extract_relations_enabled = bool(getattr(settings, "KG_RELATION_ENABLED", False))
+            else:
+                extract_relations_enabled = bool(getattr(config, "extract_relations"))
+
+            extract_skills_enabled: bool
+            if getattr(config, "extract_skills", None) is None:
+                extract_skills_enabled = bool(getattr(settings, "KG_SKILL_ENABLED", False))
+            else:
+                extract_skills_enabled = bool(getattr(config, "extract_skills"))
+
             failed_chunks = 0
             timed_out_chunks = 0
             timeout_chunk_ids: set[object] = set()
@@ -529,7 +542,7 @@ class EventExtractor:
                     try:
                         # Keep relation data consistent with events: if we replace extraction for a chunk,
                         # remove any prior relations derived from that chunk before pruning entities.
-                        if bool(getattr(settings, "KG_RELATION_ENABLED", False)):
+                        if extract_relations_enabled:
                             RelationRepository(session).delete_relations_for_chunks(
                                 cleanup_chunk_ids,
                                 tenant_id=tenant_id,
@@ -591,7 +604,7 @@ class EventExtractor:
             # This runs after event/entity indexing so we can map candidate entities to persisted KgEntity ids.
             # IMPORTANT: commit relations before deleting old events when pruning is enabled; otherwise,
             # relation-referenced entities could be pruned prematurely.
-            if bool(getattr(settings, "KG_RELATION_ENABLED", False)) and cleanup_chunk_ids:
+            if extract_relations_enabled and cleanup_chunk_ids:
                 try:
                     # 1) Build candidates per chunk based on extracted entities.
                     candidate_rows_by_chunk: dict[object, list[tuple[str, str, str]]] = {}
@@ -782,7 +795,7 @@ class EventExtractor:
             # Optional pass: extract Skill/SOP entities and link them to the new events.
             # This is executed after relations (per "triples first, then skills") and before
             # deleting old events, so pruning doesn't accidentally remove newly created skills.
-            if bool(getattr(settings, "KG_SKILL_ENABLED", False)) and cleanup_chunk_ids:
+            if extract_skills_enabled and cleanup_chunk_ids:
                 try:
                     max_skills_per_chunk = max(
                         0,

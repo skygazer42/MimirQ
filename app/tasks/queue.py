@@ -111,6 +111,8 @@ async def enqueue_kg_extraction(
     job_id: Optional[str] = None,
     replace_existing: Optional[bool] = None,
     prune_orphan_entities: Optional[bool] = None,
+    extract_relations: Optional[bool] = None,
+    extract_skills: Optional[bool] = None,
 ) -> Optional[str]:
     """Enqueue KG extraction job (returns None if queue disabled)."""
     q = await get_queue()
@@ -124,6 +126,8 @@ async def enqueue_kg_extraction(
         requested_by,
         bool(replace_existing) if replace_existing is not None else None,
         bool(prune_orphan_entities) if prune_orphan_entities is not None else None,
+        bool(extract_relations) if extract_relations is not None else None,
+        bool(extract_skills) if extract_skills is not None else None,
         _queue_name=queue_name,
         _job_id=job_id,
         _job_try=1,

@@ -15,6 +15,9 @@ class ExtractConfig(KGBaseModel):
     source_config_id: Optional[str] = None
     replace_existing: bool = Field(default=True, description="Replace previously extracted events for these chunks")
     prune_orphan_entities: bool = Field(default=True, description="Prune entities with no remaining event links")
+    # Optional toggles (default to settings when None).
+    extract_relations: Optional[bool] = Field(default=None, description="Extract entity relations (triples) if enabled")
+    extract_skills: Optional[bool] = Field(default=None, description="Extract Skill/SOP entities if enabled")
     # Optional PromptTemplate selectors (tenant-scoped).
     prompt_template_id: Optional[UUID] = None
     prompt_template_key: Optional[str] = None

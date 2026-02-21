@@ -546,6 +546,8 @@ async def extract_kg_job(
     requested_by: str,
     replace_existing: bool | None = None,
     prune_orphan_entities: bool | None = None,
+    extract_relations: bool | None = None,
+    extract_skills: bool | None = None,
 ) -> dict:  # noqa: ANN001
     """
     KG extraction job: extract events/entities from completed chunks and index them.
@@ -592,7 +594,9 @@ async def extract_kg_job(
         pipeline_hash = (doc.doc_metadata or {}).get("pipeline_hash") or "unknown"
         replace_key = "auto" if replace_existing is None else ("1" if bool(replace_existing) else "0")
         prune_key = "auto" if prune_orphan_entities is None else ("1" if bool(prune_orphan_entities) else "0")
-        lock_key = f"lock:kg:{tenant_id}:{document_id}:{pipeline_hash}:{replace_key}:{prune_key}"
+        rel_key = "auto" if extract_relations is None else ("1" if bool(extract_relations) else "0")
+        skill_key = "auto" if extract_skills is None else ("1" if bool(extract_skills) else "0")
+        lock_key = f"lock:kg:{tenant_id}:{document_id}:{pipeline_hash}:{replace_key}:{prune_key}:{rel_key}:{skill_key}"
         lock_val = make_lock_value(requested_by)
         lock_ttl = 60 * 40  # 40 min
         if redis is not None:
@@ -635,6 +639,8 @@ async def extract_kg_job(
             chunks=chunks,
             index_options=index_options,
             ab_user_key=requested_by,
+            extract_relations=extract_relations,
+            extract_skills=extract_skills,
             replace_existing=replace_existing,
             prune_orphan_entities=prune_orphan_entities,
         )
