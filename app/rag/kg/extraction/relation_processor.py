@@ -9,9 +9,9 @@ Key goals:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-from typing import Any, Dict, Iterable, List, Sequence
+from dataclasses import dataclass
+from typing import Any, Dict, List, Sequence
 
 from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
@@ -202,4 +202,3 @@ class RelationProcessor:
 
 
 __all__ = ["CandidateEntity", "RelationProcessor", "normalize_predicate"]
-

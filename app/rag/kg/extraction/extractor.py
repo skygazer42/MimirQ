@@ -618,13 +618,12 @@ class EventExtractor:
 
                     # 2) Build lookup from (type, normalized_name) to KgEntity.id from the indexing result.
                     entity_id_by_key: dict[tuple[str, str], object] = {}
-                    if result and getattr(result, "entities", None):
-                        for ent in list(getattr(result, "entities") or []):
-                            norm = str(getattr(ent, "normalized_name", "") or "").strip()
-                            etype = str(getattr(ent, "type", "") or "unknown").strip() or "unknown"
-                            ent_id = getattr(ent, "id", None)
-                            if norm and ent_id is not None:
-                                entity_id_by_key[(etype, norm)] = ent_id
+                    for ent in (list(result.entities) if result else []):
+                        norm = str(getattr(ent, "normalized_name", "") or "").strip()
+                        etype = str(getattr(ent, "type", "") or "unknown").strip() or "unknown"
+                        ent_id = getattr(ent, "id", None)
+                        if norm and ent_id is not None:
+                            entity_id_by_key[(etype, norm)] = ent_id
 
                     # 3) Run LLM extraction for chunks with at least 2 candidates.
                     relation_processor = RelationProcessor(

@@ -99,11 +99,10 @@ async def test_get_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPa
         db=db,
     )
 
-    rel_links = [l for l in out.links if l.meta.get("kind") == "entity_relation"]
+    rel_links = [link for link in out.links if link.meta.get("kind") == "entity_relation"]
     assert len(rel_links) == 1
     assert rel_links[0].label == "works_with"
     assert rel_links[0].source == str(UUID(int=20))
     assert rel_links[0].target == str(UUID(int=21))
     assert rel_links[0].meta.get("confidence") == 0.8
     assert rel_links[0].meta.get("chunk_id") == str(UUID(int=3))
-
