@@ -1186,6 +1186,8 @@ async def run_kg_extraction_for_document(
     async_mode: bool = Query(default=False, alias="async"),
     replace_existing: bool | None = Query(default=None, description="Replace previously extracted events for this document"),
     prune_orphan_entities: bool | None = Query(default=None, description="Prune entities with no remaining event links"),
+    extract_relations: bool | None = Query(default=None, description="Extract entity relations (triples) (override settings)"),
+    extract_skills: bool | None = Query(default=None, description="Extract Skill/SOP entities (override settings)"),
     prompt_template_id: UUID | None = Query(default=None),
     prompt_template_key: str | None = Query(default=None),
     prompt_ab_experiment_key: str | None = Query(default=None),
@@ -1259,6 +1261,8 @@ async def run_kg_extraction_for_document(
                 job_id=job_id,
                 replace_existing=eff_replace_existing,
                 prune_orphan_entities=eff_prune_orphans,
+                extract_relations=extract_relations,
+                extract_skills=extract_skills,
             )
             if task_id:
                 meta = dict(document.doc_metadata or {})
@@ -1285,6 +1289,8 @@ async def run_kg_extraction_for_document(
             prompt_template_key=eff_prompt_template_key,
             prompt_ab_experiment_key=eff_prompt_ab_experiment_key,
             ab_user_key=account_id,
+            extract_relations=extract_relations,
+            extract_skills=extract_skills,
             replace_existing=eff_replace_existing,
             prune_orphan_entities=eff_prune_orphans,
         )
