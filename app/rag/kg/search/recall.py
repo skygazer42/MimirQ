@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
-from app.rag.kg.repository import EntityRepository, EventRepository, get_session
+from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import cosine_similarity
@@ -104,6 +104,90 @@ class RecallSearcher:
                 for ent in key_query_related:
                     key_weights[ent["entity_id"]] = ent.get("similarity", 0.0) / mx
 
+            # === Optional Step1.5: keys -> neighbor entities (relations) ===
+            relation_neighbor_ids: List[str] = []
+            if (
+                bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False))
+                and bool(getattr(settings, "KG_RELATION_ENABLED", False))
+                and key_query_related
+            ):
+                max_neighbors = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0))
+                if max_neighbors > 0:
+                    min_confidence = float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0)
+                    max_edges = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0))
+                    if max_edges <= 0:
+                        max_edges = 500
+                    weight_factor = float(
+                        getattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 0.7) or 0.7
+                    )
+
+                    try:
+                        from uuid import UUID
+
+                        tenant_uuid = UUID(str(tenant_id))
+                    except Exception:
+                        tenant_uuid = None
+
+                    if tenant_uuid is not None:
+                        rel_repo = RelationRepository(session)
+                        rel_rows = rel_repo.list_relations_for_entities(
+                            [e["entity_id"] for e in key_query_related],
+                            tenant_id=tenant_uuid,
+                            document_ids=config.document_ids,
+                            dataset_id=config.dataset_id,
+                            account_id=config.account_id,
+                            min_confidence=min_confidence if min_confidence > 0 else None,
+                            limit=max_edges,
+                        )
+
+                        key_entity_map = {e.get("entity_id"): e for e in key_query_related if e.get("entity_id")}
+                        neighbor_weights: Dict[str, float] = {}
+                        for rel in rel_rows:
+                            subj = str(getattr(rel, "subject_entity_id", "") or "")
+                            obj = str(getattr(rel, "object_entity_id", "") or "")
+                            if not subj or not obj:
+                                continue
+
+                            predicate = str(getattr(rel, "predicate", "") or "").strip()
+                            conf = float(getattr(rel, "confidence", 0.0) or 0.0)
+                            if conf <= 0:
+                                continue
+
+                            from_id: str | None = None
+                            to_id: str | None = None
+                            if subj in key_weights:
+                                from_id = subj
+                                to_id = obj
+                            elif obj in key_weights:
+                                from_id = obj
+                                to_id = subj
+
+                            if not from_id or not to_id or to_id == from_id:
+                                continue
+
+                            w = float(key_weights.get(from_id, 0.0) or 0.0) * conf * float(weight_factor)
+                            if w <= 0:
+                                continue
+
+                            neighbor_weights[to_id] = max(neighbor_weights.get(to_id, 0.0), w)
+
+                            tracker.add_clue(
+                                stage="recall",
+                                from_node=Tracker.build_entity_node(
+                                    key_entity_map.get(from_id) or {"entity_id": from_id, "name": "", "type": "unknown"}
+                                ),
+                                to_node=Tracker.build_entity_node({"entity_id": to_id, "name": "", "type": "unknown"}),
+                                confidence=conf,
+                                relation=f"entity->entity:{predicate}" if predicate else "entity->entity",
+                                metadata={"method": "relation_expansion", "predicate": predicate, "step": "step1.5"},
+                            )
+
+                        sorted_neighbors = sorted(neighbor_weights.items(), key=lambda x: x[1], reverse=True)
+                        sorted_neighbors = sorted_neighbors[:max_neighbors]
+                        relation_neighbor_ids = [eid for eid, _w in sorted_neighbors]
+                        for ent_id, w in sorted_neighbors:
+                            key_weights[ent_id] = max(key_weights.get(ent_id, 0.0), w)
+
             # === Step2: keys -> events (entity relation) ===
             event_ids_from_entities = event_repo.search_events_by_entities(
                 [e["entity_id"] for e in key_query_related],
@@ -114,6 +198,18 @@ class RecallSearcher:
                 account_id=config.account_id,
             )
             event_ids_from_entities = list(event_ids_from_entities)[: config.rerank.max_key_recall_results]
+
+            event_ids_from_relation_entities: List[str] = []
+            if relation_neighbor_ids:
+                rel_event_ids = event_repo.search_events_by_entities(
+                    relation_neighbor_ids,
+                    tenant_id=tenant_id,
+                    limit=config.recall.vector_candidates * 2,
+                    document_ids=config.document_ids,
+                    dataset_id=config.dataset_id,
+                    account_id=config.account_id,
+                )
+                event_ids_from_relation_entities = list(rel_event_ids)[: config.rerank.max_key_recall_results]
 
             # === Step3: query -> events (vector) ===
             content_results = event_repo.search_similar_by_content(
@@ -143,7 +239,11 @@ class RecallSearcher:
 
             # === Step4: merge events ===
             merged_event_ids = list(
-                dict.fromkeys(event_ids_from_entities + [e["event_id"] for e in event_query_related])
+                dict.fromkeys(
+                    list(event_ids_from_entities)
+                    + list(event_ids_from_relation_entities)
+                    + [e["event_id"] for e in event_query_related]
+                )
             )[:max_events]
 
             # === Step5/6: compute event-key weights & event scores ===

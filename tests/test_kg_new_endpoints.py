@@ -374,6 +374,7 @@ async def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest
         max_entities=10,
         max_links=10,
         include_entity_links=False,
+        include_relation_links=False,
         min_shared_events=2,
         max_entity_links=1000,
         tenant_id=UUID(int=1),
