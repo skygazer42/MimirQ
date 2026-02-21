@@ -95,3 +95,54 @@ class KgEventEntity(Base):
 
     event = relationship("KgSourceEvent", back_populates="associations")
     entity = relationship("KgEntity", back_populates="associations")
+
+
+class KgRelation(Base):
+    """
+    Entity -> Entity edges with provenance.
+
+    This powers "triples" extraction (subject/predicate/object) and SkillNet-like
+    relations for process knowledge (skills/tags/packages).
+    """
+
+    __tablename__ = "kg_relations"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
+
+    # Provenance scope/evidence.
+    document_id = Column(PGUUID(as_uuid=True), nullable=True, index=True)
+    chunk_id = Column(PGUUID(as_uuid=True), nullable=True, index=True)
+    event_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_source_events.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    subject_entity_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    predicate = Column(String(200), nullable=False, index=True)
+    predicate_raw = Column(String(200), nullable=True)
+    object_entity_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    confidence = Column(Numeric(5, 2), nullable=False, default=0.50)
+
+    qualifiers = Column(JSON, nullable=True)
+    references = Column(JSON, nullable=True)
+    extra_data = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    subject = relationship("KgEntity", foreign_keys=[subject_entity_id])
+    object = relationship("KgEntity", foreign_keys=[object_entity_id])
+    event = relationship("KgSourceEvent", foreign_keys=[event_id])
