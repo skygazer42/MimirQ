@@ -16,8 +16,7 @@ import time
 from typing import Any, Iterable, Sequence
 from uuid import UUID
 
-from sqlalchemy import func
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas.kg_diagnostics import (
