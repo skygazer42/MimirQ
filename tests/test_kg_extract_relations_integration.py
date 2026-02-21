@@ -69,7 +69,7 @@ async def test_kg_extract_persists_relations_and_deletes_on_replace(monkeypatch:
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _fake_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _fake_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0)
         return [
             {
@@ -131,6 +131,7 @@ async def test_kg_extract_persists_relations_and_deletes_on_replace(monkeypatch:
                 "object_id": "E2",
                 "confidence": 0.9,
                 "qualifiers": None,
+                "evidence_quote": "Alice works with Bob.",
             }
         ]
 
@@ -139,7 +140,12 @@ async def test_kg_extract_persists_relations_and_deletes_on_replace(monkeypatch:
     tenant_id = UUID(int=1)
     doc_id = UUID(int=2)
     chunk_id = UUID(int=3)
-    chunk = _Chunk(tenant_id=tenant_id, document_id=doc_id, chunk_id=chunk_id, content="hello world" * 10)
+    chunk = _Chunk(
+        tenant_id=tenant_id,
+        document_id=doc_id,
+        chunk_id=chunk_id,
+        content="Alice works with Bob. Alice and Bob are colleagues.",
+    )
 
     cfg = ExtractConfig(chunk_ids=[chunk_id], tenant_id=tenant_id, replace_existing=True, prune_orphan_entities=False)
     extractor = extractor_mod.EventExtractor()
@@ -157,4 +163,3 @@ async def test_kg_extract_persists_relations_and_deletes_on_replace(monkeypatch:
     assert rel.subject_entity_id == UUID(int=11)
     assert rel.object_entity_id == UUID(int=12)
     assert rel.predicate == "works_with"
-

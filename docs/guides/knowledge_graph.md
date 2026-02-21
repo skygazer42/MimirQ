@@ -11,6 +11,9 @@ MimirQ 的 Knowledge Graph（KG）以“事件（Event）—实体（Entity）�
 - `KG_ENABLED=true`：启用 KG 功能（API/Graph 页面/抽取等）。
 - `KG_EXTRACT_REPLACE_EXISTING=true`：重复抽取同一文档时，替换旧事件（避免重复写入）。
 - `KG_EXTRACT_PRUNE_ORPHAN_ENTITIES=true`：替换/删除事件后，清理无任何事件关联的“孤立实体”。
+- `KG_EXTRACT_EVIDENCE_REQUIRED=true`：证据优先抽取（推荐开启）。
+  - 启用后：事件->实体边、实体->实体关系边需要能在 chunk 原文中找到 `evidence_quote/span` 才会落库。
+  - 目的：减少噪声与幻觉边，避免 KG 关系扩展召回漂移，提升 RAG 可控性与可解释性。
 
 ### 抽取 Prompt 选择
 KG 抽取支持 3 种选项（按优先级从高到低）：

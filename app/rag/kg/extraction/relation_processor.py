@@ -134,6 +134,7 @@ class RelationProcessor:
                             "object_id": {"type": "string"},
                             "confidence": {"type": "number"},
                             "qualifiers": {"type": "object"},
+                            "evidence_quote": {"type": "string"},
                         },
                         "required": ["subject_id", "predicate", "object_id"],
                     },
@@ -151,6 +152,10 @@ class RelationProcessor:
             "- Prefer concise, ontology-friendly predicate keys (snake_case).\n"
             "- If the text explicitly defines an alias/abbreviation/synonym (e.g. \"X (Y)\", \"aka\", \"简称\"), "
             "use predicate \"alias_of\".\n"
+            "- For each relation, include evidence_quote: an exact substring from the text that supports the relation.\n"
+            "- evidence_quote MUST be copied verbatim from the Text section (no paraphrase).\n"
+            "- evidence_quote SHOULD include both the subject and object surface forms.\n"
+            "- Keep evidence_quote short (prefer a single sentence/phrase, <= 240 chars).\n"
             f"- Allowed predicates (if applicable): {allow_hint}\n\n"
             "Candidates:\n"
             f"{chr(10).join(cand_lines)}\n\n"
@@ -195,6 +200,7 @@ class RelationProcessor:
                     "object_id": obj,
                     "confidence": _clamp01(raw.get("confidence"), default=0.5),
                     "qualifiers": raw.get("qualifiers") if isinstance(raw.get("qualifiers"), dict) else None,
+                    "evidence_quote": str(raw.get("evidence_quote") or "").strip() or None,
                 }
             )
             if len(out) >= max_rels:

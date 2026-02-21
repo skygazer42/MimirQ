@@ -71,7 +71,7 @@ async def test_kg_extract_skills_are_persisted_and_linked_to_new_events(monkeypa
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _fake_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _fake_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0)
         return [
             {
@@ -149,4 +149,3 @@ async def test_kg_extract_skills_are_persisted_and_linked_to_new_events(monkeypa
     assert links[0].event_id == UUID(int=999)
     assert links[0].entity_id == UUID(int=77)
     assert links[0].role == "skill"
-

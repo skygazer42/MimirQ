@@ -455,13 +455,29 @@ class Indexer:
                 if ent.vector and not getattr(entity_obj, "vector", None):
                     entity_obj.vector = ent.vector
 
+                # Attach entity-level evidence to the link (provenance is per event, evidence is per entity mention).
+                link_extra = dict(link_extra_data or {})
+                evidence_quote = (ent.evidence_quote or "").strip() if hasattr(ent, "evidence_quote") else ""
+                if evidence_quote:
+                    link_extra["evidence_quote"] = evidence_quote[:240]
+                if hasattr(ent, "evidence_start_char") and ent.evidence_start_char is not None:
+                    try:
+                        link_extra["evidence_start_char"] = int(ent.evidence_start_char)
+                    except Exception:
+                        pass
+                if hasattr(ent, "evidence_end_char") and ent.evidence_end_char is not None:
+                    try:
+                        link_extra["evidence_end_char"] = int(ent.evidence_end_char)
+                    except Exception:
+                        pass
+
                 self._db.add(
                     KgEventEntity(
                         event=event_obj,
                         entity=entity_obj,
                         weight=1.0,
                         role=ent.role,
-                        extra_data=(link_extra_data or None),
+                        extra_data=(link_extra or None),
                     )
                 )
 

@@ -22,7 +22,12 @@ class EventProcessor:
         self.prompt_template = (prompt_template or "").strip() or None
 
     async def extract_from_sections(
-        self, sections: List[DocumentChunk], batch_index: int
+        self,
+        sections: List[DocumentChunk],
+        batch_index: int,
+        *,
+        max_events: int = 3,
+        max_entities_per_event: int = 30,
     ) -> List[Dict[str, Any]]:
         """
         Extract events from a list of chunks. Returns list of dicts:
@@ -46,6 +51,9 @@ class EventProcessor:
         max_chars = max(1000, min(max_chars, 200_000))
         context = "\n\n".join(context_parts)[:max_chars]
 
+        max_events_i = max(1, int(max_events or 0))
+        max_entities_i = max(1, int(max_entities_per_event or 0))
+
         schema = {
             "type": "object",
             "properties": {
@@ -64,6 +72,7 @@ class EventProcessor:
                                         "name": {"type": "string"},
                                         "type": {"type": "string"},
                                         "description": {"type": "string"},
+                                        "evidence_quote": {"type": "string"},
                                     },
                                 },
                             },
@@ -79,6 +88,8 @@ class EventProcessor:
             template_vars = {
                 "context": context,
                 "schema": schema_hint,
+                "max_events": max_events_i,
+                "max_entities_per_event": max_entities_i,
             }
             try:
                 prompt = self.prompt_template.format_map(template_vars)
@@ -87,9 +98,13 @@ class EventProcessor:
                 prompt = f"{self.prompt_template}\n\n{context}"
         else:
             prompt = (
-                "Read the following text chunks and extract 2-3 important events. "
+                f"Read the following text chunks and extract up to {max_events_i} important events. "
                 "Return JSON only. Each event should have title, summary (50-200 words) "
-                "and an entity list (name/type/description optional).\n"
+                f"and an entity list (up to {max_entities_i} items).\n"
+                "\n"
+                "Evidence requirements:\n"
+                "- Each entity should include evidence_quote: an exact substring from the [Target] chunk that mentions the entity.\n"
+                "- evidence_quote MUST be copied verbatim (no paraphrase).\n"
                 f"{context}"
             )
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
@@ -113,10 +128,12 @@ class EventProcessor:
                     name = ent.get("name") or ""
                     etype = ent.get("type") or "unknown"
                     desc = ent.get("description") or ""
+                    evidence_quote = ent.get("evidence_quote") or ""
                 else:
                     name = str(ent)
                     etype = "unknown"
                     desc = ""
+                    evidence_quote = ""
                 if not name:
                     continue
                 normalized_name = self.parser.normalize_name(name)
@@ -129,12 +146,17 @@ class EventProcessor:
                         "normalized_name": normalized_name,
                         "type": normalized_type,
                         "description": desc.strip(),
+                        "evidence_quote": str(evidence_quote or "").strip() or None,
                     }
                 else:
                     # Best-effort merge: keep longer description.
                     new_desc = desc.strip()
                     if new_desc and len(new_desc) > len(str(existing.get("description") or "")):
                         existing["description"] = new_desc
+                    # Prefer a non-empty evidence quote.
+                    eq = str(existing.get("evidence_quote") or "").strip()
+                    if not eq:
+                        existing["evidence_quote"] = str(evidence_quote or "").strip() or None
 
             events.append(
                 {

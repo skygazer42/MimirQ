@@ -66,7 +66,7 @@ async def test_kg_extract_replace_existing_deletes_after_upsert(monkeypatch: pyt
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _fake_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _fake_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0)
         return [
             {
@@ -135,7 +135,7 @@ async def test_kg_extract_replace_existing_does_not_delete_when_upsert_fails(mon
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
-    async def _fake_extract(self, sections, batch_index):  # noqa: ANN001
+    async def _fake_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
         await asyncio.sleep(0)
         return [{"title": "t", "summary": "s", "content": "c" * 50, "entities": [{"name": "Alice"}]}]
 
@@ -174,4 +174,3 @@ async def test_kg_extract_replace_existing_does_not_delete_when_upsert_fails(mon
         await extractor.extract(cfg, chunks=[chunk])
 
     assert call_log == ["upsert"]
-
