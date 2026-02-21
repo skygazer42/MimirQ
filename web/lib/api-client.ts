@@ -395,7 +395,7 @@ export const documentApi = {
     chunk_strategy?: string
     pipeline?: DocumentPipelineOptions
   }): Promise<Document> {
-    const body: any = {
+    const body = {
       url: params.url,
       dataset_id: params.dataset_id,
       filename: params.filename,
@@ -403,8 +403,11 @@ export const documentApi = {
       chunk_strategy: params.chunk_strategy || 'langchain_recursive',
       pipeline: params.pipeline,
     }
-    const { data } = await apiClient.post('/documents/upload-url', body)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/upload-url',
+      method: 'post',
+      body,
+    })
   },
 
   /**
@@ -476,19 +479,31 @@ export const documentApi = {
    */
   async folders(params: {
     dataset_id: string
-    lifecycle?: 'active' | 'archived' | 'disabled' | 'all' | string
+    lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
     max_depth?: number
   }): Promise<DocumentFolderTreeResponse> {
-    const { data } = await apiClient.get('/documents/folders', { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/folders',
+      method: 'get',
+      query: params,
+    })
   },
 
   /**
    * 文档统计（用于知识库仪表盘/卡片）
    */
-  async stats(params?: { dataset_id?: string; lifecycle?: string; file_type?: string; owner_id?: string; q?: string }): Promise<DocumentStats> {
-    const { data } = await apiClient.get('/documents/stats', { params })
-    return data
+  async stats(params?: {
+    dataset_id?: string | null
+    lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
+    file_type?: string | null
+    owner_id?: string | null
+    q?: string | null
+  }): Promise<DocumentStats> {
+    return openapiRequest({
+      path: '/api/v1/documents/stats',
+      method: 'get',
+      query: params,
+    })
   },
 
   /**
@@ -520,24 +535,35 @@ export const documentApi = {
    * 获取文档处理时间线（可回溯：audit logs + 合成状态事件）
    */
   async getTimeline(documentId: string, params?: { limit?: number }): Promise<DocumentTimelineResponse> {
-    const { data } = await apiClient.get(`/documents/${documentId}/timeline`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/timeline',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      query: params,
+    })
   },
 
   /**
    * 获取文档访问控制（ACL）
    */
   async getAccess(documentId: string): Promise<DocumentAccessInfo> {
-    const { data } = await apiClient.get(`/documents/${documentId}/access`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/access',
+      method: 'get',
+      pathParams: { document_id: documentId },
+    })
   },
 
   /**
    * 更新文档访问控制（ACL）
    */
   async updateAccess(documentId: string, payload: DocumentAccessUpdateRequest): Promise<DocumentAccessInfo> {
-    const { data } = await apiClient.put(`/documents/${documentId}/access`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/access',
+      method: 'put',
+      pathParams: { document_id: documentId },
+      body: payload,
+    })
   },
 
   /**
@@ -550,8 +576,12 @@ export const documentApi = {
     documentId: string,
     params?: { max_chars?: number }
   ): Promise<DocumentParsedContentResponse> {
-    const { data } = await apiClient.get(`/documents/${documentId}/parsed-content`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/parsed-content',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      query: params,
+    })
   },
 
   /**
@@ -671,8 +701,12 @@ export const documentApi = {
    * Generate FAQ-style Q&A pairs for a document and index them as extra chunks (file_type=qa).
    */
   async generateQa(documentId: string, payload: DocumentQAGenerateRequest): Promise<DocumentQAGenerateResponse> {
-    const { data } = await apiClient.post(`/documents/${documentId}/qa/generate`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/qa/generate',
+      method: 'post',
+      pathParams: { document_id: documentId },
+      body: payload,
+    })
   },
 
   async download(documentId: string, params?: { inline?: boolean }): Promise<Blob> {
@@ -698,23 +732,34 @@ export const documentApi = {
    * 取消文档处理
    */
   async cancel(documentId: string): Promise<DocumentStatus> {
-    const { data } = await apiClient.post(`/documents/${documentId}/cancel`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/cancel',
+      method: 'post',
+      pathParams: { document_id: documentId },
+    })
   },
 
   /**
    * 重试文档处理（失败/取消后）
    */
-  async retry(documentId: string, params?: { force?: boolean }): Promise<DocumentStatus> {
-    const { data } = await apiClient.post(`/documents/${documentId}/retry`, null, { params })
-    return data
+  async retry(documentId: string, params?: { force?: boolean; skip_if_unchanged?: boolean }): Promise<DocumentStatus> {
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/retry',
+      method: 'post',
+      pathParams: { document_id: documentId },
+      query: params,
+    })
   },
 
   /**
    * 删除文档
    */
   async delete(documentId: string): Promise<void> {
-    await apiClient.delete(`/documents/${documentId}`)
+    await openapiRequest({
+      path: '/api/v1/documents/{document_id}',
+      method: 'delete',
+      pathParams: { document_id: documentId },
+    })
   },
 
   /**
@@ -827,8 +872,11 @@ export const documentApi = {
     max_groups?: number
     max_docs_per_group?: number
   }): Promise<DocumentDuplicateList> {
-    const { data } = await apiClient.get('/documents/duplicates', { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/duplicates',
+      method: 'get',
+      query: params,
+    })
   },
 
   /**
@@ -838,8 +886,12 @@ export const documentApi = {
     documentId: string,
     payload: DocumentUserMetadataPatchRequest
   ): Promise<Document> {
-    const { data } = await apiClient.patch(`/documents/${documentId}/metadata`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/metadata',
+      method: 'patch',
+      pathParams: { document_id: documentId },
+      body: payload,
+    })
   },
 
   /**
@@ -849,25 +901,38 @@ export const documentApi = {
     documentId: string,
     payload: DocumentPipelinePatchRequest
   ): Promise<Document> {
-    const { data } = await apiClient.patch(`/documents/${documentId}/pipeline`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/pipeline',
+      method: 'patch',
+      pathParams: { document_id: documentId },
+      body: payload,
+    })
   },
 
   // Document pipeline versions (ops/debug/rollback)
   async listVersions(documentId: string, options?: ApiRequestOptions): Promise<DocumentVersionList> {
-    const { data } = await apiClient.get(`/documents/${documentId}/versions`, { signal: options?.signal })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/versions',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      signal: options?.signal,
+    })
   },
 
   async activateVersion(documentId: string, pipelineHash: string): Promise<Document> {
-    const { data } = await apiClient.post(
-      `/documents/${documentId}/versions/${encodeURIComponent(pipelineHash)}/activate`
-    )
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/versions/{pipeline_hash}/activate',
+      method: 'post',
+      pathParams: { document_id: documentId, pipeline_hash: pipelineHash },
+    })
   },
 
   async deleteVersion(documentId: string, pipelineHash: string): Promise<void> {
-    await apiClient.delete(`/documents/${documentId}/versions/${encodeURIComponent(pipelineHash)}`)
+    await openapiRequest({
+      path: '/api/v1/documents/{document_id}/versions/{pipeline_hash}',
+      method: 'delete',
+      pathParams: { document_id: documentId, pipeline_hash: pipelineHash },
+    })
   },
 
   async diffVersions(params: {
@@ -876,14 +941,12 @@ export const documentApi = {
     to: string
     sample_limit?: number
   }): Promise<DocumentVersionDiff> {
-    const { data } = await apiClient.get(`/documents/${params.document_id}/versions/diff`, {
-      params: {
-        from: params.from,
-        to: params.to,
-        sample_limit: params.sample_limit,
-      },
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/versions/diff',
+      method: 'get',
+      pathParams: { document_id: params.document_id },
+      query: { from: params.from, to: params.to, sample_limit: params.sample_limit },
     })
-    return data
   },
 
   /**
@@ -892,8 +955,11 @@ export const documentApi = {
   async batchPatchUserMetadata(
     payload: DocumentBatchUserMetadataPatchRequest
   ): Promise<DocumentBatchUserMetadataPatchResponse> {
-    const { data } = await apiClient.post(`/documents/batch/metadata`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/metadata',
+      method: 'post',
+      body: payload,
+    })
   },
 
   /**
@@ -932,8 +998,11 @@ export const documentApi = {
     metadata?: Record<string, any>
     pipeline?: DocumentPipelineOptions
   }): Promise<Document> {
-    const { data } = await apiClient.post('/documents/manual', params)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/manual',
+      method: 'post',
+      body: params,
+    })
   },
 
   /**
@@ -1086,16 +1155,22 @@ export const documentApi = {
   },
 
   async applyBatchUploadUrls(files: BatchFileInfo[]): Promise<BatchUploadResponse> {
-    const { data } = await apiClient.post('/documents/batch-upload/apply-urls', { files })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch-upload/apply-urls',
+      method: 'post',
+      body: { files },
+    })
   },
 
   /**
    * 获取批量任务状态
    */
   async getBatchTaskStatus(batchId: string): Promise<BatchTaskStatus> {
-    const { data } = await apiClient.get(`/documents/batch-upload/status/${batchId}`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch-upload/status/{batch_id}',
+      method: 'get',
+      pathParams: { batch_id: batchId },
+    })
   },
 
   /**
@@ -1213,20 +1288,88 @@ export const authApi = {
 
 // ==================== 解析/治理流水线 API ====================
 
+function normalizeRegexRuleForApi(rule: { pattern: string; repl?: string; flags?: number }): {
+  pattern: string
+  repl: string
+  flags: number
+} {
+  return {
+    pattern: rule.pattern,
+    repl: typeof rule.repl === 'string' ? rule.repl : '',
+    flags: typeof rule.flags === 'number' ? rule.flags : 0,
+  }
+}
+
+function normalizeGovernanceProfilePayload(payload: any): GovernanceProfileOut['payload'] {
+  const p = (payload || {}) as any
+  const inputFormatsRaw = p.input_formats
+  const input_formats =
+    Array.isArray(inputFormatsRaw) && inputFormatsRaw.length > 0 ? inputFormatsRaw : ['markdown']
+  const regex_rules = Array.isArray(p.regex_rules) ? p.regex_rules.map(normalizeRegexRuleForApi) : []
+
+  return {
+    version: typeof p.version === 'string' && p.version ? p.version : '1',
+    extends: p.extends ?? null,
+    input_formats,
+    pipeline_patch: (p.pipeline_patch ?? {}) as any,
+    regex_rules,
+  }
+}
+
+function normalizeGovernanceProfileOut(profile: any): GovernanceProfileOut {
+  const pr = (profile || {}) as any
+  return { ...pr, payload: normalizeGovernanceProfilePayload(pr.payload) }
+}
+
 export const pipelineApi = {
   async getCapabilities(): Promise<PipelineCapabilitiesResponse> {
-    const { data } = await apiClient.get('/pipeline/capabilities')
-    return data
+    const data = await openapiRequest({ path: '/api/v1/pipeline/capabilities', method: 'get' })
+    return {
+      ...data,
+      pdf_backends: data.pdf_backends ?? [],
+      chunk_strategies: data.chunk_strategies ?? [],
+    }
   },
 
   async governanceAnalyze(params: GovernanceAnalyzeRequest): Promise<GovernanceAnalyzeResponse> {
-    const { data } = await apiClient.post('/pipeline/governance-analyze', params)
-    return data
+    const body = {
+      markdown: params.markdown,
+      input_format: params.input_format ?? 'markdown',
+      html_xpath: params.html_xpath ?? null,
+      remove_images: params.remove_images ?? 'none',
+      remove_control_chars: params.remove_control_chars ?? true,
+      unwrap_lines: params.unwrap_lines ?? true,
+      remove_common_lines: params.remove_common_lines ?? true,
+      remove_boilerplate: params.remove_boilerplate ?? false,
+      normalize_tables: params.normalize_tables ?? false,
+      normalize_urls: params.normalize_urls ?? false,
+      normalize_urls_strip_tracking: params.normalize_urls_strip_tracking ?? true,
+      drop_outline_only: params.drop_outline_only ?? false,
+      drop_outline_min_content_chars: params.drop_outline_min_content_chars ?? 200,
+      drop_outline_max_heading_ratio: params.drop_outline_max_heading_ratio ?? 0.85,
+      drop_low_density: params.drop_low_density ?? false,
+      drop_low_density_threshold: params.drop_low_density_threshold ?? 0.12,
+    }
+    return openapiRequest({ path: '/api/v1/pipeline/governance-analyze', method: 'post', body })
   },
 
   async learnCommonLines(params: GovernanceCommonLinesLearnRequest): Promise<GovernanceCommonLinesLearnResponse> {
-    const { data } = await apiClient.post('/pipeline/learn-common-lines', params, { timeout: API_LONG_TIMEOUT_MS })
-    return data
+    const body = {
+      dataset_id: params.dataset_id,
+      limit_docs: params.limit_docs ?? 20,
+      use_original: params.use_original ?? true,
+      min_docs: params.min_docs ?? 3,
+      min_ratio: params.min_ratio ?? 0.5,
+      max_line_length: params.max_line_length ?? 120,
+      max_candidates: params.max_candidates ?? 50,
+    }
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/learn-common-lines',
+      method: 'post',
+      body,
+      timeoutMs: API_LONG_TIMEOUT_MS,
+    })
+    return { ...data, candidates: data.candidates ?? [] }
   },
 
   async listGovernanceProfiles(params?: {
@@ -1234,32 +1377,85 @@ export const pipelineApi = {
     include_builtin?: boolean
     limit?: number
   }): Promise<GovernanceProfileListResponse> {
-    const { data } = await apiClient.get('/pipeline/governance-profiles', { params })
-    return data
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/governance-profiles',
+      method: 'get',
+      query: params,
+    })
+    return { ...data, items: data.items ?? [] }
   },
 
   async getGovernanceProfile(profileRef: string): Promise<GovernanceProfileOut> {
-    const { data } = await apiClient.get(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}`)
-    return data
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/governance-profiles/{profile_ref}',
+      method: 'get',
+      pathParams: { profile_ref: profileRef },
+    })
+    return normalizeGovernanceProfileOut(data)
   },
 
   async getGovernanceProfileResolved(profileRef: string): Promise<GovernanceProfileResolvedResponse> {
-    const { data } = await apiClient.get(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}/resolved`)
-    return data
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/governance-profiles/{profile_ref}/resolved',
+      method: 'get',
+      pathParams: { profile_ref: profileRef },
+    })
+    return {
+      ...data,
+      profile: normalizeGovernanceProfileOut(data.profile),
+      chain: data.chain ?? [],
+      effective: normalizeGovernanceProfilePayload(data.effective),
+    }
   },
 
   async createGovernanceProfile(payload: GovernanceProfileCreate): Promise<GovernanceProfileOut> {
-    const { data } = await apiClient.post('/pipeline/governance-profiles', payload)
-    return data
+    const body = {
+      ...payload,
+      payload: {
+        ...payload.payload,
+        input_formats: payload.payload.input_formats ?? ['markdown'],
+        pipeline_patch: payload.payload.pipeline_patch ?? {},
+        regex_rules: (payload.payload.regex_rules ?? []).map(normalizeRegexRuleForApi),
+      },
+    }
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/governance-profiles',
+      method: 'post',
+      body,
+    })
+    return normalizeGovernanceProfileOut(data)
   },
 
   async updateGovernanceProfile(profileRef: string, payload: GovernanceProfileUpdate): Promise<GovernanceProfileOut> {
-    const { data } = await apiClient.patch(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}`, payload)
-    return data
+    const body = payload.payload
+      ? {
+          ...payload,
+          payload: {
+            ...payload.payload,
+            input_formats: payload.payload.input_formats ?? ['markdown'],
+            pipeline_patch: payload.payload.pipeline_patch ?? {},
+            regex_rules: (payload.payload.regex_rules ?? []).map(normalizeRegexRuleForApi),
+          },
+        }
+      : payload
+
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/governance-profiles/{profile_ref}',
+      method: 'patch',
+      pathParams: { profile_ref: profileRef },
+      // `GovernanceProfileUpdate` in `web/types/index.ts` is a simplified helper type that allows
+      // partial rule objects (repl/flags optional). OpenAPI requires repl/flags; we normalize above.
+      body: body as any,
+    })
+    return normalizeGovernanceProfileOut(data)
   },
 
   async deleteGovernanceProfile(profileRef: string): Promise<void> {
-    await apiClient.delete(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}`)
+    await openapiRequest({
+      path: '/api/v1/pipeline/governance-profiles/{profile_ref}',
+      method: 'delete',
+      pathParams: { profile_ref: profileRef },
+    })
   },
 
   async importGovernanceProfiles(file: File, overwrite = false): Promise<GovernanceProfileImportResponse> {
@@ -1306,28 +1502,87 @@ export const pipelineApi = {
   },
 
   async chunkPreview(params: PipelineChunkPreviewRequest): Promise<PipelineChunkPreviewResponse> {
-    const { data } = await apiClient.post('/pipeline/chunk-preview', params)
-    return data
+    return openapiRequest({ path: '/api/v1/pipeline/chunk-preview', method: 'post', body: params })
   },
 
   async extractKeywords(params: KeywordExtractRequest): Promise<KeywordExtractResponse> {
-    const { data } = await apiClient.post('/pipeline/extract-keywords', params)
-    return data
+    const body = { text: params.text, provider: params.provider ?? 'jieba', top_k: params.top_k ?? 10 }
+    const data = await openapiRequest({ path: '/api/v1/pipeline/extract-keywords', method: 'post', body })
+    return { ...data, keywords: data.keywords ?? [] }
   },
 
   async getCleanRules(): Promise<CleanRulesResponse> {
-    const { data } = await apiClient.get('/pipeline/clean-rules')
-    return data
+    return openapiRequest({ path: '/api/v1/pipeline/clean-rules', method: 'get' })
   },
 
   async cleanPreview(params: CleanPreviewRequest): Promise<CleanPreviewResponse> {
-    const { data } = await apiClient.post('/pipeline/clean-preview', params)
-    return data
+    const remove_images: 'none' | 'decorative' | 'all' = (() => {
+      const v = params.remove_images
+      return v === 'decorative' || v === 'all' ? v : 'none'
+    })()
+    const pii_mode: 'mask' | 'token' = params.pii_mode === 'token' ? 'token' : 'mask'
+    const secrets_mode: 'mask' | 'token' = params.secrets_mode === 'token' ? 'token' : 'mask'
+
+    const body = {
+      markdown: params.markdown,
+      rules: params.rules?.map(normalizeRegexRuleForApi),
+      rule_packs: params.rule_packs,
+      use_default_rules: params.use_default_rules ?? true,
+      include_diff: params.include_diff ?? false,
+      diff_max_lines: params.diff_max_lines ?? 2000,
+      input_format: params.input_format ?? 'markdown',
+      html_xpath: params.html_xpath ?? null,
+      normalize_line_endings: params.normalize_line_endings ?? true,
+      trim_trailing_spaces: params.trim_trailing_spaces ?? true,
+      collapse_blank_lines: params.collapse_blank_lines ?? true,
+      max_blank_lines: params.max_blank_lines ?? 1,
+      remove_control_chars: params.remove_control_chars ?? true,
+      remove_toc_lines: params.remove_toc_lines ?? true,
+      remove_noise_lines: params.remove_noise_lines ?? true,
+      remove_common_lines: params.remove_common_lines ?? true,
+      unwrap_lines: params.unwrap_lines ?? true,
+      remove_boilerplate: params.remove_boilerplate ?? false,
+      remove_images,
+      extract_frontmatter: params.extract_frontmatter ?? false,
+      strip_frontmatter: params.strip_frontmatter ?? false,
+      detect_language: params.detect_language ?? false,
+      language_min_chars: params.language_min_chars ?? 40,
+      normalize_urls: params.normalize_urls ?? false,
+      normalize_urls_strip_tracking: params.normalize_urls_strip_tracking ?? true,
+      drop_duplicate_paragraphs: params.drop_duplicate_paragraphs ?? false,
+      drop_duplicate_paragraphs_min_occurrences: params.drop_duplicate_paragraphs_min_occurrences ?? 3,
+      drop_duplicate_paragraphs_min_chars: params.drop_duplicate_paragraphs_min_chars ?? 40,
+      drop_duplicate_paragraphs_max_chars: params.drop_duplicate_paragraphs_max_chars ?? 1200,
+      trim_references: params.trim_references ?? false,
+      extract_keywords: params.extract_keywords ?? false,
+      keywords_provider: params.keywords_provider ?? 'auto',
+      keywords_top_k: params.keywords_top_k ?? 10,
+      keywords_max_chars: params.keywords_max_chars ?? 20000,
+      normalize_tables: params.normalize_tables ?? false,
+      strip_code_line_numbers: params.strip_code_line_numbers ?? false,
+      pii_anonymize: params.pii_anonymize ?? false,
+      pii_mode,
+      pii_mask: params.pii_mask ?? '[REDACTED]',
+      secrets_redact: params.secrets_redact ?? false,
+      secrets_mode,
+      secrets_mask: params.secrets_mask ?? '[SECRET]',
+      drop_outline_only: params.drop_outline_only ?? false,
+      drop_outline_min_content_chars: params.drop_outline_min_content_chars ?? 200,
+      drop_outline_max_heading_ratio: params.drop_outline_max_heading_ratio ?? 0.85,
+      drop_low_density: params.drop_low_density ?? false,
+      drop_low_density_threshold: params.drop_low_density_threshold ?? 0.12,
+      unwrap_max_line_length: params.unwrap_max_line_length ?? 120,
+      noise_min_chars: params.noise_min_chars ?? 2,
+      noise_ratio_threshold: params.noise_ratio_threshold ?? 0.2,
+      common_lines_min_occurrences: params.common_lines_min_occurrences ?? 3,
+    }
+
+    return openapiRequest({ path: '/api/v1/pipeline/clean-preview', method: 'post', body })
   },
 
   async llmCleanPreview(params: LLMCleanPreviewRequest): Promise<LLMCleanPreviewResponse> {
-    const { data } = await apiClient.post('/pipeline/llm-clean-preview', params)
-    return data
+    const body = { ...params, max_chars: params.max_chars ?? 15000 }
+    return openapiRequest({ path: '/api/v1/pipeline/llm-clean-preview', method: 'post', body })
   },
 
   async uploadZipWithImages(params: { file: File; dataset_id: string; document_id?: string }): Promise<ZipWithImagesResponse> {
