@@ -41,7 +41,10 @@ package-lock.json
 .vscode/
 .idea/
 .cursor/
-.claude/
+# Claude (keep local state ignored, but allow committing curated skills)
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 *.swp
 *.swo
 *~
