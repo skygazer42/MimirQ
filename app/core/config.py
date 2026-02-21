@@ -870,6 +870,11 @@ class Settings(BaseSettings):
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
     KG_ENABLED: bool = False
     KG_CHAT_ENABLED: bool = False
+    # Hybrid KG extensions (disabled by default; safe opt-in).
+    KG_RELATION_ENABLED: bool = False
+    KG_RELATION_MAX_RELATIONS_PER_CHUNK: int = 20
+    KG_SKILL_ENABLED: bool = False
+    KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
     # KG extraction prompt selector (optional; tenant-scoped PromptTemplate).
     # - Prefer using `KG_EXTRACT_PROMPT_TEMPLATE_KEY` (latest active version).
     # - Or set `KG_EXTRACT_PROMPT_TEMPLATE_ID` to pin a specific template.
