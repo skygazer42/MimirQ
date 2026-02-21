@@ -62,6 +62,12 @@ class SearchConfig(KGBaseModel):
     account_id: Optional[str] = None
     document_ids: Optional[List[UUID]] = None
     return_type: ReturnType = ReturnType.EVENT
+    # Per-call overrides (thread-safe) for diagnostics/experimentation.
+    # - None means "use settings + existing default behavior".
+    # - True/False forces the behavior for this call.
+    relation_expansion_enabled: Optional[bool] = None
+    # When false, filter Skill-like entities from recall/expand (useful for ablations).
+    include_skill_entities: bool = True
     recall: RecallConfig = RecallConfig()
     expand: ExpandConfig = ExpandConfig()
     rerank: RerankConfig = RerankConfig()
