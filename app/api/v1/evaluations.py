@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.core.config import settings
 from app.api.schemas.evaluation import (
     GeneratedQuestion,
     RagasItemSchema,
@@ -24,6 +23,10 @@ from app.api.schemas.evaluation import (
     TestGenFromConversationsRequest,
     TestGenFromDocsRequest,
     TestGenResponse,
+)
+from app.api.schemas.kg_diagnostics import (
+    KGSearchDiagnosticsRequest,
+    KGSearchDiagnosticsResponse,
 )
 from app.api.schemas.regression import (
     RagasRegressionCaseCreateRequest,
@@ -38,10 +41,7 @@ from app.api.schemas.regression import (
     RagasRegressionRunList,
     RagasRegressionRunSchema,
 )
-from app.api.schemas.kg_diagnostics import (
-    KGSearchDiagnosticsRequest,
-    KGSearchDiagnosticsResponse,
-)
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation
 from app.models.evaluation import (

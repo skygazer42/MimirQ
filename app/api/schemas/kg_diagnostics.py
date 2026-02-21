@@ -12,7 +12,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 HardcaseMode = Literal["off", "deterministic", "llm"]
 HardcaseKind = Literal["knowledge_pressure", "reasoning_pressure"]
 

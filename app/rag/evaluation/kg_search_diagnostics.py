@@ -13,15 +13,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Iterable, Sequence
 from uuid import UUID
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.schemas.kg_diagnostics import (
-    KGHardcaseOut,
     KGEvalAttribution,
+    KGHardcaseOut,
     KGSearchDiagnosticsItem,
     KGSearchDiagnosticsRequest,
     KGSearchDiagnosticsResponse,
@@ -438,7 +438,7 @@ async def run_kg_search_diagnostics(
     failed_for_hardcase: list[tuple[RagasRegressionCase, dict[str, Any]]] = []
 
     for case in cases:
-        question = str(getattr(case, "question", "") or "").strip()
+        question = str(case.question or "").strip()
         chunk_ids, _doc_ids, evidence_snips = _extract_evidence_fields(case)
         evidence_set = {str(x).strip() for x in chunk_ids if str(x).strip()}
 
@@ -527,9 +527,9 @@ async def run_kg_search_diagnostics(
         )
 
         item = KGSearchDiagnosticsItem(
-            case_id=UUID(str(getattr(case, "id"))),
+            case_id=case.id,
             question=question,
-            tags=list(getattr(case, "tags", None) or []),
+            tags=list(case.tags or []),
             evidence_chunk_ids=sorted(evidence_set),
             ground_truth_event_ids=list(gt_event_ids),
             baseline=baseline_run,
@@ -573,9 +573,9 @@ async def run_kg_search_diagnostics(
 
         if llm_client is not None:
             for case, ctx in failed_for_hardcase:
-                case_id = UUID(str(getattr(case, "id")))
+                case_id = case.id
                 # Find the already-emitted item and attach hardcases.
-                target = next((it for it in items_out if UUID(str(it.case_id)) == case_id), None)
+                target = next((it for it in items_out if it.case_id == case_id), None)
                 if target is None:
                     continue
 
@@ -586,7 +586,7 @@ async def run_kg_search_diagnostics(
 
                 hardcases = await generate_hardcases_llm(
                     llm_client=llm_client,
-                    question=str(getattr(case, "question", "") or ""),
+                    question=str(case.question or ""),
                     evidence_snippets=list(evidence_snips),
                     entity_hints=list(entity_hints),
                     max_items=hardcases_per_failed,
