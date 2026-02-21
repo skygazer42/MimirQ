@@ -80,6 +80,7 @@ async def get_kg_graph(
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=2000, ge=1, le=20000),
     include_entity_links: bool = Query(default=False, description="Include entity-entity co-occurrence links"),
+    include_relation_links: bool = Query(default=False, description="Include entity-entity relation links (triples)"),
     min_shared_events: int = Query(default=2, ge=1, le=100),
     max_entity_links: int = Query(default=1000, ge=0, le=20000),
     tenant_id: UUID = Depends(get_tenant_id),
@@ -111,7 +112,7 @@ async def get_kg_graph(
 
     from sqlalchemy import func
 
-    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
     from app.rag.kg.provenance import build_event_entity_provenance
 
     events = (
@@ -254,8 +255,60 @@ async def get_kg_graph(
             }
         )
 
+    event_entity_links = len(links)
+
+    relation_links_added = 0
+    if bool(include_relation_links) and len(links) < int(max_links):
+        remaining_budget = max(0, int(max_links) - len(links))
+        if remaining_budget > 0:
+            rel_rows = (
+                db.query(KgRelation)
+                .filter(
+                    KgRelation.tenant_id == tenant_id,
+                    KgRelation.document_id.in_(allowed_doc_ids),
+                    KgRelation.subject_entity_id.in_(allowed_entity_ids),
+                    KgRelation.object_entity_id.in_(allowed_entity_ids),
+                )
+                .order_by(KgRelation.updated_at.desc())
+                .limit(int(remaining_budget))
+                .all()
+            )
+
+            for rel in rel_rows:
+                if len(links) >= int(max_links):
+                    break
+                subj = str(getattr(rel, "subject_entity_id", "") or "")
+                obj = str(getattr(rel, "object_entity_id", "") or "")
+                if not subj or not obj:
+                    continue
+                pred = str(getattr(rel, "predicate", "") or "").strip()
+                if not pred:
+                    continue
+                conf_raw = getattr(rel, "confidence", None)
+                try:
+                    conf = float(conf_raw) if conf_raw is not None else 1.0
+                except Exception:
+                    conf = 1.0
+
+                links.append(
+                    {
+                        "source": subj,
+                        "target": obj,
+                        "label": pred,
+                        "weight": max(0.0, conf),
+                        "meta": {
+                            "kind": "entity_relation",
+                            "predicate": pred,
+                            "confidence": conf,
+                            "document_id": str(getattr(rel, "document_id", "") or ""),
+                            "chunk_id": str(getattr(rel, "chunk_id", "") or ""),
+                            "event_id": str(getattr(rel, "event_id", "") or ""),
+                        },
+                    }
+                )
+                relation_links_added += 1
+
     entity_links_added = 0
-    base_link_count = len(links)
     if bool(include_entity_links) and int(max_entity_links) > 0 and len(links) < int(max_links):
         from itertools import combinations
 
@@ -304,7 +357,8 @@ async def get_kg_graph(
             "events": len(events),
             "entities": len(seen_entities),
             "links": min(len(links), int(max_links)),
-            "event_entity_links": base_link_count,
+            "event_entity_links": event_entity_links,
+            "entity_relation_links": relation_links_added,
             "entity_entity_links": entity_links_added,
         },
     )
