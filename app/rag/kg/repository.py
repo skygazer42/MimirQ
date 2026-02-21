@@ -7,7 +7,7 @@ and Milvus vector similarity search capabilities.
 from typing import Iterable, List, Optional
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -467,6 +467,84 @@ class RelationRepository:
 
     def __init__(self, session: Session):
         self.session = session
+
+    def _allowed_document_ids_subquery_for_dataset(self, *, tenant_id: UUID, dataset_id: UUID, account_id: str):
+        """
+        Return a SQL subquery selecting document ids within dataset that `account_id` can read.
+
+        Mirrors the semantics in EventRepository._allowed_document_ids_subquery_for_dataset so that
+        relation search respects document-level ACL (security trimming).
+        """
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+        from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
+
+        _ds, q = build_dataset_documents_query(
+            self.session,
+            tenant_id=tenant_id,
+            account_id=str(account_id or "").strip(),
+            dataset_id=dataset_id,
+        )
+        return q.with_entities(DBDocument.id).subquery()
+
+    def list_relations_for_entities(
+        self,
+        entity_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID,
+        document_ids: Optional[List[UUID]] = None,
+        dataset_id: UUID | None = None,
+        account_id: str | None = None,
+        min_confidence: float | None = None,
+        allowed_predicates: Optional[Iterable[str]] = None,
+        limit: int = 2000,
+    ) -> List[KgRelation]:
+        """
+        List relations where either endpoint is within `entity_ids`.
+
+        Notes:
+        - Enforces tenant scope.
+        - Optional: enforce document scope (document_ids or dataset_id+account_id).
+        - Optional: filter by confidence and/or predicate allowlist.
+        """
+        ids = _as_uuid_list(entity_ids)
+        if not ids:
+            return []
+
+        lim = max(0, int(limit))
+        q = (
+            self.session.query(KgRelation)
+            .filter(KgRelation.tenant_id == tenant_id)
+            .filter(or_(KgRelation.subject_entity_id.in_(ids), KgRelation.object_entity_id.in_(ids)))
+        )
+
+        if min_confidence is not None:
+            q = q.filter(KgRelation.confidence >= float(min_confidence))
+
+        if allowed_predicates:
+            preds = [str(p).strip() for p in allowed_predicates if str(p).strip()]
+            if preds:
+                q = q.filter(KgRelation.predicate.in_(preds))
+
+        if document_ids:
+            doc_ids = _as_uuid_list(document_ids)
+            if doc_ids:
+                q = q.filter(KgRelation.document_id.in_(doc_ids))
+            else:
+                return []
+        elif dataset_id is not None:
+            if not account_id:
+                raise ValueError("account_id is required when dataset_id is provided")
+            allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+                tenant_id=UUID(str(tenant_id)),
+                dataset_id=dataset_id,
+                account_id=account_id,
+            )
+            q = q.filter(KgRelation.document_id.in_(select(allowed_docs.c.id)))
+
+        q = q.order_by(KgRelation.updated_at.desc())
+        if lim:
+            q = q.limit(lim)
+        return list(q.all())
 
     def delete_relations_for_chunks(
         self,

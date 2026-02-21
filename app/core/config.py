@@ -923,6 +923,13 @@ class Settings(BaseSettings):
     # - Global KG search timeout (seconds, 0 disables).
     KG_SEARCH_TIMEOUT_SEC: float = 0.0
     KG_SEARCH_METRICS_ENABLED: bool = False
+    # Relation-driven recall expansion: seed entities -> relation neighbors -> events.
+    # Disabled by default to avoid behavioral changes in KG search without opt-in.
+    KG_SEARCH_RELATION_EXPANSION_ENABLED: bool = False
+    KG_SEARCH_RELATION_MIN_CONFIDENCE: float = 0.5
+    KG_SEARCH_RELATION_MAX_EDGES: int = 500
+    KG_SEARCH_RELATION_MAX_NEIGHBORS: int = 20
+    KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR: float = 0.7
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True
