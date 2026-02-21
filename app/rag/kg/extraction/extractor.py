@@ -13,8 +13,10 @@ from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.processor import EventProcessor
+from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
 from app.rag.kg.loading.processor import DocumentProcessor
-from app.rag.kg.models import KgSourceEvent
+from app.rag.kg.models import KgRelation, KgSourceEvent
+from app.rag.kg.repository import RelationRepository
 from app.rag.kg.utils import get_logger
 from app.rag.llm.factory import create_llm_client
 from app.rag.preprocessing.normalization import normalize_text
@@ -29,6 +31,31 @@ _PROMPT_SELECTOR_KEYS = (
     "kg_prompt_template_id",
     "kg_prompt_template_key",
     "kg_prompt_ab_experiment_key",
+)
+
+# Predicate allowlist v1: keep ontology compact and map everything else to "unknown".
+# This list is intentionally small; we can expand or make it DB-driven later.
+_DEFAULT_RELATION_PREDICATES: tuple[str, ...] = (
+    "is_a",
+    "part_of",
+    "has_part",
+    "member_of",
+    "located_in",
+    "works_for",
+    "works_with",
+    "reports_to",
+    "owns",
+    "owned_by",
+    "created_by",
+    "authored_by",
+    "uses",
+    "depends_on",
+    "implements",
+    "supports",
+    "causes",
+    "affects",
+    "treats",
+    "related_to",
 )
 
 
@@ -548,6 +575,200 @@ class EventExtractor:
 
             new_events = result.events if result else []
             cleanup_chunk_ids = [cid for cid in succeeded_chunk_ids if cid not in skipped_chunk_ids]
+
+            # Optional pass: extract entity->entity relations (triples) per processed chunk.
+            # This runs after event/entity indexing so we can map candidate entities to persisted KgEntity ids.
+            # IMPORTANT: commit relations before deleting old events when pruning is enabled; otherwise,
+            # relation-referenced entities could be pruned prematurely.
+            if bool(getattr(settings, "KG_RELATION_ENABLED", False)) and cleanup_chunk_ids:
+                try:
+                    # 1) Build candidates per chunk based on extracted entities.
+                    candidate_rows_by_chunk: dict[object, list[tuple[str, str, str]]] = {}
+                    seen_by_chunk: dict[object, set[tuple[str, str]]] = {}
+                    for chunk, ev in processed_events:
+                        if chunk.id not in cleanup_chunk_ids:
+                            continue
+                        entities = ev.get("entities") if isinstance(ev, dict) else None
+                        if not isinstance(entities, list) or not entities:
+                            continue
+
+                        rows = candidate_rows_by_chunk.setdefault(chunk.id, [])
+                        seen = seen_by_chunk.setdefault(chunk.id, set())
+                        for ent in entities:
+                            if not isinstance(ent, dict):
+                                continue
+                            name = (ent.get("name") or "").strip()
+                            if not name:
+                                continue
+                            normalized = (ent.get("normalized_name") or name).strip()
+                            ent_type = (ent.get("type") or "unknown").strip() or "unknown"
+                            key = (ent_type, normalized)
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            rows.append((name, ent_type, normalized))
+
+                    candidates_by_chunk: dict[object, list[CandidateEntity]] = {}
+                    for chunk_id in cleanup_chunk_ids:
+                        rows = candidate_rows_by_chunk.get(chunk_id) or []
+                        candidates_by_chunk[chunk_id] = [
+                            CandidateEntity(cid=f"E{i}", name=name, type=ent_type, normalized_name=normalized)
+                            for i, (name, ent_type, normalized) in enumerate(rows, 1)
+                        ]
+
+                    # 2) Build lookup from (type, normalized_name) to KgEntity.id from the indexing result.
+                    entity_id_by_key: dict[tuple[str, str], object] = {}
+                    if result and getattr(result, "entities", None):
+                        for ent in list(getattr(result, "entities") or []):
+                            norm = str(getattr(ent, "normalized_name", "") or "").strip()
+                            etype = str(getattr(ent, "type", "") or "unknown").strip() or "unknown"
+                            ent_id = getattr(ent, "id", None)
+                            if norm and ent_id is not None:
+                                entity_id_by_key[(etype, norm)] = ent_id
+
+                    # 3) Run LLM extraction for chunks with at least 2 candidates.
+                    relation_processor = RelationProcessor(
+                        llm_client=llm_client,
+                        allowed_predicates=_DEFAULT_RELATION_PREDICATES,
+                    )
+                    max_relations_per_chunk = max(
+                        0,
+                        int(getattr(settings, "KG_RELATION_MAX_RELATIONS_PER_CHUNK", 20) or 20),
+                    )
+                    if max_relations_per_chunk <= 0:
+                        raise RuntimeError("KG_RELATION_MAX_RELATIONS_PER_CHUNK must be > 0 when relations are enabled")
+
+                    chunk_by_id = {c.id: c for c in resolved_chunks if getattr(c, "id", None) is not None}
+
+                    async def _extract_relations_for_chunk(chunk_id: object):
+                        ch = chunk_by_id.get(chunk_id)
+                        if ch is None:
+                            return chunk_id, [], False
+                        candidates = candidates_by_chunk.get(chunk_id) or []
+                        # Treat <2 candidates as a successful empty extraction (replace mode should delete old relations).
+                        if len(candidates) < 2:
+                            return chunk_id, [], True
+                        try:
+                            async with sem:
+                                coro = relation_processor.extract_relations(
+                                    text=(ch.content or ""),
+                                    candidates=candidates,
+                                    max_relations=max_relations_per_chunk,
+                                )
+                                if chunk_timeout_sec > 0:
+                                    rels = await asyncio.wait_for(coro, timeout=chunk_timeout_sec)
+                                else:
+                                    rels = await coro
+                            return chunk_id, rels if isinstance(rels, list) else [], True
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "KG relation extract failed for chunk %s: %s",
+                                str(getattr(ch, "id", "") or ""),
+                                str(exc)[:200],
+                            )
+                            return chunk_id, [], False
+
+                    rel_results = await asyncio.gather(*[_extract_relations_for_chunk(cid) for cid in cleanup_chunk_ids])
+
+                    succeeded_rel_chunk_ids: list[object] = []
+                    rel_rows: list[KgRelation] = []
+
+                    for chunk_id, rels, ok in rel_results:
+                        if not ok:
+                            continue
+                        succeeded_rel_chunk_ids.append(chunk_id)
+                        ch = chunk_by_id.get(chunk_id)
+                        if ch is None:
+                            continue
+
+                        refs: Dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
+                        if getattr(ch, "start_char", None) is not None:
+                            refs["start_char"] = int(ch.start_char)
+                        if getattr(ch, "end_char", None) is not None:
+                            refs["end_char"] = int(ch.end_char)
+                        meta = getattr(ch, "doc_metadata", None)
+                        meta_dict = meta if isinstance(meta, dict) else {}
+                        source_val = meta_dict.get("source")
+                        if isinstance(source_val, str) and source_val.strip():
+                            refs["source"] = source_val.strip()
+                        refs["chunk_key"] = chunk_key_by_id.get(ch.id) or str(ch.chunk_index)
+                        refs["content_hash"] = chunk_hash_by_id.get(ch.id) or ""
+                        refs["content_len"] = int(chunk_len_by_id.get(ch.id, 0) or 0)
+
+                        cand_map = {c.cid: c for c in (candidates_by_chunk.get(chunk_id) or [])}
+                        seen_rel_keys: set[tuple[object, str, object]] = set()
+                        for rel in rels or []:
+                            if not isinstance(rel, dict):
+                                continue
+                            subj_cid = str(rel.get("subject_id") or "").strip()
+                            obj_cid = str(rel.get("object_id") or "").strip()
+                            pred = str(rel.get("predicate") or "").strip() or "unknown"
+                            if not subj_cid or not obj_cid:
+                                continue
+                            subj_cand = cand_map.get(subj_cid)
+                            obj_cand = cand_map.get(obj_cid)
+                            if subj_cand is None or obj_cand is None:
+                                continue
+
+                            subj_key = (str(subj_cand.type or "unknown").strip() or "unknown", str(subj_cand.normalized_name or "").strip())
+                            obj_key = (str(obj_cand.type or "unknown").strip() or "unknown", str(obj_cand.normalized_name or "").strip())
+                            subj_ent_id = entity_id_by_key.get(subj_key)
+                            obj_ent_id = entity_id_by_key.get(obj_key)
+                            if subj_ent_id is None or obj_ent_id is None:
+                                continue
+
+                            rel_key = (subj_ent_id, pred, obj_ent_id)
+                            if rel_key in seen_rel_keys:
+                                continue
+                            seen_rel_keys.add(rel_key)
+
+                            conf_raw = rel.get("confidence")
+                            try:
+                                conf = float(conf_raw) if conf_raw is not None else 0.5
+                            except Exception:
+                                conf = 0.5
+                            conf = max(0.0, min(1.0, conf))
+
+                            rel_rows.append(
+                                KgRelation(
+                                    tenant_id=tenant_id,
+                                    document_id=ch.document_id,
+                                    chunk_id=ch.id,
+                                    event_id=None,
+                                    subject_entity_id=subj_ent_id,
+                                    predicate=pred,
+                                    predicate_raw=(str(rel.get("predicate_raw") or "").strip() or None),
+                                    object_entity_id=obj_ent_id,
+                                    confidence=conf,
+                                    qualifiers=rel.get("qualifiers") if isinstance(rel.get("qualifiers"), dict) else None,
+                                    references=refs,
+                                    extra_data={
+                                        "kg_prompt_template_id": chosen_template_id,
+                                        "kg_prompt_template_key": config.prompt_template_key,
+                                        "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                                    },
+                                )
+                            )
+
+                    # 4) Persist: replace relations only for chunks that succeeded relation extraction.
+                    if replace_existing and succeeded_rel_chunk_ids:
+                        RelationRepository(session).delete_relations_for_chunks(
+                            succeeded_rel_chunk_ids,
+                            tenant_id=tenant_id,
+                            commit=False,
+                        )
+
+                    if succeeded_rel_chunk_ids:
+                        if rel_rows:
+                            session.add_all(rel_rows)
+                        session.commit()
+                except Exception as exc:  # noqa: BLE001
+                    try:
+                        session.rollback()
+                    except Exception:
+                        pass
+                    logger.warning("KG relation pass failed; continuing without relations: %s", str(exc)[:200])
+
             if replace_existing and cleanup_chunk_ids:
                 try:
                     indexer.delete_event_indexes_for_chunks(
