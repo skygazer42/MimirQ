@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 
@@ -460,6 +460,56 @@ class EventRepository:
             )
             stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
         return self.session.execute(stmt).scalars().all()
+
+
+class RelationRepository:
+    """Relation (entity-entity) read/write helpers."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def delete_relations_for_chunks(
+        self,
+        chunk_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID,
+        commit: bool = True,
+    ) -> int:
+        ids = _as_uuid_list(chunk_ids)
+        if not ids:
+            return 0
+        deleted = int(
+            self.session.query(KgRelation)
+            .filter(KgRelation.tenant_id == tenant_id, KgRelation.chunk_id.in_(ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+        if commit:
+            self.session.commit()
+        else:
+            self.session.flush()
+        return deleted
+
+    def list_relations_for_documents(
+        self,
+        *,
+        tenant_id: UUID,
+        document_ids: Iterable[str | UUID],
+        limit: int = 2000,
+    ) -> List[KgRelation]:
+        ids = _as_uuid_list(document_ids)
+        if not ids:
+            return []
+
+        lim = max(0, int(limit))
+        q = (
+            self.session.query(KgRelation)
+            .filter(KgRelation.tenant_id == tenant_id, KgRelation.document_id.in_(ids))
+            .order_by(KgRelation.updated_at.desc())
+        )
+        if lim:
+            q = q.limit(lim)
+        return list(q.all())
 
 
 def get_session() -> Session:
