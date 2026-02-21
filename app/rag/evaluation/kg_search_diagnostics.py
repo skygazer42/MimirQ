@@ -40,7 +40,7 @@ from app.rag.evaluation.kg_hardcase_deterministic import generate_hardcases_dete
 from app.rag.evaluation.kg_hardcase_generator import generate_hardcases_llm
 from app.rag.evaluation.kg_search_diagnostics_metrics import compute_kg_hit_metrics
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
-from app.rag.kg.search.config import SearchConfig
+from app.rag.kg.search.config import RerankStrategy, SearchConfig
 from app.rag.kg.search.searcher import KGSearcher
 from app.rag.kg.utils import get_logger
 from app.services.regression_run_scope import validate_case_ids_belong_to_dataset
@@ -635,6 +635,113 @@ async def run_kg_search_diagnostics(
         except Exception:
             relation_debug = None
 
+        # --------------------------
+        # Attribution ablations (bounded extra searches)
+        # --------------------------
+        ablations: dict[str, Any] = {}
+
+        def _compact_relation_dbg(value: Any) -> dict[str, Any]:
+            if not isinstance(value, dict):
+                return {}
+            keep = {}
+            for k in ("enabled", "edges_fetched", "edges_used", "neighbors_selected", "neighbors_total", "min_confidence", "max_edges", "max_neighbors"):
+                if k in value:
+                    keep[k] = value.get(k)
+            return keep
+
+        async def _run_search_variant(
+            *,
+            query: str,
+            relation_expansion_enabled: bool | None = None,
+            include_skill_entities: bool = True,
+            rerank_strategy: RerankStrategy | None = None,
+        ) -> dict[str, Any]:
+            try:
+                cfg2 = SearchConfig(
+                    query=str(query or ""),
+                    tenant_id=tenant_id,
+                    dataset_id=(None if scope_doc_uuids else ds_id),
+                    account_id=account_id,
+                    document_ids=scope_doc_uuids or None,
+                    relation_expansion_enabled=relation_expansion_enabled,
+                    include_skill_entities=include_skill_entities,
+                )
+                if rerank_strategy is not None:
+                    cfg2.rerank.strategy = rerank_strategy
+                cfg2.rerank.max_results = int(diag_max_results)
+                raw2 = await searcher.search(cfg2)
+                ev2 = list((raw2 or {}).get("events") or [])
+                ent2 = list((raw2 or {}).get("entities") or [])
+                clues2 = list((raw2 or {}).get("clues") or [])
+                stats2 = dict((raw2 or {}).get("stats") or {})
+                err2 = None
+            except Exception as exc:  # noqa: BLE001
+                ev2 = []
+                ent2 = []
+                clues2 = []
+                stats2 = {}
+                err2 = str(exc)[:200]
+
+            m2 = KGSearchRunMetrics(**compute_kg_hit_metrics(events=ev2, evidence_chunk_ids=evidence_set, k=k))
+            first2 = _first_hit_rank(ev2, evidence_set)
+            clues_sum2 = _summarize_clues(clues2)
+            selected_has_skill2 = any(
+                isinstance(e, dict) and str(e.get("type") or "").strip() in {"Skill", "SkillTag", "SkillCategory"}
+                for e in ent2
+            )
+            rel_dbg2 = None
+            try:
+                rel_dbg2 = stats2.get("relation_expansion") if isinstance(stats2.get("relation_expansion"), dict) else None
+            except Exception:
+                rel_dbg2 = None
+
+            return {
+                "hit_at_k": bool(m2.hit_at_k),
+                "mrr": float(m2.mrr),
+                "recall": float(m2.recall),
+                "first_hit_rank": int(first2) if first2 is not None else None,
+                "returned_events": int(len(ev2)),
+                "selected_entities": int(len(ent2)),
+                "selected_has_skill": bool(selected_has_skill2),
+                "clues": clues_sum2,
+                "relation_expansion": _compact_relation_dbg(rel_dbg2),
+                "error": err2,
+            }
+
+        # Run ablations only on baseline failures with GT present (and only if baseline didn't error).
+        ablation_override: str | None = None
+        if (not metrics.hit_at_k) and int(len(gt_event_ids)) > 0 and err is None:
+            # 1) Rerank strategy toggle.
+            try:
+                base = cfg.rerank.strategy
+                alt = RerankStrategy.RRF if base == RerankStrategy.PAGERANK else RerankStrategy.PAGERANK
+                out_alt = await _run_search_variant(query=question, rerank_strategy=alt)
+                ablations["rerank_strategy"] = {"baseline": str(base), "alt": str(alt), "alt_run": out_alt}
+                if bool(out_alt.get("hit_at_k")):
+                    ablation_override = "rerank_cutoff"
+            except Exception:
+                pass
+
+            # 2) Relation expansion toggle.
+            try:
+                base_rel = bool((relation_debug or {}).get("enabled"))
+                alt_rel = not base_rel
+                out_rel = await _run_search_variant(query=question, relation_expansion_enabled=alt_rel)
+                ablations["relation_expansion"] = {"baseline_enabled": bool(base_rel), "alt_enabled": bool(alt_rel), "alt_run": out_rel}
+                if ablation_override is None and bool(out_rel.get("hit_at_k")):
+                    ablation_override = "relation"
+            except Exception:
+                pass
+
+            # 3) Skill nodes off.
+            try:
+                out_skill_off = await _run_search_variant(query=question, include_skill_entities=False)
+                ablations["skill_nodes"] = {"alt_enabled": False, "alt_run": out_skill_off}
+                if ablation_override is None and bool(out_skill_off.get("hit_at_k")):
+                    ablation_override = "skill"
+            except Exception:
+                pass
+
         primary_cause = _pick_primary_cause(
             gt_event_count=int(len(gt_event_ids)),
             metrics=metrics,
@@ -646,6 +753,8 @@ async def run_kg_search_diagnostics(
             selected_entities=int(len(raw_entities)),
             returned_events=int(len(raw_events)),
         )
+        if ablation_override is not None:
+            primary_cause = str(ablation_override)
 
         if primary_cause != "ok":
             failure_breakdown[primary_cause] = int(failure_breakdown.get(primary_cause, 0) or 0) + 1
@@ -660,6 +769,8 @@ async def run_kg_search_diagnostics(
             "clues": clue_counts,
             "relation_expansion": relation_debug or {},
         }
+        if ablations:
+            signals["ablations"] = ablations
         # Drop None values to keep payload small/stable.
         signals = {k: v for k, v in signals.items() if v is not None}
 
