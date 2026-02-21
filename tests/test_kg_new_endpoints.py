@@ -9,10 +9,12 @@ from fastapi import HTTPException
 
 
 class _FakeQuery:
-    def __init__(self, *, scalar=None, first=None, all_rows=None):  # noqa: ANN001
+    def __init__(self, *, scalar=None, first=None, all_rows=None, delete_count: int = 0):  # noqa: ANN001
         self._scalar = scalar
         self._first = first
         self._all = all_rows
+        self._delete_count = int(delete_count or 0)
+        self.delete_called = False
 
     def filter(self, *_a, **_k):  # noqa: ANN001
         return self
@@ -38,6 +40,10 @@ class _FakeQuery:
     def all(self):  # noqa: ANN001
         return list(self._all or [])
 
+    def delete(self, *_a, **_k):  # noqa: ANN001
+        self.delete_called = True
+        return self._delete_count
+
 
 class _FakeDB:
     def __init__(self, queries):  # noqa: ANN001
@@ -47,6 +53,15 @@ class _FakeDB:
         if not self._queries:
             raise AssertionError("Unexpected db.query call")
         return self._queries.pop(0)
+
+    def flush(self) -> None:
+        return
+
+    def commit(self) -> None:
+        return
+
+    def rollback(self) -> None:
+        return
 
 
 @pytest.mark.asyncio
@@ -193,6 +208,48 @@ async def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: py
     assert out.events_deleted == 7
     assert out.entities_pruned == 2
     assert called["prune_orphan_entities"] is False
+
+
+@pytest.mark.asyncio
+async def test_delete_kg_for_document_deletes_relations(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import delete_kg_for_document
+    from app.services.dataset_service import DatasetService
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "filter_allowed_document_ids", lambda *_a, **_k: [UUID(int=2)], raising=True)
+
+    called: dict[str, object] = {}
+
+    class _FakeIndexer:
+        def __init__(self, _db):  # noqa: ANN001
+            return
+
+        def delete_event_indexes(self, **kwargs):  # noqa: ANN003
+            called.update(kwargs)
+            return {"events_deleted": 7, "entities_pruned": 2}
+
+    import app.services.indexer as indexer_mod
+
+    monkeypatch.setattr(indexer_mod, "Indexer", _FakeIndexer, raising=True)
+
+    rel_delete_query = _FakeQuery(delete_count=3)
+    db = _FakeDB([rel_delete_query])
+
+    out = await delete_kg_for_document(
+        document_id=UUID(int=2),
+        prune_orphan_entities=False,
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=db,
+    )
+
+    assert out.document_id == UUID(int=2)
+    assert out.events_deleted == 7
+    assert out.entities_pruned == 2
+    assert rel_delete_query.delete_called is True
 
 
 @pytest.mark.asyncio
