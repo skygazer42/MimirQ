@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
+from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 
 
@@ -105,6 +106,8 @@ class ExpandSearcher:
                                     continue
 
                                 predicate = str(getattr(rel, "predicate", "") or "").strip()
+                                if not predicate or predicate.casefold() == "unknown":
+                                    continue
                                 conf = float(getattr(rel, "confidence", 0.0) or 0.0)
                                 if conf <= 0:
                                     continue
@@ -121,7 +124,15 @@ class ExpandSearcher:
                                 if not from_id or not to_id or to_id == from_id:
                                     continue
 
-                                w = float(entity_weights.get(from_id, 0.0) or 0.0) * conf * float(weight_factor)
+                                pred_mult = relation_multiplier(predicate, from_is_subject=bool(from_id == subj))
+                                if pred_mult <= 0:
+                                    continue
+                                w = (
+                                    float(entity_weights.get(from_id, 0.0) or 0.0)
+                                    * conf
+                                    * float(weight_factor)
+                                    * pred_mult
+                                )
                                 if w <= 0:
                                     continue
 
@@ -137,7 +148,12 @@ class ExpandSearcher:
                                     ),
                                     confidence=conf,
                                     relation=f"entity->entity:{predicate}" if predicate else "entity->entity",
-                                    metadata={"method": "relation_expansion", "step": f"hop-{hop+1}"},
+                                    metadata={
+                                        "method": "relation_expansion",
+                                        "predicate": predicate,
+                                        "predicate_multiplier": pred_mult,
+                                        "step": f"hop-{hop+1}",
+                                    },
                                 )
 
                             sorted_neighbors = sorted(neighbor_weights.items(), key=lambda x: x[1], reverse=True)

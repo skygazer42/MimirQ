@@ -1,13 +1,14 @@
 """
 Recall stage: 8-step pipeline (query -> keys -> events -> weights).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
+from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import cosine_similarity
 
@@ -20,6 +21,7 @@ class RecallResult:
     clues: List[Dict[str, Any]]
     key_weights: Dict[str, float]
     event_scores: Dict[str, float]
+    relation_debug: Dict[str, Any] = field(default_factory=dict)
 
 
 class RecallSearcher:
@@ -106,6 +108,7 @@ class RecallSearcher:
 
             # === Optional Step1.5: keys -> neighbor entities (relations) ===
             relation_neighbor_ids: List[str] = []
+            relation_debug: Dict[str, Any] = {"enabled": False}
             if (
                 bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False))
                 and bool(getattr(settings, "KG_RELATION_ENABLED", False))
@@ -129,6 +132,13 @@ class RecallSearcher:
                         tenant_uuid = None
 
                     if tenant_uuid is not None:
+                        relation_debug = {
+                            "enabled": True,
+                            "min_confidence": float(min_confidence),
+                            "max_edges": int(max_edges),
+                            "max_neighbors": int(max_neighbors),
+                            "weight_factor": float(weight_factor),
+                        }
                         rel_repo = RelationRepository(session)
                         rel_rows = rel_repo.list_relations_for_entities(
                             [e["entity_id"] for e in key_query_related],
@@ -139,9 +149,12 @@ class RecallSearcher:
                             min_confidence=min_confidence if min_confidence > 0 else None,
                             limit=max_edges,
                         )
+                        relation_debug["edges_fetched"] = int(len(rel_rows))
 
                         key_entity_map = {e.get("entity_id"): e for e in key_query_related if e.get("entity_id")}
                         neighbor_weights: Dict[str, float] = {}
+                        predicate_hist: Dict[str, int] = {}
+                        edges_used = 0
                         for rel in rel_rows:
                             subj = str(getattr(rel, "subject_entity_id", "") or "")
                             obj = str(getattr(rel, "object_entity_id", "") or "")
@@ -149,6 +162,8 @@ class RecallSearcher:
                                 continue
 
                             predicate = str(getattr(rel, "predicate", "") or "").strip()
+                            if not predicate or predicate.casefold() == "unknown":
+                                continue
                             conf = float(getattr(rel, "confidence", 0.0) or 0.0)
                             if conf <= 0:
                                 continue
@@ -165,11 +180,16 @@ class RecallSearcher:
                             if not from_id or not to_id or to_id == from_id:
                                 continue
 
-                            w = float(key_weights.get(from_id, 0.0) or 0.0) * conf * float(weight_factor)
+                            pred_mult = relation_multiplier(predicate, from_is_subject=bool(from_id == subj))
+                            if pred_mult <= 0:
+                                continue
+                            w = float(key_weights.get(from_id, 0.0) or 0.0) * conf * float(weight_factor) * pred_mult
                             if w <= 0:
                                 continue
 
                             neighbor_weights[to_id] = max(neighbor_weights.get(to_id, 0.0), w)
+                            predicate_hist[predicate] = int(predicate_hist.get(predicate, 0) or 0) + 1
+                            edges_used += 1
 
                             tracker.add_clue(
                                 stage="recall",
@@ -179,7 +199,12 @@ class RecallSearcher:
                                 to_node=Tracker.build_entity_node({"entity_id": to_id, "name": "", "type": "unknown"}),
                                 confidence=conf,
                                 relation=f"entity->entity:{predicate}" if predicate else "entity->entity",
-                                metadata={"method": "relation_expansion", "predicate": predicate, "step": "step1.5"},
+                                metadata={
+                                    "method": "relation_expansion",
+                                    "predicate": predicate,
+                                    "predicate_multiplier": pred_mult,
+                                    "step": "step1.5",
+                                },
                             )
 
                         sorted_neighbors = sorted(neighbor_weights.items(), key=lambda x: x[1], reverse=True)
@@ -187,6 +212,10 @@ class RecallSearcher:
                         relation_neighbor_ids = [eid for eid, _w in sorted_neighbors]
                         for ent_id, w in sorted_neighbors:
                             key_weights[ent_id] = max(key_weights.get(ent_id, 0.0), w)
+                        relation_debug["edges_used"] = int(edges_used)
+                        relation_debug["neighbors_total"] = int(len(neighbor_weights))
+                        relation_debug["neighbors_selected"] = int(len(sorted_neighbors))
+                        relation_debug["predicate_hist"] = dict(sorted(predicate_hist.items(), key=lambda x: (-x[1], x[0])))  # type: ignore[assignment]
 
             # === Step2: keys -> events (entity relation) ===
             event_ids_from_entities = event_repo.search_events_by_entities(
@@ -304,6 +333,7 @@ class RecallSearcher:
                 clues=tracker.get_clues(),
                 key_weights=key_weights,
                 event_scores=event_scores,
+                relation_debug=relation_debug,
             )
         finally:
             session.close()

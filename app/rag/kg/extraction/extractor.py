@@ -40,6 +40,8 @@ _PROMPT_SELECTOR_KEYS = (
 # Predicate allowlist v1: keep ontology compact and map everything else to "unknown".
 # This list is intentionally small; we can expand or make it DB-driven later.
 _DEFAULT_RELATION_PREDICATES: tuple[str, ...] = (
+    "alias_of",
+    "same_as",
     "is_a",
     "part_of",
     "has_part",
