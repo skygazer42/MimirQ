@@ -873,6 +873,8 @@ class Settings(BaseSettings):
     # Hybrid KG extensions (disabled by default; safe opt-in).
     KG_RELATION_ENABLED: bool = False
     KG_RELATION_MAX_RELATIONS_PER_CHUNK: int = 20
+    # Comma/newline separated predicate allowlist override (optional). When empty, defaults are used.
+    KG_RELATION_ALLOWED_PREDICATES: str = ""
     KG_SKILL_ENABLED: bool = False
     KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
     # KG extraction prompt selector (optional; tenant-scoped PromptTemplate).
