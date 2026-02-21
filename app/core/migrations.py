@@ -262,12 +262,18 @@ def apply_runtime_migrations(engine) -> None:
             # Document ACL allowlist checks
             'CREATE INDEX IF NOT EXISTS ix_document_permissions_tenant_account_id '
             'ON document_permissions (tenant_id, account_id);',
+            'CREATE INDEX IF NOT EXISTS ix_document_permissions_tenant_account_document_id '
+            'ON document_permissions (tenant_id, account_id, document_id);',
             'CREATE INDEX IF NOT EXISTS ix_document_permissions_tenant_document_id '
             'ON document_permissions (tenant_id, document_id);',
             'CREATE INDEX IF NOT EXISTS ix_documents_tenant_owner_id '
             'ON documents (tenant_id, owner_id);',
             'CREATE INDEX IF NOT EXISTS ix_documents_tenant_access_mode '
             'ON documents (tenant_id, access_mode);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_file_type '
+            'ON documents (tenant_id, file_type);',
+            'CREATE INDEX IF NOT EXISTS ix_datasets_tenant_owner_id '
+            'ON datasets (tenant_id, owner_id);',
             # Optional: file hashing (upload dedupe / duplicate detection).
             "CREATE INDEX IF NOT EXISTS ix_documents_tenant_dataset_sha "
             "ON documents (tenant_id, dataset_id, ((metadata->>'file_sha256')));",

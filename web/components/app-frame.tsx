@@ -26,15 +26,57 @@ export function AppFrame({
   showNavbar = true,
   withDocumentViewerPadding = false,
 }: AppFrameProps) {
+  const [isSidebarOpen, setSidebarOpen] = React.useState(true)
+  const skipLinkRef = React.useRef<HTMLAnchorElement | null>(null)
+  const appContentRef = React.useRef<HTMLDivElement | null>(null)
   const { isOpen: isDocPanelOpen } = useDocumentView()
   const docPanelPadding =
     withDocumentViewerPadding && isDocPanelOpen
       ? "mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]"
       : undefined
 
+  // Accessibility: when the sidebar acts like a modal overlay (mobile),
+  // prevent focus/interaction with the rest of the app.
+  React.useEffect(() => {
+    if (!showNavbar) return
+    if (typeof window === "undefined") return
+
+    let isMobile = false
+    try {
+      isMobile = window.matchMedia("(max-width: 768px)").matches
+    } catch {
+      isMobile = false
+    }
+
+    const shouldInert = Boolean(isMobile && isSidebarOpen)
+
+    const applyInert = (el: HTMLElement | null, inert: boolean) => {
+      if (!el) return
+      try {
+        ;(el as any).inert = inert
+      } catch {
+        // ignore: inert not supported everywhere
+      }
+      if (inert) el.setAttribute("aria-hidden", "true")
+      else el.removeAttribute("aria-hidden")
+    }
+
+    const skipEl = skipLinkRef.current
+    const contentEl = appContentRef.current
+
+    applyInert(skipEl, shouldInert)
+    applyInert(contentEl, shouldInert)
+
+    return () => {
+      applyInert(skipEl, false)
+      applyInert(contentEl, false)
+    }
+  }, [isSidebarOpen, showNavbar])
+
   return (
     <div className={cn("relative h-dvh overflow-hidden bg-background text-foreground", className)}>
       <a
+        ref={skipLinkRef}
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-60 focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-foreground focus:shadow-strong focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
       >
@@ -42,20 +84,22 @@ export function AppFrame({
       </a>
       {showBackground && <AppBackground />}
       <div className="relative z-10 flex h-full overflow-hidden">
-        {showNavbar && <Navbar />}
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className={cn(
-            // Avoid animating layout properties like `margin` (baseline-ui).
-            "flex-1 min-h-0 relative flex flex-col overflow-hidden",
-            docPanelPadding,
-            mainClassName
-          )}
-        >
-          {children}
-        </main>
-        {rightPanel}
+        {showNavbar && <Navbar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />}
+        <div ref={appContentRef} className="flex-1 min-h-0 relative flex overflow-hidden">
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className={cn(
+              // Avoid animating layout properties like `margin` (baseline-ui).
+              "flex-1 min-h-0 relative flex flex-col overflow-hidden",
+              docPanelPadding,
+              mainClassName
+            )}
+          >
+            {children}
+          </main>
+          {rightPanel}
+        </div>
       </div>
     </div>
   )
