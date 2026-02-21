@@ -11,14 +11,14 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from uuid import UUID
 
 from langchain_core.documents import Document as LCDocument
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.metadata import normalize_image_metadata
 from app.rag.embedding.utils import current_embedding_space_hash
-from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.retriever import hybrid_retriever
@@ -594,15 +594,29 @@ class Indexer:
         commit: bool = True,
     ) -> int:
         """
-        Delete KG entities (and vectors) that have no remaining KgEventEntity links.
+        Delete KG entities (and vectors) that have no remaining references.
 
         When `entity_ids` is provided, pruning is scoped to that candidate set.
+
+        NOTE:
+        - Entities can be referenced by multiple KG structures:
+          - `kg_event_entities` (event <-> entity)
+          - `kg_relations` (entity <-> entity)
+        - Once `kg_relations` exists, pruning must consider both, otherwise we can
+          delete Skill/SOP nodes or relation-only entities.
         """
+        rel_as_subject = aliased(KgRelation)
+        rel_as_object = aliased(KgRelation)
         q = (
             self._db.query(KgEntity.id)
             .outerjoin(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+            .outerjoin(rel_as_subject, rel_as_subject.subject_entity_id == KgEntity.id)
+            .outerjoin(rel_as_object, rel_as_object.object_entity_id == KgEntity.id)
             .filter(KgEntity.tenant_id == tenant_id)
             .filter(KgEventEntity.entity_id.is_(None))
+            .filter(rel_as_subject.id.is_(None))
+            .filter(rel_as_object.id.is_(None))
+            .distinct()
         )
         if entity_ids:
             entity_ids_norm = [eid for eid in (_safe_uuid(x) for x in entity_ids) if eid is not None]
