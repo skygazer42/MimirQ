@@ -233,6 +233,7 @@ openapi-types:
 openapi-check:
 	@$(MAKE) openapi-types
 	$(PY) scripts/openapi_check.py
+	node web/scripts/check-openapi-coverage.mjs
 
 db-upgrade:
 	$(PY) scripts/alembic_cli.py -c alembic.ini upgrade head

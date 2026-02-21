@@ -16,12 +16,12 @@ export type DocumentListParams = {
   skip?: number
   limit?: number
   status?: string
-  lifecycle?: string
+  lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
   dataset_id?: string
   source_path_prefix?: string
   q?: string
-  order_by?: string
-  order_dir?: string
+  order_by?: 'created_at' | 'filename' | 'file_size'
+  order_dir?: 'asc' | 'desc'
 }
 
 function matchesDocumentListParams(doc: Document, params: DocumentListParams): boolean {

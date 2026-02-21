@@ -33,6 +33,7 @@ warnings.filterwarnings(
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 # Ensure audit log models are registered for metadata creation
 import app.models.audit_log  # noqa: F401
@@ -339,6 +340,56 @@ app = FastAPI(
     ),
     lifespan=lifespan
 )
+
+# =============================================================================
+# OpenAPI post-processing (contract stability)
+# =============================================================================
+
+def _patch_openapi_additional_properties(spec: dict) -> None:  # noqa: ANN401
+    """
+    Ensure dict-like/Any-object schemas remain useful in generated TS types.
+
+    FastAPI/Pydantic often emit `{ "type": "object" }` for `dict[str, Any]`-ish
+    payloads. `openapi-typescript` interprets that shape as `Record<string, never>`,
+    which is effectively unusable and causes spurious type drift in the web app.
+
+    We treat "object with no declared properties and no explicit additionalProperties"
+    as "arbitrary object" and set `additionalProperties: true`.
+    """
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                props = node.get("properties")
+                if (not props) and ("additionalProperties" not in node):
+                    node["additionalProperties"] = True
+            for v in node.values():
+                walk(v)
+            return
+        if isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(spec)
+
+
+def custom_openapi():  # noqa: ANN201
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    _patch_openapi_additional_properties(schema)
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+# Override FastAPI's OpenAPI generator (used both for runtime docs and export tooling).
+app.openapi = custom_openapi  # type: ignore[assignment]
 
 # Optional FastAPI instrumentation (OTEL_ENABLED).
 instrument_fastapi(app)

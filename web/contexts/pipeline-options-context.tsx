@@ -134,9 +134,9 @@ const normalizeSecretsMode = (value: unknown): 'mask' | 'token' => {
   return 'mask'
 }
 
-const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl?: string; flags?: number }> => {
+const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl: string; flags: number }> => {
   if (!Array.isArray(value)) return []
-  const out: Array<{ pattern: string; repl?: string; flags?: number }> = []
+  const out: Array<{ pattern: string; repl: string; flags: number }> = []
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
     const pattern = typeof (item as any).pattern === 'string' ? String((item as any).pattern).trim() : ''

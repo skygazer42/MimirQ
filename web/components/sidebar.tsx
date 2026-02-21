@@ -273,23 +273,33 @@ function DocumentCard({
   getStatusIcon: (status: string) => React.ReactNode
 }) {
   const [isHovered, setIsHovered] = useState(false)
+  const [isFocusWithin, setIsFocusWithin] = useState(false)
+  const isActive = isHovered || isFocusWithin
   const parserBackend = (document.metadata?.parser_backend as string) || ''
   const parserLabel = parserBackend ? getParserLabel(parserBackend) : null
   const chunkStrategyValue = (document.metadata?.chunk_strategy as string) || ''
   const chunkStrategyLabel = chunkStrategyValue ? getChunkStrategyLabel(chunkStrategyValue) : null
-
-	    return (
-	      <TiltCard
-	      className={cn(
-	        'group relative p-3 rounded-xl border cursor-pointer h-full transition-colors duration-200',
-	        isSelected
-	          ? 'bg-primary/10 border-primary/40 shadow-soft'
-	          : 'bg-background/40 hover:bg-background/60 border-border/60 hover:border-primary/20 hover:shadow-soft'
-	      )}
-      onClick={onSelect}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+  
+		    return (
+          <div
+            className="h-full"
+            onFocus={() => setIsFocusWithin(true)}
+            onBlur={(e) => {
+              const next = e.relatedTarget as Node | null
+              if (!next || !e.currentTarget.contains(next)) setIsFocusWithin(false)
+            }}
+          >
+		      <TiltCard
+		      className={cn(
+		        'group relative p-3 rounded-xl border cursor-pointer h-full transition-colors duration-200',
+		        isSelected
+		          ? 'bg-primary/10 border-primary/40 shadow-soft'
+		          : 'bg-background/40 hover:bg-background/60 border-border/60 hover:border-primary/20 hover:shadow-soft'
+		      )}
+	      onClick={onSelect}
+	      onMouseEnter={() => setIsHovered(true)}
+	      onMouseLeave={() => setIsHovered(false)}
+	    >
       <div className="flex items-start gap-3">
         {/* 文件图标容器 */}
         <div className={cn(
@@ -337,12 +347,12 @@ function DocumentCard({
             </div>
           )}
 
-          {/* 属性标签 */}
-          {document.status === 'completed' && isHovered && (
-            <div className="mt-2 flex flex-wrap gap-1 motion-safe:animate-fade-in">
-              <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
-                {document.chunk_count} 片段
-              </span>
+	          {/* 属性标签 */}
+	          {document.status === 'completed' && isActive && (
+	            <div className="mt-2 flex flex-wrap gap-1 motion-safe:animate-fade-in">
+	              <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
+	                {document.chunk_count} 片段
+	              </span>
               {parserLabel && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
                   {parserLabel}
@@ -367,23 +377,27 @@ function DocumentCard({
         </div>
       </div>
 
-	      {/* 悬浮操作栏 */}
-	      <div className={cn(
-	        "absolute right-2 top-2 flex flex-col gap-1 transition duration-200 ease-out",
-	        isHovered ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
-	      )}>
-        <DocumentDetailDialog document={document} trigger={
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-primary hover:text-primary-foreground"
-            aria-label="查看详情"
-            title="查看详情"
-          >
-            <FileText className="size-3.5" aria-hidden="true" />
-          </Button>
-        } />
+		      {/* 悬浮操作栏 */}
+		      <div className={cn(
+		        "absolute right-2 top-2 flex flex-col gap-1 transition duration-200 ease-out",
+		        isActive ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
+		      )}>
+	        <DocumentDetailDialog document={document} trigger={
+	          <Button
+	            type="button"
+	            variant="outline"
+	            size="icon"
+              onClick={(e) => {
+                // Avoid triggering the card's click handler.
+                e.stopPropagation()
+              }}
+	            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-primary hover:text-primary-foreground"
+	            aria-label="查看详情"
+	            title="查看详情"
+	          >
+	            <FileText className="size-3.5" aria-hidden="true" />
+	          </Button>
+	        } />
 
         {(document.status === 'processing' || document.status === 'pending') ? (
           <Button
@@ -439,7 +453,8 @@ function DocumentCard({
             </AlertDialogContent>
           </AlertDialog>
         )}
+	      </div>
+	    </TiltCard>
       </div>
-    </TiltCard>
-  )
+	  )
 }

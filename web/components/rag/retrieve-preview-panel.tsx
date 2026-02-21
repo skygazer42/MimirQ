@@ -30,6 +30,19 @@ function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+function toCitation(value: unknown): Citation | null {
+  if (!isRecord(value)) return null
+  const document_id = typeof value.document_id === 'string' ? value.document_id : ''
+  const document_name = typeof value.document_name === 'string' ? value.document_name : ''
+  const chunk_content = typeof value.chunk_content === 'string' ? value.chunk_content : ''
+  const relevance_score =
+    typeof value.relevance_score === 'number' ? value.relevance_score : Number(value.relevance_score ?? 0) || 0
+
+  if (!document_id || !document_name) return null
+
+  return { ...(value as any), document_id, document_name, chunk_content, relevance_score } as Citation
+}
+
 function shortId(id: string, opts?: { head?: number; tail?: number }): string {
   const s = String(id || '').trim()
   if (!s) return ''
@@ -100,7 +113,8 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
         dataset_id: selectedDatasetId || undefined,
         document_ids: [],
       })
-      setSearchResults(res.citations || [])
+      const citations = Array.isArray(res.citations) ? res.citations : []
+      setSearchResults(citations.map(toCitation).filter(Boolean) as Citation[])
       setSearchQueryForRetrieval(res.query_for_retrieval || '')
       setSearchMetrics(res.metrics || null)
       setSearchHasEvidence(Boolean((res as any).has_evidence))

@@ -218,7 +218,7 @@ export default function QuarantineQueuePage() {
     try {
       const patch = buildRecommendedPatch(doc)
       if (Object.keys(patch).length) {
-        await documentApi.patchPipeline(doc.id, { patch })
+        await documentApi.patchPipeline(doc.id, { patch, replace: false })
       }
       await documentApi.retry(doc.id)
       await markReviewed(doc.id, { quarantine_action: 'release_retry', quarantine_reason: getDropReasons(doc).join(',') })
@@ -270,7 +270,7 @@ export default function QuarantineQueuePage() {
     const doc = tuneTarget
     setActing({ id: doc.id, action: 'tune' })
     try {
-      await documentApi.patchPipeline(doc.id, { patch: tunePatch })
+      await documentApi.patchPipeline(doc.id, { patch: tunePatch, replace: false })
       if (opts.retryAfterSave) {
         await documentApi.retry(doc.id)
         await markReviewed(doc.id, { quarantine_action: 'tune_retry' })

@@ -2,12 +2,24 @@
 Document-related Pydantic schemas.
 """
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, Field, ValidationError, model_validator
 
 from .base import OrmModel
+
+
+class DocumentStatusEnum(str, Enum):
+    """Document processing status enum for API contract stability."""
+
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+    quarantined = "quarantined"
+    cancelled = "cancelled"
 
 
 class GovernanceRegexRule(BaseModel):
@@ -481,8 +493,9 @@ class DocumentDetail(OrmModel):
     filename: str
     file_type: str
     file_size: int
-    status: str
+    status: DocumentStatusEnum
     processing_progress: int
+    current_stage: Optional[str] = None
     chunk_count: int
     total_characters: int
     owner_id: Optional[str] = None
@@ -805,7 +818,7 @@ class DocumentVersionDiff(BaseModel):
 class DocumentStatus(OrmModel):
     """Document processing status."""
     id: UUID
-    status: str
+    status: DocumentStatusEnum
     processing_progress: int
     current_stage: Optional[str] = None
     error_message: Optional[str] = None

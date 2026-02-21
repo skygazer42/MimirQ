@@ -215,13 +215,14 @@ export default function DiagnosticsPage() {
     setProbeResult(null)
     setProbeLatencyMs(null)
 
-    const start = Date.now()
-    try {
-      const result = await ragApi.promptPreview({
-        query,
-        dataset_id: datasetId || undefined,
-        document_ids: documentIds.length ? documentIds : undefined,
-      })
+      const start = Date.now()
+      try {
+        const result = await ragApi.promptPreview({
+          query,
+          dataset_id: datasetId || undefined,
+          document_ids: documentIds.length ? documentIds : undefined,
+          structured_output: false,
+        })
       setProbeLatencyMs(Math.max(0, Date.now() - start))
       setProbeResult(result as any)
     } catch (err) {

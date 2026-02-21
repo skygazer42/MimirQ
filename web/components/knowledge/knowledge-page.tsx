@@ -429,7 +429,8 @@ export default function KnowledgePage() {
     try {
       const res = await documentApi.batchReingest({
         document_ids: ids,
-        ...(pipelineOverridesEnabled ? { patch: pipelineOptions, replace: true } : {}),
+        patch: pipelineOverridesEnabled ? pipelineOptions : undefined,
+        replace: pipelineOverridesEnabled ? true : false,
         force: true,
         skip_if_unchanged: false,
       })

@@ -4,7 +4,9 @@
 import axios, { AxiosHeaders } from 'axios'
 import type {
   Document,
+  DocumentList,
   DocumentChunk,
+  DocumentChunkList,
   DocumentChunkCreateRequest,
   DocumentChunkMatchList,
   DocumentChunkReembedRequest,
@@ -210,6 +212,7 @@ import { getAuthHeaders } from '@/lib/auth-headers'
 import { clearAuthSession, getAccessToken } from '@/lib/auth-storage'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
+import { createOpenApiAxiosClient } from '@/lib/openapi-request'
 import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
 import { generateRequestId } from '@/lib/request-id'
 import { readSseDataStrings } from '@/lib/sse-reader'
@@ -332,16 +335,17 @@ apiClient.interceptors.response.use(
   }
 )
 
+// Typed OpenAPI request helper (incremental migration target).
+const openapiRequest = createOpenApiAxiosClient(apiClient)
+
 // ==================== Health API ====================
 
 export const healthApi = {
   async health(): Promise<HealthResponse> {
-    const { data } = await apiClient.get('/health')
-    return data
+    return openapiRequest({ path: '/api/v1/health', method: 'get' })
   },
   async ready(): Promise<ReadyResponse> {
-    const { data } = await apiClient.get('/health/ready')
-    return data
+    return openapiRequest({ path: '/api/v1/health/ready', method: 'get' })
   },
 }
 
@@ -447,20 +451,24 @@ export const documentApi = {
     params?: {
       skip?: number
       limit?: number
-      status?: string
-      lifecycle?: string
-      dataset_id?: string
-      source_path_prefix?: string
-      file_type?: string
-      owner_id?: string
-      q?: string
-      order_by?: string
-      order_dir?: 'asc' | 'desc' | string
+      status?: string | null
+      lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
+      dataset_id?: string | null
+      file_type?: string | null
+      owner_id?: string | null
+      q?: string | null
+      source_path_prefix?: string | null
+      order_by?: 'created_at' | 'filename' | 'file_size'
+      order_dir?: 'asc' | 'desc'
     },
     options?: ApiRequestOptions
-  ): Promise<{ total: number; items: Document[] }> {
-    const { data } = await apiClient.get('/documents/', { params, signal: options?.signal })
-    return data
+  ): Promise<DocumentList> {
+    return openapiRequest({
+      path: '/api/v1/documents/',
+      method: 'get',
+      query: params,
+      signal: options?.signal,
+    })
   },
 
   /**
@@ -491,7 +499,7 @@ export const documentApi = {
     options?: { includeChunks?: boolean; pipeline_hash?: string; all_versions?: boolean },
     request?: ApiRequestOptions
   ): Promise<Document> {
-    const params = options?.includeChunks
+    const query = options?.includeChunks
       ? {
           include_chunks: true,
           pipeline_hash: options.pipeline_hash,
@@ -499,11 +507,13 @@ export const documentApi = {
         }
       : undefined
 
-    const { data } = await apiClient.get(`/documents/${documentId}`, {
-      params,
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      query,
       signal: request?.signal,
     })
-    return data
   },
 
   /**
@@ -550,9 +560,13 @@ export const documentApi = {
   async listChunks(
     documentId: string,
     params?: { skip?: number; limit?: number; q?: string; pipeline_hash?: string; all_versions?: boolean }
-  ): Promise<{ total: number; items: DocumentChunk[] }> {
-    const { data } = await apiClient.get(`/documents/${documentId}/chunks`, { params })
-    return data
+  ): Promise<DocumentChunkList> {
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      query: params,
+    })
   },
 
   /**
@@ -562,63 +576,92 @@ export const documentApi = {
     documentId: string,
     params: { q: string; limit?: number; pipeline_hash?: string; all_versions?: boolean }
   ): Promise<DocumentChunkMatchList> {
-    const { data } = await apiClient.get(`/documents/${documentId}/chunks/matches`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks/matches',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      query: params,
+    })
   },
 
   /**
    * 获取单个切片（用于引用/定位，避免一次性拉全量）
    */
   async getChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
-    const { data } = await apiClient.get(`/documents/${documentId}/chunks/${chunkId}`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks/{chunk_id}',
+      method: 'get',
+      pathParams: { document_id: documentId, chunk_id: chunkId },
+    })
   },
 
   /**
    * 创建新切片（追加到当前激活版本）
    */
   async createChunk(documentId: string, payload: DocumentChunkCreateRequest): Promise<DocumentChunk> {
-    const { data } = await apiClient.post(`/documents/${documentId}/chunks`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks',
+      method: 'post',
+      pathParams: { document_id: documentId },
+      body: payload,
+    })
   },
 
   /**
    * 更新切片（入库后手工编辑）
    */
   async updateChunk(documentId: string, chunkId: string, payload: DocumentChunkUpdateRequest): Promise<DocumentChunk> {
-    const { data } = await apiClient.patch(`/documents/${documentId}/chunks/${chunkId}`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks/{chunk_id}',
+      method: 'patch',
+      pathParams: { document_id: documentId, chunk_id: chunkId },
+      body: payload,
+    })
   },
 
   /**
    * 删除切片（入库后手工编辑）
    */
   async deleteChunk(documentId: string, chunkId: string): Promise<void> {
-    await apiClient.delete(`/documents/${documentId}/chunks/${chunkId}`)
+    await openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks/{chunk_id}',
+      method: 'delete',
+      pathParams: { document_id: documentId, chunk_id: chunkId },
+    })
   },
 
   /**
    * 禁用切片（从检索/索引中排除）
    */
   async disableChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
-    const { data } = await apiClient.post(`/documents/${documentId}/chunks/${chunkId}/disable`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks/{chunk_id}/disable',
+      method: 'post',
+      pathParams: { document_id: documentId, chunk_id: chunkId },
+    })
   },
 
   /**
    * 启用切片（需要 re-embed 才能恢复向量索引）
    */
   async enableChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
-    const { data } = await apiClient.post(`/documents/${documentId}/chunks/${chunkId}/enable`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks/{chunk_id}/enable',
+      method: 'post',
+      pathParams: { document_id: documentId, chunk_id: chunkId },
+    })
   },
 
   /**
    * 重新嵌入指定切片（向量 + BM25 best-effort）
    */
   async reembedChunks(documentId: string, payload: DocumentChunkReembedRequest): Promise<DocumentChunkReembedResponse> {
-    const { data } = await apiClient.post(`/documents/${documentId}/chunks/reembed`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/chunks/reembed',
+      method: 'post',
+      pathParams: { document_id: documentId },
+      body: payload,
+    })
   },
 
   /**
@@ -643,9 +686,12 @@ export const documentApi = {
   /**
    * 获取文档处理状态
    */
-  async getStatus(documentId: string) {
-    const { data } = await apiClient.get(`/documents/${documentId}/status`)
-    return data
+  async getStatus(documentId: string): Promise<DocumentStatus> {
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/status',
+      method: 'get',
+      pathParams: { document_id: documentId },
+    })
   },
 
   /**
@@ -674,73 +720,102 @@ export const documentApi = {
   /**
    * 批量删除文档
    */
-  async batchDelete(document_ids: string[]): Promise<{ deleted: number; not_found: string[]; denied: string[] }> {
-    const { data } = await apiClient.post('/documents/batch-delete', { document_ids })
-    return data
+  async batchDelete(
+    document_ids: string[]
+  ): Promise<{ deleted: number; not_found?: string[]; denied?: string[] }> {
+    return openapiRequest({
+      path: '/api/v1/documents/batch-delete',
+      method: 'post',
+      body: { document_ids },
+    })
   },
 
   /**
    * 批量禁用文档
    */
   async batchDisable(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
-    const { data } = await apiClient.post('/documents/batch/disable', { document_ids })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/disable',
+      method: 'post',
+      body: { document_ids },
+    })
   },
 
   /**
    * 批量启用文档
    */
   async batchEnable(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
-    const { data } = await apiClient.post('/documents/batch/enable', { document_ids })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/enable',
+      method: 'post',
+      body: { document_ids },
+    })
   },
 
   /**
    * 批量归档文档
    */
   async batchArchive(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
-    const { data } = await apiClient.post('/documents/batch/archive', { document_ids })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/archive',
+      method: 'post',
+      body: { document_ids },
+    })
   },
 
   /**
    * 批量取消归档文档
    */
   async batchUnarchive(document_ids: string[]): Promise<DocumentBatchLifecycleResponse> {
-    const { data } = await apiClient.post('/documents/batch/unarchive', { document_ids })
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/unarchive',
+      method: 'post',
+      body: { document_ids },
+    })
   },
 
   /**
    * 批量重试/重新入库
    */
   async batchRetry(payload: DocumentBatchRetryRequest): Promise<DocumentBatchRetryResponse> {
-    const { data } = await apiClient.post('/documents/batch/retry', payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/retry',
+      method: 'post',
+      body: payload,
+    })
   },
 
   /**
    * 批量重新入库（可选：先 patch pipeline，然后 force retry）
    */
   async batchReingest(payload: DocumentBatchReingestRequest): Promise<DocumentBatchRetryResponse> {
-    const { data } = await apiClient.post('/documents/batch/reingest', payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/reingest',
+      method: 'post',
+      body: payload,
+    })
   },
 
   /**
    * 批量更新文档 ACL（access_mode + allowlist）
    */
   async batchUpdateAccess(payload: DocumentBatchAccessUpdateRequest): Promise<DocumentBatchAccessUpdateResponse> {
-    const { data } = await apiClient.post('/documents/batch/access', payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/access',
+      method: 'post',
+      body: payload,
+    })
   },
 
   /**
    * 批量移动文档到目标数据集（受限：不支持 MinIO-backed/含 MinIO 图片的文档）
    */
   async batchMove(payload: DocumentBatchMoveRequest): Promise<DocumentBatchMoveResponse> {
-    const { data } = await apiClient.post('/documents/batch/move', payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/documents/batch/move',
+      method: 'post',
+      body: payload,
+    })
   },
 
   /**
@@ -1126,16 +1201,13 @@ export const parsingApi = {
 
 export const authApi = {
   async register(payload: RegisterRequest): Promise<AuthResponse> {
-    const { data } = await apiClient.post('/auth/register', payload)
-    return data
+    return openapiRequest({ path: '/api/v1/auth/register', method: 'post', body: payload })
   },
   async login(payload: LoginRequest): Promise<AuthResponse> {
-    const { data } = await apiClient.post('/auth/login', payload)
-    return data
+    return openapiRequest({ path: '/api/v1/auth/login', method: 'post', body: payload })
   },
   async me(): Promise<UserProfile> {
-    const { data } = await apiClient.get('/auth/me')
-    return data
+    return openapiRequest({ path: '/api/v1/auth/me', method: 'get' })
   },
 }
 
@@ -1322,13 +1394,11 @@ export const chunkPresetApi = {
 
 export const connectorApi = {
   async listConnectors(): Promise<ConnectorInfo[]> {
-    const { data } = await apiClient.get('/connectors')
-    return data
+    return openapiRequest({ path: '/api/v1/connectors', method: 'get' })
   },
 
   async validateConfig(payload: ConnectorValidateRequest): Promise<ConnectorValidateResponse> {
-    const { data } = await apiClient.post('/connectors/validate', payload)
-    return data
+    return openapiRequest({ path: '/api/v1/connectors/validate', method: 'post', body: payload })
   },
 
   async listConfigs(params?: {
@@ -1338,62 +1408,80 @@ export const connectorApi = {
     connector_id?: string
     enabled?: boolean
   }): Promise<ConnectorConfigListResponse> {
-    const { data } = await apiClient.get('/connectors/configs', { params })
-    return data
+    return openapiRequest({ path: '/api/v1/connectors/configs', method: 'get', query: params })
   },
 
   async createConfig(payload: ConnectorConfigCreateRequest): Promise<ConnectorConfigOut> {
-    const { data } = await apiClient.post('/connectors/configs', payload)
-    return data
+    return openapiRequest({ path: '/api/v1/connectors/configs', method: 'post', body: payload })
   },
 
   async updateConfig(configId: string, payload: ConnectorConfigUpdateRequest): Promise<ConnectorConfigOut> {
-    const { data } = await apiClient.put(`/connectors/configs/${configId}`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/connectors/configs/{config_id}',
+      method: 'put',
+      pathParams: { config_id: configId },
+      body: payload,
+    })
   },
 
   async deleteConfig(configId: string): Promise<void> {
-    await apiClient.delete(`/connectors/configs/${configId}`)
+    await openapiRequest({
+      path: '/api/v1/connectors/configs/{config_id}',
+      method: 'delete',
+      pathParams: { config_id: configId },
+    })
   },
 
   async runConfig(configId: string): Promise<ConnectorRunOut> {
-    const { data } = await apiClient.post(`/connectors/configs/${configId}/run`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/connectors/configs/{config_id}/run',
+      method: 'post',
+      pathParams: { config_id: configId },
+    })
   },
 
   async scheduledTick(): Promise<ConnectorScheduledTickResponse> {
-    const { data } = await apiClient.post('/connectors/scheduled/tick')
-    return data
+    return openapiRequest({ path: '/api/v1/connectors/scheduled/tick', method: 'post' })
   },
 
   async createRun(payload: ConnectorRunCreateRequest): Promise<ConnectorRunOut> {
-    const { data } = await apiClient.post('/connectors/runs', payload)
-    return data
+    return openapiRequest({ path: '/api/v1/connectors/runs', method: 'post', body: payload })
   },
 
   async listRuns(params?: { skip?: number; limit?: number; dataset_id?: string }): Promise<ConnectorRunListResponse> {
-    const { data } = await apiClient.get('/connectors/runs', { params })
-    return data
+    return openapiRequest({ path: '/api/v1/connectors/runs', method: 'get', query: params })
   },
 
   async getRun(runId: string): Promise<ConnectorRunOut> {
-    const { data } = await apiClient.get(`/connectors/runs/${runId}`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/connectors/runs/{run_id}',
+      method: 'get',
+      pathParams: { run_id: runId },
+    })
   },
 
   async cancelRun(runId: string): Promise<ConnectorRunOut> {
-    const { data } = await apiClient.post(`/connectors/runs/${runId}/cancel`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/connectors/runs/{run_id}/cancel',
+      method: 'post',
+      pathParams: { run_id: runId },
+    })
   },
 
   async retryFailed(runId: string): Promise<ConnectorRunOut> {
-    const { data } = await apiClient.post(`/connectors/runs/${runId}/retry-failed`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/connectors/runs/{run_id}/retry-failed',
+      method: 'post',
+      pathParams: { run_id: runId },
+    })
   },
 
   async resumeRun(runId: string): Promise<ConnectorRunOut> {
-    const { data } = await apiClient.post(`/connectors/runs/${runId}/resume`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/connectors/runs/{run_id}/resume',
+      method: 'post',
+      pathParams: { run_id: runId },
+    })
   },
 }
 
@@ -1441,18 +1529,15 @@ export const ingestionRunApi = {
 
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
-    const { data } = await apiClient.post('/rag/retrieve-preview', params)
-    return data
+    return openapiRequest({ path: '/api/v1/rag/retrieve-preview', method: 'post', body: params })
   },
 
   async retrieveEvidence(params: EvidenceRetrieveRequest): Promise<EvidenceRetrieveResponse> {
-    const { data } = await apiClient.post('/rag/retrieve', params)
-    return data
+    return openapiRequest({ path: '/api/v1/rag/retrieve', method: 'post', body: params })
   },
 
   async promptPreview(params: PromptPreviewRequest): Promise<PromptPreviewResponse> {
-    const { data } = await apiClient.post('/rag/prompt-preview', params)
-    return data
+    return openapiRequest({ path: '/api/v1/rag/prompt-preview', method: 'post', body: params })
   },
 }
 
@@ -1460,8 +1545,7 @@ export const ragApi = {
 
 export const evidenceApi = {
   async createSuite(payload: EvidenceSuiteCreate): Promise<EvidenceSuite> {
-    const { data } = await apiClient.post('/evidence/suites', payload)
-    return data
+    return openapiRequest({ path: '/api/v1/evidence/suites', method: 'post', body: payload })
   },
 
   async listSuites(params?: {
@@ -1470,21 +1554,27 @@ export const evidenceApi = {
     dataset_id?: string
     include_archived?: boolean
   }): Promise<EvidenceSuiteList> {
-    const { data } = await apiClient.get('/evidence/suites', { params })
-    return data
+    return openapiRequest({ path: '/api/v1/evidence/suites', method: 'get', query: params })
   },
 
   async getSuite(suiteId: string): Promise<EvidenceSuite> {
-    const { data } = await apiClient.get(`/evidence/suites/${suiteId}`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}',
+      method: 'get',
+      pathParams: { suite_id: suiteId },
+    })
   },
 
   async getSuiteDashboard(
     suiteId: string,
     params?: { include_archived_items?: boolean; top_n?: number; heatmap_top_n?: number }
   ): Promise<EvidenceSuiteDashboard> {
-    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/dashboard`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/dashboard',
+      method: 'get',
+      pathParams: { suite_id: suiteId },
+      query: params,
+    })
   },
 
   async getSuiteDriftAudit(
@@ -1496,8 +1586,12 @@ export const evidenceApi = {
       slice_top_n?: number
     }
   ): Promise<EvidenceReferenceDriftAudit> {
-    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/drift-audit`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/drift-audit',
+      method: 'get',
+      pathParams: { suite_id: suiteId },
+      query: params,
+    })
   },
 
   async getDatasetDriftAudit(
@@ -1509,66 +1603,105 @@ export const evidenceApi = {
       slice_top_n?: number
     }
   ): Promise<EvidenceReferenceDriftAudit> {
-    const { data } = await apiClient.get(`/evidence/datasets/${datasetId}/drift-audit`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/datasets/{dataset_id}/drift-audit',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+      query: params,
+    })
   },
 
   async repairSuiteReferenceSources(
     suiteId: string,
     payload: EvidenceReferenceRepairRequest
   ): Promise<EvidenceReferenceRepairResponse> {
-    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/repair-reference-sources`, payload, {
-      timeout: API_LONG_TIMEOUT_MS,
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/repair-reference-sources',
+      method: 'post',
+      pathParams: { suite_id: suiteId },
+      body: payload,
+      timeoutMs: API_LONG_TIMEOUT_MS,
     })
-    return data
   },
 
   async patchSuite(suiteId: string, payload: EvidenceSuitePatch): Promise<EvidenceSuite> {
-    const { data } = await apiClient.patch(`/evidence/suites/${suiteId}`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}',
+      method: 'patch',
+      pathParams: { suite_id: suiteId },
+      body: payload,
+    })
   },
 
   async createItem(suiteId: string, payload: EvidenceItemCreate): Promise<EvidenceItem> {
-    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/items`, { ...payload, suite_id: suiteId })
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/items',
+      method: 'post',
+      pathParams: { suite_id: suiteId },
+      body: { ...payload, suite_id: suiteId },
+    })
   },
 
   async listItems(
     suiteId: string,
     params?: { skip?: number; limit?: number; status?: string }
   ): Promise<EvidenceItemList> {
-    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/items`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/items',
+      method: 'get',
+      pathParams: { suite_id: suiteId },
+      query: params,
+    })
   },
 
   async patchItem(itemId: string, payload: EvidenceItemPatch): Promise<EvidenceItem> {
-    const { data } = await apiClient.patch(`/evidence/items/${itemId}`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/items/{item_id}',
+      method: 'patch',
+      pathParams: { item_id: itemId },
+      body: payload,
+    })
   },
 
   async reviewItem(itemId: string): Promise<EvidenceItem> {
-    const { data } = await apiClient.post(`/evidence/items/${itemId}/review`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/items/{item_id}/review',
+      method: 'post',
+      pathParams: { item_id: itemId },
+    })
   },
 
   async approveItem(itemId: string): Promise<EvidenceItem> {
-    const { data } = await apiClient.post(`/evidence/items/${itemId}/approve`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/items/{item_id}/approve',
+      method: 'post',
+      pathParams: { item_id: itemId },
+    })
   },
 
   async archiveItem(itemId: string): Promise<EvidenceItem> {
-    const { data } = await apiClient.post(`/evidence/items/${itemId}/archive`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/items/{item_id}/archive',
+      method: 'post',
+      pathParams: { item_id: itemId },
+    })
   },
 
   async syncSuiteToRegression(suiteId: string): Promise<EvidenceSuiteSyncRegressionResponse> {
-    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/sync-regression`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/sync-regression',
+      method: 'post',
+      pathParams: { suite_id: suiteId },
+    })
   },
 
   async exportSuite(suiteId: string, params?: { include_archived_items?: boolean }): Promise<EvidenceSuiteExportV1> {
-    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/export`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/export',
+      method: 'get',
+      pathParams: { suite_id: suiteId },
+      query: params,
+    })
   },
 
   async importItems(
@@ -1593,8 +1726,7 @@ export const datasetApi = {
    * 创建数据集
    */
   async create(params: DatasetCreate): Promise<Dataset> {
-    const { data } = await apiClient.post('/datasets/', params)
-    return data
+    return openapiRequest({ path: '/api/v1/datasets/', method: 'post', body: params })
   },
 
   /**
@@ -1606,61 +1738,91 @@ export const datasetApi = {
     category_id?: string
     include_descendants?: boolean
   }): Promise<DatasetListResponse> {
-    const { data } = await apiClient.get('/datasets/', { params })
-    return data
+    return openapiRequest({ path: '/api/v1/datasets/', method: 'get', query: params })
   },
 
   /**
    * 获取数据集详情
    */
   async get(datasetId: string): Promise<Dataset> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   async getIngestionStats(datasetId: string): Promise<DatasetIngestionStats> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion/stats`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/ingestion/stats',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   async getHealth(datasetId: string): Promise<DatasetHealthResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/health`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/health',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   /**
    * 更新数据集
    */
   async update(datasetId: string, params: DatasetUpdate): Promise<Dataset> {
-    const { data } = await apiClient.patch(`/datasets/${datasetId}`, params)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}',
+      method: 'patch',
+      pathParams: { dataset_id: datasetId },
+      body: params,
+    })
   },
 
   async getCategories(datasetId: string): Promise<DatasetCategoryAssignmentResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/categories`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/categories',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   async setCategories(datasetId: string, payload: DatasetCategoryAssignmentRequest): Promise<DatasetCategoryAssignmentResponse> {
-    const { data } = await apiClient.put(`/datasets/${datasetId}/categories`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/categories',
+      method: 'put',
+      pathParams: { dataset_id: datasetId },
+      body: payload,
+    })
   },
 
   /**
    * 删除数据集
    */
   async delete(datasetId: string): Promise<void> {
-    await apiClient.delete(`/datasets/${datasetId}`)
+    await openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}',
+      method: 'delete',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   async getIngestionPolicy(datasetId: string): Promise<IngestionPolicy> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion-policy`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/ingestion-policy',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   async updateIngestionPolicy(datasetId: string, policy: IngestionPolicy): Promise<IngestionPolicy> {
-    const { data } = await apiClient.put(`/datasets/${datasetId}/ingestion-policy`, policy)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/ingestion-policy',
+      method: 'put',
+      pathParams: { dataset_id: datasetId },
+      body: policy,
+    })
   },
 
   async importIngestionPolicy(datasetId: string, file: File, replace = true): Promise<IngestionPolicyImportResponse> {
@@ -1677,28 +1839,46 @@ export const datasetApi = {
   },
 
   async listIngestionPolicyVersions(datasetId: string): Promise<IngestionPolicyVersionListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion-policy/versions`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/ingestion-policy/versions',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   async rollbackIngestionPolicy(datasetId: string, body: IngestionPolicyRollbackRequest): Promise<IngestionPolicy> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/ingestion-policy/rollback`, body)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/ingestion-policy/rollback',
+      method: 'post',
+      pathParams: { dataset_id: datasetId },
+      body,
+    })
   },
 
   async exportConfig(datasetId: string): Promise<DatasetConfigExport> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/config/export`)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/config/export',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+    })
   },
 
   async importConfig(datasetId: string, payload: DatasetConfigImportRequest): Promise<Dataset> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/config/import`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/config/import',
+      method: 'post',
+      pathParams: { dataset_id: datasetId },
+      body: payload,
+    })
   },
 
   async clone(datasetId: string, payload: DatasetCloneRequest): Promise<Dataset> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/clone`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/clone',
+      method: 'post',
+      pathParams: { dataset_id: datasetId },
+      body: payload,
+    })
   },
 
   // ==================== Dataset Profile (Ingestion Scan) ====================
@@ -1927,27 +2107,37 @@ export const datasetApi = {
 
 export const datasetCategoryApi = {
   async listTree(): Promise<DatasetCategoryTreeResponse> {
-    const { data } = await apiClient.get('/dataset-categories/')
-    return data
+    return openapiRequest({ path: '/api/v1/dataset-categories/', method: 'get' })
   },
 
   async create(payload: DatasetCategoryCreate): Promise<DatasetCategoryOut> {
-    const { data } = await apiClient.post('/dataset-categories/', payload)
-    return data
+    return openapiRequest({ path: '/api/v1/dataset-categories/', method: 'post', body: payload })
   },
 
   async update(categoryId: string, payload: DatasetCategoryUpdate): Promise<DatasetCategoryOut> {
-    const { data } = await apiClient.patch(`/dataset-categories/${categoryId}`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/dataset-categories/{category_id}',
+      method: 'patch',
+      pathParams: { category_id: categoryId },
+      body: payload,
+    })
   },
 
   async move(categoryId: string, payload: DatasetCategoryMoveRequest): Promise<DatasetCategoryOut> {
-    const { data } = await apiClient.post(`/dataset-categories/${categoryId}/move`, payload)
-    return data
+    return openapiRequest({
+      path: '/api/v1/dataset-categories/{category_id}/move',
+      method: 'post',
+      pathParams: { category_id: categoryId },
+      body: payload,
+    })
   },
 
   async delete(categoryId: string): Promise<void> {
-    await apiClient.delete(`/dataset-categories/${categoryId}`)
+    await openapiRequest({
+      path: '/api/v1/dataset-categories/{category_id}',
+      method: 'delete',
+      pathParams: { category_id: categoryId },
+    })
   },
 }
 
@@ -2537,8 +2727,7 @@ export type BackendMeta = MetaResponse
 
 export const metaApi = {
   async get(): Promise<BackendMeta> {
-    const { data } = await apiClient.get('/meta')
-    return data
+    return openapiRequest({ path: '/api/v1/meta', method: 'get' })
   },
 }
 

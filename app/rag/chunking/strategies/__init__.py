@@ -104,7 +104,6 @@ from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker
 from app.rag.chunking.strategies.kv_config import KVConfigChunker
 from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker
 from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker
-from app.rag.chunking.strategies.policy_manual_structured import PolicyManualStructuredChunker
 from app.rag.chunking.strategies.llama_index import (
     LlamaIndexChunker,
     LlamaIndexHierarchicalChunker,
@@ -128,6 +127,7 @@ from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker
 from app.rag.chunking.strategies.outline import OutlineChunker
 from app.rag.chunking.strategies.paper import PaperChunker
 from app.rag.chunking.strategies.parent_child import ParentChildChunker
+from app.rag.chunking.strategies.policy_manual_structured import PolicyManualStructuredChunker
 from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker
 from app.rag.chunking.strategies.prd_spec import PRDSpecChunker
 from app.rag.chunking.strategies.presentation_slides import PresentationSlidesChunker
