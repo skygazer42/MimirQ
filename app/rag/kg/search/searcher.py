@@ -52,6 +52,7 @@ class KGSearcher:
         recall_result = await self.recall_searcher.search(config)
         recall_elapsed = time.perf_counter() - t0
         if metrics_enabled:
+            rel_dbg = getattr(recall_result, "relation_debug", None) or {}
             log_metrics(
                 {
                     "event": "kg.search.recall",
@@ -61,6 +62,10 @@ class KGSearcher:
                     "key_final": int(len(recall_result.key_final or [])),
                     "event_ids": int(len(recall_result.event_ids or [])),
                     "clues": int(len(recall_result.clues or [])),
+                    "relation_enabled": bool(rel_dbg.get("enabled")),
+                    "relation_edges_fetched": int(rel_dbg.get("edges_fetched", 0) or 0),
+                    "relation_edges_used": int(rel_dbg.get("edges_used", 0) or 0),
+                    "relation_neighbors_selected": int(rel_dbg.get("neighbors_selected", 0) or 0),
                     "elapsed_sec": round(float(recall_elapsed), 3),
                 }
             )
@@ -105,6 +110,8 @@ class KGSearcher:
         stats = dict(rerank_result.stats or {})
         stats.setdefault("candidates", int(len(event_ids_total)))
         stats.setdefault("clues_returned", int(len(combined_clues)))
+        if getattr(recall_result, "relation_debug", None):
+            stats.setdefault("relation_expansion", getattr(recall_result, "relation_debug", {}) or {})
         stats.setdefault(
             "timing_sec",
             {
