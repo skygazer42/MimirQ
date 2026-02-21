@@ -4,6 +4,7 @@ Event extractor coordinating LLM + embeddings + persistence.
 
 import asyncio
 import hashlib
+import re
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -650,9 +651,16 @@ class EventExtractor:
                             entity_id_by_key[(etype, norm)] = ent_id
 
                     # 3) Run LLM extraction for chunks with at least 2 candidates.
+                    allowed_predicates: Sequence[str] = _DEFAULT_RELATION_PREDICATES
+                    raw_predicates = str(getattr(settings, "KG_RELATION_ALLOWED_PREDICATES", "") or "").strip()
+                    if raw_predicates:
+                        parts = [p.strip() for p in re.split(r"[,\n]+", raw_predicates) if str(p).strip()]
+                        if parts:
+                            allowed_predicates = parts
+
                     relation_processor = RelationProcessor(
                         llm_client=llm_client,
-                        allowed_predicates=_DEFAULT_RELATION_PREDICATES,
+                        allowed_predicates=allowed_predicates,
                     )
                     max_relations_per_chunk = max(
                         0,
