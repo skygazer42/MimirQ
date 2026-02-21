@@ -487,6 +487,79 @@ class Indexer:
             entity_vector_ids=entity_vector_ids,
         )
 
+    def upsert_entities(
+        self,
+        *,
+        tenant_id: UUID,
+        entities: Sequence[Dict[str, Any]],
+        commit: bool = True,
+        options: Optional[IndexingOptions] = None,
+    ) -> List[KgEntity]:
+        """
+        Upsert entities without creating events.
+
+        Intended for process knowledge nodes like Skill/SOP entities that should:
+        - live in `kg_entities`,
+        - be vector-indexed (optional), and
+        - be linked to events (handled by caller).
+        """
+        if not entities:
+            return []
+
+        # Keep insertion order stable while deduplicating by (normalized_name, type).
+        unique: dict[tuple[str, str], KgEntity] = {}
+
+        for raw in entities:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or "").strip()
+            if not name:
+                continue
+            normalized_name = str(raw.get("normalized_name") or name).strip()
+            if not normalized_name:
+                continue
+            type_ = str(raw.get("type") or "unknown").strip() or "unknown"
+
+            desc_raw = raw.get("description")
+            description = str(desc_raw).strip() if isinstance(desc_raw, str) else None
+
+            vector = raw.get("vector") if isinstance(raw.get("vector"), list) else None
+            extra_data = raw.get("extra_data") if isinstance(raw.get("extra_data"), dict) else None
+
+            key = (normalized_name, type_)
+            ent = unique.get(key)
+            if ent is None:
+                ent = self._get_or_create_entity(
+                    tenant_id=tenant_id,
+                    name=name,
+                    normalized_name=normalized_name,
+                    type_=type_,
+                    description=description,
+                )
+                unique[key] = ent
+
+            # Best-effort enrichment (avoid clobbering user edits).
+            if description and not getattr(ent, "description", None):
+                ent.description = description
+            if vector and not getattr(ent, "vector", None):
+                ent.vector = vector
+            if extra_data and not getattr(ent, "extra_data", None):
+                ent.extra_data = extra_data
+
+        out = list(unique.values())
+        if not out:
+            return []
+
+        if commit:
+            self._db.commit()
+        else:
+            self._db.flush()
+
+        if commit and self._resolve_entity_vector_enabled(options):
+            self._index_entity_vectors(out)
+
+        return out
+
     def delete_chunk_indexes(self, *, tenant_id: UUID, document_id: UUID) -> None:
         try:
             get_vector_store().delete_by_document_id(document_id, tenant_id=tenant_id)

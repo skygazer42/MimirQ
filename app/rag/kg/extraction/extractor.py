@@ -12,10 +12,13 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
 from app.rag.kg.extraction.config import ExtractConfig
+from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.extraction.processor import EventProcessor
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
+from app.rag.kg.extraction.skill_processor import SkillProcessor
 from app.rag.kg.loading.processor import DocumentProcessor
-from app.rag.kg.models import KgRelation, KgSourceEvent
+from app.rag.kg.models import KgEventEntity, KgRelation, KgSourceEvent
+from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.kg.repository import RelationRepository
 from app.rag.kg.utils import get_logger
 from app.rag.llm.factory import create_llm_client
@@ -775,6 +778,237 @@ class EventExtractor:
                     except Exception:
                         pass
                     logger.warning("KG relation pass failed; continuing without relations: %s", str(exc)[:200])
+
+            # Optional pass: extract Skill/SOP entities and link them to the new events.
+            # This is executed after relations (per "triples first, then skills") and before
+            # deleting old events, so pruning doesn't accidentally remove newly created skills.
+            if bool(getattr(settings, "KG_SKILL_ENABLED", False)) and cleanup_chunk_ids:
+                try:
+                    max_skills_per_chunk = max(
+                        0,
+                        int(getattr(settings, "KG_SKILL_MAX_SKILLS_PER_CHUNK", 3) or 3),
+                    )
+                    if max_skills_per_chunk <= 0:
+                        raise RuntimeError("KG_SKILL_MAX_SKILLS_PER_CHUNK must be > 0 when skills are enabled")
+
+                    chunk_by_id = {c.id: c for c in resolved_chunks if getattr(c, "id", None) is not None}
+                    events_by_chunk: dict[object, list[object]] = {}
+                    for ev in new_events:
+                        cid = getattr(ev, "chunk_id", None)
+                        if cid is None or cid not in cleanup_chunk_ids:
+                            continue
+                        events_by_chunk.setdefault(cid, []).append(ev)
+
+                    parser = EntityValueParser()
+                    skill_processor = SkillProcessor(llm_client=llm_client)
+
+                    async def _extract_skills_for_chunk(chunk_id: object):
+                        ch = chunk_by_id.get(chunk_id)
+                        if ch is None:
+                            return chunk_id, [], False
+                        if chunk_id not in events_by_chunk:
+                            # No new events to attach to => skip storing skills for now.
+                            return chunk_id, [], False
+                        try:
+                            async with sem:
+                                coro = skill_processor.extract_skills(
+                                    text=(ch.content or ""),
+                                    max_skills=max_skills_per_chunk,
+                                )
+                                if chunk_timeout_sec > 0:
+                                    skills = await asyncio.wait_for(coro, timeout=chunk_timeout_sec)
+                                else:
+                                    skills = await coro
+                            return chunk_id, skills if isinstance(skills, list) else [], True
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "KG skill extract failed for chunk %s: %s",
+                                str(getattr(ch, "id", "") or ""),
+                                str(exc)[:200],
+                            )
+                            return chunk_id, [], False
+
+                    skill_results = await asyncio.gather(*[_extract_skills_for_chunk(cid) for cid in cleanup_chunk_ids])
+
+                    # Flatten + embed skills for vector search (kg_entities milvus).
+                    skill_entity_inputs: list[dict] = []
+                    skills_by_chunk: dict[object, list[dict]] = {}
+                    skill_embed_texts: list[str] = []
+                    skill_embed_key_by_input_idx: list[str] = []
+
+                    for chunk_id, skills, ok in skill_results:
+                        if not ok:
+                            continue
+                        if not skills:
+                            continue
+                        ch = chunk_by_id.get(chunk_id)
+                        if ch is None:
+                            continue
+
+                        kept: list[dict] = []
+                        seen_norm: set[str] = set()
+                        for raw in skills:
+                            if not isinstance(raw, dict):
+                                continue
+                            name = str(raw.get("name") or "").strip()
+                            if not name:
+                                continue
+                            norm = parser.normalize_name(name)
+                            if not norm or norm in seen_norm:
+                                continue
+                            seen_norm.add(norm)
+
+                            summary = str(raw.get("summary") or "").strip() or None
+                            steps = raw.get("steps") if isinstance(raw.get("steps"), list) else []
+                            inputs = raw.get("inputs") if isinstance(raw.get("inputs"), list) else []
+                            outputs = raw.get("outputs") if isinstance(raw.get("outputs"), list) else []
+                            tools = raw.get("tools") if isinstance(raw.get("tools"), list) else []
+                            tags = raw.get("tags") if isinstance(raw.get("tags"), list) else []
+
+                            embed_text = name
+                            if summary:
+                                embed_text += f"\n{summary}"
+                            if steps:
+                                embed_text += "\n" + "\n".join([str(s).strip() for s in steps[:6] if str(s).strip()])
+                            embed_text = embed_text[:2000]
+
+                            kept.append(
+                                {
+                                    "name": name,
+                                    "normalized_name": norm,
+                                    "type": "Skill",
+                                    "description": summary,
+                                    "vector": None,  # filled after embedding
+                                    "extra_data": {
+                                        "summary": summary,
+                                        "steps": [str(s).strip() for s in steps if str(s).strip()][:50],
+                                        "inputs": [str(s).strip() for s in inputs if str(s).strip()][:50],
+                                        "outputs": [str(s).strip() for s in outputs if str(s).strip()][:50],
+                                        "tools": [str(s).strip() for s in tools if str(s).strip()][:50],
+                                        "tags": [str(s).strip() for s in tags if str(s).strip()][:50],
+                                        "confidence": raw.get("confidence"),
+                                    },
+                                    "_embed_text": embed_text,
+                                    "_chunk_id": chunk_id,
+                                }
+                            )
+                            if len(kept) >= max_skills_per_chunk:
+                                break
+
+                        if kept:
+                            skills_by_chunk[chunk_id] = kept
+                            for item in kept:
+                                text = str(item.get("_embed_text") or "").strip()
+                                if text:
+                                    skill_embed_texts.append(text)
+                                    skill_embed_key_by_input_idx.append(text)
+
+                    # Embed skills (best-effort).
+                    skill_vectors_by_text: dict[str, list[float]] = {}
+                    if skill_embed_texts:
+                        try:
+                            vectors = await embedder.generate_batch(skill_embed_texts)
+                            for text, vec in zip(skill_embed_texts, vectors, strict=False):
+                                if vec:
+                                    skill_vectors_by_text[str(text)] = list(vec)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("KG skill embedding failed; proceeding without vectors: %s", str(exc)[:200])
+                            skill_vectors_by_text = {}
+
+                    for chunk_skills in skills_by_chunk.values():
+                        for item in chunk_skills:
+                            etxt = str(item.get("_embed_text") or "").strip()
+                            if etxt and etxt in skill_vectors_by_text:
+                                item["vector"] = skill_vectors_by_text.get(etxt)
+                            # Drop internal keys before persistence.
+                            item.pop("_embed_text", None)
+
+                            # Convert confidence to a stable numeric edge weight later.
+                            try:
+                                item["_confidence"] = float(item.get("extra_data", {}).get("confidence") or 0.6)
+                            except Exception:
+                                item["_confidence"] = 0.6
+
+                    for chunk_id, items in skills_by_chunk.items():
+                        for item in items:
+                            skill_entity_inputs.append(item)
+
+                    if skill_entity_inputs:
+                        upserted = indexer.upsert_entities(
+                            tenant_id=tenant_id,
+                            entities=[
+                                {k: v for k, v in item.items() if not str(k).startswith("_")}
+                                for item in skill_entity_inputs
+                                if isinstance(item, dict)
+                            ],
+                            options=index_options,
+                            commit=True,
+                        )
+                        skill_id_by_norm: dict[str, object] = {}
+                        for ent in upserted or []:
+                            if str(getattr(ent, "type", "") or "") != "Skill":
+                                continue
+                            norm = str(getattr(ent, "normalized_name", "") or "").strip()
+                            if norm:
+                                skill_id_by_norm[norm] = getattr(ent, "id", None)
+
+                        # Link: event -> skill (role="skill") with provenance.
+                        links: list[KgEventEntity] = []
+                        for chunk_id, items in skills_by_chunk.items():
+                            ch = chunk_by_id.get(chunk_id)
+                            if ch is None:
+                                continue
+
+                            refs: Dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
+                            if getattr(ch, "start_char", None) is not None:
+                                refs["start_char"] = int(ch.start_char)
+                            if getattr(ch, "end_char", None) is not None:
+                                refs["end_char"] = int(ch.end_char)
+                            meta = getattr(ch, "doc_metadata", None)
+                            meta_dict = meta if isinstance(meta, dict) else {}
+                            source_val = meta_dict.get("source")
+                            if isinstance(source_val, str) and source_val.strip():
+                                refs["source"] = source_val.strip()
+                            refs["chunk_key"] = chunk_key_by_id.get(ch.id) or str(ch.chunk_index)
+                            refs["content_hash"] = chunk_hash_by_id.get(ch.id) or ""
+                            refs["content_len"] = int(chunk_len_by_id.get(ch.id, 0) or 0)
+
+                            link_extra = build_event_entity_provenance(
+                                document_id=ch.document_id,
+                                chunk_id=ch.id,
+                                references=refs,
+                            )
+
+                            for ev in events_by_chunk.get(chunk_id, []) or []:
+                                ev_id = getattr(ev, "id", None)
+                                if ev_id is None:
+                                    continue
+                                for item in items:
+                                    norm = str(item.get("normalized_name") or "").strip()
+                                    skill_id = skill_id_by_norm.get(norm)
+                                    if not skill_id:
+                                        continue
+                                    conf = float(item.get("_confidence") or 0.6)
+                                    conf = max(0.0, min(1.0, conf))
+                                    links.append(
+                                        KgEventEntity(
+                                            event_id=ev_id,
+                                            entity_id=skill_id,
+                                            weight=conf,
+                                            role="skill",
+                                            extra_data=(link_extra or None),
+                                        )
+                                    )
+
+                        if links:
+                            session.add_all(links)
+                            session.commit()
+                except Exception as exc:  # noqa: BLE001
+                    try:
+                        session.rollback()
+                    except Exception:
+                        pass
+                    logger.warning("KG skill pass failed; continuing without skills: %s", str(exc)[:200])
 
             if replace_existing and cleanup_chunk_ids:
                 try:
