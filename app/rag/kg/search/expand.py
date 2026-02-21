@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Set
 
 from app.core.config import settings
-from app.rag.kg.repository import EntityRepository, EventRepository, get_session
+from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
 from app.rag.kg.search.tracker import Tracker
@@ -39,6 +39,7 @@ class ExpandSearcher:
         try:
             entity_repo = EntityRepository(session)
             event_repo = EventRepository(session)
+            relation_repo = RelationRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
 
             known_entities: Set[str] = {e["entity_id"] for e in recall_result.key_final if e.get("entity_id")}
@@ -61,8 +62,94 @@ class ExpandSearcher:
                         break
                     limit = max(1, min(limit, remaining))
 
+                seed_entities = list(current_entities)
+                if (
+                    bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False))
+                    and bool(getattr(settings, "KG_RELATION_ENABLED", False))
+                    and seed_entities
+                ):
+                    max_neighbors = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0))
+                    if max_neighbors > 0:
+                        min_confidence = float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0)
+                        max_edges = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0))
+                        if max_edges <= 0:
+                            max_edges = 500
+                        weight_factor = float(
+                            getattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 0.7) or 0.7
+                        )
+
+                        try:
+                            from uuid import UUID
+
+                            tenant_uuid = UUID(str(tenant_id))
+                        except Exception:
+                            tenant_uuid = None
+
+                        if tenant_uuid is not None:
+                            rel_rows = relation_repo.list_relations_for_entities(
+                                seed_entities,
+                                tenant_id=tenant_uuid,
+                                document_ids=config.document_ids,
+                                dataset_id=config.dataset_id,
+                                account_id=config.account_id,
+                                min_confidence=min_confidence if min_confidence > 0 else None,
+                                limit=max_edges,
+                            )
+
+                            seed_set = set(seed_entities)
+                            neighbor_weights: Dict[str, float] = {}
+                            for rel in rel_rows:
+                                subj = str(getattr(rel, "subject_entity_id", "") or "")
+                                obj = str(getattr(rel, "object_entity_id", "") or "")
+                                if not subj or not obj:
+                                    continue
+
+                                predicate = str(getattr(rel, "predicate", "") or "").strip()
+                                conf = float(getattr(rel, "confidence", 0.0) or 0.0)
+                                if conf <= 0:
+                                    continue
+
+                                from_id: str | None = None
+                                to_id: str | None = None
+                                if subj in seed_set:
+                                    from_id = subj
+                                    to_id = obj
+                                elif obj in seed_set:
+                                    from_id = obj
+                                    to_id = subj
+
+                                if not from_id or not to_id or to_id == from_id:
+                                    continue
+
+                                w = float(entity_weights.get(from_id, 0.0) or 0.0) * conf * float(weight_factor)
+                                if w <= 0:
+                                    continue
+
+                                neighbor_weights[to_id] = max(neighbor_weights.get(to_id, 0.0), w)
+
+                                tracker.add_clue(
+                                    stage=f"expand-hop-{hop+1}",
+                                    from_node=Tracker.build_entity_node(
+                                        {"entity_id": from_id, "name": "", "type": "unknown", "hop": hop + 1}
+                                    ),
+                                    to_node=Tracker.build_entity_node(
+                                        {"entity_id": to_id, "name": "", "type": "unknown", "hop": hop + 1}
+                                    ),
+                                    confidence=conf,
+                                    relation=f"entity->entity:{predicate}" if predicate else "entity->entity",
+                                    metadata={"method": "relation_expansion", "step": f"hop-{hop+1}"},
+                                )
+
+                            sorted_neighbors = sorted(neighbor_weights.items(), key=lambda x: x[1], reverse=True)
+                            sorted_neighbors = sorted_neighbors[:max_neighbors]
+                            for ent_id, w in sorted_neighbors:
+                                if ent_id not in seed_set:
+                                    seed_set.add(ent_id)
+                                    seed_entities.append(ent_id)
+                                entity_weights[ent_id] = max(entity_weights.get(ent_id, 0.0), w)
+
                 events = event_repo.find_events_by_entities(
-                    current_entities,
+                    seed_entities,
                     tenant_id=tenant_id,
                     limit=limit,
                     document_ids=config.document_ids,
