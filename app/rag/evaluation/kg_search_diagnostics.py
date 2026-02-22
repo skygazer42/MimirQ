@@ -7,6 +7,8 @@ This module intentionally avoids adding new tables: it computes an on-demand rep
 that helps drive iterative improvements to:
 - KG extraction quality (events/entities/relations/skills)
 - KG search quality (recall/expand/rerank)
+
+Optional persistence (compact run snapshots) is handled at the API layer.
 """
 
 from __future__ import annotations

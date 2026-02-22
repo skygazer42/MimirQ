@@ -6,7 +6,7 @@ querying, and results.
 """
 
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
@@ -27,6 +27,8 @@ from app.api.schemas.evaluation import (
 from app.api.schemas.kg_diagnostics import (
     KGSearchDiagnosticsRequest,
     KGSearchDiagnosticsResponse,
+    KGSearchDiagnosticsRunDetail,
+    KGSearchDiagnosticsRunList,
 )
 from app.api.schemas.regression import (
     RagasRegressionCaseCreateRequest,
@@ -45,6 +47,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation
 from app.models.evaluation import (
+    KGSearchDiagnosticsRun,
     RagasEvaluationItem,
     RagasEvaluationRun,
     RagasRegressionCase,
@@ -973,7 +976,146 @@ async def run_kg_search_diagnostics(
     # Lazy import to keep module import side-effects smaller (Milvus/LLM config, etc).
     from app.rag.evaluation.kg_search_diagnostics import run_kg_search_diagnostics as run_impl
 
-    return await run_impl(db=db, tenant_id=tenant_id, account_id=account_id, req=payload)
+    resp = await run_impl(db=db, tenant_id=tenant_id, account_id=account_id, req=payload)
+
+    # Optional: persist a compact run snapshot for diffing over time.
+    if bool(getattr(payload, "persist_run", False)):
+        try:
+            params: dict[str, Any] = dict(payload.model_dump() if hasattr(payload, "model_dump") else {})
+            params["settings_snapshot"] = {
+                "KG_ENABLED": bool(getattr(settings, "KG_ENABLED", False)),
+                "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+                "KG_SKILL_ENABLED": bool(getattr(settings, "KG_SKILL_ENABLED", False)),
+                "KG_EXTRACT_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_EXTRACT_EVIDENCE_REQUIRED", False)),
+                "KG_SKILL_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_SKILL_EVIDENCE_REQUIRED", False)),
+                "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
+                    getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
+                ),
+                "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0),
+                "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
+                "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0),
+            }
+
+            summary_obj = getattr(resp, "summary", None)
+            summary = summary_obj.model_dump() if hasattr(summary_obj, "model_dump") else {}
+
+            # Compact per-case records to keep the persisted payload small.
+            items_compact: list[dict[str, Any]] = []
+            for item in list(getattr(resp, "items", []) or []):
+                baseline = getattr(item, "baseline", None)
+                baseline_metrics_obj = getattr(baseline, "metrics", None)
+                baseline_metrics = baseline_metrics_obj.model_dump() if hasattr(baseline_metrics_obj, "model_dump") else {}
+
+                hardcases_compact: list[dict[str, Any]] = []
+                for hc in list(getattr(item, "hardcases", []) or []):
+                    run = getattr(hc, "run", None)
+                    m_obj = getattr(run, "metrics", None)
+                    hardcases_compact.append(
+                        {
+                            "kind": str(getattr(hc, "kind", "") or ""),
+                            "metrics": (m_obj.model_dump() if hasattr(m_obj, "model_dump") else {}),
+                            "error": (str(getattr(run, "error", "") or "") or None),
+                        }
+                    )
+
+                attr = getattr(item, "attribution", None)
+                attr_dict = attr.model_dump() if hasattr(attr, "model_dump") else {}
+
+                items_compact.append(
+                    {
+                        "case_id": str(getattr(item, "case_id", "") or ""),
+                        "question": str(getattr(item, "question", "") or "")[:500],
+                        "tags": list(getattr(item, "tags", []) or []),
+                        "evidence_chunk_ids": list(getattr(item, "evidence_chunk_ids", []) or []),
+                        "attribution": attr_dict,
+                        "baseline": {
+                            "metrics": baseline_metrics,
+                            "error": (str(getattr(baseline, "error", "") or "") or None),
+                            "returned_events": int(len(getattr(baseline, "events", []) or [])),
+                            "selected_entities": int(len(getattr(baseline, "entities", []) or [])),
+                            "clues_total": int(len(getattr(baseline, "clues", []) or [])),
+                        },
+                        "hardcases": hardcases_compact,
+                    }
+                )
+
+            run = KGSearchDiagnosticsRun(
+                id=uuid4(),
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=payload.dataset_id,
+                status="completed",
+                params=params,
+                summary=summary,
+                items=items_compact,
+                error_message=None,
+            )
+            db.add(run)
+            db.flush()
+            db.commit()
+
+            try:
+                resp.run_id = run.id
+            except Exception:
+                # Best-effort: if response is immutable for any reason, skip run_id propagation.
+                pass
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+    return resp
+
+
+@router.get("/kg/search/diagnostics/runs", response_model=KGSearchDiagnosticsRunList)
+async def list_kg_search_diagnostics_runs(
+    dataset_id: UUID = Query(..., description="Dataset ID (required)"),
+    limit: int = Query(20, ge=1, le=200, description="Max runs to return (default: 20)"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "KG_ENABLED", False)):
+        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    query = db.query(KGSearchDiagnosticsRun).filter(
+        KGSearchDiagnosticsRun.tenant_id == tenant_id,
+        KGSearchDiagnosticsRun.dataset_id == dataset_id,
+    )
+    total = int(query.count())
+    items = query.order_by(KGSearchDiagnosticsRun.created_at.desc()).limit(int(limit)).all()
+    return KGSearchDiagnosticsRunList(total=total, items=items)
+
+
+@router.get("/kg/search/diagnostics/runs/{run_id}", response_model=KGSearchDiagnosticsRunDetail)
+async def get_kg_search_diagnostics_run(
+    run_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "KG_ENABLED", False)):
+        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+
+    run = (
+        db.query(KGSearchDiagnosticsRun)
+        .filter(KGSearchDiagnosticsRun.id == run_id, KGSearchDiagnosticsRun.tenant_id == tenant_id)
+        .first()
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="Diagnostics run not found")
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    items = list(run.items or []) if isinstance(getattr(run, "items", None), list) else []
+    return KGSearchDiagnosticsRunDetail(run=run, items=items)
 
 
 @router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse)
