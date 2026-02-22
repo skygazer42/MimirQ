@@ -333,16 +333,29 @@ class EventRepository:
         ids = _as_uuid_list(entity_ids)
         if not ids:
             return []
+        # Prefer stronger edges when ranking events by related entities.
+        #
+        # Notes:
+        # - `kg_event_entities.weight` is used for skill links and can be extended later for
+        #   entity confidence. Using it here improves recall ordering without changing semantics
+        #   when all weights are 1.0.
+        weight_sum = func.sum(KgEventEntity.weight).label("weight_sum")
+        ent_count = func.count(KgEventEntity.entity_id).label("cnt")
         stmt = (
             select(
                 KgEventEntity.event_id,
-                func.count(KgEventEntity.entity_id).label("cnt"),
+                weight_sum,
+                ent_count,
             )
             .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
             .where(KgEventEntity.entity_id.in_(ids))
             .where(KgSourceEvent.tenant_id == tenant_id)
             .group_by(KgEventEntity.event_id)
-            .order_by(func.count(KgEventEntity.entity_id).desc(), KgEventEntity.event_id.asc())
+            .order_by(
+                weight_sum.desc(),
+                ent_count.desc(),
+                KgEventEntity.event_id.asc(),
+            )
             .limit(limit)
         )
         if document_ids:
