@@ -7,7 +7,18 @@ import unicodedata
 
 class EntityValueParser:
     _ws_re = re.compile(r"\s+")
-    _edge_punct_re = re.compile(r"^[\"'`“”‘’]+|[\"'`“”‘’]+$")
+    _edge_quote_re = re.compile(r"^[\"'`“”‘’]+|[\"'`“”‘’]+$")
+    # Conservative edge punctuation stripping to reduce fragmentation:
+    # - We only strip at the edges (not internal), so names like "node.js" are preserved.
+    # - We intentionally do NOT strip '#'/'+' to avoid breaking names like "C#" / "C++".
+    _edge_strip_chars = " \t\r\n,.;:!?，。；：！？、"
+
+    _wrapping_pairs: tuple[tuple[str, str], ...] = (
+        ("(", ")"),
+        ("（", "）"),
+        ("[", "]"),
+        ("【", "】"),
+    )
 
     # Common type aliases (EN + ZH) -> canonical labels.
     _TYPE_MAP: dict[str, str] = {
@@ -65,13 +76,43 @@ class EntityValueParser:
         "standard": "Standard",
         "规范": "Standard",
         "标准": "Standard",
+        # skill / SOP-like
+        "skill": "Skill",
+        "skills": "Skill",
+        "技能": "Skill",
+        "sop": "Skill",
+        # SkillNet-ish taxonomy node types (best-effort).
+        "skilltag": "SkillTag",
+        "skill_tag": "SkillTag",
+        "skill tag": "SkillTag",
+        "tag": "SkillTag",
+        "标签": "SkillTag",
+        "skillcategory": "SkillCategory",
+        "skill_category": "SkillCategory",
+        "skill category": "SkillCategory",
+        "category": "SkillCategory",
+        "类别": "SkillCategory",
     }
 
     def normalize_name(self, name: str) -> str:
         text = unicodedata.normalize("NFKC", str(name or ""))
         text = self._ws_re.sub(" ", text).strip()
         # Trim paired quotes at edges (keep internal punctuation like C++, node.js, e-mail).
-        text = self._edge_punct_re.sub("", text).strip()
+        text = self._edge_quote_re.sub("", text).strip()
+
+        # Unwrap common paired wrappers (best-effort), e.g. "(Alice)" / "（Alice）".
+        # This reduces fragmentation caused by LLM formatting artifacts.
+        for _ in range(3):
+            changed = False
+            for left, right in self._wrapping_pairs:
+                if text.startswith(left) and text.endswith(right) and len(text) > (len(left) + len(right)):
+                    text = text[len(left) : -len(right)].strip()
+                    changed = True
+            if not changed:
+                break
+
+        # Strip common punctuation at edges (keeps internal punctuation).
+        text = text.strip(self._edge_strip_chars)
         return text.casefold()
 
     def normalize_type(self, type_name: str) -> str:

@@ -544,6 +544,10 @@ class Settings(BaseSettings):
     RAG_KG_QUERY_EXPANSION_MAX_ENTITIES: int = 5
     RAG_KG_QUERY_EXPANSION_MAX_QUERIES: int = 5
     RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT: float = 0.15
+    # Comma-separated entity types to exclude from KG query expansion (e.g. SkillNet taxonomy nodes).
+    #
+    # Note: query expansion is disabled by default, so this only matters when RAG_KG_QUERY_EXPANSION_ENABLED=true.
+    RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES: str = "Skill,SkillTag,SkillCategory"
     # Optional: route retrieval defaults by question type when `retrieval_mode=auto`.
     RAG_RECALL_BUCKETS_ENABLED: bool = False
     # Optional: include adjacent chunks around top hits to improve continuity (0 disables).

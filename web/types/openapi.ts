@@ -3184,6 +3184,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluations/kg/search/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Kg Search Diagnostics
+         * @description Run a Dynamic OneEval-style diagnostics pass for KG search.
+         *
+         *     Seed source: RAGAS regression cases (human-verified evidence pointers).
+         */
+        post: operations["run_kg_search_diagnostics_api_v1_evaluations_kg_search_diagnostics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/kg/search/diagnostics/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Kg Search Diagnostics Runs */
+        get: operations["list_kg_search_diagnostics_runs_api_v1_evaluations_kg_search_diagnostics_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/kg/search/diagnostics/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Kg Search Diagnostics Run */
+        get: operations["get_kg_search_diagnostics_run_api_v1_evaluations_kg_search_diagnostics_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluations/ragas/test-gen/from-conversations": {
         parameters: {
             query?: never;
@@ -12056,6 +12112,18 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** KGEvalAttribution */
+        KGEvalAttribution: {
+            /**
+             * Primary Cause
+             * @default other
+             */
+            primary_cause: string;
+            /** Signals */
+            signals?: {
+                [key: string]: unknown;
+            };
+        };
         /** KGEventDetailResponse */
         KGEventDetailResponse: {
             event: components["schemas"]["KGEventItem"];
@@ -12195,6 +12263,271 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** KGHardcaseOut */
+        KGHardcaseOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "knowledge_pressure" | "reasoning_pressure";
+            /** Question */
+            question: string;
+            /** Rationale */
+            rationale?: string | null;
+            run?: components["schemas"]["KGSearchRunResult"] | null;
+        };
+        /** KGSearchDiagnosticsItem */
+        KGSearchDiagnosticsItem: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Question */
+            question: string;
+            /** Tags */
+            tags?: string[];
+            /** Evidence Chunk Ids */
+            evidence_chunk_ids?: string[];
+            /** Ground Truth Event Ids */
+            ground_truth_event_ids?: string[];
+            baseline: components["schemas"]["KGSearchRunResult"];
+            /** Hardcases */
+            hardcases?: components["schemas"]["KGHardcaseOut"][];
+            attribution?: components["schemas"]["KGEvalAttribution"];
+        };
+        /** KGSearchDiagnosticsRequest */
+        KGSearchDiagnosticsRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Case Ids
+             * @description Optional explicit case id list (else select by dataset)
+             */
+            case_ids?: string[];
+            /**
+             * Max Cases
+             * @description Max cases to evaluate (default: 50)
+             * @default 50
+             */
+            max_cases: number;
+            /**
+             * K
+             * @description Hit@K and evaluation cutoff (default: 10)
+             * @default 10
+             */
+            k: number;
+            /**
+             * Auto Extract Kg
+             * @description If true, ensure evidence documents have KG extracted
+             * @default true
+             */
+            auto_extract_kg: boolean;
+            /**
+             * Extract Skills
+             * @description Override KG skill extraction toggle
+             */
+            extract_skills?: boolean | null;
+            /**
+             * Extract Relations
+             * @description Override KG relation extraction toggle
+             */
+            extract_relations?: boolean | null;
+            /**
+             * Hardcase Mode
+             * @description Hardcase generation strategy
+             * @default llm
+             * @enum {string}
+             */
+            hardcase_mode: "off" | "deterministic" | "llm";
+            /**
+             * Hardcases Per Failed Case
+             * @default 4
+             */
+            hardcases_per_failed_case: number;
+            /**
+             * Max Failed Cases For Hardcase
+             * @default 20
+             */
+            max_failed_cases_for_hardcase: number;
+            /**
+             * Llm Temperature
+             * @description Hardcase LLM temperature
+             * @default 0.2
+             */
+            llm_temperature: number;
+            /**
+             * Persist Run
+             * @description Persist a compact run snapshot for diffing over time
+             * @default false
+             */
+            persist_run: boolean;
+        };
+        /** KGSearchDiagnosticsResponse */
+        KGSearchDiagnosticsResponse: {
+            /**
+             * Run Id
+             * @description Run ID when persist_run=true (else null)
+             */
+            run_id?: string | null;
+            summary: components["schemas"]["KGSearchDiagnosticsSummary"];
+            /** Items */
+            items?: components["schemas"]["KGSearchDiagnosticsItem"][];
+        };
+        /** KGSearchDiagnosticsRunDetail */
+        KGSearchDiagnosticsRunDetail: {
+            run: components["schemas"]["KGSearchDiagnosticsRunOut"];
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** KGSearchDiagnosticsRunList */
+        KGSearchDiagnosticsRunList: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["KGSearchDiagnosticsRunOut"][];
+        };
+        /** KGSearchDiagnosticsRunOut */
+        KGSearchDiagnosticsRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Account Id */
+            account_id?: string | null;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Status */
+            status: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** KGSearchDiagnosticsSummary */
+        KGSearchDiagnosticsSummary: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Cases Total
+             * @default 0
+             */
+            cases_total: number;
+            /**
+             * Cases Evaluated
+             * @default 0
+             */
+            cases_evaluated: number;
+            /**
+             * Hardcases Generated
+             * @default 0
+             */
+            hardcases_generated: number;
+            /**
+             * Baseline Hit Rate
+             * @default 0
+             */
+            baseline_hit_rate: number;
+            /**
+             * Baseline Mrr
+             * @default 0
+             */
+            baseline_mrr: number;
+            /**
+             * Baseline Recall
+             * @default 0
+             */
+            baseline_recall: number;
+            /** Hardcase Hit Rate */
+            hardcase_hit_rate?: number | null;
+            /** Hardcase Mrr */
+            hardcase_mrr?: number | null;
+            /** Hardcase Recall */
+            hardcase_recall?: number | null;
+            /** Failure Breakdown */
+            failure_breakdown?: {
+                [key: string]: number;
+            };
+            /** Preflight */
+            preflight?: {
+                [key: string]: unknown;
+            };
+        };
+        /** KGSearchEntityOut */
+        KGSearchEntityOut: {
+            /** Entity Id */
+            entity_id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Type
+             * @default unknown
+             */
+            type: string;
+            /**
+             * Weight
+             * @default 0
+             */
+            weight: number;
+        };
+        /** KGSearchEventOut */
+        KGSearchEventOut: {
+            /** Id */
+            id: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+        };
         /**
          * KGSearchRequest
          * @description KG search request.
@@ -12223,6 +12556,59 @@ export interface components {
             };
             /** Query */
             query: string;
+        };
+        /** KGSearchRunMetrics */
+        KGSearchRunMetrics: {
+            /**
+             * Hit At K
+             * @default false
+             */
+            hit_at_k: boolean;
+            /**
+             * Mrr
+             * @default 0
+             */
+            mrr: number;
+            /**
+             * Recall
+             * @default 0
+             */
+            recall: number;
+            /**
+             * Matched Evidence Chunks
+             * @default 0
+             */
+            matched_evidence_chunks: number;
+            /**
+             * Total Evidence Chunks
+             * @default 0
+             */
+            total_evidence_chunks: number;
+            /**
+             * K
+             * @default 10
+             */
+            k: number;
+        };
+        /** KGSearchRunResult */
+        KGSearchRunResult: {
+            /** Query */
+            query: string;
+            /** Events */
+            events?: components["schemas"]["KGSearchEventOut"][];
+            /** Entities */
+            entities?: components["schemas"]["KGSearchEntityOut"][];
+            /** Clues */
+            clues?: {
+                [key: string]: unknown;
+            }[];
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            metrics?: components["schemas"]["KGSearchRunMetrics"];
+            /** Error */
+            error?: string | null;
         };
         /** KGStatsResponse */
         KGStatsResponse: {
@@ -20004,6 +20390,8 @@ export interface operations {
                 max_links?: number;
                 /** @description Include entity-entity co-occurrence links */
                 include_entity_links?: boolean;
+                /** @description Include entity-entity relation links (triples) */
+                include_relation_links?: boolean;
                 min_shared_events?: number;
                 max_entity_links?: number;
             };
@@ -20048,6 +20436,8 @@ export interface operations {
                 max_links?: number;
                 /** @description Include entity-entity co-occurrence links */
                 include_entity_links?: boolean;
+                /** @description Include entity-entity relation links (triples) */
+                include_relation_links?: boolean;
                 min_shared_events?: number;
                 max_entity_links?: number;
             };
@@ -20165,6 +20555,8 @@ export interface operations {
                 max_links?: number;
                 /** @description Include entity-entity co-occurrence links */
                 include_entity_links?: boolean;
+                /** @description Include entity-entity relation links (triples) */
+                include_relation_links?: boolean;
                 min_shared_events?: number;
                 max_entity_links?: number;
                 download?: boolean;
@@ -20320,6 +20712,10 @@ export interface operations {
                 replace_existing?: boolean | null;
                 /** @description Prune entities with no remaining event links */
                 prune_orphan_entities?: boolean | null;
+                /** @description Extract entity relations (triples) (override settings) */
+                extract_relations?: boolean | null;
+                /** @description Extract Skill/SOP entities (override settings) */
+                extract_skills?: boolean | null;
                 prompt_template_id?: string | null;
                 prompt_template_key?: string | null;
                 prompt_ab_experiment_key?: string | null;
@@ -21751,6 +22147,116 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestGenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_kg_search_diagnostics_api_v1_evaluations_kg_search_diagnostics_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGSearchDiagnosticsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGSearchDiagnosticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_kg_search_diagnostics_runs_api_v1_evaluations_kg_search_diagnostics_runs_get: {
+        parameters: {
+            query: {
+                /** @description Dataset ID (required) */
+                dataset_id: string;
+                /** @description Max runs to return (default: 20) */
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGSearchDiagnosticsRunList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_kg_search_diagnostics_run_api_v1_evaluations_kg_search_diagnostics_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGSearchDiagnosticsRunDetail"];
                 };
             };
             /** @description Validation Error */
