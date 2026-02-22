@@ -32,6 +32,10 @@ class EvidenceSpan:
     quote: str
     start_char: int
     end_char: int
+    # Evidence origin:
+    # - "quote": span was matched from an explicit evidence_quote string.
+    # - "mention": span was derived by locating a mention surface and expanding to a sentence-ish window.
+    source: str
 
 
 def find_evidence_span(text: str, quote: str) -> Optional[tuple[int, int]]:
@@ -147,7 +151,7 @@ def derive_evidence_from_mention(
         quote = quote[: int(max_quote_chars)]
         right2 = left2 + len(quote)
 
-    return EvidenceSpan(quote=quote, start_char=int(left2), end_char=int(right2))
+    return EvidenceSpan(quote=quote, start_char=int(left2), end_char=int(right2), source="mention")
 
 
 def coerce_evidence(
@@ -179,7 +183,7 @@ def coerce_evidence(
                 span2 = find_evidence_span(hay, q)
                 if span2 is not None:
                     s, e = span2
-            return EvidenceSpan(quote=q, start_char=int(s), end_char=int(e))
+            return EvidenceSpan(quote=q, start_char=int(s), end_char=int(e), source="quote")
 
     mention = str(fallback_mention or "").strip()
     if mention:
@@ -194,4 +198,3 @@ __all__ = [
     "derive_evidence_from_mention",
     "find_evidence_span",
 ]
-

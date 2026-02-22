@@ -222,8 +222,14 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
     assert "belong_to" in predicates
     assert "compose_with" in predicates
     for rel in rels:
+        pred = str(getattr(rel, "predicate", "") or "")
         refs = getattr(rel, "references", None)
         assert isinstance(refs, dict)
         assert refs.get("evidence_quote")
+        assert refs.get("evidence_source") in {"quote", "mention"}
+        if pred == "belong_to":
+            assert refs.get("evidence_source") == "mention"
+        if pred == "compose_with":
+            assert refs.get("evidence_source") == "quote"
         assert isinstance(refs.get("evidence_start_char"), int)
         assert isinstance(refs.get("evidence_end_char"), int)

@@ -158,5 +158,6 @@ async def test_kg_extract_skills_are_persisted_and_linked_to_new_events(monkeypa
     assert links[0].role == "skill"
     assert isinstance(links[0].extra_data, dict)
     assert links[0].extra_data.get("evidence_quote") == "setup a venv"
+    assert links[0].extra_data.get("evidence_source") == "quote"
     assert isinstance(links[0].extra_data.get("evidence_start_char"), int)
     assert isinstance(links[0].extra_data.get("evidence_end_char"), int)

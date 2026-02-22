@@ -145,11 +145,27 @@ class ExpandSearcher:
                                 pred_mult = relation_multiplier(predicate, from_is_subject=bool(from_id == subj))
                                 if pred_mult <= 0:
                                     continue
+                                evidence_mult = 1.0
+                                try:
+                                    refs = getattr(rel, "references", None)
+                                    evidence_source = (
+                                        str(refs.get("evidence_source") or "").strip().casefold()
+                                        if isinstance(refs, dict)
+                                        else ""
+                                    )
+                                    if evidence_source == "mention":
+                                        mention_mult = float(
+                                            getattr(settings, "KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER", 0.7) or 0.7
+                                        )
+                                        evidence_mult = max(0.0, min(1.0, float(mention_mult)))
+                                except Exception:
+                                    evidence_mult = 1.0
                                 w = (
                                     float(entity_weights.get(from_id, 0.0) or 0.0)
                                     * conf
                                     * float(weight_factor)
                                     * pred_mult
+                                    * float(evidence_mult)
                                 )
                                 if w <= 0:
                                     continue
@@ -170,6 +186,7 @@ class ExpandSearcher:
                                         "method": "relation_expansion",
                                         "predicate": predicate,
                                         "predicate_multiplier": pred_mult,
+                                        "evidence_multiplier": float(evidence_mult),
                                         "step": f"hop-{hop+1}",
                                     },
                                 )
