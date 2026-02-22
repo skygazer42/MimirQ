@@ -139,3 +139,29 @@ class RagasRegressionItem(Base):
     meta = Column(JSONB, default=dict)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class KGSearchDiagnosticsRun(Base):
+    """
+    KG search diagnostics run record (compact, dataset-scoped).
+
+    This persists a lightweight snapshot of /evaluations/kg/search/diagnostics:
+    - request params + relevant settings snapshot
+    - aggregate summary metrics
+    - compact per-case attribution + metrics (no full event/entity payloads)
+    """
+
+    __tablename__ = "kg_search_diagnostics_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    account_id = Column(String(255), nullable=True, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+
+    status = Column(String(20), nullable=False, default="completed")  # completed|failed
+    params = Column(JSONB, default=dict)
+    summary = Column(JSONB, default=dict)
+    items = Column(JSONB, default=list)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

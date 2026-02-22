@@ -72,6 +72,11 @@ MimirQ 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用�
 - `k`：Hit@K / MRR@K / Recall@K 的 cutoff（默认 10）
 - `auto_extract_kg=true`：评测前自动补齐 evidence 文档的 KG 抽取（默认开启）
 - `hardcase_mode=llm`：对 baseline 失败 case 自动生成 hardcases（knowledge pressure + reasoning pressure）
+- `persist_run=true`：持久化本次诊断的紧凑快照（params + summary + per-case attribution），用于后续对比/回归
+
+### Run 查询接口（持久化后可用）
+- `GET /api/v1/evaluations/kg/search/diagnostics/runs?dataset_id=...`：列出最近的 diagnostics runs
+- `GET /api/v1/evaluations/kg/search/diagnostics/runs/{run_id}`：获取某次 run 的详情（含 compact items）
 
 ### 影响结果的开关（建议同时关注）
 - `KG_ENABLED=true`：KG 总开关

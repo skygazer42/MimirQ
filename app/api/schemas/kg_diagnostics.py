@@ -1,16 +1,22 @@
 """
 KG (Knowledge Graph) diagnostics evaluation schemas.
 
-This is intentionally DB-light (no new tables): the endpoint returns an on-demand
+This is intentionally DB-light by default: the endpoint returns an on-demand
 diagnostic report used to iteratively improve KG extraction/search quality for RAG.
+
+Optionally, callers can persist a compact run snapshot (summary + per-case attribution)
+to support metric diffs over time.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+from .base import OrmModel
 
 HardcaseMode = Literal["off", "deterministic", "llm"]
 HardcaseKind = Literal["knowledge_pressure", "reasoning_pressure"]
@@ -32,6 +38,9 @@ class KGSearchDiagnosticsRequest(BaseModel):
     max_failed_cases_for_hardcase: int = Field(default=20, ge=0, le=200)
 
     llm_temperature: float = Field(default=0.2, ge=0.0, le=2.0, description="Hardcase LLM temperature")
+
+    # Optional persistence for diffing/iteration.
+    persist_run: bool = Field(default=False, description="Persist a compact run snapshot for diffing over time")
 
 
 class KGSearchEventOut(BaseModel):
@@ -114,6 +123,27 @@ class KGSearchDiagnosticsSummary(BaseModel):
 
 
 class KGSearchDiagnosticsResponse(BaseModel):
+    run_id: Optional[UUID] = Field(default=None, description="Run ID when persist_run=true (else null)")
     summary: KGSearchDiagnosticsSummary
     items: List[KGSearchDiagnosticsItem] = Field(default_factory=list)
 
+
+class KGSearchDiagnosticsRunOut(OrmModel):
+    id: UUID
+    tenant_id: UUID
+    account_id: Optional[str] = None
+    dataset_id: UUID
+    status: str
+    params: Dict[str, Any] = Field(default_factory=dict)
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class KGSearchDiagnosticsRunDetail(BaseModel):
+    run: KGSearchDiagnosticsRunOut
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class KGSearchDiagnosticsRunList(BaseModel):
+    total: int
+    items: List[KGSearchDiagnosticsRunOut] = Field(default_factory=list)
