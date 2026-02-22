@@ -94,6 +94,7 @@ class SkillProcessor:
                             "name": {"type": "string"},
                             "category": {"type": "string"},
                             "summary": {"type": "string"},
+                            "evidence_quote": {"type": "string"},
                             "steps": {"type": "array", "items": {"type": "string"}},
                             "inputs": {"type": "array", "items": {"type": "string"}},
                             "outputs": {"type": "array", "items": {"type": "string"}},
@@ -113,6 +114,10 @@ class SkillProcessor:
             f"Constraints:\n- Extract at most {max_items} skills.\n"
             "- Only include skills that are directly supported by the text.\n"
             "- Prefer concrete, executable steps.\n\n"
+            "Evidence:\n"
+            "- For each skill, include evidence_quote: an exact substring copied verbatim from the Text section.\n"
+            "- evidence_quote MUST be copied verbatim (no paraphrase).\n"
+            "- Keep evidence_quote short (prefer a single sentence/phrase, <= 240 chars).\n\n"
             "Optional fields:\n"
             "- category: a coarse category label (short phrase), e.g. Development / Data / AIGC / Science.\n\n"
             "Text:\n"
@@ -136,6 +141,9 @@ class SkillProcessor:
 
             category = str(raw.get("category") or "").strip() or None
             summary = str(raw.get("summary") or "").strip() or None
+            evidence_quote = str(raw.get("evidence_quote") or "").strip() or None
+            if evidence_quote and len(evidence_quote) > 240:
+                evidence_quote = evidence_quote[:240]
             steps = _coerce_str_list(raw.get("steps"), max_items=30)
             inputs = _coerce_str_list(raw.get("inputs"), max_items=30)
             outputs = _coerce_str_list(raw.get("outputs"), max_items=30)
@@ -147,6 +155,7 @@ class SkillProcessor:
                     "name": name,
                     "category": category,
                     "summary": summary,
+                    "evidence_quote": evidence_quote,
                     "steps": steps,
                     "inputs": inputs,
                     "outputs": outputs,

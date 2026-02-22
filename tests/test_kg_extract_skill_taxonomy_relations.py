@@ -65,6 +65,7 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
     monkeypatch.setattr(config_mod.settings, "KG_RELATION_ALIAS_HEURISTIC_ENABLED", False, raising=False)
     monkeypatch.setattr(config_mod.settings, "KG_SKILL_ENABLED", True, raising=False)
     monkeypatch.setattr(config_mod.settings, "KG_SKILL_MAX_SKILLS_PER_CHUNK", 3, raising=False)
+    monkeypatch.setattr(config_mod.settings, "KG_SKILL_EVIDENCE_REQUIRED", True, raising=False)
 
     import app.rag.kg.extraction.extractor as extractor_mod
     from app.rag.kg.extraction.config import ExtractConfig
@@ -112,6 +113,7 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
                 "name": "Setup Python venv",
                 "category": "Development",
                 "summary": "Create and activate a virtual environment.",
+                "evidence_quote": "Setup Python venv: python -m venv .venv",
                 "steps": ["python -m venv .venv", "source .venv/bin/activate"],
                 "inputs": ["requirements.txt"],
                 "outputs": [".venv"],
@@ -123,6 +125,7 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
                 "name": "Use Docker Compose",
                 "category": "Development",
                 "summary": "Start services with compose.",
+                "evidence_quote": "Use Docker Compose: docker compose up -d",
                 "steps": ["docker compose up -d"],
                 "inputs": ["docker-compose.yml"],
                 "outputs": ["running containers"],
@@ -196,7 +199,16 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
     tenant_id = UUID(int=1)
     doc_id = UUID(int=2)
     chunk_id = UUID(int=3)
-    chunk = _Chunk(tenant_id=tenant_id, document_id=doc_id, chunk_id=chunk_id, content="How to setup dev env...")
+    chunk = _Chunk(
+        tenant_id=tenant_id,
+        document_id=doc_id,
+        chunk_id=chunk_id,
+        content=(
+            "Setup Python venv: python -m venv .venv. "
+            "Use Docker Compose: docker compose up -d. "
+            "Development python docker"
+        ),
+    )
 
     cfg = ExtractConfig(chunk_ids=[chunk_id], tenant_id=tenant_id, replace_existing=True, prune_orphan_entities=False)
     extractor = extractor_mod.EventExtractor()
@@ -209,3 +221,9 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
     predicates = {str(getattr(r, "predicate", "") or "") for r in rels}
     assert "belong_to" in predicates
     assert "compose_with" in predicates
+    for rel in rels:
+        refs = getattr(rel, "references", None)
+        assert isinstance(refs, dict)
+        assert refs.get("evidence_quote")
+        assert isinstance(refs.get("evidence_start_char"), int)
+        assert isinstance(refs.get("evidence_end_char"), int)

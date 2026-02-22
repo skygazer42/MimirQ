@@ -76,3 +76,25 @@ async def test_skill_processor_passes_through_category() -> None:
     out = await proc.extract_skills(text="...", max_skills=3)
     assert len(out) == 1
     assert out[0].get("category") == "Development"
+
+
+@pytest.mark.asyncio
+async def test_skill_processor_passes_through_evidence_quote() -> None:
+    from app.rag.kg.extraction.skill_processor import SkillProcessor
+
+    proc = SkillProcessor(
+        _FakeLLM(
+            {
+                "skills": [
+                    {
+                        "name": "Setup Python venv",
+                        "evidence_quote": "python -m venv .venv",
+                    }
+                ]
+            }
+        )
+    )
+
+    out = await proc.extract_skills(text="...", max_skills=3)
+    assert len(out) == 1
+    assert out[0].get("evidence_quote") == "python -m venv .venv"
