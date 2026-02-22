@@ -1788,15 +1788,18 @@ export const ingestionRunApi = {
 
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
-    return openapiRequest({ path: '/api/v1/rag/retrieve-preview', method: 'post', body: params })
+    const { data } = await apiClient.post('/rag/retrieve-preview', params)
+    return data
   },
 
   async retrieveEvidence(params: EvidenceRetrieveRequest): Promise<EvidenceRetrieveResponse> {
-    return openapiRequest({ path: '/api/v1/rag/retrieve', method: 'post', body: params })
+    const { data } = await apiClient.post('/rag/retrieve', params)
+    return data
   },
 
   async promptPreview(params: PromptPreviewRequest): Promise<PromptPreviewResponse> {
-    return openapiRequest({ path: '/api/v1/rag/prompt-preview', method: 'post', body: params })
+    const { data } = await apiClient.post('/rag/prompt-preview', params)
+    return data
   },
 }
 
@@ -2728,6 +2731,7 @@ export const kgApi = {
     max_entities?: number
     max_links?: number
     include_entity_links?: boolean
+    include_relation_links?: boolean
     min_shared_events?: number
     max_entity_links?: number
   }): Promise<KGGraphResponse> {
@@ -2742,6 +2746,7 @@ export const kgApi = {
     max_entities?: number
     max_links?: number
     include_entity_links?: boolean
+    include_relation_links?: boolean
     min_shared_events?: number
     max_entity_links?: number
   }): Promise<KGGraphResponse> {
@@ -2755,6 +2760,7 @@ export const kgApi = {
     max_entities?: number
     max_links?: number
     include_entity_links?: boolean
+    include_relation_links?: boolean
     min_shared_events?: number
     max_entity_links?: number
   }): Promise<string> {
@@ -3104,6 +3110,52 @@ export interface RagasRunDetail {
   items: RagasItem[]
 }
 
+// ==================== KG Search Diagnostics API ====================
+
+export type KGHardcaseMode = 'off' | 'deterministic' | 'llm'
+
+export interface KGSearchDiagnosticsRequest {
+  dataset_id: string
+  case_ids?: string[]
+  max_cases?: number
+  k?: number
+  auto_extract_kg?: boolean
+  extract_skills?: boolean | null
+  extract_relations?: boolean | null
+  hardcase_mode?: KGHardcaseMode
+  hardcases_per_failed_case?: number
+  max_failed_cases_for_hardcase?: number
+  llm_temperature?: number
+  persist_run?: boolean
+}
+
+export interface KGSearchDiagnosticsResponse {
+  run_id?: string | null
+  summary: Record<string, any>
+  items: any[]
+}
+
+export interface KGSearchDiagnosticsRunOut {
+  id: string
+  tenant_id: string
+  account_id?: string | null
+  dataset_id: string
+  status: string
+  params: Record<string, any>
+  summary: Record<string, any>
+  created_at: string
+}
+
+export interface KGSearchDiagnosticsRunList {
+  total: number
+  items: KGSearchDiagnosticsRunOut[]
+}
+
+export interface KGSearchDiagnosticsRunDetail {
+  run: KGSearchDiagnosticsRunOut
+  items: any[]
+}
+
 export const evaluationApi = {
   async createRagasRun(params: {
     conversation_id: string
@@ -3223,6 +3275,23 @@ export const evaluationApi = {
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff/export-html`, { params, responseType: 'blob' })
     return data as Blob
+  },
+
+  // ==================== KG Search Diagnostics ====================
+
+  async runKgSearchDiagnostics(payload: KGSearchDiagnosticsRequest): Promise<KGSearchDiagnosticsResponse> {
+    const { data } = await apiClient.post('/evaluations/kg/search/diagnostics', payload)
+    return data
+  },
+
+  async listKgSearchDiagnosticsRuns(params: { dataset_id: string; limit?: number }): Promise<KGSearchDiagnosticsRunList> {
+    const { data } = await apiClient.get('/evaluations/kg/search/diagnostics/runs', { params })
+    return data
+  },
+
+  async getKgSearchDiagnosticsRun(runId: string): Promise<KGSearchDiagnosticsRunDetail> {
+    const { data } = await apiClient.get(`/evaluations/kg/search/diagnostics/runs/${runId}`)
+    return data
   },
 }
 
