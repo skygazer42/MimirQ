@@ -58,4 +58,6 @@ async def test_kg_search_diagnostics_persist_run_sets_run_id(monkeypatch: pytest
 
     assert out.run_id is not None
     assert db.commits == 1
-    assert any(isinstance(obj, KGSearchDiagnosticsRun) for obj in db.added)
+    run = next(obj for obj in db.added if isinstance(obj, KGSearchDiagnosticsRun))
+    assert run.params.get("dataset_id") == str(payload.dataset_id)
+    assert run.summary.get("dataset_id") == str(payload.dataset_id)

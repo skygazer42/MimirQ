@@ -1764,7 +1764,6 @@ class EventExtractor:
                     skill_entity_inputs: list[dict] = []
                     skills_by_chunk: dict[object, list[dict]] = {}
                     skill_embed_texts: list[str] = []
-                    skill_embed_key_by_input_idx: list[str] = []
 
                     for chunk_id, skills, ok in skill_results:
                         if not ok:
@@ -1849,7 +1848,6 @@ class EventExtractor:
                                 text = str(item.get("_embed_text") or "").strip()
                                 if text:
                                     skill_embed_texts.append(text)
-                                    skill_embed_key_by_input_idx.append(text)
 
                     # Embed skills (best-effort).
                     skill_vectors_by_text: dict[str, list[float]] = {}
@@ -2100,7 +2098,6 @@ class EventExtractor:
                                         rel_key = (skill_id, "belong_to", tag_id)
                                         if rel_key in seen_skill_rel_keys:
                                             continue
-                                        seen_skill_rel_keys.add(rel_key)
                                         tag_evidence = coerce_evidence(
                                             text=chunk_text,
                                             evidence_quote=None,
@@ -2110,6 +2107,7 @@ class EventExtractor:
                                         if tag_evidence is None and skill_evidence_required:
                                             skill_evidence_stats["taxonomy_edges_dropped_no_evidence"] += 1
                                             continue
+                                        seen_skill_rel_keys.add(rel_key)
                                         edge_refs = dict(refs_base)
                                         if tag_evidence is not None:
                                             edge_refs["evidence_quote"] = tag_evidence.quote
@@ -2143,43 +2141,44 @@ class EventExtractor:
                                         cat_id = category_id_by_norm.get(c_norm)
                                         if cat_id:
                                             rel_key = (skill_id, "belong_to", cat_id)
-                                            if rel_key not in seen_skill_rel_keys:
-                                                seen_skill_rel_keys.add(rel_key)
-                                                cat_evidence = coerce_evidence(
-                                                    text=chunk_text,
-                                                    evidence_quote=None,
-                                                    fallback_mention=cat,
-                                                    max_quote_chars=240,
+                                            if rel_key in seen_skill_rel_keys:
+                                                continue
+                                            cat_evidence = coerce_evidence(
+                                                text=chunk_text,
+                                                evidence_quote=None,
+                                                fallback_mention=cat,
+                                                max_quote_chars=240,
+                                            )
+                                            if cat_evidence is None and skill_evidence_required:
+                                                skill_evidence_stats["taxonomy_edges_dropped_no_evidence"] += 1
+                                                continue
+                                            seen_skill_rel_keys.add(rel_key)
+                                            edge_refs = dict(refs_base)
+                                            if cat_evidence is not None:
+                                                edge_refs["evidence_quote"] = cat_evidence.quote
+                                                edge_refs["evidence_start_char"] = int(cat_evidence.start_char)
+                                                edge_refs["evidence_end_char"] = int(cat_evidence.end_char)
+                                            skill_rel_rows.append(
+                                                KgRelation(
+                                                    tenant_id=tenant_id,
+                                                    document_id=ch.document_id,
+                                                    chunk_id=ch.id,
+                                                    event_id=None,
+                                                    subject_entity_id=skill_id,
+                                                    predicate="belong_to",
+                                                    predicate_raw=None,
+                                                    object_entity_id=cat_id,
+                                                    confidence=conf,
+                                                    qualifiers={"method": "skill_taxonomy", "kind": "category"},
+                                                    references=edge_refs,
+                                                    extra_data={
+                                                        "kg_prompt_template_id": chosen_template_id,
+                                                        "kg_prompt_template_key": config.prompt_template_key,
+                                                        "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                                                    },
                                                 )
-                                                if cat_evidence is None and skill_evidence_required:
-                                                    skill_evidence_stats["taxonomy_edges_dropped_no_evidence"] += 1
-                                                    continue
-                                                edge_refs = dict(refs_base)
-                                                if cat_evidence is not None:
-                                                    edge_refs["evidence_quote"] = cat_evidence.quote
-                                                    edge_refs["evidence_start_char"] = int(cat_evidence.start_char)
-                                                    edge_refs["evidence_end_char"] = int(cat_evidence.end_char)
-                                                skill_rel_rows.append(
-                                                    KgRelation(
-                                                        tenant_id=tenant_id,
-                                                        document_id=ch.document_id,
-                                                        chunk_id=ch.id,
-                                                        event_id=None,
-                                                        subject_entity_id=skill_id,
-                                                        predicate="belong_to",
-                                                        predicate_raw=None,
-                                                        object_entity_id=cat_id,
-                                                        confidence=conf,
-                                                        qualifiers={"method": "skill_taxonomy", "kind": "category"},
-                                                        references=edge_refs,
-                                                        extra_data={
-                                                            "kg_prompt_template_id": chosen_template_id,
-                                                            "kg_prompt_template_key": config.prompt_template_key,
-                                                            "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
-                                                        },
-                                                    )
-                                                )
-                                                skill_evidence_stats["taxonomy_edges_kept"] += 1
+                                            )
+                                            skill_evidence_stats["taxonomy_edges_kept"] += 1
 
                                 # compose_with edges between skills co-extracted in the same chunk (bounded by max_skills_per_chunk)
                                 if len(skill_ids_in_chunk) >= 2:

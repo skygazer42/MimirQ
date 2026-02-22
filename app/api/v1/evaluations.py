@@ -5,6 +5,7 @@ Provides evaluation endpoints for the RAG system, including task creation,
 querying, and results.
 """
 
+import logging
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -70,6 +71,7 @@ from app.services.regression_run_scope import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _finalize_scope_document_ids(
@@ -981,7 +983,9 @@ async def run_kg_search_diagnostics(
     # Optional: persist a compact run snapshot for diffing over time.
     if bool(getattr(payload, "persist_run", False)):
         try:
-            params: dict[str, Any] = dict(payload.model_dump() if hasattr(payload, "model_dump") else {})
+            # JSONB persistence needs JSON-serializable primitives.
+            # Pydantic's default `model_dump()` returns UUID objects; use mode="json" to coerce to strings.
+            params: dict[str, Any] = dict(payload.model_dump(mode="json") if hasattr(payload, "model_dump") else {})
             params["settings_snapshot"] = {
                 "KG_ENABLED": bool(getattr(settings, "KG_ENABLED", False)),
                 "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
@@ -997,14 +1001,16 @@ async def run_kg_search_diagnostics(
             }
 
             summary_obj = getattr(resp, "summary", None)
-            summary = summary_obj.model_dump() if hasattr(summary_obj, "model_dump") else {}
+            summary = summary_obj.model_dump(mode="json") if hasattr(summary_obj, "model_dump") else {}
 
             # Compact per-case records to keep the persisted payload small.
             items_compact: list[dict[str, Any]] = []
             for item in list(getattr(resp, "items", []) or []):
                 baseline = getattr(item, "baseline", None)
                 baseline_metrics_obj = getattr(baseline, "metrics", None)
-                baseline_metrics = baseline_metrics_obj.model_dump() if hasattr(baseline_metrics_obj, "model_dump") else {}
+                baseline_metrics = (
+                    baseline_metrics_obj.model_dump(mode="json") if hasattr(baseline_metrics_obj, "model_dump") else {}
+                )
 
                 hardcases_compact: list[dict[str, Any]] = []
                 for hc in list(getattr(item, "hardcases", []) or []):
@@ -1013,13 +1019,13 @@ async def run_kg_search_diagnostics(
                     hardcases_compact.append(
                         {
                             "kind": str(getattr(hc, "kind", "") or ""),
-                            "metrics": (m_obj.model_dump() if hasattr(m_obj, "model_dump") else {}),
+                            "metrics": (m_obj.model_dump(mode="json") if hasattr(m_obj, "model_dump") else {}),
                             "error": (str(getattr(run, "error", "") or "") or None),
                         }
                     )
 
                 attr = getattr(item, "attribution", None)
-                attr_dict = attr.model_dump() if hasattr(attr, "model_dump") else {}
+                attr_dict = attr.model_dump(mode="json") if hasattr(attr, "model_dump") else {}
 
                 items_compact.append(
                     {
@@ -1059,7 +1065,8 @@ async def run_kg_search_diagnostics(
             except Exception:
                 # Best-effort: if response is immutable for any reason, skip run_id propagation.
                 pass
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to persist KG diagnostics run snapshot: %s", str(exc)[:200])
             try:
                 db.rollback()
             except Exception:
