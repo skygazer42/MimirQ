@@ -813,6 +813,7 @@ class EventExtractor:
                         ent["evidence_quote"] = evidence.quote
                         ent["evidence_start_char"] = int(evidence.start_char)
                         ent["evidence_end_char"] = int(evidence.end_char)
+                        ent["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
                     cleaned.append(ent)
                     entity_evidence_stats["kept"] += 1
                 ev["entities"] = cleaned
@@ -877,6 +878,7 @@ class EventExtractor:
                             vector=entity_vec,
                             role=ent.get("role"),
                             evidence_quote=(str(ent.get("evidence_quote") or "").strip() or None),
+                            evidence_source=(str(ent.get("evidence_source") or "").strip() or None),
                             evidence_start_char=(
                                 int(ent.get("evidence_start_char"))
                                 if ent.get("evidence_start_char") is not None
@@ -1539,6 +1541,7 @@ class EventExtractor:
                                     rel_refs["evidence_quote"] = evidence.quote
                                     rel_refs["evidence_start_char"] = int(evidence.start_char)
                                     rel_refs["evidence_end_char"] = int(evidence.end_char)
+                                    rel_refs["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
 
                                 relation_evidence_stats["kept"] += 1
                                 rel_rows.append(
@@ -1597,6 +1600,7 @@ class EventExtractor:
                                 alias_refs["evidence_quote"] = evidence.quote
                                 alias_refs["evidence_start_char"] = int(evidence.start_char)
                                 alias_refs["evidence_end_char"] = int(evidence.end_char)
+                                alias_refs["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
                             rel_rows.append(
                                 KgRelation(
                                     tenant_id=tenant_id,
@@ -1661,6 +1665,7 @@ class EventExtractor:
                                 llm_refs["evidence_quote"] = evidence.quote
                                 llm_refs["evidence_start_char"] = int(evidence.start_char)
                                 llm_refs["evidence_end_char"] = int(evidence.end_char)
+                                llm_refs["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
 
                             try:
                                 conf = float(item.get("confidence") or 0.9)
@@ -1836,6 +1841,9 @@ class EventExtractor:
                                     "_evidence_quote": (evidence.quote if evidence is not None else None),
                                     "_evidence_start_char": (int(evidence.start_char) if evidence is not None else None),
                                     "_evidence_end_char": (int(evidence.end_char) if evidence is not None else None),
+                                    "_evidence_source": (
+                                        str(getattr(evidence, "source", "") or "").strip() if evidence is not None else None
+                                    ),
                                 }
                             )
                             skill_evidence_stats["kept"] += 1
@@ -2113,6 +2121,9 @@ class EventExtractor:
                                             edge_refs["evidence_quote"] = tag_evidence.quote
                                             edge_refs["evidence_start_char"] = int(tag_evidence.start_char)
                                             edge_refs["evidence_end_char"] = int(tag_evidence.end_char)
+                                            edge_refs["evidence_source"] = (
+                                                str(getattr(tag_evidence, "source", "") or "").strip() or "mention"
+                                            )
                                         skill_rel_rows.append(
                                             KgRelation(
                                                 tenant_id=tenant_id,
@@ -2158,6 +2169,9 @@ class EventExtractor:
                                                 edge_refs["evidence_quote"] = cat_evidence.quote
                                                 edge_refs["evidence_start_char"] = int(cat_evidence.start_char)
                                                 edge_refs["evidence_end_char"] = int(cat_evidence.end_char)
+                                                edge_refs["evidence_source"] = (
+                                                    str(getattr(cat_evidence, "source", "") or "").strip() or "mention"
+                                                )
                                             skill_rel_rows.append(
                                                 KgRelation(
                                                     tenant_id=tenant_id,
@@ -2230,6 +2244,7 @@ class EventExtractor:
                                                 continue
                                             if pair_quote is not None:
                                                 pair_refs["evidence_quote"] = pair_quote
+                                                pair_refs["evidence_source"] = "quote"
                                                 if pair_start is not None:
                                                     pair_refs["evidence_start_char"] = int(pair_start)
                                                 if pair_end is not None:
@@ -2276,6 +2291,9 @@ class EventExtractor:
                                     evq = item.get("_evidence_quote")
                                     if isinstance(evq, str) and evq.strip():
                                         link_extra["evidence_quote"] = evq.strip()[:240]
+                                    evsrc = item.get("_evidence_source")
+                                    if isinstance(evsrc, str) and evsrc.strip():
+                                        link_extra["evidence_source"] = evsrc.strip()
                                     evs = item.get("_evidence_start_char")
                                     eve = item.get("_evidence_end_char")
                                     if isinstance(evs, int):

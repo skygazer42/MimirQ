@@ -460,6 +460,9 @@ class Indexer:
                 evidence_quote = (ent.evidence_quote or "").strip() if hasattr(ent, "evidence_quote") else ""
                 if evidence_quote:
                     link_extra["evidence_quote"] = evidence_quote[:240]
+                evidence_source = (ent.evidence_source or "").strip() if hasattr(ent, "evidence_source") else ""
+                if evidence_source:
+                    link_extra["evidence_source"] = evidence_source
                 if hasattr(ent, "evidence_start_char") and ent.evidence_start_char is not None:
                     try:
                         link_extra["evidence_start_char"] = int(ent.evidence_start_char)

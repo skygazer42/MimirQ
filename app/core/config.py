@@ -948,6 +948,10 @@ class Settings(BaseSettings):
     KG_SEARCH_RELATION_MAX_EDGES: int = 500
     KG_SEARCH_RELATION_MAX_NEIGHBORS: int = 20
     KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR: float = 0.7
+    # Evidence weighting: downweight relation edges whose evidence was derived from a surface mention
+    # rather than matched from an explicit evidence_quote substring.
+    # - 1.0 means no penalty, lower values reduce drift from low-signal edges (recommended <= 0.8).
+    KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER: float = 0.7
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True
