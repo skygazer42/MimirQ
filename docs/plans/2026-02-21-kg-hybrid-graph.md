@@ -282,6 +282,7 @@ git commit -m "feat(kg): add skill extraction processor"
 **Step 1: Add settings**
 - `KG_SKILL_ENABLED` (default false)
 - `KG_SKILL_MAX_SKILLS_PER_CHUNK`
+- `KG_SKILL_EVIDENCE_REQUIRED` (default true; only persist Skill nodes/edges with chunk-local evidence)
 
 **Step 2: Implement entity upsert for skills**
 - Add an Indexer helper that can upsert entities (without creating events) and index entity vectors.
@@ -361,4 +362,3 @@ Expected: PASS
 git add docs
 git commit -m "docs(kg): add hybrid kg extraction notes"
 ```
-

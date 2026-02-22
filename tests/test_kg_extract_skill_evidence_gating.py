@@ -45,7 +45,7 @@ class _Chunk:
 
 
 @pytest.mark.asyncio
-async def test_kg_extract_skills_are_persisted_and_linked_to_new_events(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_kg_extract_skills_without_evidence_are_dropped_when_required(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core import config as config_mod
 
     monkeypatch.setattr(config_mod.settings, "KG_EXTRACT_MIN_CHARS", 1, raising=False)
@@ -95,16 +95,12 @@ async def test_kg_extract_skills_are_persisted_and_linked_to_new_events(monkeypa
         await asyncio.sleep(0)
         assert text
         assert max_skills == 3
+        # No evidence_quote and name does not appear in the chunk => should be dropped when evidence is required.
         return [
             {
-                "name": "Setup Python venv",
-                "evidence_quote": "setup a venv",
-                "summary": "Create and activate a virtual environment.",
-                "steps": ["python -m venv .venv", "source .venv/bin/activate"],
-                "inputs": ["requirements.txt"],
-                "outputs": [".venv"],
-                "tools": ["python", "pip"],
-                "tags": ["python"],
+                "name": "Imaginary Skill",
+                "summary": "Not in the text.",
+                "steps": ["do something"],
                 "confidence": 0.9,
             }
         ]
@@ -122,10 +118,9 @@ async def test_kg_extract_skills_are_persisted_and_linked_to_new_events(monkeypa
             ev = SimpleNamespace(id=UUID(int=999), chunk_id=UUID(int=3))
             return SimpleNamespace(event_result=SimpleNamespace(events=[ev], entities=[]))
 
-        def upsert_entities(self, **kwargs):  # noqa: ANN003
+        def upsert_entities(self, **_kwargs):  # noqa: ANN003
             call_log.append("upsert_entities")
-            # Return a single Skill entity with stable id.
-            skill_ent = SimpleNamespace(id=UUID(int=77), type="Skill", normalized_name="setup python venv", name="Setup Python venv")
+            skill_ent = SimpleNamespace(id=UUID(int=77), type="Skill", normalized_name="imaginary skill", name="Imaginary Skill")
             return [skill_ent]
 
         def delete_event_indexes_for_chunks(self, **_kwargs):  # noqa: ANN003
@@ -137,26 +132,16 @@ async def test_kg_extract_skills_are_persisted_and_linked_to_new_events(monkeypa
     tenant_id = UUID(int=1)
     doc_id = UUID(int=2)
     chunk_id = UUID(int=3)
-    chunk = _Chunk(
-        tenant_id=tenant_id,
-        document_id=doc_id,
-        chunk_id=chunk_id,
-        content="How to setup a venv in Python: python -m venv .venv",
-    )
+    chunk = _Chunk(tenant_id=tenant_id, document_id=doc_id, chunk_id=chunk_id, content="Unrelated text.")
 
     cfg = ExtractConfig(chunk_ids=[chunk_id], tenant_id=tenant_id, replace_existing=True, prune_orphan_entities=False)
     extractor = extractor_mod.EventExtractor()
     out = await extractor.extract(cfg, chunks=[chunk])
 
     assert len(out) == 1
-    assert call_log[:2] == ["upsert_events", "upsert_entities"]
+    assert call_log[:1] == ["upsert_events"]
+    assert "upsert_entities" not in call_log
 
-    links = [obj for obj in session.added if isinstance(obj, KgEventEntity)]
-    assert len(links) == 1
-    assert links[0].event_id == UUID(int=999)
-    assert links[0].entity_id == UUID(int=77)
-    assert links[0].role == "skill"
-    assert isinstance(links[0].extra_data, dict)
-    assert links[0].extra_data.get("evidence_quote") == "setup a venv"
-    assert isinstance(links[0].extra_data.get("evidence_start_char"), int)
-    assert isinstance(links[0].extra_data.get("evidence_end_char"), int)
+    links = [obj for obj in session.added if isinstance(obj, KgEventEntity) and getattr(obj, "role", None) == "skill"]
+    assert links == []
+

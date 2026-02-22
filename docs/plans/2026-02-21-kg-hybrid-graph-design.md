@@ -160,6 +160,7 @@ And guardrails:
 
 - `KG_RELATION_MAX_RELATIONS_PER_CHUNK` (e.g. 20)
 - `KG_SKILL_MAX_SKILLS_PER_CHUNK` (e.g. 3)
+- `KG_SKILL_EVIDENCE_REQUIRED=true` (only persist Skill nodes/edges that can be grounded to chunk-local evidence)
 
 ## Testing Strategy (MVP)
 
@@ -176,4 +177,3 @@ And guardrails:
 - OneEval-style full benchmark suite.
 
 These are natural follow-ups once the storage, provenance, and extraction passes are stable.
-

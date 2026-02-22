@@ -882,6 +882,10 @@ class Settings(BaseSettings):
     KG_ENTITY_CANONICALIZE_PARENTHESES_ALIAS: bool = True
     KG_SKILL_ENABLED: bool = False
     KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
+    # Evidence-first skill extraction (optional; improves precision for Skill/SOP nodes + taxonomy edges).
+    # When enabled, the extractor will only persist Skill nodes/edges that can be grounded to a chunk-local
+    # evidence quote/span (verbatim substring).
+    KG_SKILL_EVIDENCE_REQUIRED: bool = True
     # KG extraction prompt selector (optional; tenant-scoped PromptTemplate).
     # - Prefer using `KG_EXTRACT_PROMPT_TEMPLATE_KEY` (latest active version).
     # - Or set `KG_EXTRACT_PROMPT_TEMPLATE_ID` to pin a specific template.

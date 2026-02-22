@@ -1018,6 +1018,13 @@ class EventExtractor:
                 "dropped_no_evidence": 0,
                 "dropped_missing_endpoints": 0,
             }
+            skill_evidence_stats: dict[str, int] = {
+                "total_raw": 0,
+                "kept": 0,
+                "dropped_no_evidence": 0,
+                "taxonomy_edges_kept": 0,
+                "taxonomy_edges_dropped_no_evidence": 0,
+            }
             if extract_relations_enabled and cleanup_chunk_ids:
                 try:
                     # 1) Build candidates per chunk based on extracted entities.
@@ -1712,6 +1719,7 @@ class EventExtractor:
                     )
                     if max_skills_per_chunk <= 0:
                         raise RuntimeError("KG_SKILL_MAX_SKILLS_PER_CHUNK must be > 0 when skills are enabled")
+                    skill_evidence_required = bool(getattr(settings, "KG_SKILL_EVIDENCE_REQUIRED", False))
 
                     chunk_by_id = {c.id: c for c in resolved_chunks if getattr(c, "id", None) is not None}
                     events_by_chunk: dict[object, list[object]] = {}
@@ -1780,6 +1788,18 @@ class EventExtractor:
                                 continue
                             seen_norm.add(norm)
 
+                            skill_evidence_stats["total_raw"] += 1
+                            evq = raw.get("evidence_quote")
+                            evidence = coerce_evidence(
+                                text=(ch.content or ""),
+                                evidence_quote=(str(evq).strip() if isinstance(evq, str) else None),
+                                fallback_mention=name,
+                                max_quote_chars=240,
+                            )
+                            if evidence is None and skill_evidence_required:
+                                skill_evidence_stats["dropped_no_evidence"] += 1
+                                continue
+
                             summary = str(raw.get("summary") or "").strip() or None
                             category = str(raw.get("category") or "").strip() or None
                             steps = raw.get("steps") if isinstance(raw.get("steps"), list) else []
@@ -1814,8 +1834,12 @@ class EventExtractor:
                                     },
                                     "_embed_text": embed_text,
                                     "_chunk_id": chunk_id,
+                                    "_evidence_quote": (evidence.quote if evidence is not None else None),
+                                    "_evidence_start_char": (int(evidence.start_char) if evidence is not None else None),
+                                    "_evidence_end_char": (int(evidence.end_char) if evidence is not None else None),
                                 }
                             )
+                            skill_evidence_stats["kept"] += 1
                             if len(kept) >= max_skills_per_chunk:
                                 break
 
@@ -2003,25 +2027,26 @@ class EventExtractor:
                             if ch is None:
                                 continue
 
-                            refs: Dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
+                            refs_base: Dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
                             if getattr(ch, "start_char", None) is not None:
-                                refs["start_char"] = int(ch.start_char)
+                                refs_base["start_char"] = int(ch.start_char)
                             if getattr(ch, "end_char", None) is not None:
-                                refs["end_char"] = int(ch.end_char)
+                                refs_base["end_char"] = int(ch.end_char)
                             meta = getattr(ch, "doc_metadata", None)
                             meta_dict = meta if isinstance(meta, dict) else {}
                             source_val = meta_dict.get("source")
                             if isinstance(source_val, str) and source_val.strip():
-                                refs["source"] = source_val.strip()
-                            refs["chunk_key"] = chunk_key_by_id.get(ch.id) or str(ch.chunk_index)
-                            refs["content_hash"] = chunk_hash_by_id.get(ch.id) or ""
-                            refs["content_len"] = int(chunk_len_by_id.get(ch.id, 0) or 0)
+                                refs_base["source"] = source_val.strip()
+                            refs_base["chunk_key"] = chunk_key_by_id.get(ch.id) or str(ch.chunk_index)
+                            refs_base["content_hash"] = chunk_hash_by_id.get(ch.id) or ""
+                            refs_base["content_len"] = int(chunk_len_by_id.get(ch.id, 0) or 0)
 
-                            link_extra = build_event_entity_provenance(
+                            link_extra_base = build_event_entity_provenance(
                                 document_id=ch.document_id,
                                 chunk_id=ch.id,
-                                references=refs,
+                                references=refs_base,
                             )
+                            chunk_text = str(getattr(ch, "content", "") or "")
 
                             # Skill taxonomy relations: Skill -> belong_to -> (SkillTag/SkillCategory)
                             # and Skill -> compose_with -> Skill (co-extracted within the same chunk).
@@ -2076,6 +2101,20 @@ class EventExtractor:
                                         if rel_key in seen_skill_rel_keys:
                                             continue
                                         seen_skill_rel_keys.add(rel_key)
+                                        tag_evidence = coerce_evidence(
+                                            text=chunk_text,
+                                            evidence_quote=None,
+                                            fallback_mention=surface,
+                                            max_quote_chars=240,
+                                        )
+                                        if tag_evidence is None and skill_evidence_required:
+                                            skill_evidence_stats["taxonomy_edges_dropped_no_evidence"] += 1
+                                            continue
+                                        edge_refs = dict(refs_base)
+                                        if tag_evidence is not None:
+                                            edge_refs["evidence_quote"] = tag_evidence.quote
+                                            edge_refs["evidence_start_char"] = int(tag_evidence.start_char)
+                                            edge_refs["evidence_end_char"] = int(tag_evidence.end_char)
                                         skill_rel_rows.append(
                                             KgRelation(
                                                 tenant_id=tenant_id,
@@ -2088,7 +2127,7 @@ class EventExtractor:
                                                 object_entity_id=tag_id,
                                                 confidence=conf,
                                                 qualifiers={"method": "skill_taxonomy", "kind": "tag"},
-                                                references=refs,
+                                                references=edge_refs,
                                                 extra_data={
                                                     "kg_prompt_template_id": chosen_template_id,
                                                     "kg_prompt_template_key": config.prompt_template_key,
@@ -2096,6 +2135,7 @@ class EventExtractor:
                                                 },
                                             )
                                         )
+                                        skill_evidence_stats["taxonomy_edges_kept"] += 1
 
                                     cat = str(extra.get("category") or "").strip()
                                     if cat:
@@ -2105,6 +2145,20 @@ class EventExtractor:
                                             rel_key = (skill_id, "belong_to", cat_id)
                                             if rel_key not in seen_skill_rel_keys:
                                                 seen_skill_rel_keys.add(rel_key)
+                                                cat_evidence = coerce_evidence(
+                                                    text=chunk_text,
+                                                    evidence_quote=None,
+                                                    fallback_mention=cat,
+                                                    max_quote_chars=240,
+                                                )
+                                                if cat_evidence is None and skill_evidence_required:
+                                                    skill_evidence_stats["taxonomy_edges_dropped_no_evidence"] += 1
+                                                    continue
+                                                edge_refs = dict(refs_base)
+                                                if cat_evidence is not None:
+                                                    edge_refs["evidence_quote"] = cat_evidence.quote
+                                                    edge_refs["evidence_start_char"] = int(cat_evidence.start_char)
+                                                    edge_refs["evidence_end_char"] = int(cat_evidence.end_char)
                                                 skill_rel_rows.append(
                                                     KgRelation(
                                                         tenant_id=tenant_id,
@@ -2117,7 +2171,7 @@ class EventExtractor:
                                                         object_entity_id=cat_id,
                                                         confidence=conf,
                                                         qualifiers={"method": "skill_taxonomy", "kind": "category"},
-                                                        references=refs,
+                                                        references=edge_refs,
                                                         extra_data={
                                                             "kg_prompt_template_id": chosen_template_id,
                                                             "kg_prompt_template_key": config.prompt_template_key,
@@ -2125,14 +2179,62 @@ class EventExtractor:
                                                         },
                                                     )
                                                 )
+                                                skill_evidence_stats["taxonomy_edges_kept"] += 1
 
                                 # compose_with edges between skills co-extracted in the same chunk (bounded by max_skills_per_chunk)
                                 if len(skill_ids_in_chunk) >= 2:
                                     for i in range(len(skill_ids_in_chunk)):
                                         for j in range(i + 1, len(skill_ids_in_chunk)):
-                                            a_id, a_conf, _a_item = skill_ids_in_chunk[i]
-                                            b_id, b_conf, _b_item = skill_ids_in_chunk[j]
+                                            a_id, a_conf, a_item = skill_ids_in_chunk[i]
+                                            b_id, b_conf, b_item = skill_ids_in_chunk[j]
                                             conf = max(0.0, min(1.0, float(min(a_conf, b_conf) * 0.8)))
+
+                                            # Evidence for composability is grounded as "co-mentioned in this chunk".
+                                            # We try to persist a short span that covers both skill evidence spans.
+                                            pair_refs = dict(refs_base)
+                                            pair_quote: str | None = None
+                                            pair_start: int | None = None
+                                            pair_end: int | None = None
+                                            try:
+                                                a_s = a_item.get("_evidence_start_char")
+                                                a_e = a_item.get("_evidence_end_char")
+                                                b_s = b_item.get("_evidence_start_char")
+                                                b_e = b_item.get("_evidence_end_char")
+                                                if (
+                                                    isinstance(a_s, int)
+                                                    and isinstance(a_e, int)
+                                                    and isinstance(b_s, int)
+                                                    and isinstance(b_e, int)
+                                                    and chunk_text
+                                                ):
+                                                    start = int(min(a_s, b_s))
+                                                    end = int(max(a_e, b_e))
+                                                    if 0 <= start < end <= len(chunk_text):
+                                                        raw_quote = chunk_text[start:end]
+                                                        lstrip_len = len(raw_quote) - len(raw_quote.lstrip())
+                                                        rstrip_len = len(raw_quote) - len(raw_quote.rstrip())
+                                                        start2 = start + lstrip_len
+                                                        end2 = end - rstrip_len
+                                                        if 0 <= start2 < end2 <= len(chunk_text):
+                                                            q = chunk_text[start2:end2]
+                                                            if q and len(q) <= 240:
+                                                                pair_quote = q
+                                                                pair_start = int(start2)
+                                                                pair_end = int(end2)
+                                            except Exception:
+                                                pair_quote = None
+                                                pair_start = None
+                                                pair_end = None
+
+                                            if pair_quote is None and skill_evidence_required:
+                                                skill_evidence_stats["taxonomy_edges_dropped_no_evidence"] += 1
+                                                continue
+                                            if pair_quote is not None:
+                                                pair_refs["evidence_quote"] = pair_quote
+                                                if pair_start is not None:
+                                                    pair_refs["evidence_start_char"] = int(pair_start)
+                                                if pair_end is not None:
+                                                    pair_refs["evidence_end_char"] = int(pair_end)
                                             for subj, obj in ((a_id, b_id), (b_id, a_id)):
                                                 rel_key = (subj, "compose_with", obj)
                                                 if rel_key in seen_skill_rel_keys:
@@ -2150,7 +2252,7 @@ class EventExtractor:
                                                         object_entity_id=obj,
                                                         confidence=conf,
                                                         qualifiers={"method": "skill_taxonomy", "kind": "compose_with"},
-                                                        references=refs,
+                                                        references=pair_refs,
                                                         extra_data={
                                                             "kg_prompt_template_id": chosen_template_id,
                                                             "kg_prompt_template_key": config.prompt_template_key,
@@ -2158,6 +2260,7 @@ class EventExtractor:
                                                         },
                                                     )
                                                 )
+                                                skill_evidence_stats["taxonomy_edges_kept"] += 1
 
                             for ev in events_by_chunk.get(chunk_id, []) or []:
                                 ev_id = getattr(ev, "id", None)
@@ -2170,6 +2273,16 @@ class EventExtractor:
                                         continue
                                     conf = float(item.get("_confidence") or 0.6)
                                     conf = max(0.0, min(1.0, conf))
+                                    link_extra = dict(link_extra_base or {})
+                                    evq = item.get("_evidence_quote")
+                                    if isinstance(evq, str) and evq.strip():
+                                        link_extra["evidence_quote"] = evq.strip()[:240]
+                                    evs = item.get("_evidence_start_char")
+                                    eve = item.get("_evidence_end_char")
+                                    if isinstance(evs, int):
+                                        link_extra["evidence_start_char"] = int(evs)
+                                    if isinstance(eve, int):
+                                        link_extra["evidence_end_char"] = int(eve)
                                     links.append(
                                         KgEventEntity(
                                             event_id=ev_id,
@@ -2246,6 +2359,7 @@ class EventExtractor:
                     "evidence_required": bool(evidence_required),
                     "entity_evidence": dict(entity_evidence_stats),
                     "relation_evidence": dict(relation_evidence_stats),
+                    "skill_evidence": dict(skill_evidence_stats),
                     "max_concurrency": int(max_concurrency),
                     "elapsed_sec": round(float(elapsed), 3),
                 }

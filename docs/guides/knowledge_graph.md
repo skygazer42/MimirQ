@@ -76,5 +76,6 @@ MimirQ 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用�
 ### 影响结果的开关（建议同时关注）
 - `KG_ENABLED=true`：KG 总开关
 - `KG_SKILL_ENABLED=true` 或请求 `extract_skills=true`：启用 Skill/SOP 抽取（SkillNet 风格 know-how 节点）
+- `KG_SKILL_EVIDENCE_REQUIRED=true`：仅持久化可被 chunk-local evidence_quote/span 证据锚定的 Skill 节点/边（减少噪声，避免 relation expansion 漂移）
 - `KG_RELATION_ENABLED=true` 或请求 `extract_relations=true`：启用 triples / taxonomy edges（关系扩展的重要前置）
 - `KG_SEARCH_RELATION_EXPANSION_ENABLED=true`：KG search 召回阶段启用 relation-driven expansion
