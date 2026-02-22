@@ -125,7 +125,10 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
 
+    called: dict[str, object] = {}
+
     async def _fake_get_kg_graph(**_k):  # noqa: ANN001
+        called.update(_k)
         return KGGraphResponse(
             nodes=[
                 KGGraphNode(id="n1", label="Entity A", group=1, val=1, meta={"kind": "entity", "type": "Person"}),
@@ -152,6 +155,7 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
         max_entities=10,
         max_links=10,
         include_entity_links=True,
+        include_relation_links=True,
         min_shared_events=2,
         max_entity_links=1000,
         download=False,
@@ -161,6 +165,7 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
     )
 
     assert resp.media_type == "application/graphml+xml"
+    assert called.get("include_relation_links") is True
     body = resp.body.decode("utf-8")
     assert "<graphml" in body
     assert 'key id="d0"' in body  # node label
