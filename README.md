@@ -92,6 +92,10 @@ Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口、Dock
 同一文档在不同 pipeline 配置（解析/治理/切块等）下会形成不同的 `pipeline_hash` 版本；支持查看版本、激活回滚、删除历史版本，并可在 UI 中直接切换预览某个版本的切片。
 使用说明见：[docs/guides/document_versions.md](./docs/guides/document_versions.md)。
 
+**10. Knowledge Graph（知识图谱）**
+从文档 chunks 抽取事件/实体/关系（triples）与 Skill/SOP（SkillNet 风格），支持图谱可视化、KG 搜索、以及对 RAG 的 query expansion / chunk injection 增强。
+使用说明见：[docs/guides/knowledge_graph.md](./docs/guides/knowledge_graph.md)。
+
 ## 高级配置
 
 如需自定义配置，请参考 [.env.example](docker/.env.example) 中的注释修改 `.env` 文件。完整环境变量说明见 [配置文档](./docs/guides/dependencies.md)。

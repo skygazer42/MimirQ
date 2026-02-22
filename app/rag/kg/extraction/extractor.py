@@ -21,7 +21,7 @@ from app.rag.kg.extraction.alias import (
 )
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
-from app.rag.kg.extraction.evidence import coerce_evidence
+from app.rag.kg.extraction.evidence import coerce_evidence, surface_mentioned
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.extraction.processor import EventProcessor
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
@@ -776,6 +776,9 @@ class EventExtractor:
                 "total_raw": 0,
                 "kept": 0,
                 "dropped_stopword": 0,
+                "dropped_noise_short": 0,
+                "dropped_noise_digits": 0,
+                "dropped_noise_punct": 0,
                 "dropped_no_evidence": 0,
             }
             for chunk, ev in processed_events:
@@ -797,6 +800,20 @@ class EventExtractor:
                     entity_evidence_stats["total_raw"] += 1
                     if norm in _stop_norm:
                         entity_evidence_stats["dropped_stopword"] += 1
+                        continue
+                    # Deterministic noise guards: these reduce graph pollution without extra model calls.
+                    #
+                    # - Drop single-character ASCII tokens (common variable/bullet noise).
+                    # - Drop pure digit tokens.
+                    # - Drop punctuation-only tokens.
+                    if norm.isascii() and len(norm) < 2:
+                        entity_evidence_stats["dropped_noise_short"] += 1
+                        continue
+                    if norm.isdigit():
+                        entity_evidence_stats["dropped_noise_digits"] += 1
+                        continue
+                    if not any(ch.isalnum() for ch in name):
+                        entity_evidence_stats["dropped_noise_punct"] += 1
                         continue
 
                     evq = ent.get("evidence_quote")
@@ -1528,12 +1545,13 @@ class EventExtractor:
                                 if evidence is not None:
                                     # Best-effort: ensure both endpoints appear in the quote to reduce "two entities exist"
                                     # false positives.
-                                    q_fold = evidence.quote.casefold()
-                                    subj_ok = (str(subj_cand.name or "").casefold() in q_fold) or (
-                                        str(subj_cand.normalized_name or "").casefold() in q_fold
+                                    # Keep this deterministic and conservative: we require both endpoints to be
+                                    # mentioned in the evidence quote (after lightweight normalization).
+                                    subj_ok = surface_mentioned(quote=evidence.quote, surface=str(subj_cand.name or "")) or (
+                                        surface_mentioned(quote=evidence.quote, surface=str(subj_cand.normalized_name or ""))
                                     )
-                                    obj_ok = (str(obj_cand.name or "").casefold() in q_fold) or (
-                                        str(obj_cand.normalized_name or "").casefold() in q_fold
+                                    obj_ok = surface_mentioned(quote=evidence.quote, surface=str(obj_cand.name or "")) or (
+                                        surface_mentioned(quote=evidence.quote, surface=str(obj_cand.normalized_name or ""))
                                     )
                                     if evidence_required and not (subj_ok and obj_ok):
                                         relation_evidence_stats["dropped_missing_endpoints"] += 1
@@ -1737,6 +1755,26 @@ class EventExtractor:
                     parser = EntityValueParser()
                     skill_processor = SkillProcessor(llm_client=llm_client)
 
+                    def _dedupe_surfaces(values: object, *, limit: int) -> list[str]:
+                        lim = max(0, int(limit or 0))
+                        if lim <= 0:
+                            return []
+                        seq = values if isinstance(values, list) else []
+                        out: list[str] = []
+                        seen: set[str] = set()
+                        for item in seq:
+                            s = str(item or "").strip()
+                            if not s:
+                                continue
+                            key = s.casefold() if s.isascii() else s
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            out.append(s)
+                            if len(out) >= lim:
+                                break
+                        return out
+
                     async def _extract_skills_for_chunk(chunk_id: object):
                         ch = chunk_by_id.get(chunk_id)
                         if ch is None:
@@ -1833,7 +1871,7 @@ class EventExtractor:
                                         "inputs": [str(s).strip() for s in inputs if str(s).strip()][:50],
                                         "outputs": [str(s).strip() for s in outputs if str(s).strip()][:50],
                                         "tools": [str(s).strip() for s in tools if str(s).strip()][:50],
-                                        "tags": [str(s).strip() for s in tags if str(s).strip()][:10],
+                                        "tags": _dedupe_surfaces(tags, limit=10),
                                         "confidence": raw.get("confidence"),
                                     },
                                     "_embed_text": embed_text,

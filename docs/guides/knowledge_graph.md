@@ -42,9 +42,42 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
 - `GET /kg/graph/expand?node_id=...`：按节点扩展邻居（同样支持共现边参数）。
 - `GET /kg/stats`：轻量统计（events/entities/links/type breakdown）。
 - `GET /kg/graph/export`：导出 GraphML（便于 Gephi/Cytoscape 等外部工具）。
+- `POST /kg/search`：KG 搜索（召回 -> 扩展 -> 重排），返回事件列表 + entities/clues/stats。
 - `GET /kg/events/{event_id}`：事件详情（含实体列表，受文档权限约束）。
 - `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束）。
 - `DELETE /kg/documents/{document_id}`：删除文档对应 KG 事件（可选清理孤立实体）。
+
+## 存储与数据模型（如何落库）
+
+MimirQ 的 KG 默认不依赖图数据库，核心数据直接落在 PostgreSQL，并为向量召回额外写入 Milvus。
+
+### PostgreSQL（事实存储 + provenance）
+- `kg_source_events`：从 chunk 抽取的事件（chunk-scoped）。
+  - 关键字段：`title/summary/content`，`document_id/chunk_id`，`references`（包含 `chunk_key/content_hash/content_len/page/start_char/end_char/source` 等）。
+- `kg_entities`：实体表（实体去重主要依赖 `tenant_id + type + normalized_name` 的逻辑去重）。
+  - 关键字段：`name/type/normalized_name/description`，`extra_data`（可放技能卡片、标签、工具等结构化信息）。
+- `kg_event_entities`：事件↔实体边（事件里出现的实体、以及 Skill 节点与事件的连接也在这里）。
+  - `weight`：边权重（Skill 边常用来表达置信度或强度）。
+  - `extra_data`：证据落点（`evidence_quote/evidence_start_char/evidence_end_char/evidence_source`）。
+- `kg_relations`：实体→实体关系边（triples + SkillNet 风格 taxonomy edges）。
+  - `predicate/predicate_raw/confidence`：关系类型与置信度。
+  - `references`：证据落点（同样包含 `evidence_quote/span` 与 chunk provenance）。
+
+### Milvus（相似度召回）
+- `kg_events`：事件内容向量（用于 KG search 的事件 recall）。
+- `kg_entities`：实体向量（用于 KG search 的实体 recall；包含 Skill/Tag/Category 等类型）。
+
+> 这意味着“KG 的存储”本质上就是：Postgres 做结构化事实与证据，Milvus 做相似度召回加速。
+
+## KG 如何增强 RAG（面向集成）
+
+KG 的目标不是替代 RAG，而是让 RAG 在“多跳关联 / 术语对齐 / know-how 技能”上更稳、更可控：
+
+- KG query expansion（可选）：从 KG recall 的实体名衍生额外检索 query，降低 false negative。
+  - `RAG_KG_QUERY_EXPANSION_ENABLED=true`
+  - `RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES=Skill,SkillTag,SkillCategory`：默认排除 SkillNet taxonomy 节点，避免 query 漂移（可按需调整）。
+- KG chunk injection（可选）：把 KG recall 的事件 chunk 作为额外 evidence 注入检索结果，提升召回覆盖。
+  - `RAG_KG_CHUNK_INJECTION_ENABLED=true`
 
 ## 前端图谱（/graph）
 - Live：从后端实时加载（支持导出 GraphML）。

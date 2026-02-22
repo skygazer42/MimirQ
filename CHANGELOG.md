@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.2] - 2026-02-22
+
+### Added
+
 - Windows-friendly dev helpers: `scripts/dev_all.ps1` (`scripts/dev.ps1` wrapper) and `scripts/verify.ps1`.
 - Repo docs: `CONTRIBUTING.md`, `SECURITY.md`, and `LICENSE`.
 - Parsing: fallback DOCX parser now emits chunk-friendly structured Markdown (headings/lists/pipe tables).
@@ -22,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Demo: reproducible ingestion-flow scripts (`scripts/demo_ingestion_flow.ps1` and `scripts/demo_ingestion_flow.sh`).
 - KG: graph expand/export now supports relation (triple) links via `include_relation_links`, and the web graph UI exposes a toggle.
 - Evaluations: web API client now includes KG search diagnostics endpoints for running and browsing diagnostics runs.
+- KG/RAG: KG-derived query expansion can exclude entity types via `RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES` (defaults exclude SkillNet taxonomy nodes).
+- Docs: KG guide now documents storage model (Postgres tables + Milvus collections) and how KG enhances RAG (query expansion / chunk injection).
 
 ### Changed
 
@@ -32,7 +42,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - TAG consumers: allow DOCX documents with `doc_metadata.table_store` in dataset tables listing and chat table context selection.
 - Governance: treat Markdown pipe tables without outer pipes as structural lines; normalize them when table normalization is enabled.
 - KG search: event recall via entity links now prefers events with higher total edge weight (e.g., skill edges) for better ranking.
+- KG extraction: entity normalized_name now strips common edge punctuation/wrappers to reduce fragmentation.
+- KG extraction: relation predicates are canonicalized via conservative synonym mapping (e.g. “works at” -> `works_for`) to reduce ontology drift.
+- KG extraction: drop obvious noise entities earlier (single-char ASCII, digits-only, punct-only) to keep the graph compact.
+- Skill extraction: Skill tags are deduped before persistence.
 
 ### Fixed
 
 - Excel import: ensure file handles are closed to avoid Windows temp file cleanup issues.
+- KG extraction: evidence span matching for ASCII quotes is more robust to casing differences (reduces false drops under evidence_required).

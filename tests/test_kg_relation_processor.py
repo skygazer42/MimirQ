@@ -49,10 +49,35 @@ async def test_relation_processor_filters_candidates_and_allowlists_predicates()
     assert len(out) == 2
 
 
+@pytest.mark.asyncio
+async def test_relation_processor_maps_predicate_synonyms_to_allowlist() -> None:
+    from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
+
+    llm = _FakeLLM(
+        {
+            "relations": [
+                {"subject_id": "E1", "predicate": "works at", "object_id": "E2", "confidence": 0.9},
+            ]
+        }
+    )
+
+    proc = RelationProcessor(llm, allowed_predicates=["works_for"])
+    candidates = [
+        CandidateEntity(cid="E1", name="Alice", type="Person"),
+        CandidateEntity(cid="E2", name="ACME", type="Organization"),
+    ]
+
+    out = await proc.extract_relations(text="Alice works at ACME.", candidates=candidates, max_relations=10)
+    assert len(out) == 1
+    assert out[0]["predicate"] == "works_for"
+    assert out[0]["predicate_raw"] == "works at"
+
+
 def test_normalize_predicate_snake_cases_text() -> None:
     from app.rag.kg.extraction.relation_processor import normalize_predicate
 
     assert normalize_predicate("Works With") == "works_with"
     assert normalize_predicate("located-in") == "located_in"
+    assert normalize_predicate("works at") == "works_for"
+    assert normalize_predicate("employed_by") == "works_for"
     assert normalize_predicate("  ") == "unknown"
-

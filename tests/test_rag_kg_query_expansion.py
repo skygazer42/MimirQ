@@ -128,6 +128,91 @@ async def test_rag_engine_uses_kg_entity_query_expansion(monkeypatch: pytest.Mon
     assert done_metrics.get("kg_query_expansion_used") is True
 
 
+@pytest.mark.asyncio
+async def test_rag_engine_kg_query_expansion_excludes_skill_entities(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.engine as engine_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "OK", raising=False)
+
+    monkeypatch.setattr(settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "KG_CHAT_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES", "Skill,SkillTag,SkillCategory", raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
+
+    # Avoid dict expansion interfering with query-count assertions.
+    import app.query.expand as expand_mod
+
+    monkeypatch.setattr(expand_mod, "load_base_dictionary_rules", lambda: [], raising=True)
+    monkeypatch.setattr(
+        expand_mod,
+        "generate_dictionary_expansions",
+        lambda **_k: ([], {"enabled": False, "used": False}),
+        raising=True,
+    )
+
+    # Avoid TAG work.
+    import app.services.chat_tag_service as tag_mod
+
+    monkeypatch.setattr(
+        tag_mod,
+        "build_chat_tag_context_docs",
+        lambda *_a, **_k: ([], {"enabled": False, "used": False, "reason": "not_run", "returned": 0}),
+        raising=True,
+    )
+
+    retriever = _FakeRetriever()
+    monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
+
+    async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        assert query
+        assert tenant_id is not None
+        assert document_ids
+        return {
+            "entities": [
+                # This should be ignored by query expansion since it's Skill-like.
+                {"entity_id": str(uuid.uuid4()), "name": "ACME", "type": "Skill", "weight": 0.9},
+            ],
+            "events": [],
+            "stats": {"ok": True},
+        }
+
+    monkeypatch.setattr(engine_mod, "kg_search", _fake_kg_search, raising=True)
+
+    tenant_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    rag = engine_mod.get_rag_engine()
+    agen = rag.stream_chat(
+        question="q",
+        history=None,
+        conversation_id=None,
+        document_ids=[doc_id],
+        tenant_id=tenant_id,
+        account_id="u",
+        top_k=5,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        db=object(),
+    )
+
+    done_metrics = None
+    async for item in agen:
+        if item.get("type") == "done":
+            done_metrics = (item.get("data") or {}).get("metrics") or {}
+            break
+    await agen.aclose()
+
+    assert "q" in retriever.calls
+    assert not any("ACME" in c for c in retriever.calls)
+    assert done_metrics.get("kg_query_expansion_used") is False
+
+
 def test_langgraph_retrieve_node_uses_kg_entity_query_expansion(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.pipelines.langgraph as lg_mod
     from app.core.config import settings

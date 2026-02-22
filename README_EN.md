@@ -21,6 +21,7 @@ MimirQ is a fullâ€‘stack knowledge base Q&A system built around RAG (Retrievalâ€
 - Chunking + embeddings + indexing
 - Hybrid retrieval (Vector + BM25)
 - Streaming chat with citations
+- Knowledge Graph (KG): event/entity extraction + graph search/visualization (optional; gated by `KG_ENABLED`)
 - Document-level access control (security trimming) on top of dataset permissions
 - Optional MinIO image storage and background workers (Redis + arq)
 
@@ -111,6 +112,7 @@ See `docs/README.md` for docs and guides.
 - Chunk preview guide (CN): `docs/guides/chunk_preview.md`
 - URL ingestion (CN): `docs/guides/url_ingest.md`
 - Document ACL / security trimming (CN): `docs/guides/document_acl.md`
+- Knowledge Graph (CN): `docs/guides/knowledge_graph.md`
 
 ## Acknowledgements
 

@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
+from app.core.utils import parse_csv
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
@@ -744,10 +745,20 @@ Requirements:
                     max_entities = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_ENTITIES", 5) or 5))
                     max_queries = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_QUERIES", 5) or 5))
                     min_weight = float(getattr(settings, "RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT", 0.15) or 0.15)
+                    exclude_types = parse_csv(
+                        str(getattr(settings, "RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES", "") or "")
+                    )
+                    exclude_all = "*" in exclude_types
+                    exclude_fold = {t.casefold() for t in exclude_types if str(t or "").strip() and t != "*"}
 
                     scored: list[tuple[float, str]] = []
                     for ent in entities:
                         if not isinstance(ent, dict):
+                            continue
+                        if exclude_all:
+                            continue
+                        etype = str(ent.get("type") or "").strip()
+                        if etype and etype.casefold() in exclude_fold:
                             continue
                         name = (ent.get("name") or "").strip()
                         if not name:

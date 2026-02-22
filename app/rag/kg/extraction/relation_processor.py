@@ -22,10 +22,49 @@ logger = get_logger("kg.extract.relations")
 
 _PRED_SAFE_RE = re.compile(r"[^a-z0-9_]+")
 
+# Predicate synonyms -> canonical predicate keys.
+#
+# Rationale:
+# - We keep the ontology allowlist compact.
+# - LLMs often output semantically equivalent variants ("works at", "employed_by", ...).
+# - Mapping them deterministically improves recall and reduces "unknown" drift without adding extra LLM calls.
+_PREDICATE_SYNONYMS: dict[str, str] = {
+    # identity / aliases
+    "alias": "alias_of",
+    "aliasof": "alias_of",
+    "abbrev_of": "alias_of",
+    "abbreviation_of": "alias_of",
+    "synonym_of": "alias_of",
+    # equivalence
+    "sameas": "same_as",
+    "equivalent_to": "same_as",
+    "equivalentto": "same_as",
+    # org / employment
+    "worksat": "works_for",
+    "works_at": "works_for",
+    "employed_by": "works_for",
+    "employedby": "works_for",
+    "employer": "works_for",
+    # location
+    "locatedat": "located_in",
+    "located_at": "located_in",
+    "based_in": "located_in",
+    "basedin": "located_in",
+    # parts / membership
+    "partof": "part_of",
+    "haspart": "has_part",
+    "memberof": "member_of",
+    # software-ish
+    "dependson": "depends_on",
+    "dependsupon": "depends_on",
+    "uses_tool": "uses",
+    "utilizes": "uses",
+}
 
-def normalize_predicate(value: str) -> str:
+
+def _normalize_predicate_key(value: str) -> str:
     """
-    Normalize predicate keys to a stable snake_case-ish form.
+    Normalize predicate keys to a stable snake_case-ish key (no synonym mapping).
 
     Examples:
     - "Works With" -> "works_with"
@@ -37,6 +76,17 @@ def normalize_predicate(value: str) -> str:
     text = _PRED_SAFE_RE.sub("", text)
     text = re.sub(r"_+", "_", text).strip("_")
     return text or "unknown"
+
+
+def normalize_predicate(value: str) -> str:
+    """
+    Normalize + canonicalize a predicate key.
+
+    This includes conservative synonym mapping to keep the stored ontology compact.
+    """
+    key = _normalize_predicate_key(value)
+    mapped = _PREDICATE_SYNONYMS.get(key)
+    return mapped or key or "unknown"
 
 
 def _clamp01(value: object, *, default: float) -> float:
@@ -186,8 +236,9 @@ class RelationProcessor:
             if subj == obj:
                 continue
 
+            pred_key = _normalize_predicate_key(pred_in)
             pred_norm = normalize_predicate(pred_in)
-            pred_raw: str | None = None
+            pred_raw: str | None = (pred_in if pred_norm != pred_key else None)
             if self.allowed_predicates and pred_norm not in self.allowed_predicates:
                 pred_raw = pred_in
                 pred_norm = "unknown"

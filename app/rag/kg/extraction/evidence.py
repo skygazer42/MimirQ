@@ -17,6 +17,7 @@ from typing import Optional
 
 _WS_RE = re.compile(r"\s+")
 _SENTENCE_BREAK_RE = re.compile(r"[。！？!?。\n\r]")
+_EDGE_STRIP_CHARS = " \t\r\n,.;:!?，。；：！？、\"'`“”‘’()（）[]【】"
 
 
 def _clean(text: str) -> str:
@@ -58,6 +59,14 @@ def find_evidence_span(text: str, quote: str) -> Optional[tuple[int, int]]:
     # Whitespace-flex match: split needle by any whitespace and allow \\s+ between parts.
     parts = [p for p in needle.split() if p]
     if len(parts) <= 1:
+        # Best-effort: allow ASCII case-insensitive matching for short single-token quotes.
+        if needle.isascii() and len(needle) >= 6 and any(ch.isalpha() for ch in needle):
+            try:
+                m2 = re.search(re.escape(needle), hay, flags=re.IGNORECASE | re.MULTILINE)
+            except re.error:
+                m2 = None
+            if m2:
+                return int(m2.start()), int(m2.end())
         return None
     pat = r"\s+".join(re.escape(p) for p in parts)
     try:
@@ -65,6 +74,14 @@ def find_evidence_span(text: str, quote: str) -> Optional[tuple[int, int]]:
     except re.error:
         return None
     if not m:
+        # ASCII case-insensitive fallback: helps when the model changes casing in evidence_quote.
+        if needle.isascii() and len(needle) >= 6 and any(ch.isalpha() for ch in needle):
+            try:
+                m2 = re.search(pat, hay, flags=re.IGNORECASE | re.MULTILINE)
+            except re.error:
+                m2 = None
+            if m2:
+                return int(m2.start()), int(m2.end())
         return None
     return int(m.start()), int(m.end())
 
@@ -192,9 +209,37 @@ def coerce_evidence(
     return None
 
 
+def normalize_surface_for_match(text: str) -> str:
+    """
+    Normalize a surface/quote for substring matching (not for persistence).
+
+    This is used for deterministic checks like:
+    - "does evidence quote mention the entity surface?"
+    - "does a tag/category label appear in the quote?"
+    """
+    s = _collapse_ws(text)
+    if not s:
+        return ""
+    s = s.strip(_EDGE_STRIP_CHARS)
+    return s.casefold()
+
+
+def surface_mentioned(*, quote: str, surface: str) -> bool:
+    """
+    Best-effort check whether `surface` is mentioned in `quote` after lightweight normalization.
+    """
+    q = normalize_surface_for_match(quote)
+    s = normalize_surface_for_match(surface)
+    if not q or not s:
+        return False
+    return s in q
+
+
 __all__ = [
     "EvidenceSpan",
     "coerce_evidence",
     "derive_evidence_from_mention",
     "find_evidence_span",
+    "normalize_surface_for_match",
+    "surface_mentioned",
 ]
