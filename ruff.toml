@@ -6,6 +6,7 @@ extend-exclude = [
   ".idea",
   ".pytest_cache",
   ".ruff_cache",
+  ".shared",
   "uploads",
   "web",
 ]
@@ -27,3 +28,4 @@ fixable = ["ALL"]
 "app/third_party/**" = ["B", "BLE001", "N"]
 "scripts/**" = ["BLE001"]
 "tests/**" = ["BLE001"]
+"docker/olmocr/**" = ["BLE001", "B904"]

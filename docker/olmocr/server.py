@@ -9,7 +9,6 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 
-
 app = FastAPI(title="mimirq-olmocr", version="0.1.0")
 
 

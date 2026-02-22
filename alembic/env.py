@@ -13,10 +13,10 @@ import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
-from typing import Optional
+
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 
 def _repo_root() -> Path:
@@ -44,7 +44,7 @@ def _get_database_url() -> str:
         url = str(getattr(settings, "DATABASE_URL", "") or "").strip()
         if url:
             return url
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
     env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
@@ -58,9 +58,8 @@ def _get_database_url() -> str:
 def _load_target_metadata():
     # Ensure all model modules are imported so Base.metadata includes every table.
     # This is required for correct autogenerate output.
-    from app.core.database import Base
-
     import app.models._all  # noqa: F401
+    from app.core.database import Base
 
     return Base.metadata
 
@@ -112,4 +111,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
