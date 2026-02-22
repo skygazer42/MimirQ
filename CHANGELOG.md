@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - RAG observability: stable trace schema + history trace panel + graph replay for “retrieve → rerank → citations”.
 - UI: provider icons migrated to LobeHub colored SVGs (settings + cards unified), and parsing preview JSON bbox overlay.
 - Demo: reproducible ingestion-flow scripts (`scripts/demo_ingestion_flow.ps1` and `scripts/demo_ingestion_flow.sh`).
+- KG: graph expand/export now supports relation (triple) links via `include_relation_links`, and the web graph UI exposes a toggle.
+- Evaluations: web API client now includes KG search diagnostics endpoints for running and browsing diagnostics runs.
 
 ### Changed
 
@@ -29,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Table store (TAG): improve max_rows truncation accuracy by reading one extra row before trimming.
 - TAG consumers: allow DOCX documents with `doc_metadata.table_store` in dataset tables listing and chat table context selection.
 - Governance: treat Markdown pipe tables without outer pipes as structural lines; normalize them when table normalization is enabled.
+- KG search: event recall via entity links now prefers events with higher total edge weight (e.g., skill edges) for better ranking.
 
 ### Fixed
 
