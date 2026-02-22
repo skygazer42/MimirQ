@@ -79,6 +79,7 @@ export default function GraphPage() {
   const [deleteNodeTarget, setDeleteNodeTarget] = useState<{ id: string; label: string } | null>(null)
   const [dataSource, setDataSource] = useState<'live' | 'mock' | 'file'>('live')
   const [includeEntityLinks, setIncludeEntityLinks] = useState(true)
+  const [includeRelationLinks, setIncludeRelationLinks] = useState(false)
   const [minSharedEvents, setMinSharedEvents] = useState(2)
   const maxEntityLinks = 1000
   const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
@@ -206,16 +207,18 @@ export default function GraphPage() {
   // Initialize with real (mock) data from service
   const loadInitialData = async (
     source: 'live' | 'mock' = 'live',
-    opts?: { includeEntityLinks?: boolean; minSharedEvents?: number }
+    opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
   ) => {
     setIsLoading(true)
     try {
       const includeLinks = opts?.includeEntityLinks ?? includeEntityLinks
+      const includeRels = opts?.includeRelationLinks ?? includeRelationLinks
       const sharedThreshold = opts?.minSharedEvents ?? minSharedEvents
 
       const data = await GraphService.fetchInitialGraph({
         preferMock: source === 'mock',
         includeEntityLinks: source === 'live' ? includeLinks : undefined,
+        includeRelationLinks: source === 'live' ? includeRels : undefined,
         minSharedEvents: source === 'live' ? sharedThreshold : undefined,
         maxEntityLinks: source === 'live' ? maxEntityLinks : undefined,
       })
@@ -415,6 +418,7 @@ export default function GraphPage() {
       try {
       const newData = await GraphService.expandNode(selectedNode.id, {
         includeEntityLinks: includeEntityLinks && dataSource === 'live',
+        includeRelationLinks: includeRelationLinks && dataSource === 'live',
         minSharedEvents,
         maxEntityLinks,
       })
@@ -436,7 +440,7 @@ export default function GraphPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [selectedNode, includeEntityLinks, minSharedEvents, maxEntityLinks, dataSource])
+  }, [selectedNode, includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource])
 
   const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return
@@ -780,6 +784,14 @@ export default function GraphPage() {
     }
   }
 
+  const toggleRelationLinks = () => {
+    const next = !includeRelationLinks
+    setIncludeRelationLinks(next)
+    if (dataSource === 'live') {
+      loadInitialData('live', { includeRelationLinks: next })
+    }
+  }
+
   const cycleMinSharedEvents = () => {
     const options = [1, 2, 3, 4]
     const idx = options.indexOf(minSharedEvents)
@@ -800,6 +812,7 @@ export default function GraphPage() {
     try {
       const xml = await kgApi.exportGraphML({
         include_entity_links: includeEntityLinks,
+        include_relation_links: includeRelationLinks,
         min_shared_events: minSharedEvents,
         max_entity_links: maxEntityLinks,
       })
@@ -957,6 +970,19 @@ export default function GraphPage() {
                   >
                     <LinkIcon className="w-4 h-4 mr-2" />
                     {includeEntityLinks ? '实体连线: ON' : '实体连线: OFF'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleRelationLinks}
+                    className={cn(
+                      "text-muted-foreground hover:text-teal-600 dark:hover:text-teal-300 hover:bg-teal-500/10 dark:hover:bg-teal-500/20",
+                      includeRelationLinks && "bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-300"
+                    )}
+                    title="实体-实体关系连线（来自 KG triples / kg_relations）"
+                  >
+                    <Network className="w-4 h-4 mr-2" />
+                    {includeRelationLinks ? '关系连线: ON' : '关系连线: OFF'}
                   </Button>
                   <Button
                     variant="ghost"

@@ -36,6 +36,7 @@ export class GraphService {
     options: {
       preferMock?: boolean
       includeEntityLinks?: boolean
+      includeRelationLinks?: boolean
       minSharedEvents?: number
       maxEntityLinks?: number
     } = {}
@@ -49,6 +50,7 @@ export class GraphService {
     try {
       const data = await kgApi.getGraph({
         include_entity_links: options.includeEntityLinks,
+        include_relation_links: options.includeRelationLinks,
         min_shared_events: options.minSharedEvents,
         max_entity_links: options.maxEntityLinks,
       })
@@ -70,7 +72,12 @@ export class GraphService {
    */
   static async expandNode(
     nodeId: string,
-    options?: { includeEntityLinks?: boolean; minSharedEvents?: number; maxEntityLinks?: number }
+    options?: {
+      includeEntityLinks?: boolean
+      includeRelationLinks?: boolean
+      minSharedEvents?: number
+      maxEntityLinks?: number
+    }
   ): Promise<GraphData> {
     // Prefer backend KG expansion for UUID-like nodes; otherwise fallback to mock expansion
     if (UUID_RE.test(String(nodeId || '').trim())) {
@@ -81,6 +88,7 @@ export class GraphService {
           max_entities: 400,
           max_links: 5000,
           include_entity_links: options?.includeEntityLinks,
+          include_relation_links: options?.includeRelationLinks,
           min_shared_events: options?.minSharedEvents,
           max_entity_links: options?.maxEntityLinks,
         })
