@@ -38,6 +38,8 @@ from app.rag.engine import get_rag_engine
 from app.rag.kg.pipeline import kg_search
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
+from app.rag.reranker.factory import get_reranker
+from app.rag.reranker.types import RerankCandidate
 from app.rag.retriever import hybrid_retriever
 
 
@@ -860,6 +862,83 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     if tag_docs:
         docs = tag_docs + (docs or [])
 
+    # Optional: post-fusion rerank (evidence-first) on the final candidate list.
+    post_rerank_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False))
+    post_rerank_used = False
+    post_rerank_provider: str | None = None
+    post_rerank_model_used: str | None = None
+    post_rerank_elapsed = 0.0
+    post_rerank_error: str | None = None
+    post_rerank_candidates_n = 0
+
+    try:
+        if post_rerank_enabled and (docs or []):
+            provider = str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or "ltr").strip().lower()
+            post_rerank_provider = provider
+            if provider not in ("none", "off", "false", "0"):
+                top_n = int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0)
+                if top_n <= 0:
+                    top_n = len(docs or [])
+                post_rerank_candidates_n = min(top_n, len(docs or []))
+
+                candidates: List[RerankCandidate] = []
+                id_to_doc: Dict[str, Document] = {}
+                for doc in (docs or [])[:post_rerank_candidates_n]:
+                    rid = _doc_key(doc)
+                    text = (doc.page_content or "").strip()
+                    if not rid or not text:
+                        continue
+                    meta = dict(doc.metadata or {})
+                    candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
+                    id_to_doc[rid] = doc
+
+                if candidates:
+                    reranker = get_reranker(provider)
+                    rr_start = time.time()
+                    rr = reranker.rerank(
+                        query=query_for_retrieval,
+                        candidates=candidates,
+                        top_n=post_rerank_candidates_n,
+                    )
+                    post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
+                    post_rerank_model_used = rr.model_used
+                    reranker_provider = rr.provider or provider
+
+                    ordered: List[Document] = []
+                    used: set[str] = set()
+                    for rid in rr.ordered_ids:
+                        doc = id_to_doc.get(rid)
+                        if doc is None or rid in used:
+                            continue
+                        used.add(rid)
+                        meta = dict(doc.metadata or {})
+                        meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
+                        if rid in rr.score_map:
+                            meta["rerank_score"] = float(rr.score_map[rid])
+                            meta["score"] = float(rr.score_map[rid])
+                        meta["reranker_provider"] = reranker_provider
+                        meta["rerank_elapsed_sec"] = round(float(post_rerank_elapsed), 3)
+                        meta["rerank_model_used"] = post_rerank_model_used
+                        ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
+
+                    # Append candidates not returned by reranker (keep original order).
+                    for doc in (docs or [])[:post_rerank_candidates_n]:
+                        rid = _doc_key(doc)
+                        if rid in used:
+                            continue
+                        meta = dict(doc.metadata or {})
+                        meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
+                        meta.setdefault("reranker_provider", reranker_provider)
+                        meta.setdefault("rerank_elapsed_sec", round(float(post_rerank_elapsed), 3))
+                        meta.setdefault("rerank_model_used", post_rerank_model_used)
+                        ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
+
+                    docs = ordered + list((docs or [])[post_rerank_candidates_n:])
+                    post_rerank_used = True
+    except Exception as exc:  # noqa: BLE001
+        post_rerank_used = False
+        post_rerank_error = str(exc)[:200]
+
     citations = build_citations_from_docs(docs, retrieval_elapsed_sec=retrieval_elapsed, retrieval_mode=request_retrieval_mode, query=query_for_retrieval)
 
     metrics = dict(state.get("metrics") or {})
@@ -873,6 +952,14 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["vector_backend"] = settings.VECTOR_BACKEND
     if retrieval_errors:
         metrics["retrieval_errors"] = retrieval_errors[:5]
+
+    metrics["evidence_post_rerank_enabled"] = bool(post_rerank_enabled)
+    metrics["evidence_post_rerank_used"] = bool(post_rerank_used)
+    metrics["evidence_post_rerank_provider"] = post_rerank_provider
+    metrics["evidence_post_rerank_candidates_n"] = int(post_rerank_candidates_n or 0)
+    metrics["evidence_post_rerank_elapsed_sec"] = round(float(post_rerank_elapsed or 0.0), 3)
+    metrics["evidence_post_rerank_model_used"] = post_rerank_model_used
+    metrics["evidence_post_rerank_error"] = post_rerank_error
 
     metrics["query_rewrite_enabled"] = settings.ENABLE_QUERY_REWRITE
     metrics["rewrite_used"] = bool(rewrite_used)

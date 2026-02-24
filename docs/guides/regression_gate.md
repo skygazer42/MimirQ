@@ -100,6 +100,9 @@ python scripts/regression_gate.py \
 > - 简写：`"faithfulness": 0.7`（等价于 `{"min": 0.7}`）
 > - 完整：`"abstain_rate": {"max": 0.02}` / `{"min": 0.3, "max": 0.9}`
 
+另见（更聚焦 Evidence API 的检索门禁说明）：
+- `docs/guides/evidence_retrieval_gate.md`
+
 ## 阈值文件 v2（支持切片 gate）
 
 当你需要对某些 slice 单独设更严格/更宽松的阈值（例如：`file_type=pdf`、`quality=high`），推荐使用结构化阈值文件：

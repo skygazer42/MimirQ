@@ -8,7 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Evidence retrieval gate helpers for retrieval-only regression (Recall/Hit/MRR/NDCG) plus deterministic offline tests.
+- Optional sparse retrieval channel (SPLADE-style scaffolding) with deterministic provider for unit/regression validation.
+- Optional reranker providers: ColBERT-style late-interaction scaffold (`colbert`) and XGBoost LTR reranker (`ltr`).
+- Offline training helper: `scripts/train_ltr_from_regression_cases.py` (build LTR model artifacts from regression cases via Evidence API).
+- Docs: evidence retrieval gate, sparse retrieval, ColBERT/LTR reranking guides, and a retrieval-only parity gap snapshot.
+
 ### Changed
+
+- Evidence retrieval orchestrator supports optional post-fusion reranking for retrieval-only workflows (`EVIDENCE_POST_RERANK_*`).
+- Evidence citations now surface additional per-channel sparse scores (`lexical_score`, `sparse_score`) for debugging/training.
 
 ### Fixed
 

@@ -528,6 +528,18 @@ class Settings(BaseSettings):
     LEXICAL_DB_MAX_CANDIDATES: int = 200
     LEXICAL_DB_TRGM_MIN_QUERY_CHARS: int = 3
 
+    # Optional sparse retrieval channel (SPLADE-style scaffolding).
+    #
+    # Notes:
+    # - Disabled by default (no behavior change).
+    # - The default provider is deterministic and intended for tests/offline use.
+    # - Production SPLADE models (HF/transformers) must be loaded lazily and are optional.
+    SPARSE_RETRIEVAL_ENABLED: bool = False
+    SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | splade
+    # Comma-separated synonym pairs like: "kubernetes:k8s,postgresql:postgres"
+    # Used only by deterministic provider (test scaffold).
+    SPARSE_RETRIEVAL_SYNONYMS: str = ""
+
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
     RAG_CONTEXT_MAX_TOTAL_CHARS: int = 12_000
@@ -576,6 +588,11 @@ class Settings(BaseSettings):
     EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES: int = 2
     EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE: str = "coverage80"  # recall20|recall50|coverage80
     EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE: str = "keyword"  # hybrid|vector|keyword|mmr
+    # Optional post-fusion rerank for retrieval-only Evidence API (runs after query expansion fusion).
+    # Intended for deterministic/fast rerankers like LTR; do not enable heavyweight LLM rerank here.
+    EVIDENCE_POST_RERANK_ENABLED: bool = False
+    EVIDENCE_POST_RERANK_PROVIDER: str = "ltr"  # ltr | colbert | ...
+    EVIDENCE_POST_RERANK_TOP_N: int = 30
     # Post-generation grounding guard: verify each claim against evidence and drop unsupported ones.
     # Disabled by default because it may delay streaming (answer is buffered for claim-check).
     RAG_CLAIM_CHECK_ENABLED: bool = False
@@ -784,6 +801,9 @@ class Settings(BaseSettings):
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
     RERANKER_PROVIDER: str = "llm"  # llm | pc | none
+    # Local Learning-to-Rank model path (xgboost JSON/UBJ).
+    # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
+    LTR_MODEL_PATH: str = ""
     RERANKER_MODEL: Optional[str] = None
     # Optional: use a dedicated API key/base for API-style rerankers (openai/dashscope),
     # falls back to LLM_API_KEY/LLM_API_BASE when empty.
@@ -1355,7 +1375,22 @@ class Settings(BaseSettings):
             )
 
         # Validate reranker provider
-        valid_reranker_providers = {"llm", "pc", "none"}
+        # Keep this aligned with app.rag.reranker.factory.get_reranker().
+        valid_reranker_providers = {
+            "llm",
+            "pc",
+            "parent_child",
+            "weighted",
+            "openai",
+            "dashscope",
+            "aliyun",
+            "colbert",
+            "late_interaction",
+            "ltr",
+            "kg_pagerank",
+            "kg_rrf",
+            "none",
+        }
         if self.RERANKER_PROVIDER not in valid_reranker_providers:
             raise ValueError(
                 f"RERANKER_PROVIDER ({self.RERANKER_PROVIDER}) must be one of {valid_reranker_providers}"

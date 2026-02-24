@@ -38,6 +38,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `convert_text_encoding.py`: best-effort text encoding conversion utility
 - `gen_secret_key.py`: generate a SECRET_KEY value
 - `regression_gate.py`: enforce regression thresholds from evaluation outputs
+- `train_ltr_from_regression_cases.py`: train an xgboost LTR reranker model from regression cases via Evidence API (retrieval-only)
 
 ## Exit Codes
 
