@@ -30,6 +30,18 @@ class RecallSearcher:
 
     async def search(self, config: SearchConfig) -> RecallResult:
         tracker = Tracker()
+        # Explicit empty doc scope must never broaden to tenant-wide KG search.
+        # Treat `document_ids=[]` as "no accessible documents".
+        if config.document_ids is not None and not config.document_ids:
+            return RecallResult(
+                query_vector=[],
+                key_final=[],
+                event_ids=[],
+                clues=[],
+                key_weights={},
+                event_scores={},
+                relation_debug={"enabled": False, "reason": "empty_document_scope"},
+            )
         session = get_session()
         try:
             entity_repo = EntityRepository(session)
@@ -53,14 +65,14 @@ class RecallSearcher:
                     for e in (raw_entities or [])
                     if str((e or {}).get("type") or "").strip() not in {"Skill", "SkillTag", "SkillCategory"}
                 ]
-            if raw_entities and (config.document_ids or config.dataset_id):
+            if raw_entities and (config.document_ids is not None or config.dataset_id is not None):
                 # Prevent cross-document leakage within tenant: only keep entities that appear
                 # in events scoped by the requested documents or dataset.
                 from uuid import UUID
 
                 candidate_ids = [e.get("entity_id") or e.get("id") for e in raw_entities]
                 allowed_entity_ids: set[UUID] | None = None
-                if config.document_ids:
+                if config.document_ids is not None:
                     allowed_entity_ids = event_repo.filter_entity_ids_in_documents(
                         candidate_ids,
                         tenant_id=tenant_id,

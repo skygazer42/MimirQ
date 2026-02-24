@@ -9,6 +9,7 @@ MimirQ 的 Knowledge Graph（KG）以“事件（Event）—实体（Entity）�
 
 ### 关键环境变量
 - `KG_ENABLED=true`：启用 KG 功能（API/Graph 页面/抽取等）。
+- `KG_API_METRICS_ENABLED=true`：记录 KG API 的轻量指标（graph/expand/stats/export 的耗时与规模），用于线上观测与回归。
 - `KG_EXTRACT_REPLACE_EXISTING=true`：重复抽取同一文档时，替换旧事件（避免重复写入）。
 - `KG_EXTRACT_PRUNE_ORPHAN_ENTITIES=true`：替换/删除事件后，清理无任何事件关联的“孤立实体”。
 - `KG_EXTRACT_EVIDENCE_REQUIRED=true`：证据优先抽取（推荐开启）。
@@ -42,6 +43,7 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
 - `GET /kg/graph/expand?node_id=...`：按节点扩展邻居（同样支持共现边参数）。
 - `GET /kg/stats`：轻量统计（events/entities/links/type breakdown）。
 - `GET /kg/graph/export`：导出 GraphML（便于 Gephi/Cytoscape 等外部工具）。
+  - `?gzip=true`：返回 gzip 压缩后的 GraphML（`Content-Encoding: gzip`，下载文件后缀为 `.graphml.gz`），适合大图导出。
 - `POST /kg/search`：KG 搜索（召回 -> 扩展 -> 重排），返回事件列表 + entities/clues/stats。
 - `GET /kg/events/{event_id}`：事件详情（含实体列表，受文档权限约束）。
 - `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束）。
@@ -91,6 +93,8 @@ KG 的目标不是替代 RAG，而是让 RAG 在“多跳关联 / 术语对齐 /
 KG API 默认按 tenant + 文档权限进行过滤：
 - `document_ids` 会进行去重与可访问性校验。
 - KG 节点搜索/详情接口会限制到“当前可访问文档”的事件/实体集合，避免跨数据集/跨文档泄漏。
+- 当请求显式带了 `document_ids` 但 ACL 过滤后没有任何可访问文档时：KG 搜索会返回空结果（不会退化为 tenant-wide 搜索）。
+- 内部语义上，`document_ids=[]` 被视为“显式空 scope”（空集合），同样会返回空结果，用于防止误用导致 scope 变宽。
 
 ## KG Diagnostics（评测 / 诊断）
 

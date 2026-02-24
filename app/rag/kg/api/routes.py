@@ -1,4 +1,6 @@
 import asyncio
+import gzip
+import time
 import zlib
 from uuid import UUID
 
@@ -29,8 +31,21 @@ from app.rag.kg.schemas import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
+from app.services.metrics_logger import log_metrics
 
 router = APIRouter()
+
+
+def _log_kg_api_metric(event: str, **fields: object) -> None:
+    if not bool(getattr(settings, "KG_API_METRICS_ENABLED", False)):
+        return
+    try:
+        payload: dict[str, object] = {"event": event}
+        payload.update({k: v for k, v in fields.items() if v is not None})
+        log_metrics(payload)
+    except Exception:
+        # Best-effort only; metrics must never break the API.
+        pass
 
 
 def _stable_group_for(entity_type: str, *, buckets: int = 24) -> int:
@@ -74,7 +89,7 @@ def _resolve_allowed_documents(
 
 
 @router.get("/graph", response_model=KGGraphResponse)
-async def get_kg_graph(
+def get_kg_graph(
     document_ids: list[UUID] | None = Query(default=None),
     max_events: int = Query(default=200, ge=1, le=2000),
     max_entities: int = Query(default=400, ge=1, le=5000),
@@ -95,6 +110,7 @@ async def get_kg_graph(
     - If document_ids is not provided, it falls back to the current account's accessible documents.
     - The response is intentionally lightweight and capped by max_* params.
     """
+    t0 = time.perf_counter()
     _ensure_enabled()
 
     allowed_doc_ids: list[UUID]
@@ -106,7 +122,17 @@ async def get_kg_graph(
     )
 
     if not allowed_doc_ids:
-        return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
+        out = KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
+        _log_kg_api_metric(
+            "kg.api.graph",
+            tenant_id=str(tenant_id),
+            docs=0,
+            events=0,
+            entities=0,
+            links=0,
+            elapsed_sec=round(float(time.perf_counter() - t0), 3),
+        )
+        return out
 
     from collections import Counter
 
@@ -127,7 +153,17 @@ async def get_kg_graph(
     )
 
     if not events:
-        return KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
+        out = KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
+        _log_kg_api_metric(
+            "kg.api.graph",
+            tenant_id=str(tenant_id),
+            docs=len(allowed_doc_ids),
+            events=0,
+            entities=0,
+            links=0,
+            elapsed_sec=round(float(time.perf_counter() - t0), 3),
+        )
+        return out
 
     event_ids = [e.id for e in events]
 
@@ -175,7 +211,17 @@ async def get_kg_graph(
                     },
                 }
             )
-        return KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
+        out = KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
+        _log_kg_api_metric(
+            "kg.api.graph",
+            tenant_id=str(tenant_id),
+            docs=len(allowed_doc_ids),
+            events=len(events),
+            entities=0,
+            links=0,
+            elapsed_sec=round(float(time.perf_counter() - t0), 3),
+        )
+        return out
 
     # Fetch join rows only for the selected entity ids.
     rows = (
@@ -350,7 +396,7 @@ async def get_kg_graph(
             )
             entity_links_added += 1
 
-    return KGGraphResponse(
+    out = KGGraphResponse(
         nodes=nodes,
         links=links,
         stats={
@@ -362,10 +408,20 @@ async def get_kg_graph(
             "entity_entity_links": entity_links_added,
         },
     )
+    _log_kg_api_metric(
+        "kg.api.graph",
+        tenant_id=str(tenant_id),
+        docs=len(allowed_doc_ids),
+        events=int(out.stats.get("events", 0) or 0),
+        entities=int(out.stats.get("entities", 0) or 0),
+        links=int(out.stats.get("links", 0) or 0),
+        elapsed_sec=round(float(time.perf_counter() - t0), 3),
+    )
+    return out
 
 
 @router.get("/graph/expand", response_model=KGGraphResponse)
-async def expand_kg_graph(
+def expand_kg_graph(
     node_id: UUID = Query(..., description="Center node id (KgSourceEvent.id or KgEntity.id)"),
     document_ids: list[UUID] | None = Query(default=None),
     max_events: int = Query(default=50, ge=1, le=500),
@@ -385,6 +441,7 @@ async def expand_kg_graph(
     - Requires KG_ENABLED=true.
     - Enforces document-level access control.
     """
+    t0 = time.perf_counter()
     _ensure_enabled()
 
     allowed_doc_ids = _resolve_allowed_documents(
@@ -394,7 +451,17 @@ async def expand_kg_graph(
         db=db,
     )
     if not allowed_doc_ids:
-        return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
+        out = KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
+        _log_kg_api_metric(
+            "kg.api.graph_expand",
+            tenant_id=str(tenant_id),
+            docs=0,
+            events=0,
+            entities=0,
+            links=0,
+            elapsed_sec=round(float(time.perf_counter() - t0), 3),
+        )
+        return out
 
     from collections import Counter
 
@@ -483,7 +550,17 @@ async def expand_kg_graph(
             )
         ]
         if not event_ids:
-            return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_related_events"})
+            out = KGGraphResponse(nodes=[], links=[], stats={"reason": "no_related_events"})
+            _log_kg_api_metric(
+                "kg.api.graph_expand",
+                tenant_id=str(tenant_id),
+                docs=len(allowed_doc_ids),
+                events=0,
+                entities=0,
+                links=0,
+                elapsed_sec=round(float(time.perf_counter() - t0), 3),
+            )
+            return out
 
         events = (
             db.query(KgSourceEvent)
@@ -498,7 +575,17 @@ async def expand_kg_graph(
         )
 
     if not events:
-        return KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
+        out = KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
+        _log_kg_api_metric(
+            "kg.api.graph_expand",
+            tenant_id=str(tenant_id),
+            docs=len(allowed_doc_ids),
+            events=0,
+            entities=0,
+            links=0,
+            elapsed_sec=round(float(time.perf_counter() - t0), 3),
+        )
+        return out
 
     from sqlalchemy import func
 
@@ -548,7 +635,17 @@ async def expand_kg_graph(
                     },
                 }
             )
-        return KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
+        out = KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
+        _log_kg_api_metric(
+            "kg.api.graph_expand",
+            tenant_id=str(tenant_id),
+            docs=len(allowed_doc_ids),
+            events=len(events),
+            entities=0,
+            links=0,
+            elapsed_sec=round(float(time.perf_counter() - t0), 3),
+        )
+        return out
 
     rows = (
         db.query(KgEventEntity, KgEntity)
@@ -722,7 +819,7 @@ async def expand_kg_graph(
             )
             entity_links_added += 1
 
-    return KGGraphResponse(
+    out = KGGraphResponse(
         nodes=nodes,
         links=links,
         stats={
@@ -735,11 +832,21 @@ async def expand_kg_graph(
             "entity_entity_links": entity_links_added,
         },
     )
+    _log_kg_api_metric(
+        "kg.api.graph_expand",
+        tenant_id=str(tenant_id),
+        docs=len(allowed_doc_ids),
+        events=int(out.stats.get("events", 0) or 0),
+        entities=int(out.stats.get("entities", 0) or 0),
+        links=int(out.stats.get("links", 0) or 0),
+        elapsed_sec=round(float(time.perf_counter() - t0), 3),
+    )
+    return out
 
 
 @router.get("/graph/search", response_model=list[KGGraphNode])
-async def search_kg_graph_nodes(
-    q: str = Query(..., min_length=1, description="Search query"),
+def search_kg_graph_nodes(
+    q: str = Query(..., min_length=1, max_length=200, description="Search query"),
     kind: str = Query(default="all", description="entity | event | all"),
     limit: int = Query(default=20, ge=1, le=100),
     document_ids: list[UUID] | None = Query(default=None),
@@ -804,8 +911,8 @@ async def search_kg_graph_nodes(
         for ent in ents:
             nodes.append(
                 KGGraphNode(
-                     id=str(ent.id),
-                     label=(ent.name or "").strip() or str(ent.id),
+                    id=str(ent.id),
+                    label=(ent.name or "").strip() or str(ent.id),
                     group=_stable_group_for(getattr(ent, "type", "") or "unknown"),
                     val=1,
                     meta={
@@ -854,7 +961,7 @@ async def search_kg_graph_nodes(
 
 
 @router.get("/stats", response_model=KGStatsResponse)
-async def get_kg_stats(
+def get_kg_stats(
     document_ids: list[UUID] | None = Query(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -866,6 +973,7 @@ async def get_kg_stats(
     - Requires KG_ENABLED=true.
     - Enforces document-level access control.
     """
+    t0 = time.perf_counter()
     _ensure_enabled()
 
     allowed_doc_ids = _resolve_allowed_documents(
@@ -875,7 +983,17 @@ async def get_kg_stats(
         db=db,
     )
     if not allowed_doc_ids:
-        return KGStatsResponse(events=0, entities=0, links=0, entity_types=[], updated_at=None)
+        out = KGStatsResponse(events=0, entities=0, links=0, entity_types=[], updated_at=None)
+        _log_kg_api_metric(
+            "kg.api.stats",
+            tenant_id=str(tenant_id),
+            docs=0,
+            events=0,
+            entities=0,
+            links=0,
+            elapsed_sec=round(float(time.perf_counter() - t0), 3),
+        )
+        return out
 
     from sqlalchemy import func
 
@@ -918,17 +1036,27 @@ async def get_kg_stats(
         .all()
     )
 
-    return KGStatsResponse(
+    out = KGStatsResponse(
         events=int(event_count),
         entities=int(entity_count),
         links=int(link_count),
         entity_types=[{"type": str(t or "unknown"), "count": int(cnt or 0)} for (t, cnt) in type_rows],
         updated_at=updated_at,
     )
+    _log_kg_api_metric(
+        "kg.api.stats",
+        tenant_id=str(tenant_id),
+        docs=len(allowed_doc_ids),
+        events=int(event_count),
+        entities=int(entity_count),
+        links=int(link_count),
+        elapsed_sec=round(float(time.perf_counter() - t0), 3),
+    )
+    return out
 
 
 @router.get("/graph/export")
-async def export_kg_graph(
+def export_kg_graph(
     document_ids: list[UUID] | None = Query(default=None),
     max_events: int = Query(default=200, ge=1, le=2000),
     max_entities: int = Query(default=400, ge=1, le=5000),
@@ -938,6 +1066,7 @@ async def export_kg_graph(
     min_shared_events: int = Query(default=2, ge=1, le=100),
     max_entity_links: int = Query(default=1000, ge=0, le=20000),
     download: bool = Query(default=True),
+    gzip_output: bool = Query(default=False, alias="gzip", description="Return gzipped GraphML"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -947,7 +1076,8 @@ async def export_kg_graph(
 
     Uses the same access control and projection logic as `GET /kg/graph`.
     """
-    graph = await get_kg_graph(
+    t0 = time.perf_counter()
+    graph = get_kg_graph(
         document_ids=document_ids,
         max_events=max_events,
         max_entities=max_entities,
@@ -1025,13 +1155,33 @@ async def export_kg_graph(
 
     headers = {}
     if download:
-        headers["Content-Disposition"] = f'attachment; filename="mimirq-kg-{tenant_id}.graphml"'
+        ext = "graphml.gz" if gzip_output else "graphml"
+        headers["Content-Disposition"] = f'attachment; filename="mimirq-kg-{tenant_id}.{ext}"'
 
-    return Response(content=payload, media_type="application/graphml+xml", headers=headers)
+    media_type = "application/graphml+xml"
+    content: str | bytes = payload
+    if gzip_output:
+        headers["Content-Encoding"] = "gzip"
+        content = gzip.compress(payload.encode("utf-8"), compresslevel=6)
+
+    export_stats = dict(getattr(graph, "stats", {}) or {})
+    _log_kg_api_metric(
+        "kg.api.graph_export",
+        tenant_id=str(tenant_id),
+        docs_requested=(len(document_ids) if document_ids is not None else None),
+        events=int(export_stats.get("events", 0) or 0),
+        entities=int(export_stats.get("entities", 0) or 0),
+        links=int(export_stats.get("links", 0) or 0),
+        gzip=bool(gzip_output),
+        bytes=len(content) if isinstance(content, (bytes, bytearray)) else len(content.encode("utf-8")),
+        elapsed_sec=round(float(time.perf_counter() - t0), 3),
+    )
+
+    return Response(content=content, media_type=media_type, headers=headers)
 
 
 @router.get("/events/{event_id}", response_model=KGEventDetailResponse)
-async def get_kg_event_detail(
+def get_kg_event_detail(
     event_id: UUID,
     document_ids: list[UUID] | None = Query(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
@@ -1102,7 +1252,7 @@ async def get_kg_event_detail(
 
 
 @router.get("/entities/{entity_id}", response_model=KGEntityDetailResponse)
-async def get_kg_entity_detail(
+def get_kg_entity_detail(
     entity_id: UUID,
     document_ids: list[UUID] | None = Query(default=None),
     max_events: int = Query(default=30, ge=1, le=200),
@@ -1193,7 +1343,7 @@ async def get_kg_entity_detail(
 
 
 @router.delete("/documents/{document_id}", response_model=KGDeleteResponse)
-async def delete_kg_for_document(
+def delete_kg_for_document(
     document_id: UUID,
     prune_orphan_entities: bool | None = Query(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
@@ -1386,6 +1536,18 @@ async def run_kg_search(
             account_id=account_id,
             db=db,
         )
+        if allowed_doc_ids is not None and not allowed_doc_ids:
+            # Explicitly scoped to documents, but none are accessible after ACL filtering.
+            return KGSearchResponse(
+                result={
+                    "events": [],
+                    "entities": [],
+                    "clues": [],
+                    "stats": {"reason": "no_accessible_documents"},
+                    "query": {"original": payload.query},
+                },
+                query=payload.query,
+            )
     elif payload.dataset_id:
         # Enterprise semantics: allow dataset-scoped search without enumerating all document_ids.
         ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)

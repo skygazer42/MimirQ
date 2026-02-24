@@ -25,6 +25,14 @@ class ExpandSearcher:
         ...
 
     async def expand(self, config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
+        # Explicit empty doc scope must never broaden to tenant-wide KG search.
+        if config.document_ids is not None and not config.document_ids:
+            return ExpandResult(
+                key_final=[],
+                event_ids=[],
+                clues=list(recall_result.clues or []),
+                event_scores={},
+            )
         if not config.expand.enabled:
             return ExpandResult(
                 key_final=recall_result.key_final,
