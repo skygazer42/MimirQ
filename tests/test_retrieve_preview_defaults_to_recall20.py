@@ -27,9 +27,10 @@ async def test_retrieve_preview_defaults_to_recall20_when_rag_config_omitted(
         return {"citations": [], "metrics": {}, "query_for_retrieval": captured.get("question") or ""}
 
     import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
 
     monkeypatch.setattr(lg_mod, "build_rag_state", _build_rag_state, raising=True)
-    monkeypatch.setattr(lg_mod, "_retrieve_node", _retrieve_node, raising=True)
+    monkeypatch.setattr(orch_mod, "run_retrieval", _retrieve_node, raising=True)
 
     body = rag_api.RetrievePreviewRequest(query="q")
     await rag_api.retrieve_preview(

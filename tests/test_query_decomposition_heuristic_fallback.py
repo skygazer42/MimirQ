@@ -100,6 +100,7 @@ def test_langgraph_query_decomposition_heuristic_fallback_populates_subq_kinds(
 ) -> None:
     import app.rag.engine as engine_mod
     import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
     from app.core.config import settings
 
     engine_mod.reset_rag_engine()
@@ -139,7 +140,7 @@ def test_langgraph_query_decomposition_heuristic_fallback_populates_subq_kinds(
                 )
             ]
 
-    monkeypatch.setattr(lg_mod, "hybrid_retriever", _AnyDocRetriever(), raising=True)
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", _AnyDocRetriever(), raising=True)
 
     state = {
         "question": "Explain rate limits, and list retry headers; also show examples.",

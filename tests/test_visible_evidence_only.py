@@ -347,6 +347,7 @@ def test_langgraph_strict_mode_forces_claim_check(monkeypatch: pytest.MonkeyPatc
 def test_langgraph_strict_mode_abstain_followup(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.engine as engine_mod
     import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
     from app.core.config import settings
 
     engine_mod.reset_rag_engine()
@@ -372,10 +373,10 @@ def test_langgraph_strict_mode_abstain_followup(monkeypatch: pytest.MonkeyPatch)
         def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
             return self
 
-        def invoke(self, _q):  # noqa: ANN001
-            return []
+    def invoke(self, _q):  # noqa: ANN001
+        return []
 
-    monkeypatch.setattr(lg_mod, "hybrid_retriever", _EmptyRetriever(), raising=True)
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", _EmptyRetriever(), raising=True)
 
     state = {
         "question": "What is X?",

@@ -569,6 +569,13 @@ class Settings(BaseSettings):
     RAG_ABSTAIN_ENABLED: bool = False
     RAG_ABSTAIN_MIN_CITATIONS: int = 1
     RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE: float = 0.0  # 0 disables
+    # Evidence API (retrieval-only) iterative fallback:
+    # When enabled, `POST /api/v1/rag/retrieve` may run one extra bounded retrieval pass
+    # (e.g. switch retrieval_mode/profile) if the primary pass finds no usable evidence.
+    EVIDENCE_ITERATIVE_RETRIEVE_ENABLED: bool = False
+    EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES: int = 2
+    EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE: str = "coverage80"  # recall20|recall50|coverage80
+    EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE: str = "keyword"  # hybrid|vector|keyword|mmr
     # Post-generation grounding guard: verify each claim against evidence and drop unsupported ones.
     # Disabled by default because it may delay streaming (answer is buffered for claim-check).
     RAG_CLAIM_CHECK_ENABLED: bool = False

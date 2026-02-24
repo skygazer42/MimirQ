@@ -10837,6 +10837,12 @@ export interface components {
         };
         /** EvidenceRetrieveResponse */
         EvidenceRetrieveResponse: {
+            /**
+             * Schema
+             * @description Response schema identifier
+             * @default mimirq.evidence.v1
+             */
+            schema: string;
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Citations */
@@ -20560,6 +20566,8 @@ export interface operations {
                 min_shared_events?: number;
                 max_entity_links?: number;
                 download?: boolean;
+                /** @description Return gzipped GraphML */
+                gzip?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;

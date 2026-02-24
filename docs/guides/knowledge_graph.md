@@ -76,10 +76,15 @@ MimirQ 的 KG 默认不依赖图数据库，核心数据直接落在 PostgreSQL�
 KG 的目标不是替代 RAG，而是让 RAG 在“多跳关联 / 术语对齐 / know-how 技能”上更稳、更可控：
 
 - KG query expansion（可选）：从 KG recall 的实体名衍生额外检索 query，降低 false negative。
+  - 该能力由“检索编排层”统一提供，Evidence API（检索-only）与 LangGraph retrieve 节点都会复用同一套逻辑。
   - `RAG_KG_QUERY_EXPANSION_ENABLED=true`
+  - `RAG_KG_QUERY_EXPANSION_MAX_ENTITIES=5`：最多选取多少个实体名参与扩展（按权重排序）。
+  - `RAG_KG_QUERY_EXPANSION_MAX_QUERIES=5`：最多生成多少条扩展 query（每条 query = 原 query + 实体名）。
+  - `RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT=0.15`：实体权重阈值（低于该值不参与扩展）。
   - `RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES=Skill,SkillTag,SkillCategory`：默认排除 SkillNet taxonomy 节点，避免 query 漂移（可按需调整）。
 - KG chunk injection（可选）：把 KG recall 的事件 chunk 作为额外 evidence 注入检索结果，提升召回覆盖。
   - `RAG_KG_CHUNK_INJECTION_ENABLED=true`
+  - `RAG_KG_CHUNK_INJECTION_MAX_CHUNKS=5`：最多注入的 KG evidence chunks 数量上限。
 
 ## 前端图谱（/graph）
 - Live：从后端实时加载（支持导出 GraphML）。
