@@ -21,6 +21,9 @@ ColBERT（late-interaction）是一类用于 **证据精排** 的 reranker：它
 
 如果你要做生产级 ColBERT，需要另行实现真实模型与索引（见 `docs/plans/2026-02-24-retrieval-only-rag-gap-snapshot.md` 的后续建议）。
 
+另：仓库还提供一个可选的候选召回通道脚手架（ANN + 持久化索引），见：
+- `docs/guides/colbert_ann_retrieval.md`
+
 ---
 
 ## 2) 如何启用（HybridRetriever 内置 reranker）
@@ -64,4 +67,3 @@ EVIDENCE_POST_RERANK_TOP_N=30
 - 候选本身就很少（Top-K 很小），rerank 的边际收益不明显
 - 你更需要召回（Recall/Hit）而不是精排（MRR/NDCG）
 - 你还没有用回归门禁锁住 “召回不退化”，先加 rerank 可能掩盖召回问题
-

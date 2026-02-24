@@ -826,14 +826,30 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                     )
 
                 if kg_docs:
-                    seen_keys: set[str] = set()
-                    merged: list[Document] = []
-                    for doc in (kg_docs + (docs or [])):
-                        key = _doc_key(doc)
-                        if key in seen_keys:
+                    # Merge KG docs into existing candidates without using merge order as an implicit
+                    # ranking signal:
+                    # - Preserve existing ordering for the base retriever results.
+                    # - If a KG chunk duplicates an existing chunk, replace it in-place (KG version wins),
+                    #   so provenance/score stays consistent.
+                    merged = [d for d in (docs or []) if d is not None]
+                    index_by_key: dict[str, int] = {}
+                    for i, d in enumerate(merged):
+                        try:
+                            index_by_key[_doc_key(d)] = i
+                        except Exception:
                             continue
-                        seen_keys.add(key)
-                        merged.append(doc)
+
+                    for d in kg_docs:
+                        try:
+                            key = _doc_key(d)
+                        except Exception:
+                            continue
+                        if key in index_by_key:
+                            merged[index_by_key[key]] = d
+                            continue
+                        index_by_key[key] = len(merged)
+                        merged.append(d)
+
                     docs = merged
                     kg_chunks_injected = len(kg_docs)
     except Exception as exc:  # noqa: BLE001
@@ -861,6 +877,46 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                     continue
     if tag_docs:
         docs = tag_docs + (docs or [])
+
+    # Optional: attach stable KG ranking features to candidates so rerankers (LTR) can
+    # use KG as a signal source (not just as a candidate expander).
+    #
+    # These features are intentionally low-cardinality and avoid leaking scope identifiers.
+    try:
+        for doc in docs or []:
+            if doc is None:
+                continue
+            meta = doc.metadata or {}
+            role = str(meta.get("retrieval_role") or "main").strip().lower() or "main"
+            if role != "kg":
+                continue
+
+            # For injected KG chunks, meta.score is the KG recall score (best-effort).
+            try:
+                kg_score = float(meta.get("score") or 0.0)
+            except Exception:
+                kg_score = 0.0
+
+            meta["kg_pagerank"] = float(kg_score)
+            meta["kg_shared_events"] = 1.0
+            meta["kg_path_length"] = 1.0
+            meta["kg_evidence_anchored"] = True
+
+            # Confidence buckets (low-cardinality one-hot). Thresholds are intentionally coarse.
+            low = 0.0
+            mid = 0.0
+            high = 0.0
+            if kg_score >= 0.75:
+                high = 1.0
+            elif kg_score >= 0.5:
+                mid = 1.0
+            elif kg_score > 0.0:
+                low = 1.0
+            meta["kg_edge_conf_low"] = low
+            meta["kg_edge_conf_mid"] = mid
+            meta["kg_edge_conf_high"] = high
+    except Exception:
+        pass
 
     # Optional: post-fusion rerank (evidence-first) on the final candidate list.
     post_rerank_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False))
@@ -1114,6 +1170,173 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     query_debug["rewrite_used"] = bool(rewrite_used)
     query_debug["retrieval_profile"] = profile_norm or None
 
+    # Stable retrieval trace contract (versioned, parseable by downstream systems).
+    #
+    # Keep this separate from `metrics` (free-form counters) and `query_debug` (best-effort text payloads).
+    try:
+        variants: Dict[str, int] = {}
+        for kind, _q, _r in retrieval_plan:
+            k = str(kind or "").strip() or "main"
+            variants[k] = int(variants.get(k, 0) or 0) + 1
+    except Exception:
+        variants = {}
+
+    def _trace_per_query_item(item: Dict[str, Any]) -> Dict[str, Any]:
+        kind = str(item.get("kind") or "").strip() or "main"
+        q_chars = int(item.get("query_chars") or 0)
+        ok = bool(item.get("ok"))
+        elapsed = float(item.get("elapsed_sec") or 0.0)
+        payload: Dict[str, Any] = {
+            "kind": kind,
+            "query_chars": q_chars,
+            "ok": ok,
+            "elapsed_sec": round(elapsed, 3),
+        }
+        dbg = item.get("retriever_debug")
+        if isinstance(dbg, dict):
+            # Strip text-y fields (normalized query) to keep this safe as a stable trace object.
+            dbg2 = dict(dbg)
+            qn = dbg2.get("query_normalization")
+            if isinstance(qn, dict):
+                qn2 = dict(qn)
+                qn2.pop("normalized", None)
+                if qn2:
+                    dbg2["query_normalization"] = qn2
+                else:
+                    dbg2.pop("query_normalization", None)
+            payload["retriever_debug"] = dbg2
+        return payload
+
+    try:
+        per_query_trace = [_trace_per_query_item(it) for it in (retrieval_per_query or []) if isinstance(it, dict)]
+    except Exception:
+        per_query_trace = []
+
+    citations_by_role: Dict[str, int] = {}
+    try:
+        for c in citations:
+            if not isinstance(c, dict):
+                continue
+            role = str(c.get("retrieval_role") or "main").strip().lower() or "main"
+            citations_by_role[role] = int(citations_by_role.get(role, 0) or 0) + 1
+    except Exception:
+        citations_by_role = {}
+
+    retrieval_trace: Dict[str, Any] = {
+        "schema": "mimirq.retrieval_trace_pass.v1",
+        "query_for_retrieval_hash": stable_hash(query_for_retrieval),
+        "requested_retrieval_mode": str(requested_retrieval_mode or ""),
+        "retrieval_mode": str(request_retrieval_mode or ""),
+        "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
+        "retrieval_profile": profile_norm or None,
+        "rewrite": {
+            "enabled": bool(settings.ENABLE_QUERY_REWRITE),
+            "used": bool(rewrite_used),
+            "elapsed_sec": round(float(rewrite_elapsed or 0.0), 3),
+            "model_used": rewrite_model_used,
+        },
+        "expansions": {
+            "alias": {
+                "enabled": bool(alias_enabled),
+                "used": bool(alias_used),
+                "count": int(len(alias_queries)),
+                "elapsed_sec": round(float(alias_elapsed or 0.0), 3),
+            },
+            "dict": {
+                "enabled": bool(dict_meta.get("enabled")),
+                "used": bool(dict_used),
+                "count": int(len(dict_expansions)),
+                "elapsed_sec": round(float(dict_elapsed or 0.0), 3),
+            },
+            "kg_query": {
+                "enabled": bool(kg_query_expansion_enabled),
+                "used": bool(kg_query_expansion_used),
+                "entities_total": int(kg_query_expansion_entities_total),
+                "entities_selected": int(kg_query_expansion_entities_selected),
+                "query_count": int(len(kg_query_expansion_queries)),
+                "elapsed_sec": round(float(kg_query_expansion_elapsed or 0.0), 3),
+                "error": kg_query_expansion_error,
+            },
+            "clause_fastlane": {
+                "used": bool(clause_fastlane_queries),
+                "count": int(len(clause_fastlane_queries)),
+            },
+            "multi_query": {
+                "enabled": bool(mq_enabled),
+                "used": bool(multi_query_used),
+                "count": int(len(multi_queries)),
+                "elapsed_sec": round(float(multi_query_elapsed or 0.0), 3),
+                "model_used": multi_query_model_used,
+                "parse_ok": bool(multi_query_parse_meta.get("ok")),
+                "parse_method": multi_query_parse_meta.get("method"),
+                "parse_error": multi_query_parse_meta.get("error"),
+            },
+            "hyde": {
+                "enabled": bool(settings.ENABLE_HYDE),
+                "used": bool(hyde_used),
+                "elapsed_sec": round(float(hyde_elapsed or 0.0), 3),
+                "model_used": hyde_model_used,
+            },
+            "decompose": {
+                "enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
+                "used": bool(decompose_used),
+                "count": int(len(sub_questions)),
+                "elapsed_sec": round(float(decompose_elapsed or 0.0), 3),
+                "model_used": decompose_model_used,
+                "parse_ok": bool(decompose_parse_meta.get("ok")),
+                "parse_method": decompose_parse_meta.get("method"),
+                "parse_error": decompose_parse_meta.get("error"),
+            },
+        },
+        "retrieval": {
+            "top_k": int(top_k),
+            "score_threshold": float(retriever_update.get("score_threshold") or 0.0),
+            "alpha": float(retriever_update.get("alpha") or 0.0),
+            "enable_weight_rerank": bool(retriever_update.get("enable_weight_rerank", True)),
+            "vector_weight": float(retriever_update.get("vector_weight") or 0.0),
+            "keyword_weight": float(retriever_update.get("keyword_weight") or 0.0),
+            "channel_fusion_strategy": str(getattr(settings, "RETRIEVAL_FUSION_STRATEGY", "linear") or "linear"),
+            "rrf_k": int(getattr(settings, "RETRIEVAL_RRF_K", 60) or 60),
+            "query_parallelism": int(retrieval_parallelism),
+            "query_count": int(len(retrieval_plan)),
+            "query_variants": variants,
+            "per_query": per_query_trace[:8],
+            "errors": retrieval_errors[:5],
+            "elapsed_sec": round(float(retrieval_elapsed or 0.0), 3),
+            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+        },
+        "query_variant_fusion": {
+            "strategy": ("rrf" if len(docs_by_query) > 1 else "single"),
+            "rrf_k": int(settings.RETRIEVAL_RRF_K or 0) if len(docs_by_query) > 1 else None,
+        },
+        "kg_chunk_injection": {
+            "enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+            "chunks_injected": int(kg_chunks_injected or 0),
+            "error": kg_chunk_injection_error,
+        },
+        "post_rerank": {
+            "enabled": bool(post_rerank_enabled),
+            "used": bool(post_rerank_used),
+            "provider": post_rerank_provider,
+            "candidates_n": int(post_rerank_candidates_n or 0),
+            "elapsed_sec": round(float(post_rerank_elapsed or 0.0), 3),
+            "model_used": post_rerank_model_used,
+            "error": post_rerank_error,
+        },
+        "abstain": {
+            "enabled": bool(abstain_enabled),
+            "triggered": bool(abstain_triggered),
+            "reason": abstain_reason,
+            "min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
+            "min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
+            "top_relevance_score": round(float(top_rel or 0.0), 3),
+        },
+        "citations": {
+            "count": int(len(citations)),
+            "by_role": citations_by_role,
+        },
+    }
+
     return {
         **state,
         "query_for_retrieval": query_for_retrieval,
@@ -1123,6 +1346,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "abstain_triggered": bool(abstain_triggered),
         "abstain_reason": abstain_reason,
         "query_debug": query_debug,
+        "retrieval_trace": retrieval_trace,
     }
 
 

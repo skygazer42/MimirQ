@@ -64,6 +64,21 @@ Notes:
   "has_evidence": true,
   "abstain_triggered": false,
   "abstain_reason": null,
+  "retrieval_trace": {
+    "schema": "mimirq.retrieval_trace.v1",
+    "selected_pass": "primary",
+    "passes": [
+      {
+        "pass": "primary",
+        "trace": {
+          "schema": "mimirq.retrieval_trace_pass.v1",
+          "retrieval_mode": "hybrid",
+          "rewrite": { "enabled": false, "used": false },
+          "expansions": { "alias": { "enabled": false, "used": false, "count": 0 } }
+        }
+      }
+    ]
+  },
   "query_debug": {
     "original": "What is the refund policy for annual plans?",
     "normalized": "refund policy annual plan",
@@ -79,6 +94,19 @@ Notes:
 
 - `schema`: response schema identifier (currently `mimirq.evidence.v1`). Downstream consumers can use this to
   version their parsing logic without relying on fragile field presence checks.
+
+### Retrieval Trace (Stable)
+
+- `retrieval_trace` is a **stable, versioned trace** intended for downstream provenance parsing.
+- It is intentionally separate from:
+  - `metrics`: free-form counters (best-effort; may change over time)
+  - `query_debug`: best-effort debug payload (may include text; may gain fields)
+
+Schema notes:
+- `retrieval_trace.schema` is currently `mimirq.retrieval_trace.v1`.
+- Each pass item contains a nested trace with `trace.schema = mimirq.retrieval_trace_pass.v1`.
+- This object is designed for **machine parsing** of “what happened” (rewrite/expansions/fusion/post-rerank),
+  without depending on ad hoc `metrics` keys.
 
 ### Query Debug (Optional)
 

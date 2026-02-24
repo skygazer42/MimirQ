@@ -139,11 +139,18 @@ def get_reranker(
         if not model_path:
             raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")
 
+        spec_version = kwargs.get("feature_spec_version")
+        if spec_version is None:
+            spec_version = getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1)
+
         feature_names = kwargs.get("feature_names")
         if isinstance(feature_names, (list, tuple)) and feature_names:
-            spec = LTRFeatureSpec(feature_names=tuple(str(x) for x in feature_names if x is not None))
+            spec = LTRFeatureSpec(
+                schema="mimirq.ltr_features.custom",
+                feature_names=tuple(str(x) for x in feature_names if x is not None),
+            )
         else:
-            spec = LTRFeatureSpec.default()
+            spec = LTRFeatureSpec.from_version(spec_version)
 
         return LTRReranker(model_path=model_path, spec=spec)
     

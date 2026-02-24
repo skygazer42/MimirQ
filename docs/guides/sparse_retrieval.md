@@ -30,6 +30,9 @@ sparse 的价值通常体现在 **召回**（降低 false negative），而不�
 - query 也编码成 sparse 向量
 - 用 dot-product 得到稀疏相似度并取 Top-K
 
+另外：
+- 支持可选 **持久化 sparse index**（按 scope + provider_config 哈希落盘），用于多进程/重启后的冷启动加速（best-effort）。
+
 > 注意：因为当前实现复用 BM25 的 corpus 缓存，所以如果你的 scope 没有 BM25 文档缓存（未 upsert / 未 warm），sparse 通道也会是空的。
 
 ---
@@ -39,10 +42,22 @@ sparse 的价值通常体现在 **召回**（降低 false negative），而不�
 后端配置（见 `app/core/config.py`）：
 
 - `SPARSE_RETRIEVAL_ENABLED`：是否启用 sparse 通道（默认 false）
-- `SPARSE_RETRIEVAL_PROVIDER`：provider 名称（目前支持 `deterministic`）
+- `SPARSE_RETRIEVAL_PROVIDER`：provider 名称（`deterministic` | `splade`）
 - `SPARSE_RETRIEVAL_SYNONYMS`：deterministic provider 的最小同义词表
   - 格式：`"kubernetes:k8s,postgresql:postgres"`
   - 该映射是对称的（两边会互相扩展）
+
+索引持久化（可选）：
+- `SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED=true|false`（默认 true，best-effort）
+- `SPARSE_RETRIEVAL_INDEX_DIR=./data/sparse_indexes`
+
+SPLADE provider（可选，需显式配置模型）：
+- `SPARSE_SPLADE_MODEL_NAME=...`（必填，空值会导致 provider 初始化失败）
+- `SPARSE_SPLADE_DEVICE=cpu|cuda|auto`
+- `SPARSE_SPLADE_BATCH_SIZE=8`
+- `SPARSE_SPLADE_MAX_LENGTH=256`
+- `SPARSE_SPLADE_TOP_K=128`
+- `SPARSE_SPLADE_MIN_WEIGHT=0.0`
 
 ---
 
@@ -61,8 +76,8 @@ sparse 的价值通常体现在 **召回**（降低 false negative），而不�
 启用 sparse 通道的常见代价：
 - 额外的索引构建与内存占用（当前实现是 in-memory）
 - 额外的候选融合开销（尤其在 RRF 时会增加排序工作）
+ - SPLADE provider 额外引入模型加载与推理成本（建议从小 batch + CPU 起步，先跑回归门禁观察收益）
 
 建议：
 - 先在 retrieval-only regression gate 上评估（Recall/Hit/MRR/NDCG）
 - 用 slice（语言/文件类型/质量）观察 sparse 是否只在特定桶收益明显
-

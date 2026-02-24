@@ -80,3 +80,7 @@ web/types/openapi.ts
 docker/.env
 docker/.env.*
 !docker/.env.example
+
+# Retrieval index caches (generated artifacts; keep out of git)
+data/sparse_indexes/
+data/colbert_indexes/

@@ -3,6 +3,7 @@ Hybrid Retriever: Vector retrieval + BM25 + optional MMR diversity reranking.
 Reference: RAG_Agent example repository. Retrieval modes and reranking strategies are configurable.
 """
 
+import hashlib
 import heapq
 import math
 import re
@@ -33,6 +34,7 @@ from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
     build_retrieval_candidate_cache_key,
     get_cached_retrieval_candidates,
@@ -97,8 +99,12 @@ class HybridRetriever(BaseRetriever):
     # Cache whether pg_trgm is available for lexical DB search (per retriever instance).
     _lexical_pg_trgm_available: Optional[bool] = PrivateAttr(default=None)
     # Optional sparse retrieval channel caches (per scope key).
-    _sparse_doc_vectors: Dict[str, Dict[str, Any]] = PrivateAttr(default_factory=dict)
+    _sparse_doc_vectors: Dict[str, Dict[str, SparseVector]] = PrivateAttr(default_factory=dict)
     _sparse_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+    # Optional ColBERT-style ANN retrieval caches (per scope key).
+    # These are used only when settings.COLBERT_RETRIEVAL_ENABLED=true.
+    _colbert_index_cache: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    _colbert_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
 
     def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
         if not docs:
@@ -207,31 +213,213 @@ class HybridRetriever(BaseRetriever):
             self._sparse_build_locks[cache_key] = lock
         return lock
 
+    def _get_colbert_build_lock(self, cache_key: str) -> threading.Lock:
+        lock = self._colbert_build_locks.get(cache_key)
+        if lock is None:
+            lock = threading.Lock()
+            self._colbert_build_locks[cache_key] = lock
+        return lock
+
     def _build_sparse_index(self, *, cache_key: str, docs: List[Document]) -> None:
         """
         Build (or rebuild) a sparse retrieval index for the current scope key.
 
-        This is SPLADE-style scaffolding intended for:
-        - deterministic unit/regression tests (no model downloads)
-        - optional production extensions behind a flag/provider
+        This is SPLADE-style sparse retrieval:
+        - deterministic provider for tests/offline
+        - optional SPLADE provider (HF/transformers) for production experiments (opt-in)
+
+        Indices can be persisted to disk when enabled.
         """
-        from app.rag.retrieval.sparse import DeterministicSparseEncoder, parse_synonyms
+        from app.rag.retrieval.sparse import (
+            SparseIndexStore,
+            build_sparse_provider_config,
+            get_sparse_encoder,
+            parse_synonyms,
+        )
 
         provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
-        if provider not in {"deterministic"}:
-            # Future: "splade" provider can be added lazily; keep behavior safe by default.
-            provider = "deterministic"
-
         synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        encoder = DeterministicSparseEncoder(synonyms=synonyms)
 
-        out: Dict[str, Any] = {}
+        provider_config = build_sparse_provider_config(
+            provider=provider,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+
+        encoder = get_sparse_encoder(
+            provider=provider,
+            synonyms=synonyms,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+
+        def _coerce(v: Any) -> SparseVector:
+            if isinstance(v, SparseVector):
+                return v
+            if isinstance(v, dict):
+                weights: dict[str, float] = {}
+                for k, w in v.items():
+                    if k is None or w is None:
+                        continue
+                    try:
+                        weights[str(k)] = float(w)
+                    except Exception:
+                        continue
+                return SparseVector(weights=weights)
+            return SparseVector(weights={})
+
+        texts = [str(d.page_content or "") for d in (docs or []) if d is not None and d.id is not None]
+        vecs = encoder.encode_batch(texts)
+
+        out: Dict[str, SparseVector] = {}
+        idx = 0
         for d in docs or []:
             if d is None or d.id is None:
                 continue
-            out[str(d.id)] = encoder.encode(str(d.page_content or ""))
+            vec = vecs[idx] if idx < len(vecs) else SparseVector(weights={})
+            out[str(d.id)] = _coerce(vec)
+            idx += 1
+
         self._sparse_doc_vectors[cache_key] = out
+
+        if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            try:
+                fp = self._sparse_corpus_fingerprint(docs)
+                store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
+                store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=out)
+            except Exception:
+                pass
+
+    def _colbert_corpus_fingerprint(self, docs: List[Document]) -> str:
+        """
+        Stable fingerprint for a ColBERT ANN index corpus.
+
+        Uses chunk_id + pipeline markers so persisted indices can be invalidated after re-chunking.
+        """
+        parts: list[str] = []
+        for d in docs or []:
+            if d is None or d.id is None:
+                continue
+            cid = str(d.id)
+            meta = d.metadata or {}
+            pk = meta.get("doc_pipeline_key") or meta.get("pipeline_hash") or ""
+            parts.append(f"{cid}:{pk}")
+        parts.sort()
+        h = hashlib.sha256()
+        for p in parts:
+            h.update(p.encode("utf-8", errors="ignore"))
+            h.update(b"\n")
+        return h.hexdigest()[:24]
+
+    def _build_colbert_index(self, *, cache_key: str, docs: List[Document]) -> None:
+        """
+        Build (or rebuild) a ColBERT-style ANN index for the current scope key.
+
+        Design:
+        - Deterministic embedder for tests/offline (no model downloads)
+        - Optional HF embedder (opt-in)
+        - Persisted index to disk for fast cold-start in multi-process deployments
+        """
+        from app.rag.retrieval.colbert_ann import (
+            ColbertAnnIndex,
+            ColbertAnnIndexStore,
+            build_colbert_provider_config,
+            get_dense_embedder,
+        )
+
+        provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        provider_config = build_colbert_provider_config(
+            provider=provider,
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
+            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
+            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+        )
+
+        embedder = get_dense_embedder(
+            provider=provider,
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
+            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
+            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+        )
+
+        # Build stable ordering for determinism (important for persisted format + tests).
+        pairs: list[tuple[str, str]] = []
+        for d in docs or []:
+            if d is None or d.id is None:
+                continue
+            doc_id = str(d.id)
+            text = str(d.page_content or "")
+            pairs.append((doc_id, text))
+
+        pairs.sort(key=lambda x: x[0])
+        doc_ids = [p[0] for p in pairs]
+        texts = [p[1] for p in pairs]
+
+        if not texts:
+            # Avoid numpy stack errors in deterministic embedder; empty corpora simply yield no hits.
+            import numpy as np  # local import: used only for this guard path
+
+            vecs = np.zeros((0, 1), dtype=np.float32)
+        else:
+            vecs = embedder.encode_batch(texts)
+
+        fp = self._colbert_corpus_fingerprint(docs)
+        index = ColbertAnnIndex(
+            doc_ids=doc_ids,
+            vectors=vecs,
+            corpus_fingerprint=fp,
+            provider_config=dict(provider_config),
+        )
+        self._colbert_index_cache[cache_key] = index
+
+        if bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            try:
+                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", "./data/colbert_indexes") or ""))
+                store.save(
+                    cache_key=cache_key,
+                    provider_config=provider_config,
+                    corpus_fingerprint=fp,
+                    doc_ids=doc_ids,
+                    vectors=vecs,
+                )
+            except Exception:
+                pass
+
+    def _sparse_corpus_fingerprint(self, docs: List[Document]) -> str:
+        """
+        Stable fingerprint for a sparse index corpus.
+
+        Uses chunk_id + pipeline markers so persisted indices can be invalidated after re-chunking.
+        """
+        parts: list[str] = []
+        for d in docs or []:
+            if d is None or d.id is None:
+                continue
+            cid = str(d.id)
+            meta = d.metadata or {}
+            pk = meta.get("doc_pipeline_key") or meta.get("pipeline_hash") or ""
+            parts.append(f"{cid}:{pk}")
+        parts.sort()
+        h = hashlib.sha256()
+        for p in parts:
+            h.update(p.encode("utf-8", errors="ignore"))
+            h.update(b"\n")
+        return h.hexdigest()[:24]
 
     def _bm25_cache_max_tenants(self) -> int:
         try:
@@ -974,6 +1162,168 @@ class HybridRetriever(BaseRetriever):
             return []
         return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
 
+    def _search_colbert_ann(
+        self,
+        query: str,
+        top_k: int = 10,
+        document_ids: Optional[List[UUID]] = None,
+        tenant_id: Optional[UUID] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Optional ColBERT-style ANN retrieval channel (production scaffold).
+
+        Notes:
+        - Uses the same BM25-scoped in-memory corpus as the index source.
+        - Deterministic by default (no model downloads), with optional HF provider.
+        - Persists index artifacts to disk when enabled (best-effort).
+        """
+        raw_query = str(query or "").strip()
+        if not raw_query:
+            return []
+        if not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+            return []
+
+        tenant_uuid: Optional[UUID] = tenant_id
+        if tenant_uuid is None:
+            try:
+                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            except Exception:
+                tenant_uuid = None
+        if tenant_uuid is None:
+            return []
+
+        dataset_scope_id: UUID | None = None
+        if self.dataset_id is not None and not (document_ids or []):
+            dataset_scope_id = self.dataset_id
+
+        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
+        docs = self._bm25_docs.get(cache_key) or []
+        if not docs:
+            return []
+
+        from app.rag.retrieval.colbert_ann import (
+            ColbertAnnIndexStore,
+            build_colbert_provider_config,
+            get_dense_embedder,
+            topk_cosine_scores,
+        )
+
+        provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        provider_config = build_colbert_provider_config(
+            provider=provider,
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
+            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
+            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+        )
+
+        expected_fp = self._colbert_corpus_fingerprint(docs)
+
+        index = self._colbert_index_cache.get(cache_key)
+        try:
+            index_ok = (
+                index is not None
+                and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
+                and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
+            )
+        except Exception:
+            index_ok = False
+
+        if not index_ok and bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            try:
+                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", "./data/colbert_indexes") or ""))
+                loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
+                if loaded is not None:
+                    index = loaded
+                    self._colbert_index_cache[cache_key] = loaded
+                    index_ok = True
+            except Exception:
+                index_ok = False
+
+        if not index_ok:
+            try:
+                with self._get_colbert_build_lock(cache_key):
+                    index = self._colbert_index_cache.get(cache_key)
+                    try:
+                        index_ok = (
+                            index is not None
+                            and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
+                            and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
+                        )
+                    except Exception:
+                        index_ok = False
+
+                    if not index_ok:
+                        self._build_colbert_index(cache_key=cache_key, docs=docs)
+                        index = self._colbert_index_cache.get(cache_key)
+                        index_ok = index is not None
+            except Exception:
+                index_ok = False
+                index = self._colbert_index_cache.get(cache_key)
+
+        if not index_ok or index is None:
+            return []
+
+        embedder = get_dense_embedder(
+            provider=provider,
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
+            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
+            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+        )
+        q_mat = embedder.encode_batch([raw_query])
+        try:
+            q_vec = q_mat[0]
+        except Exception:
+            return []
+
+        doc_vecs = getattr(index, "vectors", None)
+        doc_ids = list(getattr(index, "doc_ids", []) or [])
+        if doc_vecs is None or not doc_ids:
+            return []
+
+        scored = topk_cosine_scores(query_vec=q_vec, doc_vecs=doc_vecs, k=max(0, int(top_k or 0)))
+        if not scored:
+            return []
+
+        doc_by_id: Dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
+        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
+
+        results: List[Dict[str, Any]] = []
+        for idx, score in scored:
+            if idx < 0 or idx >= len(doc_ids):
+                continue
+            doc_id = str(doc_ids[int(idx)])
+            doc = doc_by_id.get(doc_id)
+            if doc is None:
+                continue
+            meta = dict(doc.metadata or {})
+            if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
+                continue
+            if metadata_filter and self.metadata_filter_enabled:
+                if not self._match_metadata_filter(meta, metadata_filter):
+                    continue
+
+            # Keep provenance stable and low-cardinality: expose score, but avoid embedding details.
+            meta.setdefault("chunk_id", doc_id)
+            meta["colbert_score"] = float(score)
+
+            results.append(
+                {
+                    "chunk_id": doc_id,
+                    "content": doc.page_content,
+                    "metadata": meta,
+                    "score": float(score),
+                }
+            )
+
+        if not results:
+            return []
+        return results
+
     def _search_sparse(
         self,
         query: str,
@@ -1013,8 +1363,42 @@ class HybridRetriever(BaseRetriever):
         if not docs:
             return []
 
-        # Lazy-build sparse vectors if needed (robust when enabling after BM25 builds).
+        from app.rag.retrieval.sparse import (
+            SparseIndexStore,
+            build_sparse_provider_config,
+            get_sparse_encoder,
+            parse_synonyms,
+            topk_scores,
+        )
+
+        provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
+        provider_config = build_sparse_provider_config(
+            provider=provider,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+
+        # Lazy-load persisted sparse vectors if needed (best-effort; robust across restarts).
         sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+        if len(sparse_vecs) != len(docs):
+            if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+                try:
+                    fp = self._sparse_corpus_fingerprint(docs)
+                    store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
+                    loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
+                    if loaded:
+                        sparse_vecs = loaded
+                        self._sparse_doc_vectors[cache_key] = sparse_vecs
+                except Exception:
+                    pass
+
         if len(sparse_vecs) != len(docs):
             try:
                 with self._get_sparse_build_lock(cache_key):
@@ -1025,12 +1409,27 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
 
-        from app.rag.retrieval.sparse import DeterministicSparseEncoder, parse_synonyms, topk_scores
-
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
-        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        encoder = DeterministicSparseEncoder(synonyms=synonyms)
-        q_vec = encoder.encode(raw_query)
+        encoder = get_sparse_encoder(
+            provider=provider,
+            synonyms=synonyms,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+        if not raw_query:
+            q_vec = SparseVector(weights={})
+        else:
+            q_raw = encoder.encode_batch([raw_query])[0]
+            if isinstance(q_raw, SparseVector):
+                q_vec = q_raw
+            elif isinstance(q_raw, dict):
+                q_vec = SparseVector(weights={str(k): float(v) for k, v in q_raw.items() if k is not None and v is not None})
+            else:
+                q_vec = SparseVector(weights={})
 
         scored = topk_scores(query_vec=q_vec, docs=sparse_vecs, k=max(0, int(top_k or 0)))
         if not scored:
@@ -1536,6 +1935,25 @@ class HybridRetriever(BaseRetriever):
                     vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
                 logger.warning("Vector search failed: %s", exc)
+                vector_results = []
+
+        # Optional: ColBERT ANN fallback for vector retrieval.
+        # This is opt-in and only runs when vector backend returns empty results.
+        if want_vector and not vector_results and bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+            try:
+                t0 = time.perf_counter()
+                try:
+                    vector_results = self._search_colbert_ann(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                finally:
+                    vector_elapsed_ms += (time.perf_counter() - t0) * 1000
+            except Exception as exc:
+                logger.warning("ColBERT ANN search failed: %s", exc)
                 vector_results = []
 
         # 2) BM25 retrieval

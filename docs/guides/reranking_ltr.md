@@ -15,15 +15,32 @@ LTR（Learning-to-Rank）用于把多个检索信号（dense/bm25/lexical/sparse
 ## 1) 特征规范（Feature Spec）
 
 特征顺序必须稳定（训练与推理一致）：
-- 见 `app/rag/reranker/ltr.py:LTRFeatureSpec.default()`
+- 见 `app/rag/reranker/ltr.py:LTRFeatureSpec.v1()/v2()`
 
-当前默认 spec 包含：
+### v1（默认）
+
+默认 spec 是 v1（兼容已有模型工件）：
 - `vector_score`
 - `bm25_score`
 - `lexical_score`
 - `sparse_score`
 - `base_score`
 - `role_*` one-hot（用于把 query expansion/KG 注入等 “来源角色” 作为信号）
+
+### v2（可选，包含 KG 排序特征）
+
+v2 在 v1 基础上加入一组低基数 KG 特征（用于把 KG 从 “召回扩展” 提升为 “排序信号来源”）：
+- `kg_pagerank`
+- `kg_shared_events`
+- `kg_path_length`
+- `kg_edge_conf_low|mid|high`
+- `kg_evidence_anchored`
+
+启用方式（必须与模型工件一致）：
+
+```bash
+LTR_FEATURE_SPEC_VERSION=2
+```
 
 > 如果你修改了 feature spec，必须同时更新训练与推理侧，并通过回归测试锁住。
 
@@ -96,12 +113,32 @@ LTR_MODEL_PATH=./artifacts/ltr.json
 
 ## 5) 生产化差距（需要额外工程）
 
-当前训练目标是 `binary:logistic`（更像 pointwise 分类）。
-生产级 LTR 通常需要：
-- 按 query 分组的 pairwise/listwise objective
-- hard negative mining
-- 模型与特征版本治理
+训练脚本默认支持 **按 query 分组** 的 ranking objective（例如 `rank:pairwise` / `rank:ndcg`），并提供
+hard negative（near-miss）采样能力。
+
+常用开关（训练侧）：
+
+```bash
+python scripts/train_ltr_from_regression_cases.py \
+  --objective rank:pairwise \
+  --hard-negatives-per-case 10 \
+  --max-negatives-per-case 30 \
+  --feature-spec-version 2
+```
+
+离线评估（不依赖后端启用 LTR；本地 rerank Evidence API candidates）：
+
+```bash
+python scripts/eval_ltr_offline.py \
+  --cases ./regression_cases.json \
+  --model ./artifacts/ltr.json \
+  --k 20 \
+  --top-k 50
+```
+
+仍然存在的生产化差距（需要额外工程）：
+- 更强的 hard negative mining（跨 run、跨版本、从 trace/feedback 自动挖掘）
+- 模型与特征版本治理（artifact 元信息、强一致 spec/version 绑定）
 - A/B 与回归门禁策略
 
 详见差距快照：`docs/plans/2026-02-24-retrieval-only-rag-gap-snapshot.md`。
-

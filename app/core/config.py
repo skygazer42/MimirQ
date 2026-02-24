@@ -536,9 +536,37 @@ class Settings(BaseSettings):
     # - Production SPLADE models (HF/transformers) must be loaded lazily and are optional.
     SPARSE_RETRIEVAL_ENABLED: bool = False
     SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | splade
+    # Persist sparse indices to disk (scoped by tenant/dataset/document_ids).
+    # This is safe because sparse retrieval is disabled by default.
+    SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED: bool = True
+    SPARSE_RETRIEVAL_INDEX_DIR: str = "./data/sparse_indexes"
     # Comma-separated synonym pairs like: "kubernetes:k8s,postgresql:postgres"
     # Used only by deterministic provider (test scaffold).
     SPARSE_RETRIEVAL_SYNONYMS: str = ""
+    # SPLADE provider (optional, opt-in): requires transformers + a local or HF model.
+    SPARSE_SPLADE_MODEL_NAME: str = ""
+    SPARSE_SPLADE_DEVICE: str = "cpu"  # cpu | cuda | auto
+    SPARSE_SPLADE_BATCH_SIZE: int = 8
+    SPARSE_SPLADE_MAX_LENGTH: int = 256
+    SPARSE_SPLADE_TOP_K: int = 128
+    SPARSE_SPLADE_MIN_WEIGHT: float = 0.0
+
+    # Optional ColBERT-style retrieval (ANN) channel.
+    #
+    # Notes:
+    # - Disabled by default (no behavior change).
+    # - The deterministic provider is intended for tests/offline gating.
+    # - The HF provider is opt-in and requires a local/HF model.
+    COLBERT_RETRIEVAL_ENABLED: bool = False
+    COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | hf
+    COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED: bool = True
+    COLBERT_RETRIEVAL_INDEX_DIR: str = "./data/colbert_indexes"
+    COLBERT_RETRIEVAL_MODEL_NAME: str = ""
+    COLBERT_RETRIEVAL_DEVICE: str = "cpu"  # cpu | cuda | auto
+    COLBERT_RETRIEVAL_BATCH_SIZE: int = 16
+    COLBERT_RETRIEVAL_MAX_LENGTH: int = 256
+    # Used only by deterministic provider.
+    COLBERT_RETRIEVAL_EMBED_DIM: int = 64
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
@@ -804,6 +832,10 @@ class Settings(BaseSettings):
     # Local Learning-to-Rank model path (xgboost JSON/UBJ).
     # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
     LTR_MODEL_PATH: str = ""
+    # LTR feature spec version (must match the model artifact's feature count/order).
+    # - v1: base retrieval scores + retrieval_role one-hot
+    # - v2: v1 + KG ranking features (kg_pagerank/path/etc)
+    LTR_FEATURE_SPEC_VERSION: int = 1
     RERANKER_MODEL: Optional[str] = None
     # Optional: use a dedicated API key/base for API-style rerankers (openai/dashscope),
     # falls back to LLM_API_KEY/LLM_API_BASE when empty.

@@ -64,7 +64,14 @@ It performs retrieval only (no answer generation) and returns `citations` plus e
   },
   "has_evidence": true,
   "abstain_triggered": false,
-  "abstain_reason": null
+  "abstain_reason": null,
+  "retrieval_trace": {
+    "schema": "mimirq.retrieval_trace.v1",
+    "selected_pass": "primary",
+    "passes": [
+      { "pass": "primary", "trace": { "schema": "mimirq.retrieval_trace_pass.v1" } }
+    ]
+  }
 }
 ```
 
