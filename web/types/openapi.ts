@@ -5199,6 +5199,16 @@ export interface components {
              * @default 0.6
              */
             alpha: number;
+            /** Fusion Strategy */
+            fusion_strategy?: string | null;
+            /** Fusion Budgets */
+            fusion_budgets?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Min Scores */
+            fusion_min_scores?: {
+                [key: string]: number;
+            } | null;
             /**
              * Enable Weight Rerank
              * @default true

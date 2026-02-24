@@ -40,6 +40,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `regression_gate.py`: enforce regression thresholds from evaluation outputs
 - `train_ltr_from_regression_cases.py`: train an xgboost LTR reranker model from regression cases via Evidence API (retrieval-only)
 - `eval_ltr_offline.py`: compare baseline retrieval vs local LTR rerank offline (candidates via Evidence API)
+- `eval_retrieval_fusion_offline.py`: compare fusion strategy variants offline via Evidence API (retrieval-only)
 
 ## Exit Codes
 

@@ -62,6 +62,10 @@ class HybridRetriever(BaseRetriever):
     reranker_top_n: int = settings.RERANKER_TOP_N
     fusion_strategy: str = settings.RETRIEVAL_FUSION_STRATEGY
     rrf_k: int = settings.RETRIEVAL_RRF_K
+    # Optional: override channel fusion behavior per retriever instance (used by Evidence API / ablations).
+    # Only used when fusion_strategy="budgeted_rrf".
+    fusion_budgets: Optional[Dict[str, int]] = None
+    fusion_min_scores: Optional[Dict[str, float]] = None
     dedup_enabled: bool = settings.RETRIEVAL_DEDUP_ENABLED
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
     dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
@@ -2180,6 +2184,7 @@ class HybridRetriever(BaseRetriever):
             alpha=alpha,
             fusion_strategy=self.fusion_strategy,
             rrf_k=self.rrf_k,
+            top_k=top_k,
         )
 
         try:
@@ -3442,6 +3447,7 @@ class HybridRetriever(BaseRetriever):
         alpha: float = 0.5,
         fusion_strategy: str | None = None,
         rrf_k: int | None = None,
+        top_k: int | None = None,
     ) -> List[Dict[str, Any]]:
         """Merge retrieval channel results into a single ranked list."""
 
@@ -3580,6 +3586,242 @@ class HybridRetriever(BaseRetriever):
                 )
 
             return sorted(merged.values(), key=_sort_key)
+
+        if fusion in ("budgeted_rrf", "budget_rrf"):
+            def _rank_sort_key(r: Dict[str, Any]) -> tuple[float, str]:
+                # Deterministic ordering is important for regression replay.
+                return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
+
+            v_sorted = sorted(vector_results, key=_rank_sort_key)
+            b_sorted = sorted(bm25_results, key=_rank_sort_key)
+            l_sorted = sorted(lexical_results, key=_rank_sort_key)
+            s_sorted = sorted(sparse_results, key=_rank_sort_key)
+
+            v_rank: Dict[str, int] = {}
+            b_rank: Dict[str, int] = {}
+            l_rank: Dict[str, int] = {}
+            s_rank: Dict[str, int] = {}
+            for idx, r in enumerate(v_sorted, 1):
+                key = self._result_key(r)
+                if key not in v_rank:
+                    v_rank[key] = idx
+            for idx, r in enumerate(b_sorted, 1):
+                key = self._result_key(r)
+                if key not in b_rank:
+                    b_rank[key] = idx
+            for idx, r in enumerate(l_sorted, 1):
+                key = self._result_key(r)
+                if key not in l_rank:
+                    l_rank[key] = idx
+            for idx, r in enumerate(s_sorted, 1):
+                key = self._result_key(r)
+                if key not in s_rank:
+                    s_rank[key] = idx
+
+            def _rank_score(rank_map: Dict[str, int], key: str) -> float:
+                rnk = rank_map.get(key)
+                if not rnk:
+                    return 0.0
+                rnk = int(rnk)
+                if rnk <= 0:
+                    return 0.0
+                return 1.0 / float(rnk)
+
+            def _coerce_budgets(raw: Any) -> Dict[str, int]:
+                if not isinstance(raw, dict):
+                    return {}
+                out0: Dict[str, int] = {}
+                for k, v in raw.items():
+                    key = str(k or "").strip().lower()
+                    if not key:
+                        continue
+                    try:
+                        iv = int(v) if v is not None else 0
+                    except Exception:
+                        continue
+                    out0[key] = max(0, iv)
+                return out0
+
+            def _coerce_min_scores(raw: Any) -> Dict[str, float]:
+                if not isinstance(raw, dict):
+                    return {}
+                out0: Dict[str, float] = {}
+                for k, v in raw.items():
+                    key = str(k or "").strip().lower()
+                    if not key:
+                        continue
+                    try:
+                        fv = float(v) if v is not None else 0.0
+                    except Exception:
+                        continue
+                    out0[key] = max(0.0, min(1.0, fv))
+                return out0
+
+            # Determine budgets (quotas) for the top_k prefix.
+            k_prefix = int(top_k or 0) or int(getattr(self, "k", 0) or 0) or 10
+            k_prefix = max(1, k_prefix)
+
+            budgets = _coerce_budgets(getattr(self, "fusion_budgets", None))
+            if not budgets:
+                # Default: ensure cross-channel recall in the visible prefix.
+                # - vector: ~50%
+                # - keyword (bm25 + lexical): remaining, split evenly
+                # - sparse: 0 by default (can be enabled via fusion_budgets)
+                vec = int(math.ceil(k_prefix * 0.5))
+                keyword = max(0, k_prefix - vec)
+                bm = int(math.ceil(keyword * 0.5)) if keyword else 0
+                lex = max(0, keyword - bm)
+                budgets = {"vector": vec, "bm25": bm, "lexical": lex, "sparse": 0}
+
+            min_scores = _coerce_min_scores(getattr(self, "fusion_min_scores", None))
+
+            k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
+            k0 = max(1, k0)
+
+            merged: Dict[str, Dict[str, Any]] = {}
+            raw_scores: List[float] = []
+            keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
+
+            def _candidate_eligible(key: str) -> bool:
+                # Candidate must have at least one channel where it meets that channel's min score (if configured).
+                present = False
+                for ch, rmap in (("vector", v_rank), ("bm25", b_rank), ("lexical", l_rank), ("sparse", s_rank)):
+                    rs = _rank_score(rmap, key)
+                    if rs <= 0.0:
+                        continue
+                    present = True
+                    th = min_scores.get(ch)
+                    if th is None or rs >= float(th):
+                        return True
+                return False if present else False
+
+            for key in keys:
+                v_data = vector_norm.get(key, {}).get("data")
+                b_data = bm25_norm.get(key, {}).get("data")
+                l_data = lexical_norm.get(key, {}).get("data")
+                s_data = sparse_norm.get(key, {}).get("data")
+                data = v_data or b_data or l_data or s_data
+                if not data:
+                    continue
+
+                # Merge metadata from all channels (prefer existing non-empty values).
+                merged_meta = dict(data.get("metadata") or {})
+                for src in (v_data, b_data, l_data, s_data):
+                    if not src or src is data:
+                        continue
+                    src_meta = src.get("metadata") or {}
+                    for mk, mv in src_meta.items():
+                        if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
+                            merged_meta[mk] = mv
+                merged_data = dict(data)
+                merged_data["metadata"] = merged_meta
+                if not merged_data.get("chunk_id"):
+                    for src in (v_data, b_data, l_data, s_data):
+                        if src and src.get("chunk_id"):
+                            merged_data["chunk_id"] = src.get("chunk_id")
+                            break
+                data = merged_data
+
+                vr = v_rank.get(key)
+                br = b_rank.get(key)
+                lr = l_rank.get(key)
+                sr = s_rank.get(key)
+                rrf_raw = (1.0 / (k0 + vr)) if vr else 0.0
+                rrf_raw += (1.0 / (k0 + br)) if br else 0.0
+                rrf_raw += (1.0 / (k0 + lr)) if lr else 0.0
+                rrf_raw += (1.0 / (k0 + sr)) if sr else 0.0
+                raw_scores.append(float(rrf_raw))
+
+                merged[key] = {
+                    **data,
+                    "vector_score": float(vector_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "bm25_score": float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "lexical_score": float(lexical_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "sparse_score": float(sparse_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "vector_rank_score": float(_rank_score(v_rank, key)),
+                    "bm25_rank_score": float(_rank_score(b_rank, key)),
+                    "lexical_rank_score": float(_rank_score(l_rank, key)),
+                    "sparse_rank_score": float(_rank_score(s_rank, key)),
+                    "rrf_score_raw": float(rrf_raw),
+                    "rrf_k": k0,
+                    "rrf_rank_vector": vr,
+                    "rrf_rank_bm25": br,
+                    "rrf_rank_lexical": lr,
+                    "rrf_rank_sparse": sr,
+                    "fusion_strategy": "budgeted_rrf",
+                    "score": float(rrf_raw),
+                }
+
+            if merged:
+                min_s = min(raw_scores) if raw_scores else 0.0
+                max_s = max(raw_scores) if raw_scores else 0.0
+                rng = max_s - min_s if max_s > min_s else 1.0
+                for item in merged.values():
+                    raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
+                    item["score"] = (raw - min_s) / rng
+
+            def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
+                return (
+                    -float(item.get("score", 0.0) or 0.0),
+                    -float(item.get("rrf_score_raw", 0.0) or 0.0),
+                    -float(item.get("vector_rank_score", 0.0) or 0.0),
+                    -float(item.get("bm25_rank_score", 0.0) or 0.0),
+                    -float(item.get("lexical_rank_score", 0.0) or 0.0),
+                    -float(item.get("sparse_rank_score", 0.0) or 0.0),
+                    self._result_key(item),
+                )
+
+            all_sorted = sorted(merged.values(), key=_sort_key)
+
+            # Build a top_k prefix that enforces budgets/quotas but still orders by fused score.
+            selected_keys: List[str] = []
+            used: set[str] = set()
+
+            def _select_from_channel(channel: str, sorted_results: List[Dict[str, Any]], rank_map: Dict[str, int]) -> None:
+                quota = int(budgets.get(channel, 0) or 0)
+                if quota <= 0:
+                    return
+                picked = 0
+                th = min_scores.get(channel)
+                for rr in sorted_results:
+                    if picked >= quota:
+                        break
+                    key = self._result_key(rr)
+                    if key in used:
+                        continue
+                    rs = _rank_score(rank_map, key)
+                    if rs <= 0.0:
+                        continue
+                    if th is not None and rs < float(th):
+                        # Rank scores are monotonic decreasing within a channel; can stop early.
+                        break
+                    if not _candidate_eligible(key):
+                        continue
+                    used.add(key)
+                    selected_keys.append(key)
+                    picked += 1
+
+            _select_from_channel("vector", v_sorted, v_rank)
+            _select_from_channel("bm25", b_sorted, b_rank)
+            _select_from_channel("lexical", l_sorted, l_rank)
+            _select_from_channel("sparse", s_sorted, s_rank)
+
+            if len(selected_keys) < k_prefix:
+                for item in all_sorted:
+                    if len(selected_keys) >= k_prefix:
+                        break
+                    key = self._result_key(item)
+                    if key in used:
+                        continue
+                    if not _candidate_eligible(key):
+                        continue
+                    used.add(key)
+                    selected_keys.append(key)
+
+            selected_set = set(selected_keys)
+            prefix = [item for item in all_sorted if self._result_key(item) in selected_set]
+            rest = [item for item in all_sorted if self._result_key(item) not in selected_set]
+            return prefix + rest
 
         merged: Dict[str, Dict[str, Any]] = {}
         keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))

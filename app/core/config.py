@@ -500,7 +500,8 @@ class Settings(BaseSettings):
     # Retrieval fusion strategy:
     # - linear: min-max normalize each channel then alpha-blend
     # - rrf: reciprocal-rank fusion (normalized for UI)
-    RETRIEVAL_FUSION_STRATEGY: str = "linear"  # linear | rrf
+    # - budgeted_rrf: RRF scoring but enforce per-channel quotas in the visible top-k prefix
+    RETRIEVAL_FUSION_STRATEGY: str = "linear"  # linear | rrf | budgeted_rrf
     RETRIEVAL_RRF_K: int = 60
     # Post-retrieval guards (dedup/diversity)
     RETRIEVAL_DEDUP_ENABLED: bool = True
@@ -1429,7 +1430,7 @@ class Settings(BaseSettings):
             )
 
         # Validate retrieval fusion strategy
-        valid_fusion_strategies = {"linear", "rrf"}
+        valid_fusion_strategies = {"linear", "rrf", "budgeted_rrf"}
         if self.RETRIEVAL_FUSION_STRATEGY not in valid_fusion_strategies:
             raise ValueError(
                 f"RETRIEVAL_FUSION_STRATEGY ({self.RETRIEVAL_FUSION_STRATEGY}) must be one of {valid_fusion_strategies}"
