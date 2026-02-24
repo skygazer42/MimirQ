@@ -47,8 +47,7 @@ class _FakeDB:
         return self._queries.pop(0)
 
 
-@pytest.mark.asyncio
-async def test_get_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_graph
@@ -85,7 +84,7 @@ async def test_get_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPa
         ]
     )
 
-    out = await get_kg_graph(
+    out = get_kg_graph(
         document_ids=None,
         max_events=10,
         max_entities=10,
@@ -108,8 +107,7 @@ async def test_get_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPa
     assert rel_links[0].meta.get("chunk_id") == str(UUID(int=3))
 
 
-@pytest.mark.asyncio
-async def test_expand_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_expand_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import expand_kg_graph
@@ -149,7 +147,7 @@ async def test_expand_kg_graph_includes_relation_links(monkeypatch: pytest.Monke
         ]
     )
 
-    out = await expand_kg_graph(
+    out = expand_kg_graph(
         node_id=UUID(int=10),
         document_ids=None,
         max_events=10,

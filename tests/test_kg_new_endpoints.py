@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import UUID
@@ -64,8 +65,7 @@ class _FakeDB:
         return
 
 
-@pytest.mark.asyncio
-async def test_get_kg_stats_no_access_returns_zero(monkeypatch: pytest.MonkeyPatch):
+def test_get_kg_stats_no_access_returns_zero(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_stats
@@ -75,7 +75,7 @@ async def test_get_kg_stats_no_access_returns_zero(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [], raising=True)
 
-    out = await get_kg_stats(document_ids=None, tenant_id=UUID(int=1), account_id="u", db=object())
+    out = get_kg_stats(document_ids=None, tenant_id=UUID(int=1), account_id="u", db=object())
     assert out.events == 0
     assert out.entities == 0
     assert out.links == 0
@@ -83,8 +83,7 @@ async def test_get_kg_stats_no_access_returns_zero(monkeypatch: pytest.MonkeyPat
     assert out.updated_at is None
 
 
-@pytest.mark.asyncio
-async def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
+def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_stats
@@ -105,7 +104,7 @@ async def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
         ]
     )
 
-    out = await get_kg_stats(document_ids=None, tenant_id=UUID(int=1), account_id="u", db=db)
+    out = get_kg_stats(document_ids=None, tenant_id=UUID(int=1), account_id="u", db=db)
     assert out.events == 3
     assert out.entities == 5
     assert out.links == 12
@@ -116,8 +115,7 @@ async def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
     ]
 
 
-@pytest.mark.asyncio
-async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
+def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import export_kg_graph
@@ -127,7 +125,7 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
 
     called: dict[str, object] = {}
 
-    async def _fake_get_kg_graph(**_k):  # noqa: ANN001
+    def _fake_get_kg_graph(**_k):  # noqa: ANN001
         called.update(_k)
         return KGGraphResponse(
             nodes=[
@@ -149,7 +147,7 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(routes_mod, "get_kg_graph", _fake_get_kg_graph, raising=True)
 
-    resp = await export_kg_graph(
+    resp = export_kg_graph(
         document_ids=None,
         max_events=10,
         max_entities=10,
@@ -159,6 +157,7 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
         min_shared_events=2,
         max_entity_links=1000,
         download=False,
+        gzip_output=False,
         tenant_id=UUID(int=1),
         account_id="u",
         db=object(),
@@ -173,8 +172,43 @@ async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
     assert "entity_entity" in body
 
 
-@pytest.mark.asyncio
-async def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: pytest.MonkeyPatch):
+def test_export_kg_graph_graphml_gzip(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.kg.api.routes as routes_mod
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import export_kg_graph
+    from app.rag.kg.schemas import KGGraphResponse
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        routes_mod,
+        "get_kg_graph",
+        lambda **_k: KGGraphResponse(nodes=[], links=[], stats={}),
+        raising=True,
+    )
+
+    resp = export_kg_graph(
+        document_ids=None,
+        max_events=10,
+        max_entities=10,
+        max_links=10,
+        include_entity_links=False,
+        include_relation_links=False,
+        min_shared_events=2,
+        max_entity_links=1000,
+        download=False,
+        gzip_output=True,
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=object(),
+    )
+
+    assert resp.media_type == "application/graphml+xml"
+    assert resp.headers.get("content-encoding") == "gzip"
+    body = gzip.decompress(resp.body).decode("utf-8")
+    assert "<graphml" in body
+
+
+def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import delete_kg_for_document
@@ -202,7 +236,7 @@ async def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: py
     doc = SimpleNamespace(id=UUID(int=2), tenant_id=UUID(int=1), dataset_id=None)
     db = _FakeDB([_FakeQuery(first=doc)])
 
-    out = await delete_kg_for_document(
+    out = delete_kg_for_document(
         document_id=UUID(int=2),
         prune_orphan_entities=None,
         tenant_id=UUID(int=1),
@@ -215,8 +249,7 @@ async def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: py
     assert called["prune_orphan_entities"] is False
 
 
-@pytest.mark.asyncio
-async def test_delete_kg_for_document_deletes_relations(monkeypatch: pytest.MonkeyPatch):
+def test_delete_kg_for_document_deletes_relations(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import delete_kg_for_document
@@ -243,7 +276,7 @@ async def test_delete_kg_for_document_deletes_relations(monkeypatch: pytest.Monk
     rel_delete_query = _FakeQuery(delete_count=3)
     db = _FakeDB([rel_delete_query])
 
-    out = await delete_kg_for_document(
+    out = delete_kg_for_document(
         document_id=UUID(int=2),
         prune_orphan_entities=False,
         tenant_id=UUID(int=1),
@@ -257,8 +290,7 @@ async def test_delete_kg_for_document_deletes_relations(monkeypatch: pytest.Monk
     assert rel_delete_query.delete_called is True
 
 
-@pytest.mark.asyncio
-async def test_get_kg_event_detail_no_access_404(monkeypatch: pytest.MonkeyPatch):
+def test_get_kg_event_detail_no_access_404(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_event_detail
@@ -269,7 +301,7 @@ async def test_get_kg_event_detail_no_access_404(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [], raising=True)
 
     with pytest.raises(HTTPException) as exc:
-        await get_kg_event_detail(
+        get_kg_event_detail(
             event_id=UUID(int=10),
             document_ids=None,
             tenant_id=UUID(int=1),
@@ -279,8 +311,7 @@ async def test_get_kg_event_detail_no_access_404(monkeypatch: pytest.MonkeyPatch
     assert exc.value.status_code == 404
 
 
-@pytest.mark.asyncio
-async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
+def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_event_detail
@@ -325,7 +356,7 @@ async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
 
     db = _FakeDB([_FakeQuery(first=ev), _FakeQuery(all_rows=[(assoc, ent)])])
 
-    out = await get_kg_event_detail(
+    out = get_kg_event_detail(
         event_id=UUID(int=10),
         document_ids=None,
         tenant_id=UUID(int=1),
@@ -341,8 +372,7 @@ async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
     assert out.entities[0].extra_data.get("end_char") == 20
 
 
-@pytest.mark.asyncio
-async def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest.MonkeyPatch):
+def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_graph
@@ -373,7 +403,7 @@ async def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest
         ]
     )
 
-    out = await get_kg_graph(
+    out = get_kg_graph(
         document_ids=None,
         max_events=10,
         max_entities=10,
@@ -394,8 +424,7 @@ async def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest
     assert out.links[0].meta.get("end_char") == 20
 
 
-@pytest.mark.asyncio
-async def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.MonkeyPatch):
+def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_entity_detail
@@ -419,7 +448,7 @@ async def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.Mo
     db = _FakeDB([_FakeQuery(first=ent), _FakeQuery(scalar=0)])
 
     with pytest.raises(HTTPException) as exc:
-        await get_kg_entity_detail(
+        get_kg_entity_detail(
             entity_id=UUID(int=20),
             document_ids=None,
             max_events=10,
@@ -431,8 +460,7 @@ async def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.Mo
     assert exc.value.status_code == 404
 
 
-@pytest.mark.asyncio
-async def test_get_kg_entity_detail_success(monkeypatch: pytest.MonkeyPatch):
+def test_get_kg_entity_detail_success(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import get_kg_entity_detail
@@ -475,7 +503,7 @@ async def test_get_kg_entity_detail_success(monkeypatch: pytest.MonkeyPatch):
         ]
     )
 
-    out = await get_kg_entity_detail(
+    out = get_kg_entity_detail(
         entity_id=UUID(int=20),
         document_ids=None,
         max_events=10,

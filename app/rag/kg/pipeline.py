@@ -2,6 +2,7 @@
 Facade to run KG extraction + search inside the existing backend.
 KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
+import threading
 from typing import Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
@@ -10,17 +11,32 @@ from app.models.document import DocumentChunk
 from app.rag.kg.engine import KGEngine
 from app.types.indexing import IndexingOptions
 
-_engine = None
+_engine: KGEngine | None = None
+_engine_lock = threading.Lock()
+
+
+def reset_kg_engine() -> None:
+    """Drop the cached process-wide KGEngine (used for tests and runtime toggles)."""
+    global _engine
+    with _engine_lock:
+        _engine = None
 
 
 def _load_engine() -> KGEngine:
     global _engine
+    if not settings.KG_ENABLED:
+        # Ensure runtime toggles can't leave a live engine behind.
+        reset_kg_engine()
+        raise RuntimeError("KG plugin is disabled. Set KG_ENABLED=true to enable.")
+
     if _engine is not None:
         return _engine
-    if not settings.KG_ENABLED:
-        raise RuntimeError("KG plugin is disabled. Set KG_ENABLED=true to enable.")
-    _engine = KGEngine()
-    return _engine
+
+    # Avoid double-init under concurrent first requests.
+    with _engine_lock:
+        if _engine is None:
+            _engine = KGEngine()
+        return _engine
 
 
 async def extract_events(

@@ -56,8 +56,7 @@ def test_resolve_allowed_documents_rejects_too_many(monkeypatch: pytest.MonkeyPa
     assert exc.value.status_code == 400
 
 
-@pytest.mark.asyncio
-async def test_search_nodes_no_access_returns_empty(monkeypatch: pytest.MonkeyPatch):
+def test_search_nodes_no_access_returns_empty(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
     from app.rag.kg.api.routes import search_kg_graph_nodes
@@ -71,7 +70,7 @@ async def test_search_nodes_no_access_returns_empty(monkeypatch: pytest.MonkeyPa
         def query(self, *_a, **_k):  # noqa: ANN001
             raise AssertionError("DB should not be queried when no docs are accessible")
 
-    out = await search_kg_graph_nodes(
+    out = search_kg_graph_nodes(
         q="hello",
         kind="all",
         limit=20,
@@ -81,6 +80,30 @@ async def test_search_nodes_no_access_returns_empty(monkeypatch: pytest.MonkeyPa
         db=_DB(),
     )
     assert out == []
+
+@pytest.mark.asyncio
+async def test_kg_search_no_accessible_documents_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.kg.api.routes as routes_mod
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import run_kg_search
+    from app.rag.kg.schemas import KGSearchRequest
+    from app.services.dataset_service import DatasetService
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [], raising=True)
+
+    async def _should_not_be_called(*_a, **_k):  # noqa: ANN001
+        raise AssertionError("kg_search should not run when no documents are accessible")
+
+    monkeypatch.setattr(routes_mod, "kg_search", _should_not_be_called, raising=True)
+
+    payload = KGSearchRequest(query="q", tenant_id=None, document_ids=[UUID(int=2)])
+    out = await run_kg_search(payload=payload, tenant_id=UUID(int=1), account_id="u", db=object())
+
+    assert out.query == "q"
+    assert (out.result or {}).get("stats", {}).get("reason") == "no_accessible_documents"
+    assert (out.result or {}).get("events") == []
 
 
 @pytest.mark.asyncio

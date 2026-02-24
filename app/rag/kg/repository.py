@@ -237,10 +237,13 @@ class EventRepository:
         id_list = _as_uuid_list(ids)
         if not id_list:
             return []
+        if document_ids is not None and not document_ids:
+            # Explicit empty scope must never broaden to tenant-wide reads.
+            return []
         stmt = select(KgSourceEvent).where(KgSourceEvent.id.in_(id_list))
         if tenant_id is not None:
             stmt = stmt.where(KgSourceEvent.tenant_id == tenant_id)
-        if document_ids:
+        if document_ids is not None:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         elif dataset_id is not None:
             if tenant_id is None:
@@ -282,7 +285,10 @@ class EventRepository:
         account_id: str | None = None,
     ) -> List[dict]:
         expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
-        if document_ids:
+        if document_ids is not None and not document_ids:
+            # Explicit empty scope must never broaden vector search to the full tenant.
+            return []
+        if document_ids is not None:
             doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in document_ids[:500]]
             expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
         expr = " and ".join(expr_parts)
@@ -333,6 +339,9 @@ class EventRepository:
         ids = _as_uuid_list(entity_ids)
         if not ids:
             return []
+        if document_ids is not None and not document_ids:
+            # Explicit empty scope must never broaden to tenant-wide reads.
+            return []
         # Prefer stronger edges when ranking events by related entities.
         #
         # Notes:
@@ -358,7 +367,7 @@ class EventRepository:
             )
             .limit(limit)
         )
-        if document_ids:
+        if document_ids is not None:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         elif dataset_id is not None:
             if not account_id:
@@ -452,6 +461,9 @@ class EventRepository:
         ids = _as_uuid_list(entity_ids)
         if not ids:
             return []
+        if document_ids is not None and not document_ids:
+            # Explicit empty scope must never broaden to tenant-wide reads.
+            return []
         stmt = (
             select(KgSourceEvent)
             .join(KgEventEntity, KgEventEntity.event_id == KgSourceEvent.id)
@@ -461,7 +473,7 @@ class EventRepository:
             .order_by(func.count(KgEventEntity.entity_id).desc(), KgSourceEvent.updated_at.desc())
             .limit(limit)
         )
-        if document_ids:
+        if document_ids is not None:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         elif dataset_id is not None:
             if not account_id:
@@ -538,12 +550,12 @@ class RelationRepository:
             if preds:
                 q = q.filter(KgRelation.predicate.in_(preds))
 
-        if document_ids:
+        if document_ids is not None:
             doc_ids = _as_uuid_list(document_ids)
-            if doc_ids:
-                q = q.filter(KgRelation.document_id.in_(doc_ids))
-            else:
+            if not doc_ids:
+                # Explicit empty scope must never broaden to tenant-wide reads.
                 return []
+            q = q.filter(KgRelation.document_id.in_(doc_ids))
         elif dataset_id is not None:
             if not account_id:
                 raise ValueError("account_id is required when dataset_id is provided")
