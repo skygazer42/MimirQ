@@ -124,6 +124,28 @@ def get_reranker(
             weights=weights,
             embedding_fn=embedding_fn,
         )
+
+    # Late-interaction reranker (ColBERT-style, local scaffold)
+    elif provider in ("colbert", "late_interaction"):
+        from app.rag.reranker.colbert import ColBERTReranker
+
+        return ColBERTReranker()
+
+    # Learning-to-Rank reranker (local xgboost model).
+    elif provider in ("ltr", "xgboost_ltr"):
+        from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker
+
+        model_path = str(kwargs.get("model_path") or "").strip() or str(getattr(settings, "LTR_MODEL_PATH", "") or "").strip()
+        if not model_path:
+            raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")
+
+        feature_names = kwargs.get("feature_names")
+        if isinstance(feature_names, (list, tuple)) and feature_names:
+            spec = LTRFeatureSpec(feature_names=tuple(str(x) for x in feature_names if x is not None))
+        else:
+            spec = LTRFeatureSpec.default()
+
+        return LTRReranker(model_path=model_path, spec=spec)
     
     # KG Rerankers
     elif provider in ("kg_pagerank", "kg_rrf"):

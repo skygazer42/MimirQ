@@ -214,6 +214,8 @@ def build_citations_from_docs(
 
         v_score_raw = float(meta.get("vector_score", 0.0) or 0.0)
         b_score_raw = float(meta.get("bm25_score", 0.0) or 0.0)
+        l_score_raw = float(meta.get("lexical_score", 0.0) or 0.0)
+        s_score_raw = float(meta.get("sparse_score", 0.0) or 0.0)
         rerank_score = meta.get("rerank_score")
         retrieval_score = meta.get("retrieval_score")
 
@@ -300,6 +302,8 @@ def build_citations_from_docs(
             "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
             "vector_score": round(v_score_raw, 3),
             "bm25_score": round(b_score_raw, 3),
+            "lexical_score": round(l_score_raw, 3),
+            "sparse_score": round(s_score_raw, 3),
             "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
             "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
             "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,

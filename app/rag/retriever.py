@@ -96,6 +96,9 @@ class HybridRetriever(BaseRetriever):
     _last_channel_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
     # Cache whether pg_trgm is available for lexical DB search (per retriever instance).
     _lexical_pg_trgm_available: Optional[bool] = PrivateAttr(default=None)
+    # Optional sparse retrieval channel caches (per scope key).
+    _sparse_doc_vectors: Dict[str, Dict[str, Any]] = PrivateAttr(default_factory=dict)
+    _sparse_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
 
     def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
         if not docs:
@@ -196,6 +199,39 @@ class HybridRetriever(BaseRetriever):
             lock = threading.Lock()
             self._bm25_build_locks[tenant_key] = lock
         return lock
+
+    def _get_sparse_build_lock(self, cache_key: str) -> threading.Lock:
+        lock = self._sparse_build_locks.get(cache_key)
+        if lock is None:
+            lock = threading.Lock()
+            self._sparse_build_locks[cache_key] = lock
+        return lock
+
+    def _build_sparse_index(self, *, cache_key: str, docs: List[Document]) -> None:
+        """
+        Build (or rebuild) a sparse retrieval index for the current scope key.
+
+        This is SPLADE-style scaffolding intended for:
+        - deterministic unit/regression tests (no model downloads)
+        - optional production extensions behind a flag/provider
+        """
+        from app.rag.retrieval.sparse import DeterministicSparseEncoder, parse_synonyms
+
+        provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        if provider not in {"deterministic"}:
+            # Future: "splade" provider can be added lazily; keep behavior safe by default.
+            provider = "deterministic"
+
+        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
+        encoder = DeterministicSparseEncoder(synonyms=synonyms)
+
+        out: Dict[str, Any] = {}
+        for d in docs or []:
+            if d is None or d.id is None:
+                continue
+            out[str(d.id)] = encoder.encode(str(d.page_content or ""))
+        self._sparse_doc_vectors[cache_key] = out
 
     def _bm25_cache_max_tenants(self) -> int:
         try:
@@ -721,6 +757,14 @@ class HybridRetriever(BaseRetriever):
         self._touch_bm25_cache(cache_key)
         logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs), cache_key)
 
+        # Optional: keep sparse retrieval index in sync with the BM25 scope docs.
+        if bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)):
+            try:
+                with self._get_sparse_build_lock(cache_key):
+                    self._build_sparse_index(cache_key=cache_key, docs=merged_docs)
+            except Exception as exc:
+                logger.warning("Sparse index update failed for scope %s: %s", cache_key, str(exc)[:200])
+
     def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
         """Remove all chunks of a specified document from the BM25 index."""
         tenant_key = self._tenant_key(tenant_id)
@@ -921,6 +965,106 @@ class HybridRetriever(BaseRetriever):
                         "image_id": meta.get("image_id"),
                         "image_url": meta.get("image_url"),
                         "bm25_score": float(score),
+                    },
+                    "score": float(score),
+                }
+            )
+
+        if not results:
+            return []
+        return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+
+    def _search_sparse(
+        self,
+        query: str,
+        top_k: int = 10,
+        document_ids: Optional[List[UUID]] = None,
+        tenant_id: Optional[UUID] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Optional sparse retrieval channel (SPLADE-style scaffolding).
+
+        - Uses the same BM25-scoped in-memory corpus as the sparse index source.
+        - Uses a deterministic encoder by default (no model downloads).
+        """
+        raw_query = str(query or "").strip()
+        if not raw_query:
+            return []
+        if not bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)):
+            return []
+
+        tenant_uuid: Optional[UUID] = tenant_id
+        if tenant_uuid is None:
+            try:
+                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            except Exception:
+                tenant_uuid = None
+        if tenant_uuid is None:
+            return []
+
+        dataset_scope_id: UUID | None = None
+        if self.dataset_id is not None and not (document_ids or []):
+            dataset_scope_id = self.dataset_id
+
+        # Align with BM25 scope so we reuse the same corpus and caching semantics.
+        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
+        docs = self._bm25_docs.get(cache_key) or []
+        if not docs:
+            return []
+
+        # Lazy-build sparse vectors if needed (robust when enabling after BM25 builds).
+        sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+        if len(sparse_vecs) != len(docs):
+            try:
+                with self._get_sparse_build_lock(cache_key):
+                    sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+                    if len(sparse_vecs) != len(docs):
+                        self._build_sparse_index(cache_key=cache_key, docs=docs)
+                        sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+            except Exception:
+                sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+
+        from app.rag.retrieval.sparse import DeterministicSparseEncoder, parse_synonyms, topk_scores
+
+        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
+        encoder = DeterministicSparseEncoder(synonyms=synonyms)
+        q_vec = encoder.encode(raw_query)
+
+        scored = topk_scores(query_vec=q_vec, docs=sparse_vecs, k=max(0, int(top_k or 0)))
+        if not scored:
+            return []
+
+        doc_by_id: Dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
+        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
+
+        results: List[Dict[str, Any]] = []
+        for doc_id, score in scored:
+            doc = doc_by_id.get(str(doc_id))
+            if doc is None:
+                continue
+            meta = doc.metadata or {}
+            if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
+                continue
+            if metadata_filter and self.metadata_filter_enabled:
+                if not self._match_metadata_filter(meta, metadata_filter):
+                    continue
+            results.append(
+                {
+                    "chunk_id": doc.id,
+                    "content": doc.page_content,
+                    "metadata": {
+                        "tenant_id": meta.get("tenant_id"),
+                        "document_id": meta.get("document_id"),
+                        "source": meta.get("source", "unknown"),
+                        "page": meta.get("page"),
+                        "chunk_index": meta.get("chunk_index"),
+                        "chunk_id": meta.get("chunk_id") or doc.id,
+                        "img_id": meta.get("img_id"),
+                        "image_id": meta.get("image_id"),
+                        "image_url": meta.get("image_url"),
+                        "sparse_score": float(score),
                     },
                     "score": float(score),
                 }
@@ -1302,6 +1446,10 @@ class HybridRetriever(BaseRetriever):
         want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
         # Persistent lexical DB search is an additional sparse channel that does not depend on the in-memory BM25 flag.
         want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr")
+        # Optional sparse retrieval (SPLADE-style scaffolding) is an additional sparse channel.
+        want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and bool(
+            getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)
+        )
         if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             # Enforce the global flag even if a BM25 cache exists.
             #
@@ -1420,6 +1568,21 @@ class HybridRetriever(BaseRetriever):
                 logger.warning("Lexical DB search failed: %s", exc)
                 lexical_results = []
 
+        # 2c) Optional sparse channel (SPLADE-style)
+        sparse_results: List[Dict[str, Any]] = []
+        if want_sparse:
+            try:
+                sparse_results = self._search_sparse(
+                    query=query,
+                    top_k=fetch_k,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                    metadata_filter=bm25_filter,
+                )
+            except Exception as exc:
+                logger.warning("Sparse search failed: %s", exc)
+                sparse_results = []
+
         # Fallback: when single-channel mode fails, try the other channel.
         if retrieval_mode == "vector" and not vector_results:
             t0 = time.perf_counter()
@@ -1444,7 +1607,19 @@ class HybridRetriever(BaseRetriever):
             except Exception as exc:
                 logger.warning("Lexical DB search failed: %s", exc)
                 lexical_results = []
-        elif retrieval_mode == "keyword" and not bm25_results and not lexical_results:
+            if want_sparse:
+                try:
+                    sparse_results = self._search_sparse(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                except Exception as exc:
+                    logger.warning("Sparse search failed: %s", exc)
+                    sparse_results = []
+        elif retrieval_mode == "keyword" and not bm25_results and not lexical_results and not sparse_results:
             vector_store = get_vector_store()
             try:
                 fallback_kwargs = {
@@ -1528,6 +1703,7 @@ class HybridRetriever(BaseRetriever):
             if isinstance(counts, dict):
                 counts["vector_candidates"] = int(len(vector_results or []))
                 counts["bm25_candidates"] = int(len(bm25_results or []))
+                counts["sparse_candidates"] = int(len(sparse_results or []))
 
             channel_metrics.update(
                 {
@@ -1554,6 +1730,11 @@ class HybridRetriever(BaseRetriever):
                         "pg_trgm_available": self._lexical_pg_trgm_available,
                         "methods": dict(lexical_methods),
                     },
+                    "sparse": {
+                        "enabled": bool(want_sparse),
+                        "candidates": len(sparse_results or []),
+                        "provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
+                    },
                 }
             )
         except Exception:
@@ -1567,6 +1748,7 @@ class HybridRetriever(BaseRetriever):
                 if isinstance(counts, dict):
                     counts["vector_candidates"] = int(len(vector_results or []))
                     counts["bm25_candidates"] = int(len(bm25_results or []))
+                    counts["sparse_candidates"] = int(len(sparse_results or []))
             except Exception:
                 pass
 
@@ -1576,6 +1758,7 @@ class HybridRetriever(BaseRetriever):
             vector_results,
             bm25_results,
             lexical_results,
+            sparse_results,
             alpha=alpha,
             fusion_strategy=self.fusion_strategy,
             rrf_k=self.rrf_k,
@@ -2635,6 +2818,10 @@ class HybridRetriever(BaseRetriever):
             meta["score"] = r.get("score")
             meta["vector_score"] = r.get("vector_score")
             meta["bm25_score"] = r.get("bm25_score")
+            if "lexical_score" in r:
+                meta["lexical_score"] = r.get("lexical_score")
+            if "sparse_score" in r:
+                meta["sparse_score"] = r.get("sparse_score")
             if "keyword_score" in r:
                 meta["keyword_score"] = r.get("keyword_score")
             if "rerank_score" in r:
@@ -2833,6 +3020,7 @@ class HybridRetriever(BaseRetriever):
         vector_results: List[Dict[str, Any]],
         bm25_results: List[Dict[str, Any]],
         lexical_results: Optional[List[Dict[str, Any]]] = None,
+        sparse_results: Optional[List[Dict[str, Any]]] = None,
         alpha: float = 0.5,
         fusion_strategy: str | None = None,
         rrf_k: int | None = None,
@@ -2840,6 +3028,7 @@ class HybridRetriever(BaseRetriever):
         """Merge retrieval channel results into a single ranked list."""
 
         lexical_results = list(lexical_results or [])
+        sparse_results = list(sparse_results or [])
 
         def normalize(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
             if not results:
@@ -2860,6 +3049,7 @@ class HybridRetriever(BaseRetriever):
         vector_norm = normalize(vector_results)
         bm25_norm = normalize(bm25_results)
         lexical_norm = normalize(lexical_results)
+        sparse_norm = normalize(sparse_results)
 
         fusion = (fusion_strategy or "linear").lower().strip()
         if fusion in ("rrf", "reciprocal_rank_fusion"):
@@ -2870,10 +3060,12 @@ class HybridRetriever(BaseRetriever):
             v_sorted = sorted(vector_results, key=_rank_sort_key)
             b_sorted = sorted(bm25_results, key=_rank_sort_key)
             l_sorted = sorted(lexical_results, key=_rank_sort_key)
+            s_sorted = sorted(sparse_results, key=_rank_sort_key)
 
             v_rank: Dict[str, int] = {}
             b_rank: Dict[str, int] = {}
             l_rank: Dict[str, int] = {}
+            s_rank: Dict[str, int] = {}
             for idx, r in enumerate(v_sorted, 1):
                 key = self._result_key(r)
                 if key not in v_rank:
@@ -2886,24 +3078,29 @@ class HybridRetriever(BaseRetriever):
                 key = self._result_key(r)
                 if key not in l_rank:
                     l_rank[key] = idx
+            for idx, r in enumerate(s_sorted, 1):
+                key = self._result_key(r)
+                if key not in s_rank:
+                    s_rank[key] = idx
 
             k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
             k0 = max(1, k0)
 
             merged: Dict[str, Dict[str, Any]] = {}
             raw_scores: List[float] = []
-            keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()))
+            keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
             for key in keys:
                 v_data = vector_norm.get(key, {}).get("data")
                 b_data = bm25_norm.get(key, {}).get("data")
                 l_data = lexical_norm.get(key, {}).get("data")
-                data = v_data or b_data or l_data
+                s_data = sparse_norm.get(key, {}).get("data")
+                data = v_data or b_data or l_data or s_data
                 if not data:
                     continue
 
                 # Merge metadata from all channels (prefer existing non-empty values).
                 merged_meta = dict(data.get("metadata") or {})
-                for src in (v_data, b_data, l_data):
+                for src in (v_data, b_data, l_data, s_data):
                     if not src or src is data:
                         continue
                     src_meta = src.get("metadata") or {}
@@ -2913,7 +3110,7 @@ class HybridRetriever(BaseRetriever):
                 merged_data = dict(data)
                 merged_data["metadata"] = merged_meta
                 if not merged_data.get("chunk_id"):
-                    for src in (v_data, b_data, l_data):
+                    for src in (v_data, b_data, l_data, s_data):
                         if src and src.get("chunk_id"):
                             merged_data["chunk_id"] = src.get("chunk_id")
                             break
@@ -2922,9 +3119,11 @@ class HybridRetriever(BaseRetriever):
                 vr = v_rank.get(key)
                 br = b_rank.get(key)
                 lr = l_rank.get(key)
+                sr = s_rank.get(key)
                 rrf_raw = (1.0 / (k0 + vr)) if vr else 0.0
                 rrf_raw += (1.0 / (k0 + br)) if br else 0.0
                 rrf_raw += (1.0 / (k0 + lr)) if lr else 0.0
+                rrf_raw += (1.0 / (k0 + sr)) if sr else 0.0
                 raw_scores.append(float(rrf_raw))
 
                 merged[key] = {
@@ -2932,11 +3131,13 @@ class HybridRetriever(BaseRetriever):
                     "vector_score": float(vector_norm.get(key, {}).get("score", 0.0) or 0.0),
                     "bm25_score": float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0),
                     "lexical_score": float(lexical_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "sparse_score": float(sparse_norm.get(key, {}).get("score", 0.0) or 0.0),
                     "rrf_score_raw": float(rrf_raw),
                     "rrf_k": k0,
                     "rrf_rank_vector": vr,
                     "rrf_rank_bm25": br,
                     "rrf_rank_lexical": lr,
+                    "rrf_rank_sparse": sr,
                     "fusion_strategy": "rrf",
                     "score": float(rrf_raw),
                 }
@@ -2949,34 +3150,37 @@ class HybridRetriever(BaseRetriever):
                     raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
                     item["score"] = (raw - min_s) / rng
 
-            def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, str]:
+            def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
                 return (
                     -float(item.get("score", 0.0) or 0.0),
                     -float(item.get("rrf_score_raw", 0.0) or 0.0),
                     -float(item.get("vector_score", 0.0) or 0.0),
                     -float(item.get("bm25_score", 0.0) or 0.0),
                     -float(item.get("lexical_score", 0.0) or 0.0),
+                    -float(item.get("sparse_score", 0.0) or 0.0),
                     self._result_key(item),
                 )
 
             return sorted(merged.values(), key=_sort_key)
 
         merged: Dict[str, Dict[str, Any]] = {}
-        keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()))
+        keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
         for key in keys:
             v_score = vector_norm.get(key, {}).get("score", 0.0)
             b_score = bm25_norm.get(key, {}).get("score", 0.0)
             l_score = lexical_norm.get(key, {}).get("score", 0.0)
+            s_score = sparse_norm.get(key, {}).get("score", 0.0)
             v_data = vector_norm.get(key, {}).get("data")
             b_data = bm25_norm.get(key, {}).get("data")
             l_data = lexical_norm.get(key, {}).get("data")
-            data = v_data or b_data or l_data
+            s_data = sparse_norm.get(key, {}).get("data")
+            data = v_data or b_data or l_data or s_data
             if not data:
                 continue
 
             # Merge metadata from all channels (e.g., img_id may only exist in BM25/DB metadata).
             merged_meta = dict(data.get("metadata") or {})
-            for src in (v_data, b_data, l_data):
+            for src in (v_data, b_data, l_data, s_data):
                 if not src or src is data:
                     continue
                 src_meta = src.get("metadata") or {}
@@ -2986,7 +3190,7 @@ class HybridRetriever(BaseRetriever):
             merged_data = dict(data)
             merged_data["metadata"] = merged_meta
             if not merged_data.get("chunk_id"):
-                for src in (v_data, b_data, l_data):
+                for src in (v_data, b_data, l_data, s_data):
                     if src and src.get("chunk_id"):
                         merged_data["chunk_id"] = src.get("chunk_id")
                         break
@@ -2995,8 +3199,9 @@ class HybridRetriever(BaseRetriever):
             has_v = key in vector_norm
             has_b = key in bm25_norm
             has_l = key in lexical_norm
-            keyword_score = max(float(b_score), float(l_score))
-            if has_v and (has_b or has_l):
+            has_s = key in sparse_norm
+            keyword_score = max(float(b_score), float(l_score), float(s_score))
+            if has_v and (has_b or has_l or has_s):
                 fused_score = alpha * float(v_score) + (1 - alpha) * float(keyword_score)
             elif has_v:
                 fused_score = float(v_score)
@@ -3008,16 +3213,18 @@ class HybridRetriever(BaseRetriever):
                 "vector_score": float(v_score),
                 "bm25_score": float(b_score),
                 "lexical_score": float(l_score),
+                "sparse_score": float(s_score),
                 "fusion_strategy": "linear",
                 "score": fused_score,
             }
 
-        def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, str]:
+        def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, str]:
             return (
                 -float(item.get("score", 0.0) or 0.0),
                 -float(item.get("vector_score", 0.0) or 0.0),
                 -float(item.get("bm25_score", 0.0) or 0.0),
                 -float(item.get("lexical_score", 0.0) or 0.0),
+                -float(item.get("sparse_score", 0.0) or 0.0),
                 self._result_key(item),
             )
 

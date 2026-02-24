@@ -106,6 +106,15 @@ Each citation may include a `retrieval_role` field that explains where it came f
 - `kgq`: KG-derived query expansion (entity name appended to query)
 - `kg`: KG “chunk injection” (inject KG-linked chunks as extra evidence candidates)
 
+### Score Fields (Best-effort)
+
+Each citation includes several score fields that are useful for debugging and offline training:
+- `relevance_score`: final score used for ordering (post-fusion; may be rerank score when reranked)
+- `vector_score`, `bm25_score`: channel support signals
+- `lexical_score`, `sparse_score`: additional sparse-channel signals (when enabled)
+- `retrieval_score`: original pre-rerank score (present when reranking was applied)
+- `rerank_score`: reranker score (present when reranking was applied)
+
 ## Iterative Evidence Retrieval (Optional)
 
 By default, the endpoint runs **one primary retrieval pass**.
@@ -145,3 +154,17 @@ When `PROMETHEUS_ENABLED=true`, the Evidence API emits low-cardinality Prometheu
 - `rag_evidence_retrieve_top_score`
 
 Labels intentionally avoid tenant/dataset/query to keep cardinality safe.
+
+## Evidence Post-fusion Rerank (Optional)
+
+For retrieval-only “evidence discovery” workloads, it can be useful to apply a fast, deterministic reranker
+after fusion, without changing the retrieval stack itself.
+
+Environment variables:
+- `EVIDENCE_POST_RERANK_ENABLED=true|false`
+- `EVIDENCE_POST_RERANK_PROVIDER=ltr|colbert|...`
+- `EVIDENCE_POST_RERANK_TOP_N=30`
+
+When enabled, the orchestrator will rerank the top-N candidates and annotate:
+- `citations[*].reranker_provider`, `citations[*].rerank_score`, `citations[*].retrieval_score` (best-effort)
+- `metrics.evidence_post_rerank_*` (used, elapsed, provider, error, etc)

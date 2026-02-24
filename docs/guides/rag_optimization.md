@@ -40,14 +40,33 @@ When to use:
 - Use vector retrieval for semantic matching and paraphrased questions.
 - Use `rrf` fusion when you want a robust ranking that combines both sources.
 
+## 3.5) Sparse Retrieval (Optional)
+
+MimirQ supports an additional **sparse** candidate source (SPLADE-style scaffolding) that can improve recall on:
+- acronyms (`k8s` vs `kubernetes`)
+- domain synonyms / abbreviations
+
+Key settings:
+- `SPARSE_RETRIEVAL_ENABLED`
+- `SPARSE_RETRIEVAL_PROVIDER` (currently `deterministic`)
+- `SPARSE_RETRIEVAL_SYNONYMS`
+
+Guide:
+- `docs/guides/sparse_retrieval.md`
+
 ## 4) Reranking
 
 Key settings:
-- `RERANKER_PROVIDER` (`llm` | `pc` | `none`)
+- `RERANKER_PROVIDER` (`llm` | `pc` | `colbert` | `ltr` | `openai` | `dashscope` | `none`)
 
 Tradeoffs:
 - `llm` rerank improves precision but increases latency/cost.
+- `colbert`/`ltr` are intended for deterministic/fast reranking (local providers; see guides below).
 - `none` is fastest; rely on better chunking + retrieval thresholds.
+
+Guides:
+- `docs/guides/reranking_colbert.md`
+- `docs/guides/reranking_ltr.md`
 
 ## 5) Query Enhancements (Optional)
 
