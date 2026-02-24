@@ -1,147 +1,260 @@
 from __future__ import annotations
 
 import uuid
-from types import SimpleNamespace
 
-import pytest
+from langchain_core.documents import Document
 
 
-class _FakeQuery:
-    def __init__(self, *, all_rows=None):  # noqa: ANN001
-        self._all = all_rows
+class _FakeChunk:
+    def __init__(
+        self,
+        *,
+        chunk_id: uuid.UUID,
+        document_id: uuid.UUID,
+        chunk_index: int,
+        content: str,
+        score: float,
+    ) -> None:
+        self.id = chunk_id
+        self.document_id = document_id
+        self.chunk_index = int(chunk_index)
+        self.content = content
+        self.page_number = 1
+        self.start_char = 0
+        self.end_char = len(content)
+        self.doc_metadata = {"source": "kg.md", "score": score}
 
-    def filter(self, *_a, **_k):  # noqa: ANN001, ANN002, ANN003
+
+class _FakeRetriever:
+    def __init__(self, *, docs: list[Document] | None = None) -> None:
+        self._docs = list(docs or [])
+        self._last_debug_metrics: dict = {}
+
+    def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
         return self
 
-    def all(self):  # noqa: ANN201
-        return list(self._all or [])
+    def invoke(self, _q: str):  # noqa: ANN001
+        return list(self._docs)
 
 
-class _FakeDB:
-    def __init__(self, *, chunk_rows):  # noqa: ANN001
-        self._chunk_rows = list(chunk_rows or [])
-
-    def query(self, *args, **_k):  # noqa: ANN001
-        if any(getattr(a, "__name__", "") == "DocumentChunk" for a in args):
-            return _FakeQuery(all_rows=self._chunk_rows)
-        return _FakeQuery(all_rows=[])
-
-
-@pytest.mark.asyncio
-async def test_rag_engine_injects_kg_event_chunks_into_citations(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.rag.engine as engine_mod
+def test_orchestrator_kg_chunk_injection_injects_and_caps(monkeypatch) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
     from app.core.config import settings
 
-    engine_mod.reset_rag_engine()
+    # Deterministic: no extra LLM features.
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
 
-    log_records = []
+    monkeypatch.setattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_ABSTAIN_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
 
-    def _log_metrics(payload):  # noqa: ANN001
-        log_records.append(payload)
+    # Enable KG chunk injection (the feature under test).
+    monkeypatch.setattr(settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "KG_CHAT_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 2, raising=False)
 
-    monkeypatch.setattr(engine_mod, "log_metrics", _log_metrics, raising=True)
+    # Keep dict expansion from adding noise to query execution (not needed for this test).
+    import app.query.expand as expand_mod
 
-    # Use a deterministic fake LLM; we stop after citations, but engine still selects an LLM.
-    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
-    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "OK", raising=False)
+    monkeypatch.setattr(expand_mod, "load_base_dictionary_rules", lambda: [], raising=True)
+    monkeypatch.setattr(expand_mod, "generate_dictionary_expansions", lambda **_k: ([], {"enabled": False, "used": False}), raising=True)
 
-    # Enable KG chunk injection.
+    # No retrieval hits from the normal retriever.
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=[]), raising=True)
+
+    kg_chunk_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+
+    async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        assert query
+        assert tenant_id is not None
+        assert document_ids
+        return {
+            "events": [
+                {"chunk_id": str(kg_chunk_ids[0]), "score": 0.9},
+                {"chunk_id": str(kg_chunk_ids[1]), "score": 0.8},
+                {"chunk_id": str(kg_chunk_ids[2]), "score": 0.7},
+            ],
+            "entities": [],
+            "stats": {"ok": True},
+        }
+
+    monkeypatch.setattr(orch_mod, "kg_search", _fake_kg_search, raising=True)
+
+    doc_id = uuid.uuid4()
+
+    def _fake_fetch_chunks(*, db, tenant_id, account_id, dataset_id, document_ids, chunk_ids):  # noqa: ANN001
+        # Return rows for all chunks even though injection should cap to 2 by event order.
+        return [
+            _FakeChunk(chunk_id=kg_chunk_ids[0], document_id=doc_id, chunk_index=1, content="c0", score=0.9),
+            _FakeChunk(chunk_id=kg_chunk_ids[1], document_id=doc_id, chunk_index=2, content="c1", score=0.8),
+            _FakeChunk(chunk_id=kg_chunk_ids[2], document_id=doc_id, chunk_index=3, content="c2", score=0.7),
+        ]
+
+    monkeypatch.setattr(orch_mod, "_fetch_document_chunks_for_kg_injection", _fake_fetch_chunks, raising=True)
+
+    out = orch_mod.run_retrieval(
+        {
+            "question": "q",
+            "history": [],
+            "tenant_id": uuid.uuid4(),
+            "account_id": "u",
+            "document_ids": [doc_id],
+            "top_k": 3,
+            "retrieval_mode": "vector",
+            "metrics": {},
+            "db": object(),  # not used by fake fetch, but required by signature
+        }
+    )
+
+    citations = out.get("citations") or []
+    assert len(citations) == 2
+    assert [c.get("chunk_id") for c in citations] == [str(kg_chunk_ids[0]), str(kg_chunk_ids[1])]
+    assert all(c.get("retrieval_role") == "kg" for c in citations)
+
+    metrics = out.get("metrics") or {}
+    assert metrics.get("kg_chunks_injected") == 2
+
+
+def test_orchestrator_kg_chunk_injection_dedupes_existing_docs(monkeypatch) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
+
     monkeypatch.setattr(settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "KG_CHAT_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5, raising=False)
 
-    # Avoid real TAG work.
-    import app.services.chat_tag_service as tag_mod
+    import app.query.expand as expand_mod
 
+    monkeypatch.setattr(expand_mod, "load_base_dictionary_rules", lambda: [], raising=True)
+    monkeypatch.setattr(expand_mod, "generate_dictionary_expansions", lambda **_k: ([], {"enabled": False, "used": False}), raising=True)
+
+    doc_id = uuid.uuid4()
+    cid1 = uuid.uuid4()
+    cid2 = uuid.uuid4()
+
+    # Retriever already returned cid1.
+    retriever_docs = [
+        Document(
+            page_content="retriever hit",
+            metadata={"document_id": str(doc_id), "chunk_id": str(cid1), "chunk_index": 1, "source": "retriever.md"},
+            id=str(cid1),
+        )
+    ]
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=retriever_docs), raising=True)
+
+    async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        return {"events": [{"chunk_id": str(cid1), "score": 0.9}, {"chunk_id": str(cid2), "score": 0.8}], "entities": []}
+
+    monkeypatch.setattr(orch_mod, "kg_search", _fake_kg_search, raising=True)
+
+    def _fake_fetch_chunks(*, db, tenant_id, account_id, dataset_id, document_ids, chunk_ids):  # noqa: ANN001
+        return [
+            _FakeChunk(chunk_id=cid1, document_id=doc_id, chunk_index=1, content="c1", score=0.9),
+            _FakeChunk(chunk_id=cid2, document_id=doc_id, chunk_index=2, content="c2", score=0.8),
+        ]
+
+    monkeypatch.setattr(orch_mod, "_fetch_document_chunks_for_kg_injection", _fake_fetch_chunks, raising=True)
+
+    out = orch_mod.run_retrieval(
+        {
+            "question": "q",
+            "history": [],
+            "tenant_id": uuid.uuid4(),
+            "account_id": "u",
+            "document_ids": [doc_id],
+            "top_k": 3,
+            "retrieval_mode": "vector",
+            "metrics": {},
+            "db": object(),
+        }
+    )
+
+    citations = out.get("citations") or []
+    # cid1 should appear only once, and the "kg" version should win due to merge order.
+    assert [c.get("chunk_id") for c in citations] == [str(cid1), str(cid2)]
+    assert citations[0].get("retrieval_role") == "kg"
+
+
+def test_orchestrator_kg_chunk_injection_disabled_does_not_call_kg(monkeypatch) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
+
+    monkeypatch.setattr(settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "KG_CHAT_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False, raising=False)
+
+    import app.query.expand as expand_mod
+
+    monkeypatch.setattr(expand_mod, "load_base_dictionary_rules", lambda: [], raising=True)
+    monkeypatch.setattr(expand_mod, "generate_dictionary_expansions", lambda **_k: ([], {"enabled": False, "used": False}), raising=True)
+
+    doc_id = uuid.uuid4()
+    cid = uuid.uuid4()
     monkeypatch.setattr(
-        tag_mod,
-        "build_chat_tag_context_docs",
-        lambda *_a, **_k: ([], {"enabled": False, "used": False, "reason": "not_run", "returned": 0}),
+        orch_mod,
+        "hybrid_retriever",
+        _FakeRetriever(
+            docs=[
+                Document(
+                    page_content="retriever hit",
+                    metadata={"document_id": str(doc_id), "chunk_id": str(cid), "source": "retriever.md"},
+                    id=str(cid),
+                )
+            ]
+        ),
         raising=True,
     )
 
-    # Stub retrieval: return no chunks from vector/BM25 so KG injection is the only source.
-    class _FakeRetriever:
-        _last_debug_metrics = {}
-
-        def model_copy(self, **_k):  # noqa: ANN001, ANN002, ANN003
-            return self
-
-        def invoke(self, _q):  # noqa: ANN001
-            return []
-
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", _FakeRetriever(), raising=True)
-
-    tenant_id = uuid.uuid4()
-    doc_id = uuid.uuid4()
-    chunk_id = uuid.uuid4()
-
     kg_calls = {"n": 0}
 
-    async def _fake_kg_search(*, query, tenant_id=None, document_ids=None):  # noqa: ANN001
+    async def _fake_kg_search(*_a, **_k):  # noqa: ANN001
         kg_calls["n"] += 1
-        return {
-            "events": [
-                {
-                    "id": str(uuid.uuid4()),
-                    "title": "Event 1",
-                    "summary": "S",
-                    "content": "C",
-                    "document_id": str(doc_id),
-                    "chunk_id": str(chunk_id),
-                    "score": 0.9,
-                }
-            ]
+        return {"events": []}
+
+    monkeypatch.setattr(orch_mod, "kg_search", _fake_kg_search, raising=True)
+
+    fetch_calls = {"n": 0}
+
+    def _fake_fetch_chunks(*_a, **_k):  # noqa: ANN001
+        fetch_calls["n"] += 1
+        return []
+
+    monkeypatch.setattr(orch_mod, "_fetch_document_chunks_for_kg_injection", _fake_fetch_chunks, raising=True)
+
+    out = orch_mod.run_retrieval(
+        {
+            "question": "q",
+            "history": [],
+            "tenant_id": uuid.uuid4(),
+            "account_id": "u",
+            "document_ids": [doc_id],
+            "top_k": 3,
+            "retrieval_mode": "vector",
+            "metrics": {},
+            "db": object(),
         }
-
-    monkeypatch.setattr(engine_mod, "kg_search", _fake_kg_search, raising=True)
-
-    chunk = SimpleNamespace(
-        id=chunk_id,
-        tenant_id=tenant_id,
-        document_id=doc_id,
-        chunk_index=0,
-        content="hello from kg chunk",
-        page_number=1,
-        start_char=10,
-        end_char=20,
-        doc_metadata={"source": "doc.pdf", "document_id": str(doc_id), "chunk_id": str(chunk_id)},
-    )
-    db = _FakeDB(chunk_rows=[chunk])
-
-    rag = engine_mod.get_rag_engine()
-    agen = rag.stream_chat(
-        question="q",
-        history=None,
-        conversation_id=None,
-        document_ids=[doc_id],
-        tenant_id=tenant_id,
-        account_id="u",
-        top_k=5,
-        score_threshold=0.0,
-        retrieval_mode="vector",
-        db=db,
     )
 
-    citations = None
-    done_metrics = None
-    async for item in agen:
-        if item.get("type") == "citations":
-            citations = item.get("data")
-        if item.get("type") == "done":
-            done_metrics = (item.get("data") or {}).get("metrics") or {}
-            break
-    await agen.aclose()
+    assert kg_calls["n"] == 0
+    assert fetch_calls["n"] == 0
 
-    assert isinstance(citations, list)
+    citations = out.get("citations") or []
     assert len(citations) == 1
-    assert citations[0].get("chunk_id") == str(chunk_id)
-    assert citations[0].get("retrieval_role") == "kg"
-
-    assert done_metrics.get("kg_chunks_injected") == 1
-    assert kg_calls["n"] == 1
-
-    rag_trace = next(r for r in log_records if r.get("event") == "rag_trace")
-    assert (rag_trace.get("kg") or {}).get("chunks_injected") == 1
+    assert citations[0].get("retrieval_role") == "main"
