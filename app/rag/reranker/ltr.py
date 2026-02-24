@@ -24,12 +24,14 @@ from app.rag.reranker.types import RerankCandidate, RerankResult
 
 @dataclass(frozen=True)
 class LTRFeatureSpec:
+    schema: str
     feature_names: tuple[str, ...]
 
     @staticmethod
-    def default() -> "LTRFeatureSpec":
-        # Keep this list stable. Training and inference must use the same ordering.
+    def v1() -> "LTRFeatureSpec":
+        """Feature spec v1 (stable ordering, used by existing models)."""
         return LTRFeatureSpec(
+            schema="mimirq.ltr_features.v1",
             feature_names=(
                 "vector_score",
                 "bm25_score",
@@ -47,8 +49,46 @@ class LTRFeatureSpec:
                 "role_kgq",
                 "role_kg",
                 "role_tag",
-            )
+            ),
         )
+
+    @staticmethod
+    def v2() -> "LTRFeatureSpec":
+        """
+        Feature spec v2: v1 + KG ranking features.
+
+        Notes:
+        - v2 is opt-in to avoid breaking existing LTR model artifacts (feature count must match).
+        - KG features are low-cardinality and do not include scope identifiers.
+        """
+        base = list(LTRFeatureSpec.v1().feature_names)
+        base.extend(
+            [
+                "kg_pagerank",
+                "kg_shared_events",
+                "kg_path_length",
+                "kg_edge_conf_low",
+                "kg_edge_conf_mid",
+                "kg_edge_conf_high",
+                "kg_evidence_anchored",
+            ]
+        )
+        return LTRFeatureSpec(schema="mimirq.ltr_features.v2", feature_names=tuple(base))
+
+    @staticmethod
+    def from_version(version: int | str | None) -> "LTRFeatureSpec":
+        try:
+            v = int(version) if version is not None else 1
+        except Exception:
+            v = 1
+        if v >= 2:
+            return LTRFeatureSpec.v2()
+        return LTRFeatureSpec.v1()
+
+    @staticmethod
+    def default() -> "LTRFeatureSpec":
+        # Keep default pinned to v1 to preserve compatibility with existing artifacts.
+        return LTRFeatureSpec.v1()
 
 
 def _as_float(v: Any) -> float:
@@ -101,6 +141,14 @@ def extract_ltr_features(*, spec: LTRFeatureSpec, query: str, candidate: RerankC
         "lexical_score": _as_float(meta.get("lexical_score")),
         "sparse_score": _as_float(meta.get("sparse_score")),
         "base_score": base_score,
+        # KG ranking signals (optional; present only for KG-linked candidates).
+        "kg_pagerank": _as_float(meta.get("kg_pagerank")),
+        "kg_shared_events": _as_float(meta.get("kg_shared_events")),
+        "kg_path_length": _as_float(meta.get("kg_path_length")),
+        "kg_edge_conf_low": _as_float(meta.get("kg_edge_conf_low")),
+        "kg_edge_conf_mid": _as_float(meta.get("kg_edge_conf_mid")),
+        "kg_edge_conf_high": _as_float(meta.get("kg_edge_conf_high")),
+        "kg_evidence_anchored": _as_float(meta.get("kg_evidence_anchored")),
         **role_oh,
     }
 
@@ -113,6 +161,8 @@ def train_ltr_xgboost_model(
     spec: LTRFeatureSpec,
     num_boost_round: int = 50,
     seed: int = 42,
+    objective: str = "binary:logistic",
+    group_sizes: Sequence[int] | None = None,
 ) -> bytes:
     """
     Train a tiny xgboost model and return its serialized bytes.
@@ -139,8 +189,16 @@ def train_ltr_xgboost_model(
     y_arr = np.asarray(y, dtype=np.float32)
 
     dtrain = xgb.DMatrix(x_arr, label=y_arr, feature_names=list(spec.feature_names))
+    if group_sizes is not None:
+        sizes = [int(x) for x in group_sizes if x is not None]
+        if not sizes or any(s <= 0 for s in sizes):
+            raise ValueError("group_sizes must be a non-empty sequence of positive integers")
+        if sum(sizes) != int(x_arr.shape[0]):
+            raise ValueError("group_sizes must sum to the number of training rows")
+        # Grouped ranking objective support.
+        dtrain.set_group(sizes)
     params = {
-        "objective": "binary:logistic",
+        "objective": str(objective or "binary:logistic"),
         "max_depth": 3,
         "eta": 0.3,
         "subsample": 1.0,
@@ -151,7 +209,7 @@ def train_ltr_xgboost_model(
         "min_child_weight": 0.0,
         "gamma": 0.0,
         "seed": int(seed),
-        "eval_metric": "logloss",
+        "eval_metric": ("ndcg@10" if str(objective or "").startswith("rank:") else "logloss"),
     }
 
     booster = xgb.train(params=params, dtrain=dtrain, num_boost_round=max(1, int(num_boost_round or 0)))

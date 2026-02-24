@@ -204,6 +204,8 @@ class EvidenceRetrieveResponse(BaseModel):
     has_evidence: bool = False
     abstain_triggered: bool = False
     abstain_reason: Optional[str] = None
+    # Stable, versioned trace for downstream provenance parsing (separate from metrics/query_debug).
+    retrieval_trace: Optional[Dict[str, Any]] = None
     # Optional: debug payload for query normalization/expansion (best-effort).
     query_debug: Optional[Dict[str, Any]] = None
 
@@ -348,6 +350,7 @@ async def retrieve_evidence(
     has_evidence = bool(citations) and not abstain_triggered
 
     selected_pass = "primary"
+    fallback: dict[str, Any] | None = None
 
     # Optional: iterative fallback for evidence discovery.
     try:
@@ -510,6 +513,26 @@ async def retrieve_evidence(
         # Metrics are best-effort; never fail the API due to observability.
         pass
 
+    # Stable, versioned retrieval trace (separate from metrics/query_debug).
+    retrieval_trace_payload: dict[str, Any] | None = None
+    try:
+        passes: list[dict[str, Any]] = []
+        primary_trace = primary.get("retrieval_trace")
+        if isinstance(primary_trace, dict):
+            passes.append({"pass": "primary", "trace": primary_trace})
+        fallback_trace = (fallback or {}).get("retrieval_trace") if isinstance(fallback, dict) else None
+        if isinstance(fallback_trace, dict):
+            passes.append({"pass": "fallback", "trace": fallback_trace})
+
+        if passes:
+            retrieval_trace_payload = {
+                "schema": "mimirq.retrieval_trace.v1",
+                "selected_pass": str(selected_pass),
+                "passes": passes,
+            }
+    except Exception:
+        retrieval_trace_payload = None
+
     return EvidenceRetrieveResponse(
         query_for_retrieval=query_for_retrieval,
         citations=citations,
@@ -517,6 +540,7 @@ async def retrieve_evidence(
         has_evidence=has_evidence,
         abstain_triggered=abstain_triggered,
         abstain_reason=abstain_reason,
+        retrieval_trace=retrieval_trace_payload,
         query_debug=query_debug,
     )
 

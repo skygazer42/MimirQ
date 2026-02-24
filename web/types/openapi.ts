@@ -10865,6 +10865,10 @@ export interface components {
             abstain_triggered: boolean;
             /** Abstain Reason */
             abstain_reason?: string | null;
+            /** Retrieval Trace */
+            retrieval_trace?: {
+                [key: string]: unknown;
+            } | null;
             /** Query Debug */
             query_debug?: {
                 [key: string]: unknown;

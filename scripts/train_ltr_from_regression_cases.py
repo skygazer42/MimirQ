@@ -127,6 +127,14 @@ def build_ltr_feature_map(*, citation: dict[str, Any], query: str, spec: LTRFeat
         "sparse_score": _as_float(citation.get("sparse_score")),
         # Evidence API exposes this as relevance_score; treat it as the base retrieval score.
         "score": _as_float(citation.get("relevance_score")),
+        # Optional KG ranking features (low-cardinality).
+        "kg_pagerank": _as_float(citation.get("kg_pagerank")),
+        "kg_shared_events": _as_float(citation.get("kg_shared_events")),
+        "kg_path_length": _as_float(citation.get("kg_path_length")),
+        "kg_edge_conf_low": _as_float(citation.get("kg_edge_conf_low")),
+        "kg_edge_conf_mid": _as_float(citation.get("kg_edge_conf_mid")),
+        "kg_edge_conf_high": _as_float(citation.get("kg_edge_conf_high")),
+        "kg_evidence_anchored": _as_float(citation.get("kg_evidence_anchored")),
         "retrieval_role": citation.get("retrieval_role"),
     }
     values = extract_ltr_features(
@@ -179,6 +187,23 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--num-boost-round", type=int, default=50, help="xgboost num_boost_round (default: %(default)s)")
     p.add_argument("--seed", type=int, default=42, help="Training seed (default: %(default)s)")
+    p.add_argument(
+        "--feature-spec-version",
+        type=int,
+        default=1,
+        help="LTR feature spec version (1=base, 2=KG features) (default: %(default)s)",
+    )
+    p.add_argument(
+        "--objective",
+        default="rank:pairwise",
+        help="xgboost objective: rank:pairwise|rank:ndcg|binary:logistic (default: %(default)s)",
+    )
+    p.add_argument(
+        "--hard-negatives-per-case",
+        type=int,
+        default=10,
+        help="Hard negatives per query group (negatives ranked above the first positive) (default: %(default)s)",
+    )
     args = p.parse_args(argv)
 
     cases_path = Path(args.cases)
@@ -196,8 +221,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_cases and int(args.max_cases) > 0:
         items = list(items)[: _coerce_nonneg_int(args.max_cases)]
 
-    spec = LTRFeatureSpec.default()
+    spec = LTRFeatureSpec.from_version(int(args.feature_spec_version or 1))
     training_rows: list[dict[str, Any]] = []
+    group_sizes: list[int] = []
+    objective = str(args.objective or "rank:pairwise").strip() or "rank:pairwise"
     stats = {
         "cases_total": len(items),
         "cases_used": 0,
@@ -205,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         "rows_total": 0,
         "rows_pos": 0,
         "rows_neg": 0,
+        "rows_hard_neg": 0,
     }
 
     url = str(args.base_url).rstrip("/") + "/rag/retrieve"
@@ -258,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
             rows_this_case: list[dict[str, Any]] = []
             pos = 0
             neg = 0
-            for c in citations:
+            for idx, c in enumerate(citations, 1):
                 if not isinstance(c, dict):
                     continue
                 cid = str(c.get("chunk_id") or "").strip()
@@ -270,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "features": feats,
                         "label": int(label),
+                        "rank": int(idx),
                         "case_question": question,
                         "chunk_id": cid,
                         "retrieval_role": c.get("retrieval_role"),
@@ -280,28 +309,69 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     neg += 1
 
+            max_neg = _coerce_nonneg_int(args.max_negatives_per_case)
+            hard_max = _coerce_nonneg_int(args.hard_negatives_per_case)
+            if max_neg and hard_max > max_neg:
+                hard_max = max_neg
+
+            # Ranking objectives require at least one positive per query group.
             if pos <= 0:
                 stats["cases_missed"] += 1
+                if objective.startswith("rank:"):
+                    continue
                 if bool(args.skip_missed_cases):
                     continue
 
-            max_neg = _coerce_nonneg_int(args.max_negatives_per_case)
-            kept: list[dict[str, Any]] = []
-            kept_neg = 0
-            # Keep all positives, keep up to N negatives (in rank order as returned by Evidence API).
-            for row in rows_this_case:
+            # Hard negatives: "near-miss" candidates ranked above the first positive.
+            first_pos_idx: int | None = None
+            for i, row in enumerate(rows_this_case):
                 if int(row.get("label") or 0) == 1:
-                    kept.append(row)
+                    first_pos_idx = i
+                    break
+
+            pos_idx = [i for i, r in enumerate(rows_this_case) if int(r.get("label") or 0) == 1]
+            neg_idx = [i for i, r in enumerate(rows_this_case) if int(r.get("label") or 0) == 0]
+
+            hard_idx: list[int] = []
+            easy_idx: list[int] = []
+            for i in neg_idx:
+                if first_pos_idx is not None and i < first_pos_idx:
+                    hard_idx.append(i)
+                else:
+                    easy_idx.append(i)
+
+            hard_selected = hard_idx[:hard_max] if hard_max else []
+            if max_neg:
+                remaining = max(0, int(max_neg) - int(len(hard_selected)))
+                easy_selected = easy_idx[:remaining]
+            else:
+                # max_neg=0 => keep all negatives
+                easy_selected = easy_idx
+
+            neg_selected = list(hard_selected) + list(easy_selected)
+            keep_idx = sorted(set(pos_idx + neg_selected))
+            kept = [rows_this_case[i] for i in keep_idx]
+
+            # Mark hard negatives (useful for debugging/inspection outputs).
+            hard_set = set(hard_selected)
+            for i, row in enumerate(rows_this_case):
+                if i not in keep_idx:
                     continue
-                if max_neg and kept_neg >= max_neg:
-                    continue
-                kept.append(row)
-                kept_neg += 1
+                if int(row.get("label") or 0) == 0 and i in hard_set:
+                    row["hard_negative"] = True
+                    stats["rows_hard_neg"] += 1
+
+            # Ranking objective requires group size >= 2 (at least one pos + one neg).
+            if objective.startswith("rank:") and (len(kept) < 2 or not any(int(r.get("label") or 0) == 1 for r in kept)):
+                stats["cases_missed"] += 1
+                continue
 
             if any(int(r.get("label") or 0) == 1 for r in kept):
                 stats["cases_used"] += 1
 
             training_rows.extend(kept)
+            if objective.startswith("rank:"):
+                group_sizes.append(int(len(kept)))
 
     # Final stats
     stats["rows_total"] = len(training_rows)
@@ -321,6 +391,8 @@ def main(argv: list[str] | None = None) -> int:
         spec=spec,
         num_boost_round=int(args.num_boost_round or 0),
         seed=int(args.seed or 0),
+        objective=objective,
+        group_sizes=(group_sizes if objective.startswith("rank:") else None),
     )
     out_model_path = Path(args.out_model)
     out_model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -334,6 +406,10 @@ def main(argv: list[str] | None = None) -> int:
         f" rows_total={stats['rows_total']}"
         f" rows_pos={stats['rows_pos']}"
         f" rows_neg={stats['rows_neg']}"
+        f" rows_hard_neg={stats.get('rows_hard_neg', 0)}"
+        f" objective={objective}"
+        f" spec={getattr(spec, 'schema', '')}"
+        f" groups={len(group_sizes) if objective.startswith('rank:') else 0}"
         f" model={out_model_path}"
     )
     return 0
