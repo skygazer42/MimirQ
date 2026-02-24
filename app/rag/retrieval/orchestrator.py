@@ -16,6 +16,7 @@ from __future__ import annotations
 import concurrent.futures
 import time
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
@@ -25,6 +26,7 @@ from app.core.utils import parse_csv
 from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
+from app.rag.core.hashing import stable_hash
 from app.rag.core.text import (
     build_abstain_followup,
     guess_retrieval_mode,
@@ -99,6 +101,83 @@ def _is_recall_profile(profile: str | None) -> bool:
     return p in {"recall20", "recall50", "coverage80"}
 
 
+def _doc_key(doc: Document) -> str:
+    meta = doc.metadata or {}
+    doc_id = meta.get("document_id")
+    chunk_index = meta.get("chunk_index")
+    if doc_id is not None and chunk_index is not None:
+        return f"{doc_id}:{chunk_index}"
+    cid = getattr(doc, "id", None) or meta.get("chunk_id")
+    if cid:
+        return str(cid)
+    content = (doc.page_content or "").strip()
+    return f"content:{stable_hash(content)}"
+
+
+def _fetch_document_chunks_for_kg_injection(
+    *,
+    db: Any,
+    tenant_id: Any,
+    account_id: Any,
+    dataset_id: Any,
+    document_ids: list[Any],
+    chunk_ids: list[UUID],
+) -> list[Any]:
+    """
+    Best-effort load DocumentChunk rows for KG chunk injection.
+
+    This is intentionally a small helper so tests can monkeypatch it without setting up a real DB.
+    """
+    if not chunk_ids:
+        return []
+    if db is None or tenant_id is None:
+        return []
+
+    from app.models.document import DocumentChunk as DBDocumentChunk  # noqa: WPS433
+
+    # Prefer explicit document_ids scope (already ACL-filtered by the API layer when present).
+    if document_ids:
+        return (
+            db.query(DBDocumentChunk)
+            .filter(
+                DBDocumentChunk.tenant_id == tenant_id,
+                DBDocumentChunk.document_id.in_(list(document_ids)),
+                DBDocumentChunk.id.in_(list(chunk_ids)),
+            )
+            .all()
+        )
+
+    # Dataset-scoped retrieval: enforce dataset permission + doc-level ACL via shared helper.
+    if dataset_id is None or not str(account_id or "").strip():
+        return []
+
+    try:
+        from sqlalchemy import select  # noqa: WPS433
+
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+        from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
+
+        _ds, q = build_dataset_documents_query(
+            db,
+            tenant_id=tenant_id,
+            account_id=str(account_id),
+            dataset_id=dataset_id,
+        )
+        doc_ids_subq = q.with_entities(DBDocument.id).subquery()
+
+        return (
+            db.query(DBDocumentChunk)
+            .filter(
+                DBDocumentChunk.tenant_id == tenant_id,
+                DBDocumentChunk.document_id.in_(select(doc_ids_subq.c.id)),
+                DBDocumentChunk.id.in_(list(chunk_ids)),
+            )
+            .all()
+        )
+    except Exception:
+        return []
+
+
 def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Execute retrieval only and return an updated RAG-like state dict.
@@ -120,6 +199,9 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     rewrite_elapsed = 0.0
     rewrite_used = False
     rewrite_model_used = None
+
+    # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
+    kg_result_cached: dict[str, Any] | None = None
 
     if (
         bool(settings.ENABLE_QUERY_REWRITE)
@@ -293,6 +375,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 kg_result = asyncio.run(coro)
 
+            kg_result_cached = kg_result if isinstance(kg_result, dict) else None
             kg_query_expansion_elapsed = time.time() - t0
 
             entities = (kg_result or {}).get("entities") or []
@@ -600,6 +683,161 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
     docs = (docs or [])[: max(0, top_k)]
 
+    # Optional: KG-assisted retrieval (inject KG-linked chunks as extra candidates).
+    kg_chunks_injected = 0
+    kg_chunk_injection_error: str | None = None
+    try:
+        if (
+            bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+            and bool(getattr(settings, "KG_ENABLED", False))
+            and bool(getattr(settings, "KG_CHAT_ENABLED", False))
+            and state.get("tenant_id") is not None
+            and ((state.get("document_ids") or []) or state.get("dataset_id") is not None)
+        ):
+            tenant_id = state.get("tenant_id")
+            account_id = state.get("account_id")
+            dataset_id = state.get("dataset_id")
+            document_ids = list(state.get("document_ids") or [])
+
+            kg_result = kg_result_cached
+            if kg_result is None:
+                import asyncio
+
+                coro = kg_search(
+                    query=query_for_retrieval,
+                    tenant_id=tenant_id,
+                    document_ids=(document_ids or None),
+                    dataset_id=(dataset_id if not document_ids else None),
+                    account_id=(account_id if (not document_ids) else None),
+                )
+
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop is not None and loop.is_running():
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        kg_result = pool.submit(asyncio.run, coro).result()
+                elif loop is not None:
+                    kg_result = loop.run_until_complete(coro)
+                else:
+                    kg_result = asyncio.run(coro)
+
+            kg_events = (kg_result or {}).get("events") or []
+            max_chunks = max(0, int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0)) or 5
+
+            score_by_chunk: dict[str, float] = {}
+            chunk_ids: list[UUID] = []
+            seen_chunk_ids: set[UUID] = set()
+            for ev in kg_events if isinstance(kg_events, list) else []:
+                if not isinstance(ev, dict):
+                    continue
+                cid_raw = ev.get("chunk_id")
+                if cid_raw is None:
+                    continue
+                try:
+                    cid = UUID(str(cid_raw))
+                except Exception:
+                    continue
+                if cid in seen_chunk_ids:
+                    continue
+                seen_chunk_ids.add(cid)
+                chunk_ids.append(cid)
+                try:
+                    score_by_chunk[str(cid)] = float(ev.get("score", 0.0) or 0.0)
+                except Exception:
+                    score_by_chunk[str(cid)] = 0.0
+                if len(chunk_ids) >= max_chunks:
+                    break
+
+            if chunk_ids:
+                db = state.get("db")
+                owns_db = False
+                if db is None:
+                    try:
+                        from app.core.database import SessionLocal  # noqa: WPS433
+
+                        db = SessionLocal()
+                        owns_db = True
+                    except Exception:
+                        db = None
+                        owns_db = False
+
+                try:
+                    rows = _fetch_document_chunks_for_kg_injection(
+                        db=db,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_id=dataset_id,
+                        document_ids=document_ids,
+                        chunk_ids=chunk_ids,
+                    )
+                finally:
+                    if owns_db and db is not None:
+                        try:
+                            db.close()
+                        except Exception:
+                            pass
+
+                chunk_by_id: dict[UUID, Any] = {}
+                for ch in (rows or []):
+                    try:
+                        cid = ch.id
+                        content = ch.content
+                    except Exception:
+                        continue
+                    if cid is None or content is None:
+                        continue
+                    chunk_by_id[cid] = ch
+
+                kg_docs: list[Document] = []
+                for cid in chunk_ids:
+                    ch = chunk_by_id.get(cid)
+                    if ch is None:
+                        continue
+                    meta = dict(getattr(ch, "doc_metadata", None) or {})
+                    meta["retrieval_role"] = "kg"
+                    meta.setdefault("document_id", str(getattr(ch, "document_id", "") or ""))
+                    meta.setdefault("chunk_id", str(getattr(ch, "id", "") or ""))
+                    meta.setdefault("chunk_index", getattr(ch, "chunk_index", None))
+                    page_number = getattr(ch, "page_number", None)
+                    if page_number is not None:
+                        meta.setdefault("page", int(page_number))
+                        meta.setdefault("page_number", int(page_number))
+                    start_char = getattr(ch, "start_char", None)
+                    end_char = getattr(ch, "end_char", None)
+                    if start_char is not None:
+                        meta.setdefault("start_char", int(start_char))
+                    if end_char is not None:
+                        meta.setdefault("end_char", int(end_char))
+                    if str(cid) in score_by_chunk:
+                        meta.setdefault("retrieval_score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
+                        meta.setdefault("score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
+
+                    kg_docs.append(
+                        Document(
+                            page_content=str(getattr(ch, "content", None) or ""),
+                            metadata=meta,
+                            id=str(cid),
+                        )
+                    )
+
+                if kg_docs:
+                    seen_keys: set[str] = set()
+                    merged: list[Document] = []
+                    for doc in (kg_docs + (docs or [])):
+                        key = _doc_key(doc)
+                        if key in seen_keys:
+                            continue
+                        seen_keys.add(key)
+                        merged.append(doc)
+                    docs = merged
+                    kg_chunks_injected = len(kg_docs)
+    except Exception as exc:  # noqa: BLE001
+        kg_chunks_injected = 0
+        kg_chunk_injection_error = str(exc)[:200]
+
     # Optional: TAG injection (table_store results) passed in by the API layer.
     injected = state.get("tag_docs")
     tag_docs: List[Document] = []
@@ -660,6 +898,9 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["kg_query_expansion_query_count"] = int(len(kg_query_expansion_queries))
     metrics["kg_query_expansion_elapsed_sec"] = round(float(kg_query_expansion_elapsed), 3)
     metrics["kg_query_expansion_error"] = kg_query_expansion_error
+    metrics["kg_chunk_injection_enabled"] = bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+    metrics["kg_chunks_injected"] = int(kg_chunks_injected or 0)
+    metrics["kg_chunk_injection_error"] = kg_chunk_injection_error
 
     metrics["multi_query_enabled"] = bool(mq_enabled)
     metrics["multi_query_used"] = bool(multi_query_used)

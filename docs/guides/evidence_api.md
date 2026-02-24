@@ -97,6 +97,15 @@ Notes:
   - Treat as **“not found / insufficient evidence”**.
   - Downstream pipelines should abstain or ask the user to ingest more documents / refine scope.
 
+### Retrieval Roles (Optional)
+
+Each citation may include a `retrieval_role` field that explains where it came from:
+- `main`: the primary query
+- `alias` / `dict`: deterministic query expansions
+- `mq` / `subq` / `hyde`: LLM-assisted expansions (when enabled)
+- `kgq`: KG-derived query expansion (entity name appended to query)
+- `kg`: KG “chunk injection” (inject KG-linked chunks as extra evidence candidates)
+
 ## Iterative Evidence Retrieval (Optional)
 
 By default, the endpoint runs **one primary retrieval pass**.

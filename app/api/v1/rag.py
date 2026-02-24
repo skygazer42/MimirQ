@@ -158,6 +158,8 @@ async def retrieve_preview(
         ab_user_key=account_id,
         db=db,
     )
+    # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
+    state["db"] = db
 
     result = run_retrieval(state) or {}
     citations = result.get("citations") or []
@@ -323,6 +325,8 @@ async def retrieve_evidence(
         ab_user_key=account_id,
         db=db,
     )
+    # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
+    state["db"] = db
 
     primary = run_retrieval(state) or {}
     citations = primary.get("citations") or []
@@ -659,6 +663,8 @@ async def prompt_preview(
         ab_user_key=account_id,
         db=db,
     )
+    # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
+    state["db"] = db
 
     retrieved = run_retrieval(state) or {}
     citations = retrieved.get("citations") or []
