@@ -95,10 +95,8 @@ async def retrieve_preview(
             if not exists:
                 raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
 
-    from app.rag.pipelines.langgraph import (
-        _retrieve_node,  # internal reuse
-        build_rag_state,
-    )
+    from app.rag.pipelines.langgraph import build_rag_state
+    from app.rag.retrieval.orchestrator import run_retrieval
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     #
@@ -161,7 +159,7 @@ async def retrieve_preview(
         db=db,
     )
 
-    result = _retrieve_node(state) or {}
+    result = run_retrieval(state) or {}
     citations = result.get("citations") or []
     metrics = result.get("metrics") or {}
     query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
@@ -197,6 +195,7 @@ class EvidenceRetrieveRequest(BaseModel):
 
 
 class EvidenceRetrieveResponse(BaseModel):
+    schema: str = Field(default="mimirq.evidence.v1", description="Response schema identifier")
     query_for_retrieval: str
     citations: List[Dict[str, Any]]
     metrics: Dict[str, Any] = Field(default_factory=dict)
@@ -219,6 +218,7 @@ async def retrieve_evidence(
 
     Defaults to a recall-first profile when the caller omits rag_config.
     """
+    t_api_start = time.monotonic()
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     scope_dataset_id: UUID | None = None
@@ -263,10 +263,8 @@ async def retrieve_evidence(
             if not exists:
                 raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
 
-    from app.rag.pipelines.langgraph import (
-        _retrieve_node,  # internal reuse
-        build_rag_state,
-    )
+    from app.rag.pipelines.langgraph import build_rag_state
+    from app.rag.retrieval.orchestrator import run_retrieval
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
@@ -326,11 +324,11 @@ async def retrieve_evidence(
         db=db,
     )
 
-    result = _retrieve_node(state) or {}
-    citations = result.get("citations") or []
-    metrics = dict(result.get("metrics") or {})
-    query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
-    query_debug = result.get("query_debug")
+    primary = run_retrieval(state) or {}
+    citations = primary.get("citations") or []
+    metrics = dict(primary.get("metrics") or {})
+    query_for_retrieval = (primary.get("query_for_retrieval") or body.query or "").strip()
+    query_debug = primary.get("query_debug")
     if not isinstance(query_debug, dict):
         query_debug = None
 
@@ -341,23 +339,172 @@ async def retrieve_evidence(
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
 
-    abstain_triggered = bool(result.get("abstain_triggered") or metrics.get("abstain_triggered") or False)
-    abstain_reason = result.get("abstain_reason") or metrics.get("abstain_reason") or None
+    abstain_triggered = bool(primary.get("abstain_triggered") or metrics.get("abstain_triggered") or False)
+    abstain_reason = primary.get("abstain_reason") or metrics.get("abstain_reason") or None
     has_evidence = bool(citations) and not abstain_triggered
+
+    selected_pass = "primary"
+
+    # Optional: iterative fallback for evidence discovery.
+    try:
+        iterative_enabled = bool(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_ENABLED", False))
+        max_passes = max(1, int(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES", 2) or 2))
+    except Exception:
+        iterative_enabled = False
+        max_passes = 1
+
+    iterative_summary: dict[str, Any] | None = None
+    if iterative_enabled and max_passes >= 2 and not has_evidence:
+        from app.rag.core.text import normalize_retrieval_mode  # avoid import cycles at module import
+
+        # Pass 2: switch to a more recall-friendly setup.
+        fallback_profile = str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80").strip().lower()
+        if fallback_profile not in {"recall20", "recall50", "coverage80"}:
+            fallback_profile = "coverage80"
+
+        # Default fallback mode is keyword; allow override, but keep it safe.
+        fallback_mode = str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
+        fallback_mode = normalize_retrieval_mode(fallback_mode)
+        if fallback_mode not in {"hybrid", "vector", "keyword", "mmr"}:
+            fallback_mode = "keyword"
+
+        # Ensure the profile's top_k contract holds on the final slice as well.
+        try:
+            base_k = int(state.get("top_k") or 0)
+        except Exception:
+            base_k = 0
+        if fallback_profile == "recall20":
+            fallback_k = max(base_k, 20)
+        elif fallback_profile == "recall50":
+            fallback_k = max(base_k, 50)
+        else:
+            fallback_k = max(base_k, 80)
+
+        fallback_state = dict(state)
+        fallback_state["retrieval_profile"] = fallback_profile
+        fallback_state["retrieval_mode"] = fallback_mode
+        fallback_state["top_k"] = fallback_k
+        fallback_state["score_threshold"] = 0.0
+
+        fallback = run_retrieval(fallback_state) or {}
+        f_citations = fallback.get("citations") or []
+        f_metrics = dict(fallback.get("metrics") or {})
+        f_abstain = bool(fallback.get("abstain_triggered") or f_metrics.get("abstain_triggered") or False)
+        f_has_evidence = bool(f_citations) and not f_abstain
+
+        def _top_score(m: dict[str, Any]) -> float:
+            raw = m.get("top_relevance_score")
+            try:
+                return float(raw) if raw is not None else 0.0
+            except Exception:
+                return 0.0
+
+        p_top = _top_score(metrics)
+        f_top = _top_score(f_metrics)
+
+        p_n = len(citations) if isinstance(citations, list) else 0
+        f_n = len(f_citations) if isinstance(f_citations, list) else 0
+
+        # Selection: prefer a pass that clears abstain/has evidence; else prefer higher top score / more citations.
+        use_fallback = False
+        if f_has_evidence and not has_evidence:
+            use_fallback = True
+        elif f_has_evidence and has_evidence:
+            use_fallback = f_top > p_top
+        elif (not f_has_evidence) and (not has_evidence):
+            use_fallback = (f_top > p_top) or (f_top == p_top and f_n > p_n)
+
+        iterative_summary = {
+            "enabled": True,
+            "max_passes": int(max_passes),
+            "selected_pass": "fallback" if use_fallback else "primary",
+            "passes": [
+                {
+                    "pass": "primary",
+                    "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
+                    "retrieval_profile": str(state.get("retrieval_profile") or "") or None,
+                    "citations": int(p_n),
+                    "top_relevance_score": round(float(p_top), 3),
+                    "abstain_triggered": bool(abstain_triggered),
+                    "has_evidence": bool(has_evidence),
+                    "retrieval_elapsed_sec": float(metrics.get("retrieval_elapsed_sec") or 0.0),
+                },
+                {
+                    "pass": "fallback",
+                    "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
+                    "retrieval_profile": str(fallback_profile),
+                    "citations": int(f_n),
+                    "top_relevance_score": round(float(f_top), 3),
+                    "abstain_triggered": bool(f_abstain),
+                    "has_evidence": bool(f_has_evidence),
+                    "retrieval_elapsed_sec": float(f_metrics.get("retrieval_elapsed_sec") or 0.0),
+                },
+            ],
+        }
+
+        if use_fallback:
+            selected_pass = "fallback"
+            citations = f_citations
+            metrics = f_metrics
+            query_for_retrieval = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()
+            qd = fallback.get("query_debug")
+            query_debug = qd if isinstance(qd, dict) else query_debug
+            abstain_triggered = bool(f_abstain)
+            abstain_reason = fallback.get("abstain_reason") or f_metrics.get("abstain_reason") or None
+            has_evidence = bool(f_has_evidence)
 
     # Optional strictness: if configured, require the top relevance score to clear the threshold.
     # This is a lightweight guardrail for "does the corpus contain this?" style calls.
     min_top_rel = float(getattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.0) or 0.0)
     if has_evidence and min_top_rel > 0.0:
-        top_rel_raw = result.get("top_relevance_score")
-        if top_rel_raw is None:
-            top_rel_raw = metrics.get("top_relevance_score")
+        top_rel_raw = metrics.get("top_relevance_score")
         try:
             top_rel = float(top_rel_raw) if top_rel_raw is not None else None
         except Exception:
             top_rel = None
+        if top_rel is None and isinstance(citations, list) and citations:
+            try:
+                top_rel = max(
+                    float(
+                        (
+                            (c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score"))
+                            or 0.0
+                        )
+                    )
+                    for c in citations
+                    if isinstance(c, dict)
+                )
+            except Exception:
+                top_rel = None
         if top_rel is not None and top_rel < min_top_rel:
             has_evidence = False
+
+    if iterative_summary and isinstance(iterative_summary, dict):
+        metrics.setdefault("iterative_retrieve", iterative_summary)
+        if isinstance(query_debug, dict):
+            query_debug.setdefault("iterative_retrieve", iterative_summary)
+
+    # Prometheus metrics (optional; no-op when disabled).
+    try:
+        from app.rag.retrieval.metrics import observe_evidence_retrieve
+
+        top_rel = 0.0
+        try:
+            top_rel = float(metrics.get("top_relevance_score") or 0.0)
+        except Exception:
+            top_rel = 0.0
+        observe_evidence_retrieve(
+            duration_sec=(time.monotonic() - t_api_start),
+            has_evidence=bool(has_evidence),
+            abstain_triggered=bool(abstain_triggered),
+            retrieval_mode=str(metrics.get("retrieval_mode") or effective_rag_config.retrieval_mode or ""),
+            selected_pass=str(selected_pass),
+            citations_count=(len(citations) if isinstance(citations, list) else 0),
+            top_relevance_score=float(top_rel or 0.0),
+        )
+    except Exception:
+        # Metrics are best-effort; never fail the API due to observability.
+        pass
 
     return EvidenceRetrieveResponse(
         query_for_retrieval=query_for_retrieval,
@@ -474,7 +621,8 @@ async def prompt_preview(
     from langchain_core.prompts import ChatPromptTemplate
 
     from app.rag.engine import get_rag_engine
-    from app.rag.pipelines.langgraph import _build_context, _build_history_text, _retrieve_node, build_rag_state
+    from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
+    from app.rag.retrieval.orchestrator import run_retrieval
 
     state = build_rag_state(
         question=body.query,
@@ -512,7 +660,7 @@ async def prompt_preview(
         db=db,
     )
 
-    retrieved = _retrieve_node(state) or {}
+    retrieved = run_retrieval(state) or {}
     citations = retrieved.get("citations") or []
     docs = retrieved.get("docs") or []
     metrics = dict(retrieved.get("metrics") or {})

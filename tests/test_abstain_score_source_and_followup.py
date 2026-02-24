@@ -94,6 +94,7 @@ def test_langgraph_retrieve_node_abstain_gate_uses_final_relevance_score_and_set
 ) -> None:
     import app.rag.engine as engine_mod
     import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
     from app.core.config import settings
 
     engine_mod.reset_rag_engine()
@@ -133,7 +134,7 @@ def test_langgraph_retrieve_node_abstain_gate_uses_final_relevance_score_and_set
                 )
             ]
 
-    monkeypatch.setattr(lg_mod, "hybrid_retriever", _OneLowScoreDocRetriever(), raising=True)
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", _OneLowScoreDocRetriever(), raising=True)
 
     state = {
         "question": "What is X?",
@@ -168,4 +169,3 @@ def test_langgraph_retrieve_node_abstain_gate_uses_final_relevance_score_and_set
     assert isinstance(followup, dict)
     assert isinstance(followup.get("question"), str) and followup.get("question")
     assert isinstance(followup.get("options"), list)
-

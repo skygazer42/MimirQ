@@ -17,9 +17,12 @@ async def test_rag_retrieve_includes_query_debug_when_present(monkeypatch: pytes
     import app.rag.pipelines.langgraph as lg_mod
 
     monkeypatch.setattr(lg_mod, "build_rag_state", lambda **_k: {}, raising=True)
+
+    import app.rag.retrieval.orchestrator as orch_mod
+
     monkeypatch.setattr(
-        lg_mod,
-        "_retrieve_node",
+        orch_mod,
+        "run_retrieval",
         lambda _state: {
             "citations": [],
             "metrics": {},

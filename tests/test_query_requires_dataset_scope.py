@@ -34,10 +34,14 @@ def _build_test_client(monkeypatch, *, allow_open_scope: bool) -> TestClient:
     import app.rag.pipelines.langgraph as langgraph_mod
 
     monkeypatch.setattr(langgraph_mod, "build_rag_state", lambda *_args, **_kwargs: {})
+
+    import app.rag.retrieval.orchestrator as orch_mod
+
     monkeypatch.setattr(
-        langgraph_mod,
-        "_retrieve_node",
+        orch_mod,
+        "run_retrieval",
         lambda *_args, **_kwargs: {"citations": [], "metrics": {}, "query_for_retrieval": "q"},
+        raising=True,
     )
 
     return TestClient(app)

@@ -63,6 +63,7 @@ async def test_rag_engine_recall20_profile_disables_result_trimming(monkeypatch:
 
 def test_langgraph_recall20_profile_disables_result_trimming(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
     from app.core.config import settings
 
     # Keep the test deterministic / single-query.
@@ -84,10 +85,10 @@ def test_langgraph_recall20_profile_disables_result_trimming(monkeypatch: pytest
             captured_updates.append(dict((kwargs or {}).get("update") or {}))
             return self
 
-        def invoke(self, _q):  # noqa: ANN001
-            return []
+    def invoke(self, _q):  # noqa: ANN001
+        return []
 
-    monkeypatch.setattr(lg_mod, "hybrid_retriever", _CapturingRetriever(), raising=True)
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", _CapturingRetriever(), raising=True)
 
     state = lg_mod.build_rag_state(
         question="What fields does the orders table have?",
@@ -107,4 +108,3 @@ def test_langgraph_recall20_profile_disables_result_trimming(monkeypatch: pytest
     assert update.get("dedup_enabled") is False
     assert update.get("max_chunks_per_doc") == 0
     assert update.get("min_distinct_docs") == 0
-

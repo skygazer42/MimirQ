@@ -215,6 +215,7 @@ async def test_rag_engine_kg_query_expansion_excludes_skill_entities(monkeypatch
 
 def test_langgraph_retrieve_node_uses_kg_entity_query_expansion(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "KG_ENABLED", True, raising=False)
@@ -233,7 +234,7 @@ def test_langgraph_retrieve_node_uses_kg_entity_query_expansion(monkeypatch: pyt
     )
 
     retriever = _FakeRetriever()
-    monkeypatch.setattr(lg_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
 
     kg_calls = {"n": 0}
 
@@ -251,7 +252,7 @@ def test_langgraph_retrieve_node_uses_kg_entity_query_expansion(monkeypatch: pyt
             "stats": {"ok": True},
         }
 
-    monkeypatch.setattr(lg_mod, "kg_search", _fake_kg_search, raising=True)
+    monkeypatch.setattr(orch_mod, "kg_search", _fake_kg_search, raising=True)
 
     out = lg_mod._retrieve_node(
         {
