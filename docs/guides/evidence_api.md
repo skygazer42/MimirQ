@@ -33,6 +33,8 @@ This guide documents the **retrieval-only** endpoint intended for “evidence di
 Notes:
 - If `rag_config` is omitted, the server defaults to **`retrieval_profile=recall50`** (recall-first).
 - Prefer `dataset_id` scoping when possible (more scalable than enumerating `document_ids`).
+- For multi-channel fusion tuning, you can override `rag_config.fusion_strategy` (and optionally `fusion_budgets` / `fusion_min_scores` for `budgeted_rrf`).
+  See: `docs/guides/retrieval_fusion.md`.
 
 ## Response
 

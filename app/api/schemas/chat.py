@@ -141,6 +141,18 @@ class ChatRAGConfig(BaseModel):
 
     retrieval_mode: str = Field(default="hybrid")  # hybrid | vector | keyword | mmr | auto
     alpha: float = Field(default=0.6, ge=0.0, le=1.0)  # hybrid merge weight: vector vs keyword
+    # Retrieval channel fusion strategy override. When None, uses settings.RETRIEVAL_FUSION_STRATEGY.
+    # Supported:
+    # - linear: min-max normalize each channel then alpha-blend
+    # - rrf: reciprocal-rank fusion (score normalized for UI)
+    # - budgeted_rrf: RRF scoring but enforce per-channel quotas in the visible top-k prefix
+    fusion_strategy: Optional[str] = None
+    # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
+    # Example: {"vector": 25, "bm25": 10, "lexical": 10, "sparse": 5}
+    fusion_budgets: Optional[Dict[str, int]] = None
+    # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
+    # Per-channel minimum rank score in [0,1], where rank_score is 1/rank (rank starts at 1).
+    fusion_min_scores: Optional[Dict[str, float]] = None
 
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -172,6 +184,66 @@ class ChatRAGConfig(BaseModel):
     @classmethod
     def _normalize_retrieval_mode(cls, v: Any) -> str:
         return normalize_retrieval_mode(str(v) if v is not None else None)
+
+    @field_validator("fusion_strategy", mode="before")
+    @classmethod
+    def _normalize_fusion_strategy(cls, v: Any) -> Optional[str]:
+        raw = str(v or "").strip().lower()
+        if not raw:
+            return None
+        if raw in {"reciprocal_rank_fusion", "rrf"}:
+            return "rrf"
+        if raw in {"budget_rrf", "budgeted_rrf"}:
+            return "budgeted_rrf"
+        if raw == "linear":
+            return "linear"
+        raise ValueError("fusion_strategy must be one of: linear, rrf, budgeted_rrf")
+
+    @model_validator(mode="after")
+    def _validate_fusion_budgets(self) -> "ChatRAGConfig":
+        allowed = {"vector", "bm25", "lexical", "sparse"}
+
+        fb = getattr(self, "fusion_budgets", None)
+        if fb is not None:
+            if not isinstance(fb, dict):
+                raise ValueError("fusion_budgets must be an object/dict when provided")
+            cleaned: Dict[str, int] = {}
+            for k, v in fb.items():
+                key = str(k or "").strip().lower()
+                if not key:
+                    continue
+                if key not in allowed:
+                    raise ValueError("fusion_budgets keys must be in: vector, bm25, lexical, sparse")
+                try:
+                    iv = int(v) if v is not None else 0
+                except Exception as exc:  # noqa: BLE001
+                    raise ValueError(f"fusion_budgets[{key}] must be an int") from exc
+                if iv < 0 or iv > 200:
+                    raise ValueError("fusion_budgets values must be between 0 and 200")
+                cleaned[key] = iv
+            self.fusion_budgets = cleaned or None
+
+        fms = getattr(self, "fusion_min_scores", None)
+        if fms is not None:
+            if not isinstance(fms, dict):
+                raise ValueError("fusion_min_scores must be an object/dict when provided")
+            cleaned2: Dict[str, float] = {}
+            for k, v in fms.items():
+                key = str(k or "").strip().lower()
+                if not key:
+                    continue
+                if key not in allowed:
+                    raise ValueError("fusion_min_scores keys must be in: vector, bm25, lexical, sparse")
+                try:
+                    fv = float(v) if v is not None else 0.0
+                except Exception as exc:  # noqa: BLE001
+                    raise ValueError(f"fusion_min_scores[{key}] must be a float") from exc
+                if fv < 0.0 or fv > 1.0:
+                    raise ValueError("fusion_min_scores values must be between 0.0 and 1.0")
+                cleaned2[key] = fv
+            self.fusion_min_scores = cleaned2 or None
+
+        return self
 
     @model_validator(mode="after")
     def _normalize_channel_weights(self) -> "ChatRAGConfig":
