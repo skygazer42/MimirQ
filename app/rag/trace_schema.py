@@ -71,6 +71,9 @@ class RagTraceRetrieval(BaseModel):
     requested_mode: Optional[str] = None
     auto_routed: Optional[bool] = None
 
+    # Stable, PII-safe fingerprint for cross-run comparisons.
+    retrieval_config_hash: Optional[str] = None
+
     top_k: Optional[int] = None
     query_parallelism: Optional[int] = None
     query_count: Optional[int] = None

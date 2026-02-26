@@ -41,6 +41,7 @@ from app.api.schemas.regression import (
     RagasRegressionRunCreateRequest,
     RagasRegressionRunDetail,
     RagasRegressionRunDiffResponse,
+    RagasRegressionRunLeaderboardResponse,
     RagasRegressionRunList,
     RagasRegressionRunSchema,
 )
@@ -62,6 +63,7 @@ from app.rag.evaluation.test_generator import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.regression_case_bundle import export_case_bundle, plan_case_import
+from app.services.regression_leaderboard import build_regression_run_leaderboard
 from app.services.regression_run_diff import diff_regression_run_summaries
 from app.services.regression_run_diff_html import render_regression_run_diff_html
 from app.services.regression_run_scope import (
@@ -762,6 +764,39 @@ async def list_ragas_regression_runs(
         .all()
     )
     return {"total": total, "items": runs}
+
+
+@router.get("/ragas/regression/runs/leaderboard", response_model=RagasRegressionRunLeaderboardResponse)
+async def get_ragas_regression_run_leaderboard(
+    dataset_id: UUID = Query(..., description="Dataset to scope runs (required)"),
+    metric_key: str = Query(default="retrieval_mrr", description="Metric key from run.summary"),
+    limit: int = Query(default=50, ge=1, le=200),
+    include_incomplete: bool = Query(default=False, description="Include pending/failed runs (default: false)"),
+    max_candidates: int = Query(default=500, ge=1, le=5000, description="Max runs to consider (recency window)"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Rank regression runs by a retrieval-only metric and attach retrieval_config_hash (PII-safe)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    query = (
+        db.query(RagasRegressionRun)
+        .filter(
+            RagasRegressionRun.tenant_id == tenant_id,
+            RagasRegressionRun.dataset_id == dataset_id,
+        )
+        .order_by(RagasRegressionRun.created_at.desc())
+    )
+    if not include_incomplete:
+        query = query.filter(RagasRegressionRun.status == "completed")
+
+    runs = query.limit(max_candidates).all()
+    items = build_regression_run_leaderboard(runs=runs, metric_key=metric_key, limit=limit)
+    return {"metric_key": metric_key, "items": items}
 
 
 @router.get("/ragas/regression/runs/{run_id}", response_model=RagasRegressionRunDetail)

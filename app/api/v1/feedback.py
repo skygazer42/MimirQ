@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.schemas.evidence import EvidenceItemOut
 from app.api.schemas.feedback import (
     MessageFeedbackCreateRequest,
     MessageFeedbackEnrichedList,
@@ -25,6 +26,7 @@ from app.api.schemas.regression import RagasRegressionCaseOut
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
 from app.models.evaluation import RagasRegressionCase
+from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
@@ -35,6 +37,12 @@ router = APIRouter(tags=["Feedback"])
 
 class FeedbackToRegressionCaseRequest(BaseModel):
     include_document_scope: bool = True
+    tags: list[str] = []
+    extra: dict = {}
+
+
+class FeedbackToEvidenceItemRequest(BaseModel):
+    suite_id: UUID
     tags: list[str] = []
     extra: dict = {}
 
@@ -427,6 +435,201 @@ async def create_regression_case_from_feedback(
             "rating": int(fb.rating),
             "dataset_id": str(dataset_id) if dataset_id else None,
             "document_count": len(doc_ids),
+        },
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.post("/messages/{feedback_id}/to-evidence-item", response_model=EvidenceItemOut, status_code=201)
+async def create_evidence_item_from_feedback(
+    feedback_id: UUID,
+    body: FeedbackToEvidenceItemRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Convert a feedback entry into an EvidenceSuite item.
+
+    Intended workflow:
+    feedback -> draft EvidenceItem -> review/approve -> sync into regression cases.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    suite_id = getattr(body, "suite_id", None)
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail="Evidence suite not found")
+    if getattr(suite, "archived_at", None) is not None:
+        raise HTTPException(status_code=400, detail="Evidence suite is archived")
+
+    # Ensure user can at least read the suite's dataset.
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    fb = (
+        db.query(MessageFeedback)
+        .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
+        .first()
+    )
+    if not fb:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    assistant = (
+        db.query(Message)
+        .filter(Message.id == fb.message_id, Message.tenant_id == tenant_id)
+        .first()
+    )
+    if not assistant:
+        raise HTTPException(status_code=404, detail="Assistant message not found")
+
+    conv = (
+        db.query(Conversation)
+        .filter(Conversation.id == fb.conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Infer question from last user message before the assistant answer.
+    q_msg = (
+        db.query(Message)
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == conv.id,
+            Message.role == "user",
+            Message.created_at <= assistant.created_at,
+        )
+        .order_by(Message.created_at.desc())
+        .first()
+    )
+    question = (q_msg.content if q_msg else "").strip()
+    if not question:
+        question = "(missing user question)"
+
+    # Resolve dataset_id (best-effort).
+    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
+    dataset_id: UUID | None = None
+    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
+    if isinstance(raw_ds, str) and raw_ds.strip():
+        try:
+            dataset_id = UUID(raw_ds.strip())
+        except Exception:
+            dataset_id = None
+    if dataset_id is None:
+        dataset_id = getattr(conv, "dataset_id", None)
+    if dataset_id is not None and dataset_id != suite.dataset_id:
+        raise HTTPException(status_code=400, detail="Feedback dataset_id does not match evidence suite dataset_id")
+
+    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
+
+    tags: list[str] = []
+    if isinstance(fb.tags, list):
+        tags.extend([str(x) for x in fb.tags if isinstance(x, (str, int, float))])
+    if isinstance(getattr(body, "tags", None), list):
+        tags.extend([str(x) for x in body.tags if isinstance(x, (str, int, float))])
+    # Normalize: unique + cap.
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for t in tags:
+        v = str(t or "").strip()
+        if not v:
+            continue
+        key = v.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(v[:64])
+        if len(cleaned) >= 30:
+            break
+
+    extra: dict = {}
+    if isinstance(fb.extra, dict):
+        extra.update(fb.extra)
+    if isinstance(getattr(body, "extra", None), dict):
+        extra.update(body.extra)
+    extra.setdefault("source", "feedback")
+    extra.setdefault("feedback_id", str(fb.id))
+    extra.setdefault("message_id", str(fb.message_id))
+    extra.setdefault("rating", int(fb.rating))
+
+    reference_sources = _extract_reference_sources(getattr(assistant, "citations", None))
+    trace_payload = _find_trace_by_request_id(tenant_id=tenant_id, conversation_id=conv.id, request_id=request_id)
+    if trace_payload and isinstance(trace_payload, dict):
+        extra["retrieval_trace"] = trace_payload
+        extra["retrieval_trace_request_id"] = request_id
+        if not reference_sources:
+            reference_sources = _extract_reference_sources(trace_payload.get("citations"))
+
+    # Best-effort: normalize/validate pointers (do not block draft creation on failures).
+    try:
+        if dataset_id is not None and reference_sources:
+            from app.api.v1.evaluations import _finalize_reference_sources  # noqa: WPS433
+
+            reference_sources = _finalize_reference_sources(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                reference_sources=reference_sources,
+            )
+    except Exception:
+        pass
+
+    retrieval_snapshot: dict[str, Any] = trace_payload if isinstance(trace_payload, dict) else {}
+    rag_config_snapshot: dict[str, Any] = {}
+    if isinstance(trace_payload, dict):
+        retrieval = trace_payload.get("retrieval")
+        if isinstance(retrieval, dict):
+            rag_config_snapshot.update(retrieval)
+
+    source_metadata: dict[str, Any] = {
+        **extra,
+        "conversation_id": str(conv.id),
+        "request_id": request_id or None,
+    }
+
+    row = EvidenceItem(
+        tenant_id=tenant_id,
+        dataset_id=(dataset_id or suite.dataset_id),
+        suite_id=suite.id,
+        status="draft",
+        query=question,
+        expected_answer=fb.expected_answer,
+        tags=cleaned,
+        source_metadata=source_metadata,
+        reference_sources=reference_sources,
+        retrieval_snapshot=retrieval_snapshot,
+        rag_config_snapshot=rag_config_snapshot,
+        notes=(str(fb.reason or "").strip()[:2000] if fb.reason else None),
+        created_by=account_id,
+    )
+    db.add(row)
+    try:
+        db.flush()
+    except Exception:
+        pass
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="evidence.item.create_from_feedback",
+        resource_type="evidence_item",
+        resource_id=str(getattr(row, "id", "") or ""),
+        details={
+            "feedback_id": str(fb.id),
+            "message_id": str(fb.message_id),
+            "suite_id": str(suite.id),
+            "dataset_id": str(suite.dataset_id),
+            "rating": int(fb.rating),
+            "reference_sources": len(reference_sources or []),
         },
     )
     db.commit()

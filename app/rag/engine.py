@@ -1581,6 +1581,46 @@ Requirements:
 
             # Optional trace payload for debugging/regression replay (guarded by ENABLE_METRICS_LOG).
             # Claim-check stats are attached after generation completes (so we only emit one trace item).
+            retrieval_config_hash: str | None = None
+            try:
+                from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+
+                fp = build_retrieval_config_fingerprint(
+                    config={
+                        "requested_retrieval_mode": str(mode_req or ""),
+                        "retrieval_mode": str(mode_used or ""),
+                        "retrieval_mode_auto_routed": bool(mode_auto),
+                        "retrieval_profile": profile_norm or None,
+                        "top_k": int(top_k) if top_k is not None else None,
+                        "score_threshold": float(score_threshold_used or 0.0),
+                        "alpha": float(alpha_val or 0.0),
+                        "fusion_strategy": str(fusion_strategy or "").strip().lower() or settings.RETRIEVAL_FUSION_STRATEGY,
+                        "fusion_budgets": fusion_budgets,
+                        "fusion_min_scores": fusion_min_scores,
+                        "enable_weight_rerank": bool(weight_rerank),
+                        "vector_weight": float(vec_w or 0.0),
+                        "keyword_weight": float(kw_w or 0.0),
+                        "mmr_lambda": float(mmr_lambda_val or 0.0),
+                        "enable_reranker": bool(rerank_on),
+                        "reranker_provider": str(rerank_provider or ""),
+                        "reranker_top_n": int(rerank_top_n) if rerank_top_n is not None else 0,
+                        "visible_evidence_only": bool(visible_evidence_only),
+                        "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+                        "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
+                        "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
+                        "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
+                        "sparse_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
+                        "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
+                        "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+                        "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
+                        "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
+                        "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
+                    }
+                )
+                retrieval_config_hash = str(fp.get("hash") or "").strip() or None
+            except Exception:
+                retrieval_config_hash = None
+
             rag_trace_payload: Dict[str, Any] = {
                 "event": "rag_trace",
                 "conversation_id": str(conversation_id) if conversation_id else None,
@@ -1642,6 +1682,7 @@ Requirements:
                     "mode": mode_used,
                     "requested_mode": mode_req,
                     "auto_routed": bool(mode_auto),
+                    "retrieval_config_hash": retrieval_config_hash,
                     "recall_bucket": recall_bucket,
                     "top_k": int(top_k) if top_k is not None else None,
                     "elapsed_sec": round(retrieval_elapsed, 3),

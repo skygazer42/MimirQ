@@ -313,6 +313,8 @@ def normalize_rag_trace_record(record: Dict[str, Any]) -> RagTrace:
     enable_reranker = _to_bool(raw_retrieval.get("enable_reranker"))
     reranker_provider = raw_retrieval.get("reranker_provider")
     reranker_top_n = _to_int(raw_retrieval.get("reranker_top_n"))
+    retrieval_config_hash = raw_retrieval.get("retrieval_config_hash")
+    retrieval_config_hash = (str(retrieval_config_hash).strip() if retrieval_config_hash is not None else None) or None
 
     rerank_model_used = None
     for c in citations:
@@ -324,6 +326,7 @@ def normalize_rag_trace_record(record: Dict[str, Any]) -> RagTrace:
         mode=(str(raw_retrieval.get("mode")) if raw_retrieval.get("mode") is not None else None),
         requested_mode=(str(raw_retrieval.get("requested_mode")) if raw_retrieval.get("requested_mode") is not None else None),
         auto_routed=_to_bool(raw_retrieval.get("auto_routed")),
+        retrieval_config_hash=retrieval_config_hash,
         top_k=_to_int(raw_retrieval.get("top_k")),
         query_parallelism=_to_int(raw_retrieval.get("query_parallelism")),
         query_count=_to_int(raw_retrieval.get("query_count")),

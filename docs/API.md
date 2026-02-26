@@ -1690,6 +1690,39 @@ POST /api/v1/evaluations/ragas/regression/cases
 POST /api/v1/evaluations/ragas/regression/runs
 ```
 
+## 回归 Leaderboard（按检索指标排序）
+
+按回归 run 的 `summary` 指标排序，返回一个轻量 leaderboard，并附带 `retrieval_config_hash`（用于按检索配置分组/对比；PII-safe）。
+
+```bash
+GET /api/v1/evaluations/ragas/regression/runs/leaderboard?dataset_id={dataset_id}&metric_key=retrieval_mrr&limit=20
+```
+
+**常用 metric_key：**
+- `retrieval_recall`
+- `retrieval_hit_at_20`
+- `retrieval_mrr`
+- `retrieval_ndcg_at_20`
+- `abstain_rate`
+
+**响应示例：**
+```json
+{
+  "metric_key": "retrieval_mrr",
+  "items": [
+    {
+      "run_id": "run-uuid",
+      "status": "completed",
+      "created_at": "2024-01-01T00:00:00Z",
+      "finished_at": "2024-01-01T00:01:00Z",
+      "metric_key": "retrieval_mrr",
+      "metric_value": 0.42,
+      "retrieval_config_hash": "1a2b3c4d5e6f..."
+    }
+  ]
+}
+```
+
 ---
 
 # 提示词模板管理
@@ -2146,6 +2179,54 @@ GET /api/v1/feedback/messages?skip=0&limit=50
 | message_id | 按消息筛选 |
 | min_rating | 最低评分 |
 | max_rating | 最高评分 |
+
+## 反馈转 EvidenceItem（Hardcase 草稿）
+
+将一条反馈转换为指定 `EvidenceSuite` 下的 **draft** `EvidenceItem`，用于构建企业级优化闭环：
+`feedback -> draft evidence -> reviewed/approved -> sync -> regression runs/leaderboard`。
+
+```bash
+POST /api/v1/feedback/messages/{feedback_id}/to-evidence-item
+```
+
+**请求体：**
+```json
+{
+  "suite_id": "evidence-suite-uuid",
+  "tags": ["hardcase", "needs_fix"],
+  "extra": {
+    "priority": "P1"
+  }
+}
+```
+
+**响应 (201)：**
+```json
+{
+  "id": "evidence-item-uuid",
+  "suite_id": "evidence-suite-uuid",
+  "dataset_id": "dataset-uuid",
+  "status": "draft",
+  "query": "用户问题（从会话中推断）",
+  "tags": ["hardcase", "needs_fix"],
+  "reference_sources": [
+    {
+      "document_id": "doc-uuid",
+      "chunk_id": "chunk-uuid"
+    }
+  ],
+  "rag_config_snapshot": {
+    "retrieval_config_hash": "1a2b3c4d5e6f..."
+  },
+  "created_at": "2024-01-01T00:00:00Z"
+}
+```
+
+**说明：**
+- 会校验：EvidenceSuite 存在且未归档、当前账号可读该 suite 的 dataset。
+- 若反馈对应的 dataset 与 suite.dataset 不一致，会返回 `400`（避免跨数据集污染）。
+- `reference_sources` 会优先从 assistant message 的 `citations` 抽取；若为空，会回退到 trace 的 `citations`（best-effort）。
+- `rag_config_snapshot` 会保存 trace 中的检索配置快照（包含 `retrieval_config_hash`，用于 leaderboard/回归对比；PII-safe）。
 
 ---
 
