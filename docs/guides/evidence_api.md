@@ -109,6 +109,9 @@ Schema notes:
 - Each pass item contains a nested trace with `trace.schema = mimirq.retrieval_trace_pass.v1`.
 - This object is designed for **machine parsing** of “what happened” (rewrite/expansions/fusion/post-rerank),
   without depending on ad hoc `metrics` keys.
+- Each pass trace may include a `retrieval_config` fingerprint:
+  - `retrieval_config.schema = mimirq.retrieval_config.v1`
+  - `retrieval_config.hash`: stable, PII-safe config hash (does **not** include raw query text or scope ids)
 
 ### Query Debug (Optional)
 

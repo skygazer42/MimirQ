@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Optional reranker providers: ColBERT-style late-interaction scaffold (`colbert`) and XGBoost LTR reranker (`ltr`).
 - Offline training helper: `scripts/train_ltr_from_regression_cases.py` (build LTR model artifacts from regression cases via Evidence API).
 - Docs: evidence retrieval gate, sparse retrieval, ColBERT/LTR reranking guides, and a retrieval-only parity gap snapshot.
+- Stable retrieval config fingerprint (`retrieval_config`) in retrieval trace plus `retrieval_config_hash` metric for cross-run comparisons.
 
 ### Changed
 

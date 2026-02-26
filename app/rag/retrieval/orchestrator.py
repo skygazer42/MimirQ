@@ -14,6 +14,7 @@ It is intentionally usable without the LangGraph orchestration layer.
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -1342,6 +1343,57 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "by_role": citations_by_role,
         },
     }
+
+    # Stable retrieval config fingerprint (PII-safe).
+    #
+    # Goal:
+    # - Provide downstream systems a compact way to compare runs across environments
+    #   without relying on brittle field-by-field comparisons.
+    # - Must not include raw query text, doc ids, dataset ids, or metadata filter contents.
+    try:
+        retrieval_cfg: Dict[str, Any] = {
+            "requested_retrieval_mode": str(requested_retrieval_mode or ""),
+            "retrieval_mode": str(request_retrieval_mode or ""),
+            "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
+            "retrieval_profile": profile_norm or None,
+            "top_k": int(top_k),
+            "score_threshold": float(retriever_update.get("score_threshold") or 0.0),
+            "alpha": float(retriever_update.get("alpha") or 0.0),
+            "fusion_strategy": str(retriever_update.get("fusion_strategy") or "linear"),
+            "fusion_budgets": (retriever_update.get("fusion_budgets") if isinstance(retriever_update.get("fusion_budgets"), dict) else None),
+            "fusion_min_scores": (retriever_update.get("fusion_min_scores") if isinstance(retriever_update.get("fusion_min_scores"), dict) else None),
+            "enable_weight_rerank": bool(retriever_update.get("enable_weight_rerank", True)),
+            "vector_weight": float(retriever_update.get("vector_weight") or 0.0),
+            "keyword_weight": float(retriever_update.get("keyword_weight") or 0.0),
+            "mmr_lambda": float(retriever_update.get("mmr_lambda") or 0.0),
+            "enable_reranker": bool(retriever_update.get("enable_reranker", False)),
+            "reranker_provider": str(retriever_update.get("reranker_provider") or ""),
+            "reranker_top_n": int(retriever_update.get("reranker_top_n") or 0),
+            "visible_evidence_only": bool(state.get("visible_evidence_only") or False),
+            # Global retrieval channel toggles (low-cardinality).
+            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+            "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
+            "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
+            "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
+            "sparse_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
+            "kg_query_expansion_enabled": bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
+            "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+            "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
+            "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
+            "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
+        }
+
+        raw = json.dumps(retrieval_cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+        retrieval_cfg_hash = stable_hash(raw, length=32)
+
+        retrieval_trace["retrieval_config"] = {
+            "schema": "mimirq.retrieval_config.v1",
+            "hash": retrieval_cfg_hash,
+            "config": retrieval_cfg,
+        }
+        metrics["retrieval_config_hash"] = retrieval_cfg_hash
+    except Exception:
+        pass
 
     return {
         **state,

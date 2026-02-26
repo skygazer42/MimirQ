@@ -53,6 +53,7 @@ python scripts/regression_gate.py \
 另外，CI 里常需要把 run 的详细 JSON 作为 artifact 保存，可用：
 
 - `--out-run-json path/to/run.detail.json`：写出最终 run detail（包含 `summary` + `retrieval_slices`）
+  - 提示：run detail 的检索侧 `metrics` / `retrieval_trace` 里会包含 `retrieval_config_hash`（用于对比不同检索配置的结果差异）。
 
 ## Retrieval-only Gate（不依赖 RAGAS/LLM）
 
