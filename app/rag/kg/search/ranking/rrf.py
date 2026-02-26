@@ -20,6 +20,8 @@ class RerankRRFSearcher:
         event_scores: Dict[str, float],
         *,
         query_vector: List[float] | None = None,
+        key_final: list[dict[str, Any]] | None = None,
+        event_hops: dict[str, int] | None = None,
     ) -> Dict[str, Any]:
         session = get_session()
         try:
@@ -56,7 +58,41 @@ class RerankRRFSearcher:
                 r2 = sim_order.get(str(eid), len(event_ids))
                 fused[str(eid)] = 1.0 / (k + r1) + 1.0 / (k + r2)
 
-            results = format_events(events, fused, config.rerank.max_results)
+            extras: dict[str, dict[str, Any]] = {}
+            key_entity_ids = {str(k.get("entity_id") or "").strip() for k in (key_final or []) if k.get("entity_id")}
+            assoc_map: dict[str, list[Any]] = {}
+            if key_entity_ids:
+                try:
+                    assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
+                except Exception:
+                    assoc_map = {}
+            for ev in events:
+                ev_id = str(getattr(ev, "id", "") or "")
+                if not ev_id:
+                    continue
+                hop = 1
+                if event_hops is not None:
+                    try:
+                        hop = int(event_hops.get(ev_id, 1) or 1)
+                    except Exception:
+                        hop = 1
+                hop = max(1, min(hop, 5))
+
+                shared = 0
+                ents = assoc_map.get(ev_id, []) if isinstance(assoc_map, dict) else []
+                for ent in ents or []:
+                    ent_id = str(getattr(ent, "id", "") or "")
+                    if ent_id and ent_id in key_entity_ids:
+                        shared += 1
+                shared = max(0, min(shared, 5))
+
+                extras[ev_id] = {
+                    "kg_path_length": int(hop),
+                    "kg_shared_events": int(shared),
+                    "kg_evidence_anchored": bool(getattr(ev, "chunk_id", None)),
+                }
+
+            results = format_events(events, fused, config.rerank.max_results, extra_by_event_id=extras)
 
             return {
                 "events": results,

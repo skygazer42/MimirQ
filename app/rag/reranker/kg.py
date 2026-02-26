@@ -41,6 +41,7 @@ class KGReranker(BaseReranker):
         event_scores: dict[str, float],
         key_final: list[dict[str, Any]] | None = None,
         query_vector: list[float] | None = None,
+        event_hops: dict[str, int] | None = None,
     ) -> RerankResult:
         event_ids = [c.id for c in candidates if c.id]
         if not event_ids:
@@ -53,6 +54,7 @@ class KGReranker(BaseReranker):
                 key_final or [],
                 event_scores,
                 query_vector=query_vector,
+                event_hops=event_hops,
             )
             provider = "pagerank"
         else:
@@ -61,6 +63,8 @@ class KGReranker(BaseReranker):
                 event_ids,
                 event_scores,
                 query_vector=query_vector,
+                key_final=key_final or [],
+                event_hops=event_hops,
             )
             provider = "rrf"
 

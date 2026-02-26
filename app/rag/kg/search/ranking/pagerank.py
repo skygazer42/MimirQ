@@ -21,6 +21,7 @@ class RerankPageRankSearcher:
         event_scores: Dict[str, float],
         *,
         query_vector: List[float] | None = None,
+        event_hops: dict[str, int] | None = None,
     ) -> Dict[str, Any]:
         session = get_session()
         try:
@@ -37,6 +38,7 @@ class RerankPageRankSearcher:
 
             query_vec = query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
             key_weight_map = {k.get("entity_id"): k.get("weight", 0.0) for k in key_final}
+            key_entity_ids = {str(k.get("entity_id") or "").strip() for k in (key_final or []) if k.get("entity_id")}
 
             # prepare adjacency via shared entities
             assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
@@ -87,7 +89,34 @@ class RerankPageRankSearcher:
                 base_scores=base_scores,
             )
 
-            results = format_events(events, scores, config.rerank.max_results)
+            extras: dict[str, dict[str, Any]] = {}
+            for ev in events:
+                ev_id = str(getattr(ev, "id", "") or "")
+                if not ev_id:
+                    continue
+                hop = 1
+                if event_hops is not None:
+                    try:
+                        hop = int(event_hops.get(ev_id, 1) or 1)
+                    except Exception:
+                        hop = 1
+                hop = max(1, min(hop, 5))
+
+                shared = 0
+                ents = assoc_map.get(ev_id, []) if isinstance(assoc_map, dict) else []
+                for ent in ents or []:
+                    ent_id = str(getattr(ent, "id", "") or "")
+                    if ent_id and ent_id in key_entity_ids:
+                        shared += 1
+                shared = max(0, min(shared, 5))
+
+                extras[ev_id] = {
+                    "kg_path_length": int(hop),
+                    "kg_shared_events": int(shared),
+                    "kg_evidence_anchored": bool(getattr(ev, "chunk_id", None)),
+                }
+
+            results = format_events(events, scores, config.rerank.max_results, extra_by_event_id=extras)
 
             return {
                 "events": results,

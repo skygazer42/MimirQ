@@ -774,6 +774,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             max_chunks = max(0, int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0)) or 5
 
             score_by_chunk: dict[str, float] = {}
+            kg_features_by_chunk: dict[str, dict[str, Any]] = {}
             chunk_ids: list[UUID] = []
             seen_chunk_ids: set[UUID] = set()
             for ev in kg_events if isinstance(kg_events, list) else []:
@@ -790,10 +791,23 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                     continue
                 seen_chunk_ids.add(cid)
                 chunk_ids.append(cid)
+                cid_str = str(cid)
                 try:
-                    score_by_chunk[str(cid)] = float(ev.get("score", 0.0) or 0.0)
+                    score_by_chunk[cid_str] = float(ev.get("score", 0.0) or 0.0)
                 except Exception:
-                    score_by_chunk[str(cid)] = 0.0
+                    score_by_chunk[cid_str] = 0.0
+
+                # Stable KG ranking features (optional). These are low-cardinality and do not
+                # include scope identifiers, so they are safe to propagate into citation metadata.
+                feats: dict[str, Any] = {}
+                if ev.get("kg_path_length") is not None:
+                    feats["kg_path_length"] = ev.get("kg_path_length")
+                if ev.get("kg_shared_events") is not None:
+                    feats["kg_shared_events"] = ev.get("kg_shared_events")
+                if ev.get("kg_evidence_anchored") is not None:
+                    feats["kg_evidence_anchored"] = ev.get("kg_evidence_anchored")
+                if feats:
+                    kg_features_by_chunk[cid_str] = feats
                 if len(chunk_ids) >= max_chunks:
                     break
 
@@ -860,6 +874,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                     if str(cid) in score_by_chunk:
                         meta.setdefault("retrieval_score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
                         meta.setdefault("score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
+                    feats = kg_features_by_chunk.get(str(cid))
+                    if isinstance(feats, dict) and feats:
+                        for k, v in feats.items():
+                            if v is None:
+                                continue
+                            meta[k] = v
 
                     kg_docs.append(
                         Document(
@@ -942,9 +962,26 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 kg_score = 0.0
 
             meta["kg_pagerank"] = float(kg_score)
-            meta["kg_shared_events"] = 1.0
-            meta["kg_path_length"] = 1.0
-            meta["kg_evidence_anchored"] = True
+
+            # Prefer KG-provided features when available (e.g., from KG search rerank output).
+            try:
+                path_len = int(meta.get("kg_path_length")) if meta.get("kg_path_length") is not None else 1
+            except Exception:
+                path_len = 1
+            path_len = max(1, min(int(path_len), 5))
+            meta["kg_path_length"] = int(path_len)
+
+            try:
+                shared = int(meta.get("kg_shared_events")) if meta.get("kg_shared_events") is not None else 1
+            except Exception:
+                shared = 1
+            shared = max(0, min(int(shared), 5))
+            meta["kg_shared_events"] = int(shared)
+
+            if "kg_evidence_anchored" in meta:
+                meta["kg_evidence_anchored"] = bool(meta.get("kg_evidence_anchored"))
+            else:
+                meta["kg_evidence_anchored"] = True
 
             # Confidence buckets (low-cardinality one-hot). Thresholds are intentionally coarse.
             low = 0.0

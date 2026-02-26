@@ -1022,6 +1022,11 @@ class Settings(BaseSettings):
     # - Global KG search timeout (seconds, 0 disables).
     KG_SEARCH_TIMEOUT_SEC: float = 0.0
     KG_SEARCH_METRICS_ENABLED: bool = False
+    # KG search cache (best-effort, per-process).
+    # Disabled by default to preserve backward-compatible behavior.
+    KG_SEARCH_CACHE_ENABLED: bool = False
+    KG_SEARCH_CACHE_TTL_SEC: int = 30
+    KG_SEARCH_CACHE_MAX_ENTRIES: int = 256
     # Relation-driven recall expansion: seed entities -> relation neighbors -> events.
     # Disabled by default to avoid behavioral changes in KG search without opt-in.
     KG_SEARCH_RELATION_EXPANSION_ENABLED: bool = False
@@ -1378,6 +1383,11 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
         if self.RETRIEVAL_CANDIDATE_CACHE_PREFIX != cand_prefix:
             self.RETRIEVAL_CANDIDATE_CACHE_PREFIX = cand_prefix
+
+        if int(getattr(self, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0) < 0:
+            raise ValueError("KG_SEARCH_CACHE_TTL_SEC must be >= 0")
+        if int(getattr(self, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0) < 0:
+            raise ValueError("KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
         if int(getattr(self, "VECTOR_WRITE_BATCH_SIZE", 0) or 0) < 1:
             raise ValueError("VECTOR_WRITE_BATCH_SIZE must be >= 1")
         if int(getattr(self, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0) < 0:

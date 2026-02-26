@@ -19,6 +19,8 @@ def format_events(
     events: Sequence[KgSourceEvent],
     scores: Dict[str, float],
     limit: int,
+    *,
+    extra_by_event_id: dict[str, dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
     if not events or not scores:
         return []
@@ -29,15 +31,19 @@ def format_events(
         ev = event_map.get(str(eid))
         if not ev:
             continue
-        results.append(
-            {
-                "id": str(ev.id),
-                "title": ev.title,
-                "summary": ev.summary,
-                "content": ev.content,
-                "document_id": str(ev.document_id) if ev.document_id else None,
-                "chunk_id": str(ev.chunk_id) if ev.chunk_id else None,
-                "score": score,
-            }
-        )
+        item: Dict[str, Any] = {
+            "id": str(ev.id),
+            "title": ev.title,
+            "summary": ev.summary,
+            "content": ev.content,
+            "document_id": str(ev.document_id) if ev.document_id else None,
+            "chunk_id": str(ev.chunk_id) if ev.chunk_id else None,
+            "score": score,
+        }
+        if extra_by_event_id is not None:
+            extra = extra_by_event_id.get(str(ev.id))
+            if isinstance(extra, dict) and extra:
+                item.update(extra)
+
+        results.append(item)
     return results
