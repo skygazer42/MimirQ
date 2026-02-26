@@ -14,6 +14,7 @@ It is intentionally usable without the LangGraph orchestration layer.
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -115,6 +116,44 @@ def _doc_key(doc: Document) -> str:
         return str(cid)
     content = (doc.page_content or "").strip()
     return f"content:{stable_hash(content)}"
+
+
+def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
+    """
+    Parse/normalize the Evidence post-rerank pipeline config into a low-cardinality summary.
+
+    Notes:
+    - We intentionally keep only {provider, top_n} so this can be embedded into retrieval_config_hash
+      without leaking secrets or environment-specific paths.
+    - Expected input is JSON from settings.EVIDENCE_POST_RERANK_PIPELINE.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    try:
+        obj = json.loads(text)
+    except Exception:
+        return []
+    if not isinstance(obj, list):
+        return []
+
+    out: list[dict[str, Any]] = []
+    for item in obj:
+        if not isinstance(item, dict):
+            continue
+        provider = str(item.get("provider") or "").strip().lower()
+        if not provider or provider in {"none", "off", "false", "0"}:
+            continue
+        top_n_raw = item.get("top_n")
+        try:
+            top_n = int(top_n_raw) if top_n_raw is not None else 0
+        except Exception:
+            top_n = 0
+        top_n = max(0, top_n)
+        out.append({"provider": provider, "top_n": top_n or None})
+        if len(out) >= 4:
+            break
+    return out
 
 
 def _fetch_document_chunks_for_kg_injection(
@@ -925,6 +964,11 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # Optional: post-fusion rerank (evidence-first) on the final candidate list.
     post_rerank_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False))
+    post_rerank_pipeline_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False))
+    post_rerank_pipeline_raw = getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")
+    post_rerank_pipeline: list[dict[str, Any]] = []
+    post_rerank_pipeline_used = False
+    post_rerank_pipeline_stages: list[dict[str, Any]] = []
     post_rerank_used = False
     post_rerank_provider: str | None = None
     post_rerank_model_used: str | None = None
@@ -940,62 +984,199 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 top_n = int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0)
                 if top_n <= 0:
                     top_n = len(docs or [])
-                post_rerank_candidates_n = min(top_n, len(docs or []))
+                top_n = min(int(top_n), len(docs or []))
 
-                candidates: List[RerankCandidate] = []
-                id_to_doc: Dict[str, Document] = {}
-                for doc in (docs or [])[:post_rerank_candidates_n]:
-                    rid = _doc_key(doc)
-                    text = (doc.page_content or "").strip()
-                    if not rid or not text:
-                        continue
-                    meta = dict(doc.metadata or {})
-                    candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
-                    id_to_doc[rid] = doc
+                if post_rerank_pipeline_enabled:
+                    post_rerank_pipeline = _safe_post_rerank_pipeline_summary(post_rerank_pipeline_raw)
 
-                if candidates:
-                    reranker = get_reranker(provider)
-                    rr_start = time.time()
-                    rr = reranker.rerank(
-                        query=query_for_retrieval,
-                        candidates=candidates,
-                        top_n=post_rerank_candidates_n,
-                    )
-                    post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
-                    post_rerank_model_used = rr.model_used
-                    reranker_provider = rr.provider or provider
+                # Pipeline mode: sequential stages with per-stage top_n budgets.
+                if post_rerank_pipeline:
+                    post_rerank_pipeline_used = True
+                    docs_work: List[Document] = list(docs or [])
+                    total_elapsed = 0.0
+                    prev_n: int | None = None
+                    final_provider: str | None = None
+                    final_model_used: str | None = None
+                    final_n: int = 0
 
-                    ordered: List[Document] = []
-                    used: set[str] = set()
-                    for rid in rr.ordered_ids:
-                        doc = id_to_doc.get(rid)
-                        if doc is None or rid in used:
+                    for i, st in enumerate(post_rerank_pipeline):
+                        st_provider = str(st.get("provider") or "").strip().lower()
+                        if not st_provider or st_provider in ("none", "off", "false", "0"):
                             continue
-                        used.add(rid)
-                        meta = dict(doc.metadata or {})
-                        meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
-                        if rid in rr.score_map:
-                            meta["rerank_score"] = float(rr.score_map[rid])
-                            meta["score"] = float(rr.score_map[rid])
-                        meta["reranker_provider"] = reranker_provider
-                        meta["rerank_elapsed_sec"] = round(float(post_rerank_elapsed), 3)
-                        meta["rerank_model_used"] = post_rerank_model_used
-                        ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
 
-                    # Append candidates not returned by reranker (keep original order).
+                        st_top_n = st.get("top_n")
+                        try:
+                            st_n = int(st_top_n) if st_top_n is not None else 0
+                        except Exception:
+                            st_n = 0
+                        if st_n <= 0:
+                            st_n = int(prev_n or top_n)
+                        if prev_n is not None:
+                            st_n = min(int(st_n), int(prev_n))
+                        st_n = min(int(st_n), len(docs_work))
+                        if st_n <= 0:
+                            continue
+
+                        candidates: List[RerankCandidate] = []
+                        id_to_doc: Dict[str, Document] = {}
+                        for doc in docs_work[:st_n]:
+                            rid = _doc_key(doc)
+                            text = (doc.page_content or "").strip()
+                            if not rid or not text:
+                                continue
+                            meta = dict(doc.metadata or {})
+                            candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
+                            id_to_doc[rid] = doc
+
+                        if not candidates:
+                            continue
+
+                        reranker = get_reranker(st_provider)
+                        rr_start = time.time()
+                        rr = reranker.rerank(query=query_for_retrieval, candidates=candidates, top_n=st_n)
+                        elapsed_i = float(rr.elapsed_sec or (time.time() - rr_start))
+                        total_elapsed += elapsed_i
+
+                        used_provider = (rr.provider or st_provider).strip().lower() or st_provider
+                        is_final = i == (len(post_rerank_pipeline) - 1)
+                        if is_final:
+                            final_provider = used_provider
+                            final_model_used = rr.model_used
+                            final_n = int(st_n)
+
+                        ordered_prefix: List[Document] = []
+                        used: set[str] = set()
+                        for rid in rr.ordered_ids:
+                            doc = id_to_doc.get(rid)
+                            if doc is None or rid in used:
+                                continue
+                            used.add(rid)
+                            meta = dict(doc.metadata or {})
+                            if is_final:
+                                base = meta.get("retrieval_score")
+                                if base is None:
+                                    base = meta.get("score", 0.0)
+                                try:
+                                    meta["retrieval_score"] = float(base or 0.0)
+                                except Exception:
+                                    meta["retrieval_score"] = 0.0
+                                if rid in rr.score_map:
+                                    meta["rerank_score"] = float(rr.score_map[rid])
+                                    meta["score"] = float(rr.score_map[rid])
+                                meta["reranker_provider"] = final_provider
+                                meta["rerank_elapsed_sec"] = round(float(total_elapsed), 3)
+                                meta["rerank_model_used"] = final_model_used
+                            ordered_prefix.append(
+                                Document(
+                                    page_content=doc.page_content,
+                                    metadata=meta,
+                                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
+                                )
+                            )
+
+                        # Append candidates not returned by reranker (keep original order).
+                        for doc in docs_work[:st_n]:
+                            rid = _doc_key(doc)
+                            if rid in used:
+                                continue
+                            meta = dict(doc.metadata or {})
+                            if is_final:
+                                base = meta.get("retrieval_score")
+                                if base is None:
+                                    base = meta.get("score", 0.0)
+                                try:
+                                    meta["retrieval_score"] = float(base or 0.0)
+                                except Exception:
+                                    meta["retrieval_score"] = 0.0
+                                meta.setdefault("reranker_provider", final_provider)
+                                meta.setdefault("rerank_elapsed_sec", round(float(total_elapsed), 3))
+                                meta.setdefault("rerank_model_used", final_model_used)
+                            ordered_prefix.append(
+                                Document(
+                                    page_content=doc.page_content,
+                                    metadata=meta,
+                                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
+                                )
+                            )
+
+                        docs_work = ordered_prefix + list(docs_work[st_n:])
+                        prev_n = int(st_n)
+                        post_rerank_pipeline_stages.append(
+                            {
+                                "provider": used_provider,
+                                "top_n": int(st_n),
+                                "candidates": int(len(candidates)),
+                                "elapsed_sec": round(float(elapsed_i), 3),
+                                "model_used": rr.model_used,
+                            }
+                        )
+
+                    if final_provider is not None and final_n > 0:
+                        docs = docs_work
+                        post_rerank_used = True
+                        post_rerank_provider = final_provider
+                        post_rerank_model_used = final_model_used
+                        post_rerank_candidates_n = int(final_n)
+                        post_rerank_elapsed = float(total_elapsed)
+
+                # Single-stage (legacy) behavior: one provider, one top_n.
+                if not post_rerank_used:
+                    post_rerank_candidates_n = min(int(top_n), len(docs or []))
+
+                    candidates: List[RerankCandidate] = []
+                    id_to_doc: Dict[str, Document] = {}
                     for doc in (docs or [])[:post_rerank_candidates_n]:
                         rid = _doc_key(doc)
-                        if rid in used:
+                        text = (doc.page_content or "").strip()
+                        if not rid or not text:
                             continue
                         meta = dict(doc.metadata or {})
-                        meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
-                        meta.setdefault("reranker_provider", reranker_provider)
-                        meta.setdefault("rerank_elapsed_sec", round(float(post_rerank_elapsed), 3))
-                        meta.setdefault("rerank_model_used", post_rerank_model_used)
-                        ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
+                        candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
+                        id_to_doc[rid] = doc
 
-                    docs = ordered + list((docs or [])[post_rerank_candidates_n:])
-                    post_rerank_used = True
+                    if candidates:
+                        reranker = get_reranker(provider)
+                        rr_start = time.time()
+                        rr = reranker.rerank(
+                            query=query_for_retrieval,
+                            candidates=candidates,
+                            top_n=post_rerank_candidates_n,
+                        )
+                        post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
+                        post_rerank_model_used = rr.model_used
+                        reranker_provider = rr.provider or provider
+
+                        ordered: List[Document] = []
+                        used: set[str] = set()
+                        for rid in rr.ordered_ids:
+                            doc = id_to_doc.get(rid)
+                            if doc is None or rid in used:
+                                continue
+                            used.add(rid)
+                            meta = dict(doc.metadata or {})
+                            meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
+                            if rid in rr.score_map:
+                                meta["rerank_score"] = float(rr.score_map[rid])
+                                meta["score"] = float(rr.score_map[rid])
+                            meta["reranker_provider"] = reranker_provider
+                            meta["rerank_elapsed_sec"] = round(float(post_rerank_elapsed), 3)
+                            meta["rerank_model_used"] = post_rerank_model_used
+                            ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
+
+                        # Append candidates not returned by reranker (keep original order).
+                        for doc in (docs or [])[:post_rerank_candidates_n]:
+                            rid = _doc_key(doc)
+                            if rid in used:
+                                continue
+                            meta = dict(doc.metadata or {})
+                            meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
+                            meta.setdefault("reranker_provider", reranker_provider)
+                            meta.setdefault("rerank_elapsed_sec", round(float(post_rerank_elapsed), 3))
+                            meta.setdefault("rerank_model_used", post_rerank_model_used)
+                            ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
+
+                        docs = ordered + list((docs or [])[post_rerank_candidates_n:])
+                        post_rerank_used = True
     except Exception as exc:  # noqa: BLE001
         post_rerank_used = False
         post_rerank_error = str(exc)[:200]
@@ -1021,6 +1202,9 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["evidence_post_rerank_elapsed_sec"] = round(float(post_rerank_elapsed or 0.0), 3)
     metrics["evidence_post_rerank_model_used"] = post_rerank_model_used
     metrics["evidence_post_rerank_error"] = post_rerank_error
+    metrics["evidence_post_rerank_pipeline_enabled"] = bool(post_rerank_pipeline_enabled)
+    metrics["evidence_post_rerank_pipeline_used"] = bool(post_rerank_pipeline_used)
+    metrics["evidence_post_rerank_pipeline_stages"] = post_rerank_pipeline_stages[:4]
 
     metrics["query_rewrite_enabled"] = settings.ENABLE_QUERY_REWRITE
     metrics["rewrite_used"] = bool(rewrite_used)
@@ -1325,6 +1509,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": bool(post_rerank_enabled),
             "used": bool(post_rerank_used),
             "provider": post_rerank_provider,
+            "pipeline_enabled": bool(post_rerank_pipeline_enabled),
+            "pipeline_used": bool(post_rerank_pipeline_used),
+            "pipeline": post_rerank_pipeline[:4],
+            "pipeline_stages": post_rerank_pipeline_stages[:4],
             "candidates_n": int(post_rerank_candidates_n or 0),
             "elapsed_sec": round(float(post_rerank_elapsed or 0.0), 3),
             "model_used": post_rerank_model_used,
@@ -1387,6 +1575,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
             "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
+            "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
+            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
         }
         fp = build_retrieval_config_fingerprint(config=retrieval_cfg)
         retrieval_trace["retrieval_config"] = fp

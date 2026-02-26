@@ -622,6 +622,19 @@ class Settings(BaseSettings):
     EVIDENCE_POST_RERANK_ENABLED: bool = False
     EVIDENCE_POST_RERANK_PROVIDER: str = "ltr"  # ltr | colbert | ...
     EVIDENCE_POST_RERANK_TOP_N: int = 30
+    # Optional: multi-stage post-rerank pipeline for Evidence API (budgeted by stage top_n).
+    #
+    # When enabled and EVIDENCE_POST_RERANK_PIPELINE is non-empty, the orchestrator will apply
+    # the configured stages sequentially (stage2 runs on the prefix produced by stage1, etc.).
+    #
+    # Expected format (JSON):
+    #   [{"provider":"ltr","top_n":50},{"provider":"colbert","top_n":20}]
+    #
+    # Notes:
+    # - Keep providers deterministic/fast by default (LTR, ColBERT late-interaction).
+    # - Do not embed model_path/api_key values here; use env vars for those.
+    EVIDENCE_POST_RERANK_PIPELINE_ENABLED: bool = False
+    EVIDENCE_POST_RERANK_PIPELINE: str = ""
     # Post-generation grounding guard: verify each claim against evidence and drop unsupported ones.
     # Disabled by default because it may delay streaming (answer is buffered for claim-check).
     RAG_CLAIM_CHECK_ENABLED: bool = False
@@ -833,6 +846,10 @@ class Settings(BaseSettings):
     # Local Learning-to-Rank model path (xgboost JSON/UBJ).
     # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
     LTR_MODEL_PATH: str = ""
+    # Optional: sidecar manifest path for LTR model artifact (JSON).
+    # When provided (or when a sidecar `<model>.manifest.json` is present), the LTR reranker
+    # validates feature schema + model hash for safer production deployment.
+    LTR_MODEL_MANIFEST_PATH: str = ""
     # LTR feature spec version (must match the model artifact's feature count/order).
     # - v1: base retrieval scores + retrieval_role one-hot
     # - v2: v1 + KG ranking features (kg_pagerank/path/etc)

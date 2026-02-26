@@ -18,13 +18,16 @@ Notes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from app.rag.core.hashing import stable_hash
 from app.rag.reranker.ltr import LTRFeatureSpec, extract_ltr_features, train_ltr_xgboost_model
 from app.rag.reranker.types import RerankCandidate
 
@@ -39,6 +42,36 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _write_json(path: Path, obj: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _training_data_hash(rows: list[dict[str, Any]]) -> str:
+    """
+    Return a PII-minimizing stable hash of the training dataset.
+
+    Only includes:
+    - feature map values
+    - label
+    - rank (optional)
+    """
+    cleaned: list[dict[str, Any]] = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        feats = r.get("features") if isinstance(r.get("features"), dict) else {}
+        cleaned.append(
+            {
+                "features": feats,
+                "label": int(r.get("label") or 0),
+                "rank": int(r.get("rank") or 0),
+            }
+        )
+    payload = json.dumps(cleaned, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return stable_hash(payload, length=32)
 
 
 def _headers(args: argparse.Namespace) -> dict[str, str]:
@@ -153,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Train an LTR reranker model from regression cases via Evidence API.")
     p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
     p.add_argument("--out-model", required=True, help="Write model bytes to this path (xgboost JSON)")
+    p.add_argument("--out-manifest", default="", help="Optional: write model manifest JSON to this path (default: <out-model>.manifest.json)")
+    p.add_argument("--no-manifest", action="store_true", help="Do not write a manifest JSON file")
     p.add_argument("--out-rows-jsonl", default="", help="Optional: write training rows as JSONL for inspection")
 
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base URL (default: %(default)s)")
@@ -397,6 +432,35 @@ def main(argv: list[str] | None = None) -> int:
     out_model_path = Path(args.out_model)
     out_model_path.parent.mkdir(parents=True, exist_ok=True)
     out_model_path.write_bytes(model_bytes)
+
+    if not bool(args.no_manifest):
+        try:
+            manifest_path = Path(args.out_manifest) if str(args.out_manifest or "").strip() else out_model_path.with_suffix(".manifest.json")
+            manifest = {
+                "schema": "mimirq.ltr_model_manifest.v1",
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "model_file": out_model_path.name,
+                "model_sha256": hashlib.sha256(model_bytes).hexdigest(),
+                "feature_schema": getattr(spec, "schema", ""),
+                "feature_names": list(getattr(spec, "feature_names", ()) or ()),
+                "objective": objective,
+                "num_boost_round": int(args.num_boost_round or 0),
+                "seed": int(args.seed or 0),
+                "training": {
+                    "cases_total": int(stats.get("cases_total") or 0),
+                    "cases_used": int(stats.get("cases_used") or 0),
+                    "cases_missed": int(stats.get("cases_missed") or 0),
+                    "rows_total": int(stats.get("rows_total") or 0),
+                    "rows_pos": int(stats.get("rows_pos") or 0),
+                    "rows_neg": int(stats.get("rows_neg") or 0),
+                    "rows_hard_neg": int(stats.get("rows_hard_neg") or 0),
+                    "group_count": int(len(group_sizes) if objective.startswith("rank:") else 0),
+                    "data_hash": _training_data_hash(training_rows),
+                },
+            }
+            _write_json(manifest_path, manifest)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[train_ltr] WARN: failed to write manifest: {str(exc)[:200]}", file=sys.stderr)
 
     print(
         "[train_ltr] OK"

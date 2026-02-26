@@ -13,11 +13,19 @@ from app.rag.reranker.base import BaseReranker
 
 _api_reranker_lock = threading.Lock()
 _api_reranker_cache: dict[str, BaseReranker] = {}
+_local_reranker_lock = threading.Lock()
+_local_reranker_cache: dict[str, BaseReranker] = {}
 
 
 def _api_cache_key(provider: str, *, model: str, base_url: str, api_key: str) -> str:
     key_hash = hashlib.sha256((api_key or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
     return f"{provider}:{model}:{base_url}:{key_hash}"
+
+
+def _local_cache_key(provider: str, parts: list[str]) -> str:
+    payload = "|".join([str(provider or "").lower().strip()] + [str(p or "") for p in (parts or [])])
+    digest = hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    return f"{provider}:{digest}"
 
 
 def get_reranker(
@@ -139,6 +147,8 @@ def get_reranker(
         if not model_path:
             raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")
 
+        manifest_path = str(kwargs.get("manifest_path") or "").strip() or str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or "").strip()
+
         spec_version = kwargs.get("feature_spec_version")
         if spec_version is None:
             spec_version = getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1)
@@ -152,7 +162,26 @@ def get_reranker(
         else:
             spec = LTRFeatureSpec.from_version(spec_version)
 
-        return LTRReranker(model_path=model_path, spec=spec)
+        cache_key = _local_cache_key(
+            "ltr",
+            [
+                model_path,
+                manifest_path,
+                getattr(spec, "schema", ""),
+                ",".join(getattr(spec, "feature_names", ()) or ()),
+            ],
+        )
+        with _local_reranker_lock:
+            cached = _local_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = LTRReranker(
+                model_path=model_path,
+                spec=spec,
+                manifest_path=(manifest_path or None),
+            )
+            _local_reranker_cache[cache_key] = inst
+            return inst
     
     # KG Rerankers
     elif provider in ("kg_pagerank", "kg_rrf"):

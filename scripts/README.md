@@ -39,7 +39,9 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `gen_secret_key.py`: generate a SECRET_KEY value
 - `regression_gate.py`: enforce regression thresholds from evaluation outputs
 - `train_ltr_from_regression_cases.py`: train an xgboost LTR reranker model from regression cases via Evidence API (retrieval-only)
+  - Writes a sidecar manifest by default: `<out-model>.manifest.json` (can be disabled with `--no-manifest`)
 - `eval_ltr_offline.py`: compare baseline retrieval vs local LTR rerank offline (candidates via Evidence API)
+- `eval_rerank_pipeline_offline.py`: compare baseline retrieval vs a local multi-stage rerank pipeline (LTR/ColBERT), offline
 - `eval_retrieval_fusion_offline.py`: compare fusion strategy variants offline via Evidence API (retrieval-only)
 
 ## Exit Codes
