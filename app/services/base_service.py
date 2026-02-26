@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.constants import UserRoles
 from app.models.tenant import TenantMember
 
 # Generic type variable.
@@ -17,7 +18,7 @@ ModelType = TypeVar("ModelType")
 
 
 # Roles allowed to edit.
-EDIT_ROLES = {"owner", "admin", "editor", "dataset_operator"}
+EDIT_ROLES = UserRoles.EDIT_ROLES
 
 
 class BaseService(Generic[ModelType]):

@@ -43,13 +43,13 @@ from app.services.fls_policy import (
 )
 from app.services.lotus_bridge import lotus_available
 from app.services.lotus_bridge import sem_filter as lotus_sem_filter
+from app.services.rbac_service import TenantPermissions, role_allows
 from app.services.security_redaction import redact_sql_literals
 from app.services.table_store import parse_table_id, table_store_path
 from app.services.table_store_service import run_table_query
 from app.services.table_tag_service import generate_answer_from_result, generate_sql_for_table, tag_enabled
 
 router = APIRouter()
-_SQL_VIEW_ROLES = {"owner", "admin", "auditor"}
 
 
 def _member_role(member: object) -> str:
@@ -57,7 +57,7 @@ def _member_role(member: object) -> str:
 
 
 def _can_view_redacted_sql_role(role: str) -> bool:
-    return str(role or "").strip().lower() in _SQL_VIEW_ROLES
+    return role_allows(TenantPermissions.TABLE_SQL_READ, role=role)
 
 
 def _should_redact_table_rows_role(role: str) -> bool:

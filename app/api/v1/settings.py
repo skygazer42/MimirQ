@@ -24,14 +24,13 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
-from app.services.dataset_service import DatasetService
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter()
 
 # .env file path.
 ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 
-_SETTINGS_ADMIN_ROLES = {"owner", "admin"}
 _ENV_UPDATE_LOCK = threading.Lock()
 
 
@@ -134,14 +133,23 @@ def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[str, A
 
 
 def _ensure_settings_readable(db: Session, tenant_id: UUID, account_id: str) -> None:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_READ,
+        detail="No permission to access system settings",
+    )
 
 
 def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> None:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").lower()
-    if role not in _SETTINGS_ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="No permission to manage system settings")
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage system settings",
+    )
 
 
 def _validate_public_base_url(base_url: str) -> None:

@@ -80,11 +80,12 @@ def test_redact_connection_info_masks_db_fields_when_enabled():
 
 def test_audit_ensure_admin_allows_auditor(monkeypatch):  # noqa: ANN001
     import app.api.v1.audit as audit_mod
+    from app.services.dataset_service import DatasetService
 
     class _Member:
         role = "auditor"
 
-    monkeypatch.setattr(audit_mod.DatasetService, "ensure_member", lambda *args, **kwargs: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *args, **kwargs: _Member(), raising=True)
     audit_mod._ensure_admin(db=object(), tenant_id=uuid.uuid4(), account_id="u")
 
 
@@ -92,11 +93,12 @@ def test_audit_ensure_admin_rejects_non_admin(monkeypatch):  # noqa: ANN001
     from fastapi import HTTPException
 
     import app.api.v1.audit as audit_mod
+    from app.services.dataset_service import DatasetService
 
     class _Member:
         role = "viewer"
 
-    monkeypatch.setattr(audit_mod.DatasetService, "ensure_member", lambda *args, **kwargs: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *args, **kwargs: _Member(), raising=True)
     try:
         audit_mod._ensure_admin(db=object(), tenant_id=uuid.uuid4(), account_id="u")
     except HTTPException as exc:
