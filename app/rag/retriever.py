@@ -157,6 +157,11 @@ class HybridRetriever(BaseRetriever):
         self._chunk_id_lookup.pop(key, None)
         self._bm25_build_locks.pop(key, None)
         self._bm25_cache_versions.pop(key, None)
+        # Keep optional candidate indices aligned with the BM25 scope cache.
+        self._sparse_doc_vectors.pop(key, None)
+        self._sparse_build_locks.pop(key, None)
+        self._colbert_index_cache.pop(key, None)
+        self._colbert_build_locks.pop(key, None)
         with self._bm25_cache_lock:
             self._bm25_cache_order.pop(key, None)
 
@@ -305,6 +310,125 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
+    def _upsert_sparse_index_incremental(
+        self,
+        *,
+        cache_key: str,
+        corpus_docs: List[Document],
+        upsert_docs: List[Document],
+    ) -> None:
+        """
+        Incrementally update the sparse index for a scope key.
+
+        Rationale:
+        - `_build_sparse_index` re-encodes the full corpus; that's fine for cold start but too expensive
+          for frequent chunk-level upserts (document re-embed, patch, versioned re-index).
+        - This helper updates/overwrites sparse vectors only for the provided `upsert_docs`, keeping the
+          rest of the existing in-memory index intact.
+
+        Safety:
+        - If we don't have an existing index and the corpus is larger than the upsert batch, we fall
+          back to a full rebuild to avoid a partial index that would cause false negatives.
+        """
+        if not upsert_docs:
+            return
+
+        from app.rag.retrieval.sparse import (  # local import: keep optional deps isolated
+            SparseIndexStore,
+            build_sparse_provider_config,
+            get_sparse_encoder,
+            parse_synonyms,
+        )
+
+        provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
+
+        provider_config = build_sparse_provider_config(
+            provider=provider,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+
+        encoder = get_sparse_encoder(
+            provider=provider,
+            synonyms=synonyms,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+
+        sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+
+        # Best-effort: load persisted index if we don't have an in-memory cache yet.
+        if (not sparse_vecs) and bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            try:
+                fp = self._sparse_corpus_fingerprint(corpus_docs)
+                store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
+                loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
+                if loaded:
+                    sparse_vecs = loaded
+            except Exception:
+                sparse_vecs = {}
+
+        # If the corpus is larger than the upsert batch and we don't have an existing index,
+        # fall back to a full rebuild for correctness.
+        if not sparse_vecs and corpus_docs and len(corpus_docs) > len(upsert_docs):
+            self._build_sparse_index(cache_key=cache_key, docs=corpus_docs)
+            return
+
+        def _coerce(v: Any) -> SparseVector:
+            if isinstance(v, SparseVector):
+                return v
+            if isinstance(v, dict):
+                weights: dict[str, float] = {}
+                for k, w in v.items():
+                    if k is None or w is None:
+                        continue
+                    try:
+                        weights[str(k)] = float(w)
+                    except Exception:
+                        continue
+                return SparseVector(weights=weights)
+            return SparseVector(weights={})
+
+        texts: list[str] = []
+        doc_ids: list[str] = []
+        for d in upsert_docs:
+            if d is None or d.id is None:
+                continue
+            cid = str(d.id).strip()
+            if not cid:
+                continue
+            doc_ids.append(cid)
+            texts.append(str(d.page_content or ""))
+
+        if not doc_ids:
+            return
+
+        vecs = encoder.encode_batch(texts)
+        for cid, vec in zip(doc_ids, vecs, strict=False):
+            sparse_vecs[cid] = _coerce(vec)
+
+        self._sparse_doc_vectors[cache_key] = sparse_vecs
+
+        if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            try:
+                fp = self._sparse_corpus_fingerprint(corpus_docs)
+                store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
+                store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=sparse_vecs)
+            except Exception:
+                pass
+
     def _colbert_corpus_fingerprint(self, docs: List[Document]) -> str:
         """
         Stable fingerprint for a ColBERT ANN index corpus.
@@ -404,6 +528,125 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
+    def _upsert_colbert_index_incremental(
+        self,
+        *,
+        cache_key: str,
+        corpus_docs: List[Document],
+        upsert_docs: List[Document],
+    ) -> None:
+        """
+        Incrementally update a ColBERT ANN index for a scope key.
+
+        This updates/overwrites vectors only for `upsert_docs` when an index already exists,
+        avoiding a full re-embed of the corpus on each chunk-level upsert.
+        """
+        if not upsert_docs or not corpus_docs:
+            return
+
+        from app.rag.retrieval.colbert_ann import (  # local import: optional deps
+            ColbertAnnIndex,
+            ColbertAnnIndexStore,
+            build_colbert_provider_config,
+            get_dense_embedder,
+        )
+
+        provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        provider_config = build_colbert_provider_config(
+            provider=provider,
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
+            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
+            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+        )
+
+        expected_fp = self._colbert_corpus_fingerprint(corpus_docs)
+
+        base = self._colbert_index_cache.get(cache_key)
+        base_cfg = dict(getattr(base, "provider_config", {}) or {}) if base is not None else {}
+        base_ids = list(getattr(base, "doc_ids", []) or []) if base is not None else []
+        base_vecs = getattr(base, "vectors", None) if base is not None else None
+        if not base_ids or base_vecs is None or base_cfg != dict(provider_config):
+            # No compatible index in memory: keep lazy-build semantics for cold start.
+            return
+
+        try:
+            import numpy as np  # local import
+
+            mat = np.asarray(base_vecs, dtype=np.float32)
+            if mat.ndim != 2 or int(mat.shape[0]) != len(base_ids):
+                return
+
+            vec_by_id: dict[str, np.ndarray] = {
+                str(doc_id): mat[i] for i, doc_id in enumerate(base_ids) if doc_id is not None
+            }
+
+            embedder = get_dense_embedder(
+                provider=provider,
+                model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+                device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+                batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
+                max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
+                deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+            )
+
+            up_ids: list[str] = []
+            up_texts: list[str] = []
+            for d in upsert_docs:
+                if d is None or d.id is None:
+                    continue
+                cid = str(d.id).strip()
+                if not cid:
+                    continue
+                up_ids.append(cid)
+                up_texts.append(str(d.page_content or ""))
+            if not up_ids:
+                return
+
+            # Correctness guard: if the base index is missing corpus docs *other than* the upsert batch,
+            # do a full rebuild. Missing items that are part of this upsert are expected.
+            corpus_ids = {str(d.id) for d in corpus_docs if d is not None and d.id is not None}
+            missing = set(corpus_ids) - set(vec_by_id.keys())
+            if missing and (missing - set(up_ids)):
+                self._build_colbert_index(cache_key=cache_key, docs=corpus_docs)
+                return
+
+            up_mat = embedder.encode_batch(up_texts)
+            up_mat = np.asarray(up_mat, dtype=np.float32)
+            if up_mat.ndim != 2 or int(up_mat.shape[0]) != len(up_ids):
+                return
+
+            for cid, row in zip(up_ids, up_mat, strict=False):
+                vec_by_id[str(cid)] = np.asarray(row, dtype=np.float32)
+
+            # Re-pack to a stable, deterministic on-disk/in-memory layout.
+            doc_ids = sorted(vec_by_id.keys())
+            vectors = np.stack([vec_by_id[cid] for cid in doc_ids], axis=0).astype(np.float32, copy=False)
+        except Exception:
+            return
+
+        index = ColbertAnnIndex(
+            doc_ids=doc_ids,
+            vectors=vectors,
+            corpus_fingerprint=expected_fp,
+            provider_config=dict(provider_config),
+        )
+        self._colbert_index_cache[cache_key] = index
+
+        if bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            try:
+                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", "./data/colbert_indexes") or ""))
+                store.save(
+                    cache_key=cache_key,
+                    provider_config=provider_config,
+                    corpus_fingerprint=expected_fp,
+                    doc_ids=doc_ids,
+                    vectors=vectors,
+                )
+            except Exception:
+                pass
+
     def _sparse_corpus_fingerprint(self, docs: List[Document]) -> str:
         """
         Stable fingerprint for a sparse index corpus.
@@ -468,6 +711,11 @@ class HybridRetriever(BaseRetriever):
             self._chunk_id_lookup.pop(key, None)
             self._bm25_build_locks.pop(key, None)
             self._bm25_cache_versions.pop(key, None)
+            # Keep optional candidate indices aligned with the BM25 cache eviction.
+            self._sparse_doc_vectors.pop(key, None)
+            self._sparse_build_locks.pop(key, None)
+            self._colbert_index_cache.pop(key, None)
+            self._colbert_build_locks.pop(key, None)
 
         if evicted:
             logger.info("BM25 cache evicted %s keys (max=%s)", len(evicted), max_tenants)
@@ -953,49 +1201,32 @@ class HybridRetriever(BaseRetriever):
         if bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)):
             try:
                 with self._get_sparse_build_lock(cache_key):
-                    self._build_sparse_index(cache_key=cache_key, docs=merged_docs)
+                    self._upsert_sparse_index_incremental(
+                        cache_key=cache_key,
+                        corpus_docs=merged_docs,
+                        upsert_docs=docs,
+                    )
             except Exception as exc:
                 logger.warning("Sparse index update failed for scope %s: %s", cache_key, str(exc)[:200])
 
+        # Optional: keep ColBERT ANN index in sync for hot scopes (incremental upserts).
+        if bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+            try:
+                with self._get_colbert_build_lock(cache_key):
+                    self._upsert_colbert_index_incremental(
+                        cache_key=cache_key,
+                        corpus_docs=merged_docs,
+                        upsert_docs=docs,
+                    )
+            except Exception as exc:
+                logger.warning("ColBERT index update failed for scope %s: %s", cache_key, str(exc)[:200])
+
     def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
         """Remove all chunks of a specified document from the BM25 index."""
-        tenant_key = self._tenant_key(tenant_id)
-        existing = self._bm25_docs.get(tenant_key) or []
-        if not existing:
-            return
-        filtered = [d for d in existing if str((d.metadata or {}).get("document_id")) != str(document_id)]
-        retriever = BM25Retriever.from_documents(
-            filtered,
-            preprocess_func=self._bm25_tokenize,
-            k=10,
-        ) if filtered else None
-        if retriever is None:
-            self._bm25_retrievers.pop(tenant_key, None)
-            self._bm25_docs.pop(tenant_key, None)
-            self._bm25_doc_ids.pop(tenant_key, None)
-            self._chunk_id_lookup.pop(tenant_key, None)
-            self._bm25_build_locks.pop(tenant_key, None)
-            with self._bm25_cache_lock:
-                self._bm25_cache_order.pop(tenant_key, None)
-            logger.info("BM25 index cleared for tenant %s", tenant_key)
-            return
-        self._bm25_retrievers[tenant_key] = retriever
-        self._bm25_docs[tenant_key] = filtered
-        self._refresh_bm25_doc_ids(tenant_key, filtered)
-        lookup: Dict[str, str] = {}
-        for d in filtered:
-            meta = d.metadata or {}
-            doc_id = meta.get("document_id")
-            doc_pipeline_key = meta.get("doc_pipeline_key")
-            chunk_index = meta.get("chunk_index")
-            if doc_id is None or chunk_index is None or d.id is None:
-                continue
-            if doc_pipeline_key is not None:
-                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
-            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
-        self._chunk_id_lookup[tenant_key] = lookup
-        self._touch_bm25_cache(tenant_key)
-        logger.info("BM25 index removed document %s for tenant %s", document_id, tenant_key)
+        self.remove_from_bm25_index_by_metadata_filter(
+            tenant_id=tenant_id,
+            metadata_filter={"document_id": {"$eq": str(document_id)}},
+        )
 
     def remove_from_bm25_index_by_metadata_filter(
         self,
@@ -1013,51 +1244,126 @@ class HybridRetriever(BaseRetriever):
             return 0
 
         tenant_key = self._tenant_key(tenant_id)
-        existing = self._bm25_docs.get(tenant_key) or []
-        if not existing:
-            return 0
+        scope_prefix = f"{tenant_key}:dataset:"
+        scope_keys = [
+            k
+            for k in set(list(self._bm25_docs.keys()) + list(self._bm25_retrievers.keys()))
+            if k == tenant_key or str(k).startswith(scope_prefix)
+        ] or [tenant_key]
 
-        before = len(existing)
-        filtered = [d for d in existing if not self._match_metadata_filter((d.metadata or {}), metadata_filter)]
-        removed = before - len(filtered)
-        if removed <= 0:
-            return 0
-
-        retriever = BM25Retriever.from_documents(
-            filtered,
-            preprocess_func=self._bm25_tokenize,
-            k=10,
-        ) if filtered else None
-
-        if retriever is None:
-            self._bm25_retrievers.pop(tenant_key, None)
-            self._bm25_docs.pop(tenant_key, None)
-            self._bm25_doc_ids.pop(tenant_key, None)
-            self._chunk_id_lookup.pop(tenant_key, None)
-            self._bm25_build_locks.pop(tenant_key, None)
-            with self._bm25_cache_lock:
-                self._bm25_cache_order.pop(tenant_key, None)
-            logger.info("BM25 index cleared for tenant %s after filtered deletion (removed=%s)", tenant_key, removed)
-            return removed
-
-        self._bm25_retrievers[tenant_key] = retriever
-        self._bm25_docs[tenant_key] = filtered
-        self._refresh_bm25_doc_ids(tenant_key, filtered)
-        lookup: Dict[str, str] = {}
-        for d in filtered:
-            meta = d.metadata or {}
-            doc_id = meta.get("document_id")
-            doc_pipeline_key = meta.get("doc_pipeline_key")
-            chunk_index = meta.get("chunk_index")
-            if doc_id is None or chunk_index is None or d.id is None:
+        total_removed = 0
+        for scope_key in scope_keys:
+            existing = self._bm25_docs.get(scope_key) or []
+            if not existing:
                 continue
-            if doc_pipeline_key is not None:
-                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
-            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
-        self._chunk_id_lookup[tenant_key] = lookup
-        self._touch_bm25_cache(tenant_key)
-        logger.info("BM25 index removed %s docs by metadata_filter for tenant %s", removed, tenant_key)
-        return removed
+
+            before_ids = {str(d.id) for d in existing if d is not None and d.id is not None}
+            filtered = [d for d in existing if not self._match_metadata_filter((d.metadata or {}), metadata_filter)]
+            after_ids = {str(d.id) for d in filtered if d is not None and d.id is not None}
+
+            removed = int(len(existing) - len(filtered))
+            if removed <= 0:
+                continue
+
+            removed_ids = before_ids - after_ids
+
+            retriever = (
+                BM25Retriever.from_documents(
+                    filtered,
+                    preprocess_func=self._bm25_tokenize,
+                    k=10,
+                )
+                if filtered
+                else None
+            )
+
+            if retriever is None:
+                self._bm25_retrievers.pop(scope_key, None)
+                self._bm25_docs.pop(scope_key, None)
+                self._bm25_doc_ids.pop(scope_key, None)
+                self._chunk_id_lookup.pop(scope_key, None)
+                self._bm25_build_locks.pop(scope_key, None)
+                self._bm25_cache_versions.pop(scope_key, None)
+                with self._bm25_cache_lock:
+                    self._bm25_cache_order.pop(scope_key, None)
+                # Keep optional candidate indices in sync (avoid stale/false negatives).
+                self._sparse_doc_vectors.pop(scope_key, None)
+                self._colbert_index_cache.pop(scope_key, None)
+                logger.info(
+                    "BM25 index cleared for scope %s after filtered deletion (removed=%s)",
+                    scope_key,
+                    removed,
+                )
+                total_removed += removed
+                continue
+
+            self._bm25_retrievers[scope_key] = retriever
+            self._bm25_docs[scope_key] = filtered
+            self._refresh_bm25_doc_ids(scope_key, filtered)
+            lookup: Dict[str, str] = {}
+            for d in filtered:
+                meta = d.metadata or {}
+                doc_id = meta.get("document_id")
+                doc_pipeline_key = meta.get("doc_pipeline_key")
+                chunk_index = meta.get("chunk_index")
+                if doc_id is None or chunk_index is None or d.id is None:
+                    continue
+                if doc_pipeline_key is not None:
+                    lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
+                lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
+            self._chunk_id_lookup[scope_key] = lookup
+            self._touch_bm25_cache(scope_key)
+
+            if removed_ids:
+                # Best-effort: update sparse index by removing vectors for deleted chunks.
+                if bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)):
+                    try:
+                        with self._get_sparse_build_lock(scope_key):
+                            vecs = self._sparse_doc_vectors.get(scope_key) or {}
+                            if vecs:
+                                for cid in removed_ids:
+                                    vecs.pop(cid, None)
+                                self._sparse_doc_vectors[scope_key] = vecs
+                    except Exception:
+                        pass
+
+                # Best-effort: update ColBERT ANN index by removing deleted chunk vectors.
+                if bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+                    try:
+                        with self._get_colbert_build_lock(scope_key):
+                            idx = self._colbert_index_cache.get(scope_key)
+                            if idx is not None:
+                                ids0 = list(getattr(idx, "doc_ids", []) or [])
+                                vecs0 = getattr(idx, "vectors", None)
+                                if ids0 and vecs0 is not None:
+                                    try:
+                                        import numpy as np
+
+                                        mat = np.asarray(vecs0, dtype=np.float32)
+                                        keep: list[int] = [i for i, cid in enumerate(ids0) if str(cid) not in removed_ids]
+                                        if not keep:
+                                            self._colbert_index_cache.pop(scope_key, None)
+                                        else:
+                                            new_ids = [str(ids0[i]) for i in keep]
+                                            new_mat = mat[keep, :]
+                                            fp = self._colbert_corpus_fingerprint(filtered)
+                                            from app.rag.retrieval.colbert_ann import ColbertAnnIndex  # noqa: WPS433
+
+                                            self._colbert_index_cache[scope_key] = ColbertAnnIndex(
+                                                doc_ids=new_ids,
+                                                vectors=new_mat,
+                                                corpus_fingerprint=fp,
+                                                provider_config=dict(getattr(idx, "provider_config", {}) or {}),
+                                            )
+                                    except Exception:
+                                        pass
+                    except Exception:
+                        pass
+
+            logger.info("BM25 index removed %s docs by metadata_filter for scope %s", removed, scope_key)
+            total_removed += removed
+
+        return total_removed
 
     def clear_bm25_cache(self) -> None:
         """Clear all cached BM25 indices (in-memory only)."""
@@ -1067,6 +1373,10 @@ class HybridRetriever(BaseRetriever):
         self._chunk_id_lookup.clear()
         self._bm25_build_locks.clear()
         self._bm25_cache_versions.clear()
+        self._sparse_doc_vectors.clear()
+        self._sparse_build_locks.clear()
+        self._colbert_index_cache.clear()
+        self._colbert_build_locks.clear()
         with self._bm25_cache_lock:
             self._bm25_cache_order.clear()
 

@@ -34,6 +34,11 @@ def test_orchestrator_emits_retrieval_config_fingerprint(monkeypatch: pytest.Mon
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "LEXICAL_DB_TRGM_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic", raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_RERANKER", False, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False, raising=False)
 
@@ -116,8 +121,14 @@ def test_orchestrator_emits_retrieval_config_fingerprint(monkeypatch: pytest.Mon
     assert isinstance(fp3, dict)
     assert fp3.get("hash") != fp1.get("hash")
 
+    # Fingerprint must change when a candidate-generation channel toggle changes.
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", True, raising=False)
+    out4 = orch_mod.run_retrieval(dict(base_state))
+    fp4 = (out4.get("retrieval_trace") or {}).get("retrieval_config")
+    assert isinstance(fp4, dict)
+    assert fp4.get("hash") != fp1.get("hash")
+
     # Convenience: surface hash in metrics as well.
     metrics1 = out1.get("metrics") or {}
     assert isinstance(metrics1, dict)
     assert metrics1.get("retrieval_config_hash") == fp1.get("hash")
-
