@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -19,11 +19,10 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
-from app.services.dataset_service import DatasetService
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter()
 
-_ADMIN_ROLES = {"owner", "admin", "auditor"}
 _SENSITIVE_DETAIL_KEYS = {
     "sql",
     "sql_redacted",
@@ -47,10 +46,13 @@ _SENSITIVE_DETAIL_KEYS = {
 
 
 def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").lower()
-    if role not in _ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="No permission to access audit logs")
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.AUDIT_READ,
+        detail="No permission to access audit logs",
+    )
 
 
 class AuditLogOut(BaseModel):

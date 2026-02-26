@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -19,19 +19,20 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.chat import Message
-from app.services.dataset_service import DatasetService
 from app.services.quota_service import check_chat_assistant_token_quota
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter()
 
-_ADMIN_ROLES = {"owner", "admin"}
-
 
 def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").lower()
-    if role not in _ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="No permission to access usage dashboards")
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.USAGE_READ,
+        detail="No permission to access usage dashboards",
+    )
 
 
 class ChatTokenUsageRow(BaseModel):

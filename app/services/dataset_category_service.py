@@ -16,10 +16,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas.dataset_category import DatasetCategoryNode
+from app.core.constants import UserRoles
 from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
 from app.services.dataset_service import DatasetService
 
-_EDIT_ROLES = {"owner", "admin", "editor", "dataset_operator"}
+_EDIT_ROLES = UserRoles.EDIT_ROLES
 
 
 def _assert_can_edit(db: Session, tenant_id: UUID, account_id: str) -> None:

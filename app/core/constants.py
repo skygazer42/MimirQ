@@ -217,6 +217,7 @@ class UserRoles:
 
     OWNER = "owner"
     ADMIN = "admin"
+    AUDITOR = "auditor"
     EDITOR = "editor"
     DATASET_OPERATOR = "dataset_operator"
     VIEWER = "viewer"
