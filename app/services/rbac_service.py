@@ -25,6 +25,7 @@ class TenantPermissions:
     OBSERVABILITY_READ = "observability.read"
     USAGE_READ = "usage.read"
     AUDIT_READ = "audit.read"
+    AUDIT_MANAGE = "audit.manage"
     TABLE_SQL_READ = "table_sql.read"
 
 
@@ -41,6 +42,7 @@ _PERMISSION_ROLES: dict[str, FrozenSet[str]] = {
     TenantPermissions.OBSERVABILITY_READ: _ADMIN_ROLES,
     TenantPermissions.USAGE_READ: _ADMIN_ROLES,
     TenantPermissions.AUDIT_READ: _AUDITOR_ROLES,
+    TenantPermissions.AUDIT_MANAGE: _ADMIN_ROLES,
     TenantPermissions.TABLE_SQL_READ: _AUDITOR_ROLES,
 }
 
@@ -84,4 +86,3 @@ __all__ = [
     "ensure_tenant_permission",
     "role_allows",
 ]
-
