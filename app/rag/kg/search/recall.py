@@ -21,6 +21,8 @@ class RecallResult:
     clues: List[Dict[str, Any]]
     key_weights: Dict[str, float]
     event_scores: Dict[str, float]
+    # Stable per-event hop/path-length estimates for downstream ranking signals.
+    event_hops: Dict[str, int] = field(default_factory=dict)
     relation_debug: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -40,6 +42,7 @@ class RecallSearcher:
                 clues=[],
                 key_weights={},
                 event_scores={},
+                event_hops={},
                 relation_debug={"enabled": False, "reason": "empty_document_scope"},
             )
         session = get_session()
@@ -314,6 +317,23 @@ class RecallSearcher:
                 )
 
             # === Step4: merge events ===
+            event_hops: Dict[str, int] = {}
+            for eid in event_ids_from_entities:
+                key = str(eid)
+                prev = event_hops.get(key)
+                event_hops[key] = min(int(prev or 99), 2)
+            for eid in event_ids_from_relation_entities:
+                key = str(eid)
+                prev = event_hops.get(key)
+                event_hops[key] = min(int(prev or 99), 3)
+            for ev in event_query_related:
+                eid = ev.get("event_id")
+                if eid is None:
+                    continue
+                key = str(eid)
+                prev = event_hops.get(key)
+                event_hops[key] = min(int(prev or 99), 1)
+
             merged_event_ids = list(
                 dict.fromkeys(
                     list(event_ids_from_entities)
@@ -331,6 +351,8 @@ class RecallSearcher:
                 account_id=config.account_id,
             )
             merged_event_ids = [str(ev.id) for ev in events_detail]
+            # Drop hop entries for filtered-out events (ACL / scope trimming).
+            event_hops = {eid: int(event_hops.get(eid, 1) or 1) for eid in merged_event_ids}
             assoc_map = event_repo.get_event_entities(merged_event_ids, tenant_id=tenant_id)
 
             event_scores: Dict[str, float] = {}
@@ -349,6 +371,7 @@ class RecallSearcher:
             # sort events by score and trim
             merged_event_ids.sort(key=lambda eid: event_scores.get(str(eid), 0.0), reverse=True)
             merged_event_ids = merged_event_ids[:max_events]
+            event_hops = {eid: int(event_hops.get(eid, 1) or 1) for eid in merged_event_ids}
 
             # === Step7: backprop key weights from events ===
             key_event_weights: Dict[str, float] = {}
@@ -380,6 +403,7 @@ class RecallSearcher:
                 clues=tracker.get_clues(),
                 key_weights=key_weights,
                 event_scores=event_scores,
+                event_hops=event_hops,
                 relation_debug=relation_debug,
             )
         finally:

@@ -2,6 +2,7 @@
 Facade to run KG extraction + search inside the existing backend.
 KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
+
 import threading
 from typing import Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
@@ -9,6 +10,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.models.document import DocumentChunk
 from app.rag.kg.engine import KGEngine
+from app.rag.kg.search.cache import build_kg_search_cache_key, kg_search_cache
 from app.types.indexing import IndexingOptions
 
 _engine: KGEngine | None = None
@@ -20,6 +22,11 @@ def reset_kg_engine() -> None:
     global _engine
     with _engine_lock:
         _engine = None
+
+
+def reset_kg_search_cache() -> None:
+    """Clear the process-wide KG search cache (used for tests and runtime toggles)."""
+    kg_search_cache.clear()
 
 
 def _load_engine() -> KGEngine:
@@ -78,11 +85,51 @@ async def kg_search(
     dataset_id: Optional[UUID] = None,
     account_id: Optional[str] = None,
 ) -> Dict:
+    cache_enabled = bool(getattr(settings, "KG_SEARCH_CACHE_ENABLED", False))
+    ttl_sec = int(getattr(settings, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0)
+    max_entries = int(getattr(settings, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0)
+
+    cache_key: str | None = None
+    if cache_enabled and ttl_sec > 0 and max_entries > 0:
+        eff_tenant_id = tenant_id or settings.DEFAULT_TENANT_ID
+        eff_doc_ids = [str(d) for d in (document_ids or []) if d is not None]
+        cache_key = build_kg_search_cache_key(
+            tenant_id=str(eff_tenant_id),
+            account_id=str(account_id or ""),
+            dataset_id=(str(dataset_id) if dataset_id is not None else None),
+            document_ids=eff_doc_ids,
+            query=str(query or ""),
+            search_config={
+                # Include settings that can change KG search behavior so runtime toggles do not
+                # serve stale cached results.
+                "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
+                    getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
+                ),
+                "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+                "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
+                    getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
+                ),
+                "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
+                "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(
+                    getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0
+                ),
+                "KG_SEARCH_MAX_RERANK_CANDIDATES": int(
+                    getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
+                ),
+            },
+        )
+        cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)
+        if cached is not None:
+            return cached
+
     engine = _load_engine()
-    return await engine.search(
+    result = await engine.search(
         query=query,
         tenant_id=tenant_id,
         document_ids=document_ids,
         dataset_id=dataset_id,
         account_id=account_id,
     )
+    if cache_key is not None and isinstance(result, dict):
+        kg_search_cache.set(cache_key, dict(result), ttl_sec=ttl_sec, max_entries=max_entries)
+    return result

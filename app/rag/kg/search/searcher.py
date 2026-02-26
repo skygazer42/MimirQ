@@ -103,6 +103,7 @@ class KGSearcher:
             event_scores=expand_result.event_scores,
             key_final=expand_result.key_final,
             query_vector=getattr(recall_result, "query_vector", None),
+            event_hops=getattr(expand_result, "event_hops", None),
         )
         rerank_elapsed = time.perf_counter() - t0
 

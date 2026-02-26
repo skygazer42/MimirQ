@@ -18,6 +18,7 @@ class ExpandResult:
     event_ids: List[str]
     clues: List[Dict[str, Any]]
     event_scores: Dict[str, float]
+    event_hops: Dict[str, int]
 
 
 class ExpandSearcher:
@@ -32,6 +33,7 @@ class ExpandSearcher:
                 event_ids=[],
                 clues=list(recall_result.clues or []),
                 event_scores={},
+                event_hops={},
             )
         if not config.expand.enabled:
             return ExpandResult(
@@ -39,6 +41,7 @@ class ExpandSearcher:
                 event_ids=recall_result.event_ids,
                 clues=recall_result.clues,
                 event_scores=recall_result.event_scores,
+                event_hops=dict(getattr(recall_result, "event_hops", {}) or {}),
             )
 
         tracker = Tracker()
@@ -64,6 +67,11 @@ class ExpandSearcher:
             entity_weights = dict(recall_result.key_weights)
             discovered_events: List[str] = list(recall_result.event_ids or [])
             discovered_event_ids: Set[str] = set(discovered_events)
+            event_hops: Dict[str, int] = dict(getattr(recall_result, "event_hops", {}) or {})
+            for eid in discovered_events:
+                key = str(eid)
+                if key and key not in event_hops:
+                    event_hops[key] = 2
             current_entities = [e["entity_id"] for e in (recall_result.key_final or []) if e.get("entity_id")]
             if not include_skills:
                 current_entities = [
@@ -232,6 +240,10 @@ class ExpandSearcher:
                         continue
                     discovered_event_ids.add(ev_id)
                     new_event_ids.append(ev_id)
+                    hop_len = 2 + int(hop or 0)
+                    prev = event_hops.get(ev_id)
+                    if prev is None or hop_len < int(prev or 0):
+                        event_hops[ev_id] = int(hop_len)
                 if not new_event_ids:
                     break
                 discovered_events.extend(new_event_ids)
@@ -312,6 +324,7 @@ class ExpandSearcher:
                 event_ids=discovered_events,
                 clues=tracker.get_clues(),
                 event_scores=recall_result.event_scores,
+                event_hops=event_hops,
             )
         finally:
             session.close()
