@@ -1,0 +1,111 @@
+"""
+Regression leaderboard helpers (best-effort).
+
+Goal:
+- Provide a simple, PII-safe way to rank and compare regression runs by a metric key.
+- Attach a stable retrieval_config_hash so downstream dashboards can group runs by config.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, Iterable, List, Optional
+
+from app.core.config import settings
+from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+
+
+def _to_float(v: Any) -> Optional[float]:
+    try:
+        if v is None:
+            return None
+        return float(v)
+    except Exception:
+        return None
+
+
+def _safe_dict(v: Any) -> Dict[str, Any]:
+    return v if isinstance(v, dict) else {}
+
+
+def _build_run_retrieval_config_hash(*, rag_params: Dict[str, Any]) -> Optional[str]:
+    rp = _safe_dict(rag_params)
+    mode = str(rp.get("retrieval_mode") or "").strip().lower() or "hybrid"
+
+    fp = build_retrieval_config_fingerprint(
+        config={
+            "requested_retrieval_mode": mode,
+            "retrieval_mode": mode,
+            "retrieval_mode_auto_routed": False,
+            "retrieval_profile": None,
+            "top_k": int(rp.get("top_k") or 0) or None,
+            "score_threshold": _to_float(rp.get("score_threshold")) or 0.0,
+            "alpha": _to_float(rp.get("alpha")) or 0.0,
+            "fusion_strategy": str(getattr(settings, "RETRIEVAL_FUSION_STRATEGY", "") or "linear"),
+            "fusion_budgets": None,
+            "fusion_min_scores": None,
+            "enable_weight_rerank": bool(rp.get("enable_weight_rerank", True)),
+            "vector_weight": _to_float(rp.get("vector_weight")) or 0.0,
+            "keyword_weight": _to_float(rp.get("keyword_weight")) or 0.0,
+            "mmr_lambda": _to_float(rp.get("mmr_lambda")) or 0.0,
+            "enable_reranker": bool(rp.get("enable_reranker", False)),
+            "reranker_provider": str(rp.get("reranker_provider") or ""),
+            "reranker_top_n": int(rp.get("reranker_top_n") or 0),
+            "visible_evidence_only": False,
+            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+            "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
+            "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
+            "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
+            "sparse_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
+            "kg_query_expansion_enabled": bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
+            "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+            "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
+            "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
+            "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
+        }
+    )
+    out = str(fp.get("hash") or "").strip()
+    return out or None
+
+
+def build_regression_run_leaderboard(
+    *,
+    runs: Iterable[object],
+    metric_key: str,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """
+    Build a leaderboard-like list sorted by `metric_key` (descending).
+
+    The function is intentionally tolerant of partially-populated run rows.
+    """
+    metric_key = str(metric_key or "").strip() or "retrieval_mrr"
+    limit = max(1, min(int(limit or 0), 500))
+
+    items: list[dict[str, Any]] = []
+    for r in list(runs or []):
+        summary = _safe_dict(getattr(r, "summary", None))
+        params = _safe_dict(getattr(r, "params", None))
+        rag_params = _safe_dict(params.get("rag_params"))
+
+        metric_value = _to_float(summary.get(metric_key))
+        cfg_hash = _build_run_retrieval_config_hash(rag_params=rag_params) if rag_params else None
+
+        items.append(
+            {
+                "run_id": str(getattr(r, "id", "") or ""),
+                "status": str(getattr(r, "status", "") or ""),
+                "created_at": getattr(r, "created_at", None),
+                "finished_at": getattr(r, "finished_at", None),
+                "metric_key": metric_key,
+                "metric_value": metric_value,
+                "retrieval_config_hash": cfg_hash,
+            }
+        )
+
+    # Sort: higher is better; missing metrics go last.
+    items.sort(key=lambda x: (x.get("metric_value") is None, -(x.get("metric_value") or 0.0)))
+    return items[:limit]
+
+
+__all__ = ["build_regression_run_leaderboard"]
+

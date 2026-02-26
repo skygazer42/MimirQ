@@ -34,6 +34,7 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
             "query_for_retrieval": "should-not-leak",
             "retrieval": {
                 "mode": "hybrid",
+                "retrieval_config_hash": "cfg-123",
                 "enable_reranker": True,
                 "reranker_provider": "cohere",
                 "reranker_top_n": 10,
@@ -117,6 +118,7 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     assert item.request_id == "req-1"
     assert item.citations_count == 1
     assert item.retrieval.mode == "hybrid"
+    assert item.retrieval.retrieval_config_hash == "cfg-123"
     assert item.retrieval.per_query and item.retrieval.per_query[0].retriever_debug is not None
     assert item.retrieval.per_query[0].retriever_debug.get("requested_k") == 5
     scope = item.retrieval.per_query[0].retriever_debug.get("scope") or {}

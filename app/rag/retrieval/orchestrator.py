@@ -14,7 +14,6 @@ It is intentionally usable without the LangGraph orchestration layer.
 from __future__ import annotations
 
 import concurrent.futures
-import json
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -28,6 +27,7 @@ from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
 from app.rag.core.hashing import stable_hash
+from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 from app.rag.core.text import (
     build_abstain_followup,
     guess_retrieval_mode,
@@ -1382,16 +1382,9 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
         }
-
-        raw = json.dumps(retrieval_cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
-        retrieval_cfg_hash = stable_hash(raw, length=32)
-
-        retrieval_trace["retrieval_config"] = {
-            "schema": "mimirq.retrieval_config.v1",
-            "hash": retrieval_cfg_hash,
-            "config": retrieval_cfg,
-        }
-        metrics["retrieval_config_hash"] = retrieval_cfg_hash
+        fp = build_retrieval_config_fingerprint(config=retrieval_cfg)
+        retrieval_trace["retrieval_config"] = fp
+        metrics["retrieval_config_hash"] = fp.get("hash")
     except Exception:
         pass
 

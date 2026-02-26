@@ -178,6 +178,21 @@ class RagasRegressionRunList(BaseModel):
     items: List[RagasRegressionRunSchema]
 
 
+class RagasRegressionRunLeaderboardItem(BaseModel):
+    run_id: UUID
+    status: str
+    created_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    metric_key: str
+    metric_value: Optional[float] = None
+    retrieval_config_hash: Optional[str] = None
+
+
+class RagasRegressionRunLeaderboardResponse(BaseModel):
+    metric_key: str
+    items: List[RagasRegressionRunLeaderboardItem] = Field(default_factory=list)
+
+
 class RegressionRunMetricDiff(BaseModel):
     key: str
     before: Any = None
