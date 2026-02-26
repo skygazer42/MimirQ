@@ -1585,6 +1585,32 @@ Requirements:
             try:
                 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 
+                pipe_summary: list[dict[str, Any]] = []
+                try:
+                    raw_pipe = str(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "") or "").strip()
+                    if raw_pipe:
+                        obj = json.loads(raw_pipe)
+                    else:
+                        obj = []
+                    if isinstance(obj, list):
+                        for st in obj:
+                            if not isinstance(st, dict):
+                                continue
+                            p = str(st.get("provider") or "").strip().lower()
+                            if not p:
+                                continue
+                            top_n_raw = st.get("top_n")
+                            try:
+                                top_n = int(top_n_raw) if top_n_raw is not None else 0
+                            except Exception:
+                                top_n = 0
+                            top_n = max(0, top_n)
+                            pipe_summary.append({"provider": p, "top_n": top_n or None})
+                            if len(pipe_summary) >= 4:
+                                break
+                except Exception:
+                    pipe_summary = []
+
                 fp = build_retrieval_config_fingerprint(
                     config={
                         "requested_retrieval_mode": str(mode_req or ""),
@@ -1621,6 +1647,8 @@ Requirements:
                         "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
                         "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
                         "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
+                        "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
+                        "evidence_post_rerank_pipeline": pipe_summary,
                     }
                 )
                 retrieval_config_hash = str(fp.get("hash") or "").strip() or None

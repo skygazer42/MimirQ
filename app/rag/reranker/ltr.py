@@ -13,13 +13,18 @@ Design constraints:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
 
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
+
+_MANIFEST_SCHEMA_V1 = "mimirq.ltr_model_manifest.v1"
 
 
 @dataclass(frozen=True)
@@ -229,6 +234,7 @@ class LTRReranker(BaseReranker):
         *,
         model_path: str,
         spec: LTRFeatureSpec | None = None,
+        manifest_path: str | None = None,
     ) -> None:
         import xgboost as xgb
 
@@ -236,8 +242,73 @@ class LTRReranker(BaseReranker):
         if not path:
             raise ValueError("LTRReranker requires model_path")
 
+        model_p = Path(path)
+        if not model_p.exists():
+            raise ValueError(f"LTR model file not found: {model_p}")
+
         self._model_path = path
         self._spec = spec or LTRFeatureSpec.default()
+
+        # Human-friendly model id for telemetry (avoid leaking full paths).
+        self._model_id = model_p.name
+
+        self._manifest_path: str | None = None
+        self._manifest: dict[str, Any] | None = None
+
+        mp = str(manifest_path or "").strip() if manifest_path is not None else ""
+        sidecar = model_p.with_suffix(".manifest.json")
+        if mp:
+            self._manifest_path = mp
+        elif sidecar.exists():
+            self._manifest_path = str(sidecar)
+
+        if self._manifest_path:
+            man_p = Path(self._manifest_path)
+            try:
+                raw = json.loads(man_p.read_text(encoding="utf-8"))
+            except Exception as exc:
+                raise ValueError(f"failed to read LTR manifest: {man_p}") from exc
+            if not isinstance(raw, dict):
+                raise ValueError("LTR manifest must be a JSON object")
+
+            schema = str(raw.get("schema") or "").strip()
+            if schema != _MANIFEST_SCHEMA_V1:
+                raise ValueError(f"LTR manifest schema mismatch: {schema or '<missing>'} (expected: {_MANIFEST_SCHEMA_V1})")
+
+            feature_schema = str(raw.get("feature_schema") or "").strip()
+            if feature_schema != str(self._spec.schema or "").strip():
+                raise ValueError(
+                    f"LTR manifest feature_schema mismatch: {feature_schema or '<missing>'} (expected: {self._spec.schema})"
+                )
+
+            names = raw.get("feature_names")
+            if not isinstance(names, list):
+                raise ValueError("LTR manifest feature_names must be a list")
+            names_norm = [str(x) for x in names if x is not None]
+            if names_norm != list(self._spec.feature_names):
+                raise ValueError("LTR manifest feature_names mismatch (feature order/count must match spec)")
+
+            # Optional hash pin: if present, ensure the model bytes match.
+            sha = str(raw.get("model_sha256") or "").strip()
+            if sha:
+                try:
+                    model_bytes = model_p.read_bytes()
+                except Exception as exc:
+                    raise ValueError(f"failed to read LTR model for sha256 check: {model_p}") from exc
+                digest = hashlib.sha256(model_bytes).hexdigest()
+                if digest != sha:
+                    raise ValueError("LTR manifest model_sha256 mismatch (model file content changed)")
+
+            # Keep a copy for debugging/telemetry (do not include high-cardinality training data).
+            self._manifest = {
+                "schema": schema,
+                "feature_schema": feature_schema,
+                "feature_names": list(names_norm),
+                "model_sha256": sha or None,
+            }
+            if sha:
+                # Stable across deployments; safer than full paths in traces/metrics.
+                self._model_id = f"sha256:{sha[:12]}"
 
         booster = xgb.Booster()
         booster.load_model(path)
@@ -250,32 +321,43 @@ class LTRReranker(BaseReranker):
         **_kwargs: Any,
     ) -> RerankResult:
         if not candidates:
-            return RerankResult(ordered_ids=[], score_map={}, provider="ltr", model_used=self._model_path)
+            return RerankResult(ordered_ids=[], score_map={}, provider="ltr", model_used=self._model_id)
 
-        x_rows: list[list[float]] = []
-        ids: list[str] = []
-        for c in candidates:
-            cid = str(c.id or "").strip()
-            if not cid:
-                continue
-            ids.append(cid)
-            x_rows.append(extract_ltr_features(spec=self._spec, query=query, candidate=c))
+        try:
+            x_rows: list[list[float]] = []
+            ids: list[str] = []
+            for c in candidates:
+                cid = str(c.id or "").strip()
+                if not cid:
+                    continue
+                ids.append(cid)
+                x_rows.append(extract_ltr_features(spec=self._spec, query=query, candidate=c))
 
-        if not x_rows:
-            return RerankResult(ordered_ids=[], score_map={}, provider="ltr", model_used=self._model_path)
+            if not x_rows:
+                return RerankResult(ordered_ids=[], score_map={}, provider="ltr", model_used=self._model_id)
 
-        import xgboost as xgb
+            import xgboost as xgb
 
-        dmat = xgb.DMatrix(np.asarray(x_rows, dtype=np.float32), feature_names=list(self._spec.feature_names))
-        preds = self._booster.predict(dmat)
+            dmat = xgb.DMatrix(np.asarray(x_rows, dtype=np.float32), feature_names=list(self._spec.feature_names))
+            preds = self._booster.predict(dmat)
 
-        scored = list(zip(ids, [float(p) for p in preds], strict=False))
-        scored.sort(key=lambda x: (-x[1], x[0]))
-        ordered_ids = [cid for cid, _s in scored]
-        score_map = {cid: float(s) for cid, s in scored}
-        return RerankResult(
-            ordered_ids=ordered_ids,
-            score_map=score_map,
-            provider="ltr",
-            model_used=self._model_path,
-        )
+            scored = list(zip(ids, [float(p) for p in preds], strict=False))
+            scored.sort(key=lambda x: (-x[1], x[0]))
+            ordered_ids = [cid for cid, _s in scored]
+            score_map = {cid: float(s) for cid, s in scored}
+            return RerankResult(
+                ordered_ids=ordered_ids,
+                score_map=score_map,
+                provider="ltr",
+                model_used=self._model_id,
+                stats={"ok": True, "manifest": self._manifest},
+            )
+        except Exception as exc:
+            # Online safeguard: rerank failures should be a no-op rather than breaking retrieval.
+            return RerankResult(
+                ordered_ids=[],
+                score_map={},
+                provider="ltr",
+                model_used=self._model_id,
+                stats={"ok": False, "error": str(exc)[:200], "manifest": self._manifest},
+            )

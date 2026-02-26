@@ -8,6 +8,7 @@ Goal:
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.core.config import settings
@@ -25,6 +26,41 @@ def _to_float(v: Any) -> Optional[float]:
 
 def _safe_dict(v: Any) -> Dict[str, Any]:
     return v if isinstance(v, dict) else {}
+
+
+def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
+    """
+    Parse/normalize Evidence post-rerank pipeline into a low-cardinality summary for hashing.
+
+    Only keeps {provider, top_n}. Avoids embedding secrets/paths into retrieval_config_hash.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    try:
+        obj = json.loads(text)
+    except Exception:
+        return []
+    if not isinstance(obj, list):
+        return []
+
+    out: list[dict[str, Any]] = []
+    for item in obj:
+        if not isinstance(item, dict):
+            continue
+        provider = str(item.get("provider") or "").strip().lower()
+        if not provider or provider in {"none", "off", "false", "0"}:
+            continue
+        top_n_raw = item.get("top_n")
+        try:
+            top_n = int(top_n_raw) if top_n_raw is not None else 0
+        except Exception:
+            top_n = 0
+        top_n = max(0, top_n)
+        out.append({"provider": provider, "top_n": top_n or None})
+        if len(out) >= 4:
+            break
+    return out
 
 
 def _build_run_retrieval_config_hash(*, rag_params: Dict[str, Any]) -> Optional[str]:
@@ -67,6 +103,8 @@ def _build_run_retrieval_config_hash(*, rag_params: Dict[str, Any]) -> Optional[
             "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
             "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
+            "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
+            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
         }
     )
     out = str(fp.get("hash") or "").strip()
