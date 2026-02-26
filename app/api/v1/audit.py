@@ -9,7 +9,7 @@ from __future__ import annotations
 import gzip as gzip_lib
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional
 from uuid import UUID
 
@@ -23,6 +23,8 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
+from app.services.audit_log_retention import plan_audit_log_purge, purge_audit_log_rows
+from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter()
@@ -78,6 +80,15 @@ class AuditLogOut(BaseModel):
 class AuditLogListResponse(BaseModel):
     total: int
     items: List[AuditLogOut]
+
+
+class AuditLogPurgeResponse(BaseModel):
+    dry_run: bool = True
+    retention_days: int
+    cutoff: datetime
+    max_delete: int
+    eligible: int
+    deleted: int
 
 
 def _sanitize_details(details: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
@@ -254,4 +265,79 @@ def export_audit_logs(
         body_iter,
         media_type="application/x-ndjson",
         headers=headers,
+    )
+
+
+@router.post("/logs/purge", response_model=AuditLogPurgeResponse)
+def purge_audit_logs(
+    retention_days: int = Query(default=90, ge=1, le=3650, description="Delete logs older than N days"),
+    max_delete: int = Query(default=100_000, ge=1, le=1_000_000, description="Max rows to delete in this call"),
+    dry_run: bool = Query(default=True, description="Plan only; do not delete rows"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Purge old audit logs for the current tenant (bounded).
+
+    Security:
+    - Admin-only (owner/admin). Auditors can read/export logs but cannot purge.
+    """
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.AUDIT_MANAGE,
+        detail="No permission to manage audit logs",
+    )
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=int(retention_days or 0))
+
+    eligible = int(plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=int(max_delete or 0)) or 0)
+    deleted = 0
+    if not bool(dry_run):
+        deleted = int(
+            purge_audit_log_rows(
+                db,
+                tenant_id=tenant_id,
+                cutoff=cutoff,
+                max_delete=int(max_delete or 0),
+                commit=True,
+            )
+            or 0
+        )
+
+    # Best-effort: record the purge operation itself (small, PII-safe).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="audit.logs.purge",
+            resource_type="audit_logs",
+            resource_id=None,
+            details={
+                "dry_run": bool(dry_run),
+                "retention_days": int(retention_days or 0),
+                "cutoff": cutoff.isoformat(),
+                "max_delete": int(max_delete or 0),
+                "eligible": int(eligible or 0),
+                "deleted": int(deleted or 0),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    return AuditLogPurgeResponse(
+        dry_run=bool(dry_run),
+        retention_days=int(retention_days or 0),
+        cutoff=cutoff,
+        max_delete=int(max_delete or 0),
+        eligible=int(eligible or 0),
+        deleted=int(deleted or 0),
     )
