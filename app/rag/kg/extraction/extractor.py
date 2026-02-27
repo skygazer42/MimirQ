@@ -918,6 +918,9 @@ class EventExtractor:
                 source_val = meta_dict.get("source")
                 if isinstance(source_val, str) and source_val.strip():
                     refs["source"] = source_val.strip()
+                pipeline_hash_val = meta_dict.get("pipeline_hash") or meta_dict.get("active_pipeline_hash")
+                if isinstance(pipeline_hash_val, str) and pipeline_hash_val.strip():
+                    refs["pipeline_hash"] = pipeline_hash_val.strip()[:200]
                 refs["chunk_key"] = chunk_key_by_id.get(chunk.id) or str(chunk.chunk_index)
                 refs["content_hash"] = chunk_hash_by_id.get(chunk.id) or ""
                 refs["content_len"] = int(chunk_len_by_id.get(chunk.id, 0) or 0)
@@ -1457,9 +1460,13 @@ class EventExtractor:
                         source_val = meta_dict.get("source")
                         if isinstance(source_val, str) and source_val.strip():
                             refs["source"] = source_val.strip()
+                        pipeline_hash_val = meta_dict.get("pipeline_hash") or meta_dict.get("active_pipeline_hash")
+                        if isinstance(pipeline_hash_val, str) and pipeline_hash_val.strip():
+                            refs["pipeline_hash"] = pipeline_hash_val.strip()[:200]
                         refs["chunk_key"] = chunk_key_by_id.get(ch.id) or str(ch.chunk_index)
                         refs["content_hash"] = chunk_hash_by_id.get(ch.id) or ""
                         refs["content_len"] = int(chunk_len_by_id.get(ch.id, 0) or 0)
+                        pipeline_hash = str(refs.get("pipeline_hash") or "").strip() or None
 
                         seen_rel_keys: set[tuple[object, str, object]] = set()
                         # If LLM extraction failed, we do not replace old relations. To keep the alias heuristic
@@ -1565,6 +1572,7 @@ class EventExtractor:
                                 rel_rows.append(
                                     KgRelation(
                                         tenant_id=tenant_id,
+                                        pipeline_hash=pipeline_hash,
                                         document_id=ch.document_id,
                                         chunk_id=ch.id,
                                         event_id=None,
@@ -1622,6 +1630,7 @@ class EventExtractor:
                             rel_rows.append(
                                 KgRelation(
                                     tenant_id=tenant_id,
+                                    pipeline_hash=pipeline_hash,
                                     document_id=ch.document_id,
                                     chunk_id=ch.id,
                                     event_id=None,
@@ -1694,6 +1703,7 @@ class EventExtractor:
                             rel_rows.append(
                                 KgRelation(
                                     tenant_id=tenant_id,
+                                    pipeline_hash=pipeline_hash,
                                     document_id=ch.document_id,
                                     chunk_id=ch.id,
                                     event_id=None,
@@ -2081,9 +2091,13 @@ class EventExtractor:
                             source_val = meta_dict.get("source")
                             if isinstance(source_val, str) and source_val.strip():
                                 refs_base["source"] = source_val.strip()
+                            pipeline_hash_val = meta_dict.get("pipeline_hash") or meta_dict.get("active_pipeline_hash")
+                            if isinstance(pipeline_hash_val, str) and pipeline_hash_val.strip():
+                                refs_base["pipeline_hash"] = pipeline_hash_val.strip()[:200]
                             refs_base["chunk_key"] = chunk_key_by_id.get(ch.id) or str(ch.chunk_index)
                             refs_base["content_hash"] = chunk_hash_by_id.get(ch.id) or ""
                             refs_base["content_len"] = int(chunk_len_by_id.get(ch.id, 0) or 0)
+                            pipeline_hash = str(refs_base.get("pipeline_hash") or "").strip() or None
 
                             link_extra_base = build_event_entity_provenance(
                                 document_id=ch.document_id,
@@ -2165,6 +2179,7 @@ class EventExtractor:
                                         skill_rel_rows.append(
                                             KgRelation(
                                                 tenant_id=tenant_id,
+                                                pipeline_hash=pipeline_hash,
                                                 document_id=ch.document_id,
                                                 chunk_id=ch.id,
                                                 event_id=None,
@@ -2213,6 +2228,7 @@ class EventExtractor:
                                             skill_rel_rows.append(
                                                 KgRelation(
                                                     tenant_id=tenant_id,
+                                                    pipeline_hash=pipeline_hash,
                                                     document_id=ch.document_id,
                                                     chunk_id=ch.id,
                                                     event_id=None,
@@ -2295,6 +2311,7 @@ class EventExtractor:
                                                 skill_rel_rows.append(
                                                     KgRelation(
                                                         tenant_id=tenant_id,
+                                                        pipeline_hash=pipeline_hash,
                                                         document_id=ch.document_id,
                                                         chunk_id=ch.id,
                                                         event_id=None,

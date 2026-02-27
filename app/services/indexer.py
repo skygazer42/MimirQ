@@ -413,15 +413,22 @@ class Indexer:
         db_events: List[KgSourceEvent] = []
 
         for item in events:
+            refs = item.references if isinstance(getattr(item, "references", None), dict) else {}
+            raw_ph = refs.get("pipeline_hash")
+            pipeline_hash = (raw_ph.strip() if isinstance(raw_ph, str) and raw_ph.strip() else None) if raw_ph is not None else None
+            if pipeline_hash and len(pipeline_hash) > 200:
+                pipeline_hash = pipeline_hash[:200]
+
             event_obj = KgSourceEvent(
                 tenant_id=tenant_id,
+                pipeline_hash=pipeline_hash,
                 document_id=item.document_id,
                 chunk_id=item.chunk_id,
                 title=item.title,
                 summary=item.summary,
                 content=item.content,
                 content_vector=item.vector,
-                references=item.references,
+                references=refs or None,
                 extra_data=item.extra_data,
             )
             self._db.add(event_obj)
@@ -430,7 +437,7 @@ class Indexer:
             link_extra_data = build_event_entity_provenance(
                 document_id=item.document_id,
                 chunk_id=item.chunk_id,
-                references=item.references,
+                references=refs,
             )
 
             for ent in item.entities:
