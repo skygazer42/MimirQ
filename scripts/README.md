@@ -37,6 +37,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `chunk_preview_batch_eval.py`: batch evaluate chunk preview behavior
 - `convert_text_encoding.py`: best-effort text encoding conversion utility
 - `gen_secret_key.py`: generate a SECRET_KEY value
+- `rag_trace_tail.py`: tail and pretty-print `event=rag_trace` records from the metrics JSONL (PII-safe by default)
+- `rag_trace_diff.py`: diff two `event=rag_trace` records by `request_id` (PII-safe; outputs compact delta summary)
 - `regression_gate.py`: enforce regression thresholds from evaluation outputs
 - `train_ltr_from_regression_cases.py`: train an xgboost LTR reranker model from regression cases via Evidence API (retrieval-only)
   - Writes a sidecar manifest by default: `<out-model>.manifest.json` (can be disabled with `--no-manifest`)

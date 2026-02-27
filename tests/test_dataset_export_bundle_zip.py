@@ -22,8 +22,8 @@ class _FakeQuery:
 
     def filter(self, *conds, **_kwargs):  # noqa: ANN001,D401
         try:
-            from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
             from sqlalchemy.sql import operators as sql_ops
+            from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
             from sqlalchemy.sql.operators import in_op
         except Exception:  # pragma: no cover
             return self

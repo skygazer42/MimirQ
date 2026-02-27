@@ -29,6 +29,15 @@ function formatSec(sec?: number | null) {
   return `${sec.toFixed(2)}s`
 }
 
+function shortHash(value: string, opts?: { head?: number; tail?: number }) {
+  const v = String(value || '').trim()
+  if (!v) return ''
+  const head = Math.max(1, Number(opts?.head ?? 8) || 8)
+  const tail = Math.max(0, Number(opts?.tail ?? 4) || 4)
+  if (v.length <= head + tail + 1) return v
+  return `${v.slice(0, head)}...${v.slice(-tail)}`
+}
+
 function getPrimaryScore(c: RagTraceCitation) {
   // Prefer rerank score when available.
   const v = c.rerank_score ?? c.retrieval_score ?? c.relevance_score ?? null
@@ -51,6 +60,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
 
   const items = data?.items ?? []
   const selected = items[selectedIndex] ?? items[0] ?? null
+  const retrievalConfigHash = selected?.retrieval?.retrieval_config_hash || null
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -177,6 +187,15 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                   <Badge variant="soft" className="text-[10px]">
                     mode: {selected?.retrieval?.mode || '—'}
                   </Badge>
+                  {retrievalConfigHash ? (
+                    <Badge
+                      variant="soft"
+                      className="text-[10px] font-mono"
+                      title={retrievalConfigHash}
+                    >
+                      cfg: {shortHash(retrievalConfigHash)}
+                    </Badge>
+                  ) : null}
                   <Badge variant="soft" className="text-[10px]">
                     citations: {selected.citations_count}
                   </Badge>
@@ -306,4 +325,3 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
     </div>
   )
 }
-

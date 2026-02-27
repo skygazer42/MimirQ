@@ -2154,6 +2154,28 @@ export const datasetApi = {
     })
   },
 
+  async exportDocumentsNdjson(
+    datasetId: string,
+    params?: {
+      limit?: number
+      after_created_at?: string
+      after_id?: string
+      include_sensitive?: boolean
+      gzip?: boolean
+    }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/documents/export`, { params, responseType: 'blob' })
+    return data as Blob
+  },
+
+  async exportBundleZip(
+    datasetId: string,
+    params?: { limit?: number; include_sensitive?: boolean }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/export`, { params, responseType: 'blob' })
+    return data as Blob
+  },
+
   // ==================== Dataset Profile (Ingestion Scan) ====================
 
   async getProfileSummary(datasetId: string): Promise<DatasetProfileSummary> {
