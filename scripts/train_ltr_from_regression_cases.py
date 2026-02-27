@@ -239,6 +239,11 @@ def main(argv: list[str] | None = None) -> int:
         default=10,
         help="Hard negatives per query group (negatives ranked above the first positive) (default: %(default)s)",
     )
+    p.add_argument(
+        "--hard-negatives-jsonl",
+        default="",
+        help="Optional: PII-safe hard negatives JSONL (mimirq.hard_negatives.v1) keyed by query_hash; used to prefer mined hard negatives without storing raw queries.",
+    )
     args = p.parse_args(argv)
 
     cases_path = Path(args.cases)
@@ -260,6 +265,15 @@ def main(argv: list[str] | None = None) -> int:
     training_rows: list[dict[str, Any]] = []
     group_sizes: list[int] = []
     objective = str(args.objective or "rank:pairwise").strip() or "rank:pairwise"
+    hard_lookup: dict[str, list[str]] = {}
+    if str(args.hard_negatives_jsonl or "").strip():
+        try:
+            from app.rag.evaluation.hard_negative_mining import load_hard_negatives_jsonl  # noqa: WPS433
+
+            hard_lookup = load_hard_negatives_jsonl(Path(args.hard_negatives_jsonl))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[train_ltr] WARN: failed to load hard negatives: {str(exc)[:200]}", file=sys.stderr)
+            hard_lookup = {}
     stats = {
         "cases_total": len(items),
         "cases_used": 0,
@@ -375,13 +389,46 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     easy_idx.append(i)
 
-            hard_selected = hard_idx[:hard_max] if hard_max else []
+            hard_selected: list[int] = []
+            if hard_max:
+                # Optional: prefer mined hard negatives (PII-safe; keyed by stable query_hash).
+                try:
+                    qh = stable_hash(question, length=16)
+                except Exception:
+                    qh = ""
+                external = hard_lookup.get(qh) if qh else None
+                if isinstance(external, list) and external:
+                    # Preserve external order; only keep chunk_ids that are present in this retrieval candidate set.
+                    idx_by_chunk: dict[str, int] = {}
+                    for i in neg_idx:
+                        try:
+                            cid = str(rows_this_case[i].get("chunk_id") or "").strip()
+                        except Exception:
+                            cid = ""
+                        if cid:
+                            idx_by_chunk.setdefault(cid, i)
+                    for cid in external:
+                        i = idx_by_chunk.get(str(cid))
+                        if i is None:
+                            continue
+                        if i not in hard_selected:
+                            hard_selected.append(i)
+                        if len(hard_selected) >= hard_max:
+                            break
+
+                # Fill remaining hard negatives using the "near-miss before first positive" heuristic.
+                for i in hard_idx:
+                    if len(hard_selected) >= hard_max:
+                        break
+                    if i in hard_selected:
+                        continue
+                    hard_selected.append(i)
             if max_neg:
                 remaining = max(0, int(max_neg) - int(len(hard_selected)))
-                easy_selected = easy_idx[:remaining]
+                easy_selected = [i for i in easy_idx if i not in hard_selected][:remaining]
             else:
                 # max_neg=0 => keep all negatives
-                easy_selected = easy_idx
+                easy_selected = [i for i in easy_idx if i not in hard_selected]
 
             neg_selected = list(hard_selected) + list(easy_selected)
             keep_idx = sorted(set(pos_idx + neg_selected))

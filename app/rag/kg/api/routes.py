@@ -2,9 +2,11 @@ import asyncio
 import gzip
 import time
 import zlib
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -62,6 +64,19 @@ def _ensure_enabled():
             status_code=503,
             detail="KG is disabled. Set KG_ENABLED=true in your environment to enable it.",
         )
+
+
+def _doc_pipeline_hash(meta: object) -> str | None:
+    """
+    Best-effort pipeline hash extraction from document metadata.
+
+    We prefer active_pipeline_hash when present, falling back to pipeline_hash.
+    """
+    if not isinstance(meta, dict):
+        return None
+    ph = meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or None
+    s = str(ph or "").strip()
+    return s or None
 
 
 def _resolve_allowed_documents(
@@ -1053,6 +1068,147 @@ def get_kg_stats(
         elapsed_sec=round(float(time.perf_counter() - t0), 3),
     )
     return out
+
+
+class KGSnapshotDiffRequest(BaseModel):
+    snapshot_a: dict[str, Any]
+    snapshot_b: dict[str, Any]
+
+
+@router.get("/snapshots/export")
+def export_kg_snapshot(
+    pipeline_hash: str = Query(..., min_length=1, max_length=200),
+    document_ids: list[UUID] | None = Query(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export a lightweight KG snapshot for a specific document pipeline_hash.
+
+    This is intended for diagnosing extraction drift across pipeline versions.
+    The snapshot is intentionally small and PII-safe by default (counts + type histogram).
+    """
+    t0 = time.perf_counter()
+    _ensure_enabled()
+
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+    if not allowed_doc_ids:
+        return {"schema": "mimirq.kg_snapshot.v1", "pipeline_hash": pipeline_hash, "docs": 0, "events": 0, "entities": 0, "links": 0, "relations": 0, "entity_types": []}
+
+    docs = (
+        db.query(DBDocument)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(allowed_doc_ids))
+        .all()
+    )
+    selected_doc_ids: list[UUID] = []
+    for d in docs:
+        ph = _doc_pipeline_hash(getattr(d, "doc_metadata", None) or {})
+        if ph == pipeline_hash:
+            selected_doc_ids.append(d.id)
+
+    if not selected_doc_ids:
+        return {"schema": "mimirq.kg_snapshot.v1", "pipeline_hash": pipeline_hash, "docs": 0, "events": 0, "entities": 0, "links": 0, "relations": 0, "entity_types": []}
+
+    from sqlalchemy import func
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
+
+    event_count = (
+        db.query(func.count(KgSourceEvent.id))
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .scalar()
+        or 0
+    )
+    link_count = (
+        db.query(func.count(KgEventEntity.id))
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .scalar()
+        or 0
+    )
+    entity_count = (
+        db.query(func.count(func.distinct(KgEventEntity.entity_id)))
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .scalar()
+        or 0
+    )
+    relation_count = (
+        db.query(func.count(KgRelation.id))
+        .filter(KgRelation.tenant_id == tenant_id, KgRelation.document_id.in_(selected_doc_ids))
+        .scalar()
+        or 0
+    )
+    updated_at = (
+        db.query(func.max(KgSourceEvent.updated_at))
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .scalar()
+    )
+
+    type_rows = (
+        db.query(KgEntity.type, func.count(func.distinct(KgEntity.id)).label("cnt"))
+        .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .group_by(KgEntity.type)
+        .order_by(func.count(func.distinct(KgEntity.id)).desc(), KgEntity.type.asc())
+        .limit(50)
+        .all()
+    )
+
+    return {
+        "schema": "mimirq.kg_snapshot.v1",
+        "pipeline_hash": str(pipeline_hash),
+        "docs": int(len(selected_doc_ids)),
+        "events": int(event_count),
+        "entities": int(entity_count),
+        "links": int(link_count),
+        "relations": int(relation_count),
+        "entity_types": [{"type": str(t or "unknown"), "count": int(cnt or 0)} for (t, cnt) in type_rows],
+        "updated_at": updated_at,
+        "elapsed_sec": round(float(time.perf_counter() - t0), 3),
+    }
+
+
+@router.post("/snapshots/diff")
+def diff_kg_snapshots_api(body: KGSnapshotDiffRequest):
+    from app.rag.kg.snapshot import diff_kg_snapshots  # noqa: WPS433
+
+    return diff_kg_snapshots(body.snapshot_a, body.snapshot_b)
+
+
+@router.get("/snapshots/compare")
+def compare_kg_snapshots(
+    pipeline_hash_a: str = Query(..., min_length=1, max_length=200),
+    pipeline_hash_b: str = Query(..., min_length=1, max_length=200),
+    document_ids: list[UUID] | None = Query(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    from app.rag.kg.snapshot import diff_kg_snapshots  # noqa: WPS433
+
+    snap_a = export_kg_snapshot(
+        pipeline_hash=pipeline_hash_a,
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+    snap_b = export_kg_snapshot(
+        pipeline_hash=pipeline_hash_b,
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+    return diff_kg_snapshots(snap_a, snap_b)
 
 
 @router.get("/graph/export")

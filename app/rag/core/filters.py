@@ -4,7 +4,7 @@ Small, dependency-light filter helpers shared across modules.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 _MAX_FILTER_DEPTH = 8
 _MAX_FILTER_NODES = 200
@@ -233,4 +233,135 @@ def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> 
     return _match(meta, filter_spec, depth=0)
 
 
-__all__ = ["match_metadata_filter"]
+def summarize_metadata_filter(
+    filter_spec: Any,
+    *,
+    max_keys_sample: int = 10,
+) -> Optional[dict[str, Any]]:
+    """
+    Return a PII-safe summary of a metadata filter spec.
+
+    This intentionally does NOT return any filter values. It only reports:
+    - which keys are referenced
+    - which operators are used and how often
+
+    This is meant for debug/observability surfaces where raw filter specs must not leak.
+    """
+    if filter_spec is None:
+        return None
+    if isinstance(filter_spec, dict) and not filter_spec:
+        return None
+    if not isinstance(filter_spec, dict):
+        return None
+
+    keys: set[str] = set()
+    ops: dict[str, int] = {}
+
+    # Keep the traversal bounded so arbitrary user-provided filter specs can't blow up CPU.
+    budget = [0]
+
+    def _bump_op(op: str) -> None:
+        if not op:
+            return
+        ops[op] = int(ops.get(op, 0) or 0) + 1
+
+    def _visit(obj: Any, *, depth: int) -> None:
+        if depth > _MAX_FILTER_DEPTH:
+            return
+        if budget[0] > _MAX_FILTER_NODES:
+            return
+
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if budget[0] > _MAX_FILTER_NODES:
+                    return
+                budget[0] += 1
+
+                if isinstance(k, str) and k.startswith("$"):
+                    _bump_op(k)
+                    # Boolean composition operators can nest more specs.
+                    if k in {"$and", "$or"} and isinstance(v, list):
+                        for item in v:
+                            _visit(item, depth=depth + 1)
+                    elif k == "$not" and isinstance(v, dict):
+                        _visit(v, depth=depth + 1)
+                    else:
+                        # Other operators: do not traverse values (may contain user-provided data).
+                        pass
+                    continue
+
+                if isinstance(k, str) and k:
+                    keys.add(k)
+
+                # Leaf condition: count operator keys under this field.
+                if isinstance(v, dict):
+                    for op in v.keys():
+                        if isinstance(op, str) and op.startswith("$"):
+                            _bump_op(op)
+
+        elif isinstance(obj, list):
+            for item in obj:
+                _visit(item, depth=depth + 1)
+
+    _visit(filter_spec, depth=0)
+
+    keys_sorted = sorted(keys)
+    max_keys_sample = max(0, int(max_keys_sample or 0))
+    if max_keys_sample > 0:
+        keys_sample = keys_sorted[:max_keys_sample]
+    else:
+        keys_sample = []
+
+    # Keep ops deterministic and bounded.
+    ops_sorted = dict(sorted(((str(k), int(v or 0)) for k, v in ops.items()), key=lambda x: x[0]))
+
+    out: dict[str, Any] = {
+        "keys_count": int(len(keys_sorted)),
+        "keys_sample": keys_sample,
+        "ops": ops_sorted,
+    }
+    return out
+
+
+def apply_metadata_filter_with_stats(
+    items: list[dict[str, Any]],
+    filter_spec: Any,
+) -> Tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Apply `match_metadata_filter(...)` to a list of items and return (filtered, stats).
+
+    Each item is expected to have a dict `metadata` field.
+    Stats are PII-safe and do not include filter values.
+    """
+    summary = summarize_metadata_filter(filter_spec)
+    if not items:
+        return items, {"enabled": bool(summary), "matched": 0, "blocked": 0, "summary": summary}
+
+    if filter_spec is None or (isinstance(filter_spec, dict) and not filter_spec):
+        # No filter.
+        return items, {"enabled": False, "matched": int(len(items)), "blocked": 0, "summary": None}
+
+    if not isinstance(filter_spec, dict):
+        # Invalid shape: fail closed and record a small, safe hint.
+        return [], {"enabled": True, "invalid": True, "matched": 0, "blocked": int(len(items)), "summary": summary}
+
+    matched = 0
+    blocked = 0
+    out: list[dict[str, Any]] = []
+    for item in items:
+        m = item.get("metadata") if isinstance(item, dict) else None
+        if isinstance(m, dict) and match_metadata_filter(m, filter_spec):
+            matched += 1
+            out.append(item)
+        else:
+            blocked += 1
+
+    return out, {
+        "enabled": True,
+        "matched": int(matched),
+        "blocked": int(blocked),
+        "summary": summary,
+    }
+
+
+__all__ = ["apply_metadata_filter_with_stats", "match_metadata_filter", "summarize_metadata_filter"]

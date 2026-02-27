@@ -67,6 +67,9 @@ _SAFE_ENRICH_STATS_KEYS = {
     "filtered_embedding_space",
     "filtered_pipeline_version",
     "filtered_metadata_filter",
+    "metadata_filter_blocked",
+    "metadata_filter_matched",
+    "metadata_filter",
     "output_results",
     "exception",
 }
@@ -78,6 +81,41 @@ def _safe_enrich_stats(raw: Any) -> dict[str, Any] | None:
     out: dict[str, Any] = {}
     for k in _SAFE_ENRICH_STATS_KEYS:
         if k not in raw:
+            continue
+        if k == "metadata_filter":
+            mf_raw = raw.get(k)
+            if not isinstance(mf_raw, dict):
+                continue
+            keys_count = _to_int(mf_raw.get("keys_count"))
+            keys_sample_raw = mf_raw.get("keys_sample")
+            keys_sample: list[str] = []
+            if isinstance(keys_sample_raw, list):
+                for x in keys_sample_raw:
+                    if isinstance(x, str) and x.strip():
+                        keys_sample.append(x.strip())
+                    if len(keys_sample) >= 10:
+                        break
+            ops_raw = mf_raw.get("ops")
+            ops: dict[str, int] = {}
+            if isinstance(ops_raw, dict):
+                for ok, ov in ops_raw.items():
+                    if not isinstance(ok, str) or not ok.startswith("$"):
+                        continue
+                    val = _to_int(ov)
+                    if val is None:
+                        continue
+                    ops[ok] = int(val)
+                    if len(ops) >= 30:
+                        break
+                ops = dict(sorted(ops.items(), key=lambda x: x[0]))
+            mf = {
+                "keys_count": keys_count,
+                "keys_sample": keys_sample,
+                "ops": ops,
+            }
+            mf = {k3: v3 for k3, v3 in mf.items() if v3 not in (None, [], {})}
+            if mf:
+                out[k] = mf
             continue
         if k == "exception":
             s = (str(raw.get(k) or "")).strip()
@@ -209,6 +247,7 @@ _SAFE_CITATION_FIELDS = {
     "vector_score",
     "bm25_score",
     "keyword_score",
+    "kg_path",
     "rerank_score",
     "retrieval_score",
     "reranker_provider",
@@ -220,6 +259,26 @@ _SAFE_CITATION_FIELDS = {
     "hit_type",
     "has_image",
 }
+
+
+def _safe_kg_path(raw: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(raw, list) or not raw:
+        return None
+    out: list[dict[str, Any]] = []
+    for step in raw:
+        if not isinstance(step, dict):
+            continue
+        ent_id = str(step.get("entity_id") or "").strip()
+        if not ent_id:
+            continue
+        typ = str(step.get("type") or "").strip()
+        entry: dict[str, Any] = {"entity_id": ent_id}
+        if typ:
+            entry["type"] = typ[:100]
+        out.append(entry)
+        if len(out) >= 6:
+            break
+    return out or None
 
 
 def _safe_citations(raw: Any) -> list[RagTraceCitation]:
@@ -246,6 +305,7 @@ def _safe_citations(raw: Any) -> list[RagTraceCitation]:
                 vector_score=_to_float(safe.get("vector_score")),
                 bm25_score=_to_float(safe.get("bm25_score")),
                 keyword_score=_to_float(safe.get("keyword_score")),
+                kg_path=_safe_kg_path(safe.get("kg_path")),
                 rerank_score=_to_float(safe.get("rerank_score")),
                 retrieval_score=_to_float(safe.get("retrieval_score")),
                 reranker_provider=(str(safe.get("reranker_provider")) if safe.get("reranker_provider") is not None else None),

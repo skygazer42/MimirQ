@@ -93,6 +93,50 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
             "filtered_pipeline_version": int(ep.get("filtered_pipeline_version") or 0),
             "filtered_metadata_filter": int(ep.get("filtered_metadata_filter") or 0),
         }
+        for k2 in ("metadata_filter_blocked", "metadata_filter_matched"):
+            v2 = ep.get(k2)
+            if v2 is not None:
+                try:
+                    out[key][k2] = int(v2 or 0)
+                except Exception:
+                    continue
+
+        mf = ep.get("metadata_filter")
+        if isinstance(mf, dict):
+            keys_count = mf.get("keys_count")
+            try:
+                keys_count = int(keys_count) if keys_count is not None else None
+            except Exception:
+                keys_count = None
+
+            keys_sample_raw = mf.get("keys_sample")
+            keys_sample: list[str] = []
+            if isinstance(keys_sample_raw, list):
+                for x in keys_sample_raw:
+                    if isinstance(x, str) and x.strip():
+                        keys_sample.append(x.strip())
+                    if len(keys_sample) >= 10:
+                        break
+
+            ops_raw = mf.get("ops")
+            ops: dict[str, int] = {}
+            if isinstance(ops_raw, dict):
+                for ok, ov in ops_raw.items():
+                    if not isinstance(ok, str) or not ok.startswith("$"):
+                        continue
+                    try:
+                        ops[ok] = int(ov or 0)
+                    except Exception:
+                        continue
+                    if len(ops) >= 30:
+                        break
+                ops = dict(sorted(ops.items(), key=lambda x: x[0]))
+
+            out[key]["metadata_filter"] = {
+                "keys_count": keys_count,
+                "keys_sample": keys_sample,
+                "ops": ops,
+            }
 
     timing = dbg.get("timing")
     if isinstance(timing, dict):
@@ -175,6 +219,70 @@ def _coverage_proxy_from_citations(citations: Any) -> dict[str, Any] | None:
         "top_doc_share": top_doc_share,
     }
     return {k: v for k, v in out.items() if v is not None} or None
+
+
+def _diagnose_empty_retrieval(retrieval_per_query: Any) -> dict[str, Any] | None:
+    """
+    Best-effort diagnosis for "no citations returned" cases.
+
+    This is intentionally PII-safe: it only reports counters from retriever_debug.
+    """
+    if not isinstance(retrieval_per_query, list) or not retrieval_per_query:
+        return None
+
+    main: dict[str, Any] | None = None
+    for item in retrieval_per_query:
+        if isinstance(item, dict) and item.get("kind") == "main":
+            main = item
+            break
+    if main is None:
+        return None
+
+    dbg = main.get("retriever_debug")
+    if not isinstance(dbg, dict):
+        return None
+
+    ep = dbg.get("enrich_pass2")
+    if not isinstance(ep, dict):
+        ep = dbg.get("enrich_pass1")
+    if not isinstance(ep, dict):
+        return None
+
+    signals: dict[str, int] = {}
+    reason_counts: list[tuple[str, int]] = []
+    for key, reason in (
+        ("filtered_metadata_filter", "metadata_filter"),
+        ("filtered_acl", "acl"),
+        ("filtered_dataset", "dataset"),
+        ("filtered_pipeline_version", "pipeline_version"),
+        ("filtered_embedding_space", "embedding_space"),
+        ("filtered_not_ready", "not_ready"),
+        ("filtered_orphaned", "orphaned_vectors"),
+    ):
+        raw = ep.get(key)
+        try:
+            n = int(raw or 0)
+        except Exception:
+            n = 0
+        if n > 0:
+            signals[key] = int(n)
+            reason_counts.append((reason, int(n)))
+
+    if not reason_counts:
+        return None
+
+    reason_counts.sort(key=lambda x: (-x[1], x[0]))
+    reasons = [r for (r, _n) in reason_counts]
+
+    diag: dict[str, Any] = {"reasons": reasons, "signals": signals}
+    for k2 in ("input_results", "output_results"):
+        v2 = ep.get(k2)
+        try:
+            diag[k2] = int(v2 or 0) if v2 is not None else None
+        except Exception:
+            continue
+    diag = {k: v for k, v in diag.items() if v is not None}
+    return diag or None
 
 
 def _doc_key(doc: Document) -> str:
@@ -878,6 +986,24 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                     feats["kg_shared_events"] = ev.get("kg_shared_events")
                 if ev.get("kg_evidence_anchored") is not None:
                     feats["kg_evidence_anchored"] = ev.get("kg_evidence_anchored")
+                kg_path_raw = ev.get("kg_path")
+                if isinstance(kg_path_raw, list) and kg_path_raw:
+                    kg_path: list[dict[str, Any]] = []
+                    for step in kg_path_raw:
+                        if not isinstance(step, dict):
+                            continue
+                        ent_id = str(step.get("entity_id") or "").strip()
+                        if not ent_id:
+                            continue
+                        typ = str(step.get("type") or "").strip()
+                        entry: dict[str, Any] = {"entity_id": ent_id}
+                        if typ:
+                            entry["type"] = typ[:100]
+                        kg_path.append(entry)
+                        if len(kg_path) >= 6:
+                            break
+                    if kg_path:
+                        feats["kg_path"] = kg_path
                 if feats:
                     kg_features_by_chunk[cid_str] = feats
                 if len(chunk_ids) >= max_chunks:
@@ -1306,6 +1432,9 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         metrics["citation_coverage"] = coverage
     if retrieval_errors:
         metrics["retrieval_errors"] = retrieval_errors[:5]
+    empty_diag = _diagnose_empty_retrieval(metrics.get("retrieval_per_query")) if not citations else None
+    if empty_diag:
+        metrics["empty_retrieval"] = empty_diag
 
     metrics["evidence_post_rerank_enabled"] = bool(post_rerank_enabled)
     metrics["evidence_post_rerank_used"] = bool(post_rerank_used)
@@ -1470,6 +1599,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     query_debug["query_for_retrieval"] = query_for_retrieval
     query_debug["rewrite_used"] = bool(rewrite_used)
     query_debug["retrieval_profile"] = profile_norm or None
+    if empty_diag:
+        query_debug["empty_retrieval"] = empty_diag
 
     # Stable retrieval trace contract (versioned, parseable by downstream systems).
     #

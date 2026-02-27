@@ -697,6 +697,44 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                     </div>
                   ) : null}
 
+                  {Array.isArray((activeHit as any).kg_path) && (activeHit as any).kg_path.length ? (
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="text-xs font-semibold text-foreground">KG Path</div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 rounded-full px-3 gap-2"
+                          onClick={() =>
+                            void copyToClipboard(
+                              JSON.stringify((activeHit as any).kg_path || [], null, 0),
+                              'kg_path'
+                            )
+                          }
+                        >
+                          <Copy className="h-4 w-4" />
+                          复制 kg_path
+                        </Button>
+                      </div>
+                      <div className="space-y-2 text-xs">
+                        {((activeHit as any).kg_path || []).map((step: any, idx: number) => (
+                          <div
+                            key={`${String(step?.entity_id || idx)}-${idx}`}
+                            className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+                          >
+                            <div className="text-muted-foreground">{String(step?.type || 'entity')}</div>
+                            <div className="font-mono text-foreground/90 break-all">
+                              {step?.entity_id ? shortId(String(step.entity_id)) : '—'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        注：kg_path 只包含 entity_id/type（PII-safe），可在 Graph 页面查看实体详情。
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                     <div className="text-xs font-semibold text-foreground mb-3">Snippet</div>
                     <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-mono">

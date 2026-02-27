@@ -97,5 +97,65 @@ def build_event_entity_provenance(
     return out
 
 
-__all__ = ["build_event_entity_provenance"]
+def build_kg_path_provenance(
+    *,
+    entities: Any,
+    key_entity_ids: set[str] | None,
+    max_entities: int = 4,
+) -> list[dict[str, str]]:
+    """
+    Build a small, PII-safe KG "path" payload for KG-injected citations.
 
+    Output format:
+      [{"entity_id":"...","type":"..."}]
+
+    Design:
+    - No names/descriptions are included (those can leak document text).
+    - Deterministic ordering (type, entity_id) so diffs are stable across runs.
+    - Bounded length (max_entities).
+    """
+    if not entities:
+        return []
+
+    lim = max(0, int(max_entities or 0))
+    if lim <= 0:
+        return []
+
+    key_set: set[str] | None = None
+    if isinstance(key_entity_ids, set) and key_entity_ids:
+        cleaned = {str(x).strip() for x in key_entity_ids if str(x).strip()}
+        key_set = cleaned if cleaned else None
+
+    def _entity_id_and_type(obj: Any) -> tuple[str | None, str | None]:
+        if obj is None:
+            return None, None
+        if isinstance(obj, dict):
+            ent_id = obj.get("entity_id") or obj.get("id")
+            ent_type = obj.get("type")
+        else:
+            ent_id = getattr(obj, "id", None)
+            ent_type = getattr(obj, "type", None)
+        ent_id_s = str(ent_id or "").strip()
+        ent_type_s = str(ent_type or "").strip()
+        return (ent_id_s or None), (ent_type_s or None)
+
+    dedup: dict[str, str] = {}
+    items = entities if isinstance(entities, list) else list(entities) if hasattr(entities, "__iter__") else []
+    for ent in items:
+        ent_id_s, ent_type_s = _entity_id_and_type(ent)
+        if not ent_id_s:
+            continue
+        if key_set is not None and ent_id_s not in key_set:
+            continue
+        # Keep first seen type (best-effort).
+        if ent_id_s not in dedup:
+            dedup[ent_id_s] = ent_type_s or "unknown"
+
+    pairs = sorted(((eid, typ) for eid, typ in dedup.items()), key=lambda x: (x[1], x[0]))
+    out: list[dict[str, str]] = []
+    for eid, typ in pairs[:lim]:
+        out.append({"entity_id": str(eid), "type": str(typ or "unknown")})
+    return out
+
+
+__all__ = ["build_event_entity_provenance", "build_kg_path_provenance"]

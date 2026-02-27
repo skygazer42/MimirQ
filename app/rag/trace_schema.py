@@ -51,6 +51,8 @@ class RagTraceCitation(BaseModel):
 
     # Image-related fields (no URLs here; only flags/ids)
     has_image: bool = False
+    # Optional KG path provenance for KG-injected citations (bounded, PII-safe).
+    kg_path: Optional[List[Dict[str, Any]]] = None
 
     model_config = ConfigDict(extra="ignore")
 
