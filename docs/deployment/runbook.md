@@ -67,10 +67,11 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 
 - 审计日志 NDJSON 导出（SIEM 友好）
 - 审计日志按 retention purge（bounded delete）
+- 审计日志 retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --audit-logs --dry-run`
 - Dataset 文档清单 NDJSON 导出（默认脱敏，支持 cursor + gzip）：`GET /api/v1/datasets/{dataset_id}/documents/export`
 - Dataset bundle ZIP 导出（包含 dataset/config/docs 清单，默认脱敏）：`GET /api/v1/datasets/{dataset_id}/export`
 
 后续将补齐：
 
 - dataset/document 的合规 bundle 导出（含向量/KG/对象存储引用）
-- retention job（定时执行 + 可观测 + 可审计）
+- retention job（定时执行 + 可观测 + 可审计；覆盖更多数据类型）
