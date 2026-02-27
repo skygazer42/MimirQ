@@ -25,6 +25,7 @@ from app.api.schemas.dataset import (
     DatasetIngestionStats,
     DatasetListResponse,
     DatasetOut,
+    DatasetPurgeResponse,
     DatasetRAGDefaults,
     DatasetUpdate,
 )
@@ -72,6 +73,7 @@ from app.services.ingestion_policy import (
     validate_and_normalize_ingestion_policy,
 )
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.report_html import render_dataset_profile_html
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
@@ -1051,6 +1053,143 @@ def delete_dataset(
     except Exception:
         pass
     return None
+
+
+@router.post("/{dataset_id}/purge", response_model=DatasetPurgeResponse)
+async def purge_dataset_documents(
+    dataset_id: UUID,
+    max_delete: int = Query(default=1000, ge=1, le=10_000, description="Max documents to delete in this call"),
+    dry_run: bool = Query(default=True, description="Plan only; do not delete"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Purge documents within a dataset (bounded, best-effort).
+
+    Notes:
+    - This endpoint intentionally does NOT delete the dataset record itself.
+      Once the dataset is empty, callers can use DELETE /datasets/{id}.
+    - Default is dry-run for safety.
+    - Uses the existing document delete lifecycle to ensure artifacts (vectors/KG/object storage) are removed.
+    """
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.LIFECYCLE_MANAGE,
+        detail="No permission to purge dataset documents",
+    )
+
+    DatasetService.get_dataset(db, tenant_id, dataset_id)
+
+    # Avoid purging while long-running dataset scans are still active.
+    active_profile_scans = (
+        db.query(DBDatasetProfileScanRun)
+        .filter(
+            DBDatasetProfileScanRun.tenant_id == tenant_id,
+            DBDatasetProfileScanRun.dataset_id == dataset_id,
+            DBDatasetProfileScanRun.status.in_(["pending", "running"]),
+        )
+        .count()
+    )
+    active_precheck_scans = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+            DBDatasetPrecheckScanRun.status.in_(["pending", "running"]),
+        )
+        .count()
+    )
+    if active_profile_scans > 0 or active_precheck_scans > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Dataset has active scan runs (pending/running). Cancel them and retry.",
+        )
+
+    # Plan eligible documents for this call (bounded).
+    rows = (
+        db.query(DBDocument.id)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
+        .order_by(DBDocument.created_at.asc(), DBDocument.id.asc())
+        .limit(int(max_delete or 0))
+        .all()
+    )
+    document_ids = [row[0] for row in rows if row and row[0] is not None]
+    eligible = len(document_ids)
+
+    deleted = 0
+    not_found = 0
+    denied = 0
+    conflicts = 0
+    errors = 0
+
+    if not bool(dry_run):
+        from app.api.v1.documents import _delete_document_lifecycle
+
+        for document_id in document_ids:
+            try:
+                await _delete_document_lifecycle(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    db=db,
+                    enforce_permissions=False,
+                )
+                deleted += 1
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    not_found += 1
+                    continue
+                if exc.status_code in (401, 403):
+                    denied += 1
+                    continue
+                if exc.status_code in (409, 413, 429, 503):
+                    conflicts += 1
+                    continue
+                errors += 1
+                continue
+            except Exception:
+                errors += 1
+                continue
+
+    # Best-effort audit log (commit separately; never block response).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="dataset.purge",
+            resource_type="dataset",
+            resource_id=str(dataset_id),
+            details={
+                "dry_run": bool(dry_run),
+                "max_delete": int(max_delete or 0),
+                "eligible": int(eligible or 0),
+                "deleted": int(deleted or 0),
+                "not_found": int(not_found or 0),
+                "denied": int(denied or 0),
+                "conflicts": int(conflicts or 0),
+                "errors": int(errors or 0),
+            },
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+
+    return DatasetPurgeResponse(
+        dataset_id=dataset_id,
+        dry_run=bool(dry_run),
+        max_delete=int(max_delete or 0),
+        eligible=int(eligible or 0),
+        deleted=int(deleted or 0),
+        not_found=int(not_found or 0),
+        denied=int(denied or 0),
+        conflicts=int(conflicts or 0),
+        errors=int(errors or 0),
+    )
 
 
 _INGESTION_POLICY_VERSIONS_KEY = "ingestion_policy_versions"

@@ -208,6 +208,18 @@ class DatasetConfigImportRequest(BaseModel):
     replace: bool = False
 
 
+class DatasetPurgeResponse(BaseModel):
+    dataset_id: UUID
+    dry_run: bool = True
+    max_delete: int
+    eligible: int
+    deleted: int
+    not_found: int = 0
+    denied: int = 0
+    conflicts: int = 0
+    errors: int = 0
+
+
 class DatasetCloneRequest(BaseModel):
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
