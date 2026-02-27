@@ -2084,6 +2084,7 @@ class HybridRetriever(BaseRetriever):
         mmr_lambda: float = 0.7,
         mmr_fetch_k_multiplier: int = 4,
         metadata_filter: Optional[Dict[str, Any]] = None,
+        requested_k: int | None = None,
     ) -> List[Dict[str, Any]]:
         """Hybrid search: vector retrieval + BM25, optional reranking."""
         retrieval_mode = (retrieval_mode or "hybrid").lower()
@@ -2530,12 +2531,34 @@ class HybridRetriever(BaseRetriever):
 
         # 5) Optional: LLM Reranker refinement (executed before final truncation)
         if merged_results and bool(self.enable_reranker):
+            rerank_meta: Dict[str, Any] = {
+                "enabled": True,
+                "provider": None,
+                "top_n_config": int(self.reranker_top_n or 0),
+                "candidates_n": 0,
+                "used": False,
+                "elapsed_sec": 0.0,
+                "model_used": None,
+                "error": None,
+                "skip_reason": None,
+            }
             provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
-            if provider not in ("none", "off", "false", "0"):
+            rerank_meta["provider"] = provider
+            if provider in ("none", "off", "false", "0"):
+                rerank_meta["skip_reason"] = "provider_off"
+            else:
+                # Budget governance:
+                # - `top_k` here is the *search_k* (may be overfetch-expanded for trimming).
+                # - Rerank should be governed by the *requested_k* to avoid overfetch inflating cost.
+                final_k = int(requested_k) if requested_k is not None else int(top_k or 0)
+                final_k = max(1, final_k)
+
                 reranker = get_reranker(provider)
                 candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
-                candidates_n = max(candidates_n, top_k)
+                candidates_n = max(candidates_n, final_k)
                 candidates_n = min(candidates_n, len(merged_results))
+                rerank_meta["candidates_n"] = int(candidates_n)
+
                 candidates: List[RerankCandidate] = []
                 id_to_doc: Dict[str, Dict[str, Any]] = {}
                 for doc in merged_results[:candidates_n]:
@@ -2548,7 +2571,9 @@ class HybridRetriever(BaseRetriever):
                     candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
                     id_to_doc[rid] = doc
 
-                if candidates:
+                if not candidates:
+                    rerank_meta["skip_reason"] = "no_candidates"
+                else:
                     try:
                         start = time.time()
                         result = reranker.rerank(
@@ -2558,6 +2583,11 @@ class HybridRetriever(BaseRetriever):
                         )
                         rerank_elapsed = result.elapsed_sec or (time.time() - start)
                         rerank_provider = result.provider or provider
+
+                        rerank_meta["used"] = True
+                        rerank_meta["elapsed_sec"] = round(float(rerank_elapsed), 3)
+                        rerank_meta["model_used"] = result.model_used
+                        rerank_meta["provider"] = rerank_provider
 
                         ordered = []
                         used: set[str] = set()
@@ -2589,12 +2619,21 @@ class HybridRetriever(BaseRetriever):
 
                         merged_results = ordered + merged_results[candidates_n:]
                     except Exception as exc:
+                        rerank_meta["used"] = False
+                        rerank_meta["error"] = str(exc)[:200]
+                        rerank_meta["skip_reason"] = "error"
                         logger.warning("Reranker failed (%s): %s", provider, exc)
                         for doc in merged_results[:candidates_n]:
                             meta = dict(doc.get("metadata") or {})
                             meta.setdefault("reranker_provider", provider)
                             meta.setdefault("reranker_error", str(exc)[:200])
                             doc["metadata"] = meta
+
+            try:
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics["rerank"] = rerank_meta
+            except Exception:
+                pass
 
         # Channel attribution (best-effort): count how many final candidates are supported by each channel.
         try:
@@ -3458,9 +3497,16 @@ class HybridRetriever(BaseRetriever):
                 if cap > 0:
                     search_k = min(search_k, cap)
 
+        # Unified candidate-fetch budget (used by vector/BM25/lexical/sparse channels).
+        # Exposed in retriever_debug for evidence/diagnostics (PII-safe).
+        fetch_k = int(search_k) * 2
+        if str(self.retrieval_mode or "").strip().lower() == "mmr":
+            fetch_k = int(search_k) * max(1, int(self.mmr_fetch_k_multiplier or 0))
+
         debug: Dict[str, Any] = {
             "requested_k": int(requested_k),
             "search_k": int(search_k),
+            "fetch_k": int(fetch_k),
             "overfetch_enabled": bool(search_k > requested_k),
             "overfetch_multiplier": int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
             "overfetch_cap_k": int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0),
@@ -3507,6 +3553,7 @@ class HybridRetriever(BaseRetriever):
             mmr_lambda=self.mmr_lambda,
             mmr_fetch_k_multiplier=self.mmr_fetch_k_multiplier,
             metadata_filter=self.metadata_filter,
+            requested_k=requested_k,
         )
         debug["hybrid_results"] = len(results or [])
         try:
@@ -4138,6 +4185,7 @@ class HybridRetriever(BaseRetriever):
             # Build a top_k prefix that enforces budgets/quotas but still orders by fused score.
             selected_keys: List[str] = []
             used: set[str] = set()
+            picked_by_channel: Dict[str, int] = {"vector": 0, "bm25": 0, "lexical": 0, "sparse": 0, "fill": 0}
 
             def _select_from_channel(channel: str, sorted_results: List[Dict[str, Any]], rank_map: Dict[str, int]) -> None:
                 quota = int(budgets.get(channel, 0) or 0)
@@ -4162,6 +4210,10 @@ class HybridRetriever(BaseRetriever):
                     used.add(key)
                     selected_keys.append(key)
                     picked += 1
+                    try:
+                        picked_by_channel[channel] = int(picked_by_channel.get(channel, 0) or 0) + 1
+                    except Exception:
+                        pass
 
             _select_from_channel("vector", v_sorted, v_rank)
             _select_from_channel("bm25", b_sorted, b_rank)
@@ -4179,10 +4231,39 @@ class HybridRetriever(BaseRetriever):
                         continue
                     used.add(key)
                     selected_keys.append(key)
+                    try:
+                        picked_by_channel["fill"] = int(picked_by_channel.get("fill", 0) or 0) + 1
+                    except Exception:
+                        pass
 
             selected_set = set(selected_keys)
             prefix = [item for item in all_sorted if self._result_key(item) in selected_set]
             rest = [item for item in all_sorted if self._result_key(item) not in selected_set]
+
+            # Best-effort: surface fusion budget behavior into retriever_debug.channels for diagnostics.
+            # PII-safe: only small numeric counters and low-cardinality settings.
+            try:
+                eligible_total = 0
+                for key in keys:
+                    if _candidate_eligible(key):
+                        eligible_total += 1
+
+                budgets_out = dict(sorted((str(k), int(v or 0)) for k, v in (budgets or {}).items()))
+                min_scores_out = dict(sorted((str(k), float(v or 0.0)) for k, v in (min_scores or {}).items()))
+                picked_out = {k: int(picked_by_channel.get(k, 0) or 0) for k in ("vector", "bm25", "lexical", "sparse", "fill")}
+
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics["fusion_budgeted_rrf"] = {
+                        "k_prefix": int(k_prefix),
+                        "rrf_k": int(k0),
+                        "budgets": budgets_out,
+                        "min_scores": min_scores_out or None,
+                        "eligible_total": int(eligible_total),
+                        "selected_prefix": int(len(selected_keys)),
+                        "picked_by_channel": picked_out,
+                    }
+            except Exception:
+                pass
             return prefix + rest
 
         merged: Dict[str, Dict[str, Any]] = {}

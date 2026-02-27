@@ -40,6 +40,12 @@ from app.rag.engine import get_rag_engine
 from app.rag.kg.pipeline import kg_search
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
+from app.rag.rerank_result_cache import (
+    build_evidence_post_rerank_cache_key,
+    fingerprint_rerank_candidates,
+    get_cached_evidence_post_rerank_result,
+    set_cached_evidence_post_rerank_result,
+)
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retriever import hybrid_retriever
@@ -62,7 +68,16 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
         return None
 
     out: Dict[str, Any] = {}
-    for k in ("requested_k", "search_k", "overfetch_enabled"):
+    for k in (
+        "requested_k",
+        "search_k",
+        "fetch_k",
+        "overfetch_enabled",
+        "overfetch_multiplier",
+        "overfetch_cap_k",
+        "milvus_doc_id_pushdown_skipped",
+        "milvus_expr_max_doc_ids",
+    ):
         v = dbg.get(k)
         if v is not None:
             out[k] = v
@@ -1210,12 +1225,20 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     post_rerank_elapsed = 0.0
     post_rerank_error: str | None = None
     post_rerank_candidates_n = 0
+    post_rerank_skip_reason: str | None = None
+    post_rerank_cache_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False))
+    post_rerank_cache_hits = 0
+    post_rerank_cache_misses = 0
 
     try:
+        if post_rerank_enabled and not (docs or []):
+            post_rerank_skip_reason = "no_candidates"
         if post_rerank_enabled and (docs or []):
             provider = str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or "ltr").strip().lower()
             post_rerank_provider = provider
-            if provider not in ("none", "off", "false", "0"):
+            if provider in ("none", "off", "false", "0"):
+                post_rerank_skip_reason = "provider_off"
+            else:
                 top_n = int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0)
                 if top_n <= 0:
                     top_n = len(docs or [])
@@ -1266,10 +1289,42 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                         if not candidates:
                             continue
 
-                        reranker = get_reranker(st_provider)
-                        rr_start = time.time()
-                        rr = reranker.rerank(query=query_for_retrieval, candidates=candidates, top_n=st_n)
-                        elapsed_i = float(rr.elapsed_sec or (time.time() - rr_start))
+                        cache_hit = False
+                        cache_key: str | None = None
+                        rr = None
+                        if post_rerank_cache_enabled:
+                            try:
+                                cand_fp = fingerprint_rerank_candidates(candidates)
+                                cache_key = build_evidence_post_rerank_cache_key(
+                                    tenant_id=state.get("tenant_id"),
+                                    account_id=state.get("account_id"),
+                                    provider=st_provider,
+                                    top_n=st_n,
+                                    query=query_for_retrieval,
+                                    candidates_fingerprint=cand_fp,
+                                )
+                                rr = get_cached_evidence_post_rerank_result(cache_key)
+                                if rr is not None:
+                                    cache_hit = True
+                                    post_rerank_cache_hits += 1
+                                else:
+                                    post_rerank_cache_misses += 1
+                            except Exception:
+                                cache_key = None
+                                rr = None
+
+                        if rr is None:
+                            reranker = get_reranker(st_provider)
+                            rr_start = time.time()
+                            rr = reranker.rerank(query=query_for_retrieval, candidates=candidates, top_n=st_n)
+                            if post_rerank_cache_enabled and cache_key:
+                                try:
+                                    set_cached_evidence_post_rerank_result(cache_key, rr)
+                                except Exception:
+                                    pass
+                            elapsed_i = float(rr.elapsed_sec or (time.time() - rr_start))
+                        else:
+                            elapsed_i = 0.0
                         total_elapsed += elapsed_i
 
                         used_provider = (rr.provider or st_provider).strip().lower() or st_provider
@@ -1343,6 +1398,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                                 "candidates": int(len(candidates)),
                                 "elapsed_sec": round(float(elapsed_i), 3),
                                 "model_used": rr.model_used,
+                                "cache_hit": bool(cache_hit),
                             }
                         )
 
@@ -1353,10 +1409,17 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                         post_rerank_model_used = final_model_used
                         post_rerank_candidates_n = int(final_n)
                         post_rerank_elapsed = float(total_elapsed)
+                    elif post_rerank_skip_reason is None:
+                        post_rerank_skip_reason = "pipeline_noop"
 
                 # Single-stage (legacy) behavior: one provider, one top_n.
                 if not post_rerank_used:
-                    post_rerank_candidates_n = min(int(top_n), len(docs or []))
+                    # Budget governance: rerank at least the visible citation prefix (top_k) in
+                    # single-stage mode. Pipeline stages can intentionally use smaller prefixes.
+                    governed_n = min(int(top_n), len(docs or []))
+                    governed_n = max(governed_n, int(top_k or 0))
+                    governed_n = min(governed_n, len(docs or []))
+                    post_rerank_candidates_n = int(governed_n)
 
                     candidates: List[RerankCandidate] = []
                     id_to_doc: Dict[str, Document] = {}
@@ -1370,14 +1433,47 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                         id_to_doc[rid] = doc
 
                     if candidates:
-                        reranker = get_reranker(provider)
-                        rr_start = time.time()
-                        rr = reranker.rerank(
-                            query=query_for_retrieval,
-                            candidates=candidates,
-                            top_n=post_rerank_candidates_n,
-                        )
-                        post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
+                        cache_hit = False
+                        cache_key: str | None = None
+                        rr = None
+                        if post_rerank_cache_enabled:
+                            try:
+                                cand_fp = fingerprint_rerank_candidates(candidates)
+                                cache_key = build_evidence_post_rerank_cache_key(
+                                    tenant_id=state.get("tenant_id"),
+                                    account_id=state.get("account_id"),
+                                    provider=provider,
+                                    top_n=post_rerank_candidates_n,
+                                    query=query_for_retrieval,
+                                    candidates_fingerprint=cand_fp,
+                                )
+                                rr = get_cached_evidence_post_rerank_result(cache_key)
+                                if rr is not None:
+                                    cache_hit = True
+                                    post_rerank_cache_hits += 1
+                                else:
+                                    post_rerank_cache_misses += 1
+                            except Exception:
+                                cache_key = None
+                                rr = None
+
+                        if rr is None:
+                            reranker = get_reranker(provider)
+                            rr_start = time.time()
+                            rr = reranker.rerank(
+                                query=query_for_retrieval,
+                                candidates=candidates,
+                                top_n=post_rerank_candidates_n,
+                            )
+                            if post_rerank_cache_enabled and cache_key:
+                                try:
+                                    set_cached_evidence_post_rerank_result(cache_key, rr)
+                                except Exception:
+                                    pass
+                            post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
+                        else:
+                            post_rerank_elapsed = 0.0
+
                         post_rerank_model_used = rr.model_used
                         reranker_provider = rr.provider or provider
 
@@ -1412,9 +1508,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
                         docs = ordered + list((docs or [])[post_rerank_candidates_n:])
                         post_rerank_used = True
+                    elif post_rerank_skip_reason is None:
+                        post_rerank_skip_reason = "no_candidates"
     except Exception as exc:  # noqa: BLE001
         post_rerank_used = False
         post_rerank_error = str(exc)[:200]
+        post_rerank_skip_reason = "error"
 
     citations = build_citations_from_docs(docs, retrieval_elapsed_sec=retrieval_elapsed, retrieval_mode=request_retrieval_mode, query=query_for_retrieval)
     coverage = _coverage_proxy_from_citations(citations)
@@ -1443,6 +1542,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["evidence_post_rerank_elapsed_sec"] = round(float(post_rerank_elapsed or 0.0), 3)
     metrics["evidence_post_rerank_model_used"] = post_rerank_model_used
     metrics["evidence_post_rerank_error"] = post_rerank_error
+    metrics["evidence_post_rerank_skip_reason"] = post_rerank_skip_reason
+    metrics["evidence_post_rerank_cache_enabled"] = bool(post_rerank_cache_enabled)
+    metrics["evidence_post_rerank_cache_hits"] = int(post_rerank_cache_hits or 0)
+    metrics["evidence_post_rerank_cache_misses"] = int(post_rerank_cache_misses or 0)
     metrics["evidence_post_rerank_pipeline_enabled"] = bool(post_rerank_pipeline_enabled)
     metrics["evidence_post_rerank_pipeline_used"] = bool(post_rerank_pipeline_used)
     metrics["evidence_post_rerank_pipeline_stages"] = post_rerank_pipeline_stages[:4]
@@ -1752,6 +1855,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": bool(post_rerank_enabled),
             "used": bool(post_rerank_used),
             "provider": post_rerank_provider,
+            "skip_reason": post_rerank_skip_reason,
+            "cache": {
+                "enabled": bool(post_rerank_cache_enabled),
+                "hits": int(post_rerank_cache_hits or 0),
+                "misses": int(post_rerank_cache_misses or 0),
+            },
             "pipeline_enabled": bool(post_rerank_pipeline_enabled),
             "pipeline_used": bool(post_rerank_pipeline_used),
             "pipeline": post_rerank_pipeline[:4],

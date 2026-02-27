@@ -1,0 +1,244 @@
+"""
+Evidence post-rerank result cache (in-memory, short TTL, best-effort).
+
+Goal:
+- Avoid repeated cross-encoder / LTR reranking work for identical evidence requests
+  over a short time window (e.g., UI refresh, retry, offline replay loops).
+
+Security posture:
+- Disabled by default
+- Cache keys are stable hashes; no raw query text or chunk text is persisted
+- Cache values store only ordered ids + numeric scores (PII-safe identifiers only)
+"""
+
+from __future__ import annotations
+
+import json
+import threading
+import time
+from collections import OrderedDict
+from typing import Any, Optional, Sequence
+
+from app.core.config import settings
+from app.rag.core.hashing import stable_hash
+from app.rag.reranker.types import RerankCandidate, RerankResult
+
+_META_ALLOWLIST = {
+    # Scores / channel signals (numeric)
+    "score",
+    "vector_score",
+    "bm25_score",
+    "lexical_score",
+    "sparse_score",
+    "keyword_score",
+    "retrieval_score",
+    # Provenance / low-cardinality flags
+    "retrieval_role",
+    "kg_pagerank",
+    "kg_path_length",
+    "kg_shared_events",
+    "kg_evidence_anchored",
+    "kg_edge_conf_low",
+    "kg_edge_conf_mid",
+    "kg_edge_conf_high",
+}
+
+
+def _normalize_meta_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        # Keep deterministic fingerprints while remaining tolerant of tiny fp jitter.
+        return round(float(value), 6)
+    try:
+        # Best-effort: preserve deterministic string representation.
+        return str(value)
+    except Exception:
+        return None
+
+
+def fingerprint_rerank_candidates(candidates: Sequence[RerankCandidate]) -> str:
+    """
+    Build a PII-safe fingerprint for rerank inputs.
+
+    Important: this must not depend on candidate text content.
+    """
+    items: list[dict[str, Any]] = []
+    for c in candidates:
+        if c is None:
+            continue
+        cid = str(getattr(c, "id", "") or "").strip()
+        if not cid:
+            continue
+        meta = getattr(c, "metadata", None)
+        meta = meta if isinstance(meta, dict) else {}
+
+        entry: dict[str, Any] = {"id": cid}
+        for k in sorted(_META_ALLOWLIST):
+            if k not in meta:
+                continue
+            nv = _normalize_meta_value(meta.get(k))
+            if nv is None:
+                continue
+            entry[k] = nv
+        items.append(entry)
+
+    raw = json.dumps(items, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return stable_hash(raw, length=32)
+
+
+def build_evidence_post_rerank_cache_key(
+    *,
+    tenant_id: Any | None,
+    account_id: Any | None,
+    provider: str,
+    top_n: int,
+    query: str,
+    candidates_fingerprint: str,
+    schema: str = "mimirq.evidence_post_rerank_cache.v1",
+) -> str:
+    """
+    Build a stable, PII-safe cache key for an evidence post-rerank call.
+
+    Notes:
+    - `query` is hashed (not stored).
+    - `tenant_id` / `account_id` are included only as hashed components (not stored).
+    """
+    sig = {
+        "schema": str(schema or "").strip() or "mimirq.evidence_post_rerank_cache.v1",
+        "provider": str(provider or "").strip().lower() or "unknown",
+        "top_n": int(top_n or 0),
+        "query_hash": stable_hash((query or "").strip(), length=16),
+        "candidates": str(candidates_fingerprint or ""),
+        "tenant_hash": stable_hash(str(tenant_id or ""), length=16),
+        "account_hash": stable_hash(str(account_id or ""), length=16),
+        # Include low-cardinality config knobs so cache doesn't cross incompatible deployments.
+        "ltr_model_path": str(getattr(settings, "LTR_MODEL_PATH", "") or ""),
+        "ltr_feature_spec_version": int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1),
+        "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
+    }
+    raw = json.dumps(sig, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    digest = stable_hash(raw, length=32)
+    prefix = str(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_PREFIX", "eprr") or "eprr").strip() or "eprr"
+    return f"{prefix}:{digest}"
+
+
+class _TTLCache:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._data: "OrderedDict[str, tuple[dict[str, Any], float]]" = OrderedDict()
+
+    def clear(self) -> None:
+        with self._lock:
+            self._data.clear()
+
+    def _ttl_sec(self) -> float:
+        return float(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0)
+
+    def _max_entries(self) -> int:
+        return max(0, int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 0) or 0))
+
+    def _enabled(self) -> bool:
+        return bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)) and self._max_entries() > 0
+
+    def get(self, key: str) -> Optional[dict[str, Any]]:
+        if not key or not self._enabled():
+            return None
+        now = time.time()
+        ttl = self._ttl_sec()
+        with self._lock:
+            item = self._data.get(key)
+            if item is None:
+                return None
+            payload, ts = item
+            if ttl > 0 and (now - ts) > ttl:
+                self._data.pop(key, None)
+                return None
+            # LRU bump
+            self._data.move_to_end(key, last=True)
+            return dict(payload)
+
+    def set(self, key: str, payload: dict[str, Any]) -> bool:
+        if not key or not self._enabled():
+            return False
+        max_entries = self._max_entries()
+        if max_entries <= 0:
+            return False
+        now = time.time()
+        with self._lock:
+            self._data[key] = (dict(payload), now)
+            self._data.move_to_end(key, last=True)
+            while len(self._data) > max_entries:
+                self._data.popitem(last=False)
+        return True
+
+    def keys(self) -> list[str]:
+        with self._lock:
+            return list(self._data.keys())
+
+
+_CACHE = _TTLCache()
+
+
+def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
+    payload = _CACHE.get(key)
+    if not isinstance(payload, dict):
+        return None
+
+    ordered = payload.get("ordered_ids")
+    score_map = payload.get("score_map")
+    if not isinstance(ordered, list) or not isinstance(score_map, dict):
+        return None
+
+    ordered_ids: list[str] = []
+    for x in ordered:
+        if isinstance(x, str) and x.strip():
+            ordered_ids.append(x.strip())
+
+    score_map_out: dict[str, float] = {}
+    for k, v in score_map.items():
+        if not isinstance(k, str) or not k.strip():
+            continue
+        try:
+            score_map_out[k.strip()] = float(v)
+        except Exception:
+            continue
+
+    if not ordered_ids:
+        return None
+
+    return RerankResult(
+        ordered_ids=ordered_ids,
+        score_map=score_map_out,
+        elapsed_sec=0.0,
+        provider=str(payload.get("provider") or "") or None,
+        model_used=str(payload.get("model_used") or "") or None,
+        stats={"cache_hit": True},
+    )
+
+
+def set_cached_evidence_post_rerank_result(key: str, result: RerankResult) -> bool:
+    if not key or result is None:
+        return False
+    payload: dict[str, Any] = {
+        "ordered_ids": list(result.ordered_ids or []),
+        "score_map": dict(result.score_map or {}),
+        "provider": result.provider,
+        "model_used": result.model_used,
+        "schema": "mimirq.rerank_result_cache_item.v1",
+    }
+    return bool(_CACHE.set(key, payload))
+
+
+def clear_evidence_post_rerank_cache_for_tests() -> None:
+    _CACHE.clear()
+
+
+__all__ = [
+    "build_evidence_post_rerank_cache_key",
+    "fingerprint_rerank_candidates",
+    "get_cached_evidence_post_rerank_result",
+    "set_cached_evidence_post_rerank_result",
+    "clear_evidence_post_rerank_cache_for_tests",
+]
+
