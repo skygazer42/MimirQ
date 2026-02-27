@@ -8,6 +8,7 @@ import io
 import json
 import re
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from typing import Any, Iterator
 from uuid import UUID
@@ -2002,4 +2003,131 @@ def export_dataset_documents_ndjson(
         body_iter,
         media_type="application/x-ndjson",
         headers=headers,
+    )
+
+
+@router.get("/{dataset_id}/export")
+def export_dataset_bundle_zip(
+    dataset_id: UUID,
+    limit: int = Query(default=2000, ge=1, le=10_000, description="Max documents to include in the bundle"),
+    include_sensitive: bool = Query(default=False, description="Include sensitive fields in documents metadata"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export a dataset "bundle" as a single ZIP archive.
+
+    This is intended for enterprise lifecycle/compliance workflows:
+    - Portable snapshot of dataset config
+    - Bounded document inventory (NDJSON), PII-safe by default
+    """
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.LIFECYCLE_MANAGE,
+        detail="No permission to export dataset bundle",
+    )
+
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+
+    docs = (
+        db.query(DBDocument)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
+        .order_by(DBDocument.created_at.asc(), DBDocument.id.asc())
+        .limit(int(limit or 0))
+        .all()
+    )
+
+    exported_at = datetime.now(timezone.utc)
+
+    # Best-effort audit log (PII-safe).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="dataset.export_bundle",
+            resource_type="dataset",
+            resource_id=str(dataset_id),
+            details={
+                "limit": int(limit or 0),
+                "returned": int(len(docs)),
+                "include_sensitive": bool(include_sensitive),
+                "exported_at": exported_at.isoformat(),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    dataset_payload: dict[str, Any] = {
+        "schema": "mimirq.dataset_export.v1",
+        "exported_at": _dt_to_json(exported_at),
+        "tenant_id": str(tenant_id),
+        "dataset": {
+            "id": str(getattr(ds, "id", "")),
+            "name": str(getattr(ds, "name", "") or ""),
+            "description": str(getattr(ds, "description", "") or ""),
+            "permission": str(getattr(ds, "permission", "") or ""),
+            "owner_id": (str(getattr(ds, "owner_id", "") or "") or None),
+            "created_at": _dt_to_json(getattr(ds, "created_at", None)),
+            "updated_at": _dt_to_json(getattr(ds, "updated_at", None)),
+        },
+    }
+
+    config_payload = {
+        "schema": "mimirq.dataset_config_export.v1",
+        "version": "1",
+        "dataset_id": getattr(ds, "id", None),
+        "name": str(getattr(ds, "name", "") or ""),
+        "exported_at": exported_at,
+        "config": _build_dataset_config_bundle(ds),
+    }
+
+    # Write bundle ZIP in memory (bounded by `limit`).
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "dataset.json",
+            json.dumps(dataset_payload, ensure_ascii=False, separators=(",", ":"), default=str),
+        )
+        zf.writestr(
+            "config.json",
+            json.dumps(config_payload, ensure_ascii=False, separators=(",", ":"), default=str),
+        )
+
+        doc_lines: list[str] = []
+        for d in docs:
+            row = _export_document_row(d, include_sensitive=bool(include_sensitive))
+            doc_lines.append(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str))
+        zf.writestr("documents.ndjson", ("\n".join(doc_lines) + ("\n" if doc_lines else "")).encode("utf-8"))
+
+        zf.writestr(
+            "README.txt",
+            (
+                "MimirQ Dataset Export Bundle\n\n"
+                "- dataset.json: dataset summary (safe)\n"
+                "- config.json: portable dataset config bundle\n"
+                "- documents.ndjson: document inventory (PII-safe by default)\n"
+                "\n"
+                "Security:\n"
+                "- include_sensitive=false (default) omits raw filenames/paths and doc_metadata values.\n"
+            ),
+        )
+
+    raw = buf.getvalue()
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    filename = f"{safe}.export.zip"
+    return Response(
+        content=raw,
+        media_type="application/zip",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
     )
