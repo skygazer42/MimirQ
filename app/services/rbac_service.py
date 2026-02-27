@@ -27,6 +27,7 @@ class TenantPermissions:
     AUDIT_READ = "audit.read"
     AUDIT_MANAGE = "audit.manage"
     TABLE_SQL_READ = "table_sql.read"
+    LIFECYCLE_MANAGE = "lifecycle.manage"
 
 
 def _normalize_role(role: object) -> str:
@@ -44,6 +45,7 @@ _PERMISSION_ROLES: dict[str, FrozenSet[str]] = {
     TenantPermissions.AUDIT_READ: _AUDITOR_ROLES,
     TenantPermissions.AUDIT_MANAGE: _ADMIN_ROLES,
     TenantPermissions.TABLE_SQL_READ: _AUDITOR_ROLES,
+    TenantPermissions.LIFECYCLE_MANAGE: _ADMIN_ROLES,
 }
 
 

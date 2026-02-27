@@ -7427,26 +7427,35 @@ async def retry_document_processing(
     }
 
 
-@router.delete("/{document_id}", status_code=204)
-async def delete_document(
+async def _delete_document_lifecycle(
+    *,
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
-):
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+    enforce_permissions: bool = True,
+) -> None:
     """
-    Delete document.
+    Internal document delete lifecycle.
+
+    - `enforce_permissions=True` matches the public endpoint behavior.
+    - `enforce_permissions=False` is intended for admin-only lifecycle operations (e.g. dataset purge),
+      where the caller already performed the necessary RBAC checks.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    document = db.query(DBDocument).filter(
-        DBDocument.id == document_id,
-        DBDocument.tenant_id == tenant_id
-    ).first()
+    document = (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.id == document_id,
+            DBDocument.tenant_id == tenant_id,
+        )
+        .first()
+    )
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    if document.dataset_id:
+    if enforce_permissions and document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
@@ -7621,6 +7630,26 @@ async def delete_document(
             db.rollback()
 
     # 5. Remove chunks from BM25 index (in-memory).
+    return None
+
+
+@router.delete("/{document_id}", status_code=204)
+async def delete_document(
+    document_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete document.
+    """
+    await _delete_document_lifecycle(
+        document_id=document_id,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        enforce_permissions=True,
+    )
     return None
 
 

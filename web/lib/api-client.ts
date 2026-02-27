@@ -2070,6 +2070,17 @@ export const datasetApi = {
     })
   },
 
+  /**
+   * 管理员生命周期操作：批量清空数据集文档（默认 dry-run）
+   */
+  async purge(
+    datasetId: string,
+    params?: { max_delete?: number; dry_run?: boolean }
+  ): Promise<any> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/purge`, undefined, { params })
+    return data
+  },
+
   async getIngestionPolicy(datasetId: string): Promise<IngestionPolicy> {
     return openapiRequest({
       path: '/api/v1/datasets/{dataset_id}/ingestion-policy',
@@ -2681,6 +2692,17 @@ export const feedbackApi = {
     const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-regression-case`, body)
     return data
   },
+
+  /**
+   * 将反馈转为 Evidence Workbench 条目（Ground Truth）
+   */
+  async toEvidenceItem(
+    feedbackId: string,
+    body: { suite_id: string; tags?: string[]; extra?: Record<string, any> }
+  ): Promise<any> {
+    const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-evidence-item`, body)
+    return data
+  },
 }
 
 // ==================== KG API ====================
@@ -3040,6 +3062,29 @@ export const auditApi = {
     const { data } = await apiClient.get('/audit/logs', { params })
     return data
   },
+
+  async exportLogs(params: {
+    limit?: number
+    actor_id?: string
+    action?: string
+    resource_type?: string
+    resource_id?: string
+    request_id?: string
+    since?: string
+    until?: string
+    after_created_at?: string
+    after_id?: string
+    include_sensitive?: boolean
+    gzip?: boolean
+  } = {}): Promise<Blob> {
+    const { data } = await apiClient.get('/audit/logs/export', { params, responseType: 'blob' })
+    return data as Blob
+  },
+
+  async purgeLogs(params: { retention_days?: number; max_delete?: number; dry_run?: boolean } = {}): Promise<any> {
+    const { data } = await apiClient.post('/audit/logs/purge', undefined, { params })
+    return data
+  },
 }
 
 export const settingsApi = {
@@ -3251,6 +3296,17 @@ export const evaluationApi = {
     limit?: number
   }): Promise<RegressionRunList> {
     const { data } = await apiClient.get('/evaluations/ragas/regression/runs', { params })
+    return data
+  },
+
+  async getRegressionRunLeaderboard(params: {
+    dataset_id: string
+    metric_key?: string
+    limit?: number
+    include_incomplete?: boolean
+    max_candidates?: number
+  }): Promise<any> {
+    const { data } = await apiClient.get('/evaluations/ragas/regression/runs/leaderboard', { params })
     return data
   },
 
