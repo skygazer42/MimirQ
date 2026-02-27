@@ -67,9 +67,9 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 
 - 审计日志 NDJSON 导出（SIEM 友好）
 - 审计日志按 retention purge（bounded delete）
+- Dataset 文档清单 NDJSON 导出（默认脱敏，支持 cursor + gzip）：`GET /api/v1/datasets/{dataset_id}/documents/export`
 
 后续将补齐：
 
-- dataset/document 的合规导出（含向量/KG/对象存储引用）
+- dataset/document 的合规 bundle 导出（含向量/KG/对象存储引用）
 - retention job（定时执行 + 可观测 + 可审计）
-

@@ -3,13 +3,17 @@ Dataset management API.
 Supports dataset creation, query, update, deletion, and permission management.
 """
 import contextlib
+import gzip as gzip_lib
+import io
 import json
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Iterator
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
@@ -48,6 +52,7 @@ from app.api.schemas.ingestion_policy import (
 )
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
+from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
@@ -57,6 +62,7 @@ from app.models.document import DocumentPermission
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
+from app.rag.core.hashing import stable_hash
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
@@ -1767,4 +1773,233 @@ def export_dataset_profile_html_report(
         content=html,
         media_type="text/html; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+    )
+
+
+def _iter_gzip_chunks(chunks: Iterator[bytes], *, flush_bytes: int = 64 * 1024) -> Iterator[bytes]:
+    """
+    Streaming gzip wrapper for byte iterators.
+
+    Keeps memory bounded for large NDJSON exports.
+    """
+    buffer = io.BytesIO()
+    gz = gzip_lib.GzipFile(fileobj=buffer, mode="wb")
+    try:
+        for chunk in chunks:
+            if not chunk:
+                continue
+            gz.write(chunk)
+            if buffer.tell() >= int(flush_bytes or 0):
+                gz.flush()
+                data = buffer.getvalue()
+                if data:
+                    yield data
+                buffer.seek(0)
+                buffer.truncate(0)
+        gz.close()
+        data = buffer.getvalue()
+        if data:
+            yield data
+    finally:
+        try:
+            gz.close()
+        except Exception:
+            pass
+
+
+def _summarize_document_metadata(meta: Any, *, max_keys_sample: int = 20) -> dict[str, Any] | None:
+    """
+    Return a small, PII-safe summary of a document metadata dict.
+
+    Intentionally does not include metadata values.
+    """
+    if not isinstance(meta, dict) or not meta:
+        return None
+    keys: list[str] = []
+    for k in meta.keys():
+        if isinstance(k, str) and k.strip():
+            keys.append(k.strip())
+    keys_sorted = sorted(set(keys))
+    max_keys_sample = max(0, int(max_keys_sample or 0))
+    return {
+        "keys_count": int(len(keys_sorted)),
+        "keys_sample": keys_sorted[:max_keys_sample],
+    }
+
+
+def _dt_to_json(v: Any) -> str | None:
+    """
+    Serialize datetime-like objects for JSON outputs.
+
+    We prefer the "Z" suffix for UTC to avoid "+" being interpreted as a space in
+    query strings when callers reuse exported cursors.
+    """
+    if v is None:
+        return None
+    if not isinstance(v, datetime):
+        return None
+    try:
+        s = v.isoformat()
+    except Exception:
+        return None
+    # Align with Pydantic's common JSON encoding for UTC.
+    if s.endswith("+00:00"):
+        s = s[:-6] + "Z"
+    return s
+
+
+def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[str, Any]:
+    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+
+    active_hash = get_active_pipeline_hash(meta)
+    pipeline_hash = str(meta.get("pipeline_hash") or "").strip() or None
+    active_pipeline_hash = str(meta.get("active_pipeline_hash") or "").strip() or None
+    doc_pipeline_key = build_doc_pipeline_key(doc.id, active_hash) if active_hash else None
+
+    out: dict[str, Any] = {
+        "schema": "mimirq.dataset_document_export.v1",
+        "id": str(doc.id),
+        "tenant_id": str(doc.tenant_id),
+        "dataset_id": (str(doc.dataset_id) if getattr(doc, "dataset_id", None) is not None else None),
+        "status": str(getattr(doc, "status", "") or ""),
+        "file_type": str(getattr(doc, "file_type", "") or ""),
+        "file_size": int(getattr(doc, "file_size", 0) or 0),
+        "chunk_count": int(getattr(doc, "chunk_count", 0) or 0),
+        "total_characters": int(getattr(doc, "total_characters", 0) or 0),
+        "created_at": _dt_to_json(getattr(doc, "created_at", None)),
+        "updated_at": _dt_to_json(getattr(doc, "updated_at", None)),
+        "processed_at": _dt_to_json(getattr(doc, "processed_at", None)),
+        "archived_at": _dt_to_json(getattr(doc, "archived_at", None)),
+        "disabled_at": _dt_to_json(getattr(doc, "disabled_at", None)),
+        "doc_pipeline_key": doc_pipeline_key,
+        "pipeline_hash": pipeline_hash,
+        "active_pipeline_hash": active_pipeline_hash,
+    }
+
+    if include_sensitive:
+        out.update(
+            {
+                "filename": str(getattr(doc, "filename", "") or ""),
+                "file_path": str(getattr(doc, "file_path", "") or ""),
+                "owner_id": (str(getattr(doc, "owner_id", "") or "") or None),
+                "access_mode": (str(getattr(doc, "access_mode", "") or "") or None),
+                "error_message": (str(getattr(doc, "error_message", "") or "") or None),
+                "doc_metadata": meta,
+            }
+        )
+    else:
+        filename = str(getattr(doc, "filename", "") or "").strip()
+        file_path = str(getattr(doc, "file_path", "") or "").strip()
+        owner_id = str(getattr(doc, "owner_id", "") or "").strip()
+        error_message = str(getattr(doc, "error_message", "") or "").strip()
+        out.update(
+            {
+                "filename_hash": (stable_hash(filename, length=16) if filename else None),
+                "file_path_hash": (stable_hash(file_path, length=16) if file_path else None),
+                "owner_id_hash": (stable_hash(owner_id, length=16) if owner_id else None),
+                "has_error": bool(error_message),
+                "doc_metadata_summary": _summarize_document_metadata(meta),
+            }
+        )
+
+    return out
+
+
+@router.get("/{dataset_id}/documents/export")
+def export_dataset_documents_ndjson(
+    dataset_id: UUID,
+    limit: int = Query(default=1000, ge=1, le=10_000),
+    after_created_at: datetime | None = Query(default=None, description="Cursor: last seen created_at"),
+    after_id: UUID | None = Query(default=None, description="Cursor: last seen id (tie-breaker)"),
+    include_sensitive: bool = Query(default=False, description="Include sensitive fields (admin-only)"),
+    gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON (Content-Encoding: gzip)"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export dataset documents as NDJSON (JSON Lines) for compliance / lifecycle workflows.
+
+    Security posture:
+    - Requires tenant lifecycle.manage permission (owner/admin).
+    - PII-safe by default (include_sensitive=false): raw filenames/paths/metadata values are not exported.
+    """
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.LIFECYCLE_MANAGE,
+        detail="No permission to export dataset documents",
+    )
+
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+
+    q = (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+        )
+    )
+    if after_created_at is not None:
+        if after_id is not None:
+            q = q.filter(
+                or_(
+                    DBDocument.created_at > after_created_at,
+                    and_(DBDocument.created_at == after_created_at, DBDocument.id > after_id),
+                )
+            )
+        else:
+            q = q.filter(DBDocument.created_at > after_created_at)
+
+    rows = q.order_by(DBDocument.created_at.asc(), DBDocument.id.asc()).limit(limit).all()
+
+    # Best-effort audit log (PII-safe).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="dataset.documents.export",
+            resource_type="dataset",
+            resource_id=str(dataset_id),
+            details={
+                "limit": int(limit or 0),
+                "returned": int(len(rows)),
+                "cursor_after_created_at": (after_created_at.isoformat() if after_created_at else None),
+                "cursor_after_id": (str(after_id) if after_id else None),
+                "include_sensitive": bool(include_sensitive),
+                "gzip": bool(gzip),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    def _iter_lines() -> Iterator[bytes]:
+        for row in rows:
+            payload = _export_document_row(row, include_sensitive=bool(include_sensitive))
+            line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str) + "\n"
+            yield line.encode("utf-8")
+
+    body_iter: Iterator[bytes] = _iter_lines()
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    filename = f"{safe}.documents.ndjson"
+
+    headers = {
+        "Cache-Control": "no-store",
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if gzip:
+        headers["Content-Encoding"] = "gzip"
+        headers["Content-Disposition"] = f'attachment; filename="{filename}.gz"'
+        body_iter = _iter_gzip_chunks(body_iter)
+
+    return StreamingResponse(
+        body_iter,
+        media_type="application/x-ndjson",
+        headers=headers,
     )
