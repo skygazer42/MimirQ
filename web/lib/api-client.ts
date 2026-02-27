@@ -116,6 +116,20 @@ import type {
   MessageFeedbackEnrichedListResponse,
   KGDeleteResponse,
   KGEntityDetailResponse,
+  KGEntityMergeRequest,
+  KGEntityMergePreviewResponse,
+  KGEntityMergeResponse,
+  KGEntityResolutionUndoResponse,
+  KGEntitySplitRequest,
+  KGEntitySplitResponse,
+  KGEntityAliasCreateRequest,
+  KGEntityAliasItem,
+  KGEntityAliasesResponse,
+  KGEntityAliasSuggestionsResponse,
+  KGPredicateOntologyCreateRequest,
+  KGPredicateOntologyItem,
+  KGPredicateOntologyListResponse,
+  KGPredicateOntologyUpdateRequest,
   KGEventDetailResponse,
   KGExtractResponse,
   KGGraphNode,
@@ -2851,6 +2865,72 @@ export const kgApi = {
     params?: { document_ids?: string[]; pipeline_hash?: string; max_events?: number; max_neighbors?: number }
   ): Promise<KGEntityDetailResponse> {
     const { data } = await apiClient.get(`/kg/entities/${entityId}`, { params })
+    return data
+  },
+
+  async listEntityAliases(entityId: string): Promise<KGEntityAliasesResponse> {
+    const { data } = await apiClient.get(`/kg/entities/${entityId}/aliases`)
+    return data
+  },
+
+  async createEntityAlias(entityId: string, body: KGEntityAliasCreateRequest): Promise<KGEntityAliasItem> {
+    const { data } = await apiClient.post(`/kg/entities/${entityId}/aliases`, body)
+    return data
+  },
+
+  async deleteEntityAlias(entityId: string, aliasId: string): Promise<KGEntityAliasesResponse> {
+    const { data } = await apiClient.delete(`/kg/entities/${entityId}/aliases/${aliasId}`)
+    return data
+  },
+
+  async suggestEntityAliases(
+    entityId: string,
+    params?: { mode?: string; k?: number; min_similarity?: number }
+  ): Promise<KGEntityAliasSuggestionsResponse> {
+    const { data } = await apiClient.get(`/kg/entities/${entityId}/alias_suggestions`, { params })
+    return data
+  },
+
+  async listPredicateOntology(): Promise<KGPredicateOntologyListResponse> {
+    const { data } = await apiClient.get('/kg/ontology/predicates')
+    return data
+  },
+
+  async upsertPredicateOntology(body: KGPredicateOntologyCreateRequest): Promise<KGPredicateOntologyItem> {
+    const { data } = await apiClient.post('/kg/ontology/predicates', body)
+    return data
+  },
+
+  async updatePredicateOntology(
+    predicateId: string,
+    body: KGPredicateOntologyUpdateRequest
+  ): Promise<KGPredicateOntologyItem> {
+    const { data } = await apiClient.patch(`/kg/ontology/predicates/${predicateId}`, body)
+    return data
+  },
+
+  async deletePredicateOntology(predicateId: string): Promise<KGPredicateOntologyListResponse> {
+    const { data } = await apiClient.delete(`/kg/ontology/predicates/${predicateId}`)
+    return data
+  },
+
+  async previewMergeEntities(body: KGEntityMergeRequest): Promise<KGEntityMergePreviewResponse> {
+    const { data } = await apiClient.post('/kg/entities/merge/preview', body)
+    return data
+  },
+
+  async mergeEntities(body: KGEntityMergeRequest): Promise<KGEntityMergeResponse> {
+    const { data } = await apiClient.post('/kg/entities/merge', body)
+    return data
+  },
+
+  async splitEntity(body: KGEntitySplitRequest): Promise<KGEntitySplitResponse> {
+    const { data } = await apiClient.post('/kg/entities/split', body)
+    return data
+  },
+
+  async undoResolutionAction(actionId: string): Promise<KGEntityResolutionUndoResponse> {
+    const { data } = await apiClient.post(`/kg/entities/resolution/actions/${actionId}/undo`)
     return data
   },
 

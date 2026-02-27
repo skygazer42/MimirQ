@@ -1,6 +1,7 @@
 import asyncio
 import gzip
 import time
+import uuid
 import zlib
 from typing import Any
 from uuid import UUID
@@ -19,14 +20,29 @@ from app.rag.core.errors import ConfigError
 from app.rag.kg.pipeline import extract_events, kg_search
 from app.rag.kg.schemas import (
     KGDeleteResponse,
+    KGEntityAliasCreateRequest,
+    KGEntityAliasesResponse,
+    KGEntityAliasItem,
+    KGEntityAliasSuggestionItem,
+    KGEntityAliasSuggestionsResponse,
     KGEntityDetailResponse,
     KGEntityItem,
+    KGEntityMergePreviewResponse,
+    KGEntityMergeRequest,
+    KGEntityMergeResponse,
+    KGEntityResolutionUndoResponse,
+    KGEntitySplitRequest,
+    KGEntitySplitResponse,
     KGEventDetailResponse,
     KGEventEntityItem,
     KGEventItem,
     KGExtractResponse,
     KGGraphNode,
     KGGraphResponse,
+    KGPredicateOntologyCreateRequest,
+    KGPredicateOntologyItem,
+    KGPredicateOntologyListResponse,
+    KGPredicateOntologyUpdateRequest,
     KGSearchRequest,
     KGSearchResponse,
     KGStatsResponse,
@@ -64,6 +80,103 @@ def _ensure_enabled():
             status_code=503,
             detail="KG is disabled. Set KG_ENABLED=true in your environment to enable it.",
         )
+
+
+def _resolve_entity_id_via_redirects(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    entity_id: UUID,
+    max_hops: int = 8,
+) -> UUID:
+    """
+    Resolve an entity id to its canonical id via kg_entity_redirects.
+
+    This is used to keep URLs stable after merges and to avoid "ghost entities"
+    leaking into the UI/API when entities have been merged.
+    """
+    from app.rag.kg.models import KgEntityRedirect
+
+    cur = entity_id
+    hops = 0
+    while hops < max(1, int(max_hops or 0)):
+        hops += 1
+        q = db.query(KgEntityRedirect)
+        # Compatibility: some unit tests use a lightweight FakeQuery that only implements `.filter(...)`.
+        if hasattr(q, "filter_by"):
+            q = q.filter_by(tenant_id=tenant_id, from_entity_id=cur)
+        else:
+            q = q.filter(KgEntityRedirect.tenant_id == tenant_id, KgEntityRedirect.from_entity_id == cur)
+        row = q.first()
+        if not row:
+            break
+        nxt = getattr(row, "to_entity_id", None)
+        if nxt is None or nxt == cur:
+            break
+        cur = nxt
+    return cur
+
+
+def _relation_snapshot(rel: object) -> dict[str, Any]:
+    """Best-effort serialize a KgRelation row into a JSON-safe dict for undo payloads."""
+    return {
+        "id": str(getattr(rel, "id", "")),
+        "tenant_id": str(getattr(rel, "tenant_id", "")),
+        "pipeline_hash": getattr(rel, "pipeline_hash", None),
+        "document_id": str(getattr(rel, "document_id", "")) if getattr(rel, "document_id", None) else None,
+        "chunk_id": str(getattr(rel, "chunk_id", "")) if getattr(rel, "chunk_id", None) else None,
+        "event_id": str(getattr(rel, "event_id", "")) if getattr(rel, "event_id", None) else None,
+        "subject_entity_id": str(getattr(rel, "subject_entity_id", "")),
+        "predicate": getattr(rel, "predicate", None),
+        "predicate_raw": getattr(rel, "predicate_raw", None),
+        "object_entity_id": str(getattr(rel, "object_entity_id", "")),
+        "confidence": float(getattr(rel, "confidence", 0.0) or 0.0),
+        "qualifiers": getattr(rel, "qualifiers", None),
+        "references": getattr(rel, "references", None),
+        "extra_data": getattr(rel, "extra_data", None),
+    }
+
+
+def _event_entity_snapshot(assoc: object) -> dict[str, Any]:
+    """Best-effort serialize a KgEventEntity row into a JSON-safe dict for undo payloads."""
+    return {
+        "id": str(getattr(assoc, "id", "")),
+        "event_id": str(getattr(assoc, "event_id", "")),
+        "entity_id": str(getattr(assoc, "entity_id", "")),
+        "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
+        "role": getattr(assoc, "role", None),
+        "extra_data": getattr(assoc, "extra_data", None),
+    }
+
+
+def _uuid_or_none(value: object) -> UUID | None:
+    try:
+        if value is None:
+            return None
+        return UUID(str(value))
+    except Exception:
+        return None
+
+
+def _uuid_list(values: object) -> list[UUID]:
+    if not isinstance(values, list):
+        return []
+    out: list[UUID] = []
+    for v in values:
+        u = _uuid_or_none(v)
+        if u is not None:
+            out.append(u)
+    return out
+
+
+def _dict_list(values: object) -> list[dict]:
+    if not isinstance(values, list):
+        return []
+    out: list[dict] = []
+    for v in values:
+        if isinstance(v, dict):
+            out.append(v)
+    return out
 
 
 def _doc_pipeline_hash(meta: object) -> str | None:
@@ -1572,6 +1685,9 @@ def get_kg_entity_detail(
     """Get a KG entity, its recent events, and co-occurring entity neighbors."""
     _ensure_enabled()
 
+    resolved_entity_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
+    entity_id = resolved_entity_id
+
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
         tenant_id=tenant_id,
@@ -1646,6 +1762,1207 @@ def get_kg_entity_detail(
         events=[KGEventItem.model_validate(ev) for ev in events],
         neighbors=neighbors,
         stats={"total_events": int(total_events), "returned_events": len(events), "returned_neighbors": len(neighbors)},
+    )
+
+
+@router.get("/entities/{entity_id}/aliases", response_model=KGEntityAliasesResponse)
+def list_kg_entity_aliases(
+    entity_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """List aliases for an entity (includes aliases attached to redirected source ids)."""
+    _ = account_id
+    _ensure_enabled()
+
+    from sqlalchemy import or_  # noqa: WPS433
+
+    from app.rag.kg.models import KgEntity, KgEntityAlias, KgEntityRedirect
+
+    resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
+
+    ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=resolved_id).first()
+    if not ent:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    # Include aliases attached to merged/deprecated ids that redirect into this canonical entity.
+    redirect_rows = db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, to_entity_id=resolved_id).all()
+    alias_entity_ids = {resolved_id}
+    for r in redirect_rows:
+        frm = getattr(r, "from_entity_id", None)
+        if frm is not None:
+            alias_entity_ids.add(frm)
+
+    rows = (
+        db.query(KgEntityAlias)
+        .filter(KgEntityAlias.tenant_id == tenant_id)
+        .filter(KgEntityAlias.canonical_entity_id.in_(list(alias_entity_ids)))
+        .filter(or_(KgEntityAlias.alias.isnot(None), KgEntityAlias.alias != ""))  # sanity
+        .order_by(KgEntityAlias.updated_at.desc(), KgEntityAlias.id.asc())
+        .limit(500)
+        .all()
+    )
+
+    return KGEntityAliasesResponse(
+        entity_id=entity_id,
+        resolved_entity_id=resolved_id,
+        aliases=[KGEntityAliasItem.model_validate(a) for a in rows],
+    )
+
+
+@router.post("/entities/{entity_id}/aliases", response_model=KGEntityAliasItem)
+def create_kg_entity_alias(
+    entity_id: UUID,
+    payload: KGEntityAliasCreateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Create (or return existing) alias for an entity."""
+    _ensure_enabled()
+
+    from datetime import datetime
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.models import KgEntity, KgEntityAlias
+
+    resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
+    ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=resolved_id).first()
+    if not ent:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    alias_text = str(payload.alias or "").strip()
+    if not alias_text:
+        raise HTTPException(status_code=400, detail="alias is required")
+
+    parser = EntityValueParser()
+    norm = parser.normalize_name(alias_text)
+    if not norm:
+        raise HTTPException(status_code=400, detail="alias normalizes to empty")
+
+    existing = (
+        db.query(KgEntityAlias)
+        .filter_by(tenant_id=tenant_id, canonical_entity_id=resolved_id, normalized_alias=norm)
+        .first()
+    )
+    if existing:
+        return KGEntityAliasItem.model_validate(existing)
+
+    alias_row = KgEntityAlias(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        canonical_entity_id=resolved_id,
+        alias=alias_text[:500],
+        normalized_alias=norm[:500],
+        created_by=str(account_id or "").strip() or None,
+        extra_data={"method": "manual"},
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(alias_row)
+
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.entity.alias.create",
+                resource_type="kg_entity",
+                resource_id=str(resolved_id),
+                details={"alias": alias_text, "normalized_alias": norm},
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    return KGEntityAliasItem.model_validate(alias_row)
+
+
+@router.delete("/entities/{entity_id}/aliases/{alias_id}", response_model=KGEntityAliasesResponse)
+def delete_kg_entity_alias(
+    entity_id: UUID,
+    alias_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Delete an alias row by id (best-effort, tenant-scoped)."""
+    _ensure_enabled()
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.models import KgEntityAlias
+
+    resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
+
+    row = db.query(KgEntityAlias).filter_by(tenant_id=tenant_id, id=alias_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Alias not found")
+
+    db.delete(row)
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.entity.alias.delete",
+                resource_type="kg_entity",
+                resource_id=str(resolved_id),
+                details={"alias_id": str(alias_id)},
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    # Return the current alias set after deletion.
+    return list_kg_entity_aliases(entity_id=entity_id, tenant_id=tenant_id, account_id=account_id, db=db)
+
+
+@router.get("/entities/{entity_id}/alias_suggestions", response_model=KGEntityAliasSuggestionsResponse)
+def suggest_kg_entity_aliases(
+    entity_id: UUID,
+    mode: str = Query(default="offline", min_length=1, max_length=16, description="offline|vector"),
+    k: int = Query(default=10, ge=1, le=50),
+    min_similarity: float = Query(default=0.6, ge=0.0, le=1.0),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Suggest potential aliases/merge candidates for an entity."""
+    _ = account_id
+    _ensure_enabled()
+
+    from difflib import SequenceMatcher
+
+    from sqlalchemy import and_  # noqa: WPS433
+
+    from app.rag.kg.models import KgEntity
+
+    resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
+    ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=resolved_id).first()
+    if not ent:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    eff_mode = (mode or "offline").strip().lower()
+    want_k = int(k)
+
+    # Offline deterministic: prefix + string similarity on normalized_name.
+    norm = str(getattr(ent, "normalized_name", "") or "").strip()
+    prefix = norm[:4] if len(norm) >= 4 else norm
+
+    suggestions: list[KGEntityAliasSuggestionItem] = []
+    if eff_mode == "offline" or not bool(getattr(ent, "vector", None)):
+        q = db.query(KgEntity).filter(
+            and_(
+                KgEntity.tenant_id == tenant_id,
+                KgEntity.type == getattr(ent, "type", None),
+                KgEntity.id != resolved_id,
+            )
+        )
+        if prefix:
+            q = q.filter(KgEntity.normalized_name.like(f"{prefix}%"))  # noqa: WPS323
+        candidates = q.order_by(KgEntity.normalized_name.asc(), KgEntity.id.asc()).limit(500).all()
+
+        scored: list[tuple[float, str, KgEntity]] = []
+        for c in candidates:
+            c_norm = str(getattr(c, "normalized_name", "") or "").strip()
+            if not c_norm:
+                continue
+            sim = float(SequenceMatcher(a=norm, b=c_norm).ratio())
+            if sim < float(min_similarity):
+                continue
+            scored.append((sim, str(c.id), c))
+
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        for sim, _sid, c in scored[:want_k]:
+            suggestions.append(
+                KGEntityAliasSuggestionItem(
+                    entity_id=c.id,
+                    name=str(getattr(c, "name", "") or ""),
+                    type=str(getattr(c, "type", "") or "unknown"),
+                    similarity=float(sim),
+                    reason="offline:normalized_name_sequence_match",
+                )
+            )
+
+        return KGEntityAliasSuggestionsResponse(
+            entity_id=resolved_id,
+            suggestions=suggestions,
+            mode="offline",
+            stats={"candidates": len(candidates), "returned": len(suggestions), "prefix": prefix},
+        )
+
+    # Vector mode (best-effort): use KG entity vectors if configured and available.
+    try:
+        from app.rag.kg.repository import EntityRepository  # noqa: WPS433
+
+        repo = EntityRepository(db)
+        hits = repo.search_similar(
+            query_vector=list(ent.vector),
+            tenant_id=tenant_id,
+            k=max(1, int(want_k)),
+            entity_type=str(getattr(ent, "type", "") or None) or None,
+        )
+        for h in hits:
+            eid = _uuid_or_none(h.get("entity_id") or h.get("id"))
+            if eid is None or eid == resolved_id:
+                continue
+            suggestions.append(
+                KGEntityAliasSuggestionItem(
+                    entity_id=eid,
+                    name=str(h.get("name") or ""),
+                    type=str(h.get("type") or "unknown"),
+                    similarity=float(h.get("similarity", 0.0) or 0.0),
+                    reason="vector:milvus_similarity",
+                )
+            )
+        suggestions = suggestions[:want_k]
+        return KGEntityAliasSuggestionsResponse(
+            entity_id=resolved_id,
+            suggestions=suggestions,
+            mode="vector",
+            stats={"returned": len(suggestions)},
+        )
+    except Exception:
+        return KGEntityAliasSuggestionsResponse(
+            entity_id=resolved_id,
+            suggestions=[],
+            mode="vector",
+            stats={"returned": 0, "reason": "vector_mode_failed"},
+        )
+
+
+@router.post("/entities/merge/preview", response_model=KGEntityMergePreviewResponse)
+def preview_kg_entity_merge(
+    payload: KGEntityMergeRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Preview the impact of merging one entity into another (no side effects)."""
+    _ = account_id
+    _ensure_enabled()
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation
+
+    source_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=payload.source_entity_id)
+    target_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=payload.target_entity_id)
+    if source_id == target_id:
+        raise HTTPException(status_code=400, detail="Entities already resolve to the same canonical id")
+
+    source_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=source_id).first()
+    target_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=target_id).first()
+    if not source_ent or not target_ent:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    source_assocs = db.query(KgEventEntity).filter_by(entity_id=source_id).all()
+    target_assocs = db.query(KgEventEntity).filter_by(entity_id=target_id).all()
+    source_event_ids = {getattr(a, "event_id", None) for a in source_assocs if getattr(a, "event_id", None) is not None}
+    target_event_ids = {getattr(a, "event_id", None) for a in target_assocs if getattr(a, "event_id", None) is not None}
+    overlap_events = source_event_ids.intersection(target_event_ids)
+
+    sample_n = 20
+    source_event_sample = [str(e) for e in sorted(source_event_ids, key=lambda x: str(x))[:sample_n]]
+    overlap_event_sample = [str(e) for e in sorted(overlap_events, key=lambda x: str(x))[:sample_n]]
+
+    rel_rows = []
+    rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, subject_entity_id=source_id).all())
+    rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, object_entity_id=source_id).all())
+    rel_by_id: dict[str, object] = {}
+    for r in rel_rows:
+        rid = str(getattr(r, "id", "") or "")
+        if rid:
+            rel_by_id[rid] = r
+
+    self_rel_after = 0
+    for r in rel_by_id.values():
+        subj = getattr(r, "subject_entity_id", None)
+        obj = getattr(r, "object_entity_id", None)
+        if (subj == source_id and obj == target_id) or (subj == target_id and obj == source_id):
+            self_rel_after += 1
+
+    return KGEntityMergePreviewResponse(
+        source_entity_id=source_id,
+        target_entity_id=target_id,
+        stats={
+            "source_event_entity_edges": len(source_assocs),
+            "target_event_entity_edges": len(target_assocs),
+            "overlap_events": len(overlap_events),
+            "source_relations": len(rel_by_id),
+            "self_relations_removed": int(self_rel_after),
+            # Preview details (bounded) for UI conflict resolution workflows.
+            "source_events": int(len(source_event_ids)),
+            "source_event_ids_sample": source_event_sample,
+            "overlap_event_ids_sample": overlap_event_sample,
+            # Merge semantics: overlapping events will trigger a dedupe delete of the source association.
+            "event_entity_edges_deleted": int(len(overlap_events)),
+            "event_entity_edges_updated": int(max(0, len(source_assocs) - len(overlap_events))),
+        },
+    )
+
+
+@router.get("/ontology/predicates", response_model=KGPredicateOntologyListResponse)
+def list_kg_predicate_ontology(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """List predicate ontology entries (tenant-scoped)."""
+    _ = account_id
+    _ensure_enabled()
+
+    from app.rag.kg.models import KgPredicateOntology
+
+    rows = (
+        db.query(KgPredicateOntology)
+        .filter_by(tenant_id=tenant_id)
+        .order_by(KgPredicateOntology.is_enabled.desc(), KgPredicateOntology.predicate.asc())
+        .all()
+    )
+    return KGPredicateOntologyListResponse(predicates=[KGPredicateOntologyItem.model_validate(r) for r in rows])
+
+
+@router.post("/ontology/predicates", response_model=KGPredicateOntologyItem)
+def create_kg_predicate_ontology(
+    payload: KGPredicateOntologyCreateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Create (or upsert) a predicate ontology entry."""
+    _ensure_enabled()
+
+    from datetime import datetime
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.extraction.relation_processor import normalize_predicate
+    from app.rag.kg.models import KgPredicateOntology
+
+    key = normalize_predicate(str(payload.predicate or ""))
+    if not key or key == "unknown":
+        raise HTTPException(status_code=400, detail="Invalid predicate key")
+
+    existing = db.query(KgPredicateOntology).filter_by(tenant_id=tenant_id, predicate=key).first()
+    if existing:
+        existing.display_name = payload.display_name
+        existing.description = payload.description
+        existing.is_enabled = bool(payload.is_enabled)
+        existing.updated_at = datetime.utcnow()
+        row = existing
+    else:
+        row = KgPredicateOntology(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            predicate=key[:200],
+            display_name=(str(payload.display_name)[:200] if payload.display_name else None),
+            description=(str(payload.description) if payload.description else None),
+            is_enabled=bool(payload.is_enabled),
+            extra_data={"source": "ui"},
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(row)
+
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.ontology.predicate.upsert",
+                resource_type="kg_predicate_ontology",
+                resource_id=str(getattr(row, "id", "")),
+                details={"predicate": key, "is_enabled": bool(payload.is_enabled)},
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    return KGPredicateOntologyItem.model_validate(row)
+
+
+@router.patch("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyItem)
+def update_kg_predicate_ontology(
+    predicate_id: UUID,
+    payload: KGPredicateOntologyUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Update a predicate ontology entry (toggle enabled, edit metadata)."""
+    _ensure_enabled()
+
+    from datetime import datetime
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.models import KgPredicateOntology
+
+    row = db.query(KgPredicateOntology).filter_by(tenant_id=tenant_id, id=predicate_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Predicate not found")
+
+    if payload.display_name is not None:
+        row.display_name = str(payload.display_name)[:200] if payload.display_name else None
+    if payload.description is not None:
+        row.description = str(payload.description) if payload.description else None
+    if payload.is_enabled is not None:
+        row.is_enabled = bool(payload.is_enabled)
+    row.updated_at = datetime.utcnow()
+
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.ontology.predicate.update",
+                resource_type="kg_predicate_ontology",
+                resource_id=str(predicate_id),
+                details={"is_enabled": payload.is_enabled},
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    return KGPredicateOntologyItem.model_validate(row)
+
+
+@router.delete("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyListResponse)
+def delete_kg_predicate_ontology(
+    predicate_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Delete a predicate ontology entry."""
+    _ensure_enabled()
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.models import KgPredicateOntology
+
+    row = db.query(KgPredicateOntology).filter_by(tenant_id=tenant_id, id=predicate_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Predicate not found")
+
+    pred = str(getattr(row, "predicate", "") or "")
+    db.delete(row)
+
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.ontology.predicate.delete",
+                resource_type="kg_predicate_ontology",
+                resource_id=str(predicate_id),
+                details={"predicate": pred},
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    # Return updated list for convenience in the UI.
+    return list_kg_predicate_ontology(tenant_id=tenant_id, account_id=account_id, db=db)
+
+
+@router.post("/entities/merge", response_model=KGEntityMergeResponse)
+def merge_kg_entities(
+    payload: KGEntityMergeRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Merge a source entity into a target entity (entity resolution).
+
+    Semantics:
+    - Updates event-entity edges and relations to point at the target entity.
+    - Creates a redirect so old entity ids resolve to the canonical entity.
+    - Dedupes duplicate event-entity edges created by the merge.
+    - Records an undo payload in `kg_entity_resolution_actions`.
+    """
+    _ensure_enabled()
+
+    from datetime import datetime
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.models import (
+        KgEntity,
+        KgEntityRedirect,
+        KgEntityResolutionAction,
+        KgEventEntity,
+        KgRelation,
+    )
+    # Milvus is an optional side effect for entity resolution (controlled by settings);
+    # keep imports lazy so unit tests don't require a running Milvus.
+
+    source_raw = payload.source_entity_id
+    target_raw = payload.target_entity_id
+    if source_raw == target_raw:
+        raise HTTPException(status_code=400, detail="source_entity_id must differ from target_entity_id")
+
+    # Resolve through redirects so callers can merge via historical ids safely.
+    source_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=source_raw)
+    target_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=target_raw)
+    if source_id == target_id:
+        raise HTTPException(status_code=400, detail="Entities already resolve to the same canonical id")
+
+    source_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=source_id).first()
+    target_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=target_id).first()
+    if not source_ent or not target_ent:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    # Safety rail: merges across types are almost always incorrect.
+    if str(getattr(source_ent, "type", "") or "").strip() != str(getattr(target_ent, "type", "") or "").strip():
+        raise HTTPException(status_code=400, detail="Cannot merge entities of different types")
+
+    # Gather affected rows (Python-level snapshots so unit tests don't require a DB).
+    source_assocs = db.query(KgEventEntity).filter_by(entity_id=source_id).all()
+    source_assoc_ids = {str(getattr(a, "id", "")) for a in source_assocs if getattr(a, "id", None)}
+    assoc_snapshot_by_id: dict[str, dict[str, Any]] = {
+        str(a.id): _event_entity_snapshot(a) for a in source_assocs if getattr(a, "id", None)
+    }
+    impacted_event_ids = {getattr(a, "event_id", None) for a in source_assocs if getattr(a, "event_id", None) is not None}
+
+    # Relations: fetch both directions and dedupe by id.
+    rel_rows = []
+    rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, subject_entity_id=source_id).all())
+    rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, object_entity_id=source_id).all())
+    rel_by_id: dict[str, object] = {}
+    for r in rel_rows:
+        rid = str(getattr(r, "id", "") or "")
+        if rid:
+            rel_by_id[rid] = r
+    source_relations = list(rel_by_id.values())
+    source_relation_ids = {str(getattr(r, "id", "")) for r in source_relations if getattr(r, "id", None)}
+    relation_snapshot_by_id: dict[str, dict[str, Any]] = {
+        str(r.id): _relation_snapshot(r) for r in source_relations if getattr(r, "id", None)
+    }
+
+    # Create action row first so we can reference it from redirects.
+    action = KgEntityResolutionAction(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        actor_id=str(account_id or "").strip() or None,
+        action_type="merge",
+        status="applied",
+        payload={
+            "version": 1,
+            "action": "merge",
+            "source_entity_id": str(source_id),
+            "target_entity_id": str(target_id),
+            "event_entity_updated_ids": sorted([sid for sid in source_assoc_ids if sid]),
+            "relation_updated_ids": sorted([sid for sid in source_relation_ids if sid]),
+            "event_entity_deleted_rows": [],
+            "relation_deleted_rows": [],
+            "redirect_created": False,
+            "vector_deleted": False,
+        },
+        created_at=datetime.utcnow(),
+    )
+    db.add(action)
+
+    # Audit log (lightweight, PII-minimal).
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.entity.merge",
+                resource_type="kg_entity",
+                resource_id=str(target_id),
+                details={
+                    "source_entity_id": str(source_id),
+                    "target_entity_id": str(target_id),
+                },
+            )
+        )
+    except Exception:
+        # Best-effort only.
+        pass
+
+    # Redirect: only create if absent.
+    redirect_created = False
+    existing_redirect = db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, from_entity_id=source_id).first()
+    if existing_redirect:
+        if getattr(existing_redirect, "to_entity_id", None) != target_id:
+            raise HTTPException(status_code=409, detail="Entity redirect already exists to a different canonical id")
+    else:
+        db.add(
+            KgEntityRedirect(
+                from_entity_id=source_id,
+                tenant_id=tenant_id,
+                to_entity_id=target_id,
+                action_id=action.id,
+                created_by=str(account_id or "").strip() or None,
+                extra_data={"reason": "merge"},
+                created_at=datetime.utcnow(),
+            )
+        )
+        redirect_created = True
+
+    # Apply association updates.
+    for assoc in source_assocs:
+        assoc.entity_id = target_id
+
+    # Apply relation updates + remove self-relations introduced by the merge.
+    relation_deleted_rows: list[dict[str, Any]] = []
+    for rel in source_relations:
+        rid = str(getattr(rel, "id", "") or "")
+        if getattr(rel, "subject_entity_id", None) == source_id:
+            rel.subject_entity_id = target_id
+        if getattr(rel, "object_entity_id", None) == source_id:
+            rel.object_entity_id = target_id
+
+        if getattr(rel, "subject_entity_id", None) == getattr(rel, "object_entity_id", None):
+            if rid and rid in relation_snapshot_by_id:
+                relation_deleted_rows.append(relation_snapshot_by_id[rid])
+            db.delete(rel)
+
+    # Deduplicate event-entity edges created by the merge.
+    deleted_assoc_rows: list[dict[str, Any]] = []
+    if impacted_event_ids:
+        current_target_assocs = db.query(KgEventEntity).filter_by(entity_id=target_id).all()
+        by_event: dict[UUID, list[object]] = {}
+        for a in current_target_assocs:
+            ev_id = getattr(a, "event_id", None)
+            if ev_id is None or ev_id not in impacted_event_ids:
+                continue
+            by_event.setdefault(ev_id, []).append(a)
+
+        for _ev_id, rows in by_event.items():
+            if len(rows) <= 1:
+                continue
+            # Prefer keeping the pre-existing target edge (id not in the updated source set).
+            keep = None
+            for r in rows:
+                rid = str(getattr(r, "id", "") or "")
+                if rid and rid not in source_assoc_ids:
+                    keep = r
+                    break
+            if keep is None:
+                keep = rows[0]
+
+            keep_weight = float(getattr(keep, "weight", 1.0) or 1.0)
+            keep_role = getattr(keep, "role", None)
+            keep_extra = getattr(keep, "extra_data", None)
+
+            for r in rows:
+                if r is keep:
+                    continue
+                rid = str(getattr(r, "id", "") or "")
+                w = float(getattr(r, "weight", 1.0) or 1.0)
+                keep_weight = max(keep_weight, w)
+                if not keep_role:
+                    keep_role = getattr(r, "role", None)
+                if not keep_extra:
+                    keep_extra = getattr(r, "extra_data", None)
+
+                # Only delete rows introduced by the merge (source edges). Keep original target edges.
+                if rid and rid in source_assoc_ids:
+                    snap = assoc_snapshot_by_id.get(rid) or _event_entity_snapshot(r)
+                    # Ensure undo restores to the source entity.
+                    snap["entity_id"] = str(source_id)
+                    deleted_assoc_rows.append(snap)
+                    db.delete(r)
+
+            keep.weight = keep_weight
+            keep.role = keep_role
+            keep.extra_data = keep_extra
+
+    # Best-effort: delete source entity vectors so vector recall doesn't return deprecated ids.
+    vector_deleted = False
+    if bool(getattr(settings, "KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED", False)):
+        try:
+            from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name  # noqa: WPS433
+
+            collection = resolve_collection_name("kg_entities")
+            milvus = get_milvus_adapter(collection_name=collection, vector_field="embedding")
+            milvus.delete([str(source_id)])
+            vector_deleted = True
+        except Exception:
+            vector_deleted = False
+
+    # Update the action payload with side effects so undo can restore state.
+    payload_dict = dict(action.payload or {})
+    payload_dict["event_entity_deleted_rows"] = deleted_assoc_rows
+    payload_dict["relation_deleted_rows"] = relation_deleted_rows
+    payload_dict["redirect_created"] = bool(redirect_created)
+    payload_dict["vector_deleted"] = bool(vector_deleted)
+    action.payload = payload_dict
+
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    return KGEntityMergeResponse(
+        action_id=action.id,
+        source_entity_id=source_id,
+        target_entity_id=target_id,
+        stats={
+            "source_event_entity_edges": len(source_assocs),
+            "source_relations": len(source_relations),
+            "dedup_deleted_event_entity_edges": len(deleted_assoc_rows),
+            "deleted_relations": len(relation_deleted_rows),
+            "redirect_created": bool(redirect_created),
+            "vector_deleted": bool(vector_deleted),
+        },
+    )
+
+
+@router.post("/entities/split", response_model=KGEntitySplitResponse)
+def split_kg_entity(
+    payload: KGEntitySplitRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Split an entity by moving a selected set of event-entity edges to a new entity.
+
+    This is a conservative v1 split:
+    - Caller must provide explicit event_ids to move.
+    - The new entity inherits the original entity type.
+    - Relations are moved only when they are anchored to those event_ids.
+    """
+    _ensure_enabled()
+
+    from datetime import datetime
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.models import KgEntity, KgEntityResolutionAction, KgEventEntity, KgRelation
+
+    original_raw = payload.entity_id
+    original_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=original_raw)
+
+    ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=original_id).first()
+    if not ent:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    event_ids = [eid for eid in (payload.event_ids or []) if eid is not None]
+    # Safety rail: require explicit scope and cap size.
+    if not event_ids:
+        raise HTTPException(status_code=400, detail="event_ids is required for split")
+    if len(event_ids) > 5000:
+        raise HTTPException(status_code=400, detail="Too many event_ids (max 5000)")
+    event_id_set = set(event_ids)
+
+    new_name = str(payload.new_entity_name or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="new_entity_name is required")
+
+    parser = EntityValueParser()
+    new_norm = parser.normalize_name(new_name)
+
+    new_entity_id = uuid.uuid4()
+    new_ent = KgEntity(
+        id=new_entity_id,
+        tenant_id=tenant_id,
+        name=new_name,
+        type=str(getattr(ent, "type", "") or "unknown"),
+        normalized_name=new_norm,
+        description=None,
+        vector=None,
+        extra_data={"split_from": str(original_id)},
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(new_ent)
+
+    moved_assoc_ids: list[str] = []
+    source_assocs = db.query(KgEventEntity).filter_by(entity_id=original_id).all()
+    for assoc in source_assocs:
+        ev_id = getattr(assoc, "event_id", None)
+        if ev_id is None or ev_id not in event_id_set:
+            continue
+        moved_assoc_ids.append(str(getattr(assoc, "id", "") or ""))
+        assoc.entity_id = new_entity_id
+
+    moved_relation_ids: list[str] = []
+    rel_rows = []
+    rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, subject_entity_id=original_id).all())
+    rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, object_entity_id=original_id).all())
+    rel_by_id: dict[str, object] = {}
+    for r in rel_rows:
+        rid = str(getattr(r, "id", "") or "")
+        if rid:
+            rel_by_id[rid] = r
+    for rel in rel_by_id.values():
+        ev_id = getattr(rel, "event_id", None)
+        if ev_id is None or ev_id not in event_id_set:
+            continue
+        moved_relation_ids.append(str(getattr(rel, "id", "") or ""))
+        if getattr(rel, "subject_entity_id", None) == original_id:
+            rel.subject_entity_id = new_entity_id
+        if getattr(rel, "object_entity_id", None) == original_id:
+            rel.object_entity_id = new_entity_id
+
+    action = KgEntityResolutionAction(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        actor_id=str(account_id or "").strip() or None,
+        action_type="split",
+        status="applied",
+        payload={
+            "version": 1,
+            "action": "split",
+            "original_entity_id": str(original_id),
+            "new_entity_id": str(new_entity_id),
+            "moved_event_entity_ids": [x for x in moved_assoc_ids if x],
+            "moved_relation_ids": [x for x in moved_relation_ids if x],
+            "new_entity_name": new_name,
+            "moved_events": [str(eid) for eid in event_ids],
+        },
+        created_at=datetime.utcnow(),
+    )
+    db.add(action)
+
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.entity.split",
+                resource_type="kg_entity",
+                resource_id=str(original_id),
+                details={
+                    "original_entity_id": str(original_id),
+                    "new_entity_id": str(new_entity_id),
+                    "moved_event_entity_edges": len([x for x in moved_assoc_ids if x]),
+                    "moved_relations": len([x for x in moved_relation_ids if x]),
+                },
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    return KGEntitySplitResponse(
+        action_id=action.id,
+        original_entity_id=original_id,
+        new_entity_id=new_entity_id,
+        stats={
+            "moved_event_entity_edges": len([x for x in moved_assoc_ids if x]),
+            "moved_relations": len([x for x in moved_relation_ids if x]),
+        },
+    )
+
+
+@router.post("/entities/resolution/actions/{action_id}/undo", response_model=KGEntityResolutionUndoResponse)
+def undo_kg_entity_resolution_action(
+    action_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Undo a merge/split resolution action (best-effort, deterministic)."""
+    _ensure_enabled()
+
+    from datetime import datetime
+
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.models import KgEntityRedirect, KgEntityResolutionAction, KgEventEntity, KgRelation
+    # Vector side effects are controlled by settings (keep Milvus imports lazy).
+
+    action = db.query(KgEntityResolutionAction).filter_by(tenant_id=tenant_id, id=action_id).first()
+    if not action:
+        raise HTTPException(status_code=404, detail="Resolution action not found")
+
+    if str(getattr(action, "status", "") or "").strip().lower() != "applied":
+        raise HTTPException(status_code=409, detail="Resolution action is not in applied state")
+
+    payload = dict(getattr(action, "payload", None) or {})
+    action_kind = str(payload.get("action") or "").strip().lower()
+    if action_kind not in {"merge", "split"}:
+        raise HTTPException(status_code=400, detail="Unsupported resolution action for undo")
+
+    restored_edges = 0
+    restored_relations = 0
+    redirect_removed = False
+    deleted_new_entity = False
+
+    source_id = None
+    target_id = None
+
+    if action_kind == "merge":
+        source_id = _uuid_or_none(payload.get("source_entity_id"))
+        target_id = _uuid_or_none(payload.get("target_entity_id"))
+        if source_id is None or target_id is None:
+            raise HTTPException(status_code=400, detail="Invalid action payload (missing entity ids)")
+
+        updated_assoc_ids = set(str(u) for u in _uuid_list(payload.get("event_entity_updated_ids")) if u)
+        deleted_assoc_rows = _dict_list(payload.get("event_entity_deleted_rows"))
+        updated_relation_ids = set(str(u) for u in _uuid_list(payload.get("relation_updated_ids")) if u)
+        deleted_relation_rows = _dict_list(payload.get("relation_deleted_rows"))
+        redirect_created = bool(payload.get("redirect_created", False))
+        vector_deleted = bool(payload.get("vector_deleted", False))
+
+        # Restore updated association rows by id (best-effort).
+        if updated_assoc_ids:
+            for assoc in db.query(KgEventEntity).all():
+                aid = str(getattr(assoc, "id", "") or "")
+                if aid and aid in updated_assoc_ids:
+                    assoc.entity_id = source_id
+                    restored_edges += 1
+
+        # Restore deleted association rows (dedupe deletions).
+        for row in deleted_assoc_rows:
+            rid = _uuid_or_none(row.get("id"))
+            ev_id = _uuid_or_none(row.get("event_id"))
+            if rid is None or ev_id is None:
+                continue
+            db.add(
+                KgEventEntity(
+                    id=rid,
+                    event_id=ev_id,
+                    entity_id=source_id,
+                    weight=float(row.get("weight", 1.0) or 1.0),
+                    role=(str(row.get("role")) if row.get("role") is not None else None),
+                    extra_data=(row.get("extra_data") if isinstance(row.get("extra_data"), dict) else None),
+                )
+            )
+            restored_edges += 1
+
+        # Restore updated relations by id.
+        if updated_relation_ids:
+            for rel in db.query(KgRelation).filter_by(tenant_id=tenant_id).all():
+                rid = str(getattr(rel, "id", "") or "")
+                if not rid or rid not in updated_relation_ids:
+                    continue
+
+                # If we don't have a snapshot, conservatively swap target back to source.
+                if getattr(rel, "subject_entity_id", None) == target_id:
+                    rel.subject_entity_id = source_id
+                if getattr(rel, "object_entity_id", None) == target_id:
+                    rel.object_entity_id = source_id
+                restored_relations += 1
+
+        # Reinsert deleted relations.
+        for row in deleted_relation_rows:
+            rid = _uuid_or_none(row.get("id"))
+            if rid is None:
+                continue
+            db.add(
+                KgRelation(
+                    id=rid,
+                    tenant_id=tenant_id,
+                    pipeline_hash=(str(row.get("pipeline_hash"))[:200] if row.get("pipeline_hash") else None),
+                    document_id=_uuid_or_none(row.get("document_id")),
+                    chunk_id=_uuid_or_none(row.get("chunk_id")),
+                    event_id=_uuid_or_none(row.get("event_id")),
+                    subject_entity_id=_uuid_or_none(row.get("subject_entity_id")) or source_id,
+                    predicate=str(row.get("predicate") or "").strip() or "related_to",
+                    predicate_raw=(str(row.get("predicate_raw"))[:200] if row.get("predicate_raw") else None),
+                    object_entity_id=_uuid_or_none(row.get("object_entity_id")) or source_id,
+                    confidence=float(row.get("confidence", 0.5) or 0.5),
+                    qualifiers=(row.get("qualifiers") if isinstance(row.get("qualifiers"), dict) else None),
+                    references=(row.get("references") if isinstance(row.get("references"), dict) else None),
+                    extra_data=(row.get("extra_data") if isinstance(row.get("extra_data"), dict) else None),
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+            )
+            restored_relations += 1
+
+        # Remove redirect created by this action so old ids no longer resolve.
+        if redirect_created:
+            row = db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, from_entity_id=source_id).first()
+            if row and getattr(row, "to_entity_id", None) == target_id:
+                db.delete(row)
+                redirect_removed = True
+
+        # Best-effort: restore entity vector if we deleted it.
+        if vector_deleted and bool(getattr(settings, "KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED", False)):
+            try:
+                from app.rag.kg.models import KgEntity  # noqa: WPS433
+                from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name  # noqa: WPS433
+
+                ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=source_id).first()
+                if ent is not None and getattr(ent, "vector", None):
+                    collection = resolve_collection_name("kg_entities")
+                    milvus = get_milvus_adapter(collection_name=collection, vector_field="embedding")
+                    milvus.add_vectors(
+                        items=[
+                            {
+                                "id": str(source_id),
+                                "content": str(getattr(ent, "name", "") or ""),
+                                "metadata": {
+                                    "name": str(getattr(ent, "name", "") or ""),
+                                    "normalized_name": str(getattr(ent, "normalized_name", "") or ""),
+                                    "tenant_id": str(tenant_id),
+                                    "type": str(getattr(ent, "type", "") or "unknown"),
+                                    "description": str(getattr(ent, "description", "") or ""),
+                                    "index_kind": "entity",
+                                },
+                            }
+                        ],
+                        embeddings=[list(ent.vector)],
+                    )
+            except Exception:
+                pass
+
+    elif action_kind == "split":
+        original_id = _uuid_or_none(payload.get("original_entity_id"))
+        new_id = _uuid_or_none(payload.get("new_entity_id"))
+        if original_id is None or new_id is None:
+            raise HTTPException(status_code=400, detail="Invalid action payload (missing entity ids)")
+        moved_assoc_ids = {str(x) for x in (payload.get("moved_event_entity_ids") or []) if str(x or "").strip()}
+        moved_relation_ids = {str(x) for x in (payload.get("moved_relation_ids") or []) if str(x or "").strip()}
+
+        if moved_assoc_ids:
+            for assoc in db.query(KgEventEntity).all():
+                aid = str(getattr(assoc, "id", "") or "")
+                if aid and aid in moved_assoc_ids:
+                    assoc.entity_id = original_id
+                    restored_edges += 1
+
+        if moved_relation_ids:
+            for rel in db.query(KgRelation).filter_by(tenant_id=tenant_id).all():
+                rid = str(getattr(rel, "id", "") or "")
+                if rid and rid in moved_relation_ids:
+                    if getattr(rel, "subject_entity_id", None) == new_id:
+                        rel.subject_entity_id = original_id
+                    if getattr(rel, "object_entity_id", None) == new_id:
+                        rel.object_entity_id = original_id
+                    restored_relations += 1
+
+        # Best-effort prune: if the split-created entity is now orphaned, remove it so undo
+        # truly returns the graph to the pre-split shape.
+        try:
+            from app.rag.kg.models import KgEntity, KgEntityAlias  # noqa: WPS433
+
+            remaining_assocs = db.query(KgEventEntity).filter_by(entity_id=new_id).all()
+            remaining_rel_subj = db.query(KgRelation).filter_by(tenant_id=tenant_id, subject_entity_id=new_id).all()
+            remaining_rel_obj = db.query(KgRelation).filter_by(tenant_id=tenant_id, object_entity_id=new_id).all()
+            remaining_aliases = db.query(KgEntityAlias).filter_by(
+                tenant_id=tenant_id, canonical_entity_id=new_id
+            ).all()
+            remaining_redirects_from = db.query(KgEntityRedirect).filter_by(
+                tenant_id=tenant_id, from_entity_id=new_id
+            ).all()
+            remaining_redirects_to = db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, to_entity_id=new_id).all()
+            if (
+                not remaining_assocs
+                and not remaining_rel_subj
+                and not remaining_rel_obj
+                and not remaining_aliases
+                and not remaining_redirects_from
+                and not remaining_redirects_to
+            ):
+                ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=new_id).first()
+                if ent is not None:
+                    db.delete(ent)
+                    deleted_new_entity = True
+        except Exception:
+            pass
+
+        source_id = original_id
+        target_id = new_id
+
+    action.status = "reverted"
+    action.reversed_at = datetime.utcnow()
+    action.reversed_by = str(account_id or "").strip() or None
+
+    try:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.entity.merge.undo" if action_kind == "merge" else "kg.entity.split.undo",
+                resource_type="kg_entity_resolution_action",
+                resource_id=str(action_id),
+                details={"source_entity_id": str(source_id), "target_entity_id": str(target_id)},
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
+    return KGEntityResolutionUndoResponse(
+        action_id=action.id,
+        status=str(action.status or ""),
+        stats={
+            "restored_event_entity_edges": int(restored_edges),
+            "restored_relations": int(restored_relations),
+            "redirect_removed": bool(redirect_removed),
+            "deleted_new_entity": bool(deleted_new_entity),
+        },
     )
 
 

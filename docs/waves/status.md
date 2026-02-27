@@ -11,7 +11,7 @@ Update it at the end of each wave commit.
 | Wave12B | done | `42afb6c1` | Retention jobs runner |
 | Wave13 | done | (see git log) | Gap baseline + roadmap + diff-first tooling |
 | Wave14 | done | (see git log) | KG versioning scope (active pipeline) + snapshots + API filters |
-| Wave15 | planned | - | Entity resolution (aliases/merge/split) + ontology governance |
+| Wave15 | done | (see git log) | Entity resolution (aliases/merge/split/undo) + redirects + predicate ontology governance |
 | Wave16 | planned | - | KG reasoning (embeddings/path/provenance injection) |
 | Wave17 | planned | - | Retrieval excellence v2 |
 | Wave18 | planned | - | Chunking/document understanding v2 |

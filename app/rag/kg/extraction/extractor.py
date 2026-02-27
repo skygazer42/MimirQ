@@ -4,7 +4,6 @@ Event extractor coordinating LLM + embeddings + persistence.
 
 import asyncio
 import hashlib
-import re
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -1294,12 +1293,14 @@ class EventExtractor:
                                 logger.warning("KG alias entity upsert failed; continuing: %s", str(exc)[:200])
 
                     # 3) Run LLM extraction for chunks with at least 2 candidates.
-                    allowed_predicates: Sequence[str] = _DEFAULT_RELATION_PREDICATES
-                    raw_predicates = str(getattr(settings, "KG_RELATION_ALLOWED_PREDICATES", "") or "").strip()
-                    if raw_predicates:
-                        parts = [p.strip() for p in re.split(r"[,\n]+", raw_predicates) if str(p).strip()]
-                        if parts:
-                            allowed_predicates = parts
+                    from app.rag.kg.ontology import resolve_allowed_predicates  # noqa: WPS433
+
+                    allowed_predicates: Sequence[str] = resolve_allowed_predicates(
+                        db=session,
+                        tenant_id=tenant_id,
+                        fallback_default=_DEFAULT_RELATION_PREDICATES,
+                        raw_override=str(getattr(settings, "KG_RELATION_ALLOWED_PREDICATES", "") or "").strip(),
+                    )
 
                     relation_processor = RelationProcessor(
                         llm_client=llm_client,

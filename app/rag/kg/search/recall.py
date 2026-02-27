@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
-from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
+from app.rag.kg.repository import AliasRepository, EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
@@ -48,6 +48,7 @@ class RecallSearcher:
         session = get_session()
         try:
             entity_repo = EntityRepository(session)
+            alias_repo = AliasRepository(session)
             event_repo = EventRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
             max_events = int(config.recall.max_events)
@@ -55,13 +56,65 @@ class RecallSearcher:
             if max_candidates > 0:
                 max_events = min(max_events, max_candidates)
 
+            # === Step0: alias-aware query expansion (lexical) ===
+            alias_key_ids: set[str] = set()
+            expanded_query = str(config.query or "")
+            try:
+                alias_hits = alias_repo.match_aliases(
+                    query=str(config.query or ""),
+                    tenant_id=tenant_id,
+                    limit=max(0, int(config.recall.max_entities)),
+                )
+            except Exception:
+                alias_hits = []
+
+            if alias_hits:
+                # Append canonical entity names to the query to help embedding recall.
+                # Keep expansion bounded to avoid ballooning token count.
+                names_added = 0
+                expanded_fold = expanded_query.casefold()
+                for hit in alias_hits[:5]:
+                    nm = str((hit or {}).get("name") or "").strip()
+                    if not nm:
+                        continue
+                    if nm.isascii() and nm.casefold() in expanded_fold:
+                        continue
+                    if not nm.isascii() and nm in expanded_query:
+                        continue
+                    expanded_query = f"{expanded_query} {nm}".strip()
+                    names_added += 1
+                    if names_added >= 5:
+                        break
+
             # === Step1: query -> keys (vector) ===
-            query_vec = await self.processor.generate_embedding(config.query)
+            query_vec = await self.processor.generate_embedding(expanded_query)
             raw_entities = entity_repo.search_similar(
                 query_vector=query_vec,
                 tenant_id=tenant_id,
                 k=config.recall.vector_candidates,
             )
+
+            # Alias-aware keys: merge in alias hits as high-confidence candidates.
+            if alias_hits:
+                existing_ids = {str((e or {}).get("entity_id") or "").strip() for e in (raw_entities or [])}
+                for hit in alias_hits:
+                    eid = str((hit or {}).get("entity_id") or "").strip()
+                    if not eid:
+                        continue
+                    alias_key_ids.add(eid)
+                    if eid in existing_ids:
+                        continue
+                    raw_entities.append(hit)
+                    existing_ids.add(eid)
+
+                    tracker.add_clue(
+                        stage="recall",
+                        from_node=Tracker.build_query_node(config),
+                        to_node=Tracker.build_entity_node(hit),
+                        confidence=float((hit or {}).get("similarity", 1.0) or 1.0),
+                        relation="query->entity:alias",
+                        metadata={"method": "alias_match", "step": "step0"},
+                    )
             if not bool(getattr(config, "include_skill_entities", True)):
                 raw_entities = [
                     e
@@ -206,6 +259,18 @@ class RecallSearcher:
 
                             if not from_id or not to_id or to_id == from_id:
                                 continue
+
+                            # Safety rail (Wave15): when a key was introduced via alias match, only
+                            # expand through evidence-anchored edges (reduce drift from ambiguous aliases).
+                            if from_id in alias_key_ids:
+                                refs = getattr(rel, "references", None)
+                                evidence_quote = (
+                                    str(refs.get("evidence_quote") or "").strip()
+                                    if isinstance(refs, dict)
+                                    else ""
+                                )
+                                if not evidence_quote:
+                                    continue
 
                             pred_mult = relation_multiplier(predicate, from_is_subject=bool(from_id == subj))
                             if pred_mult <= 0:

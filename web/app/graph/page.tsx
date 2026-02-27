@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
 import { Kbd } from '@/components/ui/kbd'
@@ -65,8 +66,24 @@ import { parseGraphML, GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn } from '@/lib/utils'
+import { formatApiError } from '@/lib/api-errors'
 import { kgApi } from '@/lib/api-client'
-import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse, RagTrace, RagTraceListResponse } from '@/types'
+import type {
+  KGEntityAliasItem,
+  KGEntityAliasSuggestionItem,
+  KGEntityAliasesResponse,
+  KGEntityAliasSuggestionsResponse,
+  KGEntityDetailResponse,
+  KGEntityMergePreviewResponse,
+  KGEntityMergeResponse,
+  KGEntityResolutionUndoResponse,
+  KGEntitySplitResponse,
+  KGEventDetailResponse,
+  KGStatsResponse,
+  KGGraphNode,
+  RagTrace,
+  RagTraceListResponse,
+} from '@/types'
 
 export default function GraphPage() {
   const router = useRouter()
@@ -86,6 +103,37 @@ export default function GraphPage() {
   const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
   const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d')
+
+  // Entity Resolution (Wave15)
+  const [entityAliases, setEntityAliases] = useState<KGEntityAliasItem[]>([])
+  const [entityAliasesLoading, setEntityAliasesLoading] = useState(false)
+  const [aliasDraft, setAliasDraft] = useState('')
+  const [aliasSaving, setAliasSaving] = useState(false)
+  const [aliasDeleteOpen, setAliasDeleteOpen] = useState(false)
+  const [aliasDeleteTarget, setAliasDeleteTarget] = useState<KGEntityAliasItem | null>(null)
+
+  const [aliasSuggestions, setAliasSuggestions] = useState<KGEntityAliasSuggestionItem[]>([])
+  const [aliasSuggestionsLoading, setAliasSuggestionsLoading] = useState(false)
+
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeSearch, setMergeSearch] = useState('')
+  const [mergeSearchLoading, setMergeSearchLoading] = useState(false)
+  const [mergeSearchResults, setMergeSearchResults] = useState<KGGraphNode[]>([])
+  const [mergeTarget, setMergeTarget] = useState<KGGraphNode | null>(null)
+  const [mergePreview, setMergePreview] = useState<KGEntityMergePreviewResponse | null>(null)
+  const [mergePreviewLoading, setMergePreviewLoading] = useState(false)
+  const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false)
+  const [mergeSubmitting, setMergeSubmitting] = useState(false)
+  const [mergeError, setMergeError] = useState<string | null>(null)
+
+  const [splitOpen, setSplitOpen] = useState(false)
+  const [splitNameDraft, setSplitNameDraft] = useState('')
+  const [splitSelectedEventIds, setSplitSelectedEventIds] = useState<Set<string>>(new Set())
+  const [splitSubmitting, setSplitSubmitting] = useState(false)
+  const [splitError, setSplitError] = useState<string | null>(null)
+
+  const [lastResolutionActionId, setLastResolutionActionId] = useState<string | null>(null)
+  const [undoSubmitting, setUndoSubmitting] = useState(false)
   
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('')
@@ -196,6 +244,61 @@ export default function GraphPage() {
         if (!cancelled) setKgNodeDetail(null)
       } finally {
         if (!cancelled) setKgNodeDetailLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind])
+
+  // Fetch entity resolution data (aliases + suggestions) when an entity is selected.
+  useEffect(() => {
+    if (dataSource !== 'live') {
+      setEntityAliases([])
+      setAliasSuggestions([])
+      setAliasDraft('')
+      setLastResolutionActionId(null)
+      return
+    }
+    if (!isDetailOpen || !selectedNode?.id || selectedNode?.meta?.kind !== 'entity') {
+      setEntityAliases([])
+      setAliasSuggestions([])
+      setAliasDraft('')
+      return
+    }
+
+    let cancelled = false
+    const entityId = String(selectedNode.id)
+
+    setEntityAliasesLoading(true)
+    setAliasSuggestionsLoading(true)
+    setMergeError(null)
+    setSplitError(null)
+
+    ;(async () => {
+      try {
+        const resp = (await kgApi.listEntityAliases(entityId)) as KGEntityAliasesResponse
+        if (!cancelled) setEntityAliases(resp.aliases || [])
+      } catch (error) {
+        if (!cancelled) setEntityAliases([])
+      } finally {
+        if (!cancelled) setEntityAliasesLoading(false)
+      }
+    })()
+
+    ;(async () => {
+      try {
+        const resp = (await kgApi.suggestEntityAliases(entityId, {
+          mode: 'offline',
+          k: 6,
+          min_similarity: 0.75,
+        })) as KGEntityAliasSuggestionsResponse
+        if (!cancelled) setAliasSuggestions(resp.suggestions || [])
+      } catch (error) {
+        if (!cancelled) setAliasSuggestions([])
+      } finally {
+        if (!cancelled) setAliasSuggestionsLoading(false)
       }
     })()
 
@@ -471,6 +574,231 @@ export default function GraphPage() {
     setDeleteNodeTarget(null)
     setDeleteNodeOpen(false)
   }, [deleteNodeTarget, selectedNode])
+
+  const reloadEntityResolution = useCallback(
+    async (entityId: string) => {
+      try {
+        setEntityAliasesLoading(true)
+        const resp = await kgApi.listEntityAliases(entityId)
+        setEntityAliases(resp.aliases || [])
+      } catch (error) {
+        setEntityAliases([])
+      } finally {
+        setEntityAliasesLoading(false)
+      }
+
+      try {
+        setAliasSuggestionsLoading(true)
+        const resp = await kgApi.suggestEntityAliases(entityId, { mode: 'offline', k: 6, min_similarity: 0.75 })
+        setAliasSuggestions(resp.suggestions || [])
+      } catch (error) {
+        setAliasSuggestions([])
+      } finally {
+        setAliasSuggestionsLoading(false)
+      }
+    },
+    []
+  )
+
+  const handleSaveAlias = useCallback(async () => {
+    const entityId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
+    const alias = aliasDraft.trim()
+    if (!entityId) return
+    if (!alias) {
+      toast.error('请输入 alias')
+      return
+    }
+
+    setAliasSaving(true)
+    try {
+      await kgApi.createEntityAlias(entityId, { alias })
+      setAliasDraft('')
+      toast.success('已添加 alias')
+      await reloadEntityResolution(entityId)
+    } catch (error) {
+      toast.error(formatApiError(error, '添加 alias 失败'))
+    } finally {
+      setAliasSaving(false)
+    }
+  }, [aliasDraft, reloadEntityResolution, selectedNode])
+
+  const requestDeleteAlias = useCallback((row: KGEntityAliasItem) => {
+    setAliasDeleteTarget(row)
+    setAliasDeleteOpen(true)
+  }, [])
+
+  const confirmDeleteAlias = useCallback(async () => {
+    const entityId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
+    const aliasId = aliasDeleteTarget?.id ? String(aliasDeleteTarget.id) : ''
+    if (!entityId || !aliasId) {
+      setAliasDeleteOpen(false)
+      setAliasDeleteTarget(null)
+      return
+    }
+
+    setAliasSaving(true)
+    try {
+      const resp = await kgApi.deleteEntityAlias(entityId, aliasId)
+      setEntityAliases(resp.aliases || [])
+      toast.success('已删除 alias')
+      await reloadEntityResolution(entityId)
+    } catch (error) {
+      toast.error(formatApiError(error, '删除 alias 失败'))
+    } finally {
+      setAliasSaving(false)
+      setAliasDeleteOpen(false)
+      setAliasDeleteTarget(null)
+    }
+  }, [aliasDeleteTarget, reloadEntityResolution, selectedNode])
+
+  // Merge UI helpers
+  const openMergeDialog = useCallback(() => {
+    setMergeOpen(true)
+    setMergeSearch('')
+    setMergeSearchResults([])
+    setMergeTarget(null)
+    setMergePreview(null)
+    setMergeError(null)
+  }, [])
+
+  useEffect(() => {
+    if (!mergeOpen) return
+    const q = mergeSearch.trim()
+    if (q.length < 2) {
+      setMergeSearchResults([])
+      return
+    }
+
+    let cancelled = false
+    setMergeSearchLoading(true)
+    const t = window.setTimeout(() => {
+      ;(async () => {
+        try {
+          const rows = await kgApi.searchGraphNodes({ q, kind: 'entity', limit: 8 })
+          const currentId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
+          const filtered = (rows || []).filter((r) => String(r.id) !== currentId)
+          if (!cancelled) setMergeSearchResults(filtered)
+        } catch (error) {
+          if (!cancelled) setMergeSearchResults([])
+        } finally {
+          if (!cancelled) setMergeSearchLoading(false)
+        }
+      })()
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [mergeOpen, mergeSearch, selectedNode])
+
+  const selectMergeTarget = useCallback(
+    async (node: KGGraphNode) => {
+      const sourceId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
+      const targetId = String(node?.id || '')
+      if (!sourceId || !targetId) return
+
+      setMergeTarget(node)
+      setMergePreview(null)
+      setMergeError(null)
+      setMergePreviewLoading(true)
+      try {
+        const preview = await kgApi.previewMergeEntities({ source_entity_id: sourceId, target_entity_id: targetId })
+        setMergePreview(preview)
+      } catch (error) {
+        setMergeError(formatApiError(error, '无法预览合并影响'))
+        setMergePreview(null)
+      } finally {
+        setMergePreviewLoading(false)
+      }
+    },
+    [selectedNode]
+  )
+
+  const submitMerge = useCallback(async () => {
+    const sourceId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
+    const targetId = String(mergeTarget?.id || '')
+    if (!sourceId || !targetId) return
+
+    setMergeSubmitting(true)
+    setMergeError(null)
+    try {
+      const out: KGEntityMergeResponse = await kgApi.mergeEntities({ source_entity_id: sourceId, target_entity_id: targetId })
+      setLastResolutionActionId(String(out.action_id))
+      toast.success('合并已完成（可撤销）')
+      setMergeConfirmOpen(false)
+      setMergeOpen(false)
+      await loadInitialData('live')
+      await reloadEntityResolution(sourceId)
+    } catch (error) {
+      setMergeError(formatApiError(error, '合并失败'))
+    } finally {
+      setMergeSubmitting(false)
+    }
+  }, [loadInitialData, mergeTarget, reloadEntityResolution, selectedNode])
+
+  // Split UI helpers
+  const openSplitDialog = useCallback(() => {
+    setSplitOpen(true)
+    setSplitNameDraft('')
+    setSplitSelectedEventIds(new Set())
+    setSplitError(null)
+  }, [])
+
+  const toggleSplitEvent = useCallback((eventId: string, checked: boolean) => {
+    setSplitSelectedEventIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(eventId)
+      else next.delete(eventId)
+      return next
+    })
+  }, [])
+
+  const submitSplit = useCallback(async () => {
+    const entityId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
+    const name = splitNameDraft.trim()
+    const eventIds = Array.from(splitSelectedEventIds)
+    if (!entityId) return
+    if (!name) {
+      setSplitError('请输入新实体名称')
+      return
+    }
+    if (!eventIds.length) {
+      setSplitError('请选择要移动的事件（events）')
+      return
+    }
+
+    setSplitSubmitting(true)
+    setSplitError(null)
+    try {
+      const out: KGEntitySplitResponse = await kgApi.splitEntity({ entity_id: entityId, new_entity_name: name, event_ids: eventIds })
+      setLastResolutionActionId(String(out.action_id))
+      toast.success('拆分已完成（可撤销）')
+      setSplitOpen(false)
+      await loadInitialData('live')
+      await reloadEntityResolution(entityId)
+    } catch (error) {
+      setSplitError(formatApiError(error, '拆分失败'))
+    } finally {
+      setSplitSubmitting(false)
+    }
+  }, [loadInitialData, reloadEntityResolution, selectedNode, splitNameDraft, splitSelectedEventIds])
+
+  const undoLastResolution = useCallback(async () => {
+    const actionId = (lastResolutionActionId || '').trim()
+    if (!actionId) return
+    setUndoSubmitting(true)
+    try {
+      const out: KGEntityResolutionUndoResponse = await kgApi.undoResolutionAction(actionId)
+      toast.success(`已撤销：${String(out.status || 'ok')}`)
+      setLastResolutionActionId(null)
+      await loadInitialData('live')
+    } catch (error) {
+      toast.error(formatApiError(error, '撤销失败'))
+    } finally {
+      setUndoSubmitting(false)
+    }
+  }, [lastResolutionActionId, loadInitialData])
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -1318,6 +1646,88 @@ export default function GraphPage() {
                               ))}
                             </div>
                           </div>
+                          <div className="bg-muted rounded-xl p-3 border border-border">
+                            <div className="text-[10px] font-medium text-muted-foreground mb-2">Aliases</div>
+                            {entityAliasesLoading ? (
+                              <div className="text-xs text-muted-foreground">Loading...</div>
+                            ) : entityAliases.length === 0 ? (
+                              <div className="text-xs text-muted-foreground">No aliases</div>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {entityAliases.slice(0, 12).map((a) => (
+                                  <div
+                                    key={a.id}
+                                    className="inline-flex items-center gap-1 rounded-full bg-background/60 px-2 py-1 text-[11px] border border-border"
+                                  >
+                                    <span className="max-w-[150px] truncate" title={a.alias}>
+                                      {a.alias}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => requestDeleteAlias(a)}
+                                      aria-label={`删除 alias ${a.alias}`}
+                                      className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-0.5 transition-colors"
+                                    >
+                                      <X className="size-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-3 flex items-center gap-2">
+                              <Input
+                                value={aliasDraft}
+                                onChange={(e) => setAliasDraft(e.target.value)}
+                                placeholder="Add alias…"
+                                className="h-8 text-xs"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-8 text-xs"
+                                onClick={handleSaveAlias}
+                                disabled={aliasSaving || !aliasDraft.trim()}
+                              >
+                                添加
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="bg-muted rounded-xl p-3 border border-border">
+                            <div className="text-[10px] font-medium text-muted-foreground mb-2">Suggestions</div>
+                            {aliasSuggestionsLoading ? (
+                              <div className="text-xs text-muted-foreground">Loading...</div>
+                            ) : aliasSuggestions.length === 0 ? (
+                              <div className="text-xs text-muted-foreground">No suggestions</div>
+                            ) : (
+                              <div className="space-y-1">
+                                {aliasSuggestions.slice(0, 6).map((s) => (
+                                  <div key={s.entity_id} className="flex items-center justify-between gap-2 text-xs">
+                                    <span className="text-foreground truncate" title={s.name}>
+                                      {s.name || s.entity_id}
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 px-2 text-[11px]"
+                                      onClick={() => {
+                                        openMergeDialog()
+                                        selectMergeTarget({
+                                          id: s.entity_id,
+                                          label: s.name || s.entity_id,
+                                          meta: { kind: 'entity', type: s.type },
+                                        })
+                                      }}
+                                    >
+                                      合并
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="bg-muted rounded-xl p-3 border border-border">
@@ -1401,6 +1811,37 @@ export default function GraphPage() {
                           删除
                         </Button>
                       </div>
+                      {dataSource === 'live' && selectedNode?.meta?.kind === 'entity' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={openMergeDialog}
+                            className="w-full justify-start text-xs h-9 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-200 hover:border-amber-500/30 text-muted-foreground"
+                          >
+                            <BoxSelect className="w-3 h-3 mr-2" />
+                            合并
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={openSplitDialog}
+                            className="w-full justify-start text-xs h-9 hover:bg-violet-500/10 dark:hover:bg-violet-500/20 hover:text-violet-700 dark:hover:text-violet-200 hover:border-violet-500/30 text-muted-foreground"
+                          >
+                            <Box className="w-3 h-3 mr-2" />
+                            拆分
+                          </Button>
+                        </div>
+                      )}
+                      {lastResolutionActionId && (
+                        <Button
+                          variant="outline"
+                          onClick={undoLastResolution}
+                          disabled={undoSubmitting}
+                          className="w-full justify-start text-xs h-9 hover:bg-primary/10 hover:text-primary text-muted-foreground"
+                        >
+                          <RefreshCw className="w-3 h-3 mr-2" />
+                          {undoSubmitting ? '撤销中…' : '撤销上次变更'}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1429,6 +1870,217 @@ export default function GraphPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AlertDialog
+          open={aliasDeleteOpen}
+          onOpenChange={(open) => {
+            setAliasDeleteOpen(open)
+            if (!open) setAliasDeleteTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>删除 alias？</AlertDialogTitle>
+              <AlertDialogDescription>
+                你将删除 alias <span className="font-mono">{aliasDeleteTarget?.alias || '-'}</span>。此操作可通过重新添加恢复。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteAlias} disabled={aliasSaving}>
+                删除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <Dialog
+          open={mergeOpen}
+          onOpenChange={(open) => {
+            setMergeOpen(open)
+            if (!open) {
+              setMergeSearch('')
+              setMergeSearchResults([])
+              setMergeTarget(null)
+              setMergePreview(null)
+              setMergeError(null)
+              setMergeConfirmOpen(false)
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>合并实体</DialogTitle>
+              <DialogDescription>将当前实体合并到另一个实体（可撤销）。建议先查看 Preview。</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="kg-merge-search">搜索目标实体</Label>
+                <Input
+                  id="kg-merge-search"
+                  value={mergeSearch}
+                  onChange={(e) => setMergeSearch(e.target.value)}
+                  placeholder="输入名称关键词…"
+                />
+                {mergeSearchLoading ? (
+                  <div className="text-xs text-muted-foreground">Searching…</div>
+                ) : mergeSearchResults.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>
+                ) : (
+                  <div className="space-y-1">
+                    {mergeSearchResults.slice(0, 8).map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => selectMergeTarget(n)}
+                        className={cn(
+                          "w-full text-left rounded-lg border border-border bg-background/60 px-3 py-2 text-xs hover:bg-background transition-colors",
+                          mergeTarget?.id === n.id && "ring-2 ring-primary/20 border-primary/30"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate">{n.label || n.id}</span>
+                          <span className="text-muted-foreground font-mono">{String(n.id).slice(0, 8)}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {mergeTarget && (
+                <div className="rounded-xl border border-border bg-muted p-3 space-y-2">
+                  <div className="text-[10px] font-medium text-muted-foreground">Preview</div>
+                  <div className="text-xs text-foreground truncate" title={mergeTarget.label}>
+                    Target: {mergeTarget.label || mergeTarget.id}
+                  </div>
+                  {mergePreviewLoading ? (
+                    <div className="text-xs text-muted-foreground">Loading preview…</div>
+                  ) : mergePreview ? (
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                      <div>source edges: {String(mergePreview.stats?.source_event_entity_edges ?? '—')}</div>
+                      <div>overlap: {String(mergePreview.stats?.overlap_events ?? '—')}</div>
+                      <div>relations: {String(mergePreview.stats?.source_relations ?? '—')}</div>
+                      <div>self removed: {String(mergePreview.stats?.self_relations_removed ?? '—')}</div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">No preview available</div>
+                  )}
+                </div>
+              )}
+
+              {mergeError && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                  {mergeError}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMergeOpen(false)}>
+                取消
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setMergeConfirmOpen(true)}
+                disabled={!mergeTarget || mergeSubmitting || mergePreviewLoading}
+              >
+                继续
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog open={mergeConfirmOpen} onOpenChange={setMergeConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认合并？</AlertDialogTitle>
+              <AlertDialogDescription>
+                你将把当前实体合并到 <span className="font-mono">{mergeTarget?.label || '-'}</span>。合并会重写事件边与关系边，但可通过“撤销上次变更”恢复。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={mergeSubmitting}>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={submitMerge} disabled={mergeSubmitting || !mergeTarget}>
+                {mergeSubmitting ? '合并中…' : '确认合并'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <Dialog
+          open={splitOpen}
+          onOpenChange={(open) => {
+            setSplitOpen(open)
+            if (!open) {
+              setSplitNameDraft('')
+              setSplitSelectedEventIds(new Set())
+              setSplitError(null)
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>拆分实体</DialogTitle>
+              <DialogDescription>选择需要移动到新实体的事件（可撤销）。</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="kg-split-name">新实体名称</Label>
+                <Input
+                  id="kg-split-name"
+                  value={splitNameDraft}
+                  onChange={(e) => setSplitNameDraft(e.target.value)}
+                  placeholder="例如：Python (language)"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">选择事件（Recent Events）</div>
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-background/60 p-2 space-y-2">
+                  {(kgNodeDetail as KGEntityDetailResponse | null)?.events?.slice(0, 30)?.map((ev) => {
+                    const checked = splitSelectedEventIds.has(String(ev.id))
+                    return (
+                      <label key={ev.id} className="flex items-start gap-2 text-xs text-foreground">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => toggleSplitEvent(String(ev.id), Boolean(v))}
+                          aria-label={`选择事件 ${ev.title}`}
+                        />
+                        <span className="flex-1 truncate" title={ev.title}>
+                          {ev.title || ev.id}
+                        </span>
+                      </label>
+                    )
+                  })}
+                  {(kgNodeDetail as KGEntityDetailResponse | null)?.events?.length ? null : (
+                    <div className="text-xs text-muted-foreground p-2">No events available</div>
+                  )}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  已选择 {splitSelectedEventIds.size} 个事件（最多显示 30 条）
+                </div>
+              </div>
+
+              {splitError && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                  {splitError}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSplitOpen(false)}>
+                取消
+              </Button>
+              <Button type="button" onClick={submitSplit} disabled={splitSubmitting}>
+                {splitSubmitting ? '拆分中…' : '确认拆分'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={connectLabelOpen}

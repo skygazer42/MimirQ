@@ -153,3 +153,125 @@ class KGDeleteResponse(BaseModel):
     document_id: UUID
     events_deleted: int = 0
     entities_pruned: int = 0
+
+
+class KGEntityMergeRequest(BaseModel):
+    """Request body to merge one entity into another."""
+
+    source_entity_id: UUID
+    target_entity_id: UUID
+
+
+class KGEntityMergeResponse(BaseModel):
+    """Response after an entity merge action."""
+
+    action_id: UUID
+    source_entity_id: UUID
+    target_entity_id: UUID
+    stats: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGEntityMergePreviewResponse(BaseModel):
+    source_entity_id: UUID
+    target_entity_id: UUID
+    stats: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGEntityResolutionUndoResponse(BaseModel):
+    """Response after undoing a resolution action."""
+
+    action_id: UUID
+    status: str
+    stats: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGEntitySplitRequest(BaseModel):
+    """Request body to split an entity into a new entity by moving selected event edges."""
+
+    entity_id: UUID
+    new_entity_name: str = Field(..., min_length=1, max_length=500)
+    event_ids: List[UUID] = Field(default_factory=list, description="Event ids whose entity edges should be moved")
+
+
+class KGEntitySplitResponse(BaseModel):
+    """Response after splitting an entity."""
+
+    action_id: UUID
+    original_entity_id: UUID
+    new_entity_id: UUID
+    stats: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGEntityAliasCreateRequest(BaseModel):
+    alias: str = Field(..., min_length=1, max_length=500)
+
+
+class KGEntityAliasItem(KGBaseModel):
+    id: UUID
+    canonical_entity_id: UUID
+    alias: str
+    normalized_alias: str
+    created_by: Optional[str] = None
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @field_validator("extra_data", mode="before")
+    @classmethod
+    def _coerce_alias_extra_data(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+        return v or {}
+
+
+class KGEntityAliasesResponse(BaseModel):
+    entity_id: UUID
+    resolved_entity_id: UUID
+    aliases: List[KGEntityAliasItem] = Field(default_factory=list)
+
+
+class KGEntityAliasSuggestionItem(BaseModel):
+    entity_id: UUID
+    name: str
+    type: str
+    similarity: float
+    reason: str = ""
+
+
+class KGEntityAliasSuggestionsResponse(BaseModel):
+    entity_id: UUID
+    suggestions: List[KGEntityAliasSuggestionItem] = Field(default_factory=list)
+    mode: str = "offline"
+    stats: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGPredicateOntologyItem(KGBaseModel):
+    id: UUID
+    tenant_id: UUID
+    predicate: str
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    is_enabled: bool = True
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @field_validator("extra_data", mode="before")
+    @classmethod
+    def _coerce_onto_extra(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+        return v or {}
+
+
+class KGPredicateOntologyCreateRequest(BaseModel):
+    predicate: str = Field(..., min_length=1, max_length=200)
+    display_name: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = None
+    is_enabled: bool = True
+
+
+class KGPredicateOntologyUpdateRequest(BaseModel):
+    display_name: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = None
+    is_enabled: Optional[bool] = None
+
+
+class KGPredicateOntologyListResponse(BaseModel):
+    predicates: List[KGPredicateOntologyItem] = Field(default_factory=list)
