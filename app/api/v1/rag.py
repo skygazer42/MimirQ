@@ -197,6 +197,9 @@ class EvidenceRetrieveRequest(BaseModel):
     dataset_id: Optional[UUID] = None
     document_ids: List[UUID] = Field(default_factory=list)
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
+    # Optional deterministic seed for offline replay/regression.
+    # PII-safe by construction (numeric only) and ignored by default.
+    seed: Optional[int] = None
 
 
 class EvidenceRetrieveResponse(BaseModel):
@@ -333,6 +336,12 @@ async def retrieve_evidence(
         ab_user_key=account_id,
         db=db,
     )
+    if body.seed is not None:
+        try:
+            state["seed"] = int(body.seed)
+        except Exception:
+            # Best-effort only: seed must never break requests.
+            pass
     # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
     state["db"] = db
 
@@ -436,6 +445,7 @@ async def retrieve_evidence(
                     "pass": "primary",
                     "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
                     "retrieval_profile": str(state.get("retrieval_profile") or "") or None,
+                    "empty_retrieval": (metrics.get("empty_retrieval") if isinstance(metrics.get("empty_retrieval"), dict) else None),
                     "citations": int(p_n),
                     "top_relevance_score": round(float(p_top), 3),
                     "abstain_triggered": bool(abstain_triggered),
@@ -446,6 +456,7 @@ async def retrieve_evidence(
                     "pass": "fallback",
                     "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
                     "retrieval_profile": str(fallback_profile),
+                    "empty_retrieval": (f_metrics.get("empty_retrieval") if isinstance(f_metrics.get("empty_retrieval"), dict) else None),
                     "citations": int(f_n),
                     "top_relevance_score": round(float(f_top), 3),
                     "abstain_triggered": bool(f_abstain),

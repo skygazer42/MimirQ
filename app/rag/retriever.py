@@ -2972,14 +2972,18 @@ class HybridRetriever(BaseRetriever):
             if self.metadata_filter and self.metadata_filter_enabled:
                 try:
                     before = len(resolved)
-                    filtered: List[Dict[str, Any]] = []
-                    for item in resolved:
-                        m = item.get("metadata") or {}
-                        if isinstance(m, dict) and self._match_metadata_filter(m, self.metadata_filter):
-                            filtered.append(item)
-                    resolved = filtered
+                    from app.rag.core.filters import apply_metadata_filter_with_stats  # noqa: WPS433
+
+                    resolved, mf_stats = apply_metadata_filter_with_stats(resolved, self.metadata_filter)
+                    blocked = int(mf_stats.get("blocked") or max(0, before - len(resolved)))
+                    matched = int(mf_stats.get("matched") or len(resolved))
+                    summary = mf_stats.get("summary") if isinstance(mf_stats.get("summary"), dict) else None
                     if stats is not None:
-                        stats["filtered_metadata_filter"] = max(0, before - len(resolved))
+                        stats["filtered_metadata_filter"] = int(blocked)
+                        stats["metadata_filter_blocked"] = int(blocked)
+                        stats["metadata_filter_matched"] = int(matched)
+                        if summary:
+                            stats["metadata_filter"] = summary
                 except Exception:
                     pass
 

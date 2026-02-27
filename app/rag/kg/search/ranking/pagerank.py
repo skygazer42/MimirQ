@@ -4,6 +4,7 @@ PageRank-style rerank combining query similarity and entity co-occurrence graph.
 from typing import Any, Dict, List
 
 from app.rag.kg.loading.processor import DocumentProcessor
+from app.rag.kg.provenance import build_kg_path_provenance
 from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.utils import cosine_similarity, format_events
@@ -115,6 +116,9 @@ class RerankPageRankSearcher:
                     "kg_shared_events": int(shared),
                     "kg_evidence_anchored": bool(getattr(ev, "chunk_id", None)),
                 }
+                path = build_kg_path_provenance(entities=ents, key_entity_ids=key_entity_ids, max_entities=4)
+                if path:
+                    extras[ev_id]["kg_path"] = path
 
             results = format_events(events, scores, config.rerank.max_results, extra_by_event_id=extras)
 

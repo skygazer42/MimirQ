@@ -2793,6 +2793,25 @@ export const kgApi = {
     return data as unknown as string
   },
 
+  async exportSnapshot(params: { pipeline_hash: string; document_ids?: string[] }): Promise<any> {
+    const { data } = await apiClient.get('/kg/snapshots/export', { params })
+    return data
+  },
+
+  async diffSnapshots(body: { snapshot_a: Record<string, any>; snapshot_b: Record<string, any> }): Promise<any> {
+    const { data } = await apiClient.post('/kg/snapshots/diff', body)
+    return data
+  },
+
+  async compareSnapshots(params: {
+    pipeline_hash_a: string
+    pipeline_hash_b: string
+    document_ids?: string[]
+  }): Promise<any> {
+    const { data } = await apiClient.get('/kg/snapshots/compare', { params })
+    return data
+  },
+
   async getEvent(eventId: string, params?: { document_ids?: string[] }): Promise<KGEventDetailResponse> {
     const { data } = await apiClient.get(`/kg/events/${eventId}`, { params })
     return data

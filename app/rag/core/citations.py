@@ -325,6 +325,31 @@ def build_citations_from_docs(
             "hit_type": hit_type,
         }
 
+        # Optional: KG path provenance for KG-injected citations (bounded, PII-safe).
+        #
+        # The retriever/orchestrator should attach this as a list of {entity_id,type} items
+        # (no names, no chunk snippets).
+        kg_path_raw = meta.get("kg_path")
+        if isinstance(kg_path_raw, list) and kg_path_raw:
+            kg_path: list[dict[str, Any]] = []
+            for item in kg_path_raw:
+                if not isinstance(item, dict):
+                    continue
+                ent_id = item.get("entity_id")
+                ent_id_s = str(ent_id or "").strip()
+                if not ent_id_s:
+                    continue
+                typ = item.get("type")
+                typ_s = str(typ or "").strip()
+                entry: dict[str, Any] = {"entity_id": ent_id_s}
+                if typ_s:
+                    entry["type"] = typ_s[:100]
+                kg_path.append(entry)
+                if len(kg_path) >= 6:
+                    break
+            if kg_path:
+                citation["kg_path"] = kg_path
+
         if img_id:
             citation["img_id"] = img_id
             citation["img_url"] = img_url
