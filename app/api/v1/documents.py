@@ -7589,6 +7589,30 @@ async def _delete_document_lifecycle(
         logger.warning("Failed to delete file: %s", e)
 
     # 4. Delete DB record (cascade chunks).
+    # Touch dataset.updated_at so API instances can invalidate dataset-scoped retrieval caches
+    # (BM25/sparse/ColBERT in-memory + persisted indexes) after deletes.
+    #
+    # This is important for correctness: without it, stale in-memory indices can keep returning
+    # deleted chunks until the next ingestion run touches the dataset.
+    if getattr(document, "dataset_id", None) is not None:
+        try:
+            from datetime import datetime, timezone
+
+            from app.models.dataset import Dataset as DBDataset  # noqa: WPS433
+
+            ds = (
+                db.query(DBDataset)
+                .filter(
+                    DBDataset.tenant_id == tenant_id,
+                    DBDataset.id == document.dataset_id,
+                )
+                .first()
+            )
+            if ds is not None:
+                ds.updated_at = datetime.now(timezone.utc)
+        except Exception:
+            pass
+
     db.delete(document)
     audit_log_event(
         db,
