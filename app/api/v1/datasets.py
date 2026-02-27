@@ -2102,10 +2102,75 @@ def export_dataset_bundle_zip(
         )
 
         doc_lines: list[str] = []
+        artifacts_docs: list[dict[str, Any]] = []
         for d in docs:
             row = _export_document_row(d, include_sensitive=bool(include_sensitive))
             doc_lines.append(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str))
+
+            raw_path = str(getattr(d, "file_path", "") or "").strip()
+            storage_kind = "unknown"
+            if raw_path.startswith("minio://"):
+                storage_kind = "minio"
+            elif raw_path.startswith("s3://"):
+                storage_kind = "s3"
+            elif raw_path.startswith("manual://") or not raw_path:
+                storage_kind = "manual"
+            else:
+                storage_kind = "local"
+
+            storage: dict[str, Any] = {
+                "kind": storage_kind,
+                "uri_hash": (stable_hash(raw_path, length=16) if raw_path else None),
+            }
+            if include_sensitive and raw_path:
+                storage["uri"] = raw_path
+
+            artifacts_docs.append(
+                {
+                    "document_id": str(getattr(d, "id", "")),
+                    "doc_pipeline_key": row.get("doc_pipeline_key"),
+                    "pipeline_hash": row.get("pipeline_hash"),
+                    "active_pipeline_hash": row.get("active_pipeline_hash"),
+                    "file_type": row.get("file_type"),
+                    "file_size": row.get("file_size"),
+                    "chunk_count": row.get("chunk_count"),
+                    "storage": storage,
+                }
+            )
         zf.writestr("documents.ndjson", ("\n".join(doc_lines) + ("\n" if doc_lines else "")).encode("utf-8"))
+
+        artifacts_payload: dict[str, Any] = {
+            "schema": "mimirq.dataset_export_artifacts.v1",
+            "exported_at": _dt_to_json(exported_at),
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+            "kg_enabled": bool(getattr(settings, "KG_ENABLED", False)),
+            "documents": artifacts_docs,
+        }
+
+        if bool(getattr(settings, "KG_ENABLED", False)):
+            try:
+                from app.rag.kg.models import KgSourceEvent  # noqa: WPS433
+
+                doc_ids = [getattr(d, "id", None) for d in docs]
+                doc_ids = [did for did in doc_ids if did is not None]
+                if doc_ids:
+                    events = (
+                        db.query(KgSourceEvent)
+                        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(doc_ids))
+                        .count()
+                    )
+                else:
+                    events = 0
+                artifacts_payload["kg_stats"] = {"events": int(events or 0)}
+            except Exception:
+                artifacts_payload["kg_stats"] = {"events": None, "error": "kg_stats_unavailable"}
+
+        zf.writestr(
+            "artifacts.json",
+            json.dumps(artifacts_payload, ensure_ascii=False, separators=(",", ":"), default=str),
+        )
 
         zf.writestr(
             "README.txt",
@@ -2114,6 +2179,7 @@ def export_dataset_bundle_zip(
                 "- dataset.json: dataset summary (safe)\n"
                 "- config.json: portable dataset config bundle\n"
                 "- documents.ndjson: document inventory (PII-safe by default)\n"
+                "- artifacts.json: compliance-oriented artifact manifest (indexes/storage refs; redacted by default)\n"
                 "\n"
                 "Security:\n"
                 "- include_sensitive=false (default) omits raw filenames/paths and doc_metadata values.\n"

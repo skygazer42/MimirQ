@@ -179,12 +179,20 @@ def test_dataset_export_bundle_zip_includes_expected_files_and_redacts_by_defaul
     assert "dataset.json" in files
     assert "config.json" in files
     assert "documents.ndjson" in files
+    assert "artifacts.json" in files
 
     docs = _parse_ndjson(files["documents.ndjson"])
     assert len(docs) == 1
     assert "filename" not in docs[0]
     assert "file_path" not in docs[0]
     assert docs[0].get("filename_hash")
+
+    artifacts = json.loads(files["artifacts.json"].decode("utf-8"))
+    assert isinstance(artifacts.get("documents"), list)
+    assert len(artifacts["documents"]) == 1
+    storage = (artifacts["documents"][0].get("storage") or {}) if isinstance(artifacts["documents"][0], dict) else {}
+    assert "uri" not in storage
+    assert storage.get("uri_hash")
 
 
 def test_dataset_export_bundle_zip_can_include_sensitive(monkeypatch):  # noqa: ANN001
@@ -215,3 +223,6 @@ def test_dataset_export_bundle_zip_can_include_sensitive(monkeypatch):  # noqa: 
     assert docs[0].get("filename") == "secret.pdf"
     assert docs[0].get("file_path") == "minio://bucket/x"
 
+    artifacts = json.loads(files["artifacts.json"].decode("utf-8"))
+    storage = (artifacts["documents"][0].get("storage") or {}) if isinstance(artifacts["documents"][0], dict) else {}
+    assert storage.get("uri") == "minio://bucket/x"
