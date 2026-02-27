@@ -5681,6 +5681,33 @@ async def delete_document_version(
 
     db.commit()
 
+    # Best-effort: cleanup KG artifacts derived from the deleted pipeline version.
+    #
+    # Notes:
+    # - KG event/entity tables are document/chunk scoped (not pipeline-hash scoped), so the safest delete key
+    #   for version cleanup is `chunk_ids` (only those chunks belong to this version).
+    # - Do this *after* the primary deletion commit so KG cleanup failures cannot roll back the main lifecycle op.
+    try:
+        from app.rag.kg.models import KgRelation
+
+        db.query(KgRelation).filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.chunk_id.in_(chunk_ids),
+        ).delete(synchronize_session=False)
+
+        # Ensure KG events are deleted for these chunks (and prune orphans for compliance hygiene).
+        Indexer(db).delete_event_indexes_for_chunks(
+            tenant_id=tenant_id,
+            chunk_ids=chunk_ids,
+            commit=False,
+            prune_orphan_entities=True,
+        )
+        db.commit()
+    except Exception:
+        # Never block version deletion due to best-effort KG cleanup.
+        with contextlib.suppress(Exception):
+            db.rollback()
+
     # Best-effort audit log (commit separately; never block deletion).
     audit_log_event(
         db,
@@ -6255,6 +6282,30 @@ async def delete_document_chunk(
         db.commit()
     except Exception:
         db.rollback()
+
+    # Best-effort: cleanup KG artifacts derived from this chunk.
+    #
+    # Rationale:
+    # - Chunk deletes are a lifecycle operation; KG artifacts must not outlive the source chunk.
+    # - Perform cleanup in a separate best-effort transaction so failures do not roll back the primary delete.
+    try:
+        from app.rag.kg.models import KgRelation
+
+        db.query(KgRelation).filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.chunk_id == chunk_id,
+        ).delete(synchronize_session=False)
+
+        Indexer(db).delete_event_indexes_for_chunks(
+            tenant_id=tenant_id,
+            chunk_ids=[chunk_id],
+            commit=False,
+            prune_orphan_entities=True,
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
 
     audit_log_event(
         db,
@@ -7208,10 +7259,25 @@ async def retry_document_processing(
 
     preserve_existing_versions = bool(meta.get("active_pipeline_ready")) and pipeline_hash != active_pipeline_hash
 
+    cleanup_chunk_ids: list[UUID] = []
     if preserve_existing_versions:
         # Clean any stale artifacts from a previous attempt of the *target* version,
         # without touching the currently-active version.
         target_key = f"{document_id}:{pipeline_hash}"
+
+        # Resolve chunk ids for KG cleanup (versioned docs require chunk-scoped deletes).
+        with contextlib.suppress(Exception):
+            rows = (
+                db.query(DocumentChunk.id)
+                .filter(
+                    DocumentChunk.document_id == document_id,
+                    DocumentChunk.tenant_id == tenant_id,
+                    DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+                )
+                .all()
+            )
+            cleanup_chunk_ids = [cid for (cid,) in rows if isinstance(cid, UUID)]
+
         with contextlib.suppress(Exception):
             from app.storage.vector.factory import get_vector_store
 
@@ -7236,7 +7302,7 @@ async def retry_document_processing(
     else:
         # Legacy behavior: reset all indexes + DB chunks to avoid duplicates when re-running the same version.
         with contextlib.suppress(Exception):
-            Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
+            Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
         with contextlib.suppress(Exception):
             db.query(DocumentChunk).filter(
                 DocumentChunk.document_id == document_id,
@@ -7255,6 +7321,51 @@ async def retry_document_processing(
         document.total_characters = 0
     db.commit()
     db.refresh(document)
+
+    # Best-effort: cleanup KG artifacts derived from chunks we just deleted.
+    if preserve_existing_versions and cleanup_chunk_ids:
+        try:
+            from app.rag.kg.models import KgRelation
+
+            db.query(KgRelation).filter(
+                KgRelation.tenant_id == tenant_id,
+                KgRelation.chunk_id.in_(cleanup_chunk_ids),
+            ).delete(synchronize_session=False)
+
+            Indexer(db).delete_event_indexes_for_chunks(
+                tenant_id=tenant_id,
+                chunk_ids=cleanup_chunk_ids,
+                commit=False,
+                prune_orphan_entities=True,
+            )
+            db.commit()
+        except Exception:
+            with contextlib.suppress(Exception):
+                db.rollback()
+
+    # Best-effort: cleanup KG artifacts for the previous failed/cancelled run.
+    #
+    # Important: run this after the primary commit so any KG cleanup failure can't roll back
+    # the lifecycle transition to "pending".
+    if not preserve_existing_versions:
+        try:
+            from app.rag.kg.models import KgRelation
+
+            db.query(KgRelation).filter(
+                KgRelation.tenant_id == tenant_id,
+                KgRelation.document_id == document_id,
+            ).delete(synchronize_session=False)
+
+            Indexer(db).delete_event_indexes(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                commit=False,
+                prune_orphan_entities=True,
+            )
+            db.commit()
+        except Exception:
+            with contextlib.suppress(Exception):
+                db.rollback()
 
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
     task_id = await enqueue_document_processing(
@@ -7411,7 +7522,7 @@ async def delete_document(
                 logger.warning("Failed to delete image %s from object storage: %s", img_id, e)
 
     # 2. Delete vectors from vector store (backend-dependent).
-    Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
+    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
 
     # 2.5 Delete structured table store (TAG) sqlite file (best-effort).
     #
@@ -7484,6 +7595,30 @@ async def delete_document(
         },
     )
     db.commit()
+
+    # Best-effort: cleanup KG artifacts derived from this document.
+    #
+    # Notes:
+    # - KG tables are not FK-linked to `documents`, so we must delete them explicitly.
+    # - Do this after committing the primary delete so KG cleanup failures cannot roll back the main lifecycle op.
+    try:
+        from app.rag.kg.models import KgRelation
+
+        db.query(KgRelation).filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.document_id == document_id,
+        ).delete(synchronize_session=False)
+
+        Indexer(db).delete_event_indexes(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            commit=False,
+            prune_orphan_entities=True,
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
 
     # 5. Remove chunks from BM25 index (in-memory).
     return None
