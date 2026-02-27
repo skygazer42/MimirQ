@@ -3648,10 +3648,21 @@ class HybridRetriever(BaseRetriever):
         max_compare = int(self.dedup_max_compare or 0)
         max_compare = max(0, max_compare)
 
+        near_enabled = bool(getattr(settings, "RETRIEVAL_NEAR_DEDUP_ENABLED", False))
+        near_thr = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 0) or 0))
+        near_max_compare = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 0) or 0))
+        if near_enabled:
+            try:
+                from app.rag.preprocessing.simhash import hamming_distance64  # noqa: WPS433
+            except Exception:
+                near_enabled = False
+
         seen_chunk_ids: set[str] = set()
         seen_fingerprints: set[str] = set()
         kept: List[Dict[str, Any]] = []
         kept_tokens_by_doc: Dict[str, List[set[str]]] = {}
+        kept_simhashes: list[int] = []
+        dropped_near = 0
 
         for r in results:
             meta = r.get("metadata") or {}
@@ -3671,6 +3682,22 @@ class HybridRetriever(BaseRetriever):
                 continue
             seen_fingerprints.add(fp)
 
+            if near_enabled:
+                sh_hex = str(meta.get("simhash64") or "").strip().lower()
+                if sh_hex:
+                    try:
+                        sh_int = int(sh_hex, 16) & ((1 << 64) - 1)
+                    except Exception:
+                        sh_int = None
+                    if sh_int is not None:
+                        compare_simhashes = kept_simhashes
+                        if near_max_compare and len(compare_simhashes) > near_max_compare:
+                            compare_simhashes = compare_simhashes[-near_max_compare:]
+                        is_dup = any(hamming_distance64(sh_int, prev) <= near_thr for prev in compare_simhashes)
+                        if is_dup:
+                            dropped_near += 1
+                            continue
+
             doc_id = self._get_doc_id(r)
             if threshold > 0.0 and doc_id:
                 tokens = self._tokenize_for_similarity(content)
@@ -3684,6 +3711,27 @@ class HybridRetriever(BaseRetriever):
                     kept_tokens_by_doc.setdefault(doc_id, []).append(tokens)
 
             kept.append(r)
+            if near_enabled:
+                sh_hex = str(meta.get("simhash64") or "").strip().lower()
+                if sh_hex:
+                    try:
+                        kept_simhashes.append(int(sh_hex, 16) & ((1 << 64) - 1))
+                    except Exception:
+                        pass
+
+        # Best-effort: expose near-dedup info in retriever_debug.channels for diagnostics.
+        try:
+            if near_enabled and isinstance(self._last_channel_metrics, dict):
+                dedup_meta = self._last_channel_metrics.get("dedup")
+                if not isinstance(dedup_meta, dict):
+                    dedup_meta = {}
+                    self._last_channel_metrics["dedup"] = dedup_meta
+                dedup_meta["near_dedup_enabled"] = True
+                dedup_meta["near_dedup_dropped"] = int(dropped_near)
+                dedup_meta["near_dedup_hamming_threshold"] = int(near_thr)
+                dedup_meta["near_dedup_max_compare"] = int(near_max_compare)
+        except Exception:
+            pass
 
         return kept
 
