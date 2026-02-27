@@ -9,6 +9,10 @@
 
 Chart 目录：`deploy/helm/mimirq`
 
+上线前建议对照交付验收清单：
+
+- `docs/deployment/private_delivery_checklist.md`
+
 ---
 
 ## 1) 前置条件
@@ -128,4 +132,3 @@ curl -fsS http://localhost:8000/api/v1/health/ready
 - **readiness 503**：表示依赖不可用（Postgres/Redis/向量库/MinIO）。请检查对应服务地址与网络策略。
 - **worker 不处理任务**：检查 `TASK_QUEUE_ENABLED=true`、`REDIS_URL` 是否可达，以及 worker 日志里是否有连接异常。
 - **上传/解析报错**：检查 `UPLOAD_DIR=/data/uploads`，以及 PVC 是否可写。
-
