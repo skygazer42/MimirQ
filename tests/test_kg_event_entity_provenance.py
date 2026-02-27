@@ -147,3 +147,57 @@ def test_indexer_persists_event_entity_edge_provenance(monkeypatch: pytest.Monke
     assert links[0].extra_data.get("chunk_id") == str(chunk_id)
     assert links[0].extra_data.get("start_char") == 10
     assert links[0].extra_data.get("end_char") == 20
+
+
+def test_indexer_persists_pipeline_hash_on_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    import uuid
+
+    import app.services.indexer as indexer_mod
+    from app.types.indexing import EventInput
+
+    class _FakeSession:
+        def __init__(self):
+            self.added = []
+
+        def add(self, obj):  # noqa: ANN001
+            self.added.append(obj)
+
+        def commit(self):  # noqa: D401
+            """No-op."""
+
+        def flush(self):  # noqa: D401
+            """No-op."""
+
+    class _FakeEvent:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            self.id = uuid.uuid4()
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    monkeypatch.setattr(indexer_mod, "KgSourceEvent", _FakeEvent, raising=True)
+
+    db = _FakeSession()
+    indexer = indexer_mod.Indexer(db)  # type: ignore[arg-type]
+    tenant_id = UUID(int=1)
+    doc_id = UUID(int=2)
+    chunk_id = UUID(int=3)
+
+    indexer.index_events(
+        tenant_id=tenant_id,
+        events=[
+            EventInput(
+                title="t",
+                summary="s",
+                content="c",
+                document_id=doc_id,
+                chunk_id=chunk_id,
+                references={"pipeline_hash": "ph_test"},
+            )
+        ],
+        commit=False,
+        options=None,
+    )
+
+    events = [x for x in db.added if isinstance(x, _FakeEvent)]
+    assert len(events) == 1
+    assert getattr(events[0], "pipeline_hash", None) == "ph_test"

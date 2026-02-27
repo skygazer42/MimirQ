@@ -52,6 +52,10 @@ class KgSourceEvent(Base):
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
 
+    # Pipeline/version scope (see docs/guides/document_versions.md).
+    # Nullable for legacy rows; new extraction should populate it.
+    pipeline_hash = Column(String(200), nullable=True, index=True)
+
     document_id = Column(PGUUID(as_uuid=True), nullable=True, index=True)
     chunk_id = Column(PGUUID(as_uuid=True), nullable=True, index=True)
 
@@ -109,6 +113,9 @@ class KgRelation(Base):
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
+
+    # Pipeline/version scope (nullable for legacy rows).
+    pipeline_hash = Column(String(200), nullable=True, index=True)
 
     # Provenance scope/evidence.
     document_id = Column(PGUUID(as_uuid=True), nullable=True, index=True)
