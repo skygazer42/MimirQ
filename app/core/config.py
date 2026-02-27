@@ -642,6 +642,12 @@ class Settings(BaseSettings):
     # - Do not embed model_path/api_key values here; use env vars for those.
     EVIDENCE_POST_RERANK_PIPELINE_ENABLED: bool = False
     EVIDENCE_POST_RERANK_PIPELINE: str = ""
+    # Optional: short TTL in-memory rerank result cache for Evidence API post-rerank.
+    # PII-safe by construction: cache key is a stable hash; values store only ids + numeric scores.
+    EVIDENCE_POST_RERANK_CACHE_ENABLED: bool = False
+    EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES: int = 1024
+    EVIDENCE_POST_RERANK_CACHE_TTL_SEC: int = 30
+    EVIDENCE_POST_RERANK_CACHE_PREFIX: str = "eprr"
     # Post-generation grounding guard: verify each claim against evidence and drop unsupported ones.
     # Disabled by default because it may delay streaming (answer is buffered for claim-check).
     RAG_CLAIM_CHECK_ENABLED: bool = False
