@@ -1084,6 +1084,9 @@ class Indexer:
                 continue
             refs = ev.references if isinstance(getattr(ev, "references", None), dict) else {}
             embeddings.append(list(ev.content_vector))
+            pipeline_hash = str(getattr(ev, "pipeline_hash", None) or refs.get("pipeline_hash") or "").strip() or None
+            if pipeline_hash and len(pipeline_hash) > 200:
+                pipeline_hash = pipeline_hash[:200]
             meta: Dict[str, Any] = {
                 "tenant_id": str(ev.tenant_id),
                 "document_id": str(ev.document_id) if ev.document_id else "",
@@ -1092,6 +1095,10 @@ class Indexer:
                 "summary": ev.summary,
                 "index_kind": IndexKind.EVENT.value,
             }
+            if pipeline_hash:
+                meta["pipeline_hash"] = pipeline_hash
+                if ev.document_id:
+                    meta["doc_pipeline_key"] = f"{ev.document_id}:{pipeline_hash}"
             if isinstance(refs, dict):
                 for k in (
                     "chunk_index",

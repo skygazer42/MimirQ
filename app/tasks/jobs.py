@@ -548,6 +548,7 @@ async def extract_kg_job(
     prune_orphan_entities: bool | None = None,
     extract_relations: bool | None = None,
     extract_skills: bool | None = None,
+    pipeline_hash: str | None = None,
 ) -> dict:  # noqa: ANN001
     """
     KG extraction job: extract events/entities from completed chunks and index them.
@@ -591,12 +592,22 @@ async def extract_kg_job(
                 raise retry_cls(defer=5)
             return {"ok": False, "reason": "document_not_completed", "status": doc.status}
 
-        pipeline_hash = (doc.doc_metadata or {}).get("pipeline_hash") or "unknown"
+        # Versioning: default to the active pipeline version so extraction doesn't mix
+        # multiple chunk versions for the same document.
+        from app.core.pipeline_versions import get_active_pipeline_hash  # noqa: WPS433
+
+        explicit_ph = str(pipeline_hash or "").strip() or None
+        doc_ph = (
+            get_active_pipeline_hash(doc.doc_metadata or {})
+            or (doc.doc_metadata or {}).get("pipeline_hash")
+            or None
+        )
+        selected_ph = explicit_ph or (str(doc_ph).strip() if doc_ph is not None else None) or "unknown"
         replace_key = "auto" if replace_existing is None else ("1" if bool(replace_existing) else "0")
         prune_key = "auto" if prune_orphan_entities is None else ("1" if bool(prune_orphan_entities) else "0")
         rel_key = "auto" if extract_relations is None else ("1" if bool(extract_relations) else "0")
         skill_key = "auto" if extract_skills is None else ("1" if bool(extract_skills) else "0")
-        lock_key = f"lock:kg:{tenant_id}:{document_id}:{pipeline_hash}:{replace_key}:{prune_key}:{rel_key}:{skill_key}"
+        lock_key = f"lock:kg:{tenant_id}:{document_id}:{selected_ph}:{replace_key}:{prune_key}:{rel_key}:{skill_key}"
         lock_val = make_lock_value(requested_by)
         lock_ttl = 60 * 40  # 40 min
         if redis is not None:
@@ -608,7 +619,7 @@ async def extract_kg_job(
                     "skipped": "locked",
                     "tenant_id": tenant_id,
                     "document_id": document_id,
-                    "pipeline_hash": pipeline_hash,
+                    "pipeline_hash": selected_ph,
                 }
 
         chunks = (
@@ -619,6 +630,25 @@ async def extract_kg_job(
         )
         if not chunks:
             return {"ok": False, "reason": "no_chunks", "tenant_id": tenant_id, "document_id": document_id}
+
+        # Versioning: keep only chunks that belong to the selected pipeline hash.
+        scoped_ph = str(selected_ph or "").strip() or None
+        if scoped_ph:
+            doc_key = f"{document_id}:{scoped_ph}"
+
+            def _chunk_matches(c: DocumentChunk) -> bool:  # noqa: WPS430
+                meta_any = getattr(c, "doc_metadata", None)
+                if not isinstance(meta_any, dict):
+                    return False
+                key = str(meta_any.get("doc_pipeline_key") or "").strip()
+                if key and key == doc_key:
+                    return True
+                ph = str(meta_any.get("pipeline_hash") or meta_any.get("active_pipeline_hash") or "").strip()
+                return bool(ph and ph == scoped_ph)
+
+            scoped = [c for c in chunks if _chunk_matches(c)]
+            if scoped:
+                chunks = scoped
 
         dataset_meta = {}
         if doc.dataset_id:

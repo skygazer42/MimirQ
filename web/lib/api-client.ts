@@ -2737,6 +2737,7 @@ export const kgApi = {
     documentId: string,
     params?: {
       async?: boolean
+      pipeline_hash?: string
       replace_existing?: boolean
       prune_orphan_entities?: boolean
       prompt_template_id?: string
@@ -2764,13 +2765,14 @@ export const kgApi = {
     return data
   },
 
-  async getStats(params?: { document_ids?: string[] }): Promise<KGStatsResponse> {
+  async getStats(params?: { document_ids?: string[]; pipeline_hash?: string }): Promise<KGStatsResponse> {
     const { data } = await apiClient.get('/kg/stats', { params })
     return data
   },
 
   async getGraph(params?: {
     document_ids?: string[]
+    pipeline_hash?: string
     max_events?: number
     max_entities?: number
     max_links?: number
@@ -2786,6 +2788,7 @@ export const kgApi = {
   async expandGraph(params: {
     node_id: string
     document_ids?: string[]
+    pipeline_hash?: string
     max_events?: number
     max_entities?: number
     max_links?: number
@@ -2800,6 +2803,7 @@ export const kgApi = {
 
   async exportGraphML(params?: {
     document_ids?: string[]
+    pipeline_hash?: string
     max_events?: number
     max_entities?: number
     max_links?: number
@@ -2834,14 +2838,17 @@ export const kgApi = {
     return data
   },
 
-  async getEvent(eventId: string, params?: { document_ids?: string[] }): Promise<KGEventDetailResponse> {
+  async getEvent(
+    eventId: string,
+    params?: { document_ids?: string[]; pipeline_hash?: string }
+  ): Promise<KGEventDetailResponse> {
     const { data } = await apiClient.get(`/kg/events/${eventId}`, { params })
     return data
   },
 
   async getEntity(
     entityId: string,
-    params?: { document_ids?: string[]; max_events?: number; max_neighbors?: number }
+    params?: { document_ids?: string[]; pipeline_hash?: string; max_events?: number; max_neighbors?: number }
   ): Promise<KGEntityDetailResponse> {
     const { data } = await apiClient.get(`/kg/entities/${entityId}`, { params })
     return data
@@ -2852,6 +2859,7 @@ export const kgApi = {
     kind?: string
     limit?: number
     document_ids?: string[]
+    pipeline_hash?: string
   }): Promise<KGGraphNode[]> {
     const { data } = await apiClient.get('/kg/graph/search', { params })
     return data

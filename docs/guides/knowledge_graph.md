@@ -35,18 +35,28 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
 - `async=true`：入队任务（需要 `TASK_QUEUE_ENABLED=true`），API 返回 `202`，并在文档 metadata 写入 `kg_task_id`。
 - `async=false`：直接执行抽取（兼容旧行为）。
 
+### pipeline_hash 版本化（重要）
+当同一份文档被不同 pipeline（解析/切块/治理等配置）重复处理时，系统会同时存在多套 chunks/KG 数据。
+
+- KG 抽取默认只作用于 **active pipeline**（`doc_metadata.active_pipeline_hash`，fallback `pipeline_hash`），避免把多个版本的 chunks 混在一起抽取。
+- 如需对比不同版本（A/B）抽取漂移，可在抽取 API 里显式指定：
+  - `POST /kg/documents/{document_id}/extract?pipeline_hash=ph_xxx`
+  - 同时支持 `async=true`（worker 也会按该 `pipeline_hash` 选择 chunks）。
+
 ## 图谱 API（常用）
 - `GET /kg/graph`：拉取图谱投影（支持文档 scope）。
+  - `pipeline_hash=...`：可选；不填时默认按 active pipeline 过滤，防止跨版本混合。
   - `include_entity_links=true`：启用“实体-实体共现”边（基于共享事件数）。
   - `min_shared_events`：共现阈值（默认 2）。
   - `max_entity_links`：共现边上限（避免图过密）。
-- `GET /kg/graph/expand?node_id=...`：按节点扩展邻居（同样支持共现边参数）。
-- `GET /kg/stats`：轻量统计（events/entities/links/type breakdown）。
+- `GET /kg/graph/expand?node_id=...`：按节点扩展邻居（同样支持共现边参数；支持 `pipeline_hash` 可选参数）。
+- `GET /kg/graph/search`：节点搜索（UI autocomplete；支持 `pipeline_hash` 可选参数）。
+- `GET /kg/stats`：轻量统计（events/entities/links/type breakdown；支持 `pipeline_hash` 可选参数）。
 - `GET /kg/graph/export`：导出 GraphML（便于 Gephi/Cytoscape 等外部工具）。
   - `?gzip=true`：返回 gzip 压缩后的 GraphML（`Content-Encoding: gzip`，下载文件后缀为 `.graphml.gz`），适合大图导出。
 - `POST /kg/search`：KG 搜索（召回 -> 扩展 -> 重排），返回事件列表 + entities/clues/stats。
-- `GET /kg/events/{event_id}`：事件详情（含实体列表，受文档权限约束）。
-- `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束）。
+- `GET /kg/events/{event_id}`：事件详情（含实体列表，受文档权限约束；支持 `pipeline_hash` 可选参数）。
+- `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束；支持 `pipeline_hash` 可选参数）。
 - `DELETE /kg/documents/{document_id}`：删除文档对应 KG 事件（可选清理孤立实体）。
 
 ## KG Snapshots（快照）与 Diff（漂移对比）
@@ -54,8 +64,9 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
 当你需要诊断 **同一套文档**在不同 `pipeline_hash`（解析/治理/切块/抽取提示词等配置）下的 KG 规模漂移时，
 可以使用 KG Snapshots API 导出一个 **轻量、默认 PII-safe** 的快照（计数 + 类型直方图），并对比两个快照的差异。
 
-> 注意：当前快照的“文档选择”是通过 `document_ids` 过滤可访问文档后，再按文档 `doc_metadata.active_pipeline_hash`（或 `pipeline_hash`）做筛选。
-> 如果你想对比同一份文档的历史版本，需要确保对应版本被激活或有对应 scope 的文档集合（详见 `docs/guides/document_versions.md`）。
+> 注意：快照按 **KG 表中的 `pipeline_hash`** 过滤（而不是按文档 metadata 选择）。
+> 这意味着你可以对比同一份文档的历史/非激活版本，只要该版本对应的 KG 数据已经被抽取并落库。
+> 如需补齐某个版本的 KG 数据，可用 `POST /kg/documents/{document_id}/extract?pipeline_hash=...` 显式抽取。
 
 ### 导出快照
 - `GET /kg/snapshots/export?pipeline_hash=...&document_ids=...`

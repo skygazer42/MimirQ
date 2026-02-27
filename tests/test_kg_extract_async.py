@@ -107,6 +107,7 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
         document_id,
         requested_by,
         job_id=None,
+        pipeline_hash=None,
         replace_existing=None,
         prune_orphan_entities=None,
         extract_relations=None,
@@ -114,6 +115,7 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
     ):
         assert requested_by == "u"
         assert job_id and job_id.startswith("kg:")
+        assert pipeline_hash == "ph"
         assert replace_existing is True
         assert prune_orphan_entities is True
         assert extract_relations is None
@@ -147,4 +149,3 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
     assert resp.headers.get("X-Task-Id") == "task-1"
     assert out.event_count == 0
     assert out.chunk_count == 2
-

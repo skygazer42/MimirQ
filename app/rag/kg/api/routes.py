@@ -79,6 +79,86 @@ def _doc_pipeline_hash(meta: object) -> str | None:
     return s or None
 
 
+def _chunk_matches_pipeline(chunk: object, *, document_id: UUID, pipeline_hash: str) -> bool:
+    """
+    Best-effort check whether a chunk belongs to a specific pipeline version.
+
+    This is used by KG extraction to avoid mixing chunk versions when a document
+    has been re-processed under multiple pipelines.
+    """
+    meta_any = getattr(chunk, "doc_metadata", None)
+    if not isinstance(meta_any, dict):
+        return False
+    doc_key = str(meta_any.get("doc_pipeline_key") or "").strip()
+    if doc_key and doc_key == f"{document_id}:{pipeline_hash}":
+        return True
+    ph = _doc_pipeline_hash(meta_any)
+    return bool(ph and ph == pipeline_hash)
+
+
+def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
+    """
+    SQL expression for a document's active pipeline hash.
+
+    Mirrors app.core.pipeline_versions.get_active_pipeline_hash semantics:
+    - prefer metadata.active_pipeline_hash
+    - fallback to metadata.pipeline_hash
+    """
+    from sqlalchemy import func  # noqa: WPS433
+
+    return func.coalesce(
+        doc_model.doc_metadata["active_pipeline_hash"].astext,  # type: ignore[attr-defined]
+        doc_model.doc_metadata["pipeline_hash"].astext,  # type: ignore[attr-defined]
+    )
+
+
+def _apply_event_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: ANN001
+    """
+    Apply pipeline scoping to a query that includes KgSourceEvent.
+
+    - pipeline_hash provided -> strict filter to that pipeline hash (diagnostics / A/B)
+    - pipeline_hash None -> default to document.active_pipeline_hash (no cross-version mixing)
+    """
+    from sqlalchemy import and_  # noqa: WPS433
+
+    from app.models.document import Document as DBDocument  # noqa: WPS433
+    from app.rag.kg.models import KgSourceEvent  # noqa: WPS433
+
+    if pipeline_hash:
+        return query.filter(KgSourceEvent.pipeline_hash == str(pipeline_hash))
+
+    return query.join(
+        DBDocument,
+        and_(
+            DBDocument.id == KgSourceEvent.document_id,
+            DBDocument.tenant_id == KgSourceEvent.tenant_id,
+        ),
+    ).filter(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+
+
+def _apply_relation_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: ANN001
+    """
+    Apply pipeline scoping to a query that includes KgRelation.
+
+    Relations are versioned independently from events (but share the same pipeline_hash).
+    """
+    from sqlalchemy import and_  # noqa: WPS433
+
+    from app.models.document import Document as DBDocument  # noqa: WPS433
+    from app.rag.kg.models import KgRelation  # noqa: WPS433
+
+    if pipeline_hash:
+        return query.filter(KgRelation.pipeline_hash == str(pipeline_hash))
+
+    return query.join(
+        DBDocument,
+        and_(
+            DBDocument.id == KgRelation.document_id,
+            DBDocument.tenant_id == KgRelation.tenant_id,
+        ),
+    ).filter(KgRelation.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+
+
 def _resolve_allowed_documents(
     *,
     document_ids: list[UUID] | None,
@@ -106,6 +186,12 @@ def _resolve_allowed_documents(
 @router.get("/graph", response_model=KGGraphResponse)
 def get_kg_graph(
     document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline version filter (defaults to active pipeline per document)",
+    ),
     max_events: int = Query(default=200, ge=1, le=2000),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=2000, ge=1, le=20000),
@@ -156,16 +242,15 @@ def get_kg_graph(
     from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
     from app.rag.kg.provenance import build_event_entity_provenance
 
-    events = (
+    events_q = (
         db.query(KgSourceEvent)
         .filter(
             KgSourceEvent.tenant_id == tenant_id,
             KgSourceEvent.document_id.in_(allowed_doc_ids),
         )
-        .order_by(KgSourceEvent.updated_at.desc())
-        .limit(int(max_events))
-        .all()
     )
+    events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
+    events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(int(max_events)).all()
 
     if not events:
         out = KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
@@ -322,7 +407,7 @@ def get_kg_graph(
     if bool(include_relation_links) and len(links) < int(max_links):
         remaining_budget = max(0, int(max_links) - len(links))
         if remaining_budget > 0:
-            rel_rows = (
+            rel_q = (
                 db.query(KgRelation)
                 .filter(
                     KgRelation.tenant_id == tenant_id,
@@ -330,10 +415,9 @@ def get_kg_graph(
                     KgRelation.subject_entity_id.in_(allowed_entity_ids),
                     KgRelation.object_entity_id.in_(allowed_entity_ids),
                 )
-                .order_by(KgRelation.updated_at.desc())
-                .limit(int(remaining_budget))
-                .all()
             )
+            rel_q = _apply_relation_pipeline_scope(rel_q, pipeline_hash=pipeline_hash)
+            rel_rows = rel_q.order_by(KgRelation.updated_at.desc()).limit(int(remaining_budget)).all()
 
             for rel in rel_rows:
                 if len(links) >= int(max_links):
@@ -439,6 +523,12 @@ def get_kg_graph(
 def expand_kg_graph(
     node_id: UUID = Query(..., description="Center node id (KgSourceEvent.id or KgEntity.id)"),
     document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline version filter (defaults to active pipeline per document)",
+    ),
     max_events: int = Query(default=50, ge=1, le=500),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=5000, ge=1, le=20000),
@@ -484,15 +574,16 @@ def expand_kg_graph(
     from app.rag.kg.provenance import build_event_entity_provenance
 
     # Determine node kind: event (scoped by allowed documents) or entity (tenant-scoped).
-    center_event = (
+    center_event_q = (
         db.query(KgSourceEvent)
         .filter(
             KgSourceEvent.tenant_id == tenant_id,
             KgSourceEvent.id == node_id,
             KgSourceEvent.document_id.in_(allowed_doc_ids),
         )
-        .first()
     )
+    center_event_q = _apply_event_pipeline_scope(center_event_q, pipeline_hash=pipeline_hash)
+    center_event = center_event_q.first()
 
     events: list[KgSourceEvent] = []
 
@@ -508,35 +599,37 @@ def expand_kg_graph(
 
         related_event_ids: list[UUID] = []
         if entity_ids_flat and int(max_events) > 1:
+            related_q = (
+                db.query(KgEventEntity.event_id)
+                .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                .filter(
+                    KgSourceEvent.tenant_id == tenant_id,
+                    KgSourceEvent.document_id.in_(allowed_doc_ids),
+                    KgEventEntity.entity_id.in_(entity_ids_flat),
+                    KgEventEntity.event_id != center_event.id,
+                )
+            )
+            related_q = _apply_event_pipeline_scope(related_q, pipeline_hash=pipeline_hash)
             related_event_ids = [
                 row[0]
                 for row in (
-                    db.query(KgEventEntity.event_id)
-                    .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-                    .filter(
-                        KgSourceEvent.tenant_id == tenant_id,
-                        KgSourceEvent.document_id.in_(allowed_doc_ids),
-                        KgEventEntity.entity_id.in_(entity_ids_flat),
-                        KgEventEntity.event_id != center_event.id,
-                    )
-                    .order_by(KgSourceEvent.updated_at.desc())
+                    related_q.order_by(KgSourceEvent.updated_at.desc())
                     .limit(max(0, int(max_events) - 1))
                     .all()
                 )
             ]
 
         event_ids = [center_event.id] + related_event_ids
-        events = (
+        events_q = (
             db.query(KgSourceEvent)
             .filter(
                 KgSourceEvent.tenant_id == tenant_id,
                 KgSourceEvent.id.in_(event_ids),
                 KgSourceEvent.document_id.in_(allowed_doc_ids),
             )
-            .order_by(KgSourceEvent.updated_at.desc())
-            .limit(int(max_events))
-            .all()
         )
+        events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
+        events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(int(max_events)).all()
     else:
         center_entity = (
             db.query(KgEntity)
@@ -549,21 +642,17 @@ def expand_kg_graph(
         if not center_entity:
             raise HTTPException(status_code=404, detail="KG node not found")
 
-        event_ids = [
-            row[0]
-            for row in (
-                db.query(KgEventEntity.event_id)
-                .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-                .filter(
-                    KgSourceEvent.tenant_id == tenant_id,
-                    KgSourceEvent.document_id.in_(allowed_doc_ids),
-                    KgEventEntity.entity_id == center_entity.id,
-                )
-                .order_by(KgSourceEvent.updated_at.desc())
-                .limit(int(max_events))
-                .all()
+        ev_ids_q = (
+            db.query(KgEventEntity.event_id)
+            .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+            .filter(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.document_id.in_(allowed_doc_ids),
+                KgEventEntity.entity_id == center_entity.id,
             )
-        ]
+        )
+        ev_ids_q = _apply_event_pipeline_scope(ev_ids_q, pipeline_hash=pipeline_hash)
+        event_ids = [row[0] for row in ev_ids_q.order_by(KgSourceEvent.updated_at.desc()).limit(int(max_events)).all()]
         if not event_ids:
             out = KGGraphResponse(nodes=[], links=[], stats={"reason": "no_related_events"})
             _log_kg_api_metric(
@@ -577,17 +666,16 @@ def expand_kg_graph(
             )
             return out
 
-        events = (
+        events_q = (
             db.query(KgSourceEvent)
             .filter(
                 KgSourceEvent.tenant_id == tenant_id,
                 KgSourceEvent.id.in_(event_ids),
                 KgSourceEvent.document_id.in_(allowed_doc_ids),
             )
-            .order_by(KgSourceEvent.updated_at.desc())
-            .limit(int(max_events))
-            .all()
         )
+        events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
+        events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(int(max_events)).all()
 
     if not events:
         out = KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
@@ -746,7 +834,7 @@ def expand_kg_graph(
     if bool(include_relation_links) and len(links) < int(max_links):
         remaining_budget = max(0, int(max_links) - len(links))
         if remaining_budget > 0:
-            rel_rows = (
+            rel_q = (
                 db.query(KgRelation)
                 .filter(
                     KgRelation.tenant_id == tenant_id,
@@ -754,10 +842,9 @@ def expand_kg_graph(
                     KgRelation.subject_entity_id.in_(allowed_entity_ids),
                     KgRelation.object_entity_id.in_(allowed_entity_ids),
                 )
-                .order_by(KgRelation.updated_at.desc())
-                .limit(int(remaining_budget))
-                .all()
             )
+            rel_q = _apply_relation_pipeline_scope(rel_q, pipeline_hash=pipeline_hash)
+            rel_rows = rel_q.order_by(KgRelation.updated_at.desc()).limit(int(remaining_budget)).all()
 
             for rel in rel_rows:
                 if len(links) >= int(max_links):
@@ -865,6 +952,12 @@ def search_kg_graph_nodes(
     kind: str = Query(default="all", description="entity | event | all"),
     limit: int = Query(default=20, ge=1, le=100),
     document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline version filter (defaults to active pipeline per document)",
+    ),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -905,7 +998,7 @@ def search_kg_graph_nodes(
     pattern = "%" + "%".join(terms[:6]) + "%" if terms else f"%{q_text}%"
 
     if mode in {"all", "entity"}:
-        ents = (
+        ent_q = (
             db.query(KgEntity)
             .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
             .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
@@ -918,11 +1011,9 @@ def search_kg_graph_nodes(
                     KgEntity.normalized_name.ilike(pattern),
                 ),
             )
-            .distinct()
-            .order_by(KgEntity.updated_at.desc())
-            .limit(int(limit))
-            .all()
         )
+        ent_q = _apply_event_pipeline_scope(ent_q, pipeline_hash=pipeline_hash)
+        ents = ent_q.distinct().order_by(KgEntity.updated_at.desc()).limit(int(limit)).all()
         for ent in ents:
             nodes.append(
                 KGGraphNode(
@@ -943,7 +1034,7 @@ def search_kg_graph_nodes(
         return nodes[: int(limit)]
 
     if mode in {"all", "event"}:
-        events = (
+        events_q = (
             db.query(KgSourceEvent)
             .filter(
                 KgSourceEvent.tenant_id == tenant_id,
@@ -953,10 +1044,9 @@ def search_kg_graph_nodes(
                     KgSourceEvent.summary.ilike(pattern),
                 ),
             )
-            .order_by(KgSourceEvent.updated_at.desc())
-            .limit(remaining)
-            .all()
         )
+        events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
+        events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(remaining).all()
         for ev in events:
             nodes.append(
                 KGGraphNode(
@@ -978,6 +1068,12 @@ def search_kg_graph_nodes(
 @router.get("/stats", response_model=KGStatsResponse)
 def get_kg_stats(
     document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline version filter (defaults to active pipeline per document)",
+    ),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -1014,38 +1110,54 @@ def get_kg_stats(
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 
-    event_count = (
-        db.query(func.count(KgSourceEvent.id))
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
-        .scalar()
-        or 0
+    event_count_q = db.query(func.count(KgSourceEvent.id)).filter(
+        KgSourceEvent.tenant_id == tenant_id,
+        KgSourceEvent.document_id.in_(allowed_doc_ids),
     )
-    link_count = (
+    event_count_q = _apply_event_pipeline_scope(event_count_q, pipeline_hash=pipeline_hash)
+    event_count = event_count_q.scalar() or 0
+
+    link_count_q = (
         db.query(func.count(KgEventEntity.id))
         .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
-        .scalar()
-        or 0
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+        )
     )
-    entity_count = (
+    link_count_q = _apply_event_pipeline_scope(link_count_q, pipeline_hash=pipeline_hash)
+    link_count = link_count_q.scalar() or 0
+
+    entity_count_q = (
         db.query(func.count(func.distinct(KgEventEntity.entity_id)))
         .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
-        .scalar()
-        or 0
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+        )
     )
-    updated_at = (
-        db.query(func.max(KgSourceEvent.updated_at))
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
-        .scalar()
-    )
+    entity_count_q = _apply_event_pipeline_scope(entity_count_q, pipeline_hash=pipeline_hash)
+    entity_count = entity_count_q.scalar() or 0
 
-    type_rows = (
+    updated_at_q = db.query(func.max(KgSourceEvent.updated_at)).filter(
+        KgSourceEvent.tenant_id == tenant_id,
+        KgSourceEvent.document_id.in_(allowed_doc_ids),
+    )
+    updated_at_q = _apply_event_pipeline_scope(updated_at_q, pipeline_hash=pipeline_hash)
+    updated_at = updated_at_q.scalar()
+
+    type_rows_q = (
         db.query(KgEntity.type, func.count(func.distinct(KgEntity.id)).label("cnt"))
         .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
         .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
-        .group_by(KgEntity.type)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+        )
+    )
+    type_rows_q = _apply_event_pipeline_scope(type_rows_q, pipeline_hash=pipeline_hash)
+    type_rows = (
+        type_rows_q.group_by(KgEntity.type)
         .order_by(func.count(func.distinct(KgEntity.id)).desc(), KgEntity.type.asc())
         .limit(50)
         .all()
@@ -1101,53 +1213,69 @@ def export_kg_snapshot(
     if not allowed_doc_ids:
         return {"schema": "mimirq.kg_snapshot.v1", "pipeline_hash": pipeline_hash, "docs": 0, "events": 0, "entities": 0, "links": 0, "relations": 0, "entity_types": []}
 
-    docs = (
-        db.query(DBDocument)
-        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(allowed_doc_ids))
-        .all()
-    )
-    selected_doc_ids: list[UUID] = []
-    for d in docs:
-        ph = _doc_pipeline_hash(getattr(d, "doc_metadata", None) or {})
-        if ph == pipeline_hash:
-            selected_doc_ids.append(d.id)
-
-    if not selected_doc_ids:
-        return {"schema": "mimirq.kg_snapshot.v1", "pipeline_hash": pipeline_hash, "docs": 0, "events": 0, "entities": 0, "links": 0, "relations": 0, "entity_types": []}
-
     from sqlalchemy import func
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 
+    docs_count = (
+        db.query(func.count(func.distinct(KgSourceEvent.document_id)))
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
+        .scalar()
+        or 0
+    )
     event_count = (
         db.query(func.count(KgSourceEvent.id))
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
         .scalar()
         or 0
     )
     link_count = (
         db.query(func.count(KgEventEntity.id))
         .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
         .scalar()
         or 0
     )
     entity_count = (
         db.query(func.count(func.distinct(KgEventEntity.entity_id)))
         .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
         .scalar()
         or 0
     )
     relation_count = (
         db.query(func.count(KgRelation.id))
-        .filter(KgRelation.tenant_id == tenant_id, KgRelation.document_id.in_(selected_doc_ids))
+        .filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.document_id.in_(allowed_doc_ids),
+            KgRelation.pipeline_hash == pipeline_hash,
+        )
         .scalar()
         or 0
     )
     updated_at = (
         db.query(func.max(KgSourceEvent.updated_at))
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
         .scalar()
     )
 
@@ -1155,7 +1283,11 @@ def export_kg_snapshot(
         db.query(KgEntity.type, func.count(func.distinct(KgEntity.id)).label("cnt"))
         .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
         .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(selected_doc_ids))
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
         .group_by(KgEntity.type)
         .order_by(func.count(func.distinct(KgEntity.id)).desc(), KgEntity.type.asc())
         .limit(50)
@@ -1165,7 +1297,7 @@ def export_kg_snapshot(
     return {
         "schema": "mimirq.kg_snapshot.v1",
         "pipeline_hash": str(pipeline_hash),
-        "docs": int(len(selected_doc_ids)),
+        "docs": int(docs_count),
         "events": int(event_count),
         "entities": int(entity_count),
         "links": int(link_count),
@@ -1214,6 +1346,12 @@ def compare_kg_snapshots(
 @router.get("/graph/export")
 def export_kg_graph(
     document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline version filter (defaults to active pipeline per document)",
+    ),
     max_events: int = Query(default=200, ge=1, le=2000),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=2000, ge=1, le=20000),
@@ -1235,6 +1373,7 @@ def export_kg_graph(
     t0 = time.perf_counter()
     graph = get_kg_graph(
         document_ids=document_ids,
+        pipeline_hash=pipeline_hash,
         max_events=max_events,
         max_entities=max_entities,
         max_links=max_links,
@@ -1340,6 +1479,12 @@ def export_kg_graph(
 def get_kg_event_detail(
     event_id: UUID,
     document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline version filter (defaults to active pipeline per document)",
+    ),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -1359,15 +1504,16 @@ def get_kg_event_detail(
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
     from app.rag.kg.provenance import build_event_entity_provenance
 
-    ev = (
+    ev_q = (
         db.query(KgSourceEvent)
         .filter(
             KgSourceEvent.tenant_id == tenant_id,
             KgSourceEvent.id == event_id,
             KgSourceEvent.document_id.in_(allowed_doc_ids),
         )
-        .first()
     )
+    ev_q = _apply_event_pipeline_scope(ev_q, pipeline_hash=pipeline_hash)
+    ev = ev_q.first()
     if not ev:
         raise HTTPException(status_code=404, detail="KG event not found")
 
@@ -1411,6 +1557,12 @@ def get_kg_event_detail(
 def get_kg_entity_detail(
     entity_id: UUID,
     document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline version filter (defaults to active pipeline per document)",
+    ),
     max_events: int = Query(default=30, ge=1, le=200),
     max_neighbors: int = Query(default=20, ge=0, le=200),
     tenant_id: UUID = Depends(get_tenant_id),
@@ -1437,7 +1589,7 @@ def get_kg_entity_detail(
     if not ent:
         raise HTTPException(status_code=404, detail="KG entity not found")
 
-    total_events = (
+    total_events_q = (
         db.query(func.count(func.distinct(KgEventEntity.event_id)))
         .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
         .filter(
@@ -1445,13 +1597,13 @@ def get_kg_entity_detail(
             KgSourceEvent.document_id.in_(allowed_doc_ids),
             KgEventEntity.entity_id == entity_id,
         )
-        .scalar()
-        or 0
     )
+    total_events_q = _apply_event_pipeline_scope(total_events_q, pipeline_hash=pipeline_hash)
+    total_events = total_events_q.scalar() or 0
     if not total_events:
         raise HTTPException(status_code=404, detail="KG entity not found")
 
-    events = (
+    events_q = (
         db.query(KgSourceEvent)
         .join(KgEventEntity, KgEventEntity.event_id == KgSourceEvent.id)
         .filter(
@@ -1459,10 +1611,9 @@ def get_kg_entity_detail(
             KgSourceEvent.document_id.in_(allowed_doc_ids),
             KgEventEntity.entity_id == entity_id,
         )
-        .order_by(desc(KgSourceEvent.updated_at))
-        .limit(int(max_events))
-        .all()
     )
+    events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
+    events = events_q.order_by(desc(KgSourceEvent.updated_at)).limit(int(max_events)).all()
     event_ids = [e.id for e in events]
 
     neighbors = []
@@ -1545,6 +1696,12 @@ async def run_kg_extraction_for_document(
     document_id: UUID,
     response: Response,
     async_mode: bool = Query(default=False, alias="async"),
+    pipeline_hash: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional pipeline hash override (defaults to active pipeline)",
+    ),
     replace_existing: bool | None = Query(default=None, description="Replace previously extracted events for this document"),
     prune_orphan_entities: bool | None = Query(default=None, description="Prune entities with no remaining event links"),
     extract_relations: bool | None = Query(default=None, description="Extract entity relations (triples) (override settings)"),
@@ -1587,6 +1744,18 @@ async def run_kg_extraction_for_document(
             detail="Document has no chunks yet. Process the document first.",
         )
 
+    # Versioning: avoid mixing multiple chunk versions when the document has been
+    # re-processed under different pipeline hashes. Default to the active pipeline
+    # version stored in document metadata.
+    # NOTE: tests call this route handler directly (without FastAPI request parsing),
+    # so `pipeline_hash` can be a `fastapi.Query` object. Treat non-strings as unset.
+    explicit_ph = (pipeline_hash.strip() if isinstance(pipeline_hash, str) else "") or None
+    selected_ph = explicit_ph or _doc_pipeline_hash(getattr(document, "doc_metadata", None) or {})
+    if selected_ph:
+        scoped = [c for c in chunks if _chunk_matches_pipeline(c, document_id=document_id, pipeline_hash=selected_ph)]
+        if scoped:
+            chunks = scoped
+
     eff_prompt_template_id = prompt_template_id
     if eff_prompt_template_id is None:
         raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
@@ -1613,13 +1782,17 @@ async def run_kg_extraction_for_document(
         try:
             from app.tasks.queue import enqueue_kg_extraction
 
-            pipeline_hash = (document.doc_metadata or {}).get("pipeline_hash") or "unknown"
-            job_id = f"kg:{tenant_id}:{document_id}:{pipeline_hash}"
+            # Versioning: use the selected pipeline version (defaults to active_pipeline_hash)
+            # so async job dedupe/locks don't conflate different document versions.
+            pipeline_hash_for_job = selected_ph or (document.doc_metadata or {}).get("pipeline_hash") or "unknown"
+            pipeline_hash_for_job = str(pipeline_hash_for_job).strip() or "unknown"
+            job_id = f"kg:{tenant_id}:{document_id}:{pipeline_hash_for_job}"
             task_id = await enqueue_kg_extraction(
                 tenant_id=tenant_id,
                 document_id=document_id,
                 requested_by=account_id,
                 job_id=job_id,
+                pipeline_hash=pipeline_hash_for_job,
                 replace_existing=eff_replace_existing,
                 prune_orphan_entities=eff_prune_orphans,
                 extract_relations=extract_relations,
