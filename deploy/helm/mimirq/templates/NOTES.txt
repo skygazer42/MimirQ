@@ -1,0 +1,16 @@
+MimirQ has been deployed.
+
+Useful endpoints:
+- Health:  /api/v1/health
+- Ready:   /api/v1/health/ready
+
+If you enabled Ingress:
+  kubectl -n {{ .Release.Namespace }} get ingress {{ include "mimirq.fullname" . }}
+
+If you did NOT enable Ingress, you can port-forward:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mimirq.fullname" . }} 8000:{{ .Values.api.service.port }}
+  curl -fsS http://localhost:8000/api/v1/health/ready
+
+Env secret used:
+  {{ include "mimirq.secretName" . }}
+

@@ -1,0 +1,128 @@
+# Default values for MimirQ Helm chart.
+
+image:
+  repository: mimirq/mimirq
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# If set, the chart will NOT create an env Secret and will use this existing Secret for env vars.
+# The secret should contain key/value pairs corresponding to app config env vars.
+existingSecretName: ""
+
+# Values to write into the chart-managed Secret (only used when existingSecretName is empty).
+# IMPORTANT: Kubernetes Secrets are not encrypted by default; prefer creating an external secret
+# via your cluster's secret manager and setting existingSecretName.
+secretEnv:
+  # Required for most real deployments
+  AUTH_MODE: "jwt"
+  SECRET_KEY: ""
+
+  # LLM
+  LLM_API_KEY: ""
+  LLM_API_BASE: "https://api.openai.com/v1"
+  LLM_MODEL: "gpt-4o-mini"
+
+  # Tenant/auth headers
+  TENANT_HEADER: "X-Tenant-ID"
+
+  # Postgres / Redis / Vector store
+  DATABASE_URL: ""
+  REDIS_URL: ""
+  VECTOR_BACKEND: "milvus"
+  MILVUS_HOST: ""
+  MILVUS_PORT: "19530"
+
+  # MinIO (images / documents)
+  MINIO_ENABLED: "false"
+  MINIO_ENDPOINT: ""
+  MINIO_ACCESS_KEY: ""
+  MINIO_SECRET_KEY: ""
+  MINIO_BUCKET_NAME: "mimirq"
+  MINIO_USE_SSL: "false"
+  MINIO_DOCUMENTS_ENABLED: "true"
+
+  # Files
+  UPLOAD_DIR: "/data/uploads"
+
+  # Task queue (arq)
+  TASK_QUEUE_ENABLED: "true"
+  TASK_QUEUE_NAME: "mimirq"
+  TASK_WORKER_MAX_JOBS: "4"
+
+  # CORS (adjust for your frontend origin(s))
+  CORS_ORIGINS: "http://localhost:3000"
+
+api:
+  enabled: true
+  replicas: 1
+
+  service:
+    type: ClusterIP
+    port: 8000
+
+  # Probes hit the FastAPI endpoints:
+  # - readiness: /api/v1/health/ready (checks deps)
+  # - liveness:  /api/v1/health (process-level)
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 10
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 6
+
+  resources: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  extraEnv: []
+  extraVolumeMounts: []
+  extraVolumes: []
+
+worker:
+  enabled: true
+  replicas: 1
+  command:
+    - arq
+    - app.tasks.worker.WorkerSettings
+
+  resources: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  extraEnv: []
+  extraVolumeMounts: []
+  extraVolumes: []
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: mimirq.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+persistence:
+  uploads:
+    enabled: true
+    existingClaim: ""
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+
