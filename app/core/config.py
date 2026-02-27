@@ -507,6 +507,13 @@ class Settings(BaseSettings):
     RETRIEVAL_DEDUP_ENABLED: bool = True
     RETRIEVAL_DEDUP_JACCARD_THRESHOLD: float = 0.92
     RETRIEVAL_DEDUP_MAX_COMPARE: int = 50
+    # Optional: cross-document near-duplicate dropping using per-chunk simhash64 metadata.
+    # Safe-by-default: disabled unless explicitly enabled.
+    RETRIEVAL_NEAR_DEDUP_ENABLED: bool = False
+    # Hamming distance threshold (0 = exact simhash match only).
+    RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD: int = 3
+    # Cap comparisons against previously-kept simhash values (0 disables cap).
+    RETRIEVAL_NEAR_DEDUP_MAX_COMPARE: int = 60
     # Per-document diversity (0 disables)
     RETRIEVAL_MAX_CHUNKS_PER_DOC: int = 3
     # Metadata filtering for vector search
@@ -1320,6 +1327,10 @@ class Settings(BaseSettings):
             raise ValueError(f"RETRIEVAL_DEDUP_JACCARD_THRESHOLD ({dedup_thr}) must be between 0 and 1")
         if int(getattr(self, "RETRIEVAL_DEDUP_MAX_COMPARE", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_DEDUP_MAX_COMPARE must be >= 0")
+        if int(getattr(self, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD must be >= 0")
+        if int(getattr(self, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_NEAR_DEDUP_MAX_COMPARE must be >= 0")
         if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_DOC must be >= 0")
         if int(getattr(self, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0) < 0:

@@ -121,6 +121,62 @@ def _is_recall_profile(profile: str | None) -> bool:
     return p in {"recall20", "recall50", "coverage80"}
 
 
+def _coverage_proxy_from_citations(citations: Any) -> dict[str, Any] | None:
+    """
+    Compute a lightweight, PII-safe coverage proxy from citations.
+
+    This is intentionally *not* a semantic quality metric; it is used for:
+    - quick diagnosis (e.g., "all citations come from 1 doc")
+    - low-cost gating/alerts
+    """
+    if not isinstance(citations, list) or not citations:
+        return None
+
+    doc_ids: list[str] = []
+    pipeline_keys: list[str] = []
+    roles: list[str] = []
+
+    for c in citations:
+        if not isinstance(c, dict):
+            continue
+        did = c.get("document_id")
+        if did is not None and str(did).strip():
+            doc_ids.append(str(did).strip())
+
+        pk = c.get("doc_pipeline_key") or c.get("pipeline_hash")
+        if pk is not None and str(pk).strip():
+            pipeline_keys.append(str(pk).strip())
+
+        role = c.get("retrieval_role")
+        if role is not None and str(role).strip():
+            roles.append(str(role).strip().lower())
+
+    total = len([c for c in citations if isinstance(c, dict)])
+    if total <= 0:
+        return None
+
+    distinct_docs = len(set(doc_ids)) if doc_ids else 0
+    distinct_pipelines = len(set(pipeline_keys)) if pipeline_keys else 0
+    distinct_roles = len(set(roles)) if roles else 0
+
+    top_doc_share: float | None = None
+    if doc_ids:
+        from collections import Counter  # local import: keep module import-light
+
+        counts = Counter(doc_ids)
+        if counts:
+            top_doc_share = round(float(max(counts.values())) / float(len(doc_ids)), 3)
+
+    out: dict[str, Any] = {
+        "citations_total": int(total),
+        "distinct_documents": int(distinct_docs),
+        "distinct_pipeline_keys": int(distinct_pipelines),
+        "distinct_roles": int(distinct_roles),
+        "top_doc_share": top_doc_share,
+    }
+    return {k: v for k, v in out.items() if v is not None} or None
+
+
 def _doc_key(doc: Document) -> str:
     meta = doc.metadata or {}
     doc_id = meta.get("document_id")
@@ -1235,6 +1291,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         post_rerank_error = str(exc)[:200]
 
     citations = build_citations_from_docs(docs, retrieval_elapsed_sec=retrieval_elapsed, retrieval_mode=request_retrieval_mode, query=query_for_retrieval)
+    coverage = _coverage_proxy_from_citations(citations)
 
     metrics = dict(state.get("metrics") or {})
     metrics["retrieval_elapsed_sec"] = round(retrieval_elapsed, 3)
@@ -1245,6 +1302,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["retrieval_query_count"] = len(retrieval_plan)
     metrics["retrieval_per_query"] = retrieval_per_query[:8]
     metrics["vector_backend"] = settings.VECTOR_BACKEND
+    if coverage:
+        metrics["citation_coverage"] = coverage
     if retrieval_errors:
         metrics["retrieval_errors"] = retrieval_errors[:5]
 
