@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.tenant_id is not None:
         tenant_ids = [args.tenant_id]
     else:
-        tenant_ids = [UUID(str(getattr(settings, "DEFAULT_TENANT_ID")))]
+        tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
 
     ran_at = datetime.now(timezone.utc)
     results: list[dict] = []
@@ -105,4 +105,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

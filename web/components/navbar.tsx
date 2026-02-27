@@ -16,6 +16,7 @@ import {
   Settings,
   FileText,
   Share2,
+  GitCompare,
   Plus,
   Scissors,
   ChevronLeft,
@@ -83,6 +84,7 @@ const menuSections: Array<{ title: string; items: MenuItem[] }> = [
     items: [
       { icon: Grid3X3, label: 'RAG 可视化', href: '/knowledge/similarity' },
       { icon: Share2, label: '知识图谱', href: '/graph' },
+      { icon: GitCompare, label: 'KG 快照', href: '/graph/snapshots' },
       { icon: BarChart3, label: 'RAGAS 评测', href: '/evaluations' },
       { icon: FileText, label: '报告中心', href: '/reports' },
       { icon: Wand2, label: '提示词', href: '/prompts' },

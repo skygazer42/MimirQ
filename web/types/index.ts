@@ -1246,12 +1246,15 @@ export interface RagTraceRetrievalQuery {
   query_chars?: number | null
   elapsed_sec?: number | null
   ok?: boolean | null
+  retriever_debug?: Record<string, any> | null
 }
 
 export interface RagTraceRetrieval {
   mode?: string | null
   requested_mode?: string | null
   auto_routed?: boolean | null
+
+  retrieval_config_hash?: string | null
 
   top_k?: number | null
   query_parallelism?: number | null

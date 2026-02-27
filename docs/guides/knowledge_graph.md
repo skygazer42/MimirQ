@@ -49,6 +49,51 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
 - `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束）。
 - `DELETE /kg/documents/{document_id}`：删除文档对应 KG 事件（可选清理孤立实体）。
 
+## KG Snapshots（快照）与 Diff（漂移对比）
+
+当你需要诊断 **同一套文档**在不同 `pipeline_hash`（解析/治理/切块/抽取提示词等配置）下的 KG 规模漂移时，
+可以使用 KG Snapshots API 导出一个 **轻量、默认 PII-safe** 的快照（计数 + 类型直方图），并对比两个快照的差异。
+
+> 注意：当前快照的“文档选择”是通过 `document_ids` 过滤可访问文档后，再按文档 `doc_metadata.active_pipeline_hash`（或 `pipeline_hash`）做筛选。
+> 如果你想对比同一份文档的历史版本，需要确保对应版本被激活或有对应 scope 的文档集合（详见 `docs/guides/document_versions.md`）。
+
+### 导出快照
+- `GET /kg/snapshots/export?pipeline_hash=...&document_ids=...`
+
+返回示例（简化）：
+```json
+{
+  "schema": "mimirq.kg_snapshot.v1",
+  "pipeline_hash": "ph_xxx",
+  "docs": 12,
+  "events": 340,
+  "entities": 980,
+  "links": 2100,
+  "relations": 420,
+  "entity_types": [{"type":"Skill","count":120}],
+  "updated_at": "2026-02-27T00:00:00Z",
+  "elapsed_sec": 0.123
+}
+```
+
+### 对比两个 pipeline_hash
+- `GET /kg/snapshots/compare?pipeline_hash_a=...&pipeline_hash_b=...&document_ids=...`
+
+返回是 `mimirq.kg_snapshot_diff.v1`：
+```json
+{
+  "schema": "mimirq.kg_snapshot_diff.v1",
+  "pipeline_hash_a": "ph_a",
+  "pipeline_hash_b": "ph_b",
+  "delta": { "docs": 0, "events": 12, "entities": -3, "links": 20, "relations": 0 },
+  "entity_types_delta": [{"type":"Skill","delta":+6}]
+}
+```
+
+### 对比两个任意快照 payload
+- `POST /kg/snapshots/diff`
+  - body: `{ "snapshot_a": {...}, "snapshot_b": {...} }`
+
 ## 存储与数据模型（如何落库）
 
 MimirQ 的 KG 默认不依赖图数据库，核心数据直接落在 PostgreSQL，并为向量召回额外写入 Milvus。

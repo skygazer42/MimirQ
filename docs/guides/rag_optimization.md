@@ -4,6 +4,26 @@ This guide summarizes the most impactful knobs for improving retrieval quality a
 
 > All settings are defined in `app/core/config.py` and can be set via `.env` / `docker/.env`.
 
+## Recommended Order (Do This First)
+
+When optimizing quality, follow this order to avoid “tuning noise”:
+
+1) **Ingestion quality**: parsing + governance + chunking (use Chunk Preview).
+2) **Recall**: retrieval top-k / thresholds, then hybrid fusion (BM25 + vector).
+3) **Precision**: reranking (prefer deterministic providers before LLM rerank).
+4) **Query enhancements**: rewrite / multi-query / HyDE / decomposition (one-by-one).
+5) **Grounding**: visible-evidence-only + claim checks (reduce hallucinations).
+6) **Measure & gate**: RAGAS + Evidence regression suites + CI gates.
+7) **Explainability**: trace replay + metrics + export artifacts.
+
+Key companion guides:
+- Chunking: `docs/guides/chunk_preview.md`, `docs/guides/chunk_strategies.md`
+- Hybrid fusion: `docs/guides/retrieval_fusion.md`
+- Reranking: `docs/guides/reranking_colbert.md`, `docs/guides/reranking_ltr.md`
+- Evidence API: `docs/guides/evidence_api.md`
+- Regression gate: `docs/guides/regression_gate.md`
+- Knowledge Graph (optional): `docs/guides/knowledge_graph.md`
+
 ## 1) Chunking (Ingestion Quality)
 
 Key settings:
