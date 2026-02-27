@@ -69,13 +69,29 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
 
     qn = dbg.get("query_normalization")
     qn = qn if isinstance(qn, dict) else {}
-    normalized = qn.get("normalized") if isinstance(qn.get("normalized"), str) else None
+    normalized = qn.get("normalized") if isinstance(qn.get("normalized"), str) else ""
     applied_rules = qn.get("applied_rules") if isinstance(qn.get("applied_rules"), list) else []
-    if normalized is not None or applied_rules:
+    if normalized or applied_rules:
         out["query_normalization"] = {
-            "normalized": normalized,
             "applied_rules": [str(x) for x in applied_rules if x is not None][:20],
             "original_chars": len(str(qn.get("original") or "")),
+            "normalized_chars": len(str(normalized or "")),
+        }
+
+    for key in ("enrich_pass1", "enrich_pass2"):
+        ep = dbg.get(key)
+        if not isinstance(ep, dict):
+            continue
+        out[key] = {
+            "input_results": int(ep.get("input_results") or 0),
+            "output_results": int(ep.get("output_results") or 0),
+            "filtered_orphaned": int(ep.get("filtered_orphaned") or 0),
+            "filtered_acl": int(ep.get("filtered_acl") or 0),
+            "filtered_dataset": int(ep.get("filtered_dataset") or 0),
+            "filtered_not_ready": int(ep.get("filtered_not_ready") or 0),
+            "filtered_embedding_space": int(ep.get("filtered_embedding_space") or 0),
+            "filtered_pipeline_version": int(ep.get("filtered_pipeline_version") or 0),
+            "filtered_metadata_filter": int(ep.get("filtered_metadata_filter") or 0),
         }
 
     timing = dbg.get("timing")
