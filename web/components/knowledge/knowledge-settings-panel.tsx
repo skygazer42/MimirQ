@@ -20,6 +20,7 @@ import { toast } from 'sonner'
 import type { ConnectorRunOut } from '@/types'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
@@ -33,6 +34,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { datasetApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate } from '@/lib/utils'
 
 type KnowledgeSettingsPanelProps = {
@@ -96,6 +99,10 @@ export function KnowledgeSettingsPanel({
   const [runStatusFilter, setRunStatusFilter] = useState<ConnectorRunStatusFilter>('all')
   const [autoRefreshRuns, setAutoRefreshRuns] = useState(false)
   const autoRefreshIntervalMs = 10_000
+  const [purgeWorking, setPurgeWorking] = useState(false)
+  const [purgeMaxDelete, setPurgeMaxDelete] = useState(1000)
+  const [purgePreview, setPurgePreview] = useState<any | null>(null)
+  const [purgeError, setPurgeError] = useState<string | null>(null)
 
   const runsUpdatedAtLabel = connectorRunsUpdatedAt
     ? new Date(connectorRunsUpdatedAt).toLocaleTimeString()
@@ -174,6 +181,35 @@ export function KnowledgeSettingsPanel({
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
     el.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
   }, [connectorRuns, expandedConnectorRunId])
+
+  const runDatasetPurge = async (params: { dry_run: boolean }) => {
+    if (!selectedDatasetId) {
+      toast.error('请先选择一个数据集')
+      return
+    }
+
+    setPurgeWorking(true)
+    setPurgeError(null)
+    try {
+      const maxDelete = Math.max(1, Math.min(10_000, Number(purgeMaxDelete) || 1000))
+      const res = await datasetApi.purge(selectedDatasetId, {
+        dry_run: params.dry_run,
+        max_delete: maxDelete,
+      })
+      setPurgePreview(res)
+      if (params.dry_run) {
+        toast.success(`已预览：eligible=${String(res?.eligible ?? '—')}`)
+      } else {
+        toast.success(`已清空：deleted=${String(res?.deleted ?? '—')}（如还有剩余可重复执行）`)
+      }
+    } catch (err: any) {
+      const msg = formatApiError(err, '清空数据集失败')
+      setPurgeError(msg)
+      toast.error(msg)
+    } finally {
+      setPurgeWorking(false)
+    }
+  }
 
   return (
     <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
@@ -678,6 +714,107 @@ export function KnowledgeSettingsPanel({
                 })}
               </div>
             )}
+          </div>
+
+          <div className="h-px bg-border/60" />
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-semibold text-foreground">危险操作</label>
+              <p className="text-xs text-muted-foreground mt-1">
+                仅用于管理员生命周期治理：批量删除数据集内的文档（不删除数据集本身）。默认 <span className="font-mono">dry_run</span> 预览。
+              </p>
+            </div>
+
+            <AlertDialog
+              onOpenChange={(open) => {
+                if (open) {
+                  setPurgePreview(null)
+                  setPurgeMaxDelete(1000)
+                  setPurgeError(null)
+                }
+              }}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  disabled={!selectedDatasetId || purgeWorking}
+                  title={!selectedDatasetId ? '请先选择一个数据集' : undefined}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  清空数据集文档
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>清空数据集文档？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    将调用 <span className="font-mono">POST /api/v1/datasets/{'{id}'}/purge</span>，每次最多删除{' '}
+                    <span className="font-mono">max_delete</span> 条。若数据集有扫描任务（pending/running），后端会返回 409。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs text-muted-foreground shrink-0">max_delete</div>
+                    <Input
+                      type="number"
+                      className="h-9"
+                      min={1}
+                      max={10_000}
+                      value={purgeMaxDelete}
+                      onChange={(e) => setPurgeMaxDelete(Number(e.target.value) || 0)}
+                      inputMode="numeric"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-9"
+                      disabled={purgeWorking}
+                      onClick={() => void runDatasetPurge({ dry_run: true })}
+                    >
+                      预览（dry-run）
+                    </Button>
+                  </div>
+
+                  {purgePreview ? (
+                    <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-muted-foreground">preview</div>
+                        <div className="font-mono tabular-nums text-foreground/90">
+                          eligible={String(purgePreview.eligible ?? '—')} deleted={String(purgePreview.deleted ?? 0)}
+                        </div>
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">
+                        dataset_id: <span className="font-mono">{String(purgePreview.dataset_id || selectedDatasetId).slice(0, 8)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      建议先点击“预览（dry-run）”确认 eligible 数量，再执行清空。
+                    </div>
+                  )}
+
+                  {purgeError ? (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                      {purgeError}
+                    </div>
+                  ) : null}
+                </div>
+
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={purgeWorking}>返回</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={purgeWorking}
+                    onClick={() => void runDatasetPurge({ dry_run: false })}
+                  >
+                    确认清空
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
 
