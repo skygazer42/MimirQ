@@ -15,6 +15,22 @@ from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 
+def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
+    """
+    SQL expression for a document's active pipeline hash.
+
+    Mirrors app.core.pipeline_versions.get_active_pipeline_hash semantics:
+    - prefer metadata.active_pipeline_hash
+    - fallback to metadata.pipeline_hash
+    """
+    # NOTE: JSONB ->> key compiles to bound parameters; callers can still assert
+    # presence of these keys via compiled.params in tests.
+    return func.coalesce(
+        doc_model.doc_metadata["active_pipeline_hash"].astext,  # type: ignore[attr-defined]
+        doc_model.doc_metadata["pipeline_hash"].astext,  # type: ignore[attr-defined]
+    )
+
+
 def _quote_milvus_str(value: str, *, max_len: int = 256) -> str:
     """
     Quote and escape a string literal for Milvus expr to avoid injection.
@@ -173,6 +189,10 @@ class EventRepository:
         ids = _as_uuid_list(event_ids)
         if not ids:
             return set()
+        from sqlalchemy import and_  # noqa: WPS433
+
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+
         allowed_docs = self._allowed_document_ids_subquery_for_dataset(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -180,10 +200,53 @@ class EventRepository:
         )
         stmt = (
             select(KgSourceEvent.id)
+            .join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgSourceEvent.document_id,
+                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
+                ),
+            )
             .where(
                 KgSourceEvent.tenant_id == tenant_id,
                 KgSourceEvent.id.in_(ids),
                 KgSourceEvent.document_id.in_(select(allowed_docs.c.id)),
+                KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument),
+            )
+            .distinct()
+        )
+        return set(self.session.execute(stmt).scalars().all())
+
+    def filter_event_ids_in_documents(
+        self,
+        event_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID,
+        document_ids: Iterable[str | UUID],
+    ) -> set[UUID]:
+        ids = _as_uuid_list(event_ids)
+        doc_ids = _as_uuid_list(document_ids)
+        if not ids or not doc_ids:
+            return set()
+
+        from sqlalchemy import and_  # noqa: WPS433
+
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+
+        stmt = (
+            select(KgSourceEvent.id)
+            .join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgSourceEvent.document_id,
+                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
+                ),
+            )
+            .where(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.id.in_(ids),
+                KgSourceEvent.document_id.in_(doc_ids),
+                KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument),
             )
             .distinct()
         )
@@ -200,6 +263,10 @@ class EventRepository:
         ids = _as_uuid_list(entity_ids)
         if not ids:
             return set()
+        from sqlalchemy import and_  # noqa: WPS433
+
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+
         allowed_docs = self._allowed_document_ids_subquery_for_dataset(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -208,9 +275,17 @@ class EventRepository:
         stmt = (
             select(KgEventEntity.entity_id)
             .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+            .join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgSourceEvent.document_id,
+                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
+                ),
+            )
             .where(
                 KgSourceEvent.tenant_id == tenant_id,
                 KgSourceEvent.document_id.in_(select(allowed_docs.c.id)),
+                KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument),
                 KgEventEntity.entity_id.in_(ids),
             )
             .distinct()
@@ -256,6 +331,21 @@ class EventRepository:
                 account_id=account_id,
             )
             stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
+
+        # Versioning: when scoped to a set of documents, avoid leaking stale events from
+        # inactive pipeline versions by enforcing document.active_pipeline_hash.
+        if document_ids is not None or dataset_id is not None:
+            from sqlalchemy import and_  # noqa: WPS433
+
+            from app.models.document import Document as DBDocument  # noqa: WPS433
+
+            stmt = stmt.join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgSourceEvent.document_id,
+                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
+                ),
+            ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
         return self.session.execute(stmt).scalars().all()
 
     def get_events_with_entities(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> List[KgSourceEvent]:
@@ -292,7 +382,14 @@ class EventRepository:
             doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in document_ids[:500]]
             expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
         expr = " and ".join(expr_parts)
-        results = self._milvus.search(query_vector=query_vector, top_k=k, expr=expr)
+        # Best-effort: over-fetch when we will post-filter by ACL/pipeline so we can still
+        # return close to k results after trimming.
+        want_k = max(1, int(k))
+        fetch_k = want_k
+        if document_ids is not None or dataset_id is not None:
+            fetch_k = min(max(want_k, want_k * 5), 500)
+
+        results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
         formatted = []
         for r in results:
             meta = r.get("metadata") or {}
@@ -307,8 +404,23 @@ class EventRepository:
                     "document_id": meta.get("document_id"),
                 }
             )
-        if document_ids or dataset_id is None:
-            return formatted
+
+        # Document-scoped search: post-filter to active pipeline to prevent stale KG drift.
+        if document_ids is not None:
+            try:
+                candidate_event_ids = [item.get("event_id") for item in formatted if item.get("event_id")]
+                allowed_event_ids = self.filter_event_ids_in_documents(
+                    candidate_event_ids,
+                    tenant_id=UUID(str(tenant_id)),
+                    document_ids=document_ids,
+                )
+                allowed_strs = {str(eid) for eid in allowed_event_ids}
+                return [item for item in formatted if str(item.get("event_id")) in allowed_strs][:want_k]
+            except Exception:
+                return formatted[:want_k]
+
+        if dataset_id is None:
+            return formatted[:want_k]
 
         # Dataset-scoped search: post-filter vector hits via SQL to enforce ACL without enumerating doc ids.
         if not account_id:
@@ -322,10 +434,10 @@ class EventRepository:
                 account_id=account_id,
             )
             allowed_strs = {str(eid) for eid in allowed_event_ids}
-            return [item for item in formatted if str(item.get("event_id")) in allowed_strs]
+            return [item for item in formatted if str(item.get("event_id")) in allowed_strs][:want_k]
         except Exception:
             # Best-effort: if filtering fails, fall back to raw vector hits (caller can still filter later).
-            return formatted
+            return formatted[:want_k]
 
     def search_events_by_entities(
         self,
@@ -378,6 +490,19 @@ class EventRepository:
                 account_id=account_id,
             )
             stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
+
+        if document_ids is not None or dataset_id is not None:
+            from sqlalchemy import and_  # noqa: WPS433
+
+            from app.models.document import Document as DBDocument  # noqa: WPS433
+
+            stmt = stmt.join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgSourceEvent.document_id,
+                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
+                ),
+            ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
         rows = self.session.execute(stmt).all()
         return [row[0] for row in rows]
 
@@ -391,12 +516,24 @@ class EventRepository:
         ids = _as_uuid_list(entity_ids)
         if not ids or not document_ids:
             return set()
+        from sqlalchemy import and_  # noqa: WPS433
+
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+
         stmt = (
             select(KgEventEntity.entity_id)
             .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+            .join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgSourceEvent.document_id,
+                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
+                ),
+            )
             .where(
                 KgSourceEvent.tenant_id == tenant_id,
                 KgSourceEvent.document_id.in_(document_ids),
+                KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument),
                 KgEventEntity.entity_id.in_(ids),
             )
             .distinct()
@@ -484,6 +621,19 @@ class EventRepository:
                 account_id=account_id,
             )
             stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
+
+        if document_ids is not None or dataset_id is not None:
+            from sqlalchemy import and_  # noqa: WPS433
+
+            from app.models.document import Document as DBDocument  # noqa: WPS433
+
+            stmt = stmt.join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgSourceEvent.document_id,
+                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
+                ),
+            ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
         return self.session.execute(stmt).scalars().all()
 
 
@@ -565,6 +715,19 @@ class RelationRepository:
                 account_id=account_id,
             )
             q = q.filter(KgRelation.document_id.in_(select(allowed_docs.c.id)))
+
+        if document_ids is not None or dataset_id is not None:
+            from sqlalchemy import and_  # noqa: WPS433
+
+            from app.models.document import Document as DBDocument  # noqa: WPS433
+
+            q = q.join(
+                DBDocument,
+                and_(
+                    DBDocument.id == KgRelation.document_id,
+                    DBDocument.tenant_id == KgRelation.tenant_id,
+                ),
+            ).filter(KgRelation.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
 
         q = q.order_by(KgRelation.updated_at.desc())
         if lim:

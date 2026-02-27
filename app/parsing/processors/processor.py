@@ -2748,15 +2748,22 @@ class DocumentProcessorService:
                 # When queue is enabled, move KG extraction to the worker for better ingest throughput.
                 if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
                     try:
+                        from app.core.pipeline_versions import get_active_pipeline_hash  # noqa: WPS433
                         from app.tasks.queue import enqueue_kg_extraction
 
-                        pipeline_hash = (db_document.doc_metadata or {}).get("pipeline_hash") or "unknown"
+                        pipeline_hash = (
+                            get_active_pipeline_hash(db_document.doc_metadata or {})
+                            or (db_document.doc_metadata or {}).get("pipeline_hash")
+                            or "unknown"
+                        )
+                        pipeline_hash = str(pipeline_hash).strip() or "unknown"
                         job_id = f"kg:{tenant_id}:{document_id}:{pipeline_hash}"
                         kg_task_id = await enqueue_kg_extraction(
                             tenant_id=tenant_id,
                             document_id=document_id,
                             requested_by="system",
                             job_id=job_id,
+                            pipeline_hash=pipeline_hash,
                         )
                         if kg_task_id:
                             meta = dict(db_document.doc_metadata or {})

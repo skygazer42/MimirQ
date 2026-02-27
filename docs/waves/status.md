@@ -10,7 +10,7 @@ Update it at the end of each wave commit.
 | Wave12A | done | `c8573b7e` | Export artifacts manifest |
 | Wave12B | done | `42afb6c1` | Retention jobs runner |
 | Wave13 | done | (see git log) | Gap baseline + roadmap + diff-first tooling |
-| Wave14 | planned | - | KG versioning (pipeline_hash) + provenance |
+| Wave14 | done | (see git log) | KG versioning scope (active pipeline) + snapshots + API filters |
 | Wave15 | planned | - | Entity resolution (aliases/merge/split) + ontology governance |
 | Wave16 | planned | - | KG reasoning (embeddings/path/provenance injection) |
 | Wave17 | planned | - | Retrieval excellence v2 |
