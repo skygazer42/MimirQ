@@ -39,6 +39,7 @@ import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/a
 import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
+import { KgPredicateOntologySettings } from '@/components/kg-predicate-ontology-settings'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { cn } from '@/lib/utils'
@@ -275,8 +276,9 @@ export default function PromptsPage() {
           </Button>
         }
       >
-        <div className="mb-6">
+        <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <KgExtractPromptSettings templates={templates} />
+          <KgPredicateOntologySettings />
         </div>
 
 	          {/* Filters & Search */}

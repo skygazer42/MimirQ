@@ -4,6 +4,8 @@ Entity and Event repositories.
 Provides data access for entities and events with both PostgreSQL storage
 and Milvus vector similarity search capabilities.
 """
+import re
+import unicodedata
 from typing import Iterable, List, Optional
 from uuid import UUID
 
@@ -11,8 +13,91 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
+from app.rag.kg.models import (
+    KgEntity,
+    KgEntityAlias,
+    KgEntityRedirect,
+    KgEventEntity,
+    KgRelation,
+    KgSourceEvent,
+)
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
+
+_ALIAS_TOKEN_RE = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9_+./:-]{0,64}|[\u4e00-\u9fff]{1,32}",
+    flags=re.UNICODE,
+)
+
+
+def _extract_alias_candidates(query: str, *, max_tokens: int = 32, max_ngrams: int = 256) -> list[str]:
+    """
+    Extract normalized alias candidates from a query string (deterministic, conservative).
+
+    Design:
+    - Avoid full substring search over all aliases (too expensive).
+    - Generate a small set of candidate terms/phrases and use an indexed IN lookup on
+      kg_entity_aliases.normalized_alias.
+    """
+    text = unicodedata.normalize("NFKC", str(query or "")).strip()
+    if not text:
+        return []
+
+    tokens = [t for t in _ALIAS_TOKEN_RE.findall(text) if str(t or "").strip()]
+    if not tokens:
+        return []
+    tokens = tokens[: max(1, int(max_tokens or 0))]
+
+    # Candidate surfaces (unigram + short ASCII ngrams).
+    surfaces: list[str] = []
+    seen_s: set[str] = set()
+
+    def _add_surface(s: str) -> None:
+        s = str(s or "").strip()
+        if not s:
+            return
+        if len(s) > 80:
+            return
+        sig = s.casefold() if s.isascii() else s
+        if sig in seen_s:
+            return
+        seen_s.add(sig)
+        surfaces.append(s)
+
+    # Whole query if short (helps for exact-term queries).
+    if len(text) <= 80:
+        _add_surface(text)
+
+    for tok in tokens:
+        _add_surface(tok)
+
+    # ASCII ngrams only (space-joined), up to 4 tokens.
+    for i in range(len(tokens)):
+        if not tokens[i].isascii():
+            continue
+        for j in range(i + 2, min(len(tokens), i + 4) + 1):
+            phrase = " ".join(tokens[i:j])
+            if phrase.isascii():
+                _add_surface(phrase)
+
+    # Normalize via the shared KG name normalizer so stored and query forms align.
+    from app.rag.kg.extraction.parser import EntityValueParser  # noqa: WPS433
+
+    parser = EntityValueParser()
+    out: list[str] = []
+    seen_n: set[str] = set()
+    for surf in surfaces:
+        norm = parser.normalize_name(surf)
+        if not norm:
+            continue
+        if len(norm) > 500:
+            continue
+        if norm in seen_n:
+            continue
+        seen_n.add(norm)
+        out.append(norm)
+        if len(out) >= max(1, int(max_ngrams or 0)):
+            break
+    return out
 
 
 def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
@@ -149,6 +234,130 @@ class EntityRepository:
         else:
             self.session.flush()
         return ent
+
+
+class AliasRepository:
+    """Alias lookup helpers for KG search and entity resolution UI."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def _resolve_redirects(self, entity_ids: Iterable[UUID], *, tenant_id: UUID, max_hops: int = 6) -> dict[UUID, UUID]:
+        """
+        Resolve entity ids via KgEntityRedirect (best-effort, bounded).
+
+        Returns a mapping original_id -> canonical_id (may be identity).
+        """
+        ids = _as_uuid_list(entity_ids)
+        if not ids:
+            return {}
+
+        resolved: dict[UUID, UUID] = {eid: eid for eid in ids}
+        cur = set(ids)
+        hops = 0
+        while cur and hops < max(1, int(max_hops or 0)):
+            hops += 1
+            rows = (
+                self.session.query(KgEntityRedirect)
+                .filter(KgEntityRedirect.tenant_id == tenant_id)
+                .filter(KgEntityRedirect.from_entity_id.in_(list(cur)))
+                .all()
+            )
+            nxt: set[UUID] = set()
+            for r in rows:
+                frm = getattr(r, "from_entity_id", None)
+                to = getattr(r, "to_entity_id", None)
+                if frm is None or to is None:
+                    continue
+                if resolved.get(frm) == to:
+                    continue
+                resolved[frm] = to
+                nxt.add(to)
+            cur = nxt
+        return resolved
+
+    def match_aliases(
+        self,
+        *,
+        query: str,
+        tenant_id: UUID,
+        limit: int = 10,
+    ) -> list[dict]:
+        """
+        Return alias-matched entities for the given query (lexical, deterministic).
+
+        Output format is aligned with EntityRepository.search_similar:
+          {"entity_id","name","type","similarity","tenant_id", ...}
+        """
+        lim = max(0, int(limit or 0))
+        if lim <= 0:
+            return []
+
+        candidates = _extract_alias_candidates(query)
+        if not candidates:
+            return []
+
+        # Pull alias rows first (bounded).
+        rows = (
+            self.session.query(KgEntityAlias)
+            .filter(KgEntityAlias.tenant_id == tenant_id)
+            .filter(KgEntityAlias.normalized_alias.in_(candidates))
+            .order_by(KgEntityAlias.updated_at.desc(), KgEntityAlias.id.asc())
+            .limit(lim * 8)
+            .all()
+        )
+        if not rows:
+            return []
+
+        raw_entity_ids = [getattr(r, "canonical_entity_id", None) for r in rows if getattr(r, "canonical_entity_id", None)]
+        resolved_map = self._resolve_redirects(raw_entity_ids, tenant_id=tenant_id)
+
+        resolved_ids = _as_uuid_list([resolved_map.get(eid, eid) for eid in raw_entity_ids if eid is not None])
+        if not resolved_ids:
+            return []
+
+        ents = (
+            self.session.query(KgEntity)
+            .filter(KgEntity.tenant_id == tenant_id)
+            .filter(KgEntity.id.in_(resolved_ids))
+            .all()
+        )
+        ent_by_id = {e.id: e for e in ents if getattr(e, "id", None) is not None}
+
+        # Dedupe by resolved entity id (stable).
+        out: list[dict] = []
+        seen: set[str] = set()
+        for r in rows:
+            raw_id = getattr(r, "canonical_entity_id", None)
+            if raw_id is None:
+                continue
+            resolved_id = resolved_map.get(raw_id, raw_id)
+            ent = ent_by_id.get(resolved_id)
+            if ent is None:
+                continue
+
+            sig = str(resolved_id)
+            if sig in seen:
+                continue
+            seen.add(sig)
+
+            out.append(
+                {
+                    "entity_id": str(resolved_id),
+                    "name": str(getattr(ent, "name", "") or ""),
+                    "type": str(getattr(ent, "type", "") or "unknown"),
+                    # Treat exact alias matches as high-confidence "similarity".
+                    "similarity": 1.0,
+                    "tenant_id": str(tenant_id),
+                    "alias_id": str(getattr(r, "id", "") or ""),
+                    "alias": str(getattr(r, "alias", "") or ""),
+                    "method": "alias_match",
+                }
+            )
+            if len(out) >= lim:
+                break
+
+        return out
 
 
 class EventRepository:

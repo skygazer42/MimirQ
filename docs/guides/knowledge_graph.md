@@ -59,6 +59,56 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
 - `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束；支持 `pipeline_hash` 可选参数）。
 - `DELETE /kg/documents/{document_id}`：删除文档对应 KG 事件（可选清理孤立实体）。
 
+## Entity Resolution（实体消歧 / 合并拆分 / 可撤销）
+
+Wave15 引入一套 **tenant-scoped** 的实体消歧（Entity Resolution）机制，用于治理“同名多实体 / 同义词碎片化 / 误抽取实体”等问题。
+
+设计目标：
+- **稳定 URL**：合并后旧实体 ID 仍可访问（通过 redirect 解析到 canonical id）。
+- **可逆操作**：merge/split 产生 append-only action 记录，可撤销（undo）。
+- **不绑定 pipeline_hash**：实体消歧是租户级治理，跨 pipeline 版本保持一致。
+
+### Alias（别名）
+- `GET /kg/entities/{entity_id}/aliases`：列出实体 aliases（会包含已合并/已弃用 id 上的 aliases）。
+- `POST /kg/entities/{entity_id}/aliases`：新增 alias（会 normalize）。
+- `DELETE /kg/entities/{entity_id}/aliases/{alias_id}`：删除 alias。
+- `GET /kg/entities/{entity_id}/alias_suggestions?mode=offline|vector`：alias 建议（离线 deterministic / Milvus 相似度）。
+
+### Merge（合并）/ Split（拆分）/ Undo（撤销）
+- `POST /kg/entities/merge/preview`：预览合并影响（统计 + sample）。
+- `POST /kg/entities/merge`：执行合并（source → target），会：
+  - 重写事件-实体边（`kg_event_entities`）与关系边端点（`kg_relations`）。
+  - 对 overlap events 做去重（避免同一事件出现重复 entity edge）。
+  - 删除合并后产生的 self-relations（例如 source↔target 关系合并后变为 self）。
+  - 创建 redirect：`kg_entity_redirects(from=source, to=target)` 以保持旧 ID 可用。
+- `POST /kg/entities/split`：按 event_ids 从原实体拆出新实体（只移动选中的事件边/对应关系边）。
+- `POST /kg/entities/resolution/actions/{action_id}/undo`：撤销 merge/split（best-effort，确定性）。
+
+> 备注：split undo 会在新实体变为“孤立（无边/无关系/无 alias/无 redirect）”时 best-effort 删除该实体，以尽量恢复到拆分前的图形态。
+
+### 向量一致性（可选）
+实体 merge/split 默认 **不会**触发 Milvus 侧向量维护（避免测试/最小部署强依赖 Milvus）。
+
+- `KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED=false`（默认）：不做向量 side effects。
+- 若开启为 `true`：merge 可能会删除 source entity 的向量并在 undo 时恢复（best-effort）。
+
+## Predicate Ontology（谓词治理 / allowlist）
+
+Wave15 引入 tenant-scoped 的 `kg_predicate_ontology`，用于治理 KG relation triples 的谓词集合（防止 schema 漂移）。
+
+API：
+- `GET /kg/ontology/predicates`
+- `POST /kg/ontology/predicates`（upsert）
+- `PATCH /kg/ontology/predicates/{predicate_id}`
+- `DELETE /kg/ontology/predicates/{predicate_id}`
+
+优先级（从高到低）：
+1) DB 中 **enabled** predicates（若存在任意条，则以 DB 为准）
+2) 环境变量 `KG_RELATION_ALLOWED_PREDICATES`（逗号/换行分隔）
+3) 系统默认 allowlist
+
+前端入口：`/prompts` 页面内的 “KG Predicate Ontology（谓词治理）”。
+
 ## KG Snapshots（快照）与 Diff（漂移对比）
 
 当你需要诊断 **同一套文档**在不同 `pipeline_hash`（解析/治理/切块/抽取提示词等配置）下的 KG 规模漂移时，

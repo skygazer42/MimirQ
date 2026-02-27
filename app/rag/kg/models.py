@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 
@@ -153,3 +154,117 @@ class KgRelation(Base):
     subject = relationship("KgEntity", foreign_keys=[subject_entity_id])
     object = relationship("KgEntity", foreign_keys=[object_entity_id])
     event = relationship("KgSourceEvent", foreign_keys=[event_id])
+
+
+class KgEntityAlias(Base):
+    """
+    Human-governed aliases for KG entities (entity resolution).
+
+    Notes:
+    - This is used to reduce entity fragmentation and to support alias-aware KG search.
+    - Aliases are tenant-scoped and point at a canonical KgEntity.
+    """
+
+    __tablename__ = "kg_entity_aliases"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
+
+    canonical_entity_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    alias = Column(String(500), nullable=False)
+    normalized_alias = Column(String(500), nullable=False, index=True)
+
+    created_by = Column(String(255), nullable=True, index=True)
+    extra_data = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    canonical = relationship("KgEntity", foreign_keys=[canonical_entity_id])
+
+
+class KgEntityResolutionAction(Base):
+    """Append-only log of entity resolution actions (merge/split/undo)."""
+
+    __tablename__ = "kg_entity_resolution_actions"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
+
+    actor_id = Column(String(255), nullable=True, index=True)
+    action_type = Column(String(32), nullable=False, index=True)  # merge|split|undo
+    status = Column(String(32), nullable=False, default="applied", index=True)  # applied|reverted
+
+    payload = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    reversed_at = Column(DateTime, nullable=True)
+    reversed_by = Column(String(255), nullable=True)
+
+
+class KgEntityRedirect(Base):
+    """
+    Map deprecated entity ids to canonical entities.
+
+    This enables stable URLs and safe resolution after merges.
+    """
+
+    __tablename__ = "kg_entity_redirects"
+
+    from_entity_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
+
+    to_entity_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    action_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_entity_resolution_actions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_by = Column(String(255), nullable=True)
+    extra_data = Column(JSONB, nullable=True)
+
+    source = relationship("KgEntity", foreign_keys=[from_entity_id])
+    target = relationship("KgEntity", foreign_keys=[to_entity_id])
+    action = relationship("KgEntityResolutionAction", foreign_keys=[action_id])
+
+
+class KgPredicateOntology(Base):
+    """
+    Predicate allowlist + metadata (lightweight ontology governance).
+
+    Extraction and KG relation expansion can consult this table to keep predicates
+    compact and consistent (avoid schema drift).
+    """
+
+    __tablename__ = "kg_predicate_ontology"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
+
+    predicate = Column(String(200), nullable=False, index=True)
+    display_name = Column(String(200), nullable=True)
+    description = Column(Text, nullable=True)
+    is_enabled = Column(Boolean, nullable=False, default=True, index=True)
+
+    extra_data = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, index=True)

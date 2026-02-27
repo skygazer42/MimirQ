@@ -1040,6 +1040,12 @@ class Settings(BaseSettings):
     KG_SEARCH_CACHE_ENABLED: bool = False
     KG_SEARCH_CACHE_TTL_SEC: int = 30
     KG_SEARCH_CACHE_MAX_ENTRIES: int = 256
+    # Entity resolution (Wave15): merge/split actions may optionally update KG entity vectors.
+    #
+    # Why off by default:
+    # - Unit tests should not require Milvus.
+    # - Some deployments may prefer running vector maintenance as an async job.
+    KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED: bool = False
     # Relation-driven recall expansion: seed entities -> relation neighbors -> events.
     # Disabled by default to avoid behavioral changes in KG search without opt-in.
     KG_SEARCH_RELATION_EXPANSION_ENABLED: bool = False

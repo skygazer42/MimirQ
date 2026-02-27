@@ -445,7 +445,13 @@ def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.MonkeyPa
         updated_at=None,
     )
 
-    db = _FakeDB([_FakeQuery(first=ent), _FakeQuery(scalar=0)])
+    db = _FakeDB(
+        [
+            _FakeQuery(first=None),  # redirect lookup (none)
+            _FakeQuery(first=ent),  # ent
+            _FakeQuery(scalar=0),  # total_events
+        ]
+    )
 
     with pytest.raises(HTTPException) as exc:
         get_kg_entity_detail(
@@ -496,6 +502,7 @@ def test_get_kg_entity_detail_success(monkeypatch: pytest.MonkeyPatch):
     neighbor_rows = [(UUID(int=30), "Bob", "Person", 2)]
     db = _FakeDB(
         [
+            _FakeQuery(first=None),  # redirect lookup (none)
             _FakeQuery(first=ent),  # ent
             _FakeQuery(scalar=3),  # total_events
             _FakeQuery(all_rows=[ev]),  # events

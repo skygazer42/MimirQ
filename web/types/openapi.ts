@@ -1714,6 +1714,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset_id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Dataset Documents
+         * @description Purge documents within a dataset (bounded, best-effort).
+         *
+         *     Notes:
+         *     - This endpoint intentionally does NOT delete the dataset record itself.
+         *       Once the dataset is empty, callers can use DELETE /datasets/{id}.
+         *     - Default is dry-run for safety.
+         *     - Uses the existing document delete lifecycle to ensure artifacts (vectors/KG/object storage) are removed.
+         */
+        post: operations["purge_dataset_documents_api_v1_datasets__dataset_id__purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/{dataset_id}/ingestion-policy": {
         parameters: {
             query?: never;
@@ -1934,6 +1960,54 @@ export interface paths {
         };
         /** Export Dataset Profile Html Report */
         get: operations["export_dataset_profile_html_report_api_v1_datasets__dataset_id__profile_export_html_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Dataset Documents Ndjson
+         * @description Export dataset documents as NDJSON (JSON Lines) for compliance / lifecycle workflows.
+         *
+         *     Security posture:
+         *     - Requires tenant lifecycle.manage permission (owner/admin).
+         *     - PII-safe by default (include_sensitive=false): raw filenames/paths/metadata values are not exported.
+         */
+        get: operations["export_dataset_documents_ndjson_api_v1_datasets__dataset_id__documents_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Dataset Bundle Zip
+         * @description Export a dataset "bundle" as a single ZIP archive.
+         *
+         *     This is intended for enterprise lifecycle/compliance workflows:
+         *     - Portable snapshot of dataset config
+         *     - Bounded document inventory (NDJSON), PII-safe by default
+         */
+        get: operations["export_dataset_bundle_zip_api_v1_datasets__dataset_id__export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2483,6 +2557,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/kg/snapshots/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Kg Snapshot
+         * @description Export a lightweight KG snapshot for a specific document pipeline_hash.
+         *
+         *     This is intended for diagnosing extraction drift across pipeline versions.
+         *     The snapshot is intentionally small and PII-safe by default (counts + type histogram).
+         */
+        get: operations["export_kg_snapshot_api_v1_kg_snapshots_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/snapshots/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Diff Kg Snapshots Api */
+        post: operations["diff_kg_snapshots_api_api_v1_kg_snapshots_diff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/snapshots/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare Kg Snapshots */
+        get: operations["compare_kg_snapshots_api_v1_kg_snapshots_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/kg/graph/export": {
         parameters: {
             query?: never;
@@ -2539,6 +2670,209 @@ export interface paths {
         get: operations["get_kg_entity_detail_api_v1_kg_entities__entity_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/entities/{entity_id}/aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Kg Entity Aliases
+         * @description List aliases for an entity (includes aliases attached to redirected source ids).
+         */
+        get: operations["list_kg_entity_aliases_api_v1_kg_entities__entity_id__aliases_get"];
+        put?: never;
+        /**
+         * Create Kg Entity Alias
+         * @description Create (or return existing) alias for an entity.
+         */
+        post: operations["create_kg_entity_alias_api_v1_kg_entities__entity_id__aliases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/entities/{entity_id}/aliases/{alias_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Kg Entity Alias
+         * @description Delete an alias row by id (best-effort, tenant-scoped).
+         */
+        delete: operations["delete_kg_entity_alias_api_v1_kg_entities__entity_id__aliases__alias_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/entities/{entity_id}/alias_suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest Kg Entity Aliases
+         * @description Suggest potential aliases/merge candidates for an entity.
+         */
+        get: operations["suggest_kg_entity_aliases_api_v1_kg_entities__entity_id__alias_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/entities/merge/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Kg Entity Merge
+         * @description Preview the impact of merging one entity into another (no side effects).
+         */
+        post: operations["preview_kg_entity_merge_api_v1_kg_entities_merge_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontology/predicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Kg Predicate Ontology
+         * @description List predicate ontology entries (tenant-scoped).
+         */
+        get: operations["list_kg_predicate_ontology_api_v1_kg_ontology_predicates_get"];
+        put?: never;
+        /**
+         * Create Kg Predicate Ontology
+         * @description Create (or upsert) a predicate ontology entry.
+         */
+        post: operations["create_kg_predicate_ontology_api_v1_kg_ontology_predicates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontology/predicates/{predicate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Kg Predicate Ontology
+         * @description Delete a predicate ontology entry.
+         */
+        delete: operations["delete_kg_predicate_ontology_api_v1_kg_ontology_predicates__predicate_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Kg Predicate Ontology
+         * @description Update a predicate ontology entry (toggle enabled, edit metadata).
+         */
+        patch: operations["update_kg_predicate_ontology_api_v1_kg_ontology_predicates__predicate_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/kg/entities/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Kg Entities
+         * @description Merge a source entity into a target entity (entity resolution).
+         *
+         *     Semantics:
+         *     - Updates event-entity edges and relations to point at the target entity.
+         *     - Creates a redirect so old entity ids resolve to the canonical entity.
+         *     - Dedupes duplicate event-entity edges created by the merge.
+         *     - Records an undo payload in `kg_entity_resolution_actions`.
+         */
+        post: operations["merge_kg_entities_api_v1_kg_entities_merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/entities/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split Kg Entity
+         * @description Split an entity by moving a selected set of event-entity edges to a new entity.
+         *
+         *     This is a conservative v1 split:
+         *     - Caller must provide explicit event_ids to move.
+         *     - The new entity inherits the original entity type.
+         *     - Relations are moved only when they are anchored to those event_ids.
+         */
+        post: operations["split_kg_entity_api_v1_kg_entities_split_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/entities/resolution/actions/{action_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Kg Entity Resolution Action
+         * @description Undo a merge/split resolution action (best-effort, deterministic).
+         */
+        post: operations["undo_kg_entity_resolution_action_api_v1_kg_entities_resolution_actions__action_id__undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3107,6 +3441,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluations/ragas/regression/runs/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ragas Regression Run Leaderboard
+         * @description Rank regression runs by a retrieval-only metric and attach retrieval_config_hash (PII-safe).
+         */
+        get: operations["get_ragas_regression_run_leaderboard_api_v1_evaluations_ragas_regression_runs_leaderboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluations/ragas/regression/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -3511,6 +3865,29 @@ export interface paths {
          *     - document_ids scope is inherited from the conversation when requested.
          */
         post: operations["create_regression_case_from_feedback_api_v1_feedback_messages__feedback_id__to_regression_case_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/messages/{feedback_id}/to-evidence-item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Evidence Item From Feedback
+         * @description Convert a feedback entry into an EvidenceSuite item.
+         *
+         *     Intended workflow:
+         *     feedback -> draft EvidenceItem -> review/approve -> sync into regression cases.
+         */
+        post: operations["create_evidence_item_from_feedback_api_v1_feedback_messages__feedback_id__to_evidence_item_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4514,6 +4891,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit/logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Audit Logs
+         * @description Export audit logs as NDJSON (JSON Lines) for SIEM ingestion.
+         *
+         *     Notes:
+         *     - Ordered ascending by (created_at, id) to support incremental exports.
+         *     - Uses cursor params (after_created_at, after_id) for efficient resume.
+         *     - Details are sanitized by default (include_sensitive=false).
+         */
+        get: operations["export_audit_logs_api_v1_audit_logs_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/logs/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Audit Logs
+         * @description Purge old audit logs for the current tenant (bounded).
+         *
+         *     Security:
+         *     - Admin-only (owner/admin). Auditors can read/export logs but cannot purge.
+         */
+        post: operations["purge_audit_logs_api_v1_audit_logs_purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usage/chat/tokens/quota": {
         parameters: {
             query?: never;
@@ -4649,6 +5074,27 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** AuditLogPurgeResponse */
+        AuditLogPurgeResponse: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Retention Days */
+            retention_days: number;
+            /**
+             * Cutoff
+             * Format: date-time
+             */
+            cutoff: string;
+            /** Max Delete */
+            max_delete: number;
+            /** Eligible */
+            eligible: number;
+            /** Deleted */
+            deleted: number;
         };
         /** AuthResponse */
         AuthResponse: {
@@ -8661,6 +9107,45 @@ export interface components {
             /** Suggestions */
             suggestions?: string[];
         };
+        /** DatasetPurgeResponse */
+        DatasetPurgeResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Max Delete */
+            max_delete: number;
+            /** Eligible */
+            eligible: number;
+            /** Deleted */
+            deleted: number;
+            /**
+             * Not Found
+             * @default 0
+             */
+            not_found: number;
+            /**
+             * Denied
+             * @default 0
+             */
+            denied: number;
+            /**
+             * Conflicts
+             * @default 0
+             */
+            conflicts: number;
+            /**
+             * Errors
+             * @default 0
+             */
+            errors: number;
+        };
         /**
          * DatasetRAGDefaults
          * @description Dataset-level default RAG settings (optional overrides).
@@ -10844,6 +11329,8 @@ export interface components {
             /** Document Ids */
             document_ids?: string[];
             rag_config?: components["schemas"]["ChatRAGConfig"];
+            /** Seed */
+            seed?: number | null;
         };
         /** EvidenceRetrieveResponse */
         EvidenceRetrieveResponse: {
@@ -11149,6 +11636,26 @@ export interface components {
              * @default false
              */
             magicpdf_enabled: boolean;
+        };
+        /** FeedbackToEvidenceItemRequest */
+        FeedbackToEvidenceItemRequest: {
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Extra
+             * @default {}
+             */
+            extra: {
+                [key: string]: unknown;
+            };
         };
         /** FeedbackToRegressionCaseRequest */
         FeedbackToRegressionCaseRequest: {
@@ -12072,6 +12579,91 @@ export interface components {
              */
             entities_pruned: number;
         };
+        /** KGEntityAliasCreateRequest */
+        KGEntityAliasCreateRequest: {
+            /** Alias */
+            alias: string;
+        };
+        /** KGEntityAliasItem */
+        KGEntityAliasItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Canonical Entity Id
+             * Format: uuid
+             */
+            canonical_entity_id: string;
+            /** Alias */
+            alias: string;
+            /** Normalized Alias */
+            normalized_alias: string;
+            /** Created By */
+            created_by?: string | null;
+            /** Extra Data */
+            extra_data?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** KGEntityAliasSuggestionItem */
+        KGEntityAliasSuggestionItem: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Similarity */
+            similarity: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** KGEntityAliasSuggestionsResponse */
+        KGEntityAliasSuggestionsResponse: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Suggestions */
+            suggestions?: components["schemas"]["KGEntityAliasSuggestionItem"][];
+            /**
+             * Mode
+             * @default offline
+             */
+            mode: string;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+        };
+        /** KGEntityAliasesResponse */
+        KGEntityAliasesResponse: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Resolved Entity Id
+             * Format: uuid
+             */
+            resolved_entity_id: string;
+            /** Aliases */
+            aliases?: components["schemas"]["KGEntityAliasItem"][];
+        };
         /** KGEntityDetailResponse */
         KGEntityDetailResponse: {
             entity: components["schemas"]["KGEntityItem"];
@@ -12111,6 +12703,64 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /** KGEntityMergePreviewResponse */
+        KGEntityMergePreviewResponse: {
+            /**
+             * Source Entity Id
+             * Format: uuid
+             */
+            source_entity_id: string;
+            /**
+             * Target Entity Id
+             * Format: uuid
+             */
+            target_entity_id: string;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * KGEntityMergeRequest
+         * @description Request body to merge one entity into another.
+         */
+        KGEntityMergeRequest: {
+            /**
+             * Source Entity Id
+             * Format: uuid
+             */
+            source_entity_id: string;
+            /**
+             * Target Entity Id
+             * Format: uuid
+             */
+            target_entity_id: string;
+        };
+        /**
+         * KGEntityMergeResponse
+         * @description Response after an entity merge action.
+         */
+        KGEntityMergeResponse: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /**
+             * Source Entity Id
+             * Format: uuid
+             */
+            source_entity_id: string;
+            /**
+             * Target Entity Id
+             * Format: uuid
+             */
+            target_entity_id: string;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+        };
         /** KGEntityNeighbor */
         KGEntityNeighbor: {
             /**
@@ -12124,6 +12774,66 @@ export interface components {
             type: string;
             /** Count */
             count: number;
+        };
+        /**
+         * KGEntityResolutionUndoResponse
+         * @description Response after undoing a resolution action.
+         */
+        KGEntityResolutionUndoResponse: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /** Status */
+            status: string;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * KGEntitySplitRequest
+         * @description Request body to split an entity into a new entity by moving selected event edges.
+         */
+        KGEntitySplitRequest: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** New Entity Name */
+            new_entity_name: string;
+            /**
+             * Event Ids
+             * @description Event ids whose entity edges should be moved
+             */
+            event_ids?: string[];
+        };
+        /**
+         * KGEntitySplitResponse
+         * @description Response after splitting an entity.
+         */
+        KGEntitySplitResponse: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /**
+             * Original Entity Id
+             * Format: uuid
+             */
+            original_entity_id: string;
+            /**
+             * New Entity Id
+             * Format: uuid
+             */
+            new_entity_id: string;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
         };
         /** KGEntityTypeCount */
         KGEntityTypeCount: {
@@ -12295,6 +13005,66 @@ export interface components {
             /** Rationale */
             rationale?: string | null;
             run?: components["schemas"]["KGSearchRunResult"] | null;
+        };
+        /** KGPredicateOntologyCreateRequest */
+        KGPredicateOntologyCreateRequest: {
+            /** Predicate */
+            predicate: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Is Enabled
+             * @default true
+             */
+            is_enabled: boolean;
+        };
+        /** KGPredicateOntologyItem */
+        KGPredicateOntologyItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Predicate */
+            predicate: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Is Enabled
+             * @default true
+             */
+            is_enabled: boolean;
+            /** Extra Data */
+            extra_data?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** KGPredicateOntologyListResponse */
+        KGPredicateOntologyListResponse: {
+            /** Predicates */
+            predicates?: components["schemas"]["KGPredicateOntologyItem"][];
+        };
+        /** KGPredicateOntologyUpdateRequest */
+        KGPredicateOntologyUpdateRequest: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Is Enabled */
+            is_enabled?: boolean | null;
         };
         /** KGSearchDiagnosticsItem */
         KGSearchDiagnosticsItem: {
@@ -12629,6 +13399,17 @@ export interface components {
             metrics?: components["schemas"]["KGSearchRunMetrics"];
             /** Error */
             error?: string | null;
+        };
+        /** KGSnapshotDiffRequest */
+        KGSnapshotDiffRequest: {
+            /** Snapshot A */
+            snapshot_a: {
+                [key: string]: unknown;
+            };
+            /** Snapshot B */
+            snapshot_b: {
+                [key: string]: unknown;
+            };
         };
         /** KGStatsResponse */
         KGStatsResponse: {
@@ -14044,6 +14825,10 @@ export interface components {
              * @default false
              */
             has_image: boolean;
+            /** Kg Path */
+            kg_path?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /** RagTraceListResponse */
         RagTraceListResponse: {
@@ -14084,6 +14869,8 @@ export interface components {
             requested_mode?: string | null;
             /** Auto Routed */
             auto_routed?: boolean | null;
+            /** Retrieval Config Hash */
+            retrieval_config_hash?: string | null;
             /** Top K */
             top_k?: number | null;
             /** Query Parallelism */
@@ -14491,6 +15278,33 @@ export interface components {
             slice_diffs?: {
                 [key: string]: components["schemas"]["RegressionRunSliceDiff"];
             };
+        };
+        /** RagasRegressionRunLeaderboardItem */
+        RagasRegressionRunLeaderboardItem: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Status */
+            status: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Metric Key */
+            metric_key: string;
+            /** Metric Value */
+            metric_value?: number | null;
+            /** Retrieval Config Hash */
+            retrieval_config_hash?: string | null;
+        };
+        /** RagasRegressionRunLeaderboardResponse */
+        RagasRegressionRunLeaderboardResponse: {
+            /** Metric Key */
+            metric_key: string;
+            /** Items */
+            items?: components["schemas"]["RagasRegressionRunLeaderboardItem"][];
         };
         /** RagasRegressionRunList */
         RagasRegressionRunList: {
@@ -18726,6 +19540,46 @@ export interface operations {
             };
         };
     };
+    purge_dataset_documents_api_v1_datasets__dataset_id__purge_post: {
+        parameters: {
+            query?: {
+                /** @description Max documents to delete in this call */
+                max_delete?: number;
+                /** @description Plan only; do not delete */
+                dry_run?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPurgeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_get: {
         parameters: {
             query?: never;
@@ -19252,6 +20106,91 @@ export interface operations {
             query?: {
                 /** @description Whether to redact dataset name/id for sharing */
                 redact?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_documents_ndjson_api_v1_datasets__dataset_id__documents_export_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Cursor: last seen created_at */
+                after_created_at?: string | null;
+                /** @description Cursor: last seen id (tie-breaker) */
+                after_id?: string | null;
+                /** @description Include sensitive fields (admin-only) */
+                include_sensitive?: boolean;
+                /** @description Return gzip-compressed NDJSON (Content-Encoding: gzip) */
+                gzip?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_bundle_zip_api_v1_datasets__dataset_id__export_get: {
+        parameters: {
+            query?: {
+                /** @description Max documents to include in the bundle */
+                limit?: number;
+                /** @description Include sensitive fields in documents metadata */
+                include_sensitive?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -20405,6 +21344,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional pipeline version filter (defaults to active pipeline per document) */
+                pipeline_hash?: string | null;
                 max_events?: number;
                 max_entities?: number;
                 max_links?: number;
@@ -20451,6 +21392,8 @@ export interface operations {
                 /** @description Center node id (KgSourceEvent.id or KgEntity.id) */
                 node_id: string;
                 document_ids?: string[] | null;
+                /** @description Optional pipeline version filter (defaults to active pipeline per document) */
+                pipeline_hash?: string | null;
                 max_events?: number;
                 max_entities?: number;
                 max_links?: number;
@@ -20500,6 +21443,8 @@ export interface operations {
                 kind?: string;
                 limit?: number;
                 document_ids?: string[] | null;
+                /** @description Optional pipeline version filter (defaults to active pipeline per document) */
+                pipeline_hash?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -20535,6 +21480,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional pipeline version filter (defaults to active pipeline per document) */
+                pipeline_hash?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -20566,10 +21513,118 @@ export interface operations {
             };
         };
     };
+    export_kg_snapshot_api_v1_kg_snapshots_export_get: {
+        parameters: {
+            query: {
+                pipeline_hash: string;
+                document_ids?: string[] | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_kg_snapshots_api_api_v1_kg_snapshots_diff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGSnapshotDiffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_kg_snapshots_api_v1_kg_snapshots_compare_get: {
+        parameters: {
+            query: {
+                pipeline_hash_a: string;
+                pipeline_hash_b: string;
+                document_ids?: string[] | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_kg_graph_api_v1_kg_graph_export_get: {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional pipeline version filter (defaults to active pipeline per document) */
+                pipeline_hash?: string | null;
                 max_events?: number;
                 max_entities?: number;
                 max_links?: number;
@@ -20617,6 +21672,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional pipeline version filter (defaults to active pipeline per document) */
+                pipeline_hash?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -20654,6 +21711,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional pipeline version filter (defaults to active pipeline per document) */
+                pipeline_hash?: string | null;
                 max_events?: number;
                 max_neighbors?: number;
             };
@@ -20676,6 +21735,446 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KGEntityDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_kg_entity_aliases_api_v1_kg_entities__entity_id__aliases_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityAliasesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_kg_entity_alias_api_v1_kg_entities__entity_id__aliases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGEntityAliasCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityAliasItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_kg_entity_alias_api_v1_kg_entities__entity_id__aliases__alias_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                entity_id: string;
+                alias_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityAliasesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_kg_entity_aliases_api_v1_kg_entities__entity_id__alias_suggestions_get: {
+        parameters: {
+            query?: {
+                /** @description offline|vector */
+                mode?: string;
+                k?: number;
+                min_similarity?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityAliasSuggestionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_kg_entity_merge_api_v1_kg_entities_merge_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGEntityMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityMergePreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_kg_predicate_ontology_api_v1_kg_ontology_predicates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGPredicateOntologyListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_kg_predicate_ontology_api_v1_kg_ontology_predicates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGPredicateOntologyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGPredicateOntologyItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_kg_predicate_ontology_api_v1_kg_ontology_predicates__predicate_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                predicate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGPredicateOntologyListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_kg_predicate_ontology_api_v1_kg_ontology_predicates__predicate_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                predicate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGPredicateOntologyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGPredicateOntologyItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_kg_entities_api_v1_kg_entities_merge_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGEntityMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityMergeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    split_kg_entity_api_v1_kg_entities_split_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGEntitySplitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntitySplitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_kg_entity_resolution_action_api_v1_kg_entities_resolution_actions__action_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityResolutionUndoResponse"];
                 };
             };
             /** @description Validation Error */
@@ -20730,6 +22229,8 @@ export interface operations {
         parameters: {
             query?: {
                 async?: boolean;
+                /** @description Optional pipeline hash override (defaults to active pipeline) */
+                pipeline_hash?: string | null;
                 /** @description Replace previously extracted events for this document */
                 replace_existing?: boolean | null;
                 /** @description Prune entities with no remaining event links */
@@ -22029,6 +23530,49 @@ export interface operations {
             };
         };
     };
+    get_ragas_regression_run_leaderboard_api_v1_evaluations_ragas_regression_runs_leaderboard_get: {
+        parameters: {
+            query: {
+                /** @description Dataset to scope runs (required) */
+                dataset_id: string;
+                /** @description Metric key from run.summary */
+                metric_key?: string;
+                limit?: number;
+                /** @description Include pending/failed runs (default: false) */
+                include_incomplete?: boolean;
+                /** @description Max runs to consider (recency window) */
+                max_candidates?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagasRegressionRunLeaderboardResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_ragas_regression_run_api_v1_evaluations_ragas_regression_runs__run_id__get: {
         parameters: {
             query?: {
@@ -22728,6 +24272,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RagasRegressionCaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evidence_item_from_feedback_api_v1_feedback_messages__feedback_id__to_evidence_item_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                feedback_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackToEvidenceItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceItemOut"];
                 };
             };
             /** @description Validation Error */
@@ -24652,6 +26235,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_audit_logs_api_v1_audit_logs_export_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                actor_id?: string | null;
+                action?: string | null;
+                resource_type?: string | null;
+                resource_id?: string | null;
+                request_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+                /** @description Cursor: last seen created_at */
+                after_created_at?: string | null;
+                /** @description Cursor: last seen id (tie-breaker) */
+                after_id?: string | null;
+                /** @description Include sensitive detail keys (admin/auditor only) */
+                include_sensitive?: boolean;
+                /** @description Return gzip-compressed NDJSON (Content-Encoding: gzip) */
+                gzip?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_audit_logs_api_v1_audit_logs_purge_post: {
+        parameters: {
+            query?: {
+                /** @description Delete logs older than N days */
+                retention_days?: number;
+                /** @description Max rows to delete in this call */
+                max_delete?: number;
+                /** @description Plan only; do not delete rows */
+                dry_run?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogPurgeResponse"];
                 };
             };
             /** @description Validation Error */
