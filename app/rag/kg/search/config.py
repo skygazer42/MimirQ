@@ -66,6 +66,10 @@ class SearchConfig(KGBaseModel):
     # - None means "use settings + existing default behavior".
     # - True/False forces the behavior for this call.
     relation_expansion_enabled: Optional[bool] = None
+    # Vector recall (embeddings + Milvus) override. Useful for diagnostics ablations.
+    vector_recall_enabled: Optional[bool] = None
+    # Graph embeddings (node2vec-like) recall override. Useful for diagnostics ablations.
+    graph_embeddings_enabled: Optional[bool] = None
     # When false, filter Skill-like entities from recall/expand (useful for ablations).
     include_skill_entities: bool = True
     recall: RecallConfig = RecallConfig()

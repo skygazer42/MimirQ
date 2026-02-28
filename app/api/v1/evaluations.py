@@ -1027,6 +1027,20 @@ async def run_kg_search_diagnostics(
                 "KG_SKILL_ENABLED": bool(getattr(settings, "KG_SKILL_ENABLED", False)),
                 "KG_EXTRACT_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_EXTRACT_EVIDENCE_REQUIRED", False)),
                 "KG_SKILL_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_SKILL_EVIDENCE_REQUIRED", False)),
+                "KG_SEARCH_VECTOR_RECALL_ENABLED": bool(getattr(settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True)),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED": bool(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False)),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_DIM": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_DIM", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_SEED": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_SEED", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY": float(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY", 0.0) or 0.0
+                ),
                 "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
                     getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
                 ),
