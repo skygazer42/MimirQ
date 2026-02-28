@@ -212,6 +212,7 @@ _CITATION_SAFE_KEYS = {
     "bm25_score",
     "keyword_score",
     "kg_path",
+    "kg_path_provenance",
     "rerank_score",
     "retrieval_score",
     "reranker_provider",
@@ -223,6 +224,91 @@ _CITATION_SAFE_KEYS = {
     "hit_type",
     "has_image",
 }
+
+
+def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
+    """
+    Sanitize shortest-path provenance payloads for JSONL metrics.
+
+    We allow identifiers and low-cardinality fields only. Any raw evidence text is
+    stripped to avoid persisting PII or document snippets into the metrics log.
+    """
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    out: dict[str, Any] = {}
+    schema = str(raw.get("schema") or "").strip()
+    if schema:
+        out["schema"] = schema[:80]
+    kind = str(raw.get("kind") or "").strip()
+    if kind:
+        out["kind"] = kind[:50]
+    try:
+        if raw.get("hops") is not None:
+            out["hops"] = int(raw.get("hops") or 0)
+    except Exception:
+        pass
+
+    nodes_raw = raw.get("nodes")
+    if isinstance(nodes_raw, list) and nodes_raw:
+        nodes: list[dict[str, Any]] = []
+        for n in nodes_raw:
+            if not isinstance(n, dict):
+                continue
+            node: dict[str, Any] = {}
+            k = str(n.get("kind") or "").strip()
+            if k:
+                node["kind"] = k[:30]
+            for key in ("entity_id", "type", "event_id", "document_id", "chunk_id"):
+                v = n.get(key)
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                node[key] = s[:200]
+            if node:
+                nodes.append(node)
+            if len(nodes) >= 10:
+                break
+        if nodes:
+            out["nodes"] = nodes
+
+    edges_raw = raw.get("edges")
+    if isinstance(edges_raw, list) and edges_raw:
+        edges: list[dict[str, Any]] = []
+        for e in edges_raw:
+            if not isinstance(e, dict):
+                continue
+            edge: dict[str, Any] = {}
+            k = str(e.get("kind") or "").strip()
+            if k:
+                edge["kind"] = k[:30]
+            for key in (
+                "entity_id",
+                "event_id",
+                "document_id",
+                "chunk_id",
+                "relation_id",
+                "predicate",
+                "confidence_bucket",
+                "evidence_source",
+            ):
+                v = e.get(key)
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                edge[key] = s[:200]
+            if edge:
+                edges.append(edge)
+            if len(edges) >= 10:
+                break
+        if edges:
+            out["edges"] = edges
+
+    return out or None
 
 
 def _strip_text_fields_for_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -260,7 +346,17 @@ def _strip_text_fields_for_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
         for c in citations:
             if not isinstance(c, dict):
                 continue
-            safe.append({k: c.get(k) for k in _CITATION_SAFE_KEYS if k in c})
+            item: dict[str, Any] = {}
+            for k in _CITATION_SAFE_KEYS:
+                if k not in c:
+                    continue
+                if k == "kg_path_provenance":
+                    prov = _safe_kg_path_provenance(c.get(k))
+                    if prov:
+                        item[k] = prov
+                    continue
+                item[k] = c.get(k)
+            safe.append(item)
         out["citations"] = safe
 
     return out

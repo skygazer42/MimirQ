@@ -248,6 +248,7 @@ _SAFE_CITATION_FIELDS = {
     "bm25_score",
     "keyword_score",
     "kg_path",
+    "kg_path_provenance",
     "rerank_score",
     "retrieval_score",
     "reranker_provider",
@@ -281,6 +282,93 @@ def _safe_kg_path(raw: Any) -> list[dict[str, Any]] | None:
     return out or None
 
 
+def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
+    """
+    Sanitize a shortest-path provenance payload for UI exposure.
+
+    Rules:
+    - Keep identifiers + small, low-cardinality fields only.
+    - Drop any text evidence (quotes, entity names, etc).
+    - Bound list sizes.
+    """
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    out: dict[str, Any] = {}
+    schema = str(raw.get("schema") or "").strip()
+    if schema:
+        out["schema"] = schema[:80]
+    kind = str(raw.get("kind") or "").strip()
+    if kind:
+        out["kind"] = kind[:50]
+    try:
+        if raw.get("hops") is not None:
+            out["hops"] = int(raw.get("hops") or 0)
+    except Exception:
+        pass
+
+    nodes_raw = raw.get("nodes")
+    if isinstance(nodes_raw, list) and nodes_raw:
+        nodes: list[dict[str, Any]] = []
+        for n in nodes_raw:
+            if not isinstance(n, dict):
+                continue
+            node: dict[str, Any] = {}
+            k = str(n.get("kind") or "").strip()
+            if k:
+                node["kind"] = k[:30]
+            for key in ("entity_id", "type", "event_id", "document_id", "chunk_id"):
+                v = n.get(key)
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                node[key] = s[:200]
+            if node:
+                nodes.append(node)
+            if len(nodes) >= 10:
+                break
+        if nodes:
+            out["nodes"] = nodes
+
+    edges_raw = raw.get("edges")
+    if isinstance(edges_raw, list) and edges_raw:
+        edges: list[dict[str, Any]] = []
+        for e in edges_raw:
+            if not isinstance(e, dict):
+                continue
+            edge: dict[str, Any] = {}
+            k = str(e.get("kind") or "").strip()
+            if k:
+                edge["kind"] = k[:30]
+            for key in (
+                "entity_id",
+                "event_id",
+                "document_id",
+                "chunk_id",
+                "relation_id",
+                "predicate",
+                "confidence_bucket",
+                "evidence_source",
+            ):
+                v = e.get(key)
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                edge[key] = s[:200]
+            if edge:
+                edges.append(edge)
+            if len(edges) >= 10:
+                break
+        if edges:
+            out["edges"] = edges
+
+    return out or None
+
+
 def _safe_citations(raw: Any) -> list[RagTraceCitation]:
     if not isinstance(raw, list):
         return []
@@ -306,6 +394,7 @@ def _safe_citations(raw: Any) -> list[RagTraceCitation]:
                 bm25_score=_to_float(safe.get("bm25_score")),
                 keyword_score=_to_float(safe.get("keyword_score")),
                 kg_path=_safe_kg_path(safe.get("kg_path")),
+                kg_path_provenance=_safe_kg_path_provenance(safe.get("kg_path_provenance")),
                 rerank_score=_to_float(safe.get("rerank_score")),
                 retrieval_score=_to_float(safe.get("retrieval_score")),
                 reranker_provider=(str(safe.get("reranker_provider")) if safe.get("reranker_provider") is not None else None),

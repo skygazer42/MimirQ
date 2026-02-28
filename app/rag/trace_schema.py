@@ -53,6 +53,8 @@ class RagTraceCitation(BaseModel):
     has_image: bool = False
     # Optional KG path provenance for KG-injected citations (bounded, PII-safe).
     kg_path: Optional[List[Dict[str, Any]]] = None
+    # Optional KG shortest-path provenance (nodes/edges + source doc/chunk ids; bounded, PII-safe).
+    kg_path_provenance: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(extra="ignore")
 

@@ -339,6 +339,8 @@ export interface Citation {
   parent_id?: string
   retrieval_role?: string
   neighbor_of?: string
+  kg_path?: Array<{ entity_id: string; type?: string }>
+  kg_path_provenance?: Record<string, any>
   doc_pipeline_key?: string
   pipeline_hash?: string
   relevance_score: number
@@ -1219,6 +1221,9 @@ export interface RagTraceCitation {
   start_char?: number | null
   end_char?: number | null
 
+  retrieval_role?: string | null
+  neighbor_of?: string | null
+
   doc_pipeline_key?: string | null
   pipeline_hash?: string | null
 
@@ -1239,6 +1244,9 @@ export interface RagTraceCitation {
   hit_type?: string | null
 
   has_image?: boolean
+
+  kg_path?: Array<{ entity_id: string; type?: string }> | null
+  kg_path_provenance?: Record<string, any> | null
 }
 
 export interface RagTraceRetrievalQuery {

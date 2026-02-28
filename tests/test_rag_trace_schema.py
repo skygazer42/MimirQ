@@ -72,6 +72,27 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                     "rerank_elapsed_sec": 0.45,
                     "retrieval_role": "main",
                     "neighbor_of": "chunk-0",
+                    "kg_path_provenance": {
+                        "schema": "mimirq.kg_path_provenance.v1",
+                        "kind": "entity_relation",
+                        "hops": 1,
+                        "nodes": [
+                            {"kind": "entity", "entity_id": "e1", "type": "Skill", "name": "should-not-leak"},
+                            {"kind": "entity", "entity_id": "e2", "type": "Tool"},
+                        ],
+                        "edges": [
+                            {
+                                "kind": "relation",
+                                "relation_id": str(uuid.uuid4()),
+                                "predicate": "related_to",
+                                "confidence": 0.6,
+                                "confidence_bucket": "mid",
+                                "document_id": str(uuid.uuid4()),
+                                "chunk_id": str(uuid.uuid4()),
+                                "evidence_quote": "should-not-leak",
+                            }
+                        ],
+                    },
                     "chunk_content": "should-not-leak",
                 }
             ],
@@ -129,6 +150,17 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
 
     assert item.citations and item.citations[0].retrieval_role == "main"
     assert item.citations and item.citations[0].neighbor_of == "chunk-0"
+    prov = (item.citations[0] or {}).kg_path_provenance
+    assert isinstance(prov, dict)
+    assert prov.get("schema") == "mimirq.kg_path_provenance.v1"
+    assert prov.get("kind") == "entity_relation"
+    assert prov.get("hops") == 1
+    nodes = prov.get("nodes") or []
+    edges = prov.get("edges") or []
+    assert isinstance(nodes, list) and len(nodes) == 2
+    assert isinstance(edges, list) and len(edges) == 1
+    assert "name" not in (nodes[0] or {})
+    assert "evidence_quote" not in (edges[0] or {})
     assert any(s.key == "retrieve" for s in item.steps)
     assert any(s.key == "rerank" for s in item.steps)
     assert any(s.key == "citations" for s in item.steps)
