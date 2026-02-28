@@ -72,6 +72,7 @@ class RAGState(TypedDict, total=False):
     score_threshold: float
     retrieval_mode: str
     retrieval_profile: Optional[str]
+    intent_router: Optional[bool]
     enable_query_alias_expansion: Optional[bool]
     query_aliases: Optional[Dict[str, List[str]]]
     query_alias_max_queries: Optional[int]
@@ -858,6 +859,7 @@ def build_rag_state(
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
     retrieval_profile: Optional[str] = None,
+    intent_router: Optional[bool] = None,
     enable_query_alias_expansion: Optional[bool] = None,
     query_aliases: Optional[Dict[str, List[str]]] = None,
     query_alias_max_queries: Optional[int] = None,
@@ -986,6 +988,7 @@ def build_rag_state(
         "score_threshold": score_threshold,
         "retrieval_mode": retrieval_mode,
         "retrieval_profile": retrieval_profile,
+        "intent_router": intent_router,
         "enable_query_alias_expansion": enable_query_alias_expansion,
         "query_aliases": query_aliases,
         "query_alias_max_queries": query_alias_max_queries,

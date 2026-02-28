@@ -118,6 +118,11 @@ class ChatRAGConfig(BaseModel):
     # - "recall50": recall-first for larger corpora (top_k>=50, score_threshold=0.0)
     # - "coverage80": aggressive recall/coverage preset (top_k>=80, score_threshold=0.0)
     retrieval_profile: Optional[str] = None
+    # Optional intent router: when enabled, the system may override retrieval knobs based on
+    # query intent (faq/howto/api/log). This is deterministic and PII-safe (no raw query in outputs).
+    #
+    # None means "use server default" (settings.RAG_INTENT_ROUTER_ENABLED).
+    intent_router: Optional[bool] = None
 
     # Controlled query expansion for recall (optional).
     # - query_aliases: dataset-scoped alias/synonym dictionary.

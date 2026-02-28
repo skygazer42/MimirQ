@@ -600,6 +600,9 @@ class Settings(BaseSettings):
     RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES: str = "Skill,SkillTag,SkillCategory"
     # Optional: route retrieval defaults by question type when `retrieval_mode=auto`.
     RAG_RECALL_BUCKETS_ENABLED: bool = False
+    # Optional: route retrieval presets/profiles by query intent (faq/howto/api/log).
+    # Deterministic and PII-safe by design; disabled by default to avoid behavior surprises.
+    RAG_INTENT_ROUTER_ENABLED: bool = False
     # Optional: include adjacent chunks around top hits to improve continuity (0 disables).
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).
