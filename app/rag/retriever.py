@@ -101,6 +101,9 @@ class HybridRetriever(BaseRetriever):
     # Per-query retrieval channel metrics (vector/BM25/lexical DB) for attribution/debugging.
     # Populated by `_hybrid_search` and embedded into `_last_debug_metrics` by `_get_relevant_documents`.
     _last_channel_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    # Doc/page diversity caps (max chunks per doc/page, min distinct docs) effects for the last call.
+    # PII-safe: numeric only (no ids, no query text).
+    _last_diversity_caps: Dict[str, Any] = PrivateAttr(default_factory=dict)
     # Cache whether pg_trgm is available for lexical DB search (per retriever instance).
     _lexical_pg_trgm_available: Optional[bool] = PrivateAttr(default=None)
     # Optional sparse retrieval channel caches (per scope key).
@@ -2097,6 +2100,8 @@ class HybridRetriever(BaseRetriever):
             "counts": {"vector_candidates": 0, "bm25_candidates": 0},
         }
         self._last_channel_metrics = channel_metrics
+        # Reset per-call diversity caps meta to avoid stale fields on cache-hit/early-return paths.
+        self._last_diversity_caps = {}
 
         vector_elapsed_ms = 0.0
         bm25_elapsed_ms = 0.0
@@ -2659,7 +2664,9 @@ class HybridRetriever(BaseRetriever):
             pass
 
         before_diversity = len(merged_results or [])
-        merged_results = self._apply_document_diversity(merged_results, top_k=top_k)
+        div_caps: Dict[str, Any] = {}
+        merged_results = self._apply_document_diversity(merged_results, top_k=top_k, stats=div_caps)
+        self._last_diversity_caps = div_caps
         after_diversity = len(merged_results or [])
         try:
             if isinstance(self._last_channel_metrics, dict):
@@ -3579,6 +3586,14 @@ class HybridRetriever(BaseRetriever):
         except Exception:
             debug["timing"] = {"vector_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0}
             debug["counts"] = {"vector_candidates": 0, "bm25_candidates": 0}
+        # Diversity caps meta is computed inside `_hybrid_search` / `_apply_document_diversity`.
+        # Keep it as a small numeric-only object for downstream diagnostics (PII-safe).
+        try:
+            div = dict(self._last_diversity_caps or {})
+            if div:
+                debug["diversity"] = div
+        except Exception:
+            pass
         enrich1: Dict[str, Any] = {}
         results = self._enrich_results_with_db_metadata(results, stats=enrich1)
         debug["enrich_pass1"] = enrich1
@@ -3787,19 +3802,16 @@ class HybridRetriever(BaseRetriever):
 
         return kept
 
-    def _apply_document_diversity(self, results: List[Dict[str, Any]], *, top_k: int) -> List[Dict[str, Any]]:
-        if not results:
-            return results
-
+    def _apply_document_diversity(
+        self,
+        results: List[Dict[str, Any]],
+        *,
+        top_k: int,
+        stats: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         max_per_doc = int(self.max_chunks_per_doc or 0)
         max_per_page = int(getattr(self, "max_chunks_per_page", 0) or 0)
         min_docs = int(self.min_distinct_docs or 0)
-        if max_per_doc <= 0 and max_per_page <= 0 and min_docs <= 0:
-            return results
-
-        groups: Dict[str, List[Dict[str, Any]]] = {}
-        for r in results:
-            groups.setdefault(self._get_doc_id(r), []).append(r)
 
         def _page_key(r: Dict[str, Any]) -> tuple[str, int] | None:
             meta = r.get("metadata") or {}
@@ -3816,6 +3828,52 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 return None
             return (doc_id, page)
+
+        k_cap = max(0, int(top_k or 0))
+        pre_top = (results or [])[:k_cap]
+        pre_keys = {self._result_key(r) for r in pre_top}
+        pre_docs = {did for did in (self._get_doc_id(r) for r in pre_top) if did}
+        pre_pages = {pk for pk in (_page_key(r) for r in pre_top) if pk is not None}
+
+        if stats is not None:
+            stats.clear()
+            stats.update(
+                {
+                    "max_chunks_per_doc": int(max_per_doc),
+                    "max_chunks_per_page": int(max_per_page),
+                    "min_distinct_docs": int(min_docs),
+                    "pre_unique_docs": int(len(pre_docs)),
+                    "pre_unique_pages": int(len(pre_pages)),
+                }
+            )
+
+        if not results:
+            if stats is not None:
+                stats.update(
+                    {
+                        "post_unique_docs": 0,
+                        "post_unique_pages": 0,
+                        "moved_out": 0,
+                        "moved_in": 0,
+                    }
+                )
+            return results
+
+        if max_per_doc <= 0 and max_per_page <= 0 and min_docs <= 0:
+            if stats is not None:
+                stats.update(
+                    {
+                        "post_unique_docs": int(len(pre_docs)),
+                        "post_unique_pages": int(len(pre_pages)),
+                        "moved_out": 0,
+                        "moved_in": 0,
+                    }
+                )
+            return results
+
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for r in results:
+            groups.setdefault(self._get_doc_id(r), []).append(r)
 
         must_have: List[Dict[str, Any]] = []
         if min_docs > 0:
@@ -3871,10 +3929,26 @@ class HybridRetriever(BaseRetriever):
                 selected.append(r)
 
         if len(selected) >= len(results):
-            return selected
+            out_all = selected
+        else:
+            rest = [r for r in results if self._result_key(r) not in used_keys]
+            out_all = selected + rest
 
-        rest = [r for r in results if self._result_key(r) not in used_keys]
-        return selected + rest
+        if stats is not None:
+            post_top = out_all[:k_cap]
+            post_keys = {self._result_key(r) for r in post_top}
+            post_docs = {did for did in (self._get_doc_id(r) for r in post_top) if did}
+            post_pages = {pk for pk in (_page_key(r) for r in post_top) if pk is not None}
+            stats.update(
+                {
+                    "post_unique_docs": int(len(post_docs)),
+                    "post_unique_pages": int(len(post_pages)),
+                    "moved_out": int(len(pre_keys - post_keys)),
+                    "moved_in": int(len(post_keys - pre_keys)),
+                }
+            )
+
+        return out_all
 
     def _merge_results(
         self,

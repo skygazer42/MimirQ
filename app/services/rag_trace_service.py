@@ -180,6 +180,34 @@ def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
         if stats:
             out[key] = stats
 
+    # Doc/page diversity caps (PII-safe): expose only bounded numeric counters/settings.
+    div_raw = raw.get("diversity")
+    if isinstance(div_raw, dict):
+        div: dict[str, int] = {}
+        for k in (
+            "max_chunks_per_doc",
+            "max_chunks_per_page",
+            "min_distinct_docs",
+            "pre_unique_docs",
+            "post_unique_docs",
+            "pre_unique_pages",
+            "post_unique_pages",
+            "moved_out",
+            "moved_in",
+        ):
+            if k not in div_raw:
+                continue
+            n = _to_int(div_raw.get(k))
+            if n is None:
+                continue
+            if n < 0:
+                n = 0
+            if n > 1_000_000_000:
+                n = 1_000_000_000
+            div[k] = int(n)
+        if div:
+            out["diversity"] = div
+
     out = {k: v for k, v in out.items() if v is not None}
     return out or None
 
