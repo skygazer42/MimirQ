@@ -87,6 +87,21 @@ def test_orchestrator_propagates_kg_ranking_features_from_kg_search(monkeypatch:
                     "kg_path_length": 3,
                     "kg_shared_events": 2,
                     "kg_evidence_anchored": False,
+                    "kg_path": [{"entity_id": "e1", "type": "Skill"}],
+                    "kg_path_provenance": {
+                        "schema": "mimirq.kg_path_provenance.v1",
+                        "kind": "entity_event_entity",
+                        "hops": 2,
+                        "nodes": [
+                            {"kind": "entity", "entity_id": "e1", "type": "Skill"},
+                            {"kind": "event", "event_id": "ev1", "document_id": str(doc_id), "chunk_id": str(kg_chunk)},
+                            {"kind": "entity", "entity_id": "e2", "type": "Tool"},
+                        ],
+                        "edges": [
+                            {"kind": "event_entity", "entity_id": "e1", "event_id": "ev1", "document_id": str(doc_id), "chunk_id": str(kg_chunk)},
+                            {"kind": "event_entity", "entity_id": "e2", "event_id": "ev1", "document_id": str(doc_id), "chunk_id": str(kg_chunk)},
+                        ],
+                    },
                 }
             ],
             "entities": [],
@@ -132,3 +147,9 @@ def test_orchestrator_propagates_kg_ranking_features_from_kg_search(monkeypatch:
     assert c0.get("kg_edge_conf_mid") == 1.0
     assert c0.get("kg_edge_conf_high") == 0.0
 
+    # Provenance payload should be propagated to citations (PII-safe, bounded).
+    assert c0.get("kg_path") == [{"entity_id": "e1", "type": "Skill"}]
+    prov = c0.get("kg_path_provenance")
+    assert isinstance(prov, dict)
+    assert prov.get("schema") == "mimirq.kg_path_provenance.v1"
+    assert prov.get("kind") == "entity_event_entity"

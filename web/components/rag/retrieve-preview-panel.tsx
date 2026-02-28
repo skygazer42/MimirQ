@@ -735,6 +735,126 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                     </div>
                   ) : null}
 
+                  {isRecord((activeHit as any).kg_path_provenance) ? (
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="text-xs font-semibold text-foreground">KG Path Provenance</div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 rounded-full px-3 gap-2"
+                          onClick={() =>
+                            void copyToClipboard(
+                              JSON.stringify((activeHit as any).kg_path_provenance || {}, null, 2),
+                              'kg_path_provenance'
+                            )
+                          }
+                        >
+                          <Copy className="h-4 w-4" />
+                          复制 provenance
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                          <div className="text-[11px] text-muted-foreground">kind</div>
+                          <div className="mt-1 font-mono text-foreground/90">
+                            {String(((activeHit as any).kg_path_provenance as any)?.kind || '—')}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                          <div className="text-[11px] text-muted-foreground">hops</div>
+                          <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                            {Number.isFinite(Number(((activeHit as any).kg_path_provenance as any)?.hops))
+                              ? Number(((activeHit as any).kg_path_provenance as any)?.hops)
+                              : '—'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {Array.isArray(((activeHit as any).kg_path_provenance as any)?.nodes) &&
+                      (((activeHit as any).kg_path_provenance as any)?.nodes || []).length ? (
+                        <div className="mt-3">
+                          <div className="text-xs font-semibold text-foreground mb-2">Nodes</div>
+                          <div className="space-y-2 text-xs">
+                            {(((activeHit as any).kg_path_provenance as any)?.nodes || []).slice(0, 12).map((n: any, idx: number) => {
+                              const kind = String(n?.kind || 'node')
+                              const id = String(n?.entity_id || n?.event_id || '—')
+                              const typ = String(n?.type || '')
+                              const doc = n?.document_id ? shortId(String(n.document_id)) : ''
+                              const chunk = n?.chunk_id ? shortId(String(n.chunk_id)) : ''
+                              return (
+                                <div
+                                  key={`${kind}-${id}-${idx}`}
+                                  className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-muted-foreground">{kind}{typ ? ` · ${typ}` : ''}</div>
+                                    <div className="font-mono text-foreground/90 break-all">{id !== '—' ? shortId(id, { head: 10, tail: 6 }) : '—'}</div>
+                                  </div>
+                                  {doc || chunk ? (
+                                    <div className="mt-1 text-[11px] text-muted-foreground break-all">
+                                      {doc ? `doc=${doc}` : null}
+                                      {doc && chunk ? ' · ' : null}
+                                      {chunk ? `chunk=${chunk}` : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {Array.isArray(((activeHit as any).kg_path_provenance as any)?.edges) &&
+                      (((activeHit as any).kg_path_provenance as any)?.edges || []).length ? (
+                        <div className="mt-3">
+                          <div className="text-xs font-semibold text-foreground mb-2">Edges</div>
+                          <div className="space-y-2 text-xs">
+                            {(((activeHit as any).kg_path_provenance as any)?.edges || []).slice(0, 12).map((e: any, idx: number) => {
+                              const kind = String(e?.kind || 'edge')
+                              const pred = String(e?.predicate || '')
+                              const bucket = String(e?.confidence_bucket || '')
+                              const src = String(e?.evidence_source || '')
+                              const rel = e?.relation_id ? shortId(String(e.relation_id)) : ''
+                              const doc = e?.document_id ? shortId(String(e.document_id)) : ''
+                              const chunk = e?.chunk_id ? shortId(String(e.chunk_id)) : ''
+                              return (
+                                <div
+                                  key={`${kind}-${pred}-${idx}`}
+                                  className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-muted-foreground">
+                                      {kind}
+                                      {pred ? ` · ${pred}` : ''}
+                                      {bucket ? ` · conf=${bucket}` : ''}
+                                      {src ? ` · src=${src}` : ''}
+                                    </div>
+                                    <div className="font-mono text-foreground/90 break-all">
+                                      {rel ? `rel=${rel}` : '—'}
+                                    </div>
+                                  </div>
+                                  {doc || chunk ? (
+                                    <div className="mt-1 text-[11px] text-muted-foreground break-all">
+                                      {doc ? `doc=${doc}` : null}
+                                      {doc && chunk ? ' · ' : null}
+                                      {chunk ? `chunk=${chunk}` : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        注：该 provenance 只包含 id/type/桶（不含实体名/引用原文），用于 UI/诊断展示与溯源。
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                     <div className="text-xs font-semibold text-foreground mb-3">Snippet</div>
                     <pre className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90 font-mono">
