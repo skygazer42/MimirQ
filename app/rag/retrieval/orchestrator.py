@@ -93,6 +93,36 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
             "normalized_chars": len(str(normalized or "")),
         }
 
+    # Doc/page diversity caps (PII-safe): expose only bounded numeric counters/settings.
+    div = dbg.get("diversity")
+    if isinstance(div, dict):
+        div_out: Dict[str, int] = {}
+        for k in (
+            "max_chunks_per_doc",
+            "max_chunks_per_page",
+            "min_distinct_docs",
+            "pre_unique_docs",
+            "post_unique_docs",
+            "pre_unique_pages",
+            "post_unique_pages",
+            "moved_out",
+            "moved_in",
+        ):
+            if k not in div:
+                continue
+            try:
+                n = int(div.get(k))  # noqa: PERF401 - tiny dict; clarity > micro-opt
+            except Exception:
+                continue
+            # Defense-in-depth: keep counters sane/bounded for downstream UI.
+            if n < 0:
+                n = 0
+            if n > 1_000_000_000:
+                n = 1_000_000_000
+            div_out[k] = int(n)
+        if div_out:
+            out["diversity"] = div_out
+
     for key in ("enrich_pass1", "enrich_pass2"):
         ep = dbg.get(key)
         if not isinstance(ep, dict):

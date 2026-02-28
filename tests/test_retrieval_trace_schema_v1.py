@@ -18,6 +18,17 @@ class _FakeRetriever:
                 "normalized": "NORMALIZED",
                 "applied_rules": ["rule_a"],
             },
+            "diversity": {
+                "max_chunks_per_doc": 3,
+                "max_chunks_per_page": 1,
+                "min_distinct_docs": 0,
+                "pre_unique_docs": 1,
+                "post_unique_docs": 1,
+                "pre_unique_pages": 1,
+                "post_unique_pages": 1,
+                "moved_out": 0,
+                "moved_in": 0,
+            },
         }
 
     def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
@@ -107,3 +118,6 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     qn = dbg.get("query_normalization") or {}
     assert "normalized" not in qn
 
+    # Diversity caps should be preserved (PII-safe; numeric only).
+    div = dbg.get("diversity") or {}
+    assert div.get("max_chunks_per_page") == 1
