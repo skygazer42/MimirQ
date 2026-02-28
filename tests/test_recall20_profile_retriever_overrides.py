@@ -58,6 +58,7 @@ async def test_rag_engine_recall20_profile_disables_result_trimming(monkeypatch:
     update = captured_updates[0]
     assert update.get("dedup_enabled") is False
     assert update.get("max_chunks_per_doc") == 0
+    assert update.get("max_chunks_per_page") == 0
     assert update.get("min_distinct_docs") == 0
 
 
@@ -107,4 +108,5 @@ def test_langgraph_recall20_profile_disables_result_trimming(monkeypatch: pytest
     update = captured_updates[0]
     assert update.get("dedup_enabled") is False
     assert update.get("max_chunks_per_doc") == 0
+    assert update.get("max_chunks_per_page") == 0
     assert update.get("min_distinct_docs") == 0

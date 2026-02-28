@@ -1009,12 +1009,13 @@ Requirements:
                 "reranker_provider": rerank_provider,
                 "reranker_top_n": rerank_top_n,
             }
-            if profile_norm == "recall20":
-                # Do not drop candidates due to dedup/diversity heuristics in recall-first mode.
+            if profile_norm in {"recall20", "recall50", "coverage80"}:
+                # Recall-first profiles: do not drop candidates due to dedup/diversity heuristics.
                 retriever_update.update(
                     {
                         "dedup_enabled": False,
                         "max_chunks_per_doc": 0,
+                        "max_chunks_per_page": 0,
                         "min_distinct_docs": 0,
                     }
                 )
