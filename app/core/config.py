@@ -855,7 +855,7 @@ class Settings(BaseSettings):
     NEAR_DEDUP_MAX_BUCKET_SIZE: int = 256
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
-    RERANKER_PROVIDER: str = "llm"  # llm | pc | none
+    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | cross_encoder | none
     # Local Learning-to-Rank model path (xgboost JSON/UBJ).
     # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
     LTR_MODEL_PATH: str = ""
@@ -1502,6 +1502,10 @@ class Settings(BaseSettings):
             "colbert",
             "late_interaction",
             "ltr",
+            "cross_encoder",
+            "cross-encoder",
+            "sentence_transformers",
+            "sentence-transformers",
             "kg_pagerank",
             "kg_rrf",
             "none",
