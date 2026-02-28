@@ -70,6 +70,7 @@ class HybridRetriever(BaseRetriever):
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
     dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
     max_chunks_per_doc: int = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
+    max_chunks_per_page: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0)
     min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
     tenant_id: Optional[UUID] = None
     # Optional: used for candidate-level ACL trimming when retrieval is not pre-scoped
@@ -3791,13 +3792,30 @@ class HybridRetriever(BaseRetriever):
             return results
 
         max_per_doc = int(self.max_chunks_per_doc or 0)
+        max_per_page = int(getattr(self, "max_chunks_per_page", 0) or 0)
         min_docs = int(self.min_distinct_docs or 0)
-        if max_per_doc <= 0 and min_docs <= 0:
+        if max_per_doc <= 0 and max_per_page <= 0 and min_docs <= 0:
             return results
 
         groups: Dict[str, List[Dict[str, Any]]] = {}
         for r in results:
             groups.setdefault(self._get_doc_id(r), []).append(r)
+
+        def _page_key(r: Dict[str, Any]) -> tuple[str, int] | None:
+            meta = r.get("metadata") or {}
+            doc_id = self._get_doc_id(r)
+            if not doc_id:
+                return None
+            raw = meta.get("page_number")
+            if raw is None:
+                raw = meta.get("page")
+            if raw is None:
+                return None
+            try:
+                page = int(raw)
+            except Exception:
+                return None
+            return (doc_id, page)
 
         must_have: List[Dict[str, Any]] = []
         if min_docs > 0:
@@ -3808,13 +3826,18 @@ class HybridRetriever(BaseRetriever):
         selected: List[Dict[str, Any]] = []
         used_keys: set[str] = set()
         per_doc = Counter()
+        per_page = Counter()
         for r in must_have:
             k = self._result_key(r)
             if k in used_keys:
                 continue
             used_keys.add(k)
             selected.append(r)
-            per_doc[self._get_doc_id(r)] += 1
+            doc_id = self._get_doc_id(r)
+            per_doc[doc_id] += 1
+            pk = _page_key(r)
+            if pk is not None:
+                per_page[pk] += 1
 
         overflow: List[Dict[str, Any]] = []
         for r in results:
@@ -3827,9 +3850,15 @@ class HybridRetriever(BaseRetriever):
             if max_per_doc > 0 and per_doc[doc_id] >= max_per_doc:
                 overflow.append(r)
                 continue
+            pk = _page_key(r)
+            if max_per_page > 0 and pk is not None and per_page[pk] >= max_per_page:
+                overflow.append(r)
+                continue
             used_keys.add(k)
             selected.append(r)
             per_doc[doc_id] += 1
+            if pk is not None:
+                per_page[pk] += 1
 
         if len(selected) < top_k and overflow:
             for r in overflow:

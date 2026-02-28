@@ -520,6 +520,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "dedup_enabled": False,
                 "max_chunks_per_doc": 0,
+                "max_chunks_per_page": 0,
                 "min_distinct_docs": 0,
             }
         )

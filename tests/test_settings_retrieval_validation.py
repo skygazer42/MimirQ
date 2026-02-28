@@ -34,3 +34,10 @@ def test_settings_rejects_negative_diversity_limits(monkeypatch: pytest.MonkeyPa
     with pytest.raises(ValueError):
         Settings()
 
+
+def test_settings_rejects_negative_page_diversity_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_MAX_CHUNKS_PER_PAGE", "-1")
+    with pytest.raises(ValueError):
+        Settings()

@@ -516,6 +516,8 @@ class Settings(BaseSettings):
     RETRIEVAL_NEAR_DEDUP_MAX_COMPARE: int = 60
     # Per-document diversity (0 disables)
     RETRIEVAL_MAX_CHUNKS_PER_DOC: int = 3
+    # Per-page diversity within a document (0 disables). Only applies when a chunk has page_number/page metadata.
+    RETRIEVAL_MAX_CHUNKS_PER_PAGE: int = 0
     # Metadata filtering for vector search
     RETRIEVAL_METADATA_FILTER_ENABLED: bool = True
     RETRIEVAL_MIN_DISTINCT_DOCS: int = 0
@@ -1377,6 +1379,8 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_NEAR_DEDUP_MAX_COMPARE must be >= 0")
         if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_DOC must be >= 0")
+        if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_PAGE must be >= 0")
         if int(getattr(self, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MIN_DISTINCT_DOCS must be >= 0")
         if int(self.RETRIEVAL_QUERY_PARALLELISM or 0) < 1:
