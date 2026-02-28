@@ -182,6 +182,21 @@ def get_reranker(
             )
             _local_reranker_cache[cache_key] = inst
             return inst
+
+    # Local cross-encoder reranker (sentence-transformers).
+    elif provider in ("cross_encoder", "cross-encoder", "sentence_transformers", "sentence-transformers"):
+        from app.rag.reranker.cross_encoder import CrossEncoderReranker
+
+        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        device = kwargs.get("device")
+        cache_key = _local_cache_key("cross_encoder", [str(model_name or ""), str(device or "")])
+        with _local_reranker_lock:
+            cached = _local_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = CrossEncoderReranker(model_name=model_name, device=(str(device) if device is not None else None))
+            _local_reranker_cache[cache_key] = inst
+            return inst
     
     # KG Rerankers
     elif provider in ("kg_pagerank", "kg_rrf"):
