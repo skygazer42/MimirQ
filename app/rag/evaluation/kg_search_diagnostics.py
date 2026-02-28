@@ -650,12 +650,55 @@ async def run_kg_search_diagnostics(
                     keep[k] = value.get(k)
             return keep
 
+        def _delta_vs_baseline(run: dict[str, Any]) -> dict[str, Any]:
+            """
+            Compute metric deltas for an ablation run vs the baseline for this case.
+
+            Notes:
+            - hit_at_k is treated as an int delta (0/1).
+            - first_hit_rank delta uses baseline - alt so positive means improvement (smaller rank).
+            """
+            if not isinstance(run, dict):
+                return {}
+            try:
+                alt_hit = bool(run.get("hit_at_k"))
+                alt_mrr = float(run.get("mrr", 0.0) or 0.0)
+                alt_recall = float(run.get("recall", 0.0) or 0.0)
+            except Exception:
+                return {}
+
+            base_hit = bool(metrics.hit_at_k)
+            base_mrr = float(metrics.mrr)
+            base_recall = float(metrics.recall)
+
+            base_rank = first_hit
+            alt_rank = run.get("first_hit_rank")
+            try:
+                alt_rank_i = int(alt_rank) if alt_rank is not None else None
+            except Exception:
+                alt_rank_i = None
+
+            rank_delta = None
+            if base_rank is not None and alt_rank_i is not None:
+                rank_delta = int(base_rank) - int(alt_rank_i)
+
+            return {
+                "delta_hit_at_k": int(alt_hit) - int(base_hit),
+                "delta_mrr": round(float(alt_mrr - base_mrr), 6),
+                "delta_recall": round(float(alt_recall - base_recall), 6),
+                "delta_first_hit_rank": rank_delta,
+            }
+
         async def _run_search_variant(
             *,
             query: str,
             relation_expansion_enabled: bool | None = None,
             include_skill_entities: bool = True,
+            expand_enabled: bool | None = None,
+            expand_max_hops: int | None = None,
             rerank_strategy: RerankStrategy | None = None,
+            vector_recall_enabled: bool | None = None,
+            graph_embeddings_enabled: bool | None = None,
         ) -> dict[str, Any]:
             try:
                 cfg2 = SearchConfig(
@@ -665,10 +708,19 @@ async def run_kg_search_diagnostics(
                     account_id=account_id,
                     document_ids=scope_doc_uuids or None,
                     relation_expansion_enabled=relation_expansion_enabled,
+                    vector_recall_enabled=vector_recall_enabled,
+                    graph_embeddings_enabled=graph_embeddings_enabled,
                     include_skill_entities=include_skill_entities,
                 )
                 if rerank_strategy is not None:
                     cfg2.rerank.strategy = rerank_strategy
+                if expand_enabled is not None:
+                    cfg2.expand.enabled = bool(expand_enabled)
+                if expand_max_hops is not None:
+                    try:
+                        cfg2.expand.max_hops = max(1, min(int(expand_max_hops), 5))
+                    except Exception:
+                        pass
                 cfg2.rerank.max_results = int(diag_max_results)
                 raw2 = await searcher.search(cfg2)
                 ev2 = list((raw2 or {}).get("events") or [])
@@ -717,7 +769,12 @@ async def run_kg_search_diagnostics(
                 base = cfg.rerank.strategy
                 alt = RerankStrategy.RRF if base == RerankStrategy.PAGERANK else RerankStrategy.PAGERANK
                 out_alt = await _run_search_variant(query=question, rerank_strategy=alt)
-                ablations["rerank_strategy"] = {"baseline": str(base), "alt": str(alt), "alt_run": out_alt}
+                ablations["rerank_strategy"] = {
+                    "baseline": str(base),
+                    "alt": str(alt),
+                    "alt_run": out_alt,
+                    "delta": _delta_vs_baseline(out_alt),
+                }
                 if bool(out_alt.get("hit_at_k")):
                     ablation_override = "rerank_cutoff"
             except Exception:
@@ -728,16 +785,41 @@ async def run_kg_search_diagnostics(
                 base_rel = bool((relation_debug or {}).get("enabled"))
                 alt_rel = not base_rel
                 out_rel = await _run_search_variant(query=question, relation_expansion_enabled=alt_rel)
-                ablations["relation_expansion"] = {"baseline_enabled": bool(base_rel), "alt_enabled": bool(alt_rel), "alt_run": out_rel}
+                ablations["relation_expansion"] = {
+                    "baseline_enabled": bool(base_rel),
+                    "alt_enabled": bool(alt_rel),
+                    "alt_run": out_rel,
+                    "delta": _delta_vs_baseline(out_rel),
+                }
                 if ablation_override is None and bool(out_rel.get("hit_at_k")):
                     ablation_override = "relation"
             except Exception:
                 pass
 
-            # 3) Skill nodes off.
+            # 3) Path search (multi-hop expand) off.
+            try:
+                base_expand = bool(getattr(cfg.expand, "enabled", True))
+                alt_expand = not base_expand
+                out_expand = await _run_search_variant(query=question, expand_enabled=alt_expand)
+                ablations["path_search"] = {
+                    "baseline_enabled": bool(base_expand),
+                    "alt_enabled": bool(alt_expand),
+                    "alt_run": out_expand,
+                    "delta": _delta_vs_baseline(out_expand),
+                }
+                if ablation_override is None and bool(out_expand.get("hit_at_k")):
+                    ablation_override = "path"
+            except Exception:
+                pass
+
+            # 4) Skill nodes off.
             try:
                 out_skill_off = await _run_search_variant(query=question, include_skill_entities=False)
-                ablations["skill_nodes"] = {"alt_enabled": False, "alt_run": out_skill_off}
+                ablations["skill_nodes"] = {
+                    "alt_enabled": False,
+                    "alt_run": out_skill_off,
+                    "delta": _delta_vs_baseline(out_skill_off),
+                }
                 if ablation_override is None and bool(out_skill_off.get("hit_at_k")):
                     ablation_override = "skill"
             except Exception:

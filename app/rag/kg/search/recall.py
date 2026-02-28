@@ -90,7 +90,11 @@ class RecallSearcher:
             # === Step1: query -> keys (vector) ===
             query_vec: List[float] = []
             raw_entities: List[dict] = []
-            vector_recall_enabled = bool(getattr(settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True))
+            vector_recall_enabled = (
+                bool(config.vector_recall_enabled)
+                if getattr(config, "vector_recall_enabled", None) is not None
+                else bool(getattr(settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True))
+            )
             if vector_recall_enabled:
                 try:
                     query_vec = await self.processor.generate_embedding(expanded_query)
@@ -135,7 +139,11 @@ class RecallSearcher:
             # === Optional Step1b: graph embeddings (node2vec-like) for entity recall ===
             #
             # This is designed for offline/CI scenarios where vector recall is disabled or unavailable.
-            graph_enabled = bool(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False))
+            graph_enabled = (
+                bool(config.graph_embeddings_enabled)
+                if getattr(config, "graph_embeddings_enabled", None) is not None
+                else bool(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False))
+            )
             if graph_enabled and alias_key_ids and (not vector_recall_enabled or not query_vec):
                 try:
                     from uuid import UUID
