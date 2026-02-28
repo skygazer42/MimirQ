@@ -15,6 +15,29 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
     return dot / (na * nb)
 
 
+def confidence_bucket(confidence: float, *, low_max: float = 0.4, mid_max: float = 0.7) -> str:
+    """
+    Coarse confidence buckets for KG relation/path provenance.
+
+    Returns one of: low | mid | high
+    """
+    try:
+        c = float(confidence or 0.0)
+    except Exception:
+        c = 0.0
+
+    lo = float(low_max)
+    mid = float(mid_max)
+    if lo >= mid:
+        lo, mid = 0.4, 0.7
+
+    if c < lo:
+        return "low"
+    if c < mid:
+        return "mid"
+    return "high"
+
+
 def format_events(
     events: Sequence[KgSourceEvent],
     scores: Dict[str, float],
