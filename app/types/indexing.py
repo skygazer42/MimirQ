@@ -37,6 +37,8 @@ class IndexingOptions:
     entity_vector_enabled: Optional[bool] = None
     # When enabled, prefix chunk content with lightweight context (e.g. header_path) before embedding.
     embedding_context_prefix_enabled: Optional[bool] = None
+    # When enabled, store extra field-aware embeddings (title/heading) alongside body embeddings.
+    embedding_field_aware_enabled: Optional[bool] = None
 
 
 @dataclass(frozen=True)

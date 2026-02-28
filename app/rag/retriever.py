@@ -66,6 +66,8 @@ class HybridRetriever(BaseRetriever):
     # Only used when fusion_strategy="budgeted_rrf".
     fusion_budgets: Optional[Dict[str, int]] = None
     fusion_min_scores: Optional[Dict[str, float]] = None
+    # Only used when fusion_strategy="weighted".
+    fusion_weights: Optional[Dict[str, float]] = None
     dedup_enabled: bool = settings.RETRIEVAL_DEDUP_ENABLED
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
     dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
@@ -2449,6 +2451,17 @@ class HybridRetriever(BaseRetriever):
                     "retrieval_mode": retrieval_mode,
                     "fusion_strategy": str(self.fusion_strategy or ""),
                     "rrf_k": int(self.rrf_k or 0),
+                    "fusion_weights": (
+                        dict(
+                            sorted(
+                                (str(k), round(float(v), 6))
+                                for k, v in (getattr(self, "fusion_weights", None) or {}).items()
+                                if str(k or "").strip() and v is not None
+                            )
+                        )
+                        if isinstance(getattr(self, "fusion_weights", None), dict) and getattr(self, "fusion_weights", None)
+                        else None
+                    ),
                     "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
                     "vector": {
                         "enabled": bool(want_vector),
@@ -3976,10 +3989,13 @@ class HybridRetriever(BaseRetriever):
             out: Dict[str, Dict[str, Any]] = {}
             for r in results:
                 key = self._result_key(r)
-                out[key] = {
-                    "score": (r.get("score", 0.0) - min_score) / rng,
-                    "data": r,
-                }
+                norm_score = (r.get("score", 0.0) - min_score) / rng
+                existing = out.get(key)
+                if existing is None or float(norm_score) > float(existing.get("score", 0.0) or 0.0):
+                    out[key] = {
+                        "score": float(norm_score),
+                        "data": r,
+                    }
             return out
 
         vector_norm = normalize(vector_results)
@@ -4368,6 +4384,106 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
             return prefix + rest
+
+        if fusion in ("weighted", "weighted_linear", "weighted_sum"):
+            def _coerce_weights(raw: Any) -> Dict[str, float]:
+                if not isinstance(raw, dict):
+                    return {}
+                allowed = {"vector", "bm25", "lexical", "sparse"}
+                out0: Dict[str, float] = {}
+                for k, v in raw.items():
+                    key = str(k or "").strip().lower()
+                    if not key or key not in allowed:
+                        continue
+                    try:
+                        w = float(v)
+                    except Exception:
+                        continue
+                    if w <= 0.0:
+                        continue
+                    out0[key] = float(w)
+                return out0
+
+            weights_raw = _coerce_weights(getattr(self, "fusion_weights", None))
+            w_sum = sum(float(x) for x in weights_raw.values())
+            if w_sum <= 0.0:
+                # Safe fallback: behave like linear fusion when weights are not configured.
+                fusion = "linear"
+            else:
+                weights = {k: (float(v) / w_sum) for k, v in weights_raw.items()}
+
+                merged: Dict[str, Dict[str, Any]] = {}
+                keys = sorted(
+                    set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
+                )
+                for key in keys:
+                    v_score = float(vector_norm.get(key, {}).get("score", 0.0) or 0.0)
+                    b_score = float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0)
+                    l_score = float(lexical_norm.get(key, {}).get("score", 0.0) or 0.0)
+                    s_score = float(sparse_norm.get(key, {}).get("score", 0.0) or 0.0)
+                    v_data = vector_norm.get(key, {}).get("data")
+                    b_data = bm25_norm.get(key, {}).get("data")
+                    l_data = lexical_norm.get(key, {}).get("data")
+                    s_data = sparse_norm.get(key, {}).get("data")
+                    data = v_data or b_data or l_data or s_data
+                    if not data:
+                        continue
+
+                    # Merge metadata from all channels (e.g., img_id may only exist in BM25/DB metadata).
+                    merged_meta = dict(data.get("metadata") or {})
+                    for src in (v_data, b_data, l_data, s_data):
+                        if not src or src is data:
+                            continue
+                        src_meta = src.get("metadata") or {}
+                        for mk, mv in src_meta.items():
+                            if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
+                                merged_meta[mk] = mv
+                    merged_data = dict(data)
+                    merged_data["metadata"] = merged_meta
+                    if not merged_data.get("chunk_id"):
+                        for src in (v_data, b_data, l_data, s_data):
+                            if src and src.get("chunk_id"):
+                                merged_data["chunk_id"] = src.get("chunk_id")
+                                break
+                    data = merged_data
+
+                    fused_score = (
+                        float(weights.get("vector", 0.0) or 0.0) * float(v_score)
+                        + float(weights.get("bm25", 0.0) or 0.0) * float(b_score)
+                        + float(weights.get("lexical", 0.0) or 0.0) * float(l_score)
+                        + float(weights.get("sparse", 0.0) or 0.0) * float(s_score)
+                    )
+
+                    merged[key] = {
+                        **data,
+                        "vector_score": float(v_score),
+                        "bm25_score": float(b_score),
+                        "lexical_score": float(l_score),
+                        "sparse_score": float(s_score),
+                        "fusion_strategy": "weighted",
+                        "score": float(fused_score),
+                    }
+
+                # Best-effort: surface weights used into retriever_debug.channels for diagnostics.
+                try:
+                    if isinstance(self._last_channel_metrics, dict):
+                        self._last_channel_metrics["fusion_weighted"] = {
+                            "weights": dict(sorted((k, round(float(v), 6)) for k, v in (weights or {}).items())),
+                        }
+                except Exception:
+                    pass
+
+                def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, str]:
+                    return (
+                        -float(item.get("score", 0.0) or 0.0),
+                        -float(item.get("vector_score", 0.0) or 0.0),
+                        -float(item.get("bm25_score", 0.0) or 0.0),
+                        -float(item.get("lexical_score", 0.0) or 0.0),
+                        -float(item.get("sparse_score", 0.0) or 0.0),
+                        self._result_key(item),
+                    )
+
+                return sorted(merged.values(), key=_sort_key)
 
         merged: Dict[str, Dict[str, Any]] = {}
         keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))

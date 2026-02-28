@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.dataset import DatasetPermissionEnum
 from app.rag.core.text import normalize_retrieval_mode
@@ -77,6 +77,15 @@ class DatasetRAGDefaults(BaseModel):
     retrieval_mode: Optional[str] = None  # hybrid | vector | keyword | mmr | auto
     alpha: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
+    # Retrieval channel fusion strategy override (optional, dataset-scoped).
+    # Supported: linear | rrf | budgeted_rrf | weighted
+    fusion_strategy: Optional[str] = None
+    # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
+    fusion_budgets: Optional[Dict[str, int]] = None
+    fusion_min_scores: Optional[Dict[str, float]] = None
+    # Only used by fusion_strategy=weighted (ignored otherwise).
+    fusion_weights: Optional[Dict[str, float]] = None
+
     enable_weight_rerank: Optional[bool] = None
     vector_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     keyword_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -99,6 +108,63 @@ class DatasetRAGDefaults(BaseModel):
             return None
         s = str(v)
         return normalize_retrieval_mode(s) if s.strip() else None
+
+    @model_validator(mode="after")
+    def _validate_fusion_dicts(self) -> "DatasetRAGDefaults":
+        """
+        Minimal validation for fusion dict shapes.
+
+        Note: ChatRAGConfig re-validates these after merge; this is defense-in-depth
+        for obviously invalid dataset metadata.
+        """
+        allowed = {"vector", "bm25", "lexical", "sparse"}
+
+        fb = getattr(self, "fusion_budgets", None)
+        if fb is not None:
+            if not isinstance(fb, dict):
+                raise ValueError("fusion_budgets must be an object/dict when provided")
+            for k, v in fb.items():
+                key = str(k or "").strip().lower()
+                if key and key not in allowed:
+                    raise ValueError("fusion_budgets keys must be one of: vector, bm25, lexical, sparse")
+                if v is None:
+                    continue
+                try:
+                    int(v)
+                except Exception as exc:
+                    raise ValueError("fusion_budgets values must be integers") from exc
+
+        fms = getattr(self, "fusion_min_scores", None)
+        if fms is not None:
+            if not isinstance(fms, dict):
+                raise ValueError("fusion_min_scores must be an object/dict when provided")
+            for k, v in fms.items():
+                key = str(k or "").strip().lower()
+                if key and key not in allowed:
+                    raise ValueError("fusion_min_scores keys must be one of: vector, bm25, lexical, sparse")
+                if v is None:
+                    continue
+                try:
+                    float(v)
+                except Exception as exc:
+                    raise ValueError("fusion_min_scores values must be numbers") from exc
+
+        fw = getattr(self, "fusion_weights", None)
+        if fw is not None:
+            if not isinstance(fw, dict):
+                raise ValueError("fusion_weights must be an object/dict when provided")
+            for k, v in fw.items():
+                key = str(k or "").strip().lower()
+                if key and key not in allowed:
+                    raise ValueError("fusion_weights keys must be one of: vector, bm25, lexical, sparse")
+                if v is None:
+                    continue
+                try:
+                    float(v)
+                except Exception as exc:
+                    raise ValueError("fusion_weights values must be numbers") from exc
+
+        return self
 
 
 class DatasetBase(BaseModel):

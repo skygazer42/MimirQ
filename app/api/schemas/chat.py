@@ -151,6 +151,7 @@ class ChatRAGConfig(BaseModel):
     # - linear: min-max normalize each channel then alpha-blend
     # - rrf: reciprocal-rank fusion (score normalized for UI)
     # - budgeted_rrf: RRF scoring but enforce per-channel quotas in the visible top-k prefix
+    # - weighted: weighted sum across normalized channel scores (requires fusion_weights for effect)
     fusion_strategy: Optional[str] = None
     # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
     # Example: {"vector": 25, "bm25": 10, "lexical": 10, "sparse": 5}
@@ -158,6 +159,10 @@ class ChatRAGConfig(BaseModel):
     # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
     # Per-channel minimum rank score in [0,1], where rank_score is 1/rank (rank starts at 1).
     fusion_min_scores: Optional[Dict[str, float]] = None
+    # Only used by fusion_strategy=weighted (ignored otherwise).
+    # Per-channel weights over normalized scores.
+    # Allowed keys: vector, bm25, lexical, sparse.
+    fusion_weights: Optional[Dict[str, float]] = None
 
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -200,9 +205,11 @@ class ChatRAGConfig(BaseModel):
             return "rrf"
         if raw in {"budget_rrf", "budgeted_rrf"}:
             return "budgeted_rrf"
+        if raw in {"weighted", "weighted_linear", "weighted_sum"}:
+            return "weighted"
         if raw == "linear":
             return "linear"
-        raise ValueError("fusion_strategy must be one of: linear, rrf, budgeted_rrf")
+        raise ValueError("fusion_strategy must be one of: linear, rrf, budgeted_rrf, weighted")
 
     @model_validator(mode="after")
     def _validate_fusion_budgets(self) -> "ChatRAGConfig":
@@ -248,6 +255,37 @@ class ChatRAGConfig(BaseModel):
                 cleaned2[key] = fv
             self.fusion_min_scores = cleaned2 or None
 
+        return self
+
+    @model_validator(mode="after")
+    def _validate_fusion_weights(self) -> "ChatRAGConfig":
+        allowed = {"vector", "bm25", "lexical", "sparse"}
+
+        fw = getattr(self, "fusion_weights", None)
+        if fw is None:
+            return self
+        if not isinstance(fw, dict):
+            raise ValueError("fusion_weights must be an object/dict when provided")
+
+        cleaned: Dict[str, float] = {}
+        for k, v in fw.items():
+            key = str(k or "").strip().lower()
+            if not key:
+                continue
+            if key not in allowed:
+                raise ValueError("fusion_weights keys must be one of: vector, bm25, lexical, sparse")
+            try:
+                w = float(v)
+            except Exception as exc:
+                raise ValueError("fusion_weights values must be numbers") from exc
+            if w < 0.0 or w > 1.0:
+                raise ValueError("fusion_weights values must be in [0,1]")
+            cleaned[key] = float(w)
+
+        if not cleaned:
+            raise ValueError("fusion_weights must have at least one non-empty key")
+
+        self.fusion_weights = cleaned
         return self
 
     @model_validator(mode="after")

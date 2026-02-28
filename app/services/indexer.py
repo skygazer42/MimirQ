@@ -124,6 +124,54 @@ def _build_embedding_text(content: str, meta: Dict[str, Any], *, max_prefix_char
     return prefix + content
 
 
+def _coerce_short_text(value: Any, *, max_chars: int) -> str | None:
+    s = str(value or "").strip()
+    if not s:
+        return None
+    if len(s) > int(max_chars or 0) > 0:
+        s = s[: int(max_chars or 0)]
+    return s or None
+
+
+def _extract_title_for_embedding(meta: Dict[str, Any]) -> str | None:
+    """
+    Best-effort extract a document "title" string for field-aware embeddings.
+
+    This is intentionally heuristic and safe:
+    - we do not assume a single canonical metadata key across parsers/connectors
+    - we bound the length to keep vector writes cheap and stable
+    """
+    if not isinstance(meta, dict):
+        return None
+    for key in (
+        "document_title",
+        "doc_title",
+        "title",
+        "name",
+        "filename",
+    ):
+        v = _coerce_short_text(meta.get(key), max_chars=200)
+        if v:
+            return v
+    # Fallback: source usually contains the filename (already present in vector metadata).
+    return _coerce_short_text(meta.get("source"), max_chars=200)
+
+
+def _extract_heading_for_embedding(meta: Dict[str, Any]) -> str | None:
+    """Best-effort extract a section heading/path string for field-aware embeddings."""
+    if not isinstance(meta, dict):
+        return None
+
+    header = meta.get("header_path") or meta.get("outline_path_str") or meta.get("header_context") or None
+    if header is None:
+        header_list = meta.get("outline_path") or meta.get("header_path_list") or None
+        if isinstance(header_list, list) and header_list:
+            header = " / ".join([str(x).strip() for x in header_list if str(x).strip()][:10])
+
+    header_str = _coerce_short_text(header, max_chars=280)
+    return header_str
+
+
 class Indexer:
     """
     Unified Indexer for chunk/event indexing.
@@ -301,8 +349,10 @@ class Indexer:
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
+        extra_vector_docs: List[Dict[str, Any]] = []
         chunk_ids: List[UUID] = []
         embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
+        field_aware_enabled = bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False
         for idx, c in enumerate(chunks):
             meta = dict(c.metadata or {})
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
@@ -316,6 +366,8 @@ class Indexer:
                 meta["file_type"] = file_type_str
             if embedding_prefix_enabled:
                 meta.setdefault("embedding_context_prefix_enabled", True)
+            if field_aware_enabled:
+                meta.setdefault("embedding_field_aware_enabled", True)
             meta = _ensure_chunk_metadata(meta, content=c.content or "", document_id=document_id, chunk_index=idx)
             # Ensure every chunk has a stable UUID for cross-system linking.
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
@@ -333,12 +385,43 @@ class Indexer:
             embed_text = _build_embedding_text(c.content or "", meta) if embedding_prefix_enabled else (c.content or "")
             vector_docs.append({"content": embed_text, "metadata": meta})
 
+            if field_aware_enabled and _should_prefix_embedding(meta):
+                # Index additional embeddings for title/heading "fields" that map back to the same
+                # (document_id, chunk_index) for retrieval-time collapse.
+                #
+                # These extra vectors deliberately use non-UUID chunk_id values so they don't collide
+                # with the primary body vector ID in Milvus. The retriever later resolves the canonical
+                # chunk UUID via DB enrichment and overrides chunk_id/content for citations.
+                title = _extract_title_for_embedding(meta)
+                if title:
+                    meta_t = dict(meta)
+                    meta_t["chunk_id"] = f"{chunk_id}:title"
+                    extra_vector_docs.append({"content": f"[Title] {title}", "metadata": meta_t})
+
+                heading = _extract_heading_for_embedding(meta)
+                if heading:
+                    meta_h = dict(meta)
+                    meta_h["chunk_id"] = f"{chunk_id}:heading"
+                    extra_vector_docs.append({"content": f"[Heading] {heading}", "metadata": meta_h})
+
         vector_ids = self._index_chunk_vectors(
             vector_docs,
             document_id=document_id,
             tenant_id=tenant_id,
             enable_vectors=self._resolve_chunk_vector_enabled(options),
         )
+        if extra_vector_docs and self._resolve_chunk_vector_enabled(options):
+            # Best-effort: do not fail ingest if extra vectors can't be written (legacy collections,
+            # transient Milvus issues, etc.). The base body embedding is the compatibility path.
+            try:
+                self._index_chunk_vectors(
+                    extra_vector_docs,
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    enable_vectors=True,
+                )
+            except Exception:
+                pass
         db_chunks = self._persist_document_chunks(
             document_id=document_id,
             tenant_id=tenant_id,

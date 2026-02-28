@@ -856,6 +856,7 @@ def run_regression_ragas_evaluation(
                     fusion_strategy=rag_params.get("fusion_strategy"),
                     fusion_budgets=rag_params.get("fusion_budgets"),
                     fusion_min_scores=rag_params.get("fusion_min_scores"),
+                    fusion_weights=rag_params.get("fusion_weights"),
                     enable_weight_rerank=bool(rag_params.get("enable_weight_rerank", True)),
                     vector_weight=float(rag_params.get("vector_weight", 0.6)),
                     keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
