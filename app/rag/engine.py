@@ -38,6 +38,7 @@ from app.rag.core.text import (
     split_into_claims,
 )
 from app.rag.kg.pipeline import kg_search
+from app.rag.policy.intent_router import route_retrieval_preset
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.retriever import hybrid_retriever
@@ -443,6 +444,7 @@ Requirements:
         visible_evidence_only: bool = False,
         retrieval_mode: str = "hybrid",
         retrieval_profile: Optional[str] = None,
+        intent_router: Optional[bool] = None,
         enable_query_alias_expansion: Optional[bool] = None,
         query_aliases: Optional[Dict[str, List[str]]] = None,
         query_alias_max_queries: Optional[int] = None,
@@ -618,8 +620,58 @@ Requirements:
                     },
                 }
 
+            # Capture caller intent (kept for trace/metrics).
             mode_req = retrieval_mode or "hybrid"
-            mode_used = normalize_retrieval_mode(mode_req)
+            profile_req = retrieval_profile
+
+            # Step 0.25: Deterministic intent router (optional).
+            #
+            # Goal: map query "shape" (log/api/howto/faq) to retrieval presets and safe toggles.
+            # Must be deterministic + PII-safe (no raw query in meta payloads).
+            intent_router_enabled = (
+                bool(intent_router)
+                if intent_router is not None
+                else bool(getattr(settings, "RAG_INTENT_ROUTER_ENABLED", False))
+            )
+            intent_router_meta: Dict[str, Any] = {"enabled": bool(intent_router_enabled), "used": False}
+            if bool(intent_router_enabled):
+                try:
+                    overrides, intent_router_meta = route_retrieval_preset(
+                        query=query_for_retrieval,
+                        retrieval_mode=str(mode_req or ""),
+                        retrieval_profile=(str(profile_req).strip() if profile_req is not None else None),
+                        top_k=int(top_k or 0),
+                        score_threshold=float(score_threshold or 0.0),
+                        enable_reranker=bool(enable_reranker),
+                        enable_weight_rerank=bool(enable_weight_rerank),
+                        enable_multi_query=enable_multi_query,
+                        enable_query_alias_expansion=enable_query_alias_expansion,
+                    )
+                    if isinstance(overrides, dict):
+                        if overrides.get("retrieval_mode") is not None:
+                            retrieval_mode = str(overrides.get("retrieval_mode") or "").strip() or retrieval_mode
+                        if overrides.get("retrieval_profile") is not None:
+                            retrieval_profile = str(overrides.get("retrieval_profile") or "").strip() or retrieval_profile
+                        if overrides.get("top_k") is not None:
+                            top_k = int(overrides.get("top_k") or 0)
+                        if overrides.get("score_threshold") is not None:
+                            score_threshold = float(overrides.get("score_threshold") or 0.0)
+                        if overrides.get("enable_reranker") is not None:
+                            enable_reranker = bool(overrides.get("enable_reranker"))
+                        if overrides.get("enable_weight_rerank") is not None:
+                            enable_weight_rerank = bool(overrides.get("enable_weight_rerank"))
+                        if overrides.get("enable_multi_query") is not None:
+                            enable_multi_query = bool(overrides.get("enable_multi_query"))
+                        if overrides.get("enable_query_alias_expansion") is not None:
+                            enable_query_alias_expansion = bool(overrides.get("enable_query_alias_expansion"))
+                except Exception as exc:  # noqa: BLE001
+                    intent_router_meta = {
+                        "enabled": True,
+                        "used": False,
+                        "error": f"intent_router_exception:{str(exc)[:160]}",
+                    }
+
+            mode_used = normalize_retrieval_mode(retrieval_mode or "hybrid")
             mode_auto = False
             recall_bucket: str | None = None
             recall_bucket_routing = bool(getattr(settings, "RAG_RECALL_BUCKETS_ENABLED", False))
@@ -665,6 +717,19 @@ Requirements:
             if profile_norm == "recall20":
                 top_k = max(int(top_k or 0), 20)
                 score_threshold_used = 0.0
+                retrieval_profile = "recall20"
+            elif profile_norm == "recall50":
+                top_k = max(int(top_k or 0), 50)
+                score_threshold_used = 0.0
+                retrieval_profile = "recall50"
+            elif profile_norm == "coverage80":
+                top_k = max(int(top_k or 0), 80)
+                score_threshold_used = 0.0
+                retrieval_profile = "coverage80"
+            elif not profile_norm:
+                retrieval_profile = None
+            else:
+                retrieval_profile = profile_norm
 
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             alias_elapsed = 0.0
@@ -1391,6 +1456,13 @@ Requirements:
                             "retrieval_mode": mode_used,
                             "retrieval_mode_requested": mode_req,
                             "retrieval_mode_auto_routed": bool(mode_auto),
+                            "retrieval_profile": profile_norm or None,
+                            "retrieval_profile_requested": (
+                                str(profile_req).strip().lower() if profile_req is not None else None
+                            ),
+                            "intent_router_enabled": bool(intent_router_meta.get("enabled")),
+                            "intent_router_used": bool(intent_router_meta.get("used")),
+                            "intent_router": intent_router_meta,
                             "vector_backend": settings.VECTOR_BACKEND,
                             "model_route": model_route,
                             "top_k": top_k,
@@ -1717,6 +1789,9 @@ Requirements:
                     "mode": mode_used,
                     "requested_mode": mode_req,
                     "auto_routed": bool(mode_auto),
+                    "profile": profile_norm or None,
+                    "profile_requested": (str(profile_req).strip().lower() if profile_req is not None else None),
+                    "intent_router": intent_router_meta,
                     "retrieval_config_hash": retrieval_config_hash,
                     "recall_bucket": recall_bucket,
                     "top_k": int(top_k) if top_k is not None else None,
@@ -1952,6 +2027,13 @@ Requirements:
                         "retrieval_mode": mode_used,
                         "retrieval_mode_requested": mode_req,
                         "retrieval_mode_auto_routed": bool(mode_auto),
+                        "retrieval_profile": profile_norm or None,
+                        "retrieval_profile_requested": (
+                            str(profile_req).strip().lower() if profile_req is not None else None
+                        ),
+                        "intent_router_enabled": bool(intent_router_meta.get("enabled")),
+                        "intent_router_used": bool(intent_router_meta.get("used")),
+                        "intent_router": intent_router_meta,
                         "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
                         "retrieval_rrf_k": settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None,
                         "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),

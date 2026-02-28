@@ -38,6 +38,7 @@ from app.rag.core.text import (
 )
 from app.rag.engine import get_rag_engine
 from app.rag.kg.pipeline import kg_search
+from app.rag.policy.intent_router import route_retrieval_preset
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.rerank_result_cache import (
@@ -469,6 +470,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
     kg_result_cached: dict[str, Any] | None = None
+    intent_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
 
     if (
         bool(settings.ENABLE_QUERY_REWRITE)
@@ -496,8 +498,55 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
         rewrite_used = query_for_retrieval != question
 
+    # Capture caller intent before any routing/presets apply (kept for trace/metrics).
     requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
-    request_retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
+    requested_retrieval_profile = state.get("retrieval_profile")
+
+    # Step 0.25: Deterministic intent router (optional).
+    #
+    # Goal: map query "shape" (log/api/howto/faq) to retrieval presets and safe toggles.
+    # Must be deterministic + PII-safe (no raw query in meta payloads).
+    intent_router_req = state.get("intent_router")
+    intent_router_enabled = (
+        bool(intent_router_req)
+        if intent_router_req is not None
+        else bool(getattr(settings, "RAG_INTENT_ROUTER_ENABLED", False))
+    )
+    intent_router_meta = {"enabled": bool(intent_router_enabled), "used": False}
+    if bool(intent_router_enabled):
+        try:
+            overrides, intent_router_meta = route_retrieval_preset(
+                query=query_for_retrieval,
+                retrieval_mode=str(requested_retrieval_mode or ""),
+                retrieval_profile=(
+                    str(requested_retrieval_profile).strip()
+                    if requested_retrieval_profile is not None
+                    else None
+                ),
+                top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
+                score_threshold=float(
+                    state.get("score_threshold", settings.SIMILARITY_THRESHOLD)
+                    if state.get("score_threshold", settings.SIMILARITY_THRESHOLD) is not None
+                    else (settings.SIMILARITY_THRESHOLD or 0.0)
+                ),
+                enable_reranker=bool(state.get("enable_reranker", settings.ENABLE_RERANKER)),
+                enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
+                enable_multi_query=(state.get("enable_multi_query") if "enable_multi_query" in state else None),
+                enable_query_alias_expansion=(
+                    state.get("enable_query_alias_expansion") if "enable_query_alias_expansion" in state else None
+                ),
+            )
+            for k, v in (overrides or {}).items():
+                state[k] = v
+        except Exception as exc:  # noqa: BLE001
+            intent_router_meta = {
+                "enabled": True,
+                "used": False,
+                "error": f"intent_router_exception:{str(exc)[:160]}",
+            }
+
+    effective_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
+    request_retrieval_mode = normalize_retrieval_mode(effective_retrieval_mode)
     retrieval_mode_routed = False
     mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
     if mode_norm == "auto":
@@ -1635,6 +1684,13 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["retrieval_mode"] = request_retrieval_mode
     metrics["retrieval_mode_requested"] = requested_retrieval_mode
     metrics["retrieval_mode_auto_routed"] = bool(retrieval_mode_routed)
+    metrics["retrieval_profile"] = profile_norm or None
+    metrics["retrieval_profile_requested"] = (
+        str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
+    )
+    metrics["intent_router_enabled"] = bool(intent_router_meta.get("enabled"))
+    metrics["intent_router_used"] = bool(intent_router_meta.get("used"))
+    metrics["intent_router"] = intent_router_meta
     metrics["retrieval_query_parallelism"] = retrieval_parallelism
     metrics["retrieval_query_count"] = len(retrieval_plan)
     metrics["retrieval_per_query"] = retrieval_per_query[:8]
@@ -1814,6 +1870,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     query_debug["query_for_retrieval"] = query_for_retrieval
     query_debug["rewrite_used"] = bool(rewrite_used)
     query_debug["retrieval_profile"] = profile_norm or None
+    query_debug["retrieval_profile_requested"] = (
+        str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
+    )
+    query_debug["intent_router"] = intent_router_meta
     if empty_diag:
         query_debug["empty_retrieval"] = empty_diag
 
@@ -1876,6 +1936,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "retrieval_mode": str(request_retrieval_mode or ""),
         "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
         "retrieval_profile": profile_norm or None,
+        "retrieval_profile_requested": (
+            str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
+        ),
+        "intent_router": intent_router_meta,
         "rewrite": {
             "enabled": bool(settings.ENABLE_QUERY_REWRITE),
             "used": bool(rewrite_used),
