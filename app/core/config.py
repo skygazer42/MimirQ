@@ -1076,6 +1076,12 @@ class Settings(BaseSettings):
     # Disabled by default to avoid behavioral changes in KG search without opt-in.
     KG_SEARCH_RELATION_EXPANSION_ENABLED: bool = False
     KG_SEARCH_RELATION_MIN_CONFIDENCE: float = 0.5
+    # Coarse confidence buckets for provenance/debugging.
+    # - low:  conf < LOW_MAX
+    # - mid:  LOW_MAX <= conf < MID_MAX
+    # - high: conf >= MID_MAX
+    KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX: float = 0.4
+    KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX: float = 0.7
     KG_SEARCH_RELATION_MAX_EDGES: int = 500
     KG_SEARCH_RELATION_MAX_NEIGHBORS: int = 20
     KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR: float = 0.7

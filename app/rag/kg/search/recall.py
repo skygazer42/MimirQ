@@ -11,7 +11,7 @@ from app.rag.kg.search import graph_embeddings as graph_embeddings_mod
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
-from app.rag.kg.search.utils import cosine_similarity
+from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
 
 
 @dataclass
@@ -425,6 +425,8 @@ class RecallSearcher:
                     weight_factor = float(
                         getattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 0.7) or 0.7
                     )
+                    bucket_low = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.4) or 0.4)
+                    bucket_mid = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.7) or 0.7)
 
                     try:
                         from uuid import UUID
@@ -440,6 +442,8 @@ class RecallSearcher:
                             "max_edges": int(max_edges),
                             "max_neighbors": int(max_neighbors),
                             "weight_factor": float(weight_factor),
+                            "conf_bucket_low_max": float(bucket_low),
+                            "conf_bucket_mid_max": float(bucket_mid),
                         }
                         rel_repo = RelationRepository(session)
                         rel_rows = rel_repo.list_relations_for_entities(
@@ -456,6 +460,7 @@ class RecallSearcher:
                         key_entity_map = {e.get("entity_id"): e for e in key_query_related if e.get("entity_id")}
                         neighbor_weights: Dict[str, float] = {}
                         predicate_hist: Dict[str, int] = {}
+                        conf_bucket_hist: Dict[str, int] = {"low": 0, "mid": 0, "high": 0}
                         edges_used = 0
                         for rel in rel_rows:
                             subj = str(getattr(rel, "subject_entity_id", "") or "")
@@ -498,6 +503,7 @@ class RecallSearcher:
                             if pred_mult <= 0:
                                 continue
                             evidence_mult = 1.0
+                            evidence_source = ""
                             try:
                                 refs = getattr(rel, "references", None)
                                 evidence_source = (
@@ -512,6 +518,7 @@ class RecallSearcher:
                                     evidence_mult = max(0.0, min(1.0, float(mention_mult)))
                             except Exception:
                                 evidence_mult = 1.0
+                                evidence_source = ""
 
                             w = (
                                 float(key_weights.get(from_id, 0.0) or 0.0)
@@ -523,8 +530,10 @@ class RecallSearcher:
                             if w <= 0:
                                 continue
 
+                            bucket = confidence_bucket(conf, low_max=bucket_low, mid_max=bucket_mid)
                             neighbor_weights[to_id] = max(neighbor_weights.get(to_id, 0.0), w)
                             predicate_hist[predicate] = int(predicate_hist.get(predicate, 0) or 0) + 1
+                            conf_bucket_hist[bucket] = int(conf_bucket_hist.get(bucket, 0) or 0) + 1
                             edges_used += 1
 
                             tracker.add_clue(
@@ -540,6 +549,15 @@ class RecallSearcher:
                                     "predicate": predicate,
                                     "predicate_multiplier": pred_mult,
                                     "evidence_multiplier": float(evidence_mult),
+                                    "evidence_source": evidence_source,
+                                    "confidence_bucket": bucket,
+                                    # Provenance (best-effort): allow diagnostics/UI to trace edges back to source.
+                                    "relation_id": str(getattr(rel, "id", "") or "") or None,
+                                    "relation_document_id": (
+                                        str(getattr(rel, "document_id", "") or "") or None
+                                    ),
+                                    "relation_chunk_id": str(getattr(rel, "chunk_id", "") or "") or None,
+                                    "relation_event_id": str(getattr(rel, "event_id", "") or "") or None,
                                     "step": "step1.5",
                                 },
                             )
@@ -553,6 +571,7 @@ class RecallSearcher:
                         relation_debug["neighbors_total"] = int(len(neighbor_weights))
                         relation_debug["neighbors_selected"] = int(len(sorted_neighbors))
                         relation_debug["predicate_hist"] = dict(sorted(predicate_hist.items(), key=lambda x: (-x[1], x[0])))  # type: ignore[assignment]
+                        relation_debug["confidence_bucket_hist"] = dict(conf_bucket_hist)
 
             # === Step2: keys -> events (entity relation) ===
             event_ids_from_entities = event_repo.search_events_by_entities(

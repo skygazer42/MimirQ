@@ -10,6 +10,7 @@ from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
+from app.rag.kg.search.utils import confidence_bucket
 
 
 @dataclass
@@ -112,6 +113,8 @@ class ExpandSearcher:
                         weight_factor = float(
                             getattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 0.7) or 0.7
                         )
+                        bucket_low = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.4) or 0.4)
+                        bucket_mid = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.7) or 0.7)
 
                         try:
                             from uuid import UUID
@@ -162,6 +165,7 @@ class ExpandSearcher:
                                 if pred_mult <= 0:
                                     continue
                                 evidence_mult = 1.0
+                                evidence_source = ""
                                 try:
                                     refs = getattr(rel, "references", None)
                                     evidence_source = (
@@ -176,6 +180,7 @@ class ExpandSearcher:
                                         evidence_mult = max(0.0, min(1.0, float(mention_mult)))
                                 except Exception:
                                     evidence_mult = 1.0
+                                    evidence_source = ""
                                 w = (
                                     float(entity_weights.get(from_id, 0.0) or 0.0)
                                     * conf
@@ -187,6 +192,7 @@ class ExpandSearcher:
                                     continue
 
                                 neighbor_weights[to_id] = max(neighbor_weights.get(to_id, 0.0), w)
+                                bucket = confidence_bucket(conf, low_max=bucket_low, mid_max=bucket_mid)
 
                                 tracker.add_clue(
                                     stage=f"expand-hop-{hop+1}",
@@ -203,6 +209,12 @@ class ExpandSearcher:
                                         "predicate": predicate,
                                         "predicate_multiplier": pred_mult,
                                         "evidence_multiplier": float(evidence_mult),
+                                        "evidence_source": evidence_source,
+                                        "confidence_bucket": bucket,
+                                        "relation_id": str(getattr(rel, "id", "") or "") or None,
+                                        "relation_document_id": str(getattr(rel, "document_id", "") or "") or None,
+                                        "relation_chunk_id": str(getattr(rel, "chunk_id", "") or "") or None,
+                                        "relation_event_id": str(getattr(rel, "event_id", "") or "") or None,
                                         "step": f"hop-{hop+1}",
                                     },
                                 )

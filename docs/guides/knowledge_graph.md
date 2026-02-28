@@ -247,6 +247,12 @@ MimirQ 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用�
   - `KG_RELATION_ENABLED=true` 或请求 `extract_relations=true`：启用 triples / taxonomy edges（关系扩展的重要前置）
   - `KG_SEARCH_RELATION_EXPANSION_ENABLED=true`：KG search 召回阶段启用 relation-driven expansion
   - `KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER=0.7`：对 evidence_source=mention 的关系边进行权重惩罚（降低低信号边导致的扩展漂移）
+  - `KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX=0.4` / `KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX=0.7`：关系边置信度分桶阈值（low/mid/high），用于 clues/diagnostics 的可解释性与低基数特征
+    - `conf < LOW_MAX` => `low`
+    - `LOW_MAX <= conf < MID_MAX` => `mid`
+    - `conf >= MID_MAX` => `high`
+  - `KG_SEARCH_CLUES_ENABLED=true`：返回 KG search 的 `clues`（用于 UI/诊断解释 “为什么这条边/路径被纳入”）
+    - 其中 `method=relation_expansion` 的 clues 会包含 `evidence_source/confidence_bucket` 以及 best-effort 的 `relation_id/document_id/chunk_id/event_id` provenance 字段
   - `KG_SEARCH_VECTOR_RECALL_ENABLED=false`：禁用 Milvus + embeddings 的 vector recall（用于 CI/离线环境）。
     - 召回会退化为 alias（lexical）+ event↔entity links（结构化）+ 可选 relation expansion。
   - `KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED=true`：启用离线、可复现的 graph embeddings（node2vec-like）用于 entity recall。
