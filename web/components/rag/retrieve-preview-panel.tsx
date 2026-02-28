@@ -52,6 +52,21 @@ function shortId(id: string, opts?: { head?: number; tail?: number }): string {
   return `${s.slice(0, head)}...${s.slice(-tail)}`
 }
 
+function toInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value)
+    if (Number.isFinite(n)) return Math.trunc(n)
+  }
+  if (typeof value === 'boolean') return value ? 1 : 0
+  return null
+}
+
+function formatCount(value: unknown): string {
+  const n = toInt(value)
+  return typeof n === 'number' ? String(n) : '—'
+}
+
 async function copyToClipboard(text: string, label: string): Promise<void> {
   const v = String(text || '')
   if (!v) {
@@ -72,6 +87,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
   const [searchResults, setSearchResults] = useState<Citation[]>([])
   const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
   const [searchMetrics, setSearchMetrics] = useState<Record<string, any> | null>(null)
+  const [searchRetrievalTrace, setSearchRetrievalTrace] = useState<Record<string, any> | null>(null)
   const [searchHasEvidence, setSearchHasEvidence] = useState<boolean | null>(null)
   const [searchAbstainTriggered, setSearchAbstainTriggered] = useState<boolean | null>(null)
   const [searchAbstainReason, setSearchAbstainReason] = useState<string | null>(null)
@@ -91,6 +107,41 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
     return raw.slice(0, 12).filter((x) => isRecord(x))
   }, [searchMetrics])
 
+  const mainRetrieverDebug = useMemo(() => {
+    const main = retrievalPerQuery.find((x) => String(x.kind || '').trim().toLowerCase() === 'main') || retrievalPerQuery[0]
+    if (!isRecord(main)) return null
+    const dbg = main.retriever_debug
+    return isRecord(dbg) ? dbg : null
+  }, [retrievalPerQuery])
+
+  const selectedTracePass = useMemo(() => {
+    const trace = searchRetrievalTrace
+    if (!isRecord(trace)) return null
+    const passes = trace.passes
+    if (!Array.isArray(passes) || !passes.length) return null
+    const selected = typeof trace.selected_pass === 'string' ? trace.selected_pass : null
+    const picked =
+      (selected ? passes.find((p) => isRecord(p) && p.pass === selected) : null) ||
+      passes.find((p) => isRecord(p)) ||
+      null
+    if (!isRecord(picked)) return null
+    return picked
+  }, [searchRetrievalTrace])
+
+  const selectedPassTrace = useMemo(() => {
+    const picked = selectedTracePass
+    if (!isRecord(picked)) return null
+    const t = picked.trace
+    return isRecord(t) ? t : null
+  }, [selectedTracePass])
+
+  const selectedPassRetrieval = useMemo(() => {
+    const t = selectedPassTrace
+    if (!isRecord(t)) return null
+    const r = t.retrieval
+    return isRecord(r) ? r : null
+  }, [selectedPassTrace])
+
   const handleSearch = useCallback(async () => {
     const q = searchQuery.trim()
     if (!q) return
@@ -100,6 +151,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
     setSearchResults([])
     setSearchQueryForRetrieval('')
     setSearchMetrics(null)
+    setSearchRetrievalTrace(null)
     setSearchHasEvidence(null)
     setSearchAbstainTriggered(null)
     setSearchAbstainReason(null)
@@ -117,6 +169,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
       setSearchResults(citations.map(toCitation).filter(Boolean) as Citation[])
       setSearchQueryForRetrieval(res.query_for_retrieval || '')
       setSearchMetrics(res.metrics || null)
+      setSearchRetrievalTrace(((res as any).retrieval_trace as any) || null)
       setSearchHasEvidence(Boolean((res as any).has_evidence))
       setSearchAbstainTriggered(Boolean((res as any).abstain_triggered))
       setSearchAbstainReason(((res as any).abstain_reason as string | null | undefined) ?? null)
@@ -525,6 +578,249 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                   <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
                     retrieval_elapsed_sec={String(searchMetrics?.retrieval_elapsed_sec ?? '—')}
                   </span>
+                  {selectedTracePass ? (
+                    <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                      selected_pass={String(selectedTracePass.pass ?? '—')}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                    <div className="text-xs font-semibold text-foreground">预算与配额</div>
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                        <div className="text-[11px] text-muted-foreground">top_k</div>
+                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                          {formatCount(selectedPassRetrieval?.top_k ?? mainRetrieverDebug?.requested_k)}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                        <div className="text-[11px] text-muted-foreground">search_k</div>
+                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                          {formatCount(mainRetrieverDebug?.search_k)}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                        <div className="text-[11px] text-muted-foreground">fetch_k</div>
+                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                          {formatCount(mainRetrieverDebug?.fetch_k)}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                        <div className="text-[11px] text-muted-foreground">overfetch</div>
+                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                          {mainRetrieverDebug ? (
+                            String(Boolean(mainRetrieverDebug.overfetch_enabled))
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                        <div className="text-[11px]">fusion_strategy</div>
+                        <div className="mt-1 font-mono text-foreground/90">
+                          {String(selectedPassRetrieval?.channel_fusion_strategy ?? '—')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                        <div className="text-[11px]">query_variant_fusion</div>
+                        <div className="mt-1 font-mono text-foreground/90">
+                          {String((selectedPassTrace?.query_variant_fusion as any)?.strategy ?? '—')}
+                        </div>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const ch = isRecord(mainRetrieverDebug?.channels) ? mainRetrieverDebug?.channels : null
+                      const fusion = isRecord(ch?.fusion_budgeted_rrf) ? ch?.fusion_budgeted_rrf : null
+                      if (!fusion) return null
+                      const budgets = isRecord(fusion.budgets) ? fusion.budgets : null
+                      const picked = isRecord(fusion.picked_by_channel) ? fusion.picked_by_channel : null
+                      return (
+                        <div className="mt-3 rounded-lg border border-border/60 bg-background/60 p-3">
+                          <div className="text-xs font-semibold text-foreground">Budgeted RRF（按通道配额）</div>
+                          <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">k_prefix</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.k_prefix)}</div>
+                            </div>
+                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">eligible_total</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.eligible_total)}</div>
+                            </div>
+                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">selected_prefix</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                {formatCount(fusion.selected_prefix)}
+                              </div>
+                            </div>
+                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">rrf_k</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.rrf_k)}</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[11px] text-muted-foreground">
+                            quotas:{' '}
+                            {budgets ? (
+                              <span className="font-mono tabular-nums text-foreground/90">
+                                {Object.entries(budgets)
+                                  .slice(0, 8)
+                                  .map(([k, v]) => `${k}=${formatCount(v)}`)
+                                  .join('  ')}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            picked:{' '}
+                            {picked ? (
+                              <span className="font-mono tabular-nums text-foreground/90">
+                                {Object.entries(picked)
+                                  .slice(0, 8)
+                                  .map(([k, v]) => `${k}=${formatCount(v)}`)
+                                  .join('  ')}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                    <div className="text-xs font-semibold text-foreground">裁剪原因（trimming / caps）</div>
+
+                    {(() => {
+                      const dbg = mainRetrieverDebug
+                      if (!dbg) {
+                        return <div className="mt-2 text-xs text-muted-foreground">无 retriever_debug（可能是旧版本后端或被裁剪）。</div>
+                      }
+
+                      const div = isRecord(dbg.diversity) ? dbg.diversity : null
+                      const ch = isRecord(dbg.channels) ? dbg.channels : null
+
+                      const mergedPre = toInt(ch?.merged_pre_dedup)
+                      const mergedPost = toInt(ch?.merged_post_dedup)
+                      const dedupDropped =
+                        typeof mergedPre === 'number' && typeof mergedPost === 'number' ? Math.max(0, mergedPre - mergedPost) : null
+
+                      const divChan = isRecord(ch?.diversity) ? ch?.diversity : null
+                      const divDropped = toInt(divChan?.dropped)
+
+                      const enrich = isRecord(dbg.enrich_pass2) ? dbg.enrich_pass2 : isRecord(dbg.enrich_pass1) ? dbg.enrich_pass1 : null
+                      const trimKeys: Array<[string, string]> = [
+                        ['filtered_metadata_filter', 'metadata_filter'],
+                        ['filtered_acl', 'acl'],
+                        ['filtered_dataset', 'dataset'],
+                        ['filtered_pipeline_version', 'pipeline_version'],
+                        ['filtered_embedding_space', 'embedding_space'],
+                        ['filtered_not_ready', 'not_ready'],
+                        ['filtered_orphaned', 'orphaned_vectors'],
+                      ]
+                      const trims = trimKeys
+                        .map(([k, label]) => {
+                          const n = toInt(enrich?.[k])
+                          return { key: k, label, n: typeof n === 'number' ? n : 0 }
+                        })
+                        .filter((x) => x.n > 0)
+                        .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+
+                      const capsEnabled = Boolean(
+                        (toInt(div?.max_chunks_per_doc) ?? 0) > 0 || (toInt(div?.max_chunks_per_page) ?? 0) > 0 || (toInt(div?.min_distinct_docs) ?? 0) > 0
+                      )
+
+                      return (
+                        <div className="mt-3 space-y-3">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">dedup_dropped</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                {typeof dedupDropped === 'number' ? String(dedupDropped) : '—'}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">diversity_dropped</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                {typeof divDropped === 'number' ? String(divDropped) : '—'}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">enrich_input</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(enrich?.input_results)}</div>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">enrich_output</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(enrich?.output_results)}</div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                            <div className="text-xs font-semibold text-foreground">Diversity caps（doc/page）</div>
+                            <div className="mt-2 text-[11px] text-muted-foreground">
+                              {capsEnabled ? (
+                                <>
+                                  max_chunks_per_doc=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.max_chunks_per_doc)}</span>{' '}
+                                  max_chunks_per_page=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.max_chunks_per_page)}</span>{' '}
+                                  min_distinct_docs=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.min_distinct_docs)}</span>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">caps disabled</span>
+                              )}
+                            </div>
+                            {capsEnabled ? (
+                              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                  <div className="text-[11px] text-muted-foreground">unique_docs</div>
+                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                    {formatCount(div?.pre_unique_docs)}→{formatCount(div?.post_unique_docs)}
+                                  </div>
+                                </div>
+                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                  <div className="text-[11px] text-muted-foreground">unique_pages</div>
+                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                    {formatCount(div?.pre_unique_pages)}→{formatCount(div?.post_unique_pages)}
+                                  </div>
+                                </div>
+                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                  <div className="text-[11px] text-muted-foreground">moved_out</div>
+                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(div?.moved_out)}</div>
+                                </div>
+                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                  <div className="text-[11px] text-muted-foreground">moved_in</div>
+                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(div?.moved_in)}</div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                            <div className="text-xs font-semibold text-foreground">Trimming reasons（DB enrich）</div>
+                            {trims.length ? (
+                              <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                                {trims.slice(0, 10).map((t) => (
+                                  <span
+                                    key={t.key}
+                                    className="font-mono tabular-nums bg-muted/60 border border-border/60 px-2 py-1 rounded-full text-foreground/90"
+                                  >
+                                    {t.label}=-{t.n}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-xs text-muted-foreground">未观察到显著 trimming（或该版本未上报 enrich 计数）。</div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
                 </div>
 
                 {retrievalPerQuery.length ? (
