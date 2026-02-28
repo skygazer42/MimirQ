@@ -247,3 +247,8 @@ MimirQ 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用�
   - `KG_RELATION_ENABLED=true` 或请求 `extract_relations=true`：启用 triples / taxonomy edges（关系扩展的重要前置）
   - `KG_SEARCH_RELATION_EXPANSION_ENABLED=true`：KG search 召回阶段启用 relation-driven expansion
   - `KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER=0.7`：对 evidence_source=mention 的关系边进行权重惩罚（降低低信号边导致的扩展漂移）
+  - `KG_SEARCH_VECTOR_RECALL_ENABLED=false`：禁用 Milvus + embeddings 的 vector recall（用于 CI/离线环境）。
+    - 召回会退化为 alias（lexical）+ event↔entity links（结构化）+ 可选 relation expansion。
+  - `KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED=true`：启用离线、可复现的 graph embeddings（node2vec-like）用于 entity recall。
+    - 仅在 vector recall 不可用/被禁用时生效：从 alias seeds 出发构建局部子图（events + 可选 relations），并用 random-walk embeddings 拉回额外实体候选。
+    - 关键参数：`KG_SEARCH_GRAPH_EMBEDDINGS_DIM/NUM_WALKS/WALK_LENGTH/WINDOW_SIZE/TOP_K`。
