@@ -1,0 +1,10 @@
+{
+  "schema": "mimirq.ci_kg_search_thresholds.v1",
+  "dataset_id": "22222222-2222-2222-2222-222222222222",
+  "metrics": {
+    "baseline_hit_rate": { "min": 1.0 },
+    "baseline_mrr": { "min": 1.0 },
+    "baseline_recall": { "min": 1.0 }
+  }
+}
+

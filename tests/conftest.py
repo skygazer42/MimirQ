@@ -1,7 +1,91 @@
 import os
+import socket
 
 import pytest
 from sqlalchemy import text
+
+
+def _patch_asyncio_threadsafe_wakeup_for_sandbox() -> None:
+    """
+    In this sandbox environment, Linux socket send syscalls are blocked (EPERM) even for
+    AF_UNIX socketpairs. asyncio uses `socket.socketpair()` + `csock.send(b"\\0")` as its
+    self-pipe wakeup mechanism for `loop.call_soon_threadsafe(...)`.
+
+    When `send()` is blocked, cross-thread scheduling never wakes the event loop, which
+    causes hangs in:
+    - anyio.from_thread.start_blocking_portal()
+    - Starlette/FastAPI TestClient (uses AnyIO blocking portal internally)
+
+    Workaround: detect this condition and monkeypatch asyncio to wake the selector loop
+    using `os.write(fd, b"\\0")` instead of `socket.send(...)`. `os.write()` is permitted
+    in this environment.
+    """
+
+    # Import lazily so we don't change runtime behavior outside of pytest.
+    import asyncio.selector_events as se  # noqa: WPS433
+
+    # Detect whether socket send is blocked by the sandbox.
+    try:
+        ssock, csock = socket.socketpair()
+        try:
+            csock.send(b"\0")
+            return  # Normal environment: no patch needed.
+        except PermissionError:
+            pass
+        finally:
+            ssock.close()
+            csock.close()
+    except Exception:
+        # If detection fails for any reason, do not risk patching asyncio globally.
+        return
+
+    def _write_to_self_via_os_write(self) -> None:  # type: ignore[no-untyped-def]
+        csock = getattr(self, "_csock", None)
+        if csock is None:
+            return
+        try:
+            os.write(csock.fileno(), b"\0")
+        except OSError:
+            # Mirror asyncio's behavior: swallow wakeup errors, log only in debug mode.
+            if getattr(self, "_debug", False):
+                try:
+                    se.logger.debug("Fail to write a null byte into the self-pipe socket", exc_info=True)
+                except Exception:
+                    pass
+
+    se.BaseSelectorEventLoop._write_to_self = _write_to_self_via_os_write  # type: ignore[assignment]
+
+
+def _disable_proxy_env_for_tests() -> None:
+    """
+    Starlette's TestClient uses httpx.Client without explicitly setting trust_env=False.
+    In sandboxed/offline environments we commonly have SOCKS-style proxy env vars set,
+    which can cause TestClient requests to hang (waiting on an unreachable proxy).
+
+    Tests should be hermetic and must not depend on outbound network/proxy settings, so we
+    clear proxy env vars and ensure localhost/testserver bypass is present.
+    """
+    for key in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        os.environ.pop(key, None)
+
+    # Preserve any existing NO_PROXY entries but ensure local targets are always bypassed.
+    existing = str(os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "")
+    parts = {p.strip() for p in existing.split(",") if p.strip()}
+    parts.update({"testserver", "localhost", "127.0.0.1"})
+    merged = ",".join(sorted(parts))
+    os.environ["NO_PROXY"] = merged
+    os.environ["no_proxy"] = merged
+
+
+_disable_proxy_env_for_tests()
+_patch_asyncio_threadsafe_wakeup_for_sandbox()
 
 
 def _integration_enabled() -> bool:
@@ -56,4 +140,3 @@ def pg_session():
     except Exception:
         # Do not fail tests due to cleanup issues.
         pass
-

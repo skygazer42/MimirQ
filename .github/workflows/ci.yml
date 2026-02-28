@@ -206,3 +206,109 @@ jobs:
           if [ -f artifacts/backend.pid ]; then
             kill "$(cat artifacts/backend.pid)" || true
           fi
+
+  kg-search-regression-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request'
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: mimirq
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Seed CI KG search fixture (DB + KG rows + cases bundle)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+        run: |
+          mkdir -p artifacts
+          python scripts/seed_ci_kg_search_regression.py \
+            --fixture ci/kg_search_regression_fixture.v1.json \
+            --out-cases artifacts/kg_regression_cases.json
+
+      - name: Start backend (KG enabled, no Milvus/embeddings)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          ENV: ci
+          AUTH_MODE: header
+          DEFAULT_TENANT_ID: 00000000-0000-0000-0000-000000000000
+          VECTOR_BACKEND: faiss
+          TASK_QUEUE_ENABLED: "false"
+          EMBEDDING_CACHE_ENABLED: "false"
+          MINIO_ENABLED: "false"
+          LEXICAL_DB_TRGM_ENABLED: "false"
+          ENABLE_RERANKER: "false"
+          BM25_INDEX_ENABLED: "false"
+          KG_ENABLED: "true"
+          KG_SEARCH_VECTOR_RECALL_ENABLED: "false"
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          echo $! > artifacts/backend.pid
+
+      - name: Wait for backend ready
+        env:
+          BACKEND_BASE_URL: http://localhost:8000
+        run: |
+          for i in $(seq 1 30); do
+            if python scripts/api_ping.py; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend not ready" >&2
+          exit 1
+
+      - name: Run KG search regression gate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+        run: |
+          python scripts/kg_search_regression_gate.py \
+            --base-url http://localhost:8000/api/v1 \
+            --tenant-id 00000000-0000-0000-0000-000000000000 \
+            --user-id ci-bot \
+            --cases artifacts/kg_regression_cases.json \
+            --thresholds ci/kg_search_thresholds.v1.json \
+            --k 10 \
+            --out-run-json artifacts/kg.diagnostics.json
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kg-search-regression-gate
+          path: |
+            artifacts/**
+            ci/kg_search_regression_fixture.v1.json
+            ci/kg_search_thresholds.v1.json
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f artifacts/backend.pid ]; then
+            kill "$(cat artifacts/backend.pid)" || true
+          fi
