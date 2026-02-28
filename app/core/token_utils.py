@@ -20,7 +20,10 @@ def _get_encoder():
         else:
             try:
                 _encoder = tiktoken.get_encoding("cl100k_base")
-            except (KeyError, ValueError):
+            except Exception:  # noqa: BLE001
+                # tiktoken may attempt to download encoding assets on first use in some
+                # environments. In CI/offline contexts this can fail (network/proxy).
+                # Fail open to the heuristic fallback instead of crashing the request.
                 _encoder = False
     return _encoder
 

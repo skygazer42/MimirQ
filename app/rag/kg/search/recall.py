@@ -87,12 +87,27 @@ class RecallSearcher:
                         break
 
             # === Step1: query -> keys (vector) ===
-            query_vec = await self.processor.generate_embedding(expanded_query)
-            raw_entities = entity_repo.search_similar(
-                query_vector=query_vec,
-                tenant_id=tenant_id,
-                k=config.recall.vector_candidates,
-            )
+            query_vec: List[float] = []
+            raw_entities: List[dict] = []
+            vector_recall_enabled = bool(getattr(settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True))
+            if vector_recall_enabled:
+                try:
+                    query_vec = await self.processor.generate_embedding(expanded_query)
+                except Exception:
+                    # CI/offline-friendly fallback: allow alias-driven recall to still function when
+                    # embedding providers are unavailable or misconfigured.
+                    query_vec = []
+
+                if query_vec:
+                    try:
+                        raw_entities = entity_repo.search_similar(
+                            query_vector=query_vec,
+                            tenant_id=tenant_id,
+                            k=config.recall.vector_candidates,
+                        )
+                    except Exception:
+                        # Milvus may be unavailable in some environments (e.g. CI). Fall back to aliases.
+                        raw_entities = []
 
             # Alias-aware keys: merge in alias hits as high-confidence candidates.
             if alias_hits:
@@ -356,14 +371,19 @@ class RecallSearcher:
                 event_ids_from_relation_entities = list(rel_event_ids)[: config.rerank.max_key_recall_results]
 
             # === Step3: query -> events (vector) ===
-            content_results = event_repo.search_similar_by_content(
-                query_vector=query_vec,
-                tenant_id=tenant_id,
-                k=config.recall.vector_candidates,
-                document_ids=config.document_ids,
-                dataset_id=config.dataset_id,
-                account_id=config.account_id,
-            )
+            content_results: List[dict] = []
+            if vector_recall_enabled and query_vec:
+                try:
+                    content_results = event_repo.search_similar_by_content(
+                        query_vector=query_vec,
+                        tenant_id=tenant_id,
+                        k=config.recall.vector_candidates,
+                        document_ids=config.document_ids,
+                        dataset_id=config.dataset_id,
+                        account_id=config.account_id,
+                    )
+                except Exception:
+                    content_results = []
             event_query_related = [
                 item
                 for item in content_results

@@ -1,0 +1,164 @@
+{
+  "schema": "mimirq.ci_kg_search_regression_fixture.v1",
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "account_id": "ci-bot",
+  "dataset": {
+    "id": "22222222-2222-2222-2222-222222222222",
+    "name": "CI KG Search Regression Fixture",
+    "description": "Tiny deterministic fixture dataset for KG search regression gate in CI (no Milvus/LLM required)."
+  },
+  "documents": [
+    {
+      "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "filename": "ci_kg_fixture_doc1.md",
+      "file_type": "md",
+      "doc_metadata": {
+        "source_path": "handbook/ci_kg_fixture_doc1.md",
+        "language": "en",
+        "active_pipeline_hash": "ci-kg-fixture-v1",
+        "kg_extracted_at": "2026-02-28T00:00:00Z"
+      },
+      "chunks": [
+        {
+          "id": "cccccccc-cccc-cccc-cccc-cccccccc0001",
+          "chunk_index": 0,
+          "content": "CI KG Search Fixture (Doc1)\\n\\nQ: What is CITOKENKGALPHA9B7C3E?\\nA: CITOKENKGALPHA9B7C3E is a CI KG search regression token used to validate alias-driven recall.\\n",
+          "page_number": 1
+        },
+        {
+          "id": "cccccccc-cccc-cccc-cccc-cccccccc0002",
+          "chunk_index": 1,
+          "content": "CI KG Search Fixture (Doc1)\\n\\nThis chunk is filler text.\\n",
+          "page_number": 1
+        }
+      ]
+    },
+    {
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "filename": "ci_kg_fixture_doc2.pdf",
+      "file_type": "pdf",
+      "doc_metadata": {
+        "source_path": "policies/ci_kg_fixture_doc2.pdf",
+        "language": "zh",
+        "active_pipeline_hash": "ci-kg-fixture-v1",
+        "kg_extracted_at": "2026-02-28T00:00:00Z"
+      },
+      "chunks": [
+        {
+          "id": "dddddddd-dddd-dddd-dddd-dddddddd0001",
+          "chunk_index": 0,
+          "content": "CI KG Search Fixture (Doc2)\\n\\nQ: What is CITOKENKGGAMMA2F4D8A?\\nA: CITOKENKGGAMMA2F4D8A is a second CI KG search regression token.\\n",
+          "page_number": 1
+        },
+        {
+          "id": "dddddddd-dddd-dddd-dddd-dddddddd0002",
+          "chunk_index": 1,
+          "content": "CI KG Search Fixture (Doc2)\\n\\nThis chunk is filler text.\\n",
+          "page_number": 1
+        }
+      ]
+    }
+  ],
+  "kg": {
+    "entities": [
+      {
+        "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0001",
+        "name": "CITOKENKGALPHA9B7C3E",
+        "type": "Tech",
+        "normalized_name": "citokenkgalpha9b7c3e",
+        "description": "CI KG token (alpha)."
+      },
+      {
+        "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0002",
+        "name": "CITOKENKGGAMMA2F4D8A",
+        "type": "Tech",
+        "normalized_name": "citokenkggamma2f4d8a",
+        "description": "CI KG token (gamma)."
+      }
+    ],
+    "aliases": [
+      {
+        "id": "ffffffff-ffff-ffff-ffff-ffffffff0001",
+        "canonical_entity_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0001",
+        "alias": "CITOKENKGALPHA9B7C3E",
+        "normalized_alias": "citokenkgalpha9b7c3e"
+      },
+      {
+        "id": "ffffffff-ffff-ffff-ffff-ffffffff0002",
+        "canonical_entity_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0002",
+        "alias": "CITOKENKGGAMMA2F4D8A",
+        "normalized_alias": "citokenkggamma2f4d8a"
+      }
+    ],
+    "events": [
+      {
+        "id": "abababab-abab-abab-abab-abababab0001",
+        "pipeline_hash": "ci-kg-fixture-v1",
+        "document_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "chunk_id": "cccccccc-cccc-cccc-cccc-cccccccc0001",
+        "title": "CI KG Event: Alpha",
+        "summary": "Defines CITOKENKGALPHA9B7C3E for CI KG search gate.",
+        "content": "CITOKENKGALPHA9B7C3E is a CI KG search regression token used to validate alias-driven recall."
+      },
+      {
+        "id": "abababab-abab-abab-abab-abababab0002",
+        "pipeline_hash": "ci-kg-fixture-v1",
+        "document_id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "chunk_id": "dddddddd-dddd-dddd-dddd-dddddddd0001",
+        "title": "CI KG Event: Gamma",
+        "summary": "Defines CITOKENKGGAMMA2F4D8A for CI KG search gate.",
+        "content": "CITOKENKGGAMMA2F4D8A is a second CI KG search regression token."
+      }
+    ],
+    "event_entities": [
+      {
+        "id": "bcbcbcbc-bcbc-bcbc-bcbc-bcbcbcbc0001",
+        "event_id": "abababab-abab-abab-abab-abababab0001",
+        "entity_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0001",
+        "weight": 1.0,
+        "role": "about"
+      },
+      {
+        "id": "bcbcbcbc-bcbc-bcbc-bcbc-bcbcbcbc0002",
+        "event_id": "abababab-abab-abab-abab-abababab0002",
+        "entity_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0002",
+        "weight": 1.0,
+        "role": "about"
+      }
+    ],
+    "relations": []
+  },
+  "cases": [
+    {
+      "question": "What is CITOKENKGALPHA9B7C3E?",
+      "expected_answer": "CITOKENKGALPHA9B7C3E is a CI KG search regression token.",
+      "reference_sources": [
+        {
+          "document_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          "chunk_id": "cccccccc-cccc-cccc-cccc-cccccccc0001",
+          "chunk_index": 0,
+          "page_number": 1,
+          "quote": "CITOKENKGALPHA9B7C3E is a CI KG search regression token used to validate alias-driven recall.",
+          "label": "kg_alpha_token"
+        }
+      ],
+      "tags": ["ci", "kg", "token_alpha"]
+    },
+    {
+      "question": "What is CITOKENKGGAMMA2F4D8A?",
+      "expected_answer": "CITOKENKGGAMMA2F4D8A is a CI KG search regression token.",
+      "reference_sources": [
+        {
+          "document_id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          "chunk_id": "dddddddd-dddd-dddd-dddd-dddddddd0001",
+          "chunk_index": 0,
+          "page_number": 1,
+          "quote": "CITOKENKGGAMMA2F4D8A is a second CI KG search regression token.",
+          "label": "kg_gamma_token"
+        }
+      ],
+      "tags": ["ci", "kg", "token_gamma"]
+    }
+  ]
+}
+

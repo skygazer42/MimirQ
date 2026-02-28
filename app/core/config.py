@@ -1028,6 +1028,15 @@ class Settings(BaseSettings):
     KG_SEARCH_MAX_CLUES: int = 2000
     # - Upper bound for event candidates passed into rerank (0 disables).
     KG_SEARCH_MAX_RERANK_CANDIDATES: int = 500
+    # - Vector recall (Milvus + embedding model) for KG search.
+    #
+    # When disabled, KG search falls back to:
+    # - alias-matched entity keys (lexical, deterministic), and
+    # - event recall via event<->entity links + optional relation expansion.
+    #
+    # This is useful for CI/offline scenarios where Milvus and/or embedding models
+    # are intentionally unavailable.
+    KG_SEARCH_VECTOR_RECALL_ENABLED: bool = True
     # - Disable clue generation entirely (saves CPU/memory; response still contains `clues: []`).
     KG_SEARCH_CLUES_ENABLED: bool = True
     # - Truncate clue node content/description (0 disables).

@@ -203,3 +203,42 @@ python scripts/regression_gate.py \
   --out-run-json artifacts/run.detail.json \
   --generate-thresholds-out artifacts/thresholds.generated.json
 ```
+
+## CI 集成（KG Search Gate in PR）
+
+仓库内置了一个极小的、确定性的 KG search fixture，用于在 PR 中做 **KG search gate**（不依赖 Milvus / embeddings / LLM）：
+
+- Fixture：`ci/kg_search_regression_fixture.v1.json`
+- 阈值：`ci/kg_search_thresholds.v1.json`
+- Seed 脚本：`scripts/seed_ci_kg_search_regression.py`
+- Gate 脚本：`scripts/kg_search_regression_gate.py`
+
+本地复现（示例）：
+
+```bash
+# 1) 准备 Postgres（示例连接串；按你的环境修改）
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mimirq"
+
+# 2) Seed fixture（DB + KG rows + 导出 regression cases bundle）
+mkdir -p artifacts
+python scripts/seed_ci_kg_search_regression.py \
+  --fixture ci/kg_search_regression_fixture.v1.json \
+  --out-cases artifacts/kg_regression_cases.json
+
+# 3) 启动后端（禁用外部依赖；KG 走 alias-driven recall，不需要 Milvus/embeddings）
+ENV=ci AUTH_MODE=header DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000 \
+VECTOR_BACKEND=faiss TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
+LEXICAL_DB_TRGM_ENABLED=false ENABLE_RERANKER=false BM25_INDEX_ENABLED=false \
+KG_ENABLED=true KG_SEARCH_VECTOR_RECALL_ENABLED=false \
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# 4) 运行 gate（基于 /evaluations/kg/search/diagnostics 的 baseline_hit_rate/mrr/recall）
+python scripts/kg_search_regression_gate.py \
+  --base-url http://localhost:8000/api/v1 \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id ci-bot \
+  --cases artifacts/kg_regression_cases.json \
+  --thresholds ci/kg_search_thresholds.v1.json \
+  --k 10 \
+  --out-run-json artifacts/kg.diagnostics.json
+```

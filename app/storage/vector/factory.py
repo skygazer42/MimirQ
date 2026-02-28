@@ -497,8 +497,10 @@ class ChromaVectorStore(BaseVectorStore):
             base_url=base_url or "",
             dimension=None,
         )
-        self.persist_path = settings.CHROMA_PERSIST_PATH
-        os.makedirs(self.persist_path, exist_ok=True)
+        # Empty path => in-memory Chroma (useful for unit tests / ephemeral runs).
+        self.persist_path = str(settings.CHROMA_PERSIST_PATH or "").strip()
+        if self.persist_path:
+            os.makedirs(self.persist_path, exist_ok=True)
         self.store_by_tenant: Dict[str, Any] = {}
 
     def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Any]:
@@ -506,11 +508,10 @@ class ChromaVectorStore(BaseVectorStore):
         store = self.store_by_tenant.get(key)
         if store is None:
             chroma_cls = _get_chroma_cls()
-            store = chroma_cls(
-                collection_name=key,
-                embedding_function=self.emb,
-                persist_directory=self.persist_path,
-            )
+            kwargs: Dict[str, Any] = {"collection_name": key, "embedding_function": self.emb}
+            if self.persist_path:
+                kwargs["persist_directory"] = self.persist_path
+            store = chroma_cls(**kwargs)
             self.store_by_tenant[key] = store
         return key, store
 

@@ -32,9 +32,14 @@ class _DummyEmbeddings:
         return self.embed_query(text)
 
 
-def test_chroma_vector_store_selective_delete_by_metadata_filter(tmp_path, monkeypatch):
+def test_chroma_vector_store_selective_delete_by_metadata_filter(monkeypatch):
     monkeypatch.setattr(
-        vector_factory.settings, "CHROMA_PERSIST_PATH", str(tmp_path / "chroma"), raising=False
+        # Keep unit tests hermetic: persistence is not required for correctness and can be
+        # unsupported in some sandbox environments.
+        vector_factory.settings,
+        "CHROMA_PERSIST_PATH",
+        "",
+        raising=False,
     )
 
     store = vector_factory.ChromaVectorStore()
