@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.repository import AliasRepository, EntityRepository, EventRepository, RelationRepository, get_session
+from app.rag.kg.search import graph_embeddings as graph_embeddings_mod
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
@@ -130,6 +131,204 @@ class RecallSearcher:
                         relation="query->entity:alias",
                         metadata={"method": "alias_match", "step": "step0"},
                     )
+
+            # === Optional Step1b: graph embeddings (node2vec-like) for entity recall ===
+            #
+            # This is designed for offline/CI scenarios where vector recall is disabled or unavailable.
+            graph_enabled = bool(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False))
+            if graph_enabled and alias_key_ids and (not vector_recall_enabled or not query_vec):
+                try:
+                    from uuid import UUID
+
+                    # Params / caps (keep this bounded; it runs inline in recall).
+                    max_graph_events = max(
+                        0, int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS", 200) or 200)
+                    )
+                    max_graph_entities = max(
+                        0, int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES", 400) or 400)
+                    )
+                    max_graph_relations = max(
+                        0, int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS", 1500) or 1500)
+                    )
+                    top_k = max(0, int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K", 20) or 20))
+                    min_sim = float(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY", 0.35) or 0.35)
+                    if top_k > 0 and max_graph_events > 0 and max_graph_entities > 0:
+                        try:
+                            tenant_uuid = UUID(str(tenant_id))
+                        except Exception:
+                            tenant_uuid = None
+
+                        seed_entity_ids = sorted({str(eid) for eid in alias_key_ids if str(eid).strip()})
+                        seed_nodes = [f"ent:{eid}" for eid in seed_entity_ids]
+                        existing_ids = {str((e or {}).get("entity_id") or "").strip() for e in (raw_entities or [])}
+                        seed_entity_map = {
+                            str((e or {}).get("entity_id") or "").strip(): e
+                            for e in (raw_entities or [])
+                            if str((e or {}).get("entity_id") or "").strip()
+                        }
+
+                        # Build a local subgraph around seed entities via Event<->Entity links.
+                        event_ids = event_repo.search_events_by_entities(
+                            seed_entity_ids,
+                            tenant_id=tenant_id,
+                            limit=max_graph_events,
+                            document_ids=config.document_ids,
+                            dataset_id=config.dataset_id,
+                            account_id=config.account_id,
+                        )
+                        event_id_strs = [str(eid) for eid in (event_ids or []) if eid is not None]
+                        assoc_map = event_repo.get_event_entities(event_ids or [], tenant_id=tenant_uuid)
+
+                        entity_counts: Dict[str, int] = {}
+                        for links in (assoc_map or {}).values():
+                            for link in links or []:
+                                ent_id = str(getattr(link, "entity_id", "") or "").strip()
+                                if not ent_id:
+                                    continue
+                                entity_counts[ent_id] = int(entity_counts.get(ent_id, 0) or 0) + 1
+
+                        # Keep seeds + top entities by co-occurrence frequency (bounded).
+                        kept_entity_ids: set[str] = set(seed_entity_ids)
+                        if max_graph_entities > 0 and len(kept_entity_ids) < max_graph_entities:
+                            ranked = sorted(
+                                [(eid, int(entity_counts.get(eid, 0) or 0)) for eid in entity_counts.keys()],
+                                key=lambda x: (-int(x[1]), str(x[0])),
+                            )
+                            for eid, _cnt in ranked:
+                                if len(kept_entity_ids) >= max_graph_entities:
+                                    break
+                                kept_entity_ids.add(str(eid))
+
+                        # Optional: add relation edges among kept entities (only when relations enabled).
+                        relation_edges: list[tuple[str, str]] = []
+                        if (
+                            tenant_uuid is not None
+                            and max_graph_relations > 0
+                            and bool(getattr(settings, "KG_RELATION_ENABLED", False))
+                            and kept_entity_ids
+                        ):
+                            try:
+                                # Reuse the relation expansion confidence gate to reduce drift.
+                                min_conf = float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0)
+                            except Exception:
+                                min_conf = 0.0
+
+                            ent_list = sorted(kept_entity_ids)
+                            # Keep SQL parameter sizes bounded.
+                            ent_list = ent_list[: min(len(ent_list), 300)]
+                            try:
+                                rel_rows = RelationRepository(session).list_relations_for_entities(
+                                    ent_list,
+                                    tenant_id=tenant_uuid,
+                                    document_ids=config.document_ids,
+                                    dataset_id=config.dataset_id,
+                                    account_id=config.account_id,
+                                    min_confidence=(min_conf if min_conf > 0 else None),
+                                    limit=max_graph_relations,
+                                )
+                            except Exception:
+                                rel_rows = []
+                            # Deterministic ordering independent of updated_at.
+                            rel_rows = sorted(
+                                list(rel_rows or []),
+                                key=lambda r: (
+                                    str(getattr(r, "subject_entity_id", "") or ""),
+                                    str(getattr(r, "predicate", "") or ""),
+                                    str(getattr(r, "object_entity_id", "") or ""),
+                                    str(getattr(r, "id", "") or ""),
+                                ),
+                            )
+                            for rel in rel_rows:
+                                a = str(getattr(rel, "subject_entity_id", "") or "").strip()
+                                b = str(getattr(rel, "object_entity_id", "") or "").strip()
+                                if not a or not b:
+                                    continue
+                                if a not in kept_entity_ids or b not in kept_entity_ids:
+                                    continue
+                                relation_edges.append((a, b))
+
+                        adjacency = graph_embeddings_mod.build_entity_event_adjacency(
+                            seed_entity_ids=seed_entity_ids,
+                            event_ids=event_id_strs,
+                            event_entity_links={str(k): list(v or []) for k, v in (assoc_map or {}).items()},
+                            kept_entity_ids=kept_entity_ids,
+                            relation_edges=relation_edges,
+                        )
+
+                        params = graph_embeddings_mod.WalkHashParams(
+                            dim=int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_DIM", 64) or 64),
+                            num_walks=int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS", 8) or 8),
+                            walk_length=int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH", 20) or 20),
+                            window_size=int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE", 5) or 5),
+                            seed=int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_SEED", 42) or 42),
+                        )
+
+                        hits = graph_embeddings_mod.recall_similar_entity_nodes(
+                            adjacency=adjacency,
+                            seed_entity_node_keys=seed_nodes,
+                            params=params,
+                            top_k=top_k,
+                            min_similarity=min_sim,
+                            entity_prefix="ent:",
+                        )
+
+                        candidate_entity_ids: list[str] = []
+                        hit_seed_by_entity: dict[str, str] = {}
+                        hit_sim_by_entity: dict[str, float] = {}
+                        for h in hits or []:
+                            node_key = str(h.get("node_key") or "")
+                            seed_key = str(h.get("seed_node_key") or "")
+                            if not node_key.startswith("ent:"):
+                                continue
+                            ent_id = node_key.split(":", 1)[1]
+                            if not ent_id or ent_id in existing_ids:
+                                continue
+                            candidate_entity_ids.append(ent_id)
+                            if seed_key.startswith("ent:"):
+                                hit_seed_by_entity[ent_id] = seed_key.split(":", 1)[1]
+                            try:
+                                hit_sim_by_entity[ent_id] = float(h.get("similarity", 0.0) or 0.0)
+                            except Exception:
+                                hit_sim_by_entity[ent_id] = 0.0
+
+                        if candidate_entity_ids:
+                            ents = entity_repo.get_entities_by_ids(candidate_entity_ids, tenant_id=tenant_uuid)
+                            ent_by_id = {str(getattr(e, "id", "") or ""): e for e in (ents or [])}
+                            for ent_id in candidate_entity_ids:
+                                if ent_id in existing_ids:
+                                    continue
+                                obj = ent_by_id.get(str(ent_id))
+                                if obj is None:
+                                    continue
+
+                                sim = float(hit_sim_by_entity.get(ent_id, 0.0) or 0.0)
+                                ent_dict = {
+                                    "entity_id": str(ent_id),
+                                    "name": str(getattr(obj, "name", "") or ""),
+                                    "type": str(getattr(obj, "type", "") or "unknown"),
+                                    "similarity": sim,
+                                    "tenant_id": str(tenant_id),
+                                    "method": "graph_embedding",
+                                }
+                                raw_entities.append(ent_dict)
+                                existing_ids.add(str(ent_id))
+
+                                seed_id = str(hit_seed_by_entity.get(ent_id, "") or "").strip()
+                                if seed_id:
+                                    tracker.add_clue(
+                                        stage="recall",
+                                        from_node=Tracker.build_entity_node(
+                                            seed_entity_map.get(seed_id)
+                                            or {"entity_id": seed_id, "name": "", "type": "unknown"}
+                                        ),
+                                        to_node=Tracker.build_entity_node(ent_dict),
+                                        confidence=sim,
+                                        relation="entity->entity:graph_embedding",
+                                        metadata={"method": "graph_embedding", "step": "step1b"},
+                                    )
+                except Exception:
+                    # Best-effort: graph recall must never crash KG search.
+                    pass
             if not bool(getattr(config, "include_skill_entities", True)):
                 raw_entities = [
                     e

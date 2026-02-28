@@ -1037,6 +1037,23 @@ class Settings(BaseSettings):
     # This is useful for CI/offline scenarios where Milvus and/or embedding models
     # are intentionally unavailable.
     KG_SEARCH_VECTOR_RECALL_ENABLED: bool = True
+    # Graph embeddings (node2vec-like) for entity recall (Wave16).
+    #
+    # When enabled and vector recall is unavailable/disabled, KG search can use an offline,
+    # deterministic structural signal to pull in additional entity candidates from the
+    # local KG (events + optional relations).
+    KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED: bool = False
+    KG_SEARCH_GRAPH_EMBEDDINGS_DIM: int = 64
+    KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS: int = 8
+    KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH: int = 20
+    KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE: int = 5
+    KG_SEARCH_GRAPH_EMBEDDINGS_SEED: int = 42
+    # Upper bounds for building the local subgraph (keeps CI/unit tests fast).
+    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS: int = 200
+    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES: int = 400
+    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS: int = 1500
+    KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K: int = 20
+    KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY: float = 0.35
     # - Disable clue generation entirely (saves CPU/memory; response still contains `clues: []`).
     KG_SEARCH_CLUES_ENABLED: bool = True
     # - Truncate clue node content/description (0 disables).
