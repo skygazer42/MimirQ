@@ -8,13 +8,71 @@ from typing import Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.hashing import stable_hash
 from app.rag.kg.engine import KGEngine
 from app.rag.kg.search.cache import build_kg_search_cache_key, kg_search_cache
 from app.types.indexing import IndexingOptions
 
 _engine: KGEngine | None = None
 _engine_lock = threading.Lock()
+
+
+def _resolve_doc_pipeline_fingerprint(*, tenant_id: UUID, document_ids: list[str]) -> str | None:
+    """
+    Best-effort helper for KG search cache key versioning.
+
+    Returns a short, stable digest that changes when any scoped document's
+    active_pipeline_hash (fallback pipeline_hash) changes.
+
+    If version scope cannot be resolved cheaply/reliably, return None so callers
+    can disable caching (safer than serving stale results).
+    """
+    if not document_ids:
+        return None
+    doc_uuids: list[UUID] = []
+    for d in document_ids:
+        try:
+            doc_uuids.append(UUID(str(d)))
+        except Exception:
+            continue
+    if not doc_uuids:
+        return None
+
+    # Keep query tight: only fetch id + active pipeline hash expression.
+    # NOTE: mirror app.core.pipeline_versions.get_active_pipeline_hash semantics.
+    from sqlalchemy import func
+
+    active_expr = func.coalesce(
+        DBDocument.doc_metadata["active_pipeline_hash"].astext,  # type: ignore[attr-defined]
+        DBDocument.doc_metadata["pipeline_hash"].astext,  # type: ignore[attr-defined]
+    )
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(DBDocument.id, active_expr)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(doc_uuids))
+            .all()
+        )
+    except Exception:
+        return None
+    finally:
+        db.close()
+
+    # If any doc is missing (wrong tenant / deleted), don't cache.
+    if not rows or len(rows) != len(set(doc_uuids)):
+        return None
+
+    # Hash doc_id:pipeline_hash pairs so the cache key invalidates when any doc flips versions.
+    pairs: list[str] = []
+    for doc_id, pipeline_hash in rows:
+        ph = str(pipeline_hash or "").strip()
+        pairs.append(f"{doc_id}:{ph}")
+    joined = ",".join(sorted(pairs))
+    return stable_hash(joined, length=32)
 
 
 def reset_kg_engine() -> None:
@@ -93,34 +151,43 @@ async def kg_search(
     if cache_enabled and ttl_sec > 0 and max_entries > 0:
         eff_tenant_id = tenant_id or settings.DEFAULT_TENANT_ID
         eff_doc_ids = [str(d) for d in (document_ids or []) if d is not None]
-        cache_key = build_kg_search_cache_key(
-            tenant_id=str(eff_tenant_id),
-            account_id=str(account_id or ""),
-            dataset_id=(str(dataset_id) if dataset_id is not None else None),
-            document_ids=eff_doc_ids,
-            query=str(query or ""),
-            search_config={
-                # Include settings that can change KG search behavior so runtime toggles do not
-                # serve stale cached results.
-                "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
-                    getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
-                ),
-                "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
-                "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
-                    getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
-                ),
-                "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
-                "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(
-                    getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0
-                ),
-                "KG_SEARCH_MAX_RERANK_CANDIDATES": int(
-                    getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
-                ),
-            },
-        )
-        cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)
-        if cached is not None:
-            return cached
+        if eff_doc_ids:
+            pipeline_fp: str | None = None
+            try:
+                pipeline_fp = _resolve_doc_pipeline_fingerprint(tenant_id=eff_tenant_id, document_ids=eff_doc_ids)
+            except Exception:
+                pipeline_fp = None
+
+            if pipeline_fp:
+                cache_key = build_kg_search_cache_key(
+                    tenant_id=str(eff_tenant_id),
+                    account_id=str(account_id or ""),
+                    dataset_id=(str(dataset_id) if dataset_id is not None else None),
+                    document_ids=eff_doc_ids,
+                    pipeline_fingerprint=pipeline_fp,
+                    query=str(query or ""),
+                    search_config={
+                        # Include settings that can change KG search behavior so runtime toggles do not
+                        # serve stale cached results.
+                        "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
+                            getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
+                        ),
+                        "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+                        "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
+                            getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
+                        ),
+                        "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
+                        "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(
+                            getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0
+                        ),
+                        "KG_SEARCH_MAX_RERANK_CANDIDATES": int(
+                            getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
+                        ),
+                    },
+                )
+                cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)
+                if cached is not None:
+                    return cached
 
     engine = _load_engine()
     result = await engine.search(

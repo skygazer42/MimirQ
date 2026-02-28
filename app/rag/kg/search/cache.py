@@ -36,6 +36,7 @@ def build_kg_search_cache_key(
     account_id: str | None,
     dataset_id: str | None,
     document_ids: list[str] | None,
+    pipeline_fingerprint: str | None = None,
     query: str,
     search_config: dict[str, Any] | None,
 ) -> str:
@@ -47,14 +48,19 @@ def build_kg_search_cache_key(
     - `search_config` should include any settings/params that can affect results.
     """
     doc_ids = [str(d) for d in (document_ids or []) if str(d or "").strip()]
+    pipeline_fp = str(pipeline_fingerprint or "").strip() or None
 
     signature: dict[str, Any] = {
-        "v": 1,
+        # Bump when signature fields change to avoid accidental collisions.
+        "v": 2,
         "tenant_id": str(tenant_id),
         "account_id": str(account_id or ""),
         "dataset_id": str(dataset_id or "") or None,
         "doc_scope": _hash_doc_scope(doc_ids),
         "doc_count": int(len(doc_ids)),
+        # Hash of doc_id -> active_pipeline_hash (or pipeline_hash fallback) pairs.
+        # This avoids serving stale results when a document switches its active pipeline version.
+        "pipeline_fp": pipeline_fp,
         "query": (query or "").strip(),
         "cfg": (search_config if isinstance(search_config, dict) else None) or {},
     }
@@ -137,4 +143,3 @@ __all__ = [
     "build_kg_search_cache_key",
     "kg_search_cache",
 ]
-
