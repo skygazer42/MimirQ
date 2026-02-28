@@ -56,6 +56,18 @@ function downloadJson(filename: string, data: any) {
   }
 }
 
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob)
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 function evidenceStatusBadgeVariant(st: EvidenceItemStatus): 'outline' | 'secondary' | 'soft' | 'destructive' {
   if (st === 'approved') return 'soft'
   if (st === 'reviewed') return 'secondary'
@@ -543,6 +555,22 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     }
   }, [selectedSuite])
 
+  const handleExportLtrTraining = useCallback(async () => {
+    if (!selectedSuite?.id) return
+    try {
+      const blob = await evidenceApi.exportSuiteLtrTrainingBundleZip(String(selectedSuite.id), {
+        include_archived_items: false,
+        max_items: 2000,
+      })
+      const safeTs = safeIsoForFilename(new Date().toISOString())
+      const name = (selectedSuite.name || 'evidence-suite').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
+      downloadBlob(`${name}.${safeTs}.ltr_training.zip`, blob)
+      toast.success('已导出 LTR 训练数据')
+    } catch (e: any) {
+      toast.error(formatApiError(e, '导出 LTR 训练数据失败'))
+    }
+  }, [selectedSuite])
+
   const handleSyncSuite = useCallback(async () => {
     if (!selectedSuite?.id) return
     try {
@@ -905,6 +933,18 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
               >
                 <Download className="size-4" aria-hidden="true" />
                 导出 Suite
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={handleExportLtrTraining}
+                disabled={!selectedSuite?.id}
+                title="Export LTR training rows + hard negatives (ZIP)"
+              >
+                <Download className="size-4" aria-hidden="true" />
+                导出 LTR
               </Button>
 
               <Button

@@ -9,11 +9,15 @@ Key goals:
 
 from __future__ import annotations
 
+import io
+import json
+import re
+import zipfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -44,6 +48,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 
 router = APIRouter()
@@ -1618,4 +1623,279 @@ async def export_evidence_suite(
         dataset_id=suite.dataset_id,
         suite=suite_payload,
         items=items_payload,
+    )
+
+
+@router.get("/suites/{suite_id}/export-ltr-training")
+async def export_evidence_suite_ltr_training_bundle(
+    suite_id: UUID,
+    include_archived_items: bool = False,
+    max_items: int = Query(default=2000, ge=1, le=10_000, description="Max items to include in export"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export a PII-minimized LTR training bundle from an Evidence Suite.
+
+    Contents:
+    - manifest.json: export metadata + feature spec
+    - training_rows.ndjson: per-citation features + labels (0/1), grouped by query_hash
+    - hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash
+
+    Notes:
+    - This endpoint intentionally avoids including raw query text in training rows.
+    - It relies on per-item retrieval_snapshot for reproducibility; items without a snapshot are skipped.
+    """
+    from app.core.config import settings
+    from app.rag.core.hashing import stable_hash
+    from app.rag.evaluation.hard_negative_mining import mine_hard_negatives_for_case_from_trace
+    from app.rag.reranker.ltr import LTRFeatureSpec, extract_ltr_features
+    from app.rag.reranker.types import RerankCandidate
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    q = (
+        db.query(EvidenceItem)
+        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
+        .order_by(EvidenceItem.created_at.asc())
+        .limit(int(max_items or 0))
+    )
+    if not include_archived_items:
+        q = q.filter(EvidenceItem.status != "archived")
+    items = q.all()
+
+    exported_at = _now_utc()
+
+    spec_version = int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1)
+    spec = LTRFeatureSpec.from_version(spec_version)
+
+    def _as_float(v: Any) -> float:
+        try:
+            if v is None:
+                return 0.0
+            return float(v)
+        except Exception:
+            return 0.0
+
+    def _extract_reference_chunk_ids(item: EvidenceItem) -> set[str]:
+        refs = getattr(item, "reference_sources", None) or []
+        if not isinstance(refs, list):
+            return set()
+        out: set[str] = set()
+        for src in refs:
+            if not isinstance(src, dict):
+                continue
+            cid = str(src.get("chunk_id") or "").strip()
+            if cid:
+                out.add(cid)
+        return out
+
+    training_lines: list[str] = []
+    hard_lines: list[str] = []
+
+    items_total = int(len(items))
+    items_with_snapshot = 0
+    rows_total = 0
+    hard_total = 0
+
+    for it in items:
+        snap = getattr(it, "retrieval_snapshot", None) or {}
+        if not isinstance(snap, dict):
+            continue
+        citations = snap.get("citations") or []
+        if not isinstance(citations, list) or not citations:
+            continue
+
+        items_with_snapshot += 1
+
+        query = str(getattr(it, "query", "") or "")
+        query_hash = stable_hash(query, length=64)
+        ref_chunk_ids = _extract_reference_chunk_ids(it)
+
+        metrics = snap.get("metrics") if isinstance(snap.get("metrics"), dict) else {}
+        retrieval_cfg_hash = str(metrics.get("retrieval_config_hash") or "").strip() or None
+        if retrieval_cfg_hash is None:
+            # Best-effort: try to recover from retrieval_trace.
+            trace = snap.get("retrieval_trace") if isinstance(snap.get("retrieval_trace"), dict) else None
+            fp = (trace or {}).get("retrieval_config") if isinstance((trace or {}).get("retrieval_config"), dict) else None
+            maybe = (fp or {}).get("hash") if isinstance(fp, dict) else None
+            retrieval_cfg_hash = str(maybe or "").strip() or None
+
+        # Training rows: per-citation features + labels.
+        for rank, c in enumerate(citations, 1):
+            if not isinstance(c, dict):
+                continue
+            cid = str(c.get("chunk_id") or "").strip()
+            if not cid:
+                continue
+
+            meta = {
+                "vector_score": _as_float(c.get("vector_score")),
+                "bm25_score": _as_float(c.get("bm25_score")),
+                "lexical_score": _as_float(c.get("lexical_score")),
+                "sparse_score": _as_float(c.get("sparse_score")),
+                # Prefer evidence API's overall score (relevance_score).
+                "score": _as_float(c.get("relevance_score") or c.get("retrieval_score") or c.get("score")),
+                "retrieval_role": c.get("retrieval_role"),
+                # Optional KG ranking signals (low-cardinality, numeric only).
+                "kg_pagerank": _as_float(c.get("kg_pagerank")),
+                "kg_shared_events": _as_float(c.get("kg_shared_events")),
+                "kg_path_length": _as_float(c.get("kg_path_length")),
+                "kg_edge_conf_low": _as_float(c.get("kg_edge_conf_low")),
+                "kg_edge_conf_mid": _as_float(c.get("kg_edge_conf_mid")),
+                "kg_edge_conf_high": _as_float(c.get("kg_edge_conf_high")),
+                "kg_evidence_anchored": _as_float(c.get("kg_evidence_anchored")),
+            }
+            values = extract_ltr_features(
+                spec=spec,
+                query="",  # reserved for future query-dependent features; keep export PII-minimized
+                candidate=RerankCandidate(id=cid, text="", metadata=meta),
+            )
+            features = {name: float(v) for name, v in zip(spec.feature_names, values, strict=False)}
+
+            row = {
+                "schema": "mimirq.ltr_training_row.v1",
+                "suite_id": str(suite.id),
+                "item_id": str(it.id),
+                "dataset_id": str(suite.dataset_id),
+                "query_hash": query_hash,
+                "retrieval_config_hash": retrieval_cfg_hash,
+                "rank": int(rank),
+                "label": int(1 if cid in ref_chunk_ids else 0),
+                "candidate": {
+                    "chunk_id": cid,
+                    "document_id": str(c.get("document_id") or "").strip() or None,
+                },
+                "slices": {
+                    "status": str(getattr(it, "status", "") or "").strip().lower() or None,
+                    "tags": list(getattr(it, "tags", []) or []),
+                },
+                "features": features,
+            }
+            training_lines.append(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str))
+            rows_total += 1
+
+        # Hard negatives: near-miss negatives before first positive (PII-safe).
+        try:
+            trace_record = {
+                "citations": citations,
+                "retrieval": {"retrieval_config_hash": retrieval_cfg_hash},
+            }
+            case = {"reference_sources": getattr(it, "reference_sources", None) or []}
+            hn = mine_hard_negatives_for_case_from_trace(
+                case=case,
+                trace_record=trace_record,
+                query_hash=query_hash,
+                max_hard_negatives=10,
+                max_negatives_per_document=2,
+            )
+            if isinstance(hn, dict):
+                hn["suite_id"] = str(suite.id)
+                hn["item_id"] = str(it.id)
+                hn["dataset_id"] = str(suite.dataset_id)
+                hn["tags"] = list(getattr(it, "tags", []) or [])
+                hard_lines.append(json.dumps(hn, ensure_ascii=False, separators=(",", ":"), default=str))
+                hard_total += 1
+        except Exception:
+            # Hard negatives are best-effort; training rows are the primary export.
+            pass
+
+    manifest: dict[str, Any] = {
+        "schema": "mimirq.ltr_training_export.v1",
+        "exported_at": exported_at.isoformat(),
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(suite.dataset_id),
+        "suite": {
+            "id": str(suite.id),
+            "name": str(getattr(suite, "name", "") or ""),
+            "tags": list(getattr(suite, "tags", []) or []),
+            "include_archived_items": bool(include_archived_items),
+            "max_items": int(max_items or 0),
+        },
+        "feature_spec": {
+            "version": int(spec_version),
+            "schema": str(spec.schema),
+            "feature_names": list(spec.feature_names),
+        },
+        "counts": {
+            "items_total": int(items_total),
+            "items_with_snapshot": int(items_with_snapshot),
+            "training_rows": int(rows_total),
+            "hard_negative_records": int(hard_total),
+        },
+    }
+
+    # Best-effort audit log (PII-minimal).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="evidence_suite.export_ltr_training",
+            resource_type="evidence_suite",
+            resource_id=str(suite_id),
+            details={
+                "dataset_id": str(suite.dataset_id),
+                "items_total": int(items_total),
+                "items_with_snapshot": int(items_with_snapshot),
+                "training_rows": int(rows_total),
+                "hard_negative_records": int(hard_total),
+                "feature_spec_version": int(spec_version),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # Write ZIP bundle in memory (bounded by max_items).
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), default=str))
+        zf.writestr(
+            "training_rows.ndjson",
+            ("\n".join(training_lines) + ("\n" if training_lines else "")).encode("utf-8"),
+        )
+        zf.writestr(
+            "hard_negatives.ndjson",
+            ("\n".join(hard_lines) + ("\n" if hard_lines else "")).encode("utf-8"),
+        )
+        zf.writestr(
+            "README.txt",
+            (
+                "MimirQ Evidence Suite LTR Training Export\n\n"
+                "- manifest.json: export metadata + LTR feature spec\n"
+                "- training_rows.ndjson: one row per (query_hash, candidate chunk_id) with features + label\n"
+                "- hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash\n"
+                "\n"
+                "Notes:\n"
+                "- training_rows is PII-minimized: it does not include raw query text.\n"
+                "- This export relies on per-item retrieval_snapshot for reproducibility.\n"
+            ),
+        )
+
+    raw = buf.getvalue()
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(suite, "name", "") or "evidence_suite"))[:64]
+    filename = f"{safe}.ltr_training.zip"
+    return Response(
+        content=raw,
+        media_type="application/zip",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
     )

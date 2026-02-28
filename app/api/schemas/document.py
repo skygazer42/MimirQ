@@ -133,6 +133,13 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         description="Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).",
     )
+    embedding_field_aware_enabled: Optional[bool] = Field(
+        default=None,
+        description=(
+            "When enabled, store extra field-aware embeddings (title/heading) alongside body embeddings "
+            "to improve recall. Backwards compatible but increases vector write volume."
+        ),
+    )
     chunk_vector_enabled: Optional[bool] = None
     bm25_index_enabled: Optional[bool] = None
     kg_enabled: Optional[bool] = None

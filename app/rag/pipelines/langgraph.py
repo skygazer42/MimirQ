@@ -82,6 +82,10 @@ class RAGState(TypedDict, total=False):
     multi_query_max_chars: Optional[int]
     alpha: float
     enable_weight_rerank: bool
+    fusion_strategy: Optional[str]
+    fusion_budgets: Optional[Dict[str, int]]
+    fusion_min_scores: Optional[Dict[str, float]]
+    fusion_weights: Optional[Dict[str, float]]
     vector_weight: float
     keyword_weight: float
     mmr_lambda: float
@@ -871,6 +875,7 @@ def build_rag_state(
     fusion_strategy: Optional[str] = None,
     fusion_budgets: Optional[Dict[str, int]] = None,
     fusion_min_scores: Optional[Dict[str, float]] = None,
+    fusion_weights: Optional[Dict[str, float]] = None,
     enable_weight_rerank: bool = True,
     vector_weight: float = 0.6,
     keyword_weight: float = 0.4,
@@ -1000,6 +1005,7 @@ def build_rag_state(
         "fusion_strategy": fusion_strategy,
         "fusion_budgets": fusion_budgets,
         "fusion_min_scores": fusion_min_scores,
+        "fusion_weights": fusion_weights,
         "enable_weight_rerank": enable_weight_rerank,
         "vector_weight": vector_weight,
         "keyword_weight": keyword_weight,

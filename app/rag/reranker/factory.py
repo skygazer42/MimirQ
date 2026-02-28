@@ -145,6 +145,22 @@ def get_reranker(
 
         model_path = str(kwargs.get("model_path") or "").strip() or str(getattr(settings, "LTR_MODEL_PATH", "") or "").strip()
         if not model_path:
+            # Registry fallback (persistent across restarts): resolve active model from uploads registry.
+            try:
+                from app.services.ltr_model_registry import resolve_active_model_paths  # noqa: WPS433
+
+                mp, man_p, spec_v, _mid = resolve_active_model_paths()
+                if mp:
+                    model_path = str(mp)
+                    settings.LTR_MODEL_PATH = str(mp)
+                if man_p:
+                    settings.LTR_MODEL_MANIFEST_PATH = str(man_p)
+                if spec_v:
+                    settings.LTR_FEATURE_SPEC_VERSION = int(spec_v)
+            except Exception:
+                pass
+
+        if not model_path:
             raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")
 
         manifest_path = str(kwargs.get("manifest_path") or "").strip() or str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or "").strip()

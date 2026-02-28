@@ -28,3 +28,32 @@ def test_chat_rag_config_rejects_invalid_fusion_min_scores() -> None:
             fusion_min_scores={"lexical": 1.5},
         )
 
+
+def test_chat_rag_config_accepts_weighted_fusion_strategy_and_weights() -> None:
+    c = ChatRAGConfig(
+        fusion_strategy="weighted",
+        fusion_weights={"vector": 0.7, "bm25": 0.3},
+    )
+    assert c.fusion_strategy == "weighted"
+    assert c.fusion_weights == {"vector": 0.7, "bm25": 0.3}
+
+
+def test_chat_rag_config_rejects_invalid_fusion_weight_keys() -> None:
+    with pytest.raises(ValueError):
+        ChatRAGConfig(
+            fusion_strategy="weighted",
+            fusion_weights={"unknown": 0.1},
+        )
+
+
+def test_chat_rag_config_rejects_invalid_fusion_weight_values() -> None:
+    with pytest.raises(ValueError):
+        ChatRAGConfig(
+            fusion_strategy="weighted",
+            fusion_weights={"vector": -0.1},
+        )
+    with pytest.raises(ValueError):
+        ChatRAGConfig(
+            fusion_strategy="weighted",
+            fusion_weights={"bm25": 1.5},
+        )

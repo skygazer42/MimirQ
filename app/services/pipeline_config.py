@@ -294,6 +294,7 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         chunk_merge_small_min_chars=_coerce_int(pipeline.get("chunk_merge_small_min_chars")),
         chunk_strategy_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_strategy_params")),
         embedding_context_prefix_enabled=_coerce_bool(index.get("embedding_context_prefix_enabled")),
+        embedding_field_aware_enabled=_coerce_bool(index.get("embedding_field_aware_enabled")),
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
         kg_enabled=_coerce_bool(index.get("kg_enabled")),
@@ -500,6 +501,8 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         index["entity_vector_enabled"] = bool(options.entity_vector_enabled)
     if options.embedding_context_prefix_enabled is not None:
         index["embedding_context_prefix_enabled"] = bool(options.embedding_context_prefix_enabled)
+    if options.embedding_field_aware_enabled is not None:
+        index["embedding_field_aware_enabled"] = bool(options.embedding_field_aware_enabled)
     if index:
         pipeline["index"] = index
 
@@ -829,6 +832,9 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.embedding_context_prefix_enabled is None
         else bool(options.embedding_context_prefix_enabled)
     )
+    embedding_field_aware_enabled = (
+        False if options.embedding_field_aware_enabled is None else bool(options.embedding_field_aware_enabled)
+    )
     table_store_enabled = (
         getattr(settings, "TABLE_STORE_ENABLED", False)
         if options.table_store_enabled is None
@@ -958,6 +964,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_merge_small_min_chars=int(chunk_merge_small_min_chars),
         chunk_strategy_params=dict(chunk_strategy_params),
         embedding_context_prefix_enabled=bool(embedding_context_prefix_enabled),
+        embedding_field_aware_enabled=bool(embedding_field_aware_enabled),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
         bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
         kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
@@ -987,4 +994,5 @@ def build_indexing_options(effective: PipelineEffective) -> IndexingOptions:
         event_vector_enabled=effective.event_vector_enabled,
         entity_vector_enabled=effective.entity_vector_enabled,
         embedding_context_prefix_enabled=effective.embedding_context_prefix_enabled,
+        embedding_field_aware_enabled=effective.embedding_field_aware_enabled,
     )

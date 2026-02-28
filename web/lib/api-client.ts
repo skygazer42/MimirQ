@@ -1980,6 +1980,18 @@ export const evidenceApi = {
     })
   },
 
+  async exportSuiteLtrTrainingBundleZip(
+    suiteId: string,
+    params?: { include_archived_items?: boolean; max_items?: number }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/export-ltr-training`, {
+      params,
+      responseType: 'blob',
+      timeout: API_LONG_TIMEOUT_MS,
+    })
+    return data as Blob
+  },
+
   async importItems(
     suiteId: string,
     file: File,
@@ -3246,6 +3258,58 @@ export const settingsApi = {
    */
   async testLLM(params: TestLLMRequest): Promise<TestLLMResponse> {
     const { data } = await apiClient.post('/settings/llm/test', params)
+    return data
+  },
+}
+
+// ==================== LTR 模型注册表 API ====================
+
+export interface LTRModelInfo {
+  model_id: string
+  model_sha256: string
+  size_bytes: number
+  created_at: string
+  created_by?: string | null
+  feature_spec_version: number
+  feature_schema: string
+  feature_names: string[]
+  has_manifest: boolean
+  active: boolean
+}
+
+export interface LTRModelListResponse {
+  items: LTRModelInfo[]
+}
+
+export interface LTRModelRegisterResponse {
+  model: LTRModelInfo
+}
+
+export interface LTRModelActivateResponse {
+  active: Record<string, any>
+}
+
+export const ltrApi = {
+  async listModels(): Promise<LTRModelListResponse> {
+    const { data } = await apiClient.get('/ltr/models')
+    return data
+  },
+
+  async registerModel(params: { modelFile: File; manifestFile: File }): Promise<LTRModelRegisterResponse> {
+    const formData = new FormData()
+    formData.append('model_file', params.modelFile)
+    formData.append('manifest_file', params.manifestFile)
+    const { data } = await apiClient.post('/ltr/models/register', formData, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
+
+  async activateModel(modelId: string): Promise<LTRModelActivateResponse> {
+    const { data } = await apiClient.post('/ltr/models/activate', { model_id: modelId })
+    return data
+  },
+
+  async rollbackActiveModel(): Promise<LTRModelActivateResponse> {
+    const { data } = await apiClient.post('/ltr/models/rollback')
     return data
   },
 }
