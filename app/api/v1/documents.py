@@ -9441,11 +9441,12 @@ async def preview_chunking(
             page_num = meta.get("page") or meta.get("page_number")
             page_index = meta.get("page_index")
             local_start = meta.get("start_char")
+            local_end = meta.get("end_char")
 
+            doc_base: int | None = None
             if idx in integrated_chunk_start_map:
                 start_idx = integrated_chunk_start_map[idx]
             else:
-                doc_base: int | None = None
                 if page_index is not None:
                     try:
                         doc_base = page_index_start_map.get(int(page_index))
@@ -9467,7 +9468,19 @@ async def preview_chunking(
                         local = 0
                     start_idx = int(doc_base) + local
 
+            # Prefer explicit end offsets when chunkers provide them; this is important for
+            # PDF position-tag workflows where chunk text may be tag-stripped but highlight
+            # ranges must remain in the original (tagged) coordinate space.
             end_idx = start_idx + len(content)
+            if local_end is not None and idx not in integrated_chunk_start_map:
+                try:
+                    end_local = int(local_end)
+                except Exception:
+                    end_local = None
+                if end_local is not None:
+                    end_idx = end_local if doc_base is None else int(doc_base) + end_local
+            if end_idx < start_idx:
+                end_idx = start_idx + len(content)
             if end_idx > start_idx:
                 chunk_ranges.append((start_idx, end_idx))
             tokens_est = 0
@@ -10129,6 +10142,7 @@ async def preview_chunking_by_sha(
         page_num = meta.get("page") or meta.get("page_number")
         page_index = meta.get("page_index")
         local_start = meta.get("start_char")
+        local_end = meta.get("end_char")
 
         doc_base: int | None = None
         if page_index is not None:
@@ -10152,6 +10166,15 @@ async def preview_chunking_by_sha(
             start_idx = int(doc_base) + local
 
         end_idx = start_idx + len(content)
+        if local_end is not None:
+            try:
+                end_local = int(local_end)
+            except Exception:
+                end_local = None
+            if end_local is not None:
+                end_idx = end_local if doc_base is None else int(doc_base) + end_local
+        if end_idx < start_idx:
+            end_idx = start_idx + len(content)
         if end_idx > start_idx:
             chunk_ranges.append((start_idx, end_idx))
         tokens_est = 0

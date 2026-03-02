@@ -7,6 +7,9 @@
 - **通用文档（Markdown/说明文/博客/制度）**：`auto` 或 `langchain_recursive`
   - `chunk_size`：600-1500（chars）
   - `chunk_overlap`：10-25%
+- **PDF（版式/双栏，且解析结果包含位置标签 @@page\tl\tr\tt\tb##）**：`pdf_layout`
+  - 目标：按“版面块”聚合切片，保留 bbox/columns 元数据用于 PDF 高亮与可解释性。
+  - 建议：配合 `parser_backend=docling`（表格/版式优先）或 DeepDoc/MinerU 等能输出位置标签的解析器。
 - **结构化 Markdown（标题层级清晰）**：`markdown_outline` 或 `markdown_header`
   - 目标：优先按标题边界切分，并保留 `header_path` / `outline_path`
 - **FAQ / Q&A**：`qa_pairs` 或 `qa_markdown`

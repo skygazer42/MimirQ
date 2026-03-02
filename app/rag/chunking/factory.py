@@ -63,6 +63,7 @@ from app.rag.chunking.strategies import (
     OutlineChunker,
     PaperChunker,
     ParentChildChunker,
+    PDFLayoutChunker,
     PolicyManualStructuredChunker,
     PostmortemReportChunker,
     PRDSpecChunker,
@@ -183,6 +184,7 @@ class ChunkerFactory:
         "manuscript": ManuscriptChunker,
         "langchain_recursive": LangChainRecursiveChunker,
         "langchain_token": LangChainTokenChunker,
+        "pdf_layout": PDFLayoutChunker,
         "semantic_sentence": SemanticSentenceChunker,
         "sentence_window": SentenceWindowChunker,
         "separator": SeparatorChunker,
@@ -464,6 +466,9 @@ class ChunkerFactory:
         "maven_pom": "maven_pom",
         "terraform_plan": "terraform_plan",
         "tfplan": "terraform_plan",
+        # PDF layout-aware (requires parsers that emit @@page\tl\tr\tt\tb## tags)
+        "layout_pdf": "pdf_layout",
+        "pdf_layout_v1": "pdf_layout",
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:
