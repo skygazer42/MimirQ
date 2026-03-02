@@ -26,6 +26,7 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     import app.api.v1.chunk_presets as chunk_presets_module
 
     tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id
@@ -33,35 +34,80 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     def _override_get_current_account_id() -> str:
         return "test-account"
 
-    # Bypass tenant membership DB checks.
-    monkeypatch.setattr(chunk_presets_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    # Bypass tenant membership DB checks (and ensure we can pass governance checks).
+    class _DummyMember:
+        role = "owner"
+
+    monkeypatch.setattr(chunk_presets_module.DatasetService, "ensure_member", lambda *_a, **_k: _DummyMember(), raising=True)
+    monkeypatch.setattr(chunk_presets_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
 
     store: dict[str, object] = {}
 
     class _Row:
-        def __init__(self, *, id: str, tenant_id: uuid.UUID, name: str, description: str | None, payload: dict) -> None:
+        def __init__(
+            self,
+            *,
+            id: str,
+            tenant_id: uuid.UUID,
+            dataset_id: uuid.UUID | None,
+            name: str,
+            description: str | None,
+            payload: dict,
+        ) -> None:
             self.id = uuid.UUID(id)
             self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
             self.name = name
             self.description = description
             self.payload = payload
 
-    def _list_rows(*, db, tenant_id: uuid.UUID, q: str | None, limit: int):  # noqa: ANN001
-        return list(store.values())
+    def _list_rows(
+        *,
+        db,
+        tenant_id: uuid.UUID,
+        q: str | None,
+        limit: int,
+        dataset_id: uuid.UUID | None,
+        include_global: bool,
+    ):  # noqa: ANN001
+        rows = list(store.values())
+        if dataset_id is None:
+            return rows
+        if include_global:
+            return [r for r in rows if getattr(r, "dataset_id", None) in {None, dataset_id}]
+        return [r for r in rows if getattr(r, "dataset_id", None) == dataset_id]
 
     def _get_row(*, db, tenant_id: uuid.UUID, preset_id: str):  # noqa: ANN001
         return store.get(preset_id)
 
-    def _create_row(*, db, tenant_id: uuid.UUID, name: str, description: str | None, payload: dict):  # noqa: ANN001
+    def _create_row(
+        *,
+        db,
+        tenant_id: uuid.UUID,
+        dataset_id: uuid.UUID | None,
+        name: str,
+        description: str | None,
+        payload: dict,
+    ):  # noqa: ANN001
         pid = str(uuid.uuid4())
-        row = _Row(id=pid, tenant_id=tenant_id, name=name, description=description, payload=payload)
+        row = _Row(id=pid, tenant_id=tenant_id, dataset_id=dataset_id, name=name, description=description, payload=payload)
         store[pid] = row
         return row
 
-    def _update_row(*, db, tenant_id: uuid.UUID, preset_id: str, name: str, description: str | None, payload: dict):  # noqa: ANN001
+    def _update_row(
+        *,
+        db,
+        tenant_id: uuid.UUID,
+        preset_id: str,
+        dataset_id: uuid.UUID | None,
+        name: str,
+        description: str | None,
+        payload: dict,
+    ):  # noqa: ANN001
         row = store.get(preset_id)
         if not row:
             return None
+        row.dataset_id = dataset_id
         row.name = name
         row.description = description
         row.payload = payload
@@ -102,6 +148,33 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     assert len(items) == 1
     assert items[0]["id"] == preset_id
 
+    # Dataset-scoped preset: should be listable via dataset_id and include_global.
+    res = client.post(
+        "/api/v1/chunk-presets",
+        json={
+            "name": "Dataset Default",
+            "description": "Scoped",
+            "payload": {
+                "dataset_id": str(dataset_id),
+                "chunk_size": 1200,
+                "chunk_overlap": 120,
+                "chunk_strategy": "langchain_recursive",
+            },
+        },
+    )
+    assert res.status_code == 201, res.text
+    preset_id_scoped = res.json()["id"]
+
+    res = client.get(f"/api/v1/chunk-presets?dataset_id={dataset_id}&include_global=true")
+    assert res.status_code == 200, res.text
+    ids = {x["id"] for x in (res.json().get("items") or [])}
+    assert ids == {preset_id, preset_id_scoped}
+
+    res = client.get(f"/api/v1/chunk-presets?dataset_id={dataset_id}&include_global=false")
+    assert res.status_code == 200, res.text
+    ids = {x["id"] for x in (res.json().get("items") or [])}
+    assert ids == {preset_id_scoped}
+
     res = client.put(
         f"/api/v1/chunk-presets/{preset_id}",
         json={
@@ -116,6 +189,15 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     assert updated["payload"]["chunk_size"] == 1200
 
     res = client.delete(f"/api/v1/chunk-presets/{preset_id}")
+    assert res.status_code == 204, res.text
+
+    res = client.get("/api/v1/chunk-presets")
+    assert res.status_code == 200, res.text
+    items = res.json().get("items") or []
+    assert len(items) == 1
+    assert items[0]["id"] == preset_id_scoped
+
+    res = client.delete(f"/api/v1/chunk-presets/{preset_id_scoped}")
     assert res.status_code == 204, res.text
 
     res = client.get("/api/v1/chunk-presets")

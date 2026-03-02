@@ -205,6 +205,14 @@ def apply_runtime_migrations(engine) -> None:
             'CREATE UNIQUE INDEX IF NOT EXISTS ix_datasets_tenant_name '
             'ON datasets (tenant_id, name);',
 
+            # Chunk presets: dataset scoping (governance + reproducibility).
+            'ALTER TABLE chunk_presets ADD COLUMN IF NOT EXISTS dataset_id UUID;',
+            'CREATE INDEX IF NOT EXISTS ix_chunk_presets_tenant_dataset_updated_at '
+            'ON chunk_presets (tenant_id, dataset_id, updated_at);',
+            'ALTER TABLE chunk_presets '
+            'ADD CONSTRAINT fk_chunk_presets_tenant_dataset '
+            'FOREIGN KEY (tenant_id, dataset_id) REFERENCES datasets (tenant_id, id);',
+
             # Composite indexes for common joins/filters.
             'CREATE INDEX IF NOT EXISTS ix_dataset_permissions_tenant_dataset_id '
             'ON dataset_permissions (tenant_id, dataset_id);',
