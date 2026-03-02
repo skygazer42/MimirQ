@@ -1902,6 +1902,7 @@ export interface RegressionRun {
   id: string
   tenant_id: string
   account_id?: string
+  dataset_id?: string
   status: string
   metrics: string[]
   params: Record<string, any>

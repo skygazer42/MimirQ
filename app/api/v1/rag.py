@@ -42,6 +42,32 @@ class RetrievePreviewResponse(BaseModel):
     metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ImageIndexRequest(BaseModel):
+    dataset_id: UUID
+    max_chunks: int = Field(default=3000, ge=1, le=20_000)
+    upsert: bool = Field(default=True, description="Upsert into the image embedding index (overwrite existing vectors)")
+
+
+class ImageIndexResponse(BaseModel):
+    indexed: int = 0
+    skipped: int = 0
+    failed: int = 0
+    dim: int = 0
+    errors: List[str] = Field(default_factory=list)
+
+
+class ImageSearchRequest(BaseModel):
+    dataset_id: UUID
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=8, ge=1, le=50)
+    auto_index: bool = Field(default=False, description="Best-effort: index images for the dataset before searching")
+
+
+class ImageSearchResponse(BaseModel):
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+
+
 @router.post("/retrieve-preview", response_model=RetrievePreviewResponse)
 async def retrieve_preview(
     body: RetrievePreviewRequest,
@@ -184,6 +210,99 @@ async def retrieve_preview(
         citations=citations,
         metrics=metrics,
     )
+
+
+@router.post("/image-index", response_model=ImageIndexResponse)
+async def index_image_embeddings(
+    body: ImageIndexRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Build/update the CLIP image embedding index for a dataset (best-effort).
+
+    Security:
+    - Requires dataset write permission (indexing is a compute-heavy admin action).
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    from app.services.image_embedding_index import index_clip_image_embeddings_for_dataset
+
+    stats = index_clip_image_embeddings_for_dataset(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=body.dataset_id,
+        max_chunks=int(body.max_chunks or 0),
+        upsert=bool(body.upsert),
+    )
+    return ImageIndexResponse(
+        indexed=int(stats.indexed),
+        skipped=int(stats.skipped),
+        failed=int(stats.failed),
+        dim=int(stats.dim),
+        errors=list(stats.errors or []),
+    )
+
+
+@router.post("/image-search-preview", response_model=ImageSearchResponse)
+async def image_search_preview(
+    body: ImageSearchRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Search the image embedding index using CLIP (text -> image space).
+
+    Notes:
+    - Dataset-scoped only.
+    - Returns citation-like chunk payloads (including img_id/img_url) for UI consumers.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    from app.services.image_embedding_index import (
+        build_image_citations,
+        index_clip_image_embeddings_for_dataset,
+        search_clip_images,
+    )
+
+    indexed: int | None = None
+    if bool(body.auto_index):
+        # Best-effort; do not fail the search if indexing fails.
+        try:
+            stats = index_clip_image_embeddings_for_dataset(
+                db=db,
+                tenant_id=tenant_id,
+                dataset_id=body.dataset_id,
+                max_chunks=3000,
+                upsert=True,
+            )
+            indexed = int(stats.indexed)
+        except Exception:
+            indexed = None
+
+    hits = search_clip_images(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=body.dataset_id,
+        query=body.query,
+        top_k=int(body.top_k or 0),
+    )
+    citations = build_image_citations(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=body.dataset_id,
+        hits=hits,
+        max_items=int(body.top_k or 0),
+    )
+    metrics: dict[str, Any] = {"hits": int(len(citations)), "indexed": indexed}
+    return ImageSearchResponse(citations=citations, metrics=metrics)
 
 
 class EvidenceRetrieveRequest(BaseModel):

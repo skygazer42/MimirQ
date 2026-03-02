@@ -35,10 +35,18 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
         return "test-account"
 
     # Bypass tenant membership DB checks (and ensure we can pass governance checks).
-    class _DummyMember:
-        role = "owner"
+    current_role = {"role": "owner"}
 
-    monkeypatch.setattr(chunk_presets_module.DatasetService, "ensure_member", lambda *_a, **_k: _DummyMember(), raising=True)
+    class _DummyMember:
+        def __init__(self, role: str):
+            self.role = role
+
+    monkeypatch.setattr(
+        chunk_presets_module.DatasetService,
+        "ensure_member",
+        lambda *_a, **_k: _DummyMember(str(current_role.get("role") or "")),
+        raising=True,
+    )
     monkeypatch.setattr(chunk_presets_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
 
     store: dict[str, object] = {}
@@ -165,6 +173,19 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     assert res.status_code == 201, res.text
     preset_id_scoped = res.json()["id"]
 
+    # Governance: a non-editor should not be able to "unscope" a dataset preset by omitting payload.dataset_id.
+    current_role["role"] = "viewer"
+    res = client.put(
+        f"/api/v1/chunk-presets/{preset_id_scoped}",
+        json={
+            "name": "Dataset Default v2",
+            "description": "Scoped but attempted unscope",
+            "payload": {"chunk_size": 1200, "chunk_overlap": 120, "chunk_strategy": "langchain_recursive"},
+        },
+    )
+    assert res.status_code == 403, res.text
+
+    current_role["role"] = "owner"
     res = client.get(f"/api/v1/chunk-presets?dataset_id={dataset_id}&include_global=true")
     assert res.status_code == 200, res.text
     ids = {x["id"] for x in (res.json().get("items") or [])}

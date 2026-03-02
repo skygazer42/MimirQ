@@ -23,6 +23,7 @@ from app.api.schemas.ingestion_run import (
 )
 from app.core.database import get_db
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.ingestion_run_service import IngestionRunService
 
@@ -150,6 +151,28 @@ def export_ingestion_run_json(
 ):
     """Export ingestion run manifest as JSON (offline-friendly)."""
     run = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
+
+    # Best-effort audit log (PII-minimal): record export operation.
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="ingestion.run.export_json",
+            resource_type="ingestion_run",
+            resource_id=str(run_id),
+            details={
+                "dataset_id": str(getattr(run, "dataset_id", None)) if getattr(run, "dataset_id", None) else None,
+                "kind": str(getattr(run, "kind", "") or ""),
+                "status": str(getattr(run, "status", "") or ""),
+                "documents": int(len(getattr(run, "documents", None) or [])),
+            },
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+
     content = json.dumps(run.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
     safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(run.kind or "ingestion"))[:64]
     filename = f"{safe}.run.{str(run.id)[:8]}.json"
@@ -172,6 +195,28 @@ def export_ingestion_run_html(
     from app.services.report_html import render_dataset_report_html
 
     run = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
+
+    # Best-effort audit log (PII-minimal): record export operation.
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="ingestion.run.export_html",
+            resource_type="ingestion_run",
+            resource_id=str(run_id),
+            details={
+                "dataset_id": str(getattr(run, "dataset_id", None)) if getattr(run, "dataset_id", None) else None,
+                "kind": str(getattr(run, "kind", "") or ""),
+                "status": str(getattr(run, "status", "") or ""),
+                "documents": int(len(getattr(run, "documents", None) or [])),
+            },
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+
     payload = run.model_dump(mode="json")
     title = "MimirQ · Ingestion Run Manifest"
     html = render_dataset_report_html(
@@ -209,6 +254,25 @@ def compare_ingestion_runs(
     diff = {}
     if row_a is not None and row_b is not None:
         diff = IngestionRunService.compare_runs(run_a=row_a, run_b=row_b)
+
+    # Best-effort audit log (PII-minimal): record compare operation.
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="ingestion.run.compare",
+            resource_type="ingestion_run",
+            resource_id=str(run_id),
+            details={
+                "other_run_id": str(other_run_id),
+                "dataset_id": str(getattr(a, "dataset_id", None)) if getattr(a, "dataset_id", None) else None,
+            },
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
 
     return IngestionRunCompareResponse(run_a=a, run_b=b, diff=diff)
 
@@ -260,6 +324,26 @@ async def replay_ingestion_run(
         config={"replay_of": str(base.id), "base_kind": str(getattr(base, "kind", "") or "")},
         expected_documents=len(doc_ids),
     )
+
+    # Best-effort audit log (PII-minimal): record replay operation.
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="ingestion.run.replay",
+            resource_type="ingestion_run",
+            resource_id=str(new_run.id),
+            details={
+                "base_run_id": str(base.id),
+                "dataset_id": str(getattr(base, "dataset_id", None)) if getattr(base, "dataset_id", None) else None,
+                "documents": int(len(doc_ids)),
+            },
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
 
     # Kick retries in background (bounded). Use fresh DB sessions (BackgroundTasks run after request-scoped
     # dependencies are finalized, so we must not reuse the request session).

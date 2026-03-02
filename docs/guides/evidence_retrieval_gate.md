@@ -59,6 +59,31 @@ pytest -q tests/test_evidence_api_offline_regression_gate.py
 
 ---
 
+## 3.5) Nightly：持续跑一组 ablation（cron/K8s CronJob）
+
+如果你希望每天固定跑一组“检索配置消融”（top_k / retrieval_mode / channel weight 等），建议用仓库内置的 CLI：
+
+```bash
+# Dry-run：只输出计划（不写 DB）
+python scripts/run_nightly_ablations.py \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --dataset-id <dataset_uuid> \
+  --dry-run
+
+# Execute：创建 ragas_regression_runs 并同步执行（默认 retrieval-only，不依赖 RAGAS/LLM）
+python scripts/run_nightly_ablations.py \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --dataset-id <dataset_uuid> \
+  --execute
+```
+
+说明：
+- 脚本会为每个 ablation 创建一条 regression run，并在 `run.params` 写入：
+  - `nightly: true`
+  - `job_run_id: <timestamp>`
+  - `ablation_key: baseline|topk50|keyword_only|vector_only`
+- 结果可以直接在前端的 “检索消融” 页面查看 leaderboard/diff。
+
 ## 4) 常见调参建议（retrieval-only）
 
 如果你看到 Recall/Hit 降低，通常按以下顺序排查：
@@ -70,4 +95,3 @@ pytest -q tests/test_evidence_api_offline_regression_gate.py
 5. **KG 是否引入噪声**：
    - query expansion 是否漂移（实体类型过滤、min_weight）
    - chunk injection 是否过多（max_chunks）
-

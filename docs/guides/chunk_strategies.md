@@ -2,6 +2,8 @@
 
 本页用于快速选型：当你不知道该用哪种切块策略时，先从这里开始，再到「切块预览」页面做可视化验证。
 
+更深入的调参与常见反模式见：[docs/guides/chunking_playbook.md](./chunking_playbook.md)。
+
 ## 快速推荐
 
 - **通用文档（Markdown/说明文/博客/制度）**：`auto` 或 `langchain_recursive`

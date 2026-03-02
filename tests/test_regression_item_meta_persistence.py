@@ -51,4 +51,7 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "retrieval_hit_at_5": None,
         "retrieval_hit_at_10": None,
         "retrieval_hit_at_20": None,
+        "faithfulness_det": None,
+        "expected_refusal": None,
+        "refusal_correct": None,
     }

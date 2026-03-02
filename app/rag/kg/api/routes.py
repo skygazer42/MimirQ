@@ -1,5 +1,7 @@
 import asyncio
+import contextlib
 import gzip
+import hashlib
 import time
 import uuid
 import zlib
@@ -177,6 +179,12 @@ def _dict_list(values: object) -> list[dict]:
         if isinstance(v, dict):
             out.append(v)
     return out
+
+
+def _audit_hash_text(text: str) -> str:
+    """Stable short hash for potentially sensitive strings (PII-minimal)."""
+    raw = (text or "").encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def _doc_pipeline_hash(meta: object) -> str | None:
@@ -1872,7 +1880,12 @@ def create_kg_entity_alias(
                 action="kg.entity.alias.create",
                 resource_type="kg_entity",
                 resource_id=str(resolved_id),
-                details={"alias": alias_text, "normalized_alias": norm},
+                details={
+                    "alias_hash": _audit_hash_text(alias_text),
+                    "alias_chars": int(len(alias_text)),
+                    "normalized_alias_hash": _audit_hash_text(norm),
+                    "normalized_alias_chars": int(len(norm)),
+                },
             )
         )
     except Exception:
@@ -3005,6 +3018,37 @@ def delete_kg_for_document(
         document_id=document_id,
         prune_orphan_entities=eff_prune_orphans,
     )
+
+    # Best-effort audit log (PII-minimal): record KG deletion per document.
+    try:
+        from app.models.audit_log import AuditLog
+
+        details: dict[str, Any] = {
+            "document_id": str(document_id),
+            "prune_orphan_entities": bool(eff_prune_orphans),
+        }
+        if isinstance(stats, dict):
+            for k, v in stats.items():
+                try:
+                    details[str(k)[:64]] = int(v)  # type: ignore[arg-type]
+                except Exception:
+                    continue
+
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.document.delete",
+                resource_type="document",
+                resource_id=str(document_id),
+                details=details,
+            )
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
     return KGDeleteResponse(document_id=document_id, **(stats or {}))
 
 
@@ -3091,6 +3135,10 @@ async def run_kg_extraction_for_document(
     eff_prune_orphans = bool(
         settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES if prune_orphan_entities is None else prune_orphan_entities
     )
+    # Route handlers are sometimes invoked directly in unit tests; FastAPI `Query(...)` defaults
+    # are not JSON-serializable and should not leak into downstream calls or audit logs.
+    eff_extract_relations: bool | None = extract_relations if isinstance(extract_relations, bool) else None
+    eff_extract_skills: bool | None = extract_skills if isinstance(extract_skills, bool) else None
 
     # If async=true, enqueue KG extraction (default remains synchronous for compatibility).
     if bool(async_mode):
@@ -3112,8 +3160,8 @@ async def run_kg_extraction_for_document(
                 pipeline_hash=pipeline_hash_for_job,
                 replace_existing=eff_replace_existing,
                 prune_orphan_entities=eff_prune_orphans,
-                extract_relations=extract_relations,
-                extract_skills=extract_skills,
+                extract_relations=eff_extract_relations,
+                extract_skills=eff_extract_skills,
             )
             if task_id:
                 meta = dict(document.doc_metadata or {})
@@ -3121,6 +3169,34 @@ async def run_kg_extraction_for_document(
                 document.doc_metadata = meta
                 db.commit()
                 db.refresh(document)
+
+            # Best-effort audit log: extraction enqueued (PII-minimal).
+            try:
+                from app.models.audit_log import AuditLog
+
+                db.add(
+                    AuditLog(
+                        id=uuid.uuid4(),
+                        tenant_id=tenant_id,
+                        actor_id=str(account_id or "").strip() or None,
+                        action="kg.document.extract.enqueue",
+                        resource_type="document",
+                        resource_id=str(document_id),
+                        details={
+                            "async": True,
+                            "task_id": str(task_id) if task_id else None,
+                            "pipeline_hash": str(pipeline_hash_for_job),
+                            "replace_existing": bool(eff_replace_existing),
+                            "prune_orphan_entities": bool(eff_prune_orphans),
+                            "extract_relations": eff_extract_relations,
+                            "extract_skills": eff_extract_skills,
+                        },
+                    )
+                )
+                db.commit()
+            except Exception:
+                with contextlib.suppress(Exception):
+                    db.rollback()
 
             response.status_code = 202
             if task_id:
@@ -3140,8 +3216,8 @@ async def run_kg_extraction_for_document(
             prompt_template_key=eff_prompt_template_key,
             prompt_ab_experiment_key=eff_prompt_ab_experiment_key,
             ab_user_key=account_id,
-            extract_relations=extract_relations,
-            extract_skills=extract_skills,
+            extract_relations=eff_extract_relations,
+            extract_skills=eff_extract_skills,
             replace_existing=eff_replace_existing,
             prune_orphan_entities=eff_prune_orphans,
         )
@@ -3149,6 +3225,35 @@ async def run_kg_extraction_for_document(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"KG extraction failed: {str(exc)[:200]}") from exc
+
+    # Best-effort audit log: extraction completed (PII-minimal).
+    try:
+        from app.models.audit_log import AuditLog
+
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_id=str(account_id or "").strip() or None,
+                action="kg.document.extract",
+                resource_type="document",
+                resource_id=str(document_id),
+                details={
+                    "async": False,
+                    "pipeline_hash": selected_ph,
+                    "chunk_count": int(len(chunks)),
+                    "event_count": int(len(events or [])),
+                    "replace_existing": bool(eff_replace_existing),
+                    "prune_orphan_entities": bool(eff_prune_orphans),
+                    "extract_relations": eff_extract_relations,
+                    "extract_skills": eff_extract_skills,
+                },
+            )
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
 
     return KGExtractResponse(
         document_id=document_id,

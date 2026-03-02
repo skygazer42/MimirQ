@@ -44,6 +44,8 @@ from app.api.schemas.regression import (
     RagasRegressionRunLeaderboardResponse,
     RagasRegressionRunList,
     RagasRegressionRunSchema,
+    SyntheticHardcaseGenerateRequest,
+    SyntheticHardcaseGenerateResponse,
 )
 from app.core.config import settings
 from app.core.database import get_db
@@ -625,6 +627,210 @@ async def import_ragas_regression_cases(
     db.commit()
 
     return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+@router.post("/ragas/regression/cases/synthetic-hardcases", response_model=SyntheticHardcaseGenerateResponse)
+async def generate_synthetic_hardcases(
+    payload: SyntheticHardcaseGenerateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate synthetic "hardcase" regression cases (PII-safe, deterministic).
+
+    This is a quality-program helper:
+    - Takes existing regression cases as seeds
+    - Generates harder query variants (alias/skill pressure) using KG-derived candidates
+    - Reuses the same reference_sources so evaluation remains grounded
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    if not bool(getattr(settings, "KG_ENABLED", False)):
+        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+
+    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    if bool(payload.dry_run):
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+    else:
+        # Creating many cases is a write action (governance).
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    # Validate explicit case_ids when provided.
+    if payload.case_ids:
+        rows = (
+            db.query(RagasRegressionCase.id, RagasRegressionCase.dataset_id)
+            .filter(
+                RagasRegressionCase.tenant_id == tenant_id,
+                RagasRegressionCase.id.in_(list(payload.case_ids or [])),
+            )
+            .all()
+        )
+        try:
+            validate_case_ids_belong_to_dataset(
+                dataset_id=payload.dataset_id,
+                case_ids=list(payload.case_ids or []),
+                rows=rows,
+            )
+        except MissingCasesError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DatasetMismatchError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    max_cases = max(1, min(int(payload.max_cases or 0), 200))
+    per_case = max(0, min(int(payload.hardcases_per_case or 0), 20))
+    max_created = max(0, min(int(payload.max_created or 0), 5000))
+    tag = str(payload.tag or "").strip() or "synthetic_hardcase"
+
+    # Load base cases (dataset-scoped).
+    base_q = db.query(RagasRegressionCase).filter(
+        RagasRegressionCase.tenant_id == tenant_id,
+        RagasRegressionCase.dataset_id == payload.dataset_id,
+    )
+    if payload.case_ids:
+        base_q = base_q.filter(RagasRegressionCase.id.in_(list(payload.case_ids or [])))
+    base_total = int(base_q.count())
+    base_cases = (
+        base_q.order_by(RagasRegressionCase.updated_at.desc(), RagasRegressionCase.id.asc())
+        .limit(max_cases)
+        .all()
+    )
+
+    # Dedupe against existing suite questions (casefold + collapsed whitespace).
+    def _qkey(text: str) -> str:
+        s = " ".join(str(text or "").strip().split())
+        return s.casefold()
+
+    existing_q_rows = (
+        db.query(RagasRegressionCase.question)
+        .filter(RagasRegressionCase.tenant_id == tenant_id, RagasRegressionCase.dataset_id == payload.dataset_id)
+        .all()
+    )
+    existing_keys = {_qkey(str(q or "")) for (q,) in existing_q_rows if q}
+
+    # Lazy imports: keep eval module import-light in non-KG environments.
+    from app.rag.evaluation.kg_hardcase_deterministic import generate_hardcases_deterministic
+    from app.rag.evaluation.kg_search_diagnostics import (
+        _deterministic_hardcase_candidates,
+        _resolve_ground_truth_event_ids,
+    )
+
+    created_ids: list[UUID] = []
+    skipped_dup = 0
+    errors: list[dict[str, Any]] = []
+    hardcases_generated = 0
+    base_used = 0
+
+    for case in base_cases:
+        if per_case <= 0:
+            break
+        if max_created > 0 and len(created_ids) >= max_created:
+            break
+
+        question = str(getattr(case, "question", "") or "").strip()
+        if not question:
+            continue
+
+        ref_sources = getattr(case, "reference_sources", None) or []
+        evidence_chunk_ids: list[str] = []
+        for src in ref_sources if isinstance(ref_sources, list) else []:
+            if not isinstance(src, dict):
+                continue
+            raw = src.get("chunk_id")
+            if raw is None:
+                continue
+            s = str(raw).strip()
+            if s:
+                evidence_chunk_ids.append(s)
+
+        gt_event_ids = _resolve_ground_truth_event_ids(db, tenant_id=tenant_id, evidence_chunk_ids=evidence_chunk_ids)
+        alias_pairs, skills, tags0 = _deterministic_hardcase_candidates(db, tenant_id=tenant_id, ground_truth_event_ids=gt_event_ids)
+
+        hardcases = generate_hardcases_deterministic(
+            question=question,
+            alias_pairs=alias_pairs,
+            skills=skills,
+            tags=tags0,
+            max_items=per_case,
+        )
+        if not hardcases:
+            continue
+
+        base_used += 1
+        for hc in hardcases:
+            q2 = str(getattr(hc, "question", "") or "").strip()
+            if not q2:
+                continue
+            hardcases_generated += 1
+
+            key = _qkey(q2)
+            if key in existing_keys:
+                skipped_dup += 1
+                continue
+
+            if bool(payload.dry_run):
+                existing_keys.add(key)
+                continue
+
+            # Create a new case reusing the same evidence pointers.
+            base_tags = list(getattr(case, "tags", None) or [])
+            tags_new = [*base_tags, tag, f"hardcase:{getattr(hc, 'kind', 'unknown')}"]
+            # Keep tags small and stable.
+            tags_clean: list[str] = []
+            seen: set[str] = set()
+            for t in tags_new:
+                s = str(t or "").strip()
+                if not s:
+                    continue
+                if s in seen:
+                    continue
+                seen.add(s)
+                tags_clean.append(s[:80])
+
+            extra_base = getattr(case, "extra", None)
+            extra_d = dict(extra_base or {}) if isinstance(extra_base, dict) else {}
+            extra_d.setdefault("synthetic_from_case_id", str(getattr(case, "id", "") or ""))
+            extra_d["hardcase_kind"] = str(getattr(hc, "kind", "") or "")
+            rationale = getattr(hc, "rationale", None)
+            if rationale:
+                extra_d["hardcase_rationale"] = str(rationale)[:400]
+
+            row = RagasRegressionCase(
+                tenant_id=tenant_id,
+                dataset_id=payload.dataset_id,
+                document_ids=list(getattr(case, "document_ids", None) or []),
+                question=q2,
+                expected_answer=getattr(case, "expected_answer", None),
+                reference_sources=list(ref_sources) if isinstance(ref_sources, list) else [],
+                tags=tags_clean,
+                extra=extra_d,
+                created_by=account_id,
+            )
+            db.add(row)
+            db.flush()
+            created_ids.append(row.id)
+            existing_keys.add(key)
+
+            if max_created > 0 and len(created_ids) >= max_created:
+                break
+
+    if not bool(payload.dry_run):
+        try:
+            db.commit()
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            errors.append({"error": str(exc)[:200]})
+
+    return SyntheticHardcaseGenerateResponse(
+        dataset_id=payload.dataset_id,
+        base_cases_total=int(base_total),
+        base_cases_evaluated=int(base_used),
+        hardcases_generated=int(hardcases_generated),
+        created=int(0 if payload.dry_run else len(created_ids)),
+        skipped_duplicates=int(skipped_dup),
+        created_case_ids=created_ids,
+        errors=errors,
+    )
 
 
 @router.delete("/ragas/regression/cases/{case_id}", status_code=204)

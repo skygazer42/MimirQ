@@ -6,7 +6,7 @@ across prompts/models/retrieval strategies, and persist results for iteration.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -86,6 +86,36 @@ class RagasRegressionCaseImportRequest(BaseModel):
     overwrite: bool = False
     max_items: int = Field(default=500, ge=1, le=2000)
     items: List[RagasRegressionCaseBundleItem] = Field(..., min_length=1)
+
+
+class SyntheticHardcaseGenerateRequest(BaseModel):
+    """
+    Generate synthetic "hardcase" regression cases from an existing dataset suite.
+
+    PII-safe defaults:
+    - deterministic only (no LLM calls)
+    - reuses existing reference_sources (no evidence snippets are generated)
+    """
+
+    dataset_id: UUID
+    case_ids: List[UUID] = Field(default_factory=list, description="Optional base case ids (else pick by recency)")
+    max_cases: int = Field(default=50, ge=1, le=200, description="Max base cases to use")
+    hardcases_per_case: int = Field(default=4, ge=0, le=20, description="Max synthetic hardcases per base case")
+    max_created: int = Field(default=500, ge=0, le=5000, description="Global cap on created cases")
+    mode: Literal["deterministic"] = Field(default="deterministic")
+    dry_run: bool = Field(default=False, description="Plan only; do not persist new cases")
+    tag: str = Field(default="synthetic_hardcase", max_length=64, description="Tag to add to created cases")
+
+
+class SyntheticHardcaseGenerateResponse(BaseModel):
+    dataset_id: UUID
+    base_cases_total: int = 0
+    base_cases_evaluated: int = 0
+    hardcases_generated: int = 0
+    created: int = 0
+    skipped_duplicates: int = 0
+    created_case_ids: List[UUID] = Field(default_factory=list)
+    errors: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class RagasRegressionCaseOut(OrmModel):

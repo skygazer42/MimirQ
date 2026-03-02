@@ -30,6 +30,7 @@ from app.api.v1 import (
     prompt_templates,
     rag,
     ragviz,
+    rbac,
     reports,
     settings,
     usage,
@@ -63,6 +64,7 @@ router.include_router(connectors.router, prefix="/connectors", tags=["Connectors
 router.include_router(ingestion_runs.router, prefix="/ingestion", tags=["Ingestion Runs"])
 router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])
+router.include_router(rbac.router, prefix="/rbac", tags=["RBAC"])
 router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 router.include_router(observability.router, prefix="/observability", tags=["Observability"])
 router.include_router(audit.router, prefix="/audit", tags=["Audit"])

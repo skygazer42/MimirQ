@@ -4,6 +4,8 @@ import math
 import re
 from typing import Any
 
+from app.rag.core.text import is_claim_supported, split_into_claims
+
 
 def _get(obj: Any, key: str, default: Any = None) -> Any:
     if obj is None:
@@ -92,6 +94,47 @@ def _citation_text_for_quote_match(cit: Any) -> str:
     d = _coerce_dict(cit)
     # Prefer citation snippet, fall back to retrieved_contexts later if needed.
     return _collapse_ws(d.get("chunk_content") or d.get("quote") or "").casefold()
+
+
+def _deterministic_faithfulness(answer: str, contexts: list[Any], *, max_evidence_chars: int = 24_000) -> float | None:
+    """
+    Deterministic, bounded faithfulness proxy for offline regression gates.
+
+    Approach:
+    - split answer into atomic claims
+    - count how many claims are supported by the joined evidence text
+    - score = supported / total
+
+    Notes:
+    - Heuristic only; this is not a semantic verifier.
+    - Uncertainty/refusal phrasing is treated as supported by `is_claim_supported`.
+    """
+    raw_answer = str(answer or "").strip()
+    if not raw_answer:
+        return None
+
+    claims = split_into_claims(raw_answer, max_claims=24)
+    if not claims:
+        return None
+
+    joined = "\n".join([str(c or "") for c in (contexts or []) if str(c or "").strip()])
+    evidence = joined
+    if max_evidence_chars and max_evidence_chars > 0 and len(evidence) > int(max_evidence_chars):
+        evidence = evidence[: int(max_evidence_chars)]
+
+    supported = 0
+    total = 0
+    for claim in claims:
+        c = str(claim or "").strip()
+        if not c:
+            continue
+        total += 1
+        if is_claim_supported(c, evidence):
+            supported += 1
+
+    if total <= 0:
+        return None
+    return round(float(supported) / float(total), 4)
 
 
 def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -258,6 +301,16 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     except Exception:
         top_rel_f = None
 
+    expected_refusal = None
+    extra = _get(case, "extra", None)
+    extra_d = extra if isinstance(extra, dict) else {}
+    for key in ("expected_refusal", "should_refuse", "expected_abstain"):
+        if key in extra_d:
+            expected_refusal = bool(extra_d.get(key))
+            break
+
+    faithfulness_det = _deterministic_faithfulness(response, retrieved_contexts)
+
     meta = {
         "abstain_triggered": bool(item.get("abstain_triggered")) if "abstain_triggered" in item else None,
         "abstain_reason": item.get("abstain_reason"),
@@ -272,7 +325,18 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "retrieval_hit_at_5": hit_at_5,
         "retrieval_hit_at_10": hit_at_10,
         "retrieval_hit_at_20": hit_at_20,
+        "faithfulness_det": faithfulness_det,
+        "expected_refusal": expected_refusal,
     }
+
+    # Per-item refusal correctness (only when expected_refusal is labeled).
+    try:
+        abst = meta.get("abstain_triggered")
+        exp = meta.get("expected_refusal")
+        if isinstance(exp, bool) and abst is not None:
+            meta["refusal_correct"] = bool(bool(exp) == bool(abst))
+    except Exception:
+        pass
 
     sample_kwargs = {
         "user_input": question,
@@ -315,4 +379,8 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
         "retrieval_hit_at_10": meta.get("retrieval_hit_at_10"),
         "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
+        # Answer-level deterministic gate signals (best-effort; may be null in retrieval-only mode).
+        "faithfulness_det": meta.get("faithfulness_det"),
+        "expected_refusal": meta.get("expected_refusal"),
+        "refusal_correct": meta.get("refusal_correct"),
     }

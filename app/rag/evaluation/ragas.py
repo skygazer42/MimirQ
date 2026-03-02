@@ -186,7 +186,63 @@ def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str
         meta = item.get("item_meta")
         metas.append(meta if isinstance(meta, dict) else {})
 
-    return _build_retrieval_metrics_summary(metas)
+    out = _build_retrieval_metrics_summary(metas)
+
+    # Answer-level deterministic gate signals (best-effort, offline):
+    # - faithfulness_det: claim support ratio vs retrieved_contexts
+    # - refusal_correctness: compares expected_refusal vs abstain_triggered (only on labeled cases)
+    def _mean_float(key: str) -> Optional[float]:
+        vals: list[float] = []
+        for m in metas:
+            v = m.get(key)
+            if v is None:
+                continue
+            try:
+                fv = float(v)
+            except Exception:
+                continue
+            if math.isnan(fv):
+                continue
+            vals.append(fv)
+        return _mean(vals)
+
+    faith_det = _mean_float("faithfulness_det")
+    if faith_det is not None:
+        out["faithfulness_det"] = faith_det
+        # Back-compat / convenience: expose under "faithfulness" when RAGAS is not used.
+        # `_merge_summary_with_regression_gate` is intentionally "do not override existing keys",
+        # so RAGAS faithfulness wins when present.
+        out["faithfulness"] = faith_det
+
+    labeled = 0
+    correct = 0
+    false_pos = 0
+    false_neg = 0
+    for m in metas:
+        exp = m.get("expected_refusal")
+        if exp is None:
+            continue
+        abst = m.get("abstain_triggered")
+        if abst is None:
+            continue
+        labeled += 1
+        exp_b = bool(exp)
+        abst_b = bool(abst)
+        if exp_b == abst_b:
+            correct += 1
+        else:
+            if (not exp_b) and abst_b:
+                false_pos += 1
+            if exp_b and (not abst_b):
+                false_neg += 1
+
+    if labeled > 0:
+        out["refusal_correctness"] = round(float(correct) / float(labeled), 4)
+        out["refusal_false_positive_rate"] = round(float(false_pos) / float(labeled), 4)
+        out["refusal_false_negative_rate"] = round(float(false_neg) / float(labeled), 4)
+        out["refusal_labeled_items"] = int(labeled)
+
+    return out
 
 
 def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> Dict[str, Any]:
@@ -275,7 +331,12 @@ def _merge_summary_with_regression_gate(
     eval_items: list[dict[str, Any]],
 ) -> Dict[str, Any]:
     out = dict(summary or {})
-    out.update(_build_regression_gate_summary(eval_items))
+    gate = _build_regression_gate_summary(eval_items)
+    # Do not override existing summary keys (e.g. RAGAS metrics like "faithfulness").
+    for k, v in (gate or {}).items():
+        if k in out and out.get(k) is not None:
+            continue
+        out[k] = v
     out["retrieval_slices"] = _build_regression_slice_summaries(eval_items)
     return out
 
@@ -830,7 +891,13 @@ def run_regression_ragas_evaluation(
             }
 
         eval_items: List[Dict[str, Any]] = []
-        retrieval_only = not bool(metric_names)
+        normalized_metric_names = [str(m or "").strip().lower() for m in (metric_names or []) if str(m or "").strip()]
+        retrieval_only = not bool(normalized_metric_names)
+        # Deterministic (no-RAGAS) answer-level gate mode:
+        # - still runs the RAG graph to produce an answer/citations
+        # - computes offline metrics (faithfulness_det/refusal_correctness) via item_meta aggregation
+        det_metrics = {"faithfulness_det", "refusal_correctness"}
+        deterministic_only = (not retrieval_only) and all(m in det_metrics for m in normalized_metric_names)
         for case in cases:
             scope_doc_ids, scope_dataset_id = _resolve_case_scope(
                 db=db, tenant_id=tenant_id, account_id=account_id, case=case
@@ -990,6 +1057,59 @@ def run_regression_ragas_evaluation(
                 "max_cases": max_cases,
                 "rag_params": _json_safe(rag_params),
                 "mode": "retrieval_only",
+            }
+            run.summary = summary
+            run.finished_at = datetime.utcnow()
+            db.commit()
+            return
+
+        # Deterministic answer-level gate mode: no RAGAS dependency, but does generate answers.
+        if deterministic_only:
+            db.query(RagasRegressionItem).filter(
+                RagasRegressionItem.run_id == run_id,
+                RagasRegressionItem.tenant_id == tenant_id,
+            ).delete(synchronize_session=False)
+
+            for item in eval_items:
+                meta = item.get("item_meta") if isinstance(item.get("item_meta"), dict) else {}
+                scores: dict[str, Any] = {}
+                if "faithfulness_det" in normalized_metric_names:
+                    if meta.get("faithfulness_det") is not None:
+                        scores["faithfulness_det"] = meta.get("faithfulness_det")
+                if "refusal_correctness" in normalized_metric_names:
+                    rc = meta.get("refusal_correct")
+                    if isinstance(rc, bool):
+                        scores["refusal_correctness"] = 1.0 if rc else 0.0
+
+                db.add(
+                    RagasRegressionItem(
+                        run_id=run_id,
+                        tenant_id=tenant_id,
+                        case_id=item["case_id"],
+                        question=item["question"],
+                        response=item.get("response") or "",
+                        retrieved_contexts=item["retrieved_contexts"],
+                        citations=item["citations"],
+                        scores=scores,
+                        meta=build_regression_item_meta(
+                            sample_kwargs=item.get("sample_kwargs"),
+                            item_meta=item.get("item_meta"),
+                        ),
+                    )
+                )
+
+            summary = {"items": len(eval_items)}
+            summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+
+            run.status = "completed"
+            run.metrics = list(normalized_metric_names)
+            run.params = {
+                **(run.params or {}),
+                "requested_metrics": list(normalized_metric_names),
+                "skip_empty_contexts": skip_empty_contexts,
+                "max_cases": max_cases,
+                "rag_params": _json_safe(rag_params),
+                "mode": "deterministic_gate",
             }
             run.summary = summary
             run.finished_at = datetime.utcnow()
