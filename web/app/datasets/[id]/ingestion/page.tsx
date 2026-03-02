@@ -467,7 +467,7 @@ const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         match: { extensions: ['.pdf'], filename_regex: null },
         preprocess: { enabled: false, steps: [] },
         parser_backend: 'docling',
-        chunk_strategy: null,
+        chunk_strategy: 'pdf_layout',
         governance_profile_ref: 'builtin:pdf_text',
         pipeline_patch: {},
       },

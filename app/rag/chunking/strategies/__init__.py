@@ -55,6 +55,7 @@ Available strategies:
 - nginx_config: Nginx config block-aware chunking
 - jira_ticket: Jira/issue ticket section-aware chunking
 - prd_spec: PRD/requirements section-aware chunking
+- pdf_layout: PDF layout-aware chunking (position tags -> bbox/columns metadata)
 - jsonl_records: JSONL/NDJSON record-aware chunking
 - xml_feed: XML feed (RSS/Atom) item-aware chunking
 - openapi_spec: OpenAPI/Swagger spec aware chunking
@@ -127,6 +128,7 @@ from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker
 from app.rag.chunking.strategies.outline import OutlineChunker
 from app.rag.chunking.strategies.paper import PaperChunker
 from app.rag.chunking.strategies.parent_child import ParentChildChunker
+from app.rag.chunking.strategies.pdf_layout import PDFLayoutChunker
 from app.rag.chunking.strategies.policy_manual_structured import PolicyManualStructuredChunker
 from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker
 from app.rag.chunking.strategies.prd_spec import PRDSpecChunker
@@ -218,6 +220,7 @@ __all__ = [
     "OpenAPISpecChunker",
     "GraphQLSchemaChunker",
     "ProtoSchemaChunker",
+    "PDFLayoutChunker",
     "TerraformHCLChunker",
     "GitCommitLogChunker",
     "PostmortemReportChunker",

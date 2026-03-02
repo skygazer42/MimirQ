@@ -20,6 +20,15 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     group: 'preset',
   },
   {
+    value: 'pdf_layout',
+    label: 'PDF 版式感知（bbox/columns）',
+    description:
+      '适用于包含 @@page\\tl\\tr\\tt\\tb## 位置标签的 PDF 解析结果：按版面块聚合，写入 bbox/column 元数据，并从 chunk 文本中去除位置标签。',
+    icon: 'hierarchical',
+    badge: 'PDF',
+    group: 'preset',
+  },
+  {
     value: 'manuscript',
     label: '文稿/讲稿（预设）',
     description:
