@@ -4,12 +4,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { GitCompareArrows, Info } from 'lucide-react'
+import { Download, GitCompareArrows, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { ChunkPreviewResponse } from '@/types'
+import { chunkPreviewDiffToExport, computeChunkPreviewDiff } from '@/components/chunk-preview/utils/ab-diff'
+import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
 
 type RunHistoryItem = {
   id: string
@@ -23,15 +25,6 @@ type RunHistoryItem = {
   createdAt: number
   cacheHit: boolean
   cacheKey?: string
-}
-
-function fnv1a32(input: string) {
-  let h = 0x811c9dc5
-  for (let i = 0; i < input.length; i += 1) {
-    h ^= input.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(16).padStart(8, '0')
 }
 
 function formatDelta(n: number) {
@@ -48,38 +41,6 @@ function formatDeltaPct(deltaRatio: number | null) {
   if (deltaRatio == null || !Number.isFinite(deltaRatio) || deltaRatio === 0) return '0%'
   const v = Math.round(deltaRatio * 100)
   return v > 0 ? `+${v}%` : `${v}%`
-}
-
-function safeNum(value: any): number | null {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : null
-}
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.trunc(value)))
-}
-
-function percentile(sorted: number[], p: number) {
-  if (sorted.length === 0) return 0
-  const pp = Math.min(100, Math.max(0, p))
-  const idx = Math.floor((pp / 100) * (sorted.length - 1))
-  return sorted[clampInt(idx, 0, sorted.length - 1)] ?? 0
-}
-
-function buildMultiset(chunks: Array<{ index: number; content?: string }>) {
-  const map = new Map<string, { count: number; example: string; firstIndex: number }>()
-  for (const c of chunks || []) {
-    const trimmed = String(c?.content ?? '').trim()
-    if (!trimmed) continue
-    const key = fnv1a32(trimmed)
-    const prev = map.get(key)
-    if (prev) {
-      prev.count += 1
-      continue
-    }
-    map.set(key, { count: 1, example: trimmed.slice(0, 160), firstIndex: Number(c.index) })
-  }
-  return map
 }
 
 export function ChunkCompareDialog(props: {
@@ -117,106 +78,7 @@ export function ChunkCompareDialog(props: {
 
   const diff = useMemo(() => {
     if (!baseline) return null
-    const a = baseline
-    const b = current
-
-    const aStats = a.stats || {}
-    const bStats = b.stats || {}
-
-    const unit = (b.params?.unit || a.params?.unit || 'chars') as string
-
-    const aAvg = safeNum(aStats.avg)
-    const bAvg = safeNum(bStats.avg)
-    const aP10 = safeNum(aStats.p10)
-    const bP10 = safeNum(bStats.p10)
-    const aP90 = safeNum(aStats.p90)
-    const bP90 = safeNum(bStats.p90)
-
-    const aCoverage = safeNum(aStats.coverage_ratio)
-    const bCoverage = safeNum(bStats.coverage_ratio)
-    const aWaste = safeNum(aStats.overlap_waste_ratio)
-    const bWaste = safeNum(bStats.overlap_waste_ratio)
-    const aGapCount = safeNum(aStats.gap_count)
-    const bGapCount = safeNum(bStats.gap_count)
-
-    const computePctl = (preview: ChunkPreviewResponse, pct: number) => {
-      const lengths = (preview.chunks || []).map((c) => {
-        const len = Number(c?.length || 0) || 0
-        const tokensFallback = Math.max(0, Math.trunc(len / 4))
-        if (unit === 'tokens') {
-          return typeof c?.tokens_est === 'number' ? Math.max(0, Math.trunc(c.tokens_est)) : tokensFallback
-        }
-        return Math.max(0, Math.trunc(len))
-      })
-      const sorted = [...lengths].sort((x, y) => x - y)
-      return percentile(sorted, pct)
-    }
-
-    const aP95 = computePctl(a, 95)
-    const bP95 = computePctl(b, 95)
-
-    const aSet = buildMultiset(a.chunks || [])
-    const bSet = buildMultiset(b.chunks || [])
-
-    let common = 0
-    let total = 0
-    let added = 0
-    let removed = 0
-    const examplesAdded: Array<{ example: string; count: number; index: number }> = []
-    const examplesRemoved: Array<{ example: string; count: number; index: number }> = []
-
-    const keys = new Set<string>([...aSet.keys(), ...bSet.keys()])
-    for (const key of keys) {
-      const av = aSet.get(key)?.count || 0
-      const bv = bSet.get(key)?.count || 0
-      common += Math.min(av, bv)
-      total += Math.max(av, bv)
-      if (bv > av) {
-        const delta = bv - av
-        added += delta
-        const meta = bSet.get(key)
-        if (meta) examplesAdded.push({ example: meta.example, count: delta, index: meta.firstIndex })
-      } else if (av > bv) {
-        const delta = av - bv
-        removed += delta
-        const meta = aSet.get(key)
-        if (meta) examplesRemoved.push({ example: meta.example, count: delta, index: meta.firstIndex })
-      }
-    }
-
-    examplesAdded.sort((x, y) => y.count - x.count)
-    examplesRemoved.sort((x, y) => y.count - x.count)
-
-    const overlap = total > 0 ? common / total : 0
-
-    return {
-      unit,
-      aCount: Number(a.total_chunks || 0),
-      bCount: Number(b.total_chunks || 0),
-      deltaCount: Number(b.total_chunks || 0) - Number(a.total_chunks || 0),
-      aAvg,
-      bAvg,
-      aP10,
-      bP10,
-      aP90,
-      bP90,
-      aP95,
-      bP95,
-      aCoverage,
-      bCoverage,
-      deltaCoverage: aCoverage == null || bCoverage == null ? null : bCoverage - aCoverage,
-      aWaste,
-      bWaste,
-      deltaWaste: aWaste == null || bWaste == null ? null : bWaste - aWaste,
-      aGapCount,
-      bGapCount,
-      deltaGapCount: aGapCount == null || bGapCount == null ? null : bGapCount - aGapCount,
-      added,
-      removed,
-      overlap,
-      examplesAdded: examplesAdded.slice(0, 3),
-      examplesRemoved: examplesRemoved.slice(0, 3),
-    }
+    return computeChunkPreviewDiff(baseline, current)
   }, [baseline, current])
 
   const baselineMeta = useMemo(() => {
@@ -352,6 +214,22 @@ export function ChunkCompareDialog(props: {
               ) : null}
 
               <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!baseline}
+                  onClick={() => {
+                    if (!baseline) return
+                    const payload = chunkPreviewDiffToExport(baseline, current, {
+                      baseline_cache_key: baselineKey || undefined,
+                    })
+                    const filename = `${sanitizeFilename(currentFileName)}.chunk-preview.diff.json`
+                    downloadTextFile(filename, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
+                  }}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  导出 diff.json
+                </Button>
                 <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                   关闭
                 </Button>
