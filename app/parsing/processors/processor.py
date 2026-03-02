@@ -1152,6 +1152,21 @@ class ChunkAssetStage:
                     out_chunks.append(Document(page_content=ocr_text, metadata=ocr_meta))
                     out_idx += 1
 
+        # Adjacency graph (prev/next) for stitching + UI diagnostics:
+        # - Stored in chunk metadata so it survives persistence/indexing.
+        # - Computed on the final emitted chunk order (including OCR-only chunks).
+        total_out = len(out_chunks)
+        for i, doc in enumerate(out_chunks):
+            meta = dict(getattr(doc, "metadata", None) or {})
+            prev_idx = (i - 1) if i > 0 else None
+            next_idx = (i + 1) if i < (total_out - 1) else None
+            meta["prev_chunk_index"] = prev_idx
+            meta["next_chunk_index"] = next_idx
+            doc_id = str(meta.get("document_id") or document_id)
+            meta["prev_chunk_key"] = f"{doc_id}:{prev_idx}" if prev_idx is not None else None
+            meta["next_chunk_key"] = f"{doc_id}:{next_idx}" if next_idx is not None else None
+            doc.metadata = meta
+
         return ChunkAssetResult(chunks=out_chunks, img_ids=img_ids)
 
 

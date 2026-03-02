@@ -607,6 +607,9 @@ class Settings(BaseSettings):
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).
     RAG_CONTEXT_NEIGHBOR_MAX_ADDED: int = 20
+    # Optional: reorder returned context chunks to improve continuity by stitching contiguous
+    # (document_id, chunk_index) sequences together. Default off to preserve legacy ordering.
+    RAG_CONTEXT_STITCHING_ENABLED: bool = False
     # Optional: parent-child auto merge (retrieve children, return/append parents).
     RAG_PARENT_CHILD_AUTO_MERGE_ENABLED: bool = False
     # - replace: collapse multiple children under the same parent into one parent chunk
