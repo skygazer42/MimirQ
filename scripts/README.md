@@ -37,6 +37,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `chunk_preview_batch_eval.py`: batch evaluate chunk preview behavior
 - `convert_text_encoding.py`: best-effort text encoding conversion utility
 - `backfill_kg_event_vector_metadata.py`: re-upsert KG event vectors to backfill Milvus metadata fields (`pipeline_hash`, `doc_pipeline_key`)
+- `learn_fusion_weights_offline.py`: grid-search fusion weights (vector/bm25/lexical/sparse) offline via Evidence API
+- `apply_fusion_weights_to_dataset.py`: persist learned fusion weights into dataset `rag_defaults` (safe by default; dry-run unless --execute)
 - `gen_secret_key.py`: generate a SECRET_KEY value
 - `rag_trace_tail.py`: tail and pretty-print `event=rag_trace` records from the metrics JSONL (PII-safe by default)
 - `rag_trace_diff.py`: diff two `event=rag_trace` records by `request_id` (PII-safe; outputs compact delta summary)
