@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Copy, GitCompare, RefreshCcw } from 'lucide-react'
+import { Copy, Download, GitCompare, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
@@ -20,6 +20,23 @@ function prettyJson(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function sanitizeFilename(name: string): string {
+  const trimmed = String(name || '').trim()
+  const base = trimmed || 'kg-snapshots'
+  return base.replace(/[\\/:*?"<>|]+/g, '_')
+}
+
+function downloadJson(value: unknown, filename: string): void {
+  const content = JSON.stringify(value ?? {}, null, 2)
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 async function copyToClipboard(text: string, label: string): Promise<void> {
@@ -63,6 +80,13 @@ export function KGSnapshotsPage() {
   const snapBJson = useMemo(() => prettyJson(snapB ?? { hint: '点击“导出 B 快照”生成快照' }), [snapB])
   const diffJson = useMemo(() => prettyJson(diff ?? { hint: '点击“对比”生成 diff（mimirq.kg_snapshot_diff.v1）' }), [diff])
 
+  const diffDelta = useMemo(() => {
+    const d = diff as any
+    const delta = d?.delta && typeof d.delta === 'object' ? d.delta : null
+    const entityTypesDelta = Array.isArray(d?.entity_types_delta) ? d.entity_types_delta : []
+    return { delta, entityTypesDelta }
+  }, [diff])
+
   async function runExport(which: 'a' | 'b'): Promise<void> {
     const pipelineHash = (which === 'a' ? pipelineHashA : pipelineHashB).trim()
     if (!pipelineHash) {
@@ -102,12 +126,20 @@ export function KGSnapshotsPage() {
     setLatencyMs(null)
     try {
       const start = Date.now()
-      const result = await kgApi.compareSnapshots({
-        pipeline_hash_a: a,
-        pipeline_hash_b: b,
-        document_ids: documentIds.length ? documentIds : undefined,
-      })
+      const [snapshotA, snapshotB] = await Promise.all([
+        kgApi.exportSnapshot({
+          pipeline_hash: a,
+          document_ids: documentIds.length ? documentIds : undefined,
+        }),
+        kgApi.exportSnapshot({
+          pipeline_hash: b,
+          document_ids: documentIds.length ? documentIds : undefined,
+        }),
+      ])
+      const result = await kgApi.diffSnapshots({ snapshot_a: snapshotA, snapshot_b: snapshotB })
       setLatencyMs(Math.max(0, Date.now() - start))
+      setSnapA(snapshotA)
+      setSnapB(snapshotB)
       setDiff(result)
       toast.success('已生成 diff')
     } catch (err) {
@@ -217,7 +249,55 @@ export function KGSnapshotsPage() {
               <CardTitle className="text-base">Diff（A → B）</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <div className="flex items-center justify-end">
+              {diffDelta.delta ? (
+                <div className="grid gap-3 md:grid-cols-5">
+                  {(['docs', 'events', 'entities', 'links', 'relations'] as const).map((key) => {
+                    const a0 = Number((snapA as any)?.[key] ?? 0)
+                    const b0 = Number((snapB as any)?.[key] ?? 0)
+                    const d0 = Number((diffDelta.delta as any)?.[key] ?? b0 - a0)
+                    const sign = d0 > 0 ? '+' : ''
+                    const tone = d0 > 0 ? 'text-emerald-600' : d0 < 0 ? 'text-rose-600' : 'text-muted-foreground'
+                    return (
+                      <Card key={key} className="border-muted/60">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-xs font-medium text-muted-foreground uppercase">{key}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-1">
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">A</span> {Number.isFinite(a0) ? a0 : 0}
+                          </div>
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">B</span> {Number.isFinite(b0) ? b0 : 0}
+                          </div>
+                          <div className={`text-sm font-semibold ${tone}`}>{sign + (Number.isFinite(d0) ? d0 : 0)}</div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              {diffDelta.entityTypesDelta.length ? (
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">entity_types_delta (top)</div>
+                  <div className="grid gap-1 md:grid-cols-2">
+                    {diffDelta.entityTypesDelta.slice(0, 12).map((row: any) => {
+                      const typ = String(row?.type || 'unknown')
+                      const delta = Number(row?.delta ?? 0)
+                      const sign = delta > 0 ? '+' : ''
+                      const tone = delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-muted-foreground'
+                      return (
+                        <div key={`${typ}:${delta}`} className="flex items-center justify-between gap-2 text-xs">
+                          <div className="truncate">{typ}</div>
+                          <div className={`shrink-0 tabular-nums ${tone}`}>{sign + (Number.isFinite(delta) ? delta : 0)}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-end gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -226,6 +306,19 @@ export function KGSnapshotsPage() {
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
                   复制
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => {
+                    const base = sanitizeFilename(`kg_snapshot_${pipelineHashA.trim()}_vs_${pipelineHashB.trim()}`) || 'kg_snapshot'
+                    downloadJson(diff ?? {}, `${base}.diff.json`)
+                    toast.success('已导出 diff.json')
+                  }}
+                >
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  导出
                 </Button>
               </div>
               <Textarea value={diffJson} readOnly rows={14} className="font-mono text-xs" />
@@ -239,7 +332,7 @@ export function KGSnapshotsPage() {
               <CardTitle className="text-base">Snapshot A</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-end gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -248,6 +341,19 @@ export function KGSnapshotsPage() {
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
                   复制
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => {
+                    const base = sanitizeFilename(`kg_snapshot_${pipelineHashA.trim() || 'A'}`) || 'kg_snapshot_A'
+                    downloadJson(snapA ?? {}, `${base}.json`)
+                    toast.success('已导出 snapshot A')
+                  }}
+                >
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  导出
                 </Button>
               </div>
               <Textarea value={snapAJson} readOnly rows={12} className="font-mono text-xs" />
@@ -259,7 +365,7 @@ export function KGSnapshotsPage() {
               <CardTitle className="text-base">Snapshot B</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-end gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -268,6 +374,19 @@ export function KGSnapshotsPage() {
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
                   复制
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => {
+                    const base = sanitizeFilename(`kg_snapshot_${pipelineHashB.trim() || 'B'}`) || 'kg_snapshot_B'
+                    downloadJson(snapB ?? {}, `${base}.json`)
+                    toast.success('已导出 snapshot B')
+                  }}
+                >
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  导出
                 </Button>
               </div>
               <Textarea value={snapBJson} readOnly rows={12} className="font-mono text-xs" />
@@ -278,4 +397,3 @@ export function KGSnapshotsPage() {
     </AppFrame>
   )
 }
-

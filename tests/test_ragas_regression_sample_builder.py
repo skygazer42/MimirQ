@@ -57,4 +57,6 @@ def test_build_regression_sample_includes_reference_context_ids_and_abstain_meta
         "retrieval_hit_at_5": True,
         "retrieval_hit_at_10": True,
         "retrieval_hit_at_20": True,
+        "faithfulness_det": 1.0,
+        "expected_refusal": None,
     }

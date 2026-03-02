@@ -6,9 +6,62 @@ Goals:
 - Avoid scattered business logic with "patch-style handling" across multiple modules
 """
 
-
 import re
+import uuid
 from typing import Any, Dict
+
+_HEX32_RE = re.compile(r"^[0-9a-fA-F]{32}$")
+
+
+def _looks_like_uuid(value: str) -> bool:
+    s = str(value or "").strip()
+    if not s:
+        return False
+    try:
+        uuid.UUID(s)
+        return True
+    except Exception:
+        return False
+
+
+def _looks_like_local_image_id(value: str) -> bool:
+    """
+    Local image ids are stored under {UPLOAD_DIR}/{tenant}/images/{image_id}.ext.
+
+    documents.py allows both UUID and 32-hex ids (UUID without hyphens).
+    """
+    s = str(value or "").strip()
+    if not s:
+        return False
+    return _looks_like_uuid(s) or bool(_HEX32_RE.match(s))
+
+
+def _looks_like_minio_img_id(value: str) -> bool:
+    """
+    MinIO img_id formats supported by /api/v1/documents/image-url/{img_id}:
+    - "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
+    - Back-compat: "{dataset_id}-{chunk_id}"
+
+    We keep this strict to avoid generating broken image_url values.
+    """
+    s = str(value or "").strip()
+    if not s:
+        return False
+
+    if ":" in s:
+        parts = s.split(":", 3)
+        if len(parts) != 4:
+            return False
+        tenant_part, dataset_part, document_part, chunk_key = parts
+        if not chunk_key.strip():
+            return False
+        return _looks_like_uuid(tenant_part) and _looks_like_uuid(dataset_part) and _looks_like_uuid(document_part)
+
+    if "-" in s:
+        dataset_part = s.split("-", 1)[0]
+        return _looks_like_uuid(dataset_part)
+
+    return False
 
 
 def normalize_image_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
@@ -37,6 +90,24 @@ def normalize_image_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
         meta["image_url"] = img_url
     if not img_url and image_url:
         meta["img_url"] = image_url
+
+    # Derive URL from id when missing. This improves UI citations for figure/image chunks.
+    #
+    # IMPORTANT:
+    # - Only emit image-url for MinIO-style ids; local ids must use the /documents/image/{image_id} endpoint.
+    # - Keep it best-effort; do not override existing URLs.
+    if not meta.get("image_url") and not meta.get("img_url"):
+        eff_img_id = meta.get("img_id")
+        if isinstance(eff_img_id, str) and _looks_like_minio_img_id(eff_img_id):
+            url = f"/api/v1/documents/image-url/{eff_img_id.strip()}"
+            meta.setdefault("image_url", url)
+            meta.setdefault("img_url", url)
+        else:
+            eff_image_id = meta.get("image_id")
+            if isinstance(eff_image_id, str) and _looks_like_local_image_id(eff_image_id):
+                url = f"/api/v1/documents/image/{eff_image_id.strip()}"
+                meta.setdefault("image_url", url)
+                meta.setdefault("img_url", url)
 
     return meta
 

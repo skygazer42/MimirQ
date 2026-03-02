@@ -6,6 +6,8 @@
 
 切块策略选型速查见：[docs/guides/chunk_strategies.md](./chunk_strategies.md)。
 
+更深入的调参与常见反模式见：[docs/guides/chunking_playbook.md](./chunking_playbook.md)。
+
 ## 推荐工作流
 
 1) 文档解析（`/parsing`）：将 PDF/Office/网页等解析为 Markdown/纯文本（可预览解析结果）。
@@ -75,6 +77,9 @@
 ### 原文面板
 
 - 支持「源码/渲染/编辑器」切换（渲染模式不支持高亮定位；编辑器模式用于大文档稳定定位）。
+- 原文面板顶部会显示 coverage heatmap（小条形热力图）：
+  - 空白/红色区域通常表示存在 gaps（覆盖空洞）
+  - 颜色越深通常表示 overlap 越多（重复覆盖更密集）
 - 编辑器模式：右侧滚动条显示 chunk 标记；点击原文可自动选中最细粒度 chunk（child 优先）。
 - 若后端未返回原文（原文过大时会省略返回以避免传输过大）：
   - 前端会提示是否因超过阈值而省略（`original_text_max_chars`）。
@@ -92,7 +97,7 @@
   - 导出配置.json / 从文件导入配置 / 从剪贴板导入配置（JSON）
   - 导出 chunks.json / chunks.csv / chunks.md / chunks.jsonl
   - 复制手动入库 payload（用于 `POST /api/v1/documents/manual`）
-  - 预览对比（A/B）：从同一文件的历史预览里选择一个基线，对比 chunk 数量/长度分布/内容重合度（估算）
+  - 预览对比（A/B）：从同一文件的历史预览里选择一个基线，对比 chunk 数量/长度分布/内容重合度（估算），并支持导出 `diff.json`
   - 复制 chunk-preview 的 cURL 示例
 
 ## API 调用（用于脚本化调参）
@@ -170,3 +175,4 @@ curl -X POST "http://localhost:8000/api/v1/documents/chunk-preview?chunk_size=10
   - `Δchunk_count`、`Δavg`、`Δp95`（前端基于 chunks 计算；若缺失会回退展示 `p90`）
   - `Δcoverage_ratio` / `Δoverlap_waste_ratio` / `Δgap_count`
   - 内容重合度（multiset overlap）以及 added/removed 示例（用于快速定位“切坏了/切漏了/重复了”）
+  - 导出 `diff.json`（包含 baseline/current 的简化快照 + diff 摘要，便于评审附件与回归对比）

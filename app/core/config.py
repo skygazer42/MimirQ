@@ -299,6 +299,13 @@ class Settings(BaseSettings):
     IMAGE_OCR_ENABLED: bool = False
     IMAGE_OCR_MAX_CHARS: int = 2000
     IMAGE_OCR_MAX_IMAGES: int = 20
+    # Multi-modal retrieval (optional): CLIP embeddings for image chunks.
+    # Disabled by default to avoid pulling heavyweight ML deps in minimal deployments.
+    IMAGE_EMBEDDING_ENABLED: bool = False
+    IMAGE_EMBEDDING_MODEL_NAME: str = "clip-ViT-B-32"
+    IMAGE_EMBEDDING_DEVICE: str = "cpu"
+    IMAGE_EMBEDDING_BATCH_SIZE: int = 8
+    IMAGE_EMBEDDING_COLLECTION_NAME: str = "image_chunks"
     # Keep this aligned with parser_factory supported non-PDF formats.
     ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl"
 

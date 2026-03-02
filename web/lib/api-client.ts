@@ -1800,9 +1800,45 @@ export const ingestionRunApi = {
 
 // ==================== RAG 调试 API ====================
 
+export interface ClipImageIndexRequest {
+  dataset_id: string
+  max_chunks?: number
+  upsert?: boolean
+}
+
+export interface ClipImageIndexResponse {
+  indexed: number
+  skipped: number
+  failed: number
+  dim: number
+  errors: string[]
+}
+
+export interface ClipImageSearchRequest {
+  dataset_id: string
+  query: string
+  top_k?: number
+  auto_index?: boolean
+}
+
+export interface ClipImageSearchResponse {
+  citations: any[]
+  metrics: Record<string, any>
+}
+
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
     const { data } = await apiClient.post('/rag/retrieve-preview', params)
+    return data
+  },
+
+  async indexClipImages(params: ClipImageIndexRequest): Promise<ClipImageIndexResponse> {
+    const { data } = await apiClient.post('/rag/image-index', params)
+    return data
+  },
+
+  async searchClipImages(params: ClipImageSearchRequest): Promise<ClipImageSearchResponse> {
+    const { data } = await apiClient.post('/rag/image-search-preview', params)
     return data
   },
 
@@ -3228,6 +3264,35 @@ export const auditApi = {
   },
 }
 
+// ==================== RBAC API ====================
+
+export interface TenantMember {
+  id: string
+  tenant_id: string
+  user_id?: string | null
+  role: string
+  is_current: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface TenantMemberListResponse {
+  total: number
+  items: TenantMember[]
+}
+
+export const rbacApi = {
+  async listTenantMembers(params: { skip?: number; limit?: number } = {}): Promise<TenantMemberListResponse> {
+    const { data } = await apiClient.get('/rbac/members', { params })
+    return data
+  },
+
+  async patchTenantMemberRole(userId: string, payload: { role: string }): Promise<TenantMember> {
+    const { data } = await apiClient.patch(`/rbac/members/${encodeURIComponent(userId)}`, payload)
+    return data
+  },
+}
+
 export const settingsApi = {
   /**
    * 获取系统配置
@@ -3462,6 +3527,21 @@ export const evaluationApi = {
 
   async patchRegressionCase(caseId: string, payload: RegressionCasePatch): Promise<RegressionCase> {
     const { data } = await apiClient.patch(`/evaluations/ragas/regression/cases/${caseId}`, payload)
+    return data
+  },
+
+  // ==================== Synthetic Hardcases (PII-safe) ====================
+
+  async generateSyntheticHardcases(payload: {
+    dataset_id: string
+    case_ids?: string[]
+    max_cases?: number
+    hardcases_per_case?: number
+    max_created?: number
+    dry_run?: boolean
+    tag?: string
+  }): Promise<any> {
+    const { data } = await apiClient.post('/evaluations/ragas/regression/cases/synthetic-hardcases', payload)
     return data
   },
 

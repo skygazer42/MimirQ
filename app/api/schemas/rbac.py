@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.constants import UserRoles
+
+
+class TenantMemberOut(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    user_id: Optional[str] = None
+    role: str = Field(default=UserRoles.VIEWER, description="owner|admin|auditor|editor|dataset_operator|viewer")
+    is_current: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TenantMemberListResponse(BaseModel):
+    total: int = 0
+    items: List[TenantMemberOut] = Field(default_factory=list)
+
+
+class TenantMemberUpdateRequest(BaseModel):
+    role: str = Field(..., description="owner|admin|auditor|editor|dataset_operator|viewer")
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _normalize_role(cls, v):  # noqa: ANN001
+        return str(v or "").strip().lower()
+
+    @field_validator("role")
+    @classmethod
+    def _validate_role(cls, v: str) -> str:
+        allowed = {
+            UserRoles.OWNER,
+            UserRoles.ADMIN,
+            UserRoles.AUDITOR,
+            UserRoles.EDITOR,
+            UserRoles.DATASET_OPERATOR,
+            UserRoles.VIEWER,
+        }
+        if v not in allowed:
+            raise ValueError(f"role must be one of: {', '.join(sorted(allowed))}")
+        return v
+
