@@ -14,6 +14,7 @@ import { createPositionTagIndexMapper, findPositionTagRanges, stripPositionTags 
 import { cn } from '@/lib/utils'
 import { OriginalPreviewMonaco } from './original-preview-monaco'
 import { PdfPreview } from './pdf-preview'
+import { CoverageHeatmapMini } from './coverage-heatmap-mini'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
 
@@ -344,6 +345,12 @@ export function OriginalPreview() {
                 </span>
               ) : null}
               <span>{(effectiveOriginalText?.length ?? previewData.total_characters).toLocaleString()} chars</span>
+              <CoverageHeatmapMini
+                chunks={displayChunks as any}
+                totalChars={effectiveOriginalText?.length ?? previewData.total_characters}
+                strategy={previewData.chunk_strategy}
+                className="hidden lg:flex"
+              />
               {originalTextSource ? (
                 <span className="px-1.5 py-0.5 rounded bg-muted border border-border/60">
                   {originalTextSource === 'server' ? 'server' : 'local'}
