@@ -7,6 +7,7 @@ import { BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCh
 import type { Citation, Dataset, EvidenceItem, EvidenceItemCreate, EvidenceItemStatus, EvidenceSuite, EvidenceSuiteDashboard, ReferenceSource } from '@/types'
 import { datasetApi, evidenceApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { buildWhyMissedReport } from '@/lib/evidence-why-missed'
 import { extractEvidenceNeedles, rankEvidenceCitations } from '@/lib/evidence-suggestions'
 import { cn } from '@/lib/utils'
 
@@ -145,6 +146,17 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
   const [selectedItemId, setSelectedItemId] = useState<string>('')
   const selectedItem = useMemo(() => items.find((it) => it.id === selectedItemId) || null, [items, selectedItemId])
+
+  // "Why missed?" workbench (per EvidenceItem) - drift + live retrieval comparison.
+  const [whyMissedOpen, setWhyMissedOpen] = useState(false)
+  const [whyMissedProfile, setWhyMissedProfile] = useState<RetrievalProfile>('recall50')
+  const [whyMissedRanRetrieve, setWhyMissedRanRetrieve] = useState(false)
+  const [whyMissedRetrieving, setWhyMissedRetrieving] = useState(false)
+  const [whyMissedError, setWhyMissedError] = useState<string | null>(null)
+  const [whyMissedCitations, setWhyMissedCitations] = useState<Citation[]>([])
+  const [whyMissedDriftLoading, setWhyMissedDriftLoading] = useState(false)
+  const [whyMissedDriftError, setWhyMissedDriftError] = useState<string | null>(null)
+  const [whyMissedDriftedRefs, setWhyMissedDriftedRefs] = useState<any[]>([])
 
   // Suite dashboard
   const [dashboardOpen, setDashboardOpen] = useState(false)
@@ -663,6 +675,152 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     toast.success(`selected ${suggestedRetrieveChunkIds.length} suggested chunks`)
   }, [suggestedRetrieveChunkIds])
 
+  const openWhyMissed = useCallback(() => {
+    if (!selectedItem) return
+
+    setWhyMissedError(null)
+    setWhyMissedRanRetrieve(false)
+    setWhyMissedCitations([])
+    setWhyMissedDriftError(null)
+    setWhyMissedDriftedRefs([])
+
+    const snapProfile = String((selectedItem as any)?.rag_config_snapshot?.retrieval_profile || '').trim()
+    if (snapProfile === 'recall50' || snapProfile === 'coverage80' || snapProfile === 'recall20') {
+      setWhyMissedProfile(snapProfile as RetrievalProfile)
+    } else {
+      setWhyMissedProfile('recall50')
+    }
+
+    setWhyMissedOpen(true)
+  }, [selectedItem])
+
+  const loadWhyMissedDrift = useCallback(async () => {
+    if (!selectedSuiteId) return
+    if (!selectedItem?.id) return
+
+    setWhyMissedDriftLoading(true)
+    setWhyMissedDriftError(null)
+    try {
+      const audit = await evidenceApi.getSuiteDriftAudit(selectedSuiteId, {
+        include_archived_items: false,
+        include_details: true,
+        details_limit: 2000,
+        slice_top_n: 20,
+      })
+      const details = Array.isArray((audit as any)?.drifted_references) ? ((audit as any).drifted_references as any[]) : []
+      const itemId = String(selectedItem.id)
+      setWhyMissedDriftedRefs(details.filter((d) => String(d?.item_id || '') === itemId))
+    } catch (e: any) {
+      setWhyMissedDriftError(formatApiError(e, '加载 Drift Audit 失败'))
+    } finally {
+      setWhyMissedDriftLoading(false)
+    }
+  }, [selectedItem?.id, selectedSuiteId])
+
+  useEffect(() => {
+    if (!whyMissedOpen) return
+    void loadWhyMissedDrift()
+  }, [loadWhyMissedDrift, whyMissedOpen])
+
+  const runWhyMissedRetrieve = useCallback(async () => {
+    if (!datasetId) return
+    if (!selectedItem?.query) return
+
+    const q = String(selectedItem.query || '').trim()
+    if (!q) return
+
+    setWhyMissedRetrieving(true)
+    setWhyMissedError(null)
+    setWhyMissedRanRetrieve(false)
+    setWhyMissedCitations([])
+    try {
+      const res = await ragApi.retrieveEvidence({
+        query: q,
+        history: [],
+        dataset_id: datasetId,
+        document_ids: [],
+        rag_config: {
+          retrieval_profile: whyMissedProfile,
+          max_tokens: 2000,
+          retrieval_mode: 'hybrid',
+          alpha: 0.6,
+          enable_weight_rerank: true,
+          vector_weight: 0.6,
+          keyword_weight: 0.4,
+          use_graph: false,
+          visible_evidence_only: false,
+        },
+      })
+      const nextCitations = (res?.citations || []) as unknown as Citation[]
+      setWhyMissedCitations(nextCitations)
+      setWhyMissedRanRetrieve(true)
+      toast.success(`检索完成：citations=${nextCitations.length}`)
+    } catch (e: any) {
+      setWhyMissedError(formatApiError(e, '检索失败'))
+    } finally {
+      setWhyMissedRetrieving(false)
+    }
+  }, [datasetId, selectedItem?.id, selectedItem?.query, whyMissedProfile])
+
+  const whyMissedReport = useMemo(() => {
+    if (!selectedItem) return null
+    if (!whyMissedRanRetrieve) return null
+    return buildWhyMissedReport({
+      reference_sources: selectedItem.reference_sources || [],
+      citations: whyMissedCitations || [],
+      drifted_references: whyMissedDriftedRefs || [],
+    })
+  }, [selectedItem, whyMissedCitations, whyMissedDriftedRefs, whyMissedRanRetrieve])
+
+  const whyMissedRefDocIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const r of selectedItem?.reference_sources || []) {
+      const did = String((r as any)?.document_id || '').trim()
+      if (did) ids.add(did)
+    }
+    return ids
+  }, [selectedItem?.reference_sources])
+
+  const whyMissedRefChunkIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const r of selectedItem?.reference_sources || []) {
+      const cid = String((r as any)?.chunk_id || '').trim()
+      if (cid) ids.add(cid)
+    }
+    return ids
+  }, [selectedItem?.reference_sources])
+
+  const exportWhyMissedReport = useCallback(() => {
+    if (!selectedSuite?.id) return
+    if (!selectedItem?.id) return
+    if (!whyMissedReport) return
+
+    const safeTs = safeIsoForFilename(new Date().toISOString())
+    const suiteName = (selectedSuite.name || 'evidence-suite').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
+    const itemId = String(selectedItem.id).slice(0, 8)
+    downloadJson(`${suiteName}.why-missed.${itemId}.${safeTs}.json`, {
+      schema: 'mimirq.evidence_why_missed.v1',
+      generated_at: new Date().toISOString(),
+      suite_id: String(selectedSuite.id),
+      item_id: String(selectedItem.id),
+      dataset_id: datasetId,
+      retrieval_profile: whyMissedProfile,
+      drifted_references: whyMissedDriftedRefs,
+      citations: whyMissedCitations,
+      report: whyMissedReport,
+    })
+    toast.success('已导出 Why-missed 报告')
+  }, [
+    datasetId,
+    selectedItem?.id,
+    selectedSuite?.id,
+    selectedSuite?.name,
+    whyMissedCitations,
+    whyMissedDriftedRefs,
+    whyMissedProfile,
+    whyMissedReport,
+  ])
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -1045,6 +1203,11 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                       Approve
                     </Button>
                   ) : null}
+
+                  <Button size="sm" variant="outline" className="gap-2" onClick={openWhyMissed}>
+                    <BarChart3 className="size-4" aria-hidden="true" />
+                    Why missed?
+                  </Button>
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -1758,6 +1921,255 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
               创建 Item（draft）
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Why missed? dialog (per EvidenceItem) */}
+      <Dialog
+        open={whyMissedOpen}
+        onOpenChange={(open) => {
+          setWhyMissedOpen(open)
+          if (!open) {
+            setWhyMissedError(null)
+            setWhyMissedRanRetrieve(false)
+            setWhyMissedCitations([])
+            setWhyMissedDriftError(null)
+            setWhyMissedDriftedRefs([])
+          }
+        }}
+      >
+        <DialogContent className="max-w-5xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Why missed?</DialogTitle>
+            <DialogDescription className="text-pretty">
+              对比 <span className="font-mono">reference_sources</span>（Ground Truth）与“当前检索结果”，并附带 Drift Audit（引用指针是否已漂移）。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row md:items-end gap-3">
+              <div className="w-full md:w-[220px]">
+                <div className="text-xs text-muted-foreground mb-1">Retrieval Profile</div>
+                <Select value={whyMissedProfile} onValueChange={(v) => setWhyMissedProfile(v as RetrievalProfile)}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="选择 profile" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recall50">recall50 (默认)</SelectItem>
+                    <SelectItem value="coverage80">coverage80</SelectItem>
+                    <SelectItem value="recall20">recall20</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                className="gap-2"
+                onClick={() => void runWhyMissedRetrieve()}
+                disabled={whyMissedRetrieving || !datasetId || !selectedItem?.query}
+              >
+                {whyMissedRetrieving ? (
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                ) : (
+                  <Search className="size-4" aria-hidden="true" />
+                )}
+                运行检索
+              </Button>
+
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => void loadWhyMissedDrift()}
+                disabled={whyMissedDriftLoading || !selectedSuiteId || !selectedItem?.id}
+                title="Load drift audit details for this suite and filter to the selected item"
+              >
+                {whyMissedDriftLoading ? (
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                ) : (
+                  <RefreshCw className="size-4" aria-hidden="true" />
+                )}
+                Drift Audit
+              </Button>
+
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={exportWhyMissedReport}
+                disabled={!whyMissedReport}
+                title="Export a JSON report (PII-minimized except for query text)."
+              >
+                <Download className="size-4" aria-hidden="true" />
+                导出 JSON
+              </Button>
+
+              <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
+                {selectedItem?.id ? `item ${String(selectedItem.id).slice(0, 8)}` : null}
+                {whyMissedRanRetrieve ? ` · citations ${whyMissedCitations.length}` : null}
+              </div>
+            </div>
+
+            {whyMissedError ? <div className="text-xs text-destructive text-pretty">{whyMissedError}</div> : null}
+            {whyMissedDriftError ? <div className="text-xs text-destructive text-pretty">{whyMissedDriftError}</div> : null}
+
+            {whyMissedReport ? (
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge variant="outline" className="font-mono tabular-nums">
+                  refs {whyMissedReport.summary.total_references}
+                </Badge>
+                <Badge variant="soft" className="font-mono tabular-nums">
+                  retrieved {whyMissedReport.summary.retrieved_references}
+                </Badge>
+                <Badge variant="destructive" className="font-mono tabular-nums">
+                  missed {whyMissedReport.summary.missing_references}
+                </Badge>
+                <Badge variant="secondary" className="font-mono tabular-nums">
+                  drifted {whyMissedReport.summary.drifted_references}
+                </Badge>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground text-pretty">先运行检索，再查看 “missed / drifted / retrieved” 解释。</div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <Panel className="p-3">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Ground Truth（reference_sources）</div>
+                <ScrollArea className="h-[420px] pr-2">
+                  <div className="space-y-2">
+                    {!selectedItem ? (
+                      <div className="text-sm text-muted-foreground text-pretty">未选择 Item。</div>
+                    ) : whyMissedReport ? (
+                      whyMissedReport.references.map((r) => {
+                        const status = r.status
+                        const statusLabel =
+                          status === 'retrieved'
+                            ? `hit #${r.retrieval?.rank ?? '?'}`
+                            : status === 'drifted'
+                              ? `drift:${String(r.drift?.reason || 'unknown')}`
+                              : status === 'missing'
+                                ? 'missed'
+                                : 'unknown'
+                        const statusVariant =
+                          status === 'retrieved' ? 'soft' : status === 'missing' ? 'destructive' : status === 'drifted' ? 'secondary' : 'outline'
+                        return (
+                          <div key={r.chunk_id} className="rounded-lg border border-border/60 p-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge variant={statusVariant as any} className="font-mono text-[10px]">
+                                    {statusLabel}
+                                  </Badge>
+                                  <div className="text-xs font-mono text-foreground truncate">
+                                    {String(r.document_id || '').slice(0, 8)}:{String(r.chunk_id || '').slice(0, 8)}
+                                  </div>
+                                </div>
+                                {r.label ? <div className="mt-1 text-xs text-muted-foreground line-clamp-1 text-pretty">{r.label}</div> : null}
+                                {r.retrieval ? (
+                                  <div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
+                                    {r.retrieval.hit_type ? `${r.retrieval.hit_type}` : 'hit'} · rank {r.retrieval.rank}
+                                    {typeof r.retrieval.score === 'number' ? ` · score ${r.retrieval.score.toFixed(4)}` : null}
+                                  </div>
+                                ) : null}
+                                {r.hints?.document_hit_rank || r.hints?.chunk_index_hit_rank ? (
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    {r.hints?.document_hit_rank ? (
+                                      <Badge variant="outline" className="font-mono text-[10px]">
+                                        doc@{r.hints.document_hit_rank}
+                                      </Badge>
+                                    ) : null}
+                                    {r.hints?.chunk_index_hit_rank ? (
+                                      <Badge variant="outline" className="font-mono text-[10px]">
+                                        idx@{r.hints.chunk_index_hit_rank}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                              {typeof r.chunk_index === 'number' ? (
+                                <div className="text-[11px] text-muted-foreground font-mono tabular-nums flex-shrink-0">
+                                  #{r.chunk_index}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <div className="text-sm text-muted-foreground text-pretty">运行检索后展示对照结果。</div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </Panel>
+
+              <Panel className="p-3">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Retrieved Citations（当前检索结果）</div>
+                <ScrollArea className="h-[420px] pr-2">
+                  <div className="space-y-2">
+                    {!whyMissedRanRetrieve ? (
+                      <div className="text-sm text-muted-foreground text-pretty">先点击“运行检索”。</div>
+                    ) : whyMissedCitations.length ? (
+                      whyMissedCitations.slice(0, 80).map((c, idx) => {
+                        const docId = String((c as any)?.document_id || '').trim()
+                        const chunkId = String((c as any)?.chunk_id || '').trim()
+                        const isRefDoc = !!docId && whyMissedRefDocIds.has(docId)
+                        const isRefChunk = !!chunkId && whyMissedRefChunkIds.has(chunkId)
+                        const score = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score) as any
+                        return (
+                          <div
+                            key={chunkId || `${docId}:${idx}`}
+                            className={cn(
+                              'rounded-lg border p-2',
+                              isRefChunk ? 'border-primary/50 bg-primary/5' : isRefDoc ? 'border-border/60 bg-muted/20' : 'border-border/60'
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="text-xs font-mono text-foreground truncate">
+                                    #{idx + 1} {c.document_name || docId.slice(0, 8)}
+                                  </div>
+                                  {isRefChunk ? (
+                                    <Badge variant="soft" className="font-mono text-[10px]">
+                                      ref_chunk
+                                    </Badge>
+                                  ) : null}
+                                  {isRefDoc && !isRefChunk ? (
+                                    <Badge variant="outline" className="font-mono text-[10px]">
+                                      ref_doc
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
+                                  {String((c as any)?.hit_type || 'hit')} · score {Number(score || 0).toFixed(4)}
+                                  {typeof (c as any)?.page_number === 'number' ? ` · P.${(c as any).page_number}` : null}
+                                  {typeof (c as any)?.chunk_index === 'number' ? ` · #${(c as any).chunk_index}` : null}
+                                </div>
+                              </div>
+                              {chunkId ? (
+                                <Badge variant="outline" className="font-mono text-[10px]">
+                                  {chunkId.slice(0, 8)}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            {c.chunk_content ? (
+                              <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
+                                {c.chunk_content}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
+                    )}
+                  </div>
+                </ScrollArea>
+                {whyMissedRanRetrieve && whyMissedCitations.length > 80 ? (
+                  <div className="mt-2 text-xs text-muted-foreground font-mono">
+                    showing first 80 of {whyMissedCitations.length}
+                  </div>
+                ) : null}
+              </Panel>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

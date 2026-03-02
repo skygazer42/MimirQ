@@ -24,6 +24,13 @@ type TokenResponse = {
 
 const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
 
+function jsonNoStore(data: any, init?: { status?: number }) {
+  const resp = NextResponse.json(data, init)
+  resp.headers.set('Cache-Control', 'no-store')
+  resp.headers.set('Pragma', 'no-cache')
+  return resp
+}
+
 function readEnv(name: string): string {
   return String(process.env[name] || '').trim()
 }
@@ -98,10 +105,10 @@ function normalizeTokenType(raw: unknown): string {
 export async function POST(req: NextRequest) {
   const enabled = readEnv('OIDC_SERVER_EXCHANGE_ENABLED')
   if (enabled && isFalsey(enabled)) {
-    return NextResponse.json({ error: 'oidc_server_exchange_disabled' }, { status: 400 })
+    return jsonNoStore({ error: 'oidc_server_exchange_disabled' }, { status: 400 })
   }
   if (!requireSameOrigin(req)) {
-    return NextResponse.json({ error: 'oidc_invalid_origin' }, { status: 403 })
+    return jsonNoStore({ error: 'oidc_invalid_origin' }, { status: 403 })
   }
 
   const body = (await req.json().catch(() => null)) as ExchangeRequestBody | null
@@ -110,23 +117,23 @@ export async function POST(req: NextRequest) {
   const redirectUri = resolveRedirectUri(req, body?.redirect_uri)
 
   if (!code || !codeVerifier) {
-    return NextResponse.json({ error: 'missing_code_or_verifier' }, { status: 400 })
+    return jsonNoStore({ error: 'missing_code_or_verifier' }, { status: 400 })
   }
   if (code.length > 4000 || codeVerifier.length > 200) {
-    return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
+    return jsonNoStore({ error: 'invalid_request' }, { status: 400 })
   }
 
   const issuer = resolveIssuer()
   const clientId = resolveClientId()
   if (!issuer || !clientId) {
-    return NextResponse.json({ error: 'oidc_not_configured' }, { status: 400 })
+    return jsonNoStore({ error: 'oidc_not_configured' }, { status: 400 })
   }
 
   let tokenEndpoint = ''
   try {
     tokenEndpoint = (await discoverTokenEndpoint(issuer)).token_endpoint
   } catch (e: any) {
-    return NextResponse.json({ error: String(e?.message || 'oidc_discovery_failed') }, { status: 400 })
+    return jsonNoStore({ error: String(e?.message || 'oidc_discovery_failed') }, { status: 400 })
   }
 
   const secret = resolveClientSecret()
@@ -156,12 +163,12 @@ export async function POST(req: NextRequest) {
   const data = (await res.json().catch(() => null)) as TokenResponse | null
   if (!res.ok) {
     const msg = String(data?.error_description || data?.error || '').trim()
-    return NextResponse.json({ error: msg || `oidc_token_exchange_failed_${res.status}` }, { status: 400 })
+    return jsonNoStore({ error: msg || `oidc_token_exchange_failed_${res.status}` }, { status: 400 })
   }
 
   const accessToken = String(data?.access_token || '').trim()
   if (!accessToken) {
-    return NextResponse.json({ error: 'oidc_missing_access_token' }, { status: 400 })
+    return jsonNoStore({ error: 'oidc_missing_access_token' }, { status: 400 })
   }
 
   const refreshToken = String(data?.refresh_token || '').trim()
@@ -172,7 +179,7 @@ export async function POST(req: NextRequest) {
     id_token: data?.id_token ? String(data.id_token) : undefined,
   }
 
-  const resp = NextResponse.json(out)
+  const resp = jsonNoStore(out)
   const secure = process.env.NODE_ENV === 'production'
 
   if (refreshToken) {

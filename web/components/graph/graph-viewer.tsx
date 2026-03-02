@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
+import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
 import { Loader2 } from 'lucide-react'
 
 // Dynamically import ForceGraph2D via wrapper to handle Ref correctly
@@ -49,6 +50,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const fgRef = useRef<any>(null)
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
+  const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
 
   // Sanitize data to ensure fresh 2D simulation
   // 1. Clone nodes/links to break references (especially when switching from 3D)
@@ -262,6 +264,9 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return '#f59e0b' // Amber 500 (Path Highlight)
               }
+              if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
+                 return '#38bdf8' // Sky 400 (Hover Highlight)
+              }
               if (highlightedNodeIds.size > 0) {
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target
@@ -280,16 +285,24 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
              if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return 4 
               }
+              if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
+                 return 3
+              }
               if (highlightedNodeIds.size > 0) return 1
               if (linkKind === 'entity_entity') return 1
               return 1.5
            }}
           linkDirectionalArrowLength={arrowLength}
           linkDirectionalArrowRelPos={1}
+          linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
           cooldownTicks={cooldownTicks}
           cooldownTime={cooldownTime}
           onNodeClick={handleNodeClick}
           onBackgroundClick={onBackgroundClick}
+          onLinkHover={(link: any) => {
+            const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+            setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
+          }}
           onNodeDragEnd={(node: any) => {
             node.fx = node.x;
             node.fy = node.y;

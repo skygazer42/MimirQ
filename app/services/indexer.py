@@ -347,6 +347,28 @@ class Indexer:
 
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
+
+        # Tenant quotas (Wave22-T094): best-effort rolling cap on indexing/embedding volume.
+        #
+        # Note: this is deliberately enforced here (right before vector/BM25 writes) so any
+        # ingestion path that calls Indexer will respect quotas.
+        try:
+            from app.services.tenant_quota_service import (
+                TenantQuotaExceededError,
+                enforce_tenant_embedding_char_quota,
+            )
+
+            enforce_tenant_embedding_char_quota(
+                self._db,
+                tenant_id=tenant_id,
+                additional_chars=int(total_characters or 0),
+            )
+        except TenantQuotaExceededError:
+            raise
+        except Exception:
+            # Fail open if quota checks are unavailable (misconfig/DB issues).
+            pass
+
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
         extra_vector_docs: List[Dict[str, Any]] = []

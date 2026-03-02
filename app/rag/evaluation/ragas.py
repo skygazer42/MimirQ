@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
@@ -81,35 +82,58 @@ def _extract_contexts(
     if not citations:
         return []
 
-    chunk_ids: List[UUID] = []
-    seen: set[UUID] = set()
-    for item in citations:
-        raw = None
-        if isinstance(item, dict):
-            raw = item.get("chunk_id")
-        if not raw:
-            continue
-        try:
-            cid = UUID(str(raw))
-        except Exception:
-            continue
-        if cid in seen:
-            continue
-        seen.add(cid)
-        chunk_ids.append(cid)
+    # Preserve citation ordering for context extraction and allow fallbacks for
+    # non-chunk-backed citations (e.g. TAG/table injected docs).
+    citation_items: list[dict[str, Any]] = []
 
-    if not chunk_ids:
+    chunk_ids: List[UUID] = []
+    seen_chunk_ids: set[UUID] = set()
+    for item in citations:
+        if item is None:
+            continue
+        if hasattr(item, "model_dump"):
+            try:
+                item = item.model_dump(mode="json")
+            except Exception:
+                continue
+        if not isinstance(item, dict):
+            continue
+
+        raw_chunk = item.get("chunk_id")
+        raw_doc = item.get("document_id")
+        fallback_text = str(item.get("chunk_content") or item.get("quote") or item.get("text") or "").strip()
+
+        chunk_id: UUID | None
+        try:
+            chunk_id = UUID(str(raw_chunk)) if raw_chunk else None
+        except Exception:
+            chunk_id = None
+
+        doc_id: UUID | None
+        try:
+            doc_id = UUID(str(raw_doc)) if raw_doc else None
+        except Exception:
+            doc_id = None
+
+        citation_items.append({"chunk_id": chunk_id, "document_id": doc_id, "fallback": fallback_text})
+        if chunk_id and chunk_id not in seen_chunk_ids:
+            seen_chunk_ids.add(chunk_id)
+            chunk_ids.append(chunk_id)
+
+    if not citation_items:
         return []
 
-    chunks = (
-        db.query(DocumentChunk)
-        .filter(
-            DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.id.in_(chunk_ids),
+    chunks: list[DocumentChunk] = []
+    if chunk_ids:
+        chunks = (
+            db.query(DocumentChunk)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.id.in_(chunk_ids),
+            )
+            .all()
         )
-        .all()
-    )
-    chunk_map: Dict[UUID, DocumentChunk] = {c.id: c for c in chunks}
+    chunk_map: Dict[UUID, DocumentChunk] = {c.id: c for c in (chunks or [])}
 
     # Defense-in-depth: only materialize contexts for documents the account can read.
     allowed_set: set[UUID] | None = None
@@ -117,6 +141,7 @@ def _extract_contexts(
         allowed_set = set(allowed_document_ids)
     else:
         candidate_doc_ids = {c.document_id for c in chunks if getattr(c, "document_id", None)}
+        candidate_doc_ids |= {d for d in (it.get("document_id") for it in citation_items) if d is not None}
         if candidate_doc_ids:
             allowed_ids, _missing = get_allowed_document_id_sets(
                 db,
@@ -139,17 +164,32 @@ def _extract_contexts(
         allowed_set = {doc_id for doc_id, ds_id in ds_rows if ds_id is not None and str(ds_id) == str(dataset_id)}
 
     contexts: List[str] = []
-    for cid in chunk_ids:
-        chunk = chunk_map.get(cid)
-        if not chunk:
+    seen_context_keys: set[str] = set()
+    for it in citation_items:
+        cid: UUID | None = it.get("chunk_id")
+        chunk = chunk_map.get(cid) if cid else None
+
+        # Prefer document_id from the resolved chunk; fall back to citation metadata.
+        doc_id = getattr(chunk, "document_id", None) if chunk is not None else it.get("document_id")
+        if allowed_set is not None:
+            # Fail closed if we can't associate the context with a document under ACL trimming.
+            if doc_id is None or doc_id not in allowed_set:
+                continue
+
+        content = (getattr(chunk, "content", None) if chunk is not None else None) or it.get("fallback") or ""
+        content = str(content or "")
+        if not content.strip():
             continue
-        if allowed_set is not None and chunk.document_id not in allowed_set:
-            continue
-        content = chunk.content or ""
+
         if max_context_chars and len(content) > max_context_chars:
             content = content[:max_context_chars] + "..."
-        if content:
-            contexts.append(content)
+
+        # Keep deterministic ordering while avoiding duplicates.
+        key = str(cid) if cid else f"text:{content[:64]}"
+        if key in seen_context_keys:
+            continue
+        seen_context_keys.add(key)
+        contexts.append(content)
     return contexts
 
 
@@ -319,6 +359,7 @@ def _build_regression_slice_summaries(
         "file_type": _bucketize(key="slice_file_type"),
         "language": _bucketize(key="slice_language"),
         "directory": _bucketize(key="slice_directory"),
+        "access_mode": _bucketize(key="slice_access_mode"),
         "hit_type": _bucketize(key="slice_hit_type"),
         "quality": _bucketize(key="slice_quality_bucket"),
         "pipeline_hash": _bucketize(key="slice_pipeline_hash"),
@@ -458,7 +499,7 @@ def _build_llm_and_embeddings():
     llm = ChatOpenAI(
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
-        base_url=settings.LLM_API_BASE,
+        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=0.0,
         streaming=False,
         timeout=settings.LLM_TIMEOUT,
@@ -481,7 +522,7 @@ def _build_llm_and_embeddings():
         )
     else:
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
+        base_url = normalize_openai_compatible_base_url(settings.EMBEDDING_API_BASE or settings.LLM_API_BASE)
         embeddings = OpenAIEmbeddings(
             model=settings.EMBEDDING_MODEL,
             api_key=api_key,
@@ -748,65 +789,29 @@ def run_regression_ragas_evaluation(
         # We map each case -> bucket keys using its reference_sources[].document_id.
         # These are used for "retrieval-only" slicing metrics, and are safe to compute
         # even when RAGAS metrics are disabled/unavailable.
-        def _normalize_language_bucket(value: object) -> str:
-            s = str(value or "").strip()
-            if not s:
-                return "unknown"
-            lowered = s.lower()
-            if lowered in {"mixed", "multilingual", "multi"}:
-                return "mixed"
-            if any(sep in lowered for sep in (",", ";", "|", "+", "/")):
-                return "mixed"
-            if lowered.startswith("zh"):
-                return "zh"
-            if lowered.startswith("en"):
-                return "en"
-            return "unknown"
+        #
+        # Keep in sync with dataset profiling and evidence drift audits (stable + actionable).
+        from app.core.pipeline_versions import get_active_pipeline_hash  # noqa: WPS433
+        from app.services.dataset_profile_service import (  # noqa: WPS433
+            directory_bucket_from_source_path,
+            extract_language_bucket,
+            quality_bucket_from_governance_quality,
+        )
 
-        def _dir_bucket_from_source_path(value: object) -> str:
-            raw = str(value or "").replace("\\", "/").strip()
-            if not raw or raw in {".", "/"}:
-                return "root"
-            raw = raw.lstrip("/")
-            head = raw.split("/", 1)[0].strip()
-            return head or "root"
+        def _normalize_access_mode(value: object) -> str:
+            s = str(value or "").strip().lower()
+            if not s or s == "inherit":
+                return "inherit"
+            if s in {"only_me", "partial_members", "all_team_members"}:
+                return s
+            return "unknown"
 
         def _normalize_pipeline_hash(value: object) -> str:
             s = str(value or "").strip()
             if not s:
                 return "unknown"
-            # Bound to a stable length for UI/report readability while keeping uniqueness.
-            return s[:64]
-
-        def _quality_bucket_from_governance_quality(value: object) -> str:
-            q = value if isinstance(value, dict) else {}
-            if not q:
-                return "unknown"
-            try:
-                density = float(q.get("density")) if q.get("density") is not None else None
-            except Exception:
-                density = None
-            try:
-                heading_ratio = float(q.get("heading_ratio")) if q.get("heading_ratio") is not None else None
-            except Exception:
-                heading_ratio = None
-            try:
-                content_chars = int(q.get("content_chars")) if q.get("content_chars") is not None else None
-            except Exception:
-                content_chars = None
-
-            # Stable, coarse buckets (avoid overfitting thresholds).
-            if content_chars is not None and content_chars < 200:
-                return "tiny"
-            if heading_ratio is not None and heading_ratio >= 0.75:
-                return "outline_heavy"
-            if density is None:
-                return "unknown"
-            if density < 0.08:
-                return "low_density"
-            if density < 0.15:
-                return "mid_density"
-            return "high_density"
+            # Bound for UI/report readability while keeping enough entropy.
+            return s[:16]
 
         evidence_doc_ids: set[UUID] = set()
         case_to_evidence_docs: dict[UUID, list[UUID]] = {}
@@ -836,33 +841,26 @@ def run_regression_ragas_evaluation(
         doc_attr: dict[UUID, dict[str, str]] = {}
         if evidence_doc_ids:
             rows = (
-                db.query(DBDocument.id, DBDocument.file_type, DBDocument.doc_metadata)
+                db.query(DBDocument.id, DBDocument.file_type, DBDocument.access_mode, DBDocument.doc_metadata)
                 .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(evidence_doc_ids)))
                 .all()
             )
-            for doc_id, file_type, meta in rows:
+            for doc_id, file_type, access_mode, meta in rows:
                 meta_dict = meta if isinstance(meta, dict) else {}
-                # language: prefer top-level; fallback to governance_enrichment.
-                lang = "unknown"
-                if isinstance(meta_dict.get("language"), str):
-                    lang = _normalize_language_bucket(meta_dict.get("language"))
-                else:
-                    enr = meta_dict.get("governance_enrichment")
-                    if isinstance(enr, dict) and isinstance(enr.get("language"), str):
-                        lang = _normalize_language_bucket(enr.get("language"))
-
-                source_path = meta_dict.get("source_path")
-                dir_bucket = _dir_bucket_from_source_path(source_path)
+                lang = extract_language_bucket(meta_dict)
+                dir_bucket = directory_bucket_from_source_path(meta_dict.get("source_path"))
                 ft = str(file_type or "").strip().lower() or "unknown"
-                active_ph = meta_dict.get("active_pipeline_hash") or meta_dict.get("pipeline_hash")
+                active_ph = get_active_pipeline_hash(meta_dict)
                 ph = _normalize_pipeline_hash(active_ph)
-                quality_bucket = _quality_bucket_from_governance_quality(meta_dict.get("governance_quality"))
+                quality_bucket = quality_bucket_from_governance_quality(meta_dict.get("governance_quality"))
+                acc = _normalize_access_mode(access_mode)
                 doc_attr[doc_id] = {
                     "file_type": ft,
                     "language": lang,
                     "directory": dir_bucket,
                     "pipeline_hash": ph,
                     "quality_bucket": quality_bucket,
+                    "access_mode": acc,
                 }
 
         case_slice_meta: dict[UUID, dict[str, str]] = {}
@@ -873,6 +871,7 @@ def run_regression_ragas_evaluation(
             dirs = {doc_attr.get(d, {}).get("directory", "root") for d in docs}
             phs = {doc_attr.get(d, {}).get("pipeline_hash", "unknown") for d in docs}
             quals = {doc_attr.get(d, {}).get("quality_bucket", "unknown") for d in docs}
+            accs = {doc_attr.get(d, {}).get("access_mode", "inherit") for d in docs}
 
             def _stable_bucket(values: set[str], *, default: str) -> str:
                 cleaned = {str(v or "").strip().lower() for v in values if str(v or "").strip()}
@@ -886,6 +885,7 @@ def run_regression_ragas_evaluation(
                 "slice_file_type": _stable_bucket(fts, default="unknown"),
                 "slice_language": _stable_bucket(langs, default="unknown"),
                 "slice_directory": _stable_bucket(dirs, default="root"),
+                "slice_access_mode": _stable_bucket(accs, default="inherit"),
                 "slice_pipeline_hash": _stable_bucket(phs, default="unknown"),
                 "slice_quality_bucket": _stable_bucket(quals, default="unknown"),
             }
@@ -906,71 +906,175 @@ def run_regression_ragas_evaluation(
             citations: Any = []
             graph_result: dict[str, Any] = {}
 
-            if retrieval_only:
-                from app.rag.pipelines.langgraph import _retrieve_node, build_rag_state
+            # === Multi-modal evaluation harness (Wave19-T066) ===
+            #
+            # Regression runs can include image/table-heavy questions. The main chat endpoint performs
+            # deterministic modality routing + context injection before running the RAG graph. We do
+            # the same here so regression runs reflect production behavior.
+            multimodal_router_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
+            tag_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+            image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+            injected_docs: list[Any] = []
 
-                state = build_rag_state(
-                    question=case.question,
-                    history=[],
-                    document_ids=(scope_doc_ids or None),
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=scope_dataset_id,
-                    top_k=int(rag_params.get("top_k", 5)),
-                    score_threshold=float(rag_params.get("score_threshold", 0.7)),
-                    retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
-                    alpha=float(rag_params.get("alpha", 0.6)),
-                    fusion_strategy=rag_params.get("fusion_strategy"),
-                    fusion_budgets=rag_params.get("fusion_budgets"),
-                    fusion_min_scores=rag_params.get("fusion_min_scores"),
-                    fusion_weights=rag_params.get("fusion_weights"),
-                    enable_weight_rerank=bool(rag_params.get("enable_weight_rerank", True)),
-                    vector_weight=float(rag_params.get("vector_weight", 0.6)),
-                    keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
-                    mmr_lambda=float(rag_params.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA)),
-                    enable_reranker=bool(rag_params.get("enable_reranker", settings.ENABLE_RERANKER)),
-                    reranker_provider=rag_params.get("reranker_provider") or settings.RERANKER_PROVIDER,
-                    reranker_top_n=int(rag_params.get("reranker_top_n", settings.RERANKER_TOP_N)),
-                    structured_output=False,
-                    structured_preset=None,
-                    prompt_template_id=rag_params.get("prompt_template_id"),
-                    prompt_template_key=rag_params.get("prompt_template_key"),
-                    prompt_ab_experiment_key=rag_params.get("prompt_ab_experiment_key"),
-                    ab_user_key=account_id,
-                    db=db,
-                )
+            # Optional: allow regression cases to force a modality to keep runs deterministic.
+            extra_d = case.extra if isinstance(getattr(case, "extra", None), dict) else {}
+            override_raw = str(extra_d.get("modality") or extra_d.get("query_modality") or "").strip().lower()
+
+            modality: str
+            if override_raw in {"text", "table", "image"}:
+                modality = override_raw
+                multimodal_router_meta["modality"] = modality
+                multimodal_router_meta["reasons"] = ["override"]
+            else:
+                try:
+                    from app.rag.policy.modality_router import classify_query_modality
+
+                    modality, reasons = classify_query_modality(case.question)
+                    modality = str(modality or "text").strip().lower() or "text"
+                    multimodal_router_meta["modality"] = modality
+                    multimodal_router_meta["reasons"] = reasons
+                except Exception as exc:  # noqa: BLE001
+                    modality = "text"
+                    multimodal_router_meta["enabled"] = False
+                    multimodal_router_meta["modality"] = "text"
+                    multimodal_router_meta["reasons"] = [f"router_exception:{str(exc)[:80]}"]
+
+            # Table/TAG injection: requires document_ids. For dataset-scoped cases, we resolve a bounded
+            # list of recent docs in the dataset and ACL-trim them.
+            try:
+                if modality == "table":
+                    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+                    doc_ids_for_tag = list(scope_doc_ids or [])
+                    if not doc_ids_for_tag and scope_dataset_id is not None:
+                        from app.models.document import Document as DBDocument
+                        from app.services.document_access import filter_allowed_document_ids
+
+                        max_doc_ids = int(getattr(settings, "CHAT_TAG_MAX_DOC_IDS", 1000) or 1000)
+                        cand_rows = (
+                            db.query(DBDocument.id)
+                            .filter(
+                                DBDocument.tenant_id == tenant_id,
+                                DBDocument.dataset_id == scope_dataset_id,
+                                DBDocument.status == "completed",
+                            )
+                            .order_by(DBDocument.updated_at.desc())
+                            .limit(max_doc_ids)
+                            .all()
+                        )
+                        cand_ids = [row[0] for row in cand_rows if row and row[0]]
+                        try:
+                            doc_ids_for_tag = filter_allowed_document_ids(db, tenant_id, account_id, cand_ids)
+                        except Exception:
+                            doc_ids_for_tag = []
+
+                    if doc_ids_for_tag:
+                        tag_docs, tag_meta = build_chat_tag_context_docs(
+                            db,
+                            tenant_id=tenant_id,
+                            document_ids=doc_ids_for_tag,
+                            question=case.question,
+                        )
+                        if tag_docs:
+                            injected_docs.extend(tag_docs)
+                    else:
+                        tag_meta = {"enabled": False, "used": False, "reason": "missing_document_scope"}
+            except Exception as exc:  # noqa: BLE001
+                tag_meta = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+
+            # Image injection: CLIP index is dataset-scoped; best-effort infer dataset_id for doc-scoped cases.
+            try:
+                if modality == "image":
+                    from app.models.document import Document as DBDocument
+                    from app.services.chat_image_service import build_chat_image_context_docs
+
+                    ds_for_images = scope_dataset_id
+                    if ds_for_images is None and scope_doc_ids:
+                        rows = (
+                            db.query(DBDocument.dataset_id)
+                            .filter(
+                                DBDocument.tenant_id == tenant_id,
+                                DBDocument.id.in_(list(scope_doc_ids)),
+                            )
+                            .distinct()
+                            .all()
+                        )
+                        ds_ids = {row[0] for row in rows if row and row[0]}
+                        if len(ds_ids) == 1:
+                            ds_for_images = next(iter(ds_ids))
+
+                    if ds_for_images is not None:
+                        image_docs, image_meta = build_chat_image_context_docs(
+                            db,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            dataset_id=ds_for_images,
+                            question=case.question,
+                        )
+                        if image_docs:
+                            injected_docs.extend(image_docs)
+                    else:
+                        image_meta = {"enabled": False, "used": False, "reason": "missing_dataset_id"}
+            except Exception as exc:  # noqa: BLE001
+                image_meta = {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
+
+            from app.rag.pipelines.langgraph import build_rag_graph, build_rag_state, run_rag_workflow_functional
+
+            state = build_rag_state(
+                question=case.question,
+                history=[],
+                document_ids=(scope_doc_ids or None),
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=scope_dataset_id,
+                top_k=int(rag_params.get("top_k", 5)),
+                score_threshold=float(rag_params.get("score_threshold", 0.7)),
+                retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
+                alpha=float(rag_params.get("alpha", 0.6)),
+                fusion_strategy=rag_params.get("fusion_strategy"),
+                fusion_budgets=rag_params.get("fusion_budgets"),
+                fusion_min_scores=rag_params.get("fusion_min_scores"),
+                fusion_weights=rag_params.get("fusion_weights"),
+                enable_weight_rerank=bool(rag_params.get("enable_weight_rerank", True)),
+                vector_weight=float(rag_params.get("vector_weight", 0.6)),
+                keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
+                mmr_lambda=float(rag_params.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA)),
+                enable_reranker=bool(rag_params.get("enable_reranker", settings.ENABLE_RERANKER)),
+                reranker_provider=rag_params.get("reranker_provider") or settings.RERANKER_PROVIDER,
+                reranker_top_n=int(rag_params.get("reranker_top_n", settings.RERANKER_TOP_N)),
+                structured_output=False,
+                structured_preset=None,
+                prompt_template_id=rag_params.get("prompt_template_id"),
+                prompt_template_key=rag_params.get("prompt_template_key"),
+                prompt_ab_experiment_key=rag_params.get("prompt_ab_experiment_key"),
+                ab_user_key=account_id,
+                db=db,
+            )
+
+            if injected_docs:
+                # Legacy surface: retrieval node consumes tag_docs (prepended before text retrieval results).
+                state["tag_docs"] = injected_docs
+            state["tag_meta"] = tag_meta
+            state["image_meta"] = image_meta
+            state["multimodal_router"] = multimodal_router_meta
+
+            if retrieval_only:
+                from app.rag.pipelines.langgraph import _retrieve_node
+
                 graph_result = _retrieve_node(state) or {}
                 citations = graph_result.get("citations") or []
                 response = ""
             else:
-                from app.rag.graph import run_rag_graph
+                thread_id = f"regression:{run_id}:{case.id}"
+                use_functional_api = bool(getattr(settings, "LANGGRAPH_USE_FUNCTIONAL_API", True))
+                if use_functional_api:
+                    graph_result = run_rag_workflow_functional(state, thread_id=thread_id, context=None) or {}
+                else:
+                    app = build_rag_graph()
+                    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+                    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
+                    graph_result = app.invoke(state, config=config, context=None) or {}
 
-                graph_result = run_rag_graph(
-                    question=case.question,
-                    history=[],
-                    document_ids=scope_doc_ids,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=scope_dataset_id,
-                    top_k=int(rag_params.get("top_k", 5)),
-                    score_threshold=float(rag_params.get("score_threshold", 0.7)),
-                    retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
-                    alpha=float(rag_params.get("alpha", 0.6)),
-                    enable_weight_rerank=bool(rag_params.get("enable_weight_rerank", True)),
-                    vector_weight=float(rag_params.get("vector_weight", 0.6)),
-                    keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
-                    mmr_lambda=float(rag_params.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA)),
-                    enable_reranker=bool(rag_params.get("enable_reranker", settings.ENABLE_RERANKER)),
-                    reranker_provider=rag_params.get("reranker_provider") or settings.RERANKER_PROVIDER,
-                    reranker_top_n=int(rag_params.get("reranker_top_n", settings.RERANKER_TOP_N)),
-                    structured_output=False,
-                    structured_preset=None,
-                    prompt_template_id=rag_params.get("prompt_template_id"),
-                    prompt_template_key=rag_params.get("prompt_template_key"),
-                    prompt_ab_experiment_key=rag_params.get("prompt_ab_experiment_key"),
-                    ab_user_key=account_id,
-                    db=db,
-                )
                 response = (graph_result or {}).get("answer") or ""
                 citations = (graph_result or {}).get("citations") or []
             contexts = _extract_contexts(
@@ -999,13 +1103,18 @@ def run_regression_ragas_evaluation(
             # Attach slice keys for report slicing (best-effort).
             merged_meta = dict(item_meta or {})
             merged_meta.update(case_slice_meta.get(case.id) or {})
+            # Multi-modal slicing/debug (best-effort; safe-by-default).
+            merged_meta.setdefault("slice_modality", str(multimodal_router_meta.get("modality") or "text"))
+            merged_meta.setdefault("multimodal_router", dict(multimodal_router_meta))
+            merged_meta.setdefault("tag_meta", dict(tag_meta))
+            merged_meta.setdefault("image_meta", dict(image_meta))
             # Retrieval channel slice (best-effort): use top-1 hit_type from citations.
             hit_type = "unknown"
             try:
                 c0 = (citations or [])[0] if isinstance(citations, list) else None
                 if isinstance(c0, dict):
                     raw_ht = str(c0.get("hit_type") or "").strip().lower()
-                    if raw_ht in {"vector", "keyword", "hybrid", "mmr"}:
+                    if raw_ht in {"vector", "keyword", "hybrid", "mmr", "tag", "image", "table"}:
                         hit_type = raw_ht
             except Exception:
                 hit_type = "unknown"

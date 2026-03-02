@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { datasetApi, usageApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import type { ChatTokenQuotaStatus, ChatTokenUsageSummary } from '@/types'
+import type { ChatCostUsageSummary, ChatTokenQuotaStatus, ChatTokenUsageSummary } from '@/types'
 import { cn } from '@/lib/utils'
 
 const WINDOW_PRESETS = [
@@ -31,14 +31,22 @@ export default function UsagePage() {
   const [windowDays, setWindowDays] = useState<number>(7)
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<ChatTokenUsageSummary | null>(null)
+  const [cost, setCost] = useState<ChatCostUsageSummary | null>(null)
   const [quota, setQuota] = useState<ChatTokenQuotaStatus | null>(null)
   const [datasetNameById, setDatasetNameById] = useState<Record<string, string>>({})
+
+  const formatSec = (sec: number | null | undefined) => {
+    if (sec == null || !Number.isFinite(sec)) return '—'
+    if (sec < 1) return `${Math.round(sec * 1000)}ms`
+    return `${sec.toFixed(2)}s`
+  }
 
   const load = async (days = windowDays) => {
     setLoading(true)
     try {
-      const [usage, q, datasets] = await Promise.all([
+      const [usage, costUsage, q, datasets] = await Promise.all([
         usageApi.getChatTokenUsageSummary({ window_days: days }),
+        usageApi.getChatCostUsageSummary({ window_days: days }).catch(() => null),
         usageApi.getChatTokenQuotaStatus().catch(() => null),
         datasetApi.list({ limit: 200 }),
       ])
@@ -50,9 +58,11 @@ export default function UsagePage() {
       }
       setDatasetNameById(nameMap)
       setSummary(usage)
+      setCost(costUsage)
       setQuota(q)
     } catch (err: any) {
       setSummary(null)
+      setCost(null)
       setQuota(null)
       toast.error(formatApiError(err, '加载用量数据失败'))
     } finally {
@@ -70,10 +80,27 @@ export default function UsagePage() {
     return [...list].sort((a, b) => (b.assistant_tokens || 0) - (a.assistant_tokens || 0))
   }, [summary?.by_dataset])
 
+  const costRows = useMemo(() => {
+    const list = cost?.by_dataset || []
+    return [...list].sort((a, b) => (b.llm_total_tokens || 0) - (a.llm_total_tokens || 0))
+  }, [cost?.by_dataset])
+
   const windowLabel = useMemo(() => {
     const p = WINDOW_PRESETS.find((x) => x.value === windowDays)
     return p?.label || `${windowDays} 天`
   }, [windowDays])
+
+  const avgRetrieve = useMemo(() => {
+    if (!cost) return null
+    const denom = Math.max(1, cost.total_assistant_messages || 0)
+    return cost.total_retrieval_elapsed_sec / denom
+  }, [cost])
+
+  const avgRerank = useMemo(() => {
+    if (!cost) return null
+    const denom = Math.max(1, cost.total_assistant_messages || 0)
+    return cost.total_rerank_elapsed_sec / denom
+  }, [cost])
 
   return (
     <AppFrame>
@@ -136,6 +163,33 @@ export default function UsagePage() {
                   subValue={windowLabel}
                   color="amber"
                 />
+                {cost ? (
+                  <StatCard
+                    icon={Coins}
+                    label="LLM 总 Tokens（估算）"
+                    value={cost.total_llm_total_tokens}
+                    subValue={`prompt ${cost.total_llm_prompt_tokens} + completion ${cost.total_llm_completion_tokens}`}
+                    color="orange"
+                  />
+                ) : null}
+                {cost ? (
+                  <StatCard
+                    icon={Coins}
+                    label="Embedding Tokens（估算）"
+                    value={cost.total_embedding_query_tokens}
+                    subValue={`${cost.total_embedding_query_chars} chars · queries by retrieval`}
+                    color="teal"
+                  />
+                ) : null}
+                {cost ? (
+                  <StatCard
+                    icon={BarChart3}
+                    label="Avg Retrieve"
+                    value={formatSec(avgRetrieve)}
+                    subValue={`avg rerank ${formatSec(avgRerank)}`}
+                    color="sky"
+                  />
+                ) : null}
                 <StatCard
                   icon={Coins}
                   label="配额剩余"
@@ -188,6 +242,51 @@ export default function UsagePage() {
                   </table>
                 </div>
               </Panel>
+
+              {cost ? (
+                <Panel padding="lg">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="text-sm font-semibold text-foreground">成本归因（估算）</div>
+                    <div className="text-xs text-muted-foreground">
+                      window: {new Date(cost.window_start).toLocaleString()} → {new Date(cost.window_end).toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div className="overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-muted-foreground border-b border-border/60">
+                          <th className="text-left py-2 pr-3 font-medium">数据集</th>
+                          <th className="text-right py-2 px-3 font-medium">请求数</th>
+                          <th className="text-right py-2 px-3 font-medium">LLM total</th>
+                          <th className="text-right py-2 px-3 font-medium">Embedding</th>
+                          <th className="text-right py-2 pl-3 font-medium">Avg retrieve</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {costRows.slice(0, 50).map((r, idx) => {
+                          const id = r.dataset_id || ''
+                          const name = id ? datasetNameById[id] || shortId(id) : '(unknown)'
+                          const denom = Math.max(1, r.assistant_messages || 0)
+                          const avgR = (r.retrieval_elapsed_sec_sum || 0) / denom
+                          return (
+                            <tr key={`${id}-${idx}`} className="border-b border-border/40 last:border-0">
+                              <td className="py-2 pr-3">
+                                <div className="font-medium text-foreground">{name}</div>
+                                {id ? <div className="text-[11px] text-muted-foreground font-mono">{id}</div> : null}
+                              </td>
+                              <td className="py-2 px-3 text-right tabular-nums">{r.assistant_messages}</td>
+                              <td className="py-2 px-3 text-right tabular-nums">{r.llm_total_tokens}</td>
+                              <td className="py-2 px-3 text-right tabular-nums">{r.embedding_query_tokens}</td>
+                              <td className="py-2 pl-3 text-right tabular-nums">{formatSec(avgR)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Panel>
+              ) : null}
             </div>
           )}
         </PageScaffold>

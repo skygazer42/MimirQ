@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
+  BarChart3,
   CheckCircle2,
   Clock,
   Loader2,
@@ -19,12 +20,21 @@ import { Button } from '@/components/ui/button'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { documentApi } from '@/lib/api-client'
+import { documentApi, observabilityApi } from '@/lib/api-client'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
-import type { Document } from '@/types'
+import type { Document, IngestionDashboardSummaryResponse } from '@/types'
 import { useDocumentView } from '@/store/document-view'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
 import { formatApiError } from '@/lib/api-errors'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts'
 
 type StatusFilter = 'all' | Document['status']
 
@@ -36,6 +46,14 @@ const STATUS_LABEL: Record<StatusFilter, string> = {
   failed: '失败',
   quarantined: '已隔离',
   cancelled: '已取消',
+}
+
+function formatTs(tsMs: number) {
+  try {
+    return new Date(tsMs).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return String(tsMs)
+  }
 }
 
 function StatusPill({ status }: { status: Document['status'] }) {
@@ -74,6 +92,7 @@ export default function IngestionMonitorPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailDocumentId, setDetailDocumentId] = useState<string | null>(null)
   const [acting, setActing] = useState<{ id: string; action: 'cancel' | 'retry' } | null>(null)
+  const [dashboardWindowHours, setDashboardWindowHours] = useState<number>(24)
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['ingestion-documents', status],
@@ -87,6 +106,14 @@ export default function IngestionMonitorPage() {
       ),
     staleTime: 3_000,
     refetchInterval: autoRefresh ? 5_000 : false,
+  })
+
+  const ingestionDashboardQuery = useQuery({
+    queryKey: ['ingestion-dashboard', dashboardWindowHours],
+    queryFn: () => observabilityApi.getIngestionDashboardSummary({ window_hours: dashboardWindowHours }),
+    staleTime: 30_000,
+    retry: false,
+    refetchOnWindowFocus: false,
   })
 
   const documents = useMemo(() => data?.items || [], [data])
@@ -118,6 +145,35 @@ export default function IngestionMonitorPage() {
 
     return { pending, processing, completed, failed, quarantined, cancelled, totalSize }
   }, [documents])
+
+  const dashboard: IngestionDashboardSummaryResponse | null = ingestionDashboardQuery.data ?? null
+
+  const dashboardChartData = useMemo(() => {
+    const series = dashboard?.timeseries || {}
+    const ts = (series as any)?.ts_ms || []
+    const completed = (series as any)?.completed || []
+    const failed = (series as any)?.failed || []
+    const quarantined = (series as any)?.quarantined || []
+
+    const out = []
+    for (let i = 0; i < ts.length; i++) {
+      const t = Number(ts[i] || 0)
+      out.push({
+        t,
+        time: formatTs(t),
+        completed: Number(completed[i] || 0),
+        failed: Number(failed[i] || 0),
+        quarantined: Number(quarantined[i] || 0),
+      })
+    }
+    return out
+  }, [dashboard?.timeseries])
+
+  const topErrorReasons = useMemo(() => {
+    const raw: Record<string, number> = (dashboard?.top_error_reasons || {}) as any
+    const entries = Object.entries(raw).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+    return entries.slice(0, 12)
+  }, [dashboard?.top_error_reasons])
 
   const handleCancel = async (docId: string) => {
     setActing({ id: docId, action: 'cancel' })
@@ -169,7 +225,10 @@ export default function IngestionMonitorPage() {
             <Button
               variant="outline"
               className="group gap-2 rounded-full bg-background/60"
-              onClick={() => refetch()}
+              onClick={() => {
+                void refetch()
+                void ingestionDashboardQuery.refetch()
+              }}
             >
               <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
               刷新状态
@@ -246,10 +305,129 @@ export default function IngestionMonitorPage() {
         }
         bodyClassName="pb-10 z-10"
       >
+        <div className="space-y-6">
+          {/* Admin dashboard (PII-safe aggregates). Non-admins will see a permission error and can ignore this section. */}
+          <div className="rounded-2xl border border-border/60 bg-card shadow-soft">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-sky-50 dark:bg-sky-500/10 border border-sky-100 dark:border-sky-500/20">
+                  <BarChart3 className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-black text-foreground">吞吐与错误画像</div>
+                  <div className="text-xs text-muted-foreground">PII-safe 聚合（需要 admin 权限）</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(dashboardWindowHours)}
+                  onValueChange={(v) => setDashboardWindowHours(parseInt(v, 10))}
+                >
+                  <SelectTrigger className="h-9 rounded-xl w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="24">最近 24 小时</SelectItem>
+                    <SelectItem value="72">最近 3 天</SelectItem>
+                    <SelectItem value="168">最近 7 天</SelectItem>
+                    <SelectItem value="720">最近 30 天</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 rounded-xl"
+                  disabled={ingestionDashboardQuery.isFetching}
+                  onClick={() => void ingestionDashboardQuery.refetch()}
+                >
+                  <RefreshCw className={cn('w-4 h-4', ingestionDashboardQuery.isFetching && 'animate-spin motion-reduce:animate-none')} />
+                  刷新
+                </Button>
+              </div>
+            </div>
+
+            <div className="border-t border-border/60 p-5">
+              {!dashboard ? (
+                <div className="text-xs text-muted-foreground">
+                  {ingestionDashboardQuery.isFetching
+                    ? '加载中...'
+                    : ingestionDashboardQuery.error
+                      ? formatApiError(ingestionDashboardQuery.error as any, '无权限或暂不可用')
+                      : '尚无数据'}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground">窗口内新建</div>
+                      <div className="mt-1 text-2xl font-black text-foreground">{dashboard.created_count ?? 0}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground">窗口内完成</div>
+                      <div className="mt-1 text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                        {dashboardChartData.reduce((acc, r: any) => acc + (Number(r?.completed) || 0), 0)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground">窗口内失败/隔离</div>
+                      <div className="mt-1 text-2xl font-black text-red-600 dark:text-red-400">
+                        {dashboardChartData.reduce((acc, r: any) => acc + (Number(r?.failed) || 0) + (Number(r?.quarantined) || 0), 0)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground">平均完成耗时</div>
+                      <div className="mt-1 text-2xl font-black text-foreground">
+                        {dashboard.avg_completed_latency_sec != null
+                          ? `${(Number(dashboard.avg_completed_latency_sec || 0) / 60).toFixed(1)}m`
+                          : '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-2 rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="text-xs font-bold text-muted-foreground mb-3">吞吐（按时间桶）</div>
+                      <div className="h-[220px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={dashboardChartData}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                            <XAxis dataKey="time" fontSize={10} tickMargin={8} />
+                            <YAxis fontSize={10} tickMargin={8} />
+                            <Tooltip />
+                            <Bar dataKey="completed" stackId="a" fill="#10b981" />
+                            <Bar dataKey="failed" stackId="a" fill="#ef4444" />
+                            <Bar dataKey="quarantined" stackId="a" fill="#f59e0b" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="text-xs font-bold text-muted-foreground mb-3">错误画像（Top）</div>
+                      {topErrorReasons.length ? (
+                        <div className="space-y-2">
+                          {topErrorReasons.map(([reason, count]) => (
+                            <div key={reason} className="flex items-center justify-between gap-3">
+                              <div className="min-w-0 text-xs font-mono text-foreground truncate">{reason}</div>
+                              <div className="text-xs font-bold text-muted-foreground tabular-nums">{count}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">暂无错误统计</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="space-y-3">
-	            {filtered.map((doc) => (
-	              <div
-	                key={doc.id}
+		            {filtered.map((doc) => (
+		              <div
+		                key={doc.id}
 	                className={cn(
 	                  'group w-full rounded-xl border relative overflow-hidden transition-colors transition-shadow duration-200 motion-reduce:transition-none',
 	                  'bg-card border-border hover:border-primary/30 hover:shadow-strong',
@@ -418,16 +596,17 @@ export default function IngestionMonitorPage() {
               </div>
             ))}
 
-            {!filtered.length && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-20 h-20 rounded-full bg-muted/40 flex items-center justify-center mb-4">
-                  <Search className="w-8 h-8 text-muted-foreground/50" />
-                </div>
-                <p className="text-muted-foreground font-medium">没有找到相关的入库任务</p>
-              </div>
-            )}
-          </div>
-      </PageScaffold>
+		            {!filtered.length && (
+		              <div className="flex flex-col items-center justify-center py-20 text-center">
+		                <div className="w-20 h-20 rounded-full bg-muted/40 flex items-center justify-center mb-4">
+		                  <Search className="w-8 h-8 text-muted-foreground/50" />
+		                </div>
+		                <p className="text-muted-foreground font-medium">没有找到相关的入库任务</p>
+		              </div>
+		            )}
+		          </div>
+        </div>
+	      </PageScaffold>
       <IngestionDetailDialog
         open={detailOpen}
         onOpenChange={(next) => {

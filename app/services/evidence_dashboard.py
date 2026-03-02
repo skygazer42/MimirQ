@@ -50,7 +50,9 @@ def _norm_bucket(value: Any, *, fallback: str = "unknown") -> str:
 
 def _norm_hit_type(value: Any) -> str:
     s = _norm_bucket(value, fallback="unknown")
-    return s if s in {"vector", "keyword", "hybrid", "mmr"} else "unknown"
+    # Keep this low-cardinality. Align with Citation.hit_type (vector/keyword/hybrid/mmr/tag)
+    # and allow multi-modal expansions without breaking older data.
+    return s if s in {"vector", "keyword", "hybrid", "mmr", "tag", "image", "table"} else "unknown"
 
 
 def _percentile(values: Sequence[float], pct: float) -> Optional[float]:

@@ -38,6 +38,13 @@ export function setAuthSession(params: { token: AuthToken; user: UserProfile }) 
   window.localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
 }
 
+export function setAccessToken(token: AuthToken) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, token.access_token)
+  const expiresAt = Date.now() + token.expires_in * 1000
+  window.localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
+}
+
 export function setStoredUser(user: UserProfile) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(USER_KEY, JSON.stringify(user))

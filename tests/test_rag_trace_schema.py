@@ -49,6 +49,50 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                             "requested_k": 5,
                             "search_k": 10,
                             "overfetch_enabled": True,
+                            "channels": {
+                                "timing": {"vector_ms": 12.3, "bm25_ms": 4.5, "fusion_ms": 1.2},
+                                "counts": {"vector_candidates": 10, "bm25_candidates": 8, "sparse_candidates": 6},
+                                "retrieval_mode": "hybrid",
+                                "fusion_strategy": "rrf",
+                                "rrf_k": 60,
+                                "fusion_weights": {"vector": 0.6, "keyword": 0.4},
+                                "vector_backend": "milvus",
+                                "vector": {"enabled": True, "candidates": 10, "filter_applied": False},
+                                "bm25": {"enabled": True, "candidates": 8, "index_enabled": True, "filter_applied": True},
+                                "lexical_db": {
+                                    "enabled": False,
+                                    "candidates": 0,
+                                    "fts_config": "simple",
+                                    "trgm_enabled": True,
+                                    "pg_trgm_available": True,
+                                    "methods": {"fts": 0, "trgm": 0},
+                                },
+                                "sparse": {"enabled": True, "candidates": 6, "provider": "splade"},
+                                "merged_pre_dedup": 20,
+                                "merged_post_dedup": 18,
+                                "merged_post_rerank": 18,
+                                "returned_top_k": 5,
+                                "rerank": {
+                                    "enabled": True,
+                                    "provider": "cohere",
+                                    "top_n_config": 10,
+                                    "candidates_n": 18,
+                                    "used": False,
+                                    "elapsed_sec": 0.45,
+                                    "model_used": "rerank-v3",
+                                    "error": None,
+                                    "skip_reason": "provider_disabled",
+                                },
+                                "attribution": {"vector": 3, "bm25": 2, "lexical_db": 1, "multi": 2},
+                                "diversity": {"before": 18, "after": 5, "dropped": 13},
+                                "dedup": {
+                                    "near_dedup_enabled": True,
+                                    "near_dedup_dropped": 2,
+                                    "near_dedup_hamming_threshold": 3,
+                                    "near_dedup_max_compare": 10,
+                                },
+                                "cache": {"hit": True, "store_ok": True},
+                            },
                             "scope": {
                                 "tenant_id": str(tenant_id),
                                 "dataset_id": str(uuid.uuid4()),
@@ -68,6 +112,10 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                     "chunk_id": str(uuid.uuid4()),
                     "page_number": 1,
                     "relevance_score": 0.9,
+                    "vector_score": 0.123,
+                    "bm25_score": 0.456,
+                    "lexical_score": 0.789,
+                    "sparse_score": 0.314,
                     "retrieval_elapsed_sec": 0.12,
                     "rerank_elapsed_sec": 0.45,
                     "retrieval_role": "main",
@@ -142,6 +190,11 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     assert item.retrieval.retrieval_config_hash == "cfg-123"
     assert item.retrieval.per_query and item.retrieval.per_query[0].retriever_debug is not None
     assert item.retrieval.per_query[0].retriever_debug.get("requested_k") == 5
+    channels = item.retrieval.per_query[0].retriever_debug.get("channels")
+    assert isinstance(channels, dict)
+    assert (channels.get("timing") or {}).get("vector_ms") == 12.3
+    assert (channels.get("counts") or {}).get("bm25_candidates") == 8
+    assert (channels.get("rerank") or {}).get("skip_reason") == "provider_disabled"
     scope = item.retrieval.per_query[0].retriever_debug.get("scope") or {}
     assert scope.get("account_id_present") is True
     assert scope.get("dataset_id_present") is True
@@ -150,6 +203,10 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
 
     assert item.citations and item.citations[0].retrieval_role == "main"
     assert item.citations and item.citations[0].neighbor_of == "chunk-0"
+    assert item.citations and item.citations[0].vector_score == 0.123
+    assert item.citations and item.citations[0].bm25_score == 0.456
+    assert item.citations and item.citations[0].lexical_score == 0.789
+    assert item.citations and item.citations[0].sparse_score == 0.314
     prov = (item.citations[0] or {}).kg_path_provenance
     assert isinstance(prov, dict)
     assert prov.get("schema") == "mimirq.kg_path_provenance.v1"

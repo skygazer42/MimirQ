@@ -36,6 +36,8 @@ class RagTraceCitation(BaseModel):
     relevance_score: Optional[float] = None
     vector_score: Optional[float] = None
     bm25_score: Optional[float] = None
+    lexical_score: Optional[float] = None
+    sparse_score: Optional[float] = None
     keyword_score: Optional[float] = None
     rerank_score: Optional[float] = None
     retrieval_score: Optional[float] = None

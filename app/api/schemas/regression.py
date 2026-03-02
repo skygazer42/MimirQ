@@ -230,6 +230,27 @@ class RegressionRunMetricDiff(BaseModel):
     delta: Optional[float] = None
 
 
+class RegressionRunDiffScore(BaseModel):
+    """
+    Compact score payload for CI / dashboards.
+
+    Notes:
+    - This is intentionally a small, stable schema (PII-safe numeric aggregates only).
+    - `weights` are the effective normalized weights applied to the `used_metric_keys` set.
+    """
+
+    version: str = "1"
+    used_metric_keys: List[str] = Field(default_factory=list)
+    weights: Dict[str, float] = Field(default_factory=dict)
+
+    base_score: Optional[float] = None
+    target_score: Optional[float] = None
+    delta: Optional[float] = None
+
+    base_metrics: Dict[str, float] = Field(default_factory=dict)
+    target_metrics: Dict[str, float] = Field(default_factory=dict)
+
+
 class RegressionRunSliceBucketDiff(BaseModel):
     key: str
     items_before: int = 0
@@ -250,4 +271,5 @@ class RagasRegressionRunDiffResponse(BaseModel):
     base_params: Dict[str, Any] = Field(default_factory=dict)
     target_params: Dict[str, Any] = Field(default_factory=dict)
     metric_diffs: List[RegressionRunMetricDiff] = Field(default_factory=list)
+    diff_score: Optional[RegressionRunDiffScore] = None
     slice_diffs: Dict[str, RegressionRunSliceDiff] = Field(default_factory=dict)

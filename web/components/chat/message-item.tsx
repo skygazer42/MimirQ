@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils'
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 import { useDocumentView } from '@/store/document-view'
+import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
+import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dialog'
 
 import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -662,12 +664,26 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 const CitationCard = memo(function CitationCard({ citation, index }: { citation: Citation; index: number }) {
   const { openDocument } = useDocumentView()
   const [hideImage, setHideImage] = useState(false)
+  const [viewerOpen, setViewerOpen] = useState(false)
   const imgUrl = (() => {
     if (!citation.img_url) return null
-    const raw = citation.img_url
-    const resolved = /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw) ? raw : toAbsoluteBackendUrl(raw)
-    return maybeAttachImageAuthToken(resolved)
+    return resolveSafeCitationImageUrl(citation.img_url)
   })()
+
+  const isTableEvidence = (() => {
+    const hitType = String((citation as any).hit_type || '').trim().toLowerCase()
+    const chunkRole = String((citation as any).chunk_role || '').trim().toLowerCase()
+    const semanticRole = String((citation as any).chunk_semantic_role || '').trim().toLowerCase()
+    return (
+      hitType === 'tag' ||
+      hitType === 'table' ||
+      chunkRole.includes('tag') ||
+      chunkRole.includes('table') ||
+      semanticRole === 'table'
+    )
+  })()
+
+  const canViewEvidence = Boolean((citation.has_image && imgUrl && !hideImage) || isTableEvidence)
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -691,10 +707,11 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
   }, [citation.document_id, citation.chunk_id, citation.evidence_start_char, citation.evidence_end_char, citation.start_char, citation.end_char, openDocument])
 
 	  return (
-	    <div
-	      onClick={handleClick}
-	      className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 cursor-pointer shadow-sm focus-ring transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md"
-	    >
+      <>
+	      <div
+	        onClick={handleClick}
+	        className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 cursor-pointer shadow-sm focus-ring transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md"
+	      >
       <div className="flex items-start gap-3">
         <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
           {index + 1}
@@ -711,11 +728,38 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
             <span className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[10px]">
               相似度 {Math.round(citation.relevance_score * 100)}%
             </span>
+            {canViewEvidence ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setViewerOpen(true)
+                }}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                  'border border-border bg-background/60 text-foreground/80',
+                  'hover:bg-muted/40 hover:text-foreground transition-colors'
+                )}
+                aria-label="view-evidence"
+                title="查看证据（图片/表格溯源）"
+              >
+                查看证据
+              </button>
+            ) : null}
           </div>
 
           {citation.has_image && imgUrl && !hideImage && (
             <div className="mt-2 rounded-md overflow-hidden border border-border/50">
-	              <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video">
+	              <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setViewerOpen(true)
+                  }}
+                  className="block relative aspect-video w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                  aria-label="open-evidence-viewer"
+                  title="打开 Evidence Viewer"
+                >
 	                <Image
 	                  src={imgUrl}
 	                  alt="引用图片"
@@ -725,11 +769,17 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
 	                  className="object-cover"
 	                  onError={() => setHideImage(true)}
 	                />
-	              </a>
+	              </button>
 	            </div>
 	          )}
         </div>
       </div>
     </div>
+        <EvidenceViewerDialog
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+          citation={viewerOpen ? citation : null}
+        />
+      </>
   )
 })

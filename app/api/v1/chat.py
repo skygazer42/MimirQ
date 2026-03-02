@@ -8,7 +8,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -320,6 +320,11 @@ async def chat(
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
     allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+
+    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+
+    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="chat")
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
@@ -667,22 +672,74 @@ async def chat(
                     db=db,
                 )
 
-                # Optional: Chat -> TAG injection for LangGraph path.
-                # This mirrors the LangChain engine behavior, but keeps the DB/LLM calls
-                # outside the graph to avoid persisting non-serializable resources.
-                try:
-                    from app.services.chat_tag_service import build_chat_tag_context_docs
+                # Optional: Multi-modal routing (deterministic) + context injection.
+                #
+                # Notes:
+                # - Keep DB/LLM calls outside the graph to avoid persisting non-serializable resources.
+                # - Injection happens via `tag_docs` (existing surface used by the retrieval node).
+                multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
+                injected_docs: list[Any] = []
 
-                    tag_docs, tag_meta = build_chat_tag_context_docs(
-                        db,
-                        tenant_id=tenant_id,
-                        document_ids=doc_ids_to_use,
-                        question=request.message,
-                    )
-                    state["tag_docs"] = tag_docs
-                    state["tag_meta"] = tag_meta
+                tag_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+                image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+
+                try:
+                    from app.rag.policy.modality_router import classify_query_modality
+
+                    modality, reasons = classify_query_modality(request.message)
+                    multimodal_meta["modality"] = modality
+                    multimodal_meta["reasons"] = reasons
                 except Exception as exc:  # noqa: BLE001
-                    state["tag_meta"] = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+                    multimodal_meta["enabled"] = False
+                    multimodal_meta["modality"] = "text"
+                    multimodal_meta["reasons"] = [f"router_exception:{str(exc)[:80]}"]
+                    modality = "text"
+
+                # Table/TAG injection (only when the query looks tabular).
+                try:
+                    if str(modality or "text").lower().strip() == "table":
+                        from app.services.chat_tag_service import build_chat_tag_context_docs
+
+                        tag_docs, tag_meta = build_chat_tag_context_docs(
+                            db,
+                            tenant_id=tenant_id,
+                            document_ids=doc_ids_to_use,
+                            question=request.message,
+                        )
+                        if tag_docs:
+                            injected_docs.extend(tag_docs)
+                except Exception as exc:  # noqa: BLE001
+                    tag_meta = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+
+                # Image injection (only when the query asks for images/figures).
+                try:
+                    if str(modality or "text").lower().strip() == "image":
+                        from app.services.chat_image_service import build_chat_image_context_docs
+
+                        ds_for_images = dataset_id_used or scope_dataset_id
+                        if ds_for_images is not None:
+                            image_docs, image_meta = build_chat_image_context_docs(
+                                db,
+                                tenant_id=tenant_id,
+                                account_id=account_id,
+                                dataset_id=ds_for_images,
+                                question=request.message,
+                                top_k=6,
+                            )
+                            if image_docs:
+                                injected_docs.extend(image_docs)
+                        else:
+                            image_meta = {"enabled": False, "used": False, "reason": "missing_dataset_id"}
+                except Exception as exc:  # noqa: BLE001
+                    image_meta = {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
+
+                # Legacy surface: retrieval node consumes `tag_docs` (prepended before text retrieval results).
+                if injected_docs:
+                    state["tag_docs"] = injected_docs
+
+                state["tag_meta"] = tag_meta
+                state["image_meta"] = image_meta
+                state["multimodal_router"] = multimodal_meta
 
                 recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
                 config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
@@ -691,6 +748,9 @@ async def chat(
                 citations_data = graph_result.get("citations") or []
                 full_response = graph_result.get("answer") or ""
                 metrics_data = dict(graph_result.get("metrics") or {})
+                metrics_data.setdefault("multimodal_router", multimodal_meta)
+                metrics_data.setdefault("tag", tag_meta)
+                metrics_data.setdefault("image", image_meta)
 
                 if request.structured_output:
                     structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
@@ -775,6 +835,8 @@ async def chat(
         if dataset_prompt_defaults_applied_fields:
             metrics_data.setdefault("dataset_prompt_defaults_applied", True)
             metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
+        if tenant_qps_meta.get("enabled"):
+            metrics_data.setdefault("tenant_qps_quota", tenant_qps_meta)
         if quota_meta.get("enabled"):
             metrics_data.setdefault("quota", quota_meta)
 
@@ -890,6 +952,12 @@ async def stream_chat(
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
     allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+
+    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+
+    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="chat")
+
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
         raise HTTPException(status_code=429, detail="Chat quota exceeded (assistant tokens)")
@@ -1455,6 +1523,8 @@ async def stream_chat(
                 if dataset_prompt_defaults_applied_fields:
                     metrics_data.setdefault("dataset_prompt_defaults_applied", True)
                     metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
+                if tenant_qps_meta.get("enabled"):
+                    metrics_data.setdefault("tenant_qps_quota", tenant_qps_meta)
                 if quota_meta.get("enabled"):
                     metrics_data.setdefault("quota", quota_meta)
 
@@ -1709,6 +1779,15 @@ async def stream_chat(
                         except Exception:
                             pass
 
+                    if tenant_qps_meta.get("enabled"):
+                        try:
+                            if isinstance(metrics_data, dict):
+                                metrics_data.setdefault("tenant_qps_quota", tenant_qps_meta)
+                            if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
+                                event["data"]["metrics"].setdefault("tenant_qps_quota", tenant_qps_meta)
+                        except Exception:
+                            pass
+
                     if quota_meta.get("enabled"):
                         try:
                             if isinstance(metrics_data, dict):
@@ -1783,6 +1862,8 @@ async def stream_chat(
             # 4. Persist assistant response.
             if dataset_id_used is not None and isinstance(metrics_data, dict):
                 metrics_data.setdefault("dataset_id", str(dataset_id_used))
+            if tenant_qps_meta.get("enabled") and isinstance(metrics_data, dict):
+                metrics_data.setdefault("tenant_qps_quota", tenant_qps_meta)
             if quota_meta.get("enabled") and isinstance(metrics_data, dict):
                 metrics_data.setdefault("quota", quota_meta)
 

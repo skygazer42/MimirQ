@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useCallback, useMemo, useState } from 'react'
 import {
   Copy,
@@ -17,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { IconButton } from '@/components/ui/icon-button'
 import { Panel } from '@/components/ui/panel'
 import { formatApiError } from '@/lib/api-errors'
+import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { cn } from '@/lib/utils'
 import { evaluationApi, ragApi } from '@/lib/api-client'
 import { toast } from 'sonner'
@@ -98,6 +100,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [activeHit, setActiveHit] = useState<Citation | null>(null)
+  const activeHitImageUrl = useMemo(() => {
+    if (!activeHit?.has_image) return null
+    return resolveSafeCitationImageUrl(activeHit.img_url)
+  }, [activeHit])
 
   const selectedEvidenceSet = useMemo(() => new Set(selectedEvidenceChunkIds || []), [selectedEvidenceChunkIds])
 
@@ -503,12 +509,39 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                           )}
                         </td>
                         <td className="p-3 align-top">
-                          <span className="inline-flex items-center gap-1 text-muted-foreground">
-                            <FileIcon className="w-3 h-3" />
-                            <span className="truncate max-w-[180px]" title={docName}>
-                              {docName || 'Unknown'}
+                          <div className="flex items-start gap-2">
+                            {hit.has_image && hit.img_url ? (
+                              (() => {
+                                const safeUrl = resolveSafeCitationImageUrl(hit.img_url)
+                                if (!safeUrl) return null
+                                return (
+                                  <a
+                                    href={safeUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="shrink-0 relative h-10 w-10 rounded-md overflow-hidden border border-border/60 bg-muted/20"
+                                    title="Open image"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Image
+                                      src={safeUrl}
+                                      alt="citation thumbnail"
+                                      fill
+                                      unoptimized
+                                      sizes="40px"
+                                      className="object-cover"
+                                    />
+                                  </a>
+                                )
+                              })()
+                            ) : null}
+                            <span className="inline-flex items-center gap-1 text-muted-foreground min-w-0">
+                              <FileIcon className="w-3 h-3" />
+                              <span className="truncate max-w-[180px]" title={docName}>
+                                {docName || 'Unknown'}
+                              </span>
                             </span>
-                          </span>
+                          </div>
                         </td>
                         <td className="p-3 align-top text-muted-foreground tabular-nums">
                           {typeof hit.page_number === 'number' ? hit.page_number : '—'}
@@ -886,6 +919,21 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
             <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
               {activeHit ? (
                 <>
+                  {activeHitImageUrl ? (
+                    <div className="rounded-xl border border-border/60 bg-background/60 overflow-hidden">
+                      <a href={activeHitImageUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video">
+                        <Image
+                          src={activeHitImageUrl}
+                          alt="cited image"
+                          fill
+                          unoptimized
+                          sizes="(max-width: 768px) 100vw, 640px"
+                          className="object-contain bg-muted/10"
+                        />
+                      </a>
+                    </div>
+                  ) : null}
+
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"

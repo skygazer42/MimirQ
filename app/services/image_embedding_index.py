@@ -380,7 +380,7 @@ def build_image_citations(
         return []
 
     rows_q = (
-        db.query(DocumentChunk)
+        db.query(DocumentChunk, DBDocument.filename)
         .join(DBDocument, and_(DBDocument.id == DocumentChunk.document_id, DBDocument.tenant_id == DocumentChunk.tenant_id))
         .filter(
             DocumentChunk.tenant_id == tenant_id,
@@ -402,18 +402,26 @@ def build_image_citations(
         rows_q = rows_q.filter(DBDocument.id.in_(select(doc_ids_subq.c.id)))
 
     rows = rows_q.all()
-    by_id = {str(r.id): r for r in rows if getattr(r, "id", None) is not None}
+    by_id: dict[str, tuple[Any, str]] = {}
+    for chunk, filename in rows:
+        cid = getattr(chunk, "id", None)
+        if cid is None:
+            continue
+        by_id[str(cid)] = (chunk, str(filename or "").strip())
 
     out: list[dict[str, Any]] = []
     for h in hits[:lim]:
-        row = by_id.get(str(h.chunk_id))
-        if row is None:
+        item = by_id.get(str(h.chunk_id))
+        if item is None:
             continue
+        row, filename = item
         meta = dict(getattr(row, "doc_metadata", None) or {})
         normalize_image_metadata(meta)
+        doc_name = filename or str(meta.get("source") or "").strip() or str(getattr(row, "document_id", "") or "")
         out.append(
             {
                 "document_id": str(getattr(row, "document_id", "") or ""),
+                "document_name": doc_name,
                 "chunk_id": str(getattr(row, "id", "") or ""),
                 "chunk_index": int(getattr(row, "chunk_index", 0) or 0),
                 "page_number": getattr(row, "page_number", None),

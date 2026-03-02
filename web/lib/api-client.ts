@@ -56,7 +56,9 @@ import type {
   ConversationSummaryResponse,
   ConversationSummaryUpdateResponse,
   ChatTokenUsageSummary,
+  ChatCostUsageSummary,
   ChatTokenQuotaStatus,
+  TenantQuotaSummary,
   AuditLogListResponse,
   DocumentPreview,
   DocumentParsedContentResponse,
@@ -212,20 +214,22 @@ import type {
 	  IngestionPolicyVersionListResponse,
 	  IngestionPreviewResponse,
   RagvizSimilarityCollectionsResponse,
-  RagvizSimilarityRequest,
-  RagvizSimilarityCalculateResponse,
-  RagMetricsSummaryResponse,
-  IndexAuditResponse,
-  RagTraceListResponse,
-  RagasRegressionRunDiffResponse,
-} from '@/types'
+	  RagvizSimilarityRequest,
+	  RagvizSimilarityCalculateResponse,
+	  RagMetricsSummaryResponse,
+	  IndexAuditResponse,
+	  IngestionDashboardSummaryResponse,
+	  RagTraceListResponse,
+	  RagasRegressionRunDiffResponse,
+	} from '@/types'
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
 import { buildFetchError } from '@/lib/fetch-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
-import { clearAuthSession, getAccessToken } from '@/lib/auth-storage'
+import { clearAuthSession, getAccessToken, setAccessToken } from '@/lib/auth-storage'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
+import { tryRefreshOidcAccessToken } from '@/lib/oidc-session'
 import { createOpenApiAxiosClient } from '@/lib/openapi-request'
 import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
 import { generateRequestId } from '@/lib/request-id'
@@ -289,7 +293,7 @@ apiClient.interceptors.response.use(
 
     return response
   },
-  (error) => {
+  async (error) => {
     // 统一错误处理
     if (error.response) {
       const status = error.response.status
@@ -306,6 +310,20 @@ apiClient.interceptors.response.use(
           // If we were using JWT auth and the token is rejected/expired, clear the session
           // so the UI doesn't stay in a broken "logged-in" state.
           const token = getAccessToken()
+          const canAttemptRefresh =
+            !!token && typeof window !== 'undefined' && !!error?.config && !(error.config as any).__mimirqOidcRetried
+          if (canAttemptRefresh) {
+            ;(error.config as any).__mimirqOidcRetried = true
+
+            const refreshed = await tryRefreshOidcAccessToken()
+            if (refreshed) {
+              setAccessToken(refreshed)
+              // Retry the original request once with the refreshed token.
+              // The request interceptor will inject the updated Authorization header.
+              return apiClient.request(error.config)
+            }
+          }
+
           if (token) {
             clearAuthSession()
             if (typeof window !== 'undefined') {
@@ -3201,6 +3219,15 @@ export const observabilityApi = {
     return data
   },
 
+  async getIngestionDashboardSummary(params: {
+    window_hours?: number
+    bucket_minutes?: number
+    dataset_id?: string
+  } = {}): Promise<IngestionDashboardSummaryResponse> {
+    const { data } = await apiClient.get('/observability/ingestion/summary', { params })
+    return data
+  },
+
   async getIndexAudit(params: {
     dataset_id: string
     max_check_ids?: number
@@ -3218,8 +3245,18 @@ export const usageApi = {
     return data
   },
 
+  async getChatCostUsageSummary(params: { window_days?: number; since?: string; until?: string } = {}): Promise<ChatCostUsageSummary> {
+    const { data } = await apiClient.get('/usage/chat/cost/summary', { params })
+    return data
+  },
+
   async getChatTokenQuotaStatus(): Promise<ChatTokenQuotaStatus> {
     const { data } = await apiClient.get('/usage/chat/tokens/quota')
+    return data
+  },
+
+  async getTenantQuotaSummary(): Promise<TenantQuotaSummary> {
+    const { data } = await apiClient.get('/usage/tenant/quotas')
     return data
   },
 }
@@ -3604,6 +3641,34 @@ export const evaluationApi = {
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff/export-html`, { params, responseType: 'blob' })
     return data as Blob
+  },
+
+  async exportRegressionRunBundle(
+    runId: string,
+    params?: {
+      include_text?: boolean
+      include_contexts?: boolean
+      redact_ids?: boolean
+      max_items?: number
+      max_citations?: number
+      download?: boolean
+    }
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/export-bundle`, {
+      params,
+      responseType: 'blob',
+    })
+    return data as Blob
+  },
+
+  async purgeRegressionRuns(params?: {
+    retention_days?: number
+    max_delete?: number
+    dry_run?: boolean
+    dataset_id?: string
+  }): Promise<any> {
+    const { data } = await apiClient.post('/evaluations/ragas/regression/runs/purge', null, { params })
+    return data
   },
 
   // ==================== KG Search Diagnostics ====================

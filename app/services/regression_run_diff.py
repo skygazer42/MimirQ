@@ -54,6 +54,72 @@ _RETRIEVAL_DIFF_KEYS = (
 )
 
 
+_DIFF_SCORE_WEIGHTS_V1: dict[str, float] = {
+    # Answer-level deterministic gate signals (when present).
+    "faithfulness_det": 0.35,
+    "refusal_correctness": 0.25,
+    # Retrieval signals (always cheap/deterministic).
+    "retrieval_ndcg_at_10": 0.2,
+    "retrieval_recall": 0.2,
+}
+
+
+def _build_diff_score(*, base_summary: dict[str, Any], target_summary: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Compute a compact, stable "diff score" for CI dashboards.
+
+    We deliberately score using the *intersection* of available metrics so
+    `base_score` and `target_score` remain comparable.
+    """
+    if not isinstance(base_summary, dict) or not isinstance(target_summary, dict):
+        return None
+
+    base_vals: dict[str, float] = {}
+    target_vals: dict[str, float] = {}
+    for key, w in _DIFF_SCORE_WEIGHTS_V1.items():
+        if w <= 0:
+            continue
+        b = _as_float(base_summary.get(key))
+        a = _as_float(target_summary.get(key))
+        if b is None or a is None:
+            continue
+        base_vals[key] = float(b)
+        target_vals[key] = float(a)
+
+    used_keys = sorted(base_vals.keys())
+    if not used_keys:
+        return {
+            "version": "1",
+            "used_metric_keys": [],
+            "weights": {},
+            "base_score": None,
+            "target_score": None,
+            "delta": None,
+            "base_metrics": {},
+            "target_metrics": {},
+        }
+
+    weight_sum = float(sum(float(_DIFF_SCORE_WEIGHTS_V1.get(k) or 0.0) for k in used_keys))
+    if weight_sum <= 0:
+        weight_sum = 1.0
+
+    weights_used = {k: round(float(_DIFF_SCORE_WEIGHTS_V1.get(k) or 0.0) / weight_sum, 6) for k in used_keys}
+    base_score = sum(float(weights_used.get(k) or 0.0) * float(base_vals.get(k) or 0.0) for k in used_keys)
+    target_score = sum(float(weights_used.get(k) or 0.0) * float(target_vals.get(k) or 0.0) for k in used_keys)
+    delta = round(float(target_score - base_score), 6)
+
+    return {
+        "version": "1",
+        "used_metric_keys": used_keys,
+        "weights": weights_used,
+        "base_score": round(float(base_score), 6),
+        "target_score": round(float(target_score), 6),
+        "delta": delta,
+        "base_metrics": {k: round(float(base_vals[k]), 6) for k in used_keys},
+        "target_metrics": {k: round(float(target_vals[k]), 6) for k in used_keys},
+    }
+
+
 def _coerce_slices(summary: dict[str, Any]) -> dict[str, Any]:
     raw = summary.get("retrieval_slices") if isinstance(summary, dict) else None
     return raw if isinstance(raw, dict) else {}
@@ -95,6 +161,8 @@ def diff_regression_run_summaries(
 
     metric_diffs.sort(key=lambda d: (-abs(float(d.get("delta") or 0.0)), str(d.get("key") or "")))
 
+    diff_score = _build_diff_score(base_summary=base_summary, target_summary=target_summary)
+
     # ---- Slice diffs ----
     base_slices = _coerce_slices(base_summary)
     target_slices = _coerce_slices(target_summary)
@@ -117,7 +185,16 @@ def diff_regression_run_summaries(
         return out, truncated
 
     slice_diffs: dict[str, Any] = {}
-    for dim in ("file_type", "language", "directory"):
+    for dim in (
+        "file_type",
+        "language",
+        "directory",
+        # v3 slice taxonomy additions (stable + actionable):
+        "access_mode",
+        "hit_type",
+        "quality",
+        "pipeline_hash",
+    ):
         base_map, base_trunc = _slice_bucket_map(base_slices.get(dim))
         target_map, target_trunc = _slice_bucket_map(target_slices.get(dim))
         bucket_keys = sorted(set(base_map.keys()) | set(target_map.keys()))
@@ -164,9 +241,9 @@ def diff_regression_run_summaries(
         "target_run_id": str(target_run_id),
         "generated_at": _now_utc().isoformat(),
         "metric_diffs": metric_diffs,
+        "diff_score": diff_score,
         "slice_diffs": slice_diffs,
     }
 
 
 __all__ = ["diff_regression_run_summaries"]
-

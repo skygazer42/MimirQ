@@ -468,6 +468,47 @@ async def retrieve_evidence(
     # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
     state["db"] = db
 
+    # Optional: multi-modal routing (image/table/text).
+    #
+    # This endpoint is "retrieval-only" (no answer generation), so we keep routing deterministic:
+    # - Image routing uses CLIP embeddings (when enabled).
+    # - Table routing (TAG/NL2SQL) is intentionally *not* applied here by default.
+    multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
+    image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+    try:
+        from app.rag.policy.modality_router import classify_query_modality  # noqa: WPS433
+
+        modality, reasons = classify_query_modality(body.query)
+        multimodal_meta["modality"] = modality
+        multimodal_meta["reasons"] = reasons
+
+        if str(modality or "text").lower().strip() == "image":
+            from app.services.chat_image_service import build_chat_image_context_docs  # noqa: WPS433
+
+            ds_for_images = scope_dataset_id
+            if ds_for_images is None and scope_document_ids:
+                ds_for_images = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
+            if ds_for_images is not None:
+                image_docs, image_meta = build_chat_image_context_docs(
+                    db,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    dataset_id=ds_for_images,
+                    question=body.query,
+                    top_k=6,
+                )
+                if image_docs:
+                    # Legacy injection surface consumed by run_retrieval: "tag_docs" is prepended before
+                    # text retrieval results. We reuse it for image docs as well.
+                    state["tag_docs"] = image_docs
+            else:
+                image_meta = {"enabled": False, "used": False, "reason": "missing_dataset_id"}
+    except Exception as exc:  # noqa: BLE001
+        multimodal_meta = {"enabled": False, "modality": "text", "reasons": [f"router_exception:{str(exc)[:80]}"]}
+
+    state["multimodal_router"] = multimodal_meta
+    state["image_meta"] = image_meta
+
     primary = run_retrieval(state) or {}
     citations = primary.get("citations") or []
     metrics = dict(primary.get("metrics") or {})
@@ -479,6 +520,8 @@ async def retrieve_evidence(
     # Ensure minimum fields exist for downstream debugging.
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
     metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
+    metrics.setdefault("multimodal_router", multimodal_meta)
+    metrics.setdefault("image", image_meta)
     if dataset_rag_defaults_applied_fields:
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
