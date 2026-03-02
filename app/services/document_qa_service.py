@@ -23,6 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.rag.core.logging import get_logger
@@ -180,7 +181,7 @@ Return JSON:
     llm = ChatOpenAI(
         model=(settings.LLM_MODEL_FAST or settings.LLM_MODEL),
         api_key=settings.LLM_API_KEY,
-        base_url=settings.LLM_API_BASE,
+        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=0.2,
         timeout=int(getattr(settings, "LLM_TIMEOUT", 60) or 60),
     )

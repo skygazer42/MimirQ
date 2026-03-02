@@ -124,3 +124,22 @@ def test_compute_suite_coverage_slices_and_heatmap() -> None:
     assert hm["z"] == [[2, 0], [0, 1]]
     assert hm["metric"] == "items"
 
+
+def test_compute_suite_coverage_includes_tag_channel() -> None:
+    from app.services.evidence_dashboard import compute_suite_coverage
+
+    doc1 = uuid4()
+    items = [
+        {
+            "id": uuid4(),
+            "reference_sources": [{"document_id": str(doc1), "chunk_id": "c1"}],
+            "retrieval_snapshot": {"citations": [{"chunk_id": "c1", "hit_type": "tag"}]},
+        }
+    ]
+    documents: dict[UUID, dict[str, object]] = {
+        doc1: {"id": doc1, "file_type": "pdf", "metadata": {"language": "en", "governance_quality": {"density": 0.2}}},
+    }
+
+    out = compute_suite_coverage(items, documents=documents, top_n=12, heatmap_top_n=8)
+    channel_keys = [b.get("key") for b in (out.get("channel") or []) if isinstance(b, dict)]
+    assert "tag" in channel_keys

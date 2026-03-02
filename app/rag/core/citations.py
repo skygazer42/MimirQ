@@ -332,6 +332,10 @@ def build_citations_from_docs(
         retrieval_role = meta.get("retrieval_role") or None
         neighbor_of = meta.get("neighbor_of") or None
         is_tag = str(retrieval_role or "").strip().lower() == "tag" or str(meta.get("chunk_role") or "") == "tag_sql_result"
+        is_image = (
+            str(retrieval_role or "").strip().lower() == "image"
+            or str(meta.get("doc_type_kwd") or "").strip().lower() == "image"
+        )
 
         page_number = None
         page_raw = meta.get("page")
@@ -344,6 +348,8 @@ def build_citations_from_docs(
 
         if is_tag:
             hit_type = "tag"
+        elif is_image:
+            hit_type = "image"
         elif retrieval_mode == "mmr":
             hit_type = "mmr"
         elif v_score_raw > b_score_raw:
@@ -354,7 +360,14 @@ def build_citations_from_docs(
             hit_type = "hybrid"
 
         img_id = meta.get("img_id")
+        # Prefer stable MinIO-backed img_id -> image-url route, but allow pre-normalized
+        # img_url/image_url (e.g. local assets) as a fallback.
         img_url = f"/api/v1/documents/image-url/{img_id}" if img_id else None
+        if not img_url:
+            raw_url = meta.get("img_url") or meta.get("image_url")
+            img_url = str(raw_url).strip() if raw_url is not None else None
+            if not img_url:
+                img_url = None
 
         raw_chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
         chunk_id = raw_chunk_id
@@ -571,12 +584,12 @@ def build_citations_from_docs(
         if prov:
             citation["kg_path_provenance"] = prov
 
+        has_image = bool(img_id) or bool(img_url)
         if img_id:
             citation["img_id"] = img_id
+        if img_url:
             citation["img_url"] = img_url
-            citation["has_image"] = True
-        else:
-            citation["has_image"] = False
+        citation["has_image"] = bool(has_image)
 
         citations.append(citation)
     return citations

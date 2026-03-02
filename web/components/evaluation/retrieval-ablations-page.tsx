@@ -121,6 +121,19 @@ export function RetrievalAblationsPage() {
   const [rerankerTopN, setRerankerTopN] = useState(20)
 
   const diffJson = useMemo(() => prettyJson(diff ?? { hint: '选择 base/target runs 并生成 diff' }), [diff])
+  const diffScore = diff?.diff_score ?? null
+
+  const diffScoreFmt = useMemo(() => {
+    const b = toNumber((diffScore as any)?.base_score)
+    const a = toNumber((diffScore as any)?.target_score)
+    const d = toNumber((diffScore as any)?.delta)
+    return {
+      base: b == null ? '-' : b.toFixed(4),
+      target: a == null ? '-' : a.toFixed(4),
+      delta: d == null ? '-' : d.toFixed(4),
+      usedKeys: Array.isArray((diffScore as any)?.used_metric_keys) ? ((diffScore as any)?.used_metric_keys as string[]) : [],
+    }
+  }, [diffScore])
 
   const runsByDataset = useMemo(() => {
     const ds = datasetId.trim()
@@ -265,6 +278,26 @@ export function RetrievalAblationsPage() {
       downloadBlob(blob, name)
     } catch (err) {
       toast.error(formatApiError(err, '导出 HTML 失败'))
+    }
+  }
+
+  async function exportRunBundle(runId: string, label: string): Promise<void> {
+    const id = String(runId || '').trim()
+    if (!id) {
+      toast.error('请选择 run')
+      return
+    }
+
+    try {
+      const blob = await evaluationApi.exportRegressionRunBundle(id, {
+        include_text: false,
+        include_contexts: false,
+        download: true,
+      })
+      const name = sanitizeFilename(`regression-run_${label}_${id.slice(0, 8)}.json`)
+      downloadBlob(blob, name)
+    } catch (err) {
+      toast.error(formatApiError(err, '导出 run bundle 失败'))
     }
   }
 
@@ -641,6 +674,26 @@ export function RetrievalAblationsPage() {
                 <Button
                   variant="outline"
                   className="gap-2 rounded-xl"
+                  disabled={!selectedBaseRunId}
+                  onClick={() => void exportRunBundle(selectedBaseRunId, 'base')}
+                  title="导出 base regression run bundle（默认 PII-safe）"
+                >
+                  <Download className="w-4 h-4" />
+                  导出 base run
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 rounded-xl"
+                  disabled={!selectedTargetRunId}
+                  onClick={() => void exportRunBundle(selectedTargetRunId, 'target')}
+                  title="导出 target regression run bundle（默认 PII-safe）"
+                >
+                  <Download className="w-4 h-4" />
+                  导出 target run
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 rounded-xl"
                   disabled={!diff}
                   onClick={() => downloadJson(diff, sanitizeFilename('regression-run-diff.json'))}
                 >
@@ -657,6 +710,34 @@ export function RetrievalAblationsPage() {
                 </Button>
               </div>
 
+              {diffScore && (
+                <div className="rounded-2xl border border-border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold text-muted-foreground">Diff Score</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">v{String((diffScore as any)?.version || '1')}</div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-border bg-background/60 p-3">
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground">base</div>
+                      <div className="mt-1 font-mono text-sm">{diffScoreFmt.base}</div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background/60 p-3">
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground">target</div>
+                      <div className="mt-1 font-mono text-sm">{diffScoreFmt.target}</div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background/60 p-3">
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground">delta</div>
+                      <div className="mt-1 font-mono text-sm">{diffScoreFmt.delta}</div>
+                    </div>
+                  </div>
+                  {!!diffScoreFmt.usedKeys.length && (
+                    <div className="mt-3 text-xs text-muted-foreground font-mono">
+                      metrics: {diffScoreFmt.usedKeys.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Textarea className="min-h-[420px] font-mono text-xs" value={diffJson} readOnly />
             </CardContent>
           </Card>
@@ -665,4 +746,3 @@ export function RetrievalAblationsPage() {
     </AppFrame>
   )
 }
-

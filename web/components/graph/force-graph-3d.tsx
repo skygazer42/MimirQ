@@ -7,6 +7,7 @@ import SpriteText from "three-spritetext"
 import { Loader2 } from "lucide-react"
 
 import { getCssHslColor } from "@/lib/css-vars"
+import { buildGraphLinkProvenanceTooltipHtml } from "@/lib/graph-provenance"
 
 // Dynamic import to avoid SSR issues with Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
@@ -48,6 +49,7 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
   const { resolvedTheme } = useTheme()
   const fgRef = useRef<any>(null)
   const [mounted, setMounted] = useState(false)
+  const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -77,6 +79,7 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
   const primaryColor = getCssHslColor("--primary", isDark ? "#0ea5e9" : "#0284c7")
   const mutedFgColor = getCssHslColor("--muted-foreground", isDark ? "#94a3b8" : "#475569")
   const linkColor = isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)"
+  const hoverLinkColor = getCssHslColor("--primary", isDark ? "#38bdf8" : "#0284c7")
 
   return (
     <ForceGraph3D
@@ -95,14 +98,27 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
       nodeResolution={16}
       
       // Link Styling
-      linkColor={() => linkColor}
-      linkWidth={1}
+      linkColor={(link: any) => {
+        const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+        if (hoveredLinkId && linkId && hoveredLinkId === linkId) return hoverLinkColor
+        return linkColor
+      }}
+      linkWidth={(link: any) => {
+        const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+        if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 2
+        return 1
+      }}
       linkDirectionalParticles={2}
       linkDirectionalParticleWidth={2}
       linkDirectionalParticleSpeed={0.005}
+      linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
       
       // Interaction
       onNodeClick={handleNodeClick}
+      onLinkHover={(link: any) => {
+        const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+        setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
+      }}
       
       // Custom Objects (Text Sprites)
       nodeThreeObject={(node: any) => {

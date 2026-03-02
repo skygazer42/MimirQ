@@ -102,10 +102,12 @@ def test_regression_eval_supports_deterministic_answer_gate_mode(monkeypatch: py
     monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["The sky is blue."])
 
     # Deterministic graph runner stub (no external LLM dependency).
-    import app.rag.graph as rag_graph
+    import app.rag.pipelines.langgraph as langgraph
 
-    def _fake_run_rag_graph(**kwargs):  # noqa: ANN003
-        q = str(kwargs.get("question") or "")
+    monkeypatch.setattr(langgraph, "build_rag_state", lambda **kwargs: {"question": kwargs.get("question", "")})
+
+    def _fake_run_rag_workflow_functional(state, thread_id=None, context=None):  # noqa: ANN001
+        q = str((state or {}).get("question") or "")
         if "refuse" in q:
             return {
                 "answer": "Unable to answer due to insufficient evidence.",
@@ -122,7 +124,7 @@ def test_regression_eval_supports_deterministic_answer_gate_mode(monkeypatch: py
             "metrics": {},
         }
 
-    monkeypatch.setattr(rag_graph, "run_rag_graph", _fake_run_rag_graph)
+    monkeypatch.setattr(langgraph, "run_rag_workflow_functional", _fake_run_rag_workflow_functional)
 
     # If deterministic gate mode accidentally imports ragas, make it fail loudly.
     import builtins
@@ -152,4 +154,3 @@ def test_regression_eval_supports_deterministic_answer_gate_mode(monkeypatch: py
     assert (run.params or {}).get("mode") == "deterministic_gate"
     assert run.summary.get("faithfulness_det") == 1.0
     assert run.summary.get("refusal_correctness") == 1.0
-

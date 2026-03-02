@@ -28,6 +28,7 @@ import {
   Calendar,
   FileText,
   Upload,
+  Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -45,9 +46,12 @@ export function TestCaseManager({
   onRunTests,
   onCaseSelected,
 }: TestCaseManagerProps) {
+  const GOLDEN_TAG = 'golden'
+
   const [cases, setCases] = useState<RegressionCase[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [goldenOnly, setGoldenOnly] = useState(false)
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set())
   const [selectedCase, setSelectedCase] = useState<RegressionCase | null>(null)
 
@@ -105,10 +109,17 @@ export function TestCaseManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId])
 
+  const goldenCount = useMemo(() => {
+    return (cases || []).filter((c) => Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG)).length
+  }, [cases])
+
   // 过滤用例
-  const filteredCases = cases.filter((c) =>
-    c.question.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredCases = cases.filter((c) => {
+    const q = String(c.question || '').toLowerCase()
+    if (!q.includes(searchQuery.toLowerCase())) return false
+    if (!goldenOnly) return true
+    return Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG)
+  })
 
   // 切换选择
   const toggleSelect = (caseId: string) => {
@@ -348,6 +359,25 @@ export function TestCaseManager({
     onCaseSelected?.(caseItem.id)
   }
 
+  const handleToggleGolden = async (caseItem: RegressionCase) => {
+    const prevTags = Array.isArray(caseItem.tags) ? caseItem.tags : []
+    const hasGolden = prevTags.includes(GOLDEN_TAG)
+    const nextTags = hasGolden ? prevTags.filter((t) => t !== GOLDEN_TAG) : [...prevTags, GOLDEN_TAG]
+
+    try {
+      const updated = await evaluationApi.patchRegressionCase(caseItem.id, { tags: nextTags })
+      setCases((prev) => prev.map((c) => (c.id === caseItem.id ? updated : c)))
+      if (selectedCase?.id === caseItem.id) {
+        setSelectedCase(updated)
+        onCaseSelected?.(updated.id)
+      }
+      toast.success(hasGolden ? '已取消 Golden 标记' : '已标记为 Golden')
+    } catch (error) {
+      console.error('Failed to toggle golden tag:', error)
+      toast.error(formatApiError(error, '更新 Golden 标记失败'))
+    }
+  }
+
   // 运行选中的测试
   const handleRunSelected = () => {
     if (selectedCaseIds.size === 0) {
@@ -432,6 +462,26 @@ export function TestCaseManager({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <Button
+            size="sm"
+            variant={goldenOnly ? 'default' : 'outline'}
+            className={cn('gap-2', goldenOnly && 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/20')}
+            onClick={() => {
+              setGoldenOnly((v) => !v)
+              setSelectedCaseIds(new Set())
+            }}
+            disabled={!datasetId}
+            title={!datasetId ? '请先选择数据集' : '只显示标记为 golden 的用例'}
+          >
+            <Star className="w-3.5 h-3.5" fill={goldenOnly ? 'currentColor' : 'none'} />
+            Golden
+          </Button>
+          <div className="text-[11px] text-muted-foreground">
+            golden {goldenCount} / {cases.length}
+          </div>
         </div>
       </div>
 
@@ -642,6 +692,9 @@ export function TestCaseManager({
             {/* 用例卡片 */}
             <div className="divide-y divide-border">
               {filteredCases.map((caseItem) => (
+                (() => {
+                  const isGolden = Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG)
+                  return (
                 <div
                   key={caseItem.id}
                   className={cn(
@@ -709,29 +762,49 @@ export function TestCaseManager({
                       </div>
                     </div>
 
-                    {/* 删除按钮 */}
-                    <ConfirmDialog
-                      title="删除该测试用例？"
-                      description="此操作不可恢复。"
-                      confirmLabel="删除"
-                      cancelLabel="返回"
-                      confirmVariant="destructive"
-                      onConfirm={() => void handleDelete(caseItem.id)}
-                    >
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
+                          void handleToggleGolden(caseItem)
                         }}
-                        className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none"
-                        aria-label="删除测试用例"
-                        title="删除"
+                        className={cn(
+                          'text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
+                          isGolden && 'text-amber-600 hover:text-amber-700'
+                        )}
+                        aria-label={isGolden ? '取消 Golden 标记' : '标记为 Golden'}
+                        title={isGolden ? '取消 Golden' : '标记为 Golden'}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Star className="w-4 h-4" fill={isGolden ? 'currentColor' : 'none'} />
                       </button>
-                    </ConfirmDialog>
+
+                      {/* 删除按钮 */}
+                      <ConfirmDialog
+                        title="删除该测试用例？"
+                        description="此操作不可恢复。"
+                        confirmLabel="删除"
+                        cancelLabel="返回"
+                        confirmVariant="destructive"
+                        onConfirm={() => void handleDelete(caseItem.id)}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                          }}
+                          className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none"
+                          aria-label="删除测试用例"
+                          title="删除"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </ConfirmDialog>
+                    </div>
                   </div>
                 </div>
+                  )
+                })()
               ))}
             </div>
           </>

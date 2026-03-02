@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -7,6 +8,7 @@ import { toast } from 'sonner'
 import type { Citation, Dataset, EvidenceRetrieveResponse } from '@/types'
 import { datasetApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -341,6 +343,7 @@ export function EvidenceWorkbench() {
               <div className="mt-3 space-y-2 max-h-[560px] overflow-auto pr-1">
                 {citations.map((c, idx) => {
                   const content = String(c.chunk_content || '')
+                  const safeImgUrl = c.has_image && c.img_url ? resolveSafeCitationImageUrl(c.img_url) : null
                   return (
                     <div
                       key={`${c.chunk_id || idx}-${idx}`}
@@ -361,6 +364,25 @@ export function EvidenceWorkbench() {
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
+                          {safeImgUrl ? (
+                            <a
+                              href={safeImgUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 relative h-10 w-14 rounded-md overflow-hidden border border-border/60 bg-muted/20"
+                              title="Open image"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Image
+                                src={safeImgUrl}
+                                alt="citation thumbnail"
+                                fill
+                                unoptimized
+                                sizes="56px"
+                                className="object-cover"
+                              />
+                            </a>
+                          ) : null}
                           <div className="text-[11px] text-muted-foreground">score</div>
                           <div className="text-[11px] font-mono">{scoreLabel(c)}</div>
                         </div>

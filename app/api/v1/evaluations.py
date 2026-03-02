@@ -6,10 +6,12 @@ querying, and results.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -63,11 +65,15 @@ from app.rag.evaluation.test_generator import (
     generate_questions_from_conversations,
     generate_questions_from_documents,
 )
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.regression_case_bundle import export_case_bundle, plan_case_import
 from app.services.regression_leaderboard import build_regression_run_leaderboard
+from app.services.regression_run_bundle import export_regression_run_bundle
 from app.services.regression_run_diff import diff_regression_run_summaries
 from app.services.regression_run_diff_html import render_regression_run_diff_html
+from app.services.regression_run_retention import plan_regression_run_purge, purge_regression_run_rows
 from app.services.regression_run_scope import (
     DatasetMismatchError,
     MissingCasesError,
@@ -389,7 +395,8 @@ async def create_ragas_regression_case(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    # Governance: regression cases back CI gates ("golden questions") and are a write operation.
+    DatasetService.assert_dataset_writable(db, ds, account_id)
 
     reference_sources = _finalize_reference_sources(
         db,
@@ -444,7 +451,8 @@ async def patch_ragas_regression_case(
     ds_id = getattr(row, "dataset_id", None)
     if ds_id is not None:
         ds = DatasetService.get_dataset(db, tenant_id, ds_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        # Governance: patching cases can alter golden suites and should be gated as a write action.
+        DatasetService.assert_dataset_writable(db, ds, account_id)
 
     fields = set(getattr(request, "model_fields_set", set()) or set())
     if "question" in fields and request.question is not None:
@@ -851,6 +859,13 @@ async def delete_ragas_regression_case(
     if not row:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    ds_id = getattr(row, "dataset_id", None)
+    if ds_id is None:
+        raise HTTPException(status_code=400, detail="Cannot delete case without dataset_id")
+    ds = DatasetService.get_dataset(db, tenant_id, UUID(str(ds_id)))
+    # Governance: deletion is a write action; protect golden suites.
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
     db.delete(row)
     db.commit()
     return None
@@ -1040,6 +1055,161 @@ async def get_ragas_regression_run(
             items_out.append(payload)
 
     return {"run": run, "items": items_out}
+
+
+@router.get("/ragas/regression/runs/{run_id}/export-bundle")
+async def export_ragas_regression_run_bundle_api(
+    run_id: UUID,
+    include_text: bool = Query(
+        default=False,
+        description="Include raw question/response (may include PII; default false)",
+    ),
+    include_contexts: bool = Query(
+        default=False,
+        description="Include retrieved_contexts (may include PII; requires include_text=true)",
+    ),
+    redact_ids: bool = Query(
+        default=True,
+        description="Redact internal ids (tenant/dataset/case/run) into stable hashes for sharing (default true)",
+    ),
+    max_items: int = Query(default=500, ge=1, le=5000, description="Max regression items to include"),
+    max_citations: int = Query(default=80, ge=0, le=500, description="Max citations per item (PII-safe allowlist)"),
+    download: bool = Query(default=True, description="Set Content-Disposition to download as a file"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Export a compact regression run bundle (PII-safe by default)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    run = (
+        db.query(RagasRegressionRun)
+        .filter(RagasRegressionRun.id == run_id, RagasRegressionRun.tenant_id == tenant_id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    ds_id = getattr(run, "dataset_id", None)
+    if ds_id is not None:
+        ds = DatasetService.get_dataset(db, tenant_id, UUID(str(ds_id)))
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    items = (
+        db.query(RagasRegressionItem)
+        .filter(RagasRegressionItem.run_id == run_id, RagasRegressionItem.tenant_id == tenant_id)
+        .order_by(RagasRegressionItem.created_at.asc())
+        .limit(int(max_items))
+        .all()
+    )
+
+    bundle = export_regression_run_bundle(
+        run,
+        items,
+        include_text=bool(include_text),
+        include_contexts=bool(include_contexts),
+        redact_ids=bool(redact_ids),
+        max_items=int(max_items),
+        max_citations=int(max_citations),
+        now=datetime.now(timezone.utc),
+    )
+
+    headers = {
+        "Cache-Control": "no-store",
+    }
+    if download:
+        filename = f"regression-run.{str(run_id)[:8]}.json"
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+    return JSONResponse(content=bundle, headers=headers)
+
+
+@router.post("/ragas/regression/runs/purge")
+def purge_ragas_regression_runs(
+    retention_days: int = Query(default=90, ge=1, le=3650, description="Delete runs older than N days"),
+    max_delete: int = Query(default=200, ge=1, le=5000, description="Max runs to delete in this call"),
+    dry_run: bool = Query(default=True, description="Plan only; do not delete rows"),
+    dataset_id: UUID | None = Query(default=None, description="Optional dataset scope"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Purge old regression runs for the current tenant (bounded).
+
+    Security:
+    - Admin-only (lifecycle.manage). Evaluation artifacts can contain sensitive content.
+    """
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.LIFECYCLE_MANAGE,
+        detail="No permission to manage evaluation retention",
+    )
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=int(retention_days or 0))
+
+    eligible = int(
+        plan_regression_run_purge(
+            db,
+            tenant_id=tenant_id,
+            cutoff=cutoff,
+            max_delete=int(max_delete or 0),
+            dataset_id=dataset_id,
+        )
+        or 0
+    )
+
+    deleted_runs = 0
+    deleted_items = 0
+    if not bool(dry_run):
+        deleted_runs, deleted_items = purge_regression_run_rows(
+            db,
+            tenant_id=tenant_id,
+            cutoff=cutoff,
+            max_delete=int(max_delete or 0),
+            dataset_id=dataset_id,
+            commit=True,
+        )
+
+    # Best-effort audit log (PII-safe metadata only).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="evaluations.regression_runs.purge",
+            resource_type="ragas_regression_runs",
+            resource_id=str(dataset_id) if dataset_id is not None else None,
+            details={
+                "dry_run": bool(dry_run),
+                "retention_days": int(retention_days or 0),
+                "cutoff": cutoff.isoformat(),
+                "max_delete": int(max_delete or 0),
+                "eligible": int(eligible),
+                "deleted_runs": int(deleted_runs),
+                "deleted_items": int(deleted_items),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    return {
+        "dry_run": bool(dry_run),
+        "retention_days": int(retention_days or 0),
+        "cutoff": cutoff,
+        "max_delete": int(max_delete or 0),
+        "dataset_id": str(dataset_id) if dataset_id is not None else None,
+        "eligible_runs": int(eligible),
+        "deleted_runs": int(deleted_runs),
+        "deleted_items": int(deleted_items),
+    }
 
 
 @router.get("/ragas/regression/runs/{run_id}/diff", response_model=RagasRegressionRunDiffResponse)

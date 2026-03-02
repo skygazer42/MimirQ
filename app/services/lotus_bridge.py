@@ -29,6 +29,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.core.openai_compat import normalize_openai_compatible_base_url
 
 
 @dataclass(frozen=True)
@@ -62,7 +63,7 @@ def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
     return ChatOpenAI(
         model=model_name,
         api_key=getattr(settings, "LLM_API_KEY", None),
-        base_url=getattr(settings, "LLM_API_BASE", None),
+        base_url=normalize_openai_compatible_base_url(getattr(settings, "LLM_API_BASE", None)),
         temperature=float(temperature),
         timeout=float(getattr(settings, "LLM_TIMEOUT", 60) or 60),
         max_retries=int(getattr(settings, "LLM_MAX_RETRIES", 2) or 2),

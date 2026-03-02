@@ -7,6 +7,7 @@ JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List
 from uuid import UUID
 
@@ -72,6 +73,22 @@ class IndexAuditResponse(BaseModel):
     milvus_orphan_ids_sample: List[str] = []
 
 
+class IngestionDashboardSummaryResponse(BaseModel):
+    window_hours: int
+    bucket_minutes: int
+    window_start: datetime
+    window_end: datetime
+    dataset_id: str | None = None
+
+    created_count: int = 0
+    by_status: Dict[str, int] = {}
+    by_stage_processing: Dict[str, int] = {}
+    avg_completed_latency_sec: float | None = None
+
+    top_error_reasons: Dict[str, int] = {}
+    timeseries: Dict[str, List[Any]] = {}
+
+
 @router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse)
 def get_rag_metrics_summary(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
@@ -84,6 +101,35 @@ def get_rag_metrics_summary(
     summary = summarize_rag_metrics(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
     # Dataclass -> dict (safe fields only by construction).
     return summary.__dict__
+
+
+@router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse)
+def get_ingestion_dashboard_summary(
+    window_hours: int = Query(default=24, ge=1, le=30 * 24),
+    bucket_minutes: int = Query(default=60, ge=1, le=30 * 24 * 60),
+    dataset_id: UUID | None = Query(default=None, description="Optional dataset_id filter"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Return ingestion throughput + error taxonomy aggregates (admin-only, PII-safe).
+
+    Notes:
+    - Uses coarse time buckets (hour/day) for stability.
+    - Normalizes error messages into "reason keys" to avoid leaking raw exception details.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.ingestion_dashboard_service import summarize_ingestion_dashboard
+
+    return summarize_ingestion_dashboard(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        window_hours=int(window_hours or 24),
+        bucket_minutes=int(bucket_minutes or 60),
+    )
 
 
 @router.get("/index-audit", response_model=IndexAuditResponse)

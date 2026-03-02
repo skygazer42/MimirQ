@@ -38,6 +38,20 @@ function shortHash(value: string, opts?: { head?: number; tail?: number }) {
   return `${v.slice(0, head)}...${v.slice(-tail)}`
 }
 
+function formatScore(v?: number | null, digits = 3) {
+  if (v == null) return null
+  const n = Number(v)
+  if (!Number.isFinite(n)) return null
+  return n.toFixed(digits)
+}
+
+function isNonZero(v?: number | null, eps = 1e-12) {
+  if (v == null) return false
+  const n = Number(v)
+  if (!Number.isFinite(n)) return false
+  return Math.abs(n) > eps
+}
+
 function getPrimaryScore(c: RagTraceCitation) {
   // Prefer rerank score when available.
   const v = c.rerank_score ?? c.retrieval_score ?? c.relevance_score ?? null
@@ -61,6 +75,11 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
   const items = data?.items ?? []
   const selected = items[selectedIndex] ?? items[0] ?? null
   const retrievalConfigHash = selected?.retrieval?.retrieval_config_hash || null
+  const mainQuery = (selected?.retrieval?.per_query || []).find((q) => q?.kind === 'main') ?? (selected?.retrieval?.per_query || [])[0] ?? null
+  const channels = (mainQuery?.retriever_debug as any)?.channels as Record<string, any> | null | undefined
+  const rerankMeta = (channels as any)?.rerank as Record<string, any> | null | undefined
+  const rerankSkipReason = rerankMeta?.skip_reason ? String(rerankMeta.skip_reason) : null
+  const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -256,6 +275,95 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
 
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="px-4 py-3 border-b border-border/60">
+                <div className="text-sm font-semibold">Channels</div>
+              </div>
+              <div className="p-4 space-y-3">
+                {!channels ? (
+                  <div className="text-xs text-muted-foreground">暂无 per-channel 指标（旧 trace 或 retriever_debug 被裁剪）。</div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {channels.retrieval_mode ? (
+                        <Badge variant="soft" className="text-[10px]">
+                          mode={String(channels.retrieval_mode)}
+                        </Badge>
+                      ) : null}
+                      {channels.fusion_strategy ? (
+                        <Badge variant="soft" className="text-[10px]">
+                          fusion={String(channels.fusion_strategy)}
+                        </Badge>
+                      ) : null}
+                      {channels.vector_backend ? (
+                        <Badge variant="soft" className="text-[10px]">
+                          vec={String(channels.vector_backend)}
+                        </Badge>
+                      ) : null}
+                      {typeof channels.rrf_k === 'number' ? (
+                        <Badge variant="soft" className="text-[10px]">
+                          rrf_k={channels.rrf_k}
+                        </Badge>
+                      ) : null}
+                      {channels?.timing?.vector_ms != null ? (
+                        <Badge variant="soft" className="text-[10px]">
+                          vector_ms={channels.timing.vector_ms}
+                        </Badge>
+                      ) : null}
+                      {channels?.timing?.bm25_ms != null ? (
+                        <Badge variant="soft" className="text-[10px]">
+                          bm25_ms={channels.timing.bm25_ms}
+                        </Badge>
+                      ) : null}
+                      {channels?.timing?.fusion_ms != null ? (
+                        <Badge variant="soft" className="text-[10px]">
+                          fusion_ms={channels.timing.fusion_ms}
+                        </Badge>
+                      ) : null}
+                    </div>
+
+                    {(rerankSkipReason || rerankError) ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {rerankSkipReason ? (
+                          <Badge variant="soft" className="text-[10px]">
+                            skip_reason={rerankSkipReason}
+                          </Badge>
+                        ) : null}
+                        {rerankError ? (
+                          <Badge variant="soft" className="text-[10px]">
+                            rerank_error={rerankError}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {(['vector', 'bm25', 'lexical_db', 'sparse'] as const).map((k) => {
+                        const box = (channels as any)?.[k] as Record<string, any> | null | undefined
+                        if (!box) return null
+                        return (
+                          <Panel key={k} variant="muted" className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-foreground">{k}</div>
+                              <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                {box.enabled != null ? `enabled=${String(box.enabled)}` : null}
+                                {box.filter_applied != null ? ` · filter=${String(box.filter_applied)}` : null}
+                                {box.index_enabled != null ? ` · index=${String(box.index_enabled)}` : null}
+                                {box.provider ? ` · provider=${String(box.provider)}` : null}
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-xs font-medium text-muted-foreground">
+                              {box.candidates != null ? `${box.candidates}` : '—'}
+                            </div>
+                          </Panel>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </Panel>
+
+            <Panel variant="glass" className="overflow-hidden" padding="none">
+              <div className="px-4 py-3 border-b border-border/60">
                 <div className="text-sm font-semibold">TopK Citations</div>
               </div>
               <ScrollArea className="h-[360px]">
@@ -265,6 +373,15 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     const docId = c.document_id || ''
                     const chunkId = c.chunk_id || ''
                     const page = c.page_number != null ? `p.${c.page_number}` : null
+                    const rerankScore = formatScore(c.rerank_score, 3)
+                    const retrievalScore = formatScore(c.retrieval_score, 3)
+                    const relScore = formatScore(c.relevance_score, 3)
+                    const vectorScore = isNonZero(c.vector_score) ? formatScore(c.vector_score, 3) : null
+                    const bm25Score = isNonZero(c.bm25_score) ? formatScore(c.bm25_score, 3) : null
+                    const lexicalScore = isNonZero(c.lexical_score) ? formatScore(c.lexical_score, 3) : null
+                    const sparseScore = isNonZero(c.sparse_score) ? formatScore(c.sparse_score, 3) : null
+                    const role = c.retrieval_role ? String(c.retrieval_role) : null
+                    const neighborOf = c.neighbor_of ? String(c.neighbor_of) : null
                     return (
                       <div
                         key={`${docId}:${chunkId}:${idx}`}
@@ -275,9 +392,54 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                             <Badge variant="soft" className="text-[10px]">
                               {c.hit_type || 'hit'}
                             </Badge>
+                            {role ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                role={role}
+                              </Badge>
+                            ) : null}
+                            {neighborOf ? (
+                              <Badge variant="soft" className="text-[10px]" title={neighborOf}>
+                                neighbor_of={shortHash(neighborOf, { head: 10, tail: 6 })}
+                              </Badge>
+                            ) : null}
                             {score != null ? (
                               <Badge variant="soft" className="text-[10px]">
                                 score={score.toFixed(3)}
+                              </Badge>
+                            ) : null}
+                            {rerankScore ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                rerank={rerankScore}
+                              </Badge>
+                            ) : null}
+                            {retrievalScore ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                retrieval={retrievalScore}
+                              </Badge>
+                            ) : null}
+                            {relScore ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                rel={relScore}
+                              </Badge>
+                            ) : null}
+                            {vectorScore ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                v={vectorScore}
+                              </Badge>
+                            ) : null}
+                            {bm25Score ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                bm25={bm25Score}
+                              </Badge>
+                            ) : null}
+                            {lexicalScore ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                lex={lexicalScore}
+                              </Badge>
+                            ) : null}
+                            {sparseScore ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                sparse={sparseScore}
                               </Badge>
                             ) : null}
                             {page ? (

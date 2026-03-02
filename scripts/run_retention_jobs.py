@@ -7,6 +7,7 @@ retention tasks with audit logging.
 
 Currently implemented:
 - Audit log retention (bounded purge), per tenant.
+- Regression run retention (bounded purge), per tenant.
 
 Examples:
   # Dry-run (plan only) for default tenant
@@ -14,6 +15,9 @@ Examples:
 
   # Execute purge for one tenant
   python scripts/run_retention_jobs.py --audit-logs --tenant-id <uuid> --execute --retention-days 90 --max-delete 100000
+
+  # Dry-run (plan only) for regression runs
+  python scripts/run_retention_jobs.py --regression-runs --dry-run
 
   # Execute for all tenants (use with care)
   python scripts/run_retention_jobs.py --audit-logs --all-tenants --execute
@@ -30,7 +34,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.tenant import Tenant
-from app.services.retention_jobs import run_audit_log_retention
+from app.services.retention_jobs import run_audit_log_retention, run_regression_run_retention
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -43,6 +47,7 @@ def _parse_uuid(value: str) -> UUID:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run MimirQ retention jobs (bounded, auditable).")
     p.add_argument("--audit-logs", action="store_true", help="Run audit log retention")
+    p.add_argument("--regression-runs", action="store_true", help="Run regression run retention")
 
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID to operate on")
@@ -57,8 +62,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
-    if not bool(args.audit_logs):
-        print("No job selected. Use --audit-logs.", file=sys.stderr)
+    if (not bool(args.audit_logs)) and (not bool(args.regression_runs)):
+        print("No job selected. Use --audit-logs and/or --regression-runs.", file=sys.stderr)
         return 2
 
     dry_run = True
@@ -87,6 +92,17 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if bool(args.audit_logs):
                 res = run_audit_log_retention(
+                    db,
+                    tenant_id=tid,
+                    retention_days=int(args.retention_days or 0),
+                    max_delete=int(args.max_delete or 0),
+                    dry_run=bool(dry_run),
+                    actor_id="system:retention",
+                    now=ran_at,
+                )
+                results.append(res)
+            if bool(args.regression_runs):
+                res = run_regression_run_retention(
                     db,
                     tenant_id=tid,
                     retention_days=int(args.retention_days or 0),

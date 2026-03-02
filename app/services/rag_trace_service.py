@@ -208,6 +208,186 @@ def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
         if div:
             out["diversity"] = div
 
+    def _safe_channels(ch_raw: Any) -> dict[str, Any] | None:
+        """
+        Sanitize HybridRetriever per-call channel metrics for UI exposure.
+
+        We keep only low-cardinality counters/booleans/settings; no ids or text evidence.
+        """
+        if not isinstance(ch_raw, dict) or not ch_raw:
+            return None
+
+        out_ch: dict[str, Any] = {}
+
+        def _safe_str(v: Any, *, max_len: int = 120) -> str | None:
+            s = (str(v) if v is not None else "").strip()
+            return s[:max_len] if s else None
+
+        def _safe_int(v: Any, *, lo: int = 0, hi: int = 1_000_000_000) -> int | None:
+            n = _to_int(v)
+            if n is None:
+                return None
+            if n < lo:
+                n = lo
+            if n > hi:
+                n = hi
+            return int(n)
+
+        def _safe_float(v: Any, *, lo: float = 0.0, hi: float = 1_000_000.0, digits: int = 3) -> float | None:
+            n = _to_float(v)
+            if n is None:
+                return None
+            if n < lo:
+                n = lo
+            if n > hi:
+                n = hi
+            try:
+                return round(float(n), int(digits))
+            except Exception:
+                return None
+
+        for k in ("retrieval_mode", "fusion_strategy", "vector_backend"):
+            s = _safe_str(ch_raw.get(k), max_len=80)
+            if s is not None:
+                out_ch[k] = s
+        for k in ("rrf_k", "merged_pre_dedup", "merged_post_dedup", "merged_post_rerank", "returned_top_k"):
+            n = _safe_int(ch_raw.get(k))
+            if n is not None:
+                out_ch[k] = n
+
+        timing_raw = ch_raw.get("timing")
+        if isinstance(timing_raw, dict) and timing_raw:
+            timing: dict[str, float] = {}
+            for k in ("vector_ms", "bm25_ms", "fusion_ms"):
+                v = _safe_float(timing_raw.get(k), lo=0.0, hi=1_000_000.0, digits=2)
+                if v is not None:
+                    timing[k] = v
+            if timing:
+                out_ch["timing"] = timing
+
+        counts_raw = ch_raw.get("counts")
+        if isinstance(counts_raw, dict) and counts_raw:
+            counts: dict[str, int] = {}
+            for k in ("vector_candidates", "bm25_candidates", "sparse_candidates"):
+                v = _safe_int(counts_raw.get(k))
+                if v is not None:
+                    counts[k] = v
+            if counts:
+                out_ch["counts"] = counts
+
+        fw_raw = ch_raw.get("fusion_weights")
+        if isinstance(fw_raw, dict) and fw_raw:
+            fw: dict[str, float] = {}
+            for k, v in sorted(fw_raw.items(), key=lambda kv: str(kv[0]))[:10]:
+                ks = _safe_str(k, max_len=40)
+                if ks is None:
+                    continue
+                fv = _safe_float(v, lo=-1e9, hi=1e9, digits=6)
+                if fv is None:
+                    continue
+                fw[ks] = fv
+            if fw:
+                out_ch["fusion_weights"] = fw
+
+        def _safe_channel_box(box_raw: Any, *, kind: str) -> dict[str, Any] | None:
+            if not isinstance(box_raw, dict) or not box_raw:
+                return None
+            box: dict[str, Any] = {}
+            for k in ("enabled", "filter_applied", "index_enabled", "trgm_enabled", "pg_trgm_available"):
+                if k not in box_raw:
+                    continue
+                b = _to_bool(box_raw.get(k))
+                if b is not None:
+                    box[k] = b
+            n = _safe_int(box_raw.get("candidates"))
+            if n is not None:
+                box["candidates"] = n
+            if kind == "lexical_db":
+                s = _safe_str(box_raw.get("fts_config"), max_len=50)
+                if s is not None:
+                    box["fts_config"] = s
+                methods_raw = box_raw.get("methods")
+                if isinstance(methods_raw, dict) and methods_raw:
+                    methods: dict[str, int] = {}
+                    for mk, mv in sorted(methods_raw.items(), key=lambda kv: str(kv[0]))[:10]:
+                        mks = _safe_str(mk, max_len=40)
+                        if mks is None:
+                            continue
+                        iv = _safe_int(mv)
+                        if iv is None:
+                            continue
+                        methods[mks] = iv
+                    if methods:
+                        box["methods"] = methods
+            if kind == "sparse":
+                s = _safe_str(box_raw.get("provider"), max_len=80)
+                if s is not None:
+                    box["provider"] = s
+            return box or None
+
+        for k in ("vector", "bm25", "lexical_db", "sparse"):
+            box = _safe_channel_box(ch_raw.get(k), kind=k)
+            if box:
+                out_ch[k] = box
+
+        rr_raw = ch_raw.get("rerank")
+        if isinstance(rr_raw, dict) and rr_raw:
+            rr: dict[str, Any] = {}
+            for k in ("enabled", "used"):
+                b = _to_bool(rr_raw.get(k))
+                if b is not None:
+                    rr[k] = b
+            for k in ("top_n_config", "candidates_n"):
+                n = _safe_int(rr_raw.get(k))
+                if n is not None:
+                    rr[k] = n
+            elapsed = _safe_float(rr_raw.get("elapsed_sec"), lo=0.0, hi=10_000.0, digits=3)
+            if elapsed is not None:
+                rr["elapsed_sec"] = elapsed
+            for k in ("provider", "model_used", "skip_reason"):
+                s = _safe_str(rr_raw.get(k), max_len=120)
+                if s is not None:
+                    rr[k] = s
+            err_s = _safe_str(rr_raw.get("error"), max_len=200)
+            if err_s is not None:
+                rr["error"] = err_s
+            if rr:
+                out_ch["rerank"] = rr
+
+        # Numeric/bool-only buckets.
+        for key, allowed in (
+            ("attribution", {"vector", "bm25", "lexical_db", "multi", "sparse"}),
+            ("diversity", {"before", "after", "dropped", "moved_out", "moved_in", "pre_unique_docs", "post_unique_docs", "pre_unique_pages", "post_unique_pages"}),
+            ("dedup", {"near_dedup_enabled", "near_dedup_dropped", "near_dedup_hamming_threshold", "near_dedup_max_compare"}),
+            ("cache", {"hit", "store_ok"}),
+        ):
+            raw_obj = ch_raw.get(key)
+            if not isinstance(raw_obj, dict) or not raw_obj:
+                continue
+            cleaned: dict[str, Any] = {}
+            for k, v in raw_obj.items():
+                ks = str(k)
+                if ks not in allowed:
+                    continue
+                if isinstance(v, bool):
+                    cleaned[ks] = v
+                    continue
+                bv = _to_bool(v)
+                if bv is not None and ks.endswith("_enabled"):
+                    cleaned[ks] = bv
+                    continue
+                iv = _safe_int(v)
+                if iv is not None:
+                    cleaned[ks] = iv
+            if cleaned:
+                out_ch[key] = dict(sorted(cleaned.items(), key=lambda kv: kv[0]))
+
+        return out_ch or None
+
+    channels = _safe_channels(raw.get("channels"))
+    if channels:
+        out["channels"] = channels
+
     out = {k: v for k, v in out.items() if v is not None}
     return out or None
 
@@ -274,6 +454,8 @@ _SAFE_CITATION_FIELDS = {
     "relevance_score",
     "vector_score",
     "bm25_score",
+    "lexical_score",
+    "sparse_score",
     "keyword_score",
     "kg_path",
     "kg_path_provenance",
@@ -420,6 +602,8 @@ def _safe_citations(raw: Any) -> list[RagTraceCitation]:
                 relevance_score=_to_float(safe.get("relevance_score")),
                 vector_score=_to_float(safe.get("vector_score")),
                 bm25_score=_to_float(safe.get("bm25_score")),
+                lexical_score=_to_float(safe.get("lexical_score")),
+                sparse_score=_to_float(safe.get("sparse_score")),
                 keyword_score=_to_float(safe.get("keyword_score")),
                 kg_path=_safe_kg_path(safe.get("kg_path")),
                 kg_path_provenance=_safe_kg_path_provenance(safe.get("kg_path_provenance")),

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
@@ -254,7 +255,7 @@ def generate_questions_from_documents(
     llm = ChatOpenAI(
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
-        base_url=settings.LLM_API_BASE,
+        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=0.7,
         http_client=None if not http_client_kwargs else None,
         **http_client_kwargs
@@ -403,7 +404,7 @@ def generate_questions_from_conversations(
     llm = ChatOpenAI(
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
-        base_url=settings.LLM_API_BASE,
+        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=0.7,
         http_client=None if not http_client_kwargs else None,
         **http_client_kwargs

@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
 import { Kbd } from '@/components/ui/kbd'
@@ -19,6 +20,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +45,7 @@ import {
   BarChart3,
   Database,
   Filter,
+  SlidersHorizontal,
   Layers,
   FileCode,
   MessageSquare,
@@ -85,6 +88,49 @@ import type {
   RagTraceListResponse,
 } from '@/types'
 
+type GraphConfBucket = 'high' | 'medium' | 'low'
+
+function coerceTrimmedString(value: unknown): string {
+  return String(value || '').trim()
+}
+
+function getGraphNodeKind(node: any): string {
+  return coerceTrimmedString(node?.meta?.kind ?? node?.kind)
+}
+
+function getGraphNodeType(node: any): string {
+  return coerceTrimmedString(node?.meta?.type ?? node?.type)
+}
+
+function getGraphLinkKind(link: any): string {
+  return coerceTrimmedString(link?.meta?.kind ?? link?.kind)
+}
+
+function getGraphLinkPredicate(link: any): string {
+  return coerceTrimmedString(link?.meta?.predicate ?? link?.predicate ?? link?.label)
+}
+
+function getGraphLinkConfidence(link: any): number | null {
+  const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
+  const num = Number(raw)
+  if (!Number.isFinite(num)) return null
+  return num
+}
+
+function getGraphLinkEndpointId(raw: any): string {
+  if (raw == null) return ''
+  if (typeof raw === 'string' || typeof raw === 'number') return String(raw)
+  if (typeof raw === 'object' && 'id' in raw) return String((raw as any).id || '')
+  return ''
+}
+
+function bucketConfidence(conf: number | null): GraphConfBucket | null {
+  if (conf == null) return null
+  if (conf >= 0.8) return 'high'
+  if (conf >= 0.5) return 'medium'
+  return 'low'
+}
+
 export default function GraphPage() {
   const router = useRouter()
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
@@ -103,6 +149,12 @@ export default function GraphPage() {
   const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
   const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [entityTypeFilters, setEntityTypeFilters] = useState<string[]>([])
+  const [predicateFilters, setPredicateFilters] = useState<string[]>([])
+  const [confidenceBucketFilters, setConfidenceBucketFilters] = useState<GraphConfBucket[]>([])
+  const [entityTypeQuery, setEntityTypeQuery] = useState('')
+  const [predicateQuery, setPredicateQuery] = useState('')
 
   // Entity Resolution (Wave15)
   const [entityAliases, setEntityAliases] = useState<KGEntityAliasItem[]>([])
@@ -179,24 +231,152 @@ export default function GraphPage() {
   const traceFileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
+
+  const availableEntityTypes = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const node of graphData.nodes) {
+      if (getGraphNodeKind(node) !== 'entity') continue
+      const t = getGraphNodeType(node) || 'unknown'
+      counts.set(t, (counts.get(t) || 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+  }, [graphData.nodes])
+
+  const availablePredicates = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const link of graphData.links) {
+      if (getGraphLinkKind(link) !== 'entity_relation') continue
+      const p = getGraphLinkPredicate(link)
+      if (!p) continue
+      counts.set(p, (counts.get(p) || 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+  }, [graphData.links])
+
+  const filteredEntityTypes = useMemo(() => {
+    const q = entityTypeQuery.trim().toLowerCase()
+    const base = availableEntityTypes
+    if (!q) return base.slice(0, 40)
+    return base.filter((t) => t.value.toLowerCase().includes(q)).slice(0, 40)
+  }, [availableEntityTypes, entityTypeQuery])
+
+  const filteredPredicates = useMemo(() => {
+    const q = predicateQuery.trim().toLowerCase()
+    const base = availablePredicates
+    if (!q) return base.slice(0, 40)
+    return base.filter((p) => p.value.toLowerCase().includes(q)).slice(0, 40)
+  }, [availablePredicates, predicateQuery])
+
+  const activeGraphFilterCount = entityTypeFilters.length + predicateFilters.length + confidenceBucketFilters.length
+
+  const displayGraphData = useMemo<GraphData>(() => {
+    const hasTypeFilter = entityTypeFilters.length > 0
+    const hasPredicateFilter = predicateFilters.length > 0
+    const hasConfBucketFilter = confidenceBucketFilters.length > 0
+
+    if (!hasTypeFilter && !hasPredicateFilter && !hasConfBucketFilter) {
+      return graphData
+    }
+
+    const allowedTypes = new Set(entityTypeFilters.map((t) => coerceTrimmedString(t)))
+    const allowedPredicates = new Set(predicateFilters.map((p) => coerceTrimmedString(p)))
+    const allowedBuckets = new Set(confidenceBucketFilters)
+
+    const allowedNodeIds = new Set<string>()
+    for (const node of graphData.nodes) {
+      const id = coerceTrimmedString(node?.id)
+      if (!id) continue
+
+      const kind = getGraphNodeKind(node)
+      if (kind === 'entity') {
+        const t = getGraphNodeType(node) || 'unknown'
+        if (!hasTypeFilter || allowedTypes.has(t)) {
+          allowedNodeIds.add(id)
+        }
+        continue
+      }
+
+      allowedNodeIds.add(id)
+    }
+
+    const nextLinks: any[] = []
+    for (const link of graphData.links) {
+      const sourceId = getGraphLinkEndpointId(link?.source)
+      const targetId = getGraphLinkEndpointId(link?.target)
+      if (!sourceId || !targetId) continue
+      if (!allowedNodeIds.has(sourceId) || !allowedNodeIds.has(targetId)) continue
+
+      const kind = getGraphLinkKind(link)
+      if (kind === 'entity_relation') {
+        if (hasPredicateFilter) {
+          const pred = getGraphLinkPredicate(link)
+          if (!pred || !allowedPredicates.has(pred)) continue
+        }
+
+        if (hasConfBucketFilter) {
+          const conf = getGraphLinkConfidence(link)
+          const bucket = bucketConfidence(conf)
+          if (!bucket || !allowedBuckets.has(bucket)) continue
+        }
+      }
+
+      nextLinks.push({ ...link, source: sourceId, target: targetId })
+    }
+
+    const linkedNodeIds = new Set<string>()
+    for (const link of nextLinks) {
+      const s = getGraphLinkEndpointId(link?.source)
+      const t = getGraphLinkEndpointId(link?.target)
+      if (s) linkedNodeIds.add(s)
+      if (t) linkedNodeIds.add(t)
+    }
+
+    const nextNodes = graphData.nodes.filter((node) => linkedNodeIds.has(coerceTrimmedString(node?.id)))
+    return { nodes: nextNodes, links: nextLinks }
+  }, [graphData, entityTypeFilters, predicateFilters, confidenceBucketFilters])
+
+  const displayNodeIds = useMemo(() => {
+    return new Set(displayGraphData.nodes.map((node) => coerceTrimmedString(node?.id)))
+  }, [displayGraphData.nodes])
+
+  // Close node detail panel if the current node is filtered out.
+  useEffect(() => {
+    if (!isDetailOpen || !selectedNodeId) return
+    if (displayNodeIds.has(String(selectedNodeId))) return
+    setIsDetailOpen(false)
+    setSelectedNode(null)
+  }, [displayNodeIds, isDetailOpen, selectedNodeId])
+
+  // Filters can invalidate highlights (e.g. path/search results). Fail open: clear highlights on filter changes.
+  useEffect(() => {
+    setHighlightedNodeIds(new Set())
+    setHighlightedLinkIds(new Set())
+    setPathStartNode(null)
+    setPathEndNode(null)
+  }, [entityTypeFilters, predicateFilters, confidenceBucketFilters])
+
   const linksWithIds = useMemo(() => {
-    return graphData.links.map((link, index) => ({
+    return displayGraphData.links.map((link, index) => ({
       ...link,
       id: (link as any).id || `link-${index}`,
     }))
-  }, [graphData.links])
+  }, [displayGraphData.links])
 
   const searchMatches = useMemo(() => {
     if (isPathMode || isConnectMode || isExplainMode) return []
     const term = deferredSearchTerm.trim().toLowerCase()
     if (!term) return []
 
-    return graphData.nodes.filter((node) => {
+    return displayGraphData.nodes.filter((node) => {
       const label = (node.label || '').toLowerCase()
       const id = (node.id || '').toLowerCase()
       return label.includes(term) || id.includes(term)
     })
-  }, [deferredSearchTerm, graphData.nodes, isPathMode, isConnectMode, isExplainMode])
+  }, [deferredSearchTerm, displayGraphData.nodes, isPathMode, isConnectMode, isExplainMode])
 
   useEffect(() => {
     if (isPathMode || isConnectMode || isExplainMode) return
@@ -925,7 +1105,7 @@ export default function GraphPage() {
       return
     }
 
-    if (graphData.nodes.length < 3) {
+    if (displayGraphData.nodes.length < 3) {
       toast.warning('图谱节点过少，无法演示推理路径')
       return
     }
@@ -936,13 +1116,13 @@ export default function GraphPage() {
 
     const trace = []
     const visited = new Set()
-    let current = graphData.nodes[0]
+    let current = displayGraphData.nodes[0]
     
     for (let i = 0; i < 4; i++) {
         trace.push(current)
         visited.add(current.id)
         
-        const link = graphData.links.find(l => {
+        const link = displayGraphData.links.find(l => {
             const s = (l.source as any).id || l.source
             const t = (l.target as any).id || l.target
             return (s === current.id && !visited.has(t)) || (t === current.id && !visited.has(s))
@@ -952,9 +1132,9 @@ export default function GraphPage() {
             const s = (link.source as any).id || link.source
             const t = (link.target as any).id || link.target
             const nextId = s === current.id ? t : s
-            current = graphData.nodes.find(n => n.id === nextId) || graphData.nodes[i+1]
+            current = displayGraphData.nodes.find(n => n.id === nextId) || displayGraphData.nodes[i+1]
         } else {
-            current = graphData.nodes[Math.min(i + 5, graphData.nodes.length - 1)]
+            current = displayGraphData.nodes[Math.min(i + 5, displayGraphData.nodes.length - 1)]
         }
     }
 
@@ -1048,7 +1228,7 @@ export default function GraphPage() {
 
   const calculatePath = useCallback(
     (start: any, end: any) => {
-      const result = findShortestPath(graphData.nodes, linksWithIds, start.id, end.id)
+      const result = findShortestPath(displayGraphData.nodes, linksWithIds, start.id, end.id)
 
       if (result) {
         setHighlightedNodeIds(new Set(result.nodeIds))
@@ -1061,7 +1241,7 @@ export default function GraphPage() {
         setPathEndNode(null)
       }
     },
-    [graphData.nodes, linksWithIds]
+    [displayGraphData.nodes, linksWithIds]
   )
 
   const resetPathMode = () => {
@@ -1128,6 +1308,25 @@ export default function GraphPage() {
     if (dataSource === 'live') {
       loadInitialData('live', { minSharedEvents: next })
     }
+  }
+
+  const resetGraphFilters = () => {
+    setEntityTypeFilters([])
+    setPredicateFilters([])
+    setConfidenceBucketFilters([])
+    setEntityTypeQuery('')
+    setPredicateQuery('')
+  }
+
+  const toggleConfidenceBucket = (bucket: GraphConfBucket) => {
+    setConfidenceBucketFilters((prev) => {
+      const has = prev.includes(bucket)
+      const next = has ? prev.filter((b) => b !== bucket) : [...prev, bucket]
+      const unique = Array.from(new Set(next))
+      // Selecting all buckets is equivalent to "Any" (no filter).
+      if (unique.length >= 3) return []
+      return unique
+    })
   }
 
   const handleExportGraphML = async () => {
@@ -1198,7 +1397,7 @@ export default function GraphPage() {
 	          </div>
           
           {/* Centered Search Bar */}
-          {graphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode && (
+          {displayGraphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode && (
             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-full max-w-md">
               <div className="relative">
                 <SearchInput
@@ -1335,6 +1534,222 @@ export default function GraphPage() {
                   </Button>
                 </>
               )}
+
+              {(graphData.nodes.length > 0 || activeGraphFilterCount > 0) && (
+                <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+                        activeGraphFilterCount > 0 && "bg-primary/10 text-primary hover:text-primary"
+                      )}
+                      title="图谱筛选：predicate / entity type / confidence bucket"
+                    >
+                      <SlidersHorizontal className="w-4 h-4 mr-2" />
+                      筛选
+                      {activeGraphFilterCount > 0 ? (
+                        <Badge variant="soft" className="ml-2 px-2 py-0.5 text-[10px]">
+                          {activeGraphFilterCount}
+                        </Badge>
+                      ) : null}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-[420px] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
+                          <div className="text-sm font-semibold text-foreground">图谱筛选</div>
+                          <div className="text-[11px] text-muted-foreground font-mono">
+                            {displayGraphData.nodes.length}N / {displayGraphData.links.length}L
+                          </div>
+                        </div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          Predicate 仅对关系边生效；Type 仅对实体节点生效。
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={resetGraphFilters}
+                          disabled={activeGraphFilterCount === 0 && !entityTypeQuery && !predicateQuery}
+                        >
+                          清除
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-5">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-[11px] font-semibold text-muted-foreground uppercase">Entity Type</div>
+                          {entityTypeFilters.length === 0 ? (
+                            <span className="text-[11px] text-muted-foreground">Any</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-[11px] text-primary hover:underline"
+                              onClick={() => setEntityTypeFilters([])}
+                            >
+                              Any
+                            </button>
+                          )}
+                        </div>
+                        <Input
+                          value={entityTypeQuery}
+                          onChange={(e) => setEntityTypeQuery(e.target.value)}
+                          placeholder="Search types…"
+                          className="mt-2 h-8 text-xs"
+                        />
+                        <div className="mt-2 max-h-36 overflow-y-auto overscroll-contain no-scrollbar pr-1 space-y-1">
+                          {filteredEntityTypes.length === 0 ? (
+                            <div className="text-xs text-muted-foreground">No entity types found</div>
+                          ) : (
+                            filteredEntityTypes.map((t) => {
+                              const checked = entityTypeFilters.includes(t.value)
+                              return (
+                                <label
+                                  key={t.value}
+                                  className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60"
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(next) => {
+                                      const isChecked = !!next
+                                      setEntityTypeFilters((prev) => {
+                                        const set = new Set(prev)
+                                        if (isChecked) set.add(t.value)
+                                        else set.delete(t.value)
+                                        return Array.from(set)
+                                      })
+                                    }}
+                                  />
+                                  <span className="flex-1 min-w-0 text-xs text-foreground truncate">{t.value}</span>
+                                  <span className="text-[11px] text-muted-foreground font-mono">{t.count}</span>
+                                </label>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-[11px] font-semibold text-muted-foreground uppercase">Predicate</div>
+                          {predicateFilters.length === 0 ? (
+                            <span className="text-[11px] text-muted-foreground">Any</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-[11px] text-primary hover:underline"
+                              onClick={() => setPredicateFilters([])}
+                            >
+                              Any
+                            </button>
+                          )}
+                        </div>
+                        <Input
+                          value={predicateQuery}
+                          onChange={(e) => setPredicateQuery(e.target.value)}
+                          placeholder="Search predicates…"
+                          className="mt-2 h-8 text-xs"
+                        />
+                        <div className="mt-2 max-h-36 overflow-y-auto overscroll-contain no-scrollbar pr-1 space-y-1">
+                          {filteredPredicates.length === 0 ? (
+                            <div className="text-xs text-muted-foreground">No predicates found</div>
+                          ) : (
+                            filteredPredicates.map((p) => {
+                              const checked = predicateFilters.includes(p.value)
+                              return (
+                                <label
+                                  key={p.value}
+                                  className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60"
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(next) => {
+                                      const isChecked = !!next
+                                      setPredicateFilters((prev) => {
+                                        const set = new Set(prev)
+                                        if (isChecked) set.add(p.value)
+                                        else set.delete(p.value)
+                                        return Array.from(set)
+                                      })
+                                    }}
+                                  />
+                                  <span className="flex-1 min-w-0 text-xs text-foreground truncate">{p.value}</span>
+                                  <span className="text-[11px] text-muted-foreground font-mono">{p.count}</span>
+                                </label>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-[11px] font-semibold text-muted-foreground uppercase">Confidence</div>
+                          {confidenceBucketFilters.length === 0 ? (
+                            <span className="text-[11px] text-muted-foreground">Any</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-[11px] text-primary hover:underline"
+                              onClick={() => setConfidenceBucketFilters([])}
+                            >
+                              Any
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={confidenceBucketFilters.length === 0 ? 'info' : 'outline'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setConfidenceBucketFilters([])}
+                          >
+                            Any
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={confidenceBucketFilters.includes('high') ? 'info' : 'outline'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => toggleConfidenceBucket('high')}
+                          >
+                            High (≥0.8)
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={confidenceBucketFilters.includes('medium') ? 'info' : 'outline'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => toggleConfidenceBucket('medium')}
+                          >
+                            Mid (0.5-0.8)
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={confidenceBucketFilters.includes('low') ? 'info' : 'outline'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => toggleConfidenceBucket('low')}
+                          >
+                            Low (&lt;0.5)
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
  
              <div className="h-6 w-px bg-muted mx-1 hidden sm:block"></div>
  
@@ -1388,10 +1803,10 @@ export default function GraphPage() {
              backgroundSize: '24px 24px'
           }}></div>
 
-          {graphData.nodes.length > 0 ? (
+          {displayGraphData.nodes.length > 0 ? (
             viewMode === '3d' ? (
                 <KnowledgeGraph3D 
-                    data={graphData}
+                    data={displayGraphData}
                     onNodeClick={(node) => {
                         handleNodeClick(node)
                     }}
@@ -1399,7 +1814,7 @@ export default function GraphPage() {
             ) : (
                 <GraphViewer 
                 ref={graphRef as React.RefObject<GraphViewerRef>}
-                data={graphData} 
+                data={displayGraphData} 
                 onNodeClick={handleNodeClick}
                 onBackgroundClick={() => setIsDetailOpen(false)}
                 highlightedNodeIds={highlightedNodeIds}
@@ -1452,7 +1867,7 @@ export default function GraphPage() {
 		               </div>
                <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar">
                  {explainSteps.map((step, idx) => {
-                   const node = graphData.nodes.find(n => n.id === step.node)
+                   const node = displayGraphData.nodes.find(n => n.id === step.node)
                    const isActive = idx === currentStepIndex
                    const isDone = idx < currentStepIndex
                    

@@ -20,7 +20,7 @@ from typing import Any, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, desc, func, or_, select
@@ -2302,6 +2302,21 @@ async def _ingest_url_upload_request(
         doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
         doc_metadata["last_ingestion_kind"] = str(ingestion_kind or "upload_url")
 
+    # Tenant quotas (Wave22-T094): enforce docs/storage limits once size is known.
+    try:
+        from app.services.tenant_quota_service import enforce_tenant_upload_quotas
+
+        enforce_tenant_upload_quotas(
+            db,
+            tenant_id=tenant_id,
+            additional_docs=1,
+            additional_bytes=int(getattr(downloaded, "size_bytes", 0) or 0),
+        )
+    except HTTPException:
+        with contextlib.suppress(OSError):
+            final_path.unlink(missing_ok=True)
+        raise
+
     db_document = DBDocument(
         id=file_id,
         tenant_id=tenant_id,
@@ -2567,6 +2582,22 @@ async def upload_document(
     try:
         file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
     except HTTPException:
+        raise
+
+    # Tenant quotas (Wave22-T094): enforce cheap docs/storage limits at upload time.
+    # This is best-effort and fail-open by default when quotas are disabled.
+    try:
+        from app.services.tenant_quota_service import enforce_tenant_upload_quotas
+
+        enforce_tenant_upload_quotas(
+            db,
+            tenant_id=tenant_id,
+            additional_docs=1,
+            additional_bytes=int(file_size or 0),
+        )
+    except HTTPException:
+        with contextlib.suppress(OSError):
+            file_path.unlink(missing_ok=True)
         raise
 
     # 4. Create database record.
@@ -3175,6 +3206,17 @@ async def upload_documents_batch(
     
     if len(files) > 50:
         raise HTTPException(status_code=400, detail="Too many files. Maximum 50 files per batch.")
+
+    # Tenant quotas (Wave22-T094): fail fast on doc-count limits. Storage limits are enforced once
+    # file sizes are known (after staging each file).
+    from app.services.tenant_quota_service import enforce_tenant_upload_quotas
+
+    enforce_tenant_upload_quotas(
+        db,
+        tenant_id=tenant_id,
+        additional_docs=int(len(files or [])),
+        additional_bytes=0,
+    )
     
     # Cap concurrency.
     max_concurrent = min(max_concurrent, 10)  # Max 10 concurrent.
@@ -3325,6 +3367,21 @@ async def upload_documents_batch(
 
         staged_successful = [r for r in staged_results if r.get("success")]
         staged_failed = [r for r in staged_results if not r.get("success")]
+
+        # Tenant quotas: enforce storage/docs limits using actual staged sizes (and clean up staged files on failure).
+        try:
+            total_bytes = sum(int(r.get("file_size") or 0) for r in staged_successful)
+            enforce_tenant_upload_quotas(
+                db,
+                tenant_id=tenant_id,
+                additional_docs=int(len(staged_successful)),
+                additional_bytes=int(total_bytes),
+            )
+        except HTTPException:
+            for r in staged_successful:
+                with contextlib.suppress(OSError):
+                    Path(str(r.get("file_path") or "")).unlink(missing_ok=True)
+            raise
 
         # Precheck-first: run a best-effort precheck scan on a staging folder with the uploaded files.
         # This lets us apply suggested ingestion policy before creating documents/queueing jobs.
@@ -3961,6 +4018,24 @@ async def upload_documents_batch(
                 file_path = upload_dir / f"{file_id}{file_ext}"
                 
                 file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
+
+                # Tenant quotas: enforce docs/storage limits per successful upload and clean up the staged file.
+                try:
+                    enforce_tenant_upload_quotas(
+                        db,
+                        tenant_id=tenant_id,
+                        additional_docs=1,
+                        additional_bytes=int(file_size or 0),
+                    )
+                except HTTPException as exc:
+                    with contextlib.suppress(OSError):
+                        file_path.unlink(missing_ok=True)
+                    return {
+                        "success": False,
+                        "filename": file.filename,
+                        "source_path": source_path,
+                        "error": str(getattr(exc, "detail", "") or "tenant_quota_exceeded"),
+                    }
                 
                 # Create database record.
                 doc_metadata = {
@@ -7434,6 +7509,7 @@ async def _delete_document_lifecycle(
     account_id: str,
     db: Session,
     enforce_permissions: bool = True,
+    enforce_membership: bool = True,
 ) -> None:
     """
     Internal document delete lifecycle.
@@ -7442,7 +7518,8 @@ async def _delete_document_lifecycle(
     - `enforce_permissions=False` is intended for admin-only lifecycle operations (e.g. dataset purge),
       where the caller already performed the necessary RBAC checks.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    if bool(enforce_membership):
+        DatasetService.ensure_member(db, tenant_id, account_id)
     document = (
         db.query(DBDocument)
         .filter(
@@ -8248,13 +8325,20 @@ async def get_image_url(
 ):
     """
     Get MinIO presigned URL by img_id ({tenant_id}:{dataset_id}:{document_id}:{chunk_index}).
-    Returns a 302 redirect to the image URL.
+    Bandwidth-aware serving (Wave19-T069):
+    - Serve bytes directly (StreamingResponse) so clients can use Range requests.
+    - Avoid leaking presigned URLs to the browser/network logs.
     """
     if not settings.MINIO_ENABLED:
         raise HTTPException(
             status_code=503,
             detail="MinIO is disabled; cannot retrieve image URL"
         )
+    # Security: when auth is provided via query param (`?token=`) for <img src>,
+    # ensure downstream caches never store token-bearing URLs.
+    token_in_url = bool(
+        (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
+    )
     # Resolve tenant_id even when the request is coming from <img src> (no custom headers).
     requested_tenant = _get_tenant_id_from_request_if_provided(request)
 
@@ -8320,27 +8404,123 @@ async def get_image_url(
             ds = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
             DatasetService.assert_dataset_readable(db, ds, account_id)
 
+    # Resolve object name (keep aligned with minio_service.upload_image/get_image_url).
+    extension = "jpg"
+    object_name: str | None = None
+    if ":" in img_id:
+        try:
+            tenant_part, dataset_part, document_part, chunk_key = img_id.split(":", 3)
+            object_name = f"images/{tenant_part}/{dataset_part}/{document_part}/{chunk_key}.{extension}"
+        except Exception:
+            object_name = None
+    else:
+        # Backward compatible: "{dataset_id}-{chunk_id}"
+        try:
+            dataset_part, chunk_id = img_id.split("-", 1)
+            object_name = f"images/{dataset_part}/{chunk_id}.{extension}"
+        except Exception:
+            object_name = None
+
+    if not object_name:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Stat for size (Range) and stable caching metadata.
     try:
-        url = minio_service.get_image_url(img_id, extension="jpg")
-        # Redirect to MinIO presigned URL.
-        return RedirectResponse(
-            url=url,
-            status_code=302,
-            headers={
-                # Avoid caching sensitive presigned URLs.
-                "Cache-Control": "no-store",
-                "Pragma": "no-cache",
-                "Expires": "0",
-                # Reduce risk of leaking any auth query params via referrers.
-                "Referrer-Policy": "no-referrer",
-                "X-Content-Type-Options": "nosniff",
-            },
-        )
-    except Exception as e:
+        stat = minio_service.stat_object(object_name=object_name)
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(
             status_code=404,
             detail=f"Image not found or retrieval failed: {str(e)}"
         ) from e
+
+    total_size = int(getattr(stat, "size", 0) or 0)
+    if total_size <= 0:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
+    cache_control = "no-store" if token_in_url else (f"private, max-age={max_age}" if max_age > 0 else "no-cache")
+
+    etag_raw = str(getattr(stat, "etag", "") or "").strip()
+    etag = f"\"{etag_raw}\"" if etag_raw and not etag_raw.startswith("\"") else (etag_raw or None)
+
+    # Conditional GET (only for full responses; ranges must be served).
+    range_header = (request.headers.get("range") or "").strip()
+    if etag and not range_header:
+        if_none_match = (request.headers.get("if-none-match") or "").strip()
+        if if_none_match:
+            candidates_etag = [p.strip() for p in if_none_match.split(",") if p.strip()]
+            if "*" in candidates_etag or etag in candidates_etag:
+                headers_304 = {
+                    "ETag": etag,
+                    "Cache-Control": cache_control,
+                    "Referrer-Policy": "no-referrer",
+                    "X-Content-Type-Options": "nosniff",
+                }
+                if token_in_url:
+                    headers_304["Pragma"] = "no-cache"
+                    headers_304["Expires"] = "0"
+                return Response(
+                    status_code=304,
+                    headers=headers_304,
+                )
+
+    # Range support (single-range only).
+    offset = 0
+    length: int | None = None
+    status_code = 200
+    headers: dict[str, str] = {
+        "Cache-Control": cache_control,
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "Accept-Ranges": "bytes",
+        **({"ETag": etag} if etag else {}),
+    }
+    if token_in_url:
+        headers["Pragma"] = "no-cache"
+        headers["Expires"] = "0"
+
+    if range_header:
+        if not range_header.lower().startswith("bytes="):
+            raise HTTPException(status_code=416, detail="Invalid Range header")
+        spec = range_header[6:].strip()
+        if "," in spec:
+            raise HTTPException(status_code=416, detail="Multiple ranges not supported")
+        start_s, end_s = (spec.split("-", 1) + [""])[:2]
+        try:
+            if start_s == "":
+                # suffix range: "-N"
+                suffix = int(end_s)
+                if suffix <= 0:
+                    raise ValueError
+                offset = max(0, total_size - suffix)
+                end = total_size - 1
+            else:
+                offset = int(start_s)
+                end = int(end_s) if end_s else (total_size - 1)
+                if offset < 0:
+                    raise ValueError
+                if end < offset:
+                    raise ValueError
+                if offset >= total_size:
+                    raise HTTPException(status_code=416, detail="Range not satisfiable")
+                end = min(end, total_size - 1)
+            length = int(end - offset + 1)
+            status_code = 206
+            headers["Content-Range"] = f"bytes {offset}-{offset + length - 1}/{total_size}"
+            headers["Content-Length"] = str(length)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=416, detail="Invalid Range header") from exc
+    else:
+        headers["Content-Length"] = str(total_size)
+
+    return StreamingResponse(
+        minio_service.iter_object_bytes(object_name=object_name, offset=offset, length=length),
+        status_code=status_code,
+        media_type="image/jpeg",
+        headers=headers,
+    )
 
 
 @router.post("/preview", response_model=DocumentParsePreview)

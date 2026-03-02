@@ -296,6 +296,22 @@ export interface IndexAuditResponse {
   milvus_orphan_ids_sample: string[]
 }
 
+export interface IngestionDashboardSummaryResponse {
+  window_hours: number
+  bucket_minutes: number
+  window_start: string
+  window_end: string
+  dataset_id?: string | null
+
+  created_count: number
+  by_status: Record<string, number>
+  by_stage_processing: Record<string, number>
+  avg_completed_latency_sec?: number | null
+
+  top_error_reasons: Record<string, number>
+  timeseries: Record<string, any[]>
+}
+
 export type DocumentUserMetadataPatchRequest = import('./backend').DocumentUserMetadataPatchRequest
 export type DocumentBatchUserMetadataPatchRequest = import('./backend').DocumentBatchUserMetadataPatchRequest
 export type DocumentBatchUserMetadataPatchResponse = import('./backend').DocumentBatchUserMetadataPatchResponse
@@ -1230,6 +1246,8 @@ export interface RagTraceCitation {
   relevance_score?: number | null
   vector_score?: number | null
   bm25_score?: number | null
+  lexical_score?: number | null
+  sparse_score?: number | null
   keyword_score?: number | null
   rerank_score?: number | null
   retrieval_score?: number | null
@@ -1375,6 +1393,32 @@ export interface ChatTokenUsageSummary {
   by_dataset: ChatTokenUsageRow[]
 }
 
+export interface ChatCostUsageRow {
+  dataset_id?: string | null
+  assistant_messages: number
+  llm_prompt_tokens: number
+  llm_completion_tokens: number
+  llm_total_tokens: number
+  embedding_query_tokens: number
+  embedding_query_chars: number
+  retrieval_elapsed_sec_sum: number
+  rerank_elapsed_sec_sum: number
+}
+
+export interface ChatCostUsageSummary {
+  window_start: string
+  window_end: string
+  total_assistant_messages: number
+  total_llm_prompt_tokens: number
+  total_llm_completion_tokens: number
+  total_llm_total_tokens: number
+  total_embedding_query_tokens: number
+  total_embedding_query_chars: number
+  total_retrieval_elapsed_sec: number
+  total_rerank_elapsed_sec: number
+  by_dataset: ChatCostUsageRow[]
+}
+
 export interface ChatTokenQuotaStatus {
   enabled: boolean
   mode: string
@@ -1385,6 +1429,48 @@ export interface ChatTokenQuotaStatus {
   window_hours: number
   window_start: string
   window_end: string
+}
+
+export interface TenantDocumentQuotaStatus {
+  enabled: boolean
+  limit: number
+  used: number
+  remaining: number
+  exceeded: boolean
+}
+
+export interface TenantStorageQuotaStatus {
+  enabled: boolean
+  limit_bytes: number
+  used_bytes: number
+  remaining_bytes: number
+  exceeded: boolean
+}
+
+export interface TenantEmbeddingCharQuotaStatus {
+  enabled: boolean
+  mode: string
+  limit_chars: number
+  used_chars: number
+  remaining_chars: number
+  exceeded: boolean
+  window_hours: number
+  window_start: string
+  window_end: string
+}
+
+export interface TenantQpsQuotaConfig {
+  enabled: boolean
+  mode: string
+  rps: number
+  burst: number
+}
+
+export interface TenantQuotaSummary {
+  documents: TenantDocumentQuotaStatus
+  storage: TenantStorageQuotaStatus
+  embedding_chars: TenantEmbeddingCharQuotaStatus
+  qps: TenantQpsQuotaConfig
 }
 
 // ==================== Audit Logs ====================
@@ -1964,6 +2050,17 @@ export interface RegressionRunMetricDiff {
   delta?: number | null
 }
 
+export interface RegressionRunDiffScore {
+  version: string
+  used_metric_keys: string[]
+  weights: Record<string, number>
+  base_score?: number | null
+  target_score?: number | null
+  delta?: number | null
+  base_metrics: Record<string, number>
+  target_metrics: Record<string, number>
+}
+
 export interface RegressionRunSliceBucketDiff {
   key: string
   items_before: number
@@ -1984,6 +2081,7 @@ export interface RagasRegressionRunDiffResponse {
   base_params: Record<string, any>
   target_params: Record<string, any>
   metric_diffs: RegressionRunMetricDiff[]
+  diff_score?: RegressionRunDiffScore | null
   slice_diffs: Record<string, RegressionRunSliceDiff>
 }
 

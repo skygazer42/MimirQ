@@ -51,6 +51,7 @@ from app.services.pipeline_config import (
     build_indexing_options,
     resolve_pipeline_effective,
 )
+from app.services.tenant_quota_service import TenantQuotaExceededError
 from app.storage.object.minio import minio_service
 from app.types.document_analytics import compute_document_analytics
 from app.types.indexing import IndexKind, IndexRecord
@@ -988,6 +989,12 @@ class ChunkAssetStage:
         image_ocr_enabled: bool = False,
         image_ocr_max_chars: int = 2000,
         image_ocr_max_images: int = 20,
+        pii_anonymize: bool = False,
+        pii_mode: str = "mask",
+        pii_mask: str = "[REDACTED]",
+        secrets_redact: bool = False,
+        secrets_mode: str = "mask",
+        secrets_mask: str = "[SECRET]",
     ) -> ChunkAssetResult:
         from app.parsing.enrich.image_understanding import (
             append_image_understanding_text,
@@ -995,6 +1002,7 @@ class ChunkAssetStage:
             load_image_for_ocr,
             ocr_image,
         )
+        from app.parsing.enrich.ocr_redaction import redact_ocr_text
         from app.services.chunk_quality_scoring import score_chunk_quality
 
         max_images = max(0, int(image_ocr_max_images or 0))
@@ -1028,8 +1036,6 @@ class ChunkAssetStage:
                 if bool(image_caption_enabled):
                     try:
                         caption = derive_image_caption(chunk.page_content or "", meta)
-                        if caption:
-                            meta["image_caption"] = caption
                     except Exception:
                         caption = ""
                 if bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0):
@@ -1047,6 +1053,48 @@ class ChunkAssetStage:
                                 img.close()
                             except Exception:
                                 pass
+
+                # Policy-driven safety: OCR/caption text is appended after governance cleaning, so apply
+                # PII/secret redactions here (best-effort).
+                if caption:
+                    try:
+                        caption, _pii_hits, _sec_hits = redact_ocr_text(
+                            caption,
+                            pii_anonymize=bool(pii_anonymize),
+                            pii_mode=str(pii_mode or "mask"),
+                            pii_mask=str(pii_mask or "[REDACTED]"),
+                            secrets_redact=bool(secrets_redact),
+                            secrets_mode=str(secrets_mode or "mask"),
+                            secrets_mask=str(secrets_mask or "[SECRET]"),
+                        )
+                    except Exception:
+                        # Fail-closed when redaction is enabled: do not emit raw caption.
+                        if bool(pii_anonymize) or bool(secrets_redact):
+                            caption = str(pii_mask or "[REDACTED]") if bool(pii_anonymize) else str(secrets_mask or "[SECRET]")
+                if caption:
+                    meta["image_caption"] = caption
+
+                if ocr_text:
+                    try:
+                        ocr_text, pii_hits, sec_hits = redact_ocr_text(
+                            ocr_text,
+                            pii_anonymize=bool(pii_anonymize),
+                            pii_mode=str(pii_mode or "mask"),
+                            pii_mask=str(pii_mask or "[REDACTED]"),
+                            secrets_redact=bool(secrets_redact),
+                            secrets_mode=str(secrets_mode or "mask"),
+                            secrets_mask=str(secrets_mask or "[SECRET]"),
+                        )
+                        if pii_hits:
+                            meta["image_ocr_pii_hits"] = {str(k): int(v) for k, v in pii_hits.items() if int(v or 0) > 0}
+                        if sec_hits:
+                            meta["image_ocr_secrets_hits"] = {str(k): int(v) for k, v in sec_hits.items() if int(v or 0) > 0}
+                    except Exception:
+                        # Fail-closed when redaction is enabled: do not emit raw OCR.
+                        if bool(pii_anonymize) or bool(secrets_redact):
+                            ocr_text = str(pii_mask or "[REDACTED]") if bool(pii_anonymize) else str(secrets_mask or "[SECRET]")
+                        else:
+                            ocr_text = ""
                     if ocr_text:
                         meta["image_ocr_text"] = ocr_text
                         meta["image_ocr_chars"] = len(ocr_text)
@@ -2688,6 +2736,12 @@ class DocumentProcessorService:
                     image_ocr_enabled=bool(getattr(pipeline_effective, "image_ocr_enabled", False)),
                     image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
                     image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
+                    pii_anonymize=bool(getattr(pipeline_effective, "governance_pii_anonymize", False)),
+                    pii_mode=str(getattr(pipeline_effective, "governance_pii_mode", "mask") or "mask"),
+                    pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", "[REDACTED]") or "[REDACTED]"),
+                    secrets_redact=bool(getattr(pipeline_effective, "governance_secrets_redact", False)),
+                    secrets_mode=str(getattr(pipeline_effective, "governance_secrets_mode", "mask") or "mask"),
+                    secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", "[SECRET]") or "[SECRET]"),
                 )
             _add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
             chunks = chunk_asset.chunks
@@ -2965,6 +3019,62 @@ class DocumentProcessorService:
             except Exception:
                 pass
             raise
+        except TenantQuotaExceededError as e:
+            # NOTE: Keep this block after asyncio.CancelledError so task cancellations propagate.
+            quota_key = str(getattr(e, "quota", "") or "").strip() or "quota"
+            logger.info(
+                "Tenant quota exceeded: tenant=%s document=%s quota=%s",
+                tenant_id,
+                document_id,
+                quota_key,
+            )
+            log_metrics(
+                {
+                    "event": "ingest.quota_exceeded",
+                    "quota": quota_key,
+                    "tenant_id": str(tenant_id),
+                    "document_id": str(document_id),
+                }
+            )
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+            meta_patch = dict(getattr(db_document, "doc_metadata", None) or {})
+            meta_patch["tenant_quota_exceeded"] = {
+                "quota": quota_key,
+                "meta": dict(getattr(e, "meta", None) or {}),
+            }
+            meta_patch = _with_stage_durations(meta_patch)
+
+            from app.core.pipeline_versions import should_preserve_existing_versions  # noqa: WPS433
+
+            update_kwargs: dict[str, Any] = {
+                "error_message": str(e)[:300],
+                "doc_metadata": meta_patch,
+            }
+            # When reprocessing a document, keep the currently-active version's stats visible.
+            if not should_preserve_existing_versions(meta_patch):
+                update_kwargs["chunk_count"] = 0
+                update_kwargs["total_characters"] = 0
+            await self._update_status(
+                db,
+                tenant_id,
+                document_id,
+                "failed",
+                0,
+                "failed",
+                **update_kwargs,
+            )
+            return {
+                "status": "failed",
+                "reason": f"tenant_quota_exceeded:{quota_key}",
+                "chunk_count": 0,
+                "total_characters": 0,
+                "parser_backend": resolved_backend,
+                "chunk_strategy": resolved_chunk_strategy,
+            }
         except Exception as e:
             # Error handling.
             logger.exception("Error processing document %s: %s", document_id, e)

@@ -70,8 +70,67 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 - 审计日志 retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --audit-logs --dry-run`
 - Dataset 文档清单 NDJSON 导出（默认脱敏，支持 cursor + gzip）：`GET /api/v1/datasets/{dataset_id}/documents/export`
 - Dataset bundle ZIP 导出（包含 dataset/config/docs 清单，默认脱敏）：`GET /api/v1/datasets/{dataset_id}/export`
+- Dataset purge（删除 dataset 内 documents/chunks/KG 衍生物；bounded，默认 dry-run）：`POST /api/v1/datasets/{dataset_id}/purge`
+- Regression runs purge（评估工件保留清理；bounded，默认 dry-run）：`POST /api/v1/evaluations/ragas/regression/runs/purge`
+- Regression runs retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --regression-runs --dry-run`
 
 后续将补齐：
 
 - dataset/document 的合规 bundle 导出（含向量/KG/对象存储引用）
 - retention job（定时执行 + 可观测 + 可审计；覆盖更多数据类型）
+
+---
+
+## 5) Incident Response（应急处置）
+
+目标：先止血，再定位，再验证修复。
+
+1. **确认影响面**
+   - 是所有租户还是单租户？
+   - 是单数据集还是所有数据集？
+   - 是 ingest/index 还是 retrieval/rerank/LLM？
+2. **收集最小证据（PII-safe 优先）**
+   - request_id（前端会带 `X-Request-ID`，后端也会写入响应头/日志）
+   - `/api/v1/observability/rag-metrics/summary`（聚合指标）
+   - RAG trace / leaderboard / diff 报告（尽量用 hash / 指标，不要复制原始 query/文档）
+3. **止血手段（按场景）**
+   - **成本/滥用飙升**：启用/调严 rate-limit 与 tenant QPS quota；观察 `Retry-After` 与 429 频率。
+   - **检索质量骤降**：优先排查配置变更（settings/env），用 `retrieval_config_hash` 对比“变更前后”的配置指纹。
+   - **索引一致性异常**：跑 index-audit 端点；必要时暂停新 ingestion，避免越写越乱。
+   - **对象存储/向量库不可用**：Readiness 503 时先恢复依赖，再考虑回放/补偿任务。
+
+---
+
+## 6) Rollback Playbook（回滚剧本）
+
+### A. 配置回滚（最快）
+
+优先回滚“可配置项”而非代码：
+
+- 回滚环境变量（推荐生产方式）
+- 或通过 Settings API（若启用；生产通常建议关闭写 `.env`）
+
+回滚后立即做：
+
+1. 用 `/api/v1/health/ready` 确认依赖就绪
+2. 用一组固定回归用例跑一次 regression（或对比最近两次 run diff）
+3. 观察 `/api/v1/observability/rag-metrics/summary` 是否恢复
+
+### B. 文档版本回滚（读路径，不重算）
+
+当问题来自切块/治理/pipeline 变更：
+
+- 列出版本：`GET /api/v1/documents/{document_id}/versions`
+- 激活旧版本（回滚）：`POST /api/v1/documents/{document_id}/versions/{pipeline_hash}/activate`
+
+说明：
+- 这是“读路径回滚”，不会重新解析/重新向量化
+- 适合快速止血（恢复引用/召回）
+
+### C. 发布回滚（代码层）
+
+当问题来自后端/前端版本发布：
+
+1. 回滚到上一版本镜像（Docker tag / Helm release）
+2. 若涉及 DB migration：确保有备份与演练；优先做“向后兼容”变更，避免强依赖回滚
+3. 回滚后跑健康检查 + 回归套件

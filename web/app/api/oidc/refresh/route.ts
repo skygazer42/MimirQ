@@ -18,6 +18,13 @@ type TokenResponse = {
 
 const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
 
+function jsonNoStore(data: any, init?: { status?: number }) {
+  const resp = NextResponse.json(data, init)
+  resp.headers.set('Cache-Control', 'no-store')
+  resp.headers.set('Pragma', 'no-cache')
+  return resp
+}
+
 function readEnv(name: string): string {
   return String(process.env[name] || '').trim()
 }
@@ -76,28 +83,28 @@ function normalizeTokenType(raw: unknown): string {
 export async function POST(req: NextRequest) {
   const enabled = readEnv('OIDC_SERVER_EXCHANGE_ENABLED')
   if (enabled && isFalsey(enabled)) {
-    return NextResponse.json({ error: 'oidc_server_exchange_disabled' }, { status: 400 })
+    return jsonNoStore({ error: 'oidc_server_exchange_disabled' }, { status: 400 })
   }
   if (!requireSameOrigin(req)) {
-    return NextResponse.json({ error: 'oidc_invalid_origin' }, { status: 403 })
+    return jsonNoStore({ error: 'oidc_invalid_origin' }, { status: 403 })
   }
 
   const issuer = resolveIssuer()
   const clientId = resolveClientId()
   if (!issuer || !clientId) {
-    return NextResponse.json({ error: 'oidc_not_configured' }, { status: 400 })
+    return jsonNoStore({ error: 'oidc_not_configured' }, { status: 400 })
   }
 
   const refreshToken = String(req.cookies.get(REFRESH_COOKIE_NAME)?.value || '').trim()
   if (!refreshToken) {
-    return NextResponse.json({ error: 'oidc_missing_refresh_token' }, { status: 401 })
+    return jsonNoStore({ error: 'oidc_missing_refresh_token' }, { status: 401 })
   }
 
   let tokenEndpoint = ''
   try {
     tokenEndpoint = (await discoverTokenEndpoint(issuer)).token_endpoint
   } catch (e: any) {
-    return NextResponse.json({ error: String(e?.message || 'oidc_discovery_failed') }, { status: 400 })
+    return jsonNoStore({ error: String(e?.message || 'oidc_discovery_failed') }, { status: 400 })
   }
 
   const secret = resolveClientSecret()
@@ -126,7 +133,7 @@ export async function POST(req: NextRequest) {
   if (!res.ok) {
     const msg = String(data?.error_description || data?.error || '').trim()
     const secure = process.env.NODE_ENV === 'production'
-    const resp = NextResponse.json({ error: msg || `oidc_token_refresh_failed_${res.status}` }, { status: 400 })
+    const resp = jsonNoStore({ error: msg || `oidc_token_refresh_failed_${res.status}` }, { status: 400 })
     // Best-effort: clear refresh token on invalid_grant-like responses.
     resp.cookies.set({
       name: REFRESH_COOKIE_NAME,
@@ -142,7 +149,7 @@ export async function POST(req: NextRequest) {
 
   const accessToken = String(data?.access_token || '').trim()
   if (!accessToken) {
-    return NextResponse.json({ error: 'oidc_missing_access_token' }, { status: 400 })
+    return jsonNoStore({ error: 'oidc_missing_access_token' }, { status: 400 })
   }
 
   const out = {
@@ -152,7 +159,7 @@ export async function POST(req: NextRequest) {
     id_token: data?.id_token ? String(data.id_token) : undefined,
   }
 
-  const resp = NextResponse.json(out)
+  const resp = jsonNoStore(out)
   const secure = process.env.NODE_ENV === 'production'
   const nextRefresh = String(data?.refresh_token || '').trim()
   if (nextRefresh) {

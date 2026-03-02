@@ -364,8 +364,13 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "slice_language": meta.get("slice_language"),
         "slice_directory": meta.get("slice_directory"),
         "slice_hit_type": meta.get("slice_hit_type"),
+        "slice_modality": meta.get("slice_modality"),
         "slice_quality_bucket": meta.get("slice_quality_bucket"),
         "slice_pipeline_hash": meta.get("slice_pipeline_hash"),
+        # Multi-modal injection/debug metadata (best-effort).
+        "multimodal_router": meta.get("multimodal_router"),
+        "tag_meta": meta.get("tag_meta"),
+        "image_meta": meta.get("image_meta"),
         "abstain_triggered": meta.get("abstain_triggered"),
         "abstain_reason": meta.get("abstain_reason"),
         "top_relevance_score": meta.get("top_relevance_score"),

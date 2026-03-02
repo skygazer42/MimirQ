@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.v1.documents import get_image_url
 from app.core.config import settings
 from app.core.database import get_db
+from app.storage.object import minio as minio_mod
 
 
 class _DummyDB:
@@ -101,10 +102,31 @@ def test_image_url_allows_token_query_param_and_enforces_tenant_claim(monkeypatc
     monkeypatch.setattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", True, raising=False)
 
     # Avoid touching real MinIO / DB in unit tests.
-    monkeypatch.setattr(docs_mod.minio_service, "get_image_url", lambda *_a, **_k: "http://example.local/img.jpg")
     monkeypatch.setattr(docs_mod.DatasetService, "ensure_member", lambda *_a, **_k: None)
     monkeypatch.setattr(docs_mod.DatasetService, "get_dataset", lambda *_a, **_k: None)
     monkeypatch.setattr(docs_mod.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None)
+
+    data = b"0123456789"
+
+    class _Stat:
+        size = len(data)
+        etag = "etag123"
+
+    def _fake_stat_object(*, object_name: str):  # noqa: ANN001
+        assert object_name.endswith(".jpg")
+        return _Stat()
+
+    def _fake_iter_object_bytes(*, object_name: str, offset: int = 0, length=None, **_kw):  # noqa: ANN001
+        assert object_name.endswith(".jpg")
+        if length is None:
+            yield data[int(offset or 0) :]
+            return
+        start = int(offset or 0)
+        end = start + int(length or 0)
+        yield data[start:end]
+
+    monkeypatch.setattr(minio_mod.minio_service, "stat_object", _fake_stat_object, raising=True)
+    monkeypatch.setattr(minio_mod.minio_service, "iter_object_bytes", _fake_iter_object_bytes, raising=True)
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -126,5 +148,8 @@ def test_image_url_allows_token_query_param_and_enforces_tenant_claim(monkeypatc
         params={"tenant_id": str(tenant_id), "token": token},
         follow_redirects=False,
     )
-    assert res.status_code == 302
-    assert res.headers.get("location") == "http://example.local/img.jpg"
+    assert res.status_code == 200
+    assert res.content == data
+    assert res.headers.get("Cache-Control") == "no-store"
+    assert res.headers.get("Pragma") == "no-cache"
+    assert res.headers.get("Expires") == "0"

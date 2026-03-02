@@ -4,6 +4,13 @@ export const runtime = 'nodejs'
 
 const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
 
+function jsonNoStore(data: any, init?: { status?: number }) {
+  const resp = NextResponse.json(data, init)
+  resp.headers.set('Cache-Control', 'no-store')
+  resp.headers.set('Pragma', 'no-cache')
+  return resp
+}
+
 function readEnv(name: string): string {
   return String(process.env[name] || '').trim()
 }
@@ -26,13 +33,13 @@ function requireSameOrigin(req: NextRequest): boolean {
 export async function POST(req: NextRequest) {
   const enabled = readEnv('OIDC_SERVER_EXCHANGE_ENABLED')
   if (enabled && isFalsey(enabled)) {
-    return NextResponse.json({ ok: true })
+    return jsonNoStore({ ok: true })
   }
   if (!requireSameOrigin(req)) {
-    return NextResponse.json({ error: 'oidc_invalid_origin' }, { status: 403 })
+    return jsonNoStore({ error: 'oidc_invalid_origin' }, { status: 403 })
   }
 
-  const resp = NextResponse.json({ ok: true })
+  const resp = jsonNoStore({ ok: true })
   const secure = process.env.NODE_ENV === 'production'
   resp.cookies.set({
     name: REFRESH_COOKIE_NAME,
@@ -45,4 +52,3 @@ export async function POST(req: NextRequest) {
   })
   return resp
 }
-

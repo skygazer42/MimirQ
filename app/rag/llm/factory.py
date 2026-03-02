@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.errors import ConfigError
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
@@ -27,7 +28,7 @@ class OpenAIChatClient(BaseLLMClient):
         cfg = model_config or {}
         model_name = cfg.get("model") or settings.LLM_MODEL
         api_key = cfg.get("api_key") or settings.LLM_API_KEY
-        base_url = cfg.get("base_url") or settings.LLM_API_BASE
+        base_url = normalize_openai_compatible_base_url(cfg.get("base_url") or settings.LLM_API_BASE)
         temperature = cfg.get("temperature", settings.LLM_TEMPERATURE)
         timeout = cfg.get("timeout", settings.LLM_TIMEOUT)
         max_retries = cfg.get("max_retries", settings.LLM_MAX_RETRIES)

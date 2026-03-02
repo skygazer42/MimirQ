@@ -38,6 +38,36 @@ def render_regression_run_diff_html(
     safe_base = "[REDACTED]" if redact else str(base_run_id or "")
     safe_target = "[REDACTED]" if redact else str(target_run_id or "")
 
+    diff_score = diff.get("diff_score") if isinstance(diff.get("diff_score"), dict) else {}
+    score_version = str(diff_score.get("version") or "")
+    base_score = diff_score.get("base_score")
+    target_score = diff_score.get("target_score")
+    score_delta = diff_score.get("delta")
+    used_keys = diff_score.get("used_metric_keys") if isinstance(diff_score.get("used_metric_keys"), list) else []
+    used_keys_str = ", ".join([str(k) for k in used_keys if str(k).strip()][:10])
+
+    score_section = ""
+    if score_version:
+        score_section = (
+            '<div class="section">'
+            "<h2>Diff Score (compact)</h2>"
+            f'<div class="sub">version: <span style="font-family:var(--mono)">{escape(score_version)}</span>'
+            + (
+                f' · metrics: <span style="font-family:var(--mono)">{escape(used_keys_str)}</span>'
+                if used_keys_str
+                else ""
+            )
+            + "</div>"
+            '<table class="bars"><thead><tr><th>base</th><th>target</th><th>delta</th></tr></thead><tbody>'
+            "<tr>"
+            f'<td class="v">{escape(_fmt_num(base_score))}</td>'
+            f'<td class="v">{escape(_fmt_num(target_score))}</td>'
+            f'<td class="v">{escape(_fmt_num(score_delta))}</td>'
+            "</tr>"
+            "</tbody></table>"
+            "</div>"
+        )
+
     metric_diffs = diff.get("metric_diffs") if isinstance(diff.get("metric_diffs"), list) else []
     metric_rows: list[str] = []
     for d in metric_diffs[:60]:
@@ -169,6 +199,8 @@ def render_regression_run_diff_html(
     <div class="title">{escape(title)}</div>
     <div class="sub">base: <span style="font-family:var(--mono)">{escape(safe_base)}</span> · target: <span style="font-family:var(--mono)">{escape(safe_target)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
 
+    {score_section}
+
     <div class="section">
       <h2>Top Metric Diffs</h2>
       {metric_table}
@@ -187,4 +219,3 @@ def render_regression_run_diff_html(
 
 
 __all__ = ["render_regression_run_diff_html"]
-

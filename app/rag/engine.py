@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
+from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.core.utils import parse_csv
@@ -214,7 +215,7 @@ Requirements:
         return chat_cls(
             model=model_name,
             api_key=settings.LLM_API_KEY,
-            base_url=settings.LLM_API_BASE,
+            base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
             temperature=settings.LLM_TEMPERATURE,
             streaming=True,
             timeout=settings.LLM_TIMEOUT,
@@ -619,6 +620,21 @@ Requirements:
                         "model_used": rewrite_model_used,
                     },
                 }
+
+            # Step 0.2: Multi-modal query router (deterministic, no LLM).
+            #
+            # This chooses a high-level modality so we can:
+            # - run TAG/table injection only when the query looks tabular
+            # - run CLIP image retrieval only when the query asks for figures/diagrams/screenshots
+            multimodal_modality = "text"
+            multimodal_reasons: list[str] = ["not_run"]
+            try:
+                from app.rag.policy.modality_router import classify_query_modality
+
+                multimodal_modality, multimodal_reasons = classify_query_modality(query_for_retrieval)
+            except Exception as exc:  # noqa: BLE001
+                multimodal_modality = "text"
+                multimodal_reasons = [f"router_exception:{str(exc)[:80]}"]
 
             # Capture caller intent (kept for trace/metrics).
             mode_req = retrieval_mode or "hybrid"
@@ -1159,6 +1175,7 @@ Requirements:
                         {
                             "kind": kind,
                             "query_chars": len(q or ""),
+                            "query_tokens": num_tokens_from_string(q or ""),
                             "elapsed_sec": round(elapsed_i, 3),
                             "ok": err is None,
                             "retriever_debug": dbg,
@@ -1184,6 +1201,7 @@ Requirements:
                         {
                             "kind": kind,
                             "query_chars": len(q or ""),
+                            "query_tokens": num_tokens_from_string(q or ""),
                             "elapsed_sec": round(elapsed_i, 3),
                             "ok": err is None,
                             "retriever_debug": dbg,
@@ -1313,13 +1331,41 @@ Requirements:
                 kg_result_cached = None
                 kg_chunks_injected = 0
 
+            # Optional: Image bridge - inject bounded image/figure chunks (CLIP) as extra context.
+            image_docs: List[Document] = []
+            image_meta: Dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+            if str(multimodal_modality or "text").strip().lower() == "image":
+                try:
+                    from app.services.chat_image_service import build_chat_image_context_docs
+
+                    if db is None or tenant_id is None or dataset_id is None:
+                        image_meta = {"enabled": False, "used": False, "reason": "missing_scope"}
+                    else:
+                        # Best-effort progress signal (only when the feature is enabled).
+                        if bool(getattr(settings, "IMAGE_EMBEDDING_ENABLED", False)):
+                            yield {"type": "event", "data": {"message": "检测到图片/图表问题，正在尝试图片检索（CLIP）..."}}
+                        image_docs, image_meta = build_chat_image_context_docs(
+                            db,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            dataset_id=dataset_id,
+                            question=query_for_retrieval,
+                            top_k=6,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    image_docs = []
+                    image_meta = {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
+
+            if image_docs:
+                docs = (image_docs or []) + (docs or [])
+
             # Optional: TAG bridge - inject bounded table query results as extra context.
             tag_docs: List[Document] = []
             tag_meta: Dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
             try:
                 from app.services.chat_tag_service import build_chat_tag_context_docs
 
-                if db is not None and tenant_id is not None and document_ids:
+                if str(multimodal_modality or "text").strip().lower() == "table" and db is not None and tenant_id is not None and document_ids:
                     # Only show TAG progress when the feature is actually enabled.
                     if (
                         bool(getattr(settings, "CHAT_TAG_ENABLED", False))
@@ -1334,6 +1380,8 @@ Requirements:
                         document_ids=list(document_ids or []),
                         question=question,
                     )
+                elif str(multimodal_modality or "text").strip().lower() != "table":
+                    tag_meta = {"enabled": False, "used": False, "reason": f"skipped_modality:{multimodal_modality}"}
             except Exception as exc:  # noqa: BLE001
                 tag_docs = []
                 tag_meta = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
@@ -1345,6 +1393,7 @@ Requirements:
                 "type": "event",
                 "data": {
                     "message": f"找到 {len(docs)} 条相关参考，正在整理回答..."
+                    + (f"（Image 注入 {len(image_docs)} 条）" if image_docs else "")
                     + (f"（TAG 注入 {len(tag_docs)} 条）" if tag_docs else ""),
                 },
             }
@@ -1497,6 +1546,13 @@ Requirements:
                             "tag_reason": tag_meta.get("reason"),
                             "tag_tables_returned": int(tag_meta.get("returned") or 0),
                             "tag_errors": tag_meta.get("errors"),
+                            "multimodal_modality": str(multimodal_modality or "text"),
+                            "multimodal_reasons": list(multimodal_reasons or []),
+                            "image_enabled": bool(image_meta.get("enabled")),
+                            "image_used": bool(image_meta.get("used")),
+                            "image_reason": image_meta.get("reason"),
+                            "image_hits": int(image_meta.get("hits") or 0),
+                            "image_docs_returned": int(image_meta.get("returned") or 0),
                             "abstain_enabled": bool(abstain_enabled),
                             "abstain_triggered": True,
                             "abstain_reason": abstain_reason,
@@ -1990,6 +2046,78 @@ Requirements:
             if claim_check_applied:
                 yield {"type": "token", "data": {"content": full_response}}
 
+            # ---- Wave22-T095: Cost attribution (per request) ----
+            #
+            # Keep this PII-safe: only numeric counters and model identifiers.
+            answer_chars = len(full_response or "")
+            answer_tokens = num_tokens_from_string(full_response or "")
+            question_tokens = num_tokens_from_string(question or "")
+            prompt_overhead = int(getattr(settings, "COST_PROMPT_OVERHEAD_TOKENS", 50) or 50)
+            prompt_tokens_est = (
+                num_tokens_from_string(history_text or "")
+                + num_tokens_from_string(context or "")
+                + question_tokens
+                + max(0, prompt_overhead)
+            )
+            llm_source = "mock" if bool(getattr(settings, "LLM_MOCK_ENABLED", False)) else "estimate"
+
+            embed_query_tokens = 0
+            embed_query_chars = 0
+            for q in retrieval_per_query or []:
+                if not isinstance(q, dict):
+                    continue
+                try:
+                    embed_query_tokens += int(q.get("query_tokens") or 0)
+                except Exception:
+                    pass
+                try:
+                    embed_query_chars += int(q.get("query_chars") or 0)
+                except Exception:
+                    pass
+
+            rerank_elapsed_sec: float | None = None
+            for c in citations or []:
+                if not isinstance(c, dict):
+                    continue
+                v = c.get("rerank_elapsed_sec")
+                if v is None:
+                    continue
+                try:
+                    fv = float(v)
+                except Exception:
+                    continue
+                if fv < 0:
+                    continue
+                if rerank_elapsed_sec is None or fv > rerank_elapsed_sec:
+                    rerank_elapsed_sec = fv
+
+            cost_attribution = {
+                "schema": "mimirq.cost_attribution.v1",
+                "llm": {
+                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "prompt_tokens": int(prompt_tokens_est),
+                    "completion_tokens": int(answer_tokens),
+                    "total_tokens": int(prompt_tokens_est + answer_tokens),
+                    "source": llm_source,
+                },
+                "embeddings": {
+                    "provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
+                    "model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
+                    "query_count": int(len(retrieval_per_query or [])),
+                    "query_chars": int(embed_query_chars),
+                    "query_tokens": int(embed_query_tokens),
+                    "source": "estimate",
+                },
+                "retrieval": {
+                    "elapsed_sec": round(float(retrieval_elapsed or 0.0), 3),
+                    "rerank_elapsed_sec": round(float(rerank_elapsed_sec), 3) if rerank_elapsed_sec is not None else None,
+                    "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+                    "query_count": int(len(retrieval_per_query or [])),
+                },
+            }
+            # Metrics JSONL (rag_trace) keeps a nested shape for UI tooling.
+            rag_trace_payload["cost_attribution"] = cost_attribution
+
             rag_trace_payload["claim_check"] = {
                 "enabled": bool(claim_check_configured),
                 "mode": claim_check_mode,
@@ -2007,8 +2135,6 @@ Requirements:
             structured_parse_meta = {"ok": False, "method": None, "error": None}
             if structured_output:
                 structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
-            answer_chars = len(full_response or "")
-            answer_tokens = num_tokens_from_string(full_response or "")
             done_payload = {
                 "type": "done",
                 "data": {
@@ -2055,12 +2181,32 @@ Requirements:
                         "tag_reason": tag_meta.get("reason"),
                         "tag_tables_returned": int(tag_meta.get("returned") or 0),
                         "tag_errors": tag_meta.get("errors"),
+                        "multimodal_modality": str(multimodal_modality or "text"),
+                        "multimodal_reasons": list(multimodal_reasons or []),
+                        "image_enabled": bool(image_meta.get("enabled")),
+                        "image_used": bool(image_meta.get("used")),
+                        "image_reason": image_meta.get("reason"),
+                        "image_hits": int(image_meta.get("hits") or 0),
+                        "image_docs_returned": int(image_meta.get("returned") or 0),
                         "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0),
                         "context_limit_total_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0),
                         "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0),
                         "context_limit_per_chunk_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0),
                         "answer_chars": answer_chars,
                         "answer_tokens": answer_tokens,
+                        # Cost attribution (Wave22-T095): stable, numeric, PII-safe.
+                        "cost_schema": str(cost_attribution.get("schema") or ""),
+                        "cost_llm_prompt_tokens": int(prompt_tokens_est),
+                        "cost_llm_completion_tokens": int(answer_tokens),
+                        "cost_llm_total_tokens": int(prompt_tokens_est + answer_tokens),
+                        "cost_llm_source": llm_source,
+                        "cost_embedding_query_tokens": int(embed_query_tokens),
+                        "cost_embedding_query_chars": int(embed_query_chars),
+                        "cost_embedding_query_count": int(len(retrieval_per_query or [])),
+                        "cost_embedding_provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
+                        "cost_embedding_model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
+                        "cost_retrieval_elapsed_sec": round(float(retrieval_elapsed or 0.0), 3),
+                        "cost_rerank_elapsed_sec": round(float(rerank_elapsed_sec), 3) if rerank_elapsed_sec is not None else None,
                         "claim_check_enabled": bool(claim_check_applied),
                         "claim_check_mode": claim_check_mode,
                         "claim_check_removed": int(claim_check_removed),

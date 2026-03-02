@@ -3826,11 +3826,13 @@ class HybridRetriever(BaseRetriever):
                 near_enabled = False
 
         seen_chunk_ids: set[str] = set()
+        seen_content_hashes: set[str] = set()
         seen_fingerprints: set[str] = set()
         kept: List[Dict[str, Any]] = []
         kept_tokens_by_doc: Dict[str, List[set[str]]] = {}
         kept_simhashes: list[int] = []
         dropped_near = 0
+        dropped_content_hash = 0
 
         for r in results:
             meta = r.get("metadata") or {}
@@ -3844,6 +3846,20 @@ class HybridRetriever(BaseRetriever):
             content = (r.get("content") or "").strip()
             if not content:
                 continue
+
+            # Wave19-T068: content-based dedup across modalities.
+            #
+            # Prefer a stable ingestion-time content hash (when present) to avoid:
+            # - modality duplication (e.g., OCR text vs extracted text),
+            # - expensive tokenization work when exact duplicates exist.
+            ch = meta.get("content_hash")
+            if ch is not None:
+                sch = str(ch).strip()
+                if sch:
+                    if sch in seen_content_hashes:
+                        dropped_content_hash += 1
+                        continue
+                    seen_content_hashes.add(sch)
 
             fp = self._fingerprint(content)
             if fp in seen_fingerprints:
@@ -3898,6 +3914,12 @@ class HybridRetriever(BaseRetriever):
                 dedup_meta["near_dedup_dropped"] = int(dropped_near)
                 dedup_meta["near_dedup_hamming_threshold"] = int(near_thr)
                 dedup_meta["near_dedup_max_compare"] = int(near_max_compare)
+            if dropped_content_hash and isinstance(self._last_channel_metrics, dict):
+                dedup_meta = self._last_channel_metrics.get("dedup")
+                if not isinstance(dedup_meta, dict):
+                    dedup_meta = {}
+                    self._last_channel_metrics["dedup"] = dedup_meta
+                dedup_meta["content_hash_dropped"] = int(dropped_content_hash)
         except Exception:
             pass
 

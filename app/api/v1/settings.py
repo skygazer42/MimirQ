@@ -1467,6 +1467,7 @@ async def test_llm_connection(
     from langchain_core.messages import HumanMessage
     from langchain_openai import ChatOpenAI
 
+    from app.core.openai_compat import normalize_openai_compatible_base_url
     from app.rag.core.http import httpx_trust_env
     from app.rag.core.logging import get_logger
 
@@ -1487,7 +1488,7 @@ async def test_llm_connection(
             llm = ChatOpenAI(
                 model=request.model,
                 api_key=request.api_key,
-                base_url=request.api_base,
+                base_url=normalize_openai_compatible_base_url(request.api_base),
                 temperature=float(request.temperature or 0.0),
                 streaming=False,
                 timeout=timeout,
