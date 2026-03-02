@@ -8,13 +8,13 @@ Creates a two-level hierarchy:
 Child chunks maintain reference to parent via parent_id.
 """
 
-import uuid
 from typing import List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.core.hashing import stable_hash
 
 
 class ParentChildChunker(BaseChunker):
@@ -82,7 +82,14 @@ class ParentChildChunker(BaseChunker):
                 parent_end = parent_start + len(parent_text)
                 search_start = max(parent_end - self.child_overlap, parent_start + 1)
 
-                parent_id = str(uuid.uuid4())
+                # Deterministic parent ids:
+                # - Parent-child chunking should be stable across runs for regression suites,
+                #   caching, and trace diffs.
+                # - Include both position and content hash to avoid collisions when text repeats.
+                parent_id = stable_hash(
+                    f"pc:{parent_start}:{parent_end}:{stable_hash(parent_text, length=None)}",
+                    length=32,
+                )
                 parent_metadata = dict(doc.metadata or {})
                 parent_metadata.update({
                     "start_char": parent_start,
