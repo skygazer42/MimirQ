@@ -79,6 +79,95 @@ from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like
 from app.rag.chunking.strategies.xml_feed import XMLFeedChunker, looks_like_xml_feed
 from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
 
+
+def _clamp_int(v: int, lo: int, hi: int) -> int:
+    return max(int(lo), min(int(v), int(hi)))
+
+
+def _density_metrics(text: str, *, sample_chars: int = 50_000) -> dict[str, float]:
+    """
+    Compute simple text density metrics (bounded) for adaptive chunk sizing.
+
+    These metrics are intentionally lightweight and deterministic.
+    """
+    raw = str(text or "")
+    sample = raw[: max(0, int(sample_chars or 0))] if sample_chars else raw
+    n = len(sample)
+    if n <= 0:
+        return {"sample_chars": 0.0, "line_count": 0.0, "avg_line_len": 0.0, "non_ws_ratio": 0.0}
+
+    line_count = float(sample.count("\n") + 1)
+    avg_line_len = float(n) / max(1.0, line_count)
+    ws = 0
+    # Avoid importing regex-heavy helpers; a tight loop is fine for bounded samples.
+    for ch in sample:
+        if ch.isspace():
+            ws += 1
+    non_ws_ratio = float(n - ws) / float(n)
+    return {
+        "sample_chars": float(n),
+        "line_count": float(line_count),
+        "avg_line_len": float(avg_line_len),
+        "non_ws_ratio": float(non_ws_ratio),
+    }
+
+
+def _adaptive_chunk_params(
+    *,
+    base_size: int,
+    base_overlap: int,
+    file_type: str,
+    selected: str,
+    text: str,
+) -> tuple[int, int, str, dict[str, float]]:
+    """
+    Decide adaptive chunk_size/chunk_overlap based on doc type + density metrics.
+
+    This is conservative: it only adjusts sizes within bounded ranges.
+    """
+    bs = max(1, int(base_size or 1))
+    bo = max(0, int(base_overlap or 0))
+
+    metrics = _density_metrics(text)
+    avg_line_len = float(metrics.get("avg_line_len") or 0.0)
+    line_count = float(metrics.get("line_count") or 0.0)
+
+    # Start from defaults.
+    size = bs
+    reason = "base"
+
+    # Doc-type nudges (coarse).
+    ft = str(file_type or "").strip().lower()
+    sel = str(selected or "").strip().lower()
+    if ft in {"pdf"} and sel in {"langchain_recursive", "semantic_sentence", "markdown_aware"}:
+        # PDFs often have hard line breaks; slightly larger chunks help preserve paragraph context.
+        size = int(round(bs * 1.1))
+        reason = "file_type_pdf"
+
+    # Density-based adjustments (dominant).
+    # Long lines + few breaks => dense blocks; reduce size.
+    if avg_line_len >= 140:
+        size = int(round(bs * 0.8))
+        reason = "dense_long_lines"
+    # Many short lines => sparse layout; increase size.
+    elif avg_line_len <= 30 and line_count >= 80:
+        size = int(round(bs * 1.3))
+        reason = "sparse_short_lines"
+
+    # Clamp to safe bounds; keep within the docs-recommended range.
+    size = _clamp_int(size, 400, 1800)
+
+    # Keep overlap ratio stable relative to base settings.
+    ratio = float(bo) / float(bs) if bs > 0 else 0.2
+    overlap = int(round(float(size) * ratio))
+    overlap = _clamp_int(overlap, 0, max(0, size - 1))
+
+    # Some strategies don't want overlap (e.g. JSON).
+    if sel == "json":
+        overlap = 0
+
+    return int(size), int(overlap), str(reason), metrics
+
 _MD_HINT_RE = re.compile(
     r"(^\s*#{1,6}\s+)|(\[[^\]]+\]\([^)]+\))|(^\s*```)|(^\s*[-*+]\s+)",
     flags=re.MULTILINE,
@@ -624,11 +713,45 @@ class AutoChunker(BaseChunker):
         chunks: List[Document] = []
         for doc in documents:
             chunker, selected = self._select(doc)
-            produced = chunker.split_documents([doc])
+            meta_in = doc.metadata or {}
+            file_type = str(meta_in.get("file_type", "") or "").strip().lower()
+            text = doc.page_content or ""
+
+            eff_size, eff_overlap, reason, metrics = _adaptive_chunk_params(
+                base_size=self.chunk_size,
+                base_overlap=self.chunk_overlap,
+                file_type=file_type,
+                selected=selected,
+                text=text,
+            )
+
+            # Only re-instantiate for strategies where chunk_size/overlap are meaningful knobs.
+            #
+            # Many structured chunkers (csv_rows, diff_patch, etc) already define strong boundaries and
+            # use chunk_size only as a guardrail, so changing it per-doc tends not to improve quality.
+            chunker_used: BaseChunker = chunker
+            if selected == "langchain_recursive":
+                chunker_used = LangChainRecursiveChunker(chunk_size=eff_size, chunk_overlap=eff_overlap)
+            elif selected == "semantic_sentence":
+                chunker_used = SemanticSentenceChunker(chunk_size=eff_size, chunk_overlap=eff_overlap)
+            elif selected == "markdown_aware":
+                chunker_used = MarkdownAwareChunker(chunk_size=eff_size, chunk_overlap=eff_overlap)
+            elif selected == "outline":
+                chunker_used = OutlineChunker(chunk_size=eff_size, chunk_overlap=eff_overlap)
+            elif selected == "transcript":
+                chunker_used = TranscriptChunker(chunk_size=eff_size, chunk_overlap=eff_overlap)
+
+            produced = chunker_used.split_documents([doc])
             for item in produced:
                 meta = dict(item.metadata or {})
                 meta["chunk_strategy_auto"] = True
                 meta.setdefault("chunk_strategy_selected", selected)
+                meta["chunk_size_base"] = int(self.chunk_size)
+                meta["chunk_overlap_base"] = int(self.chunk_overlap)
+                meta["chunk_size_effective"] = int(eff_size)
+                meta["chunk_overlap_effective"] = int(eff_overlap)
+                meta["adaptive_chunk_reason"] = str(reason)
+                meta["adaptive_density"] = metrics
                 item.metadata = meta
             chunks.extend(produced)
         return chunks
