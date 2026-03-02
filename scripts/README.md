@@ -36,6 +36,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `benchmark_io_concurrency.py`: local benchmarking helper
 - `chunk_preview_batch_eval.py`: batch evaluate chunk preview behavior
 - `convert_text_encoding.py`: best-effort text encoding conversion utility
+- `backfill_kg_event_vector_metadata.py`: re-upsert KG event vectors to backfill Milvus metadata fields (`pipeline_hash`, `doc_pipeline_key`)
 - `gen_secret_key.py`: generate a SECRET_KEY value
 - `rag_trace_tail.py`: tail and pretty-print `event=rag_trace` records from the metrics JSONL (PII-safe by default)
 - `rag_trace_diff.py`: diff two `event=rag_trace` records by `request_id` (PII-safe; outputs compact delta summary)
