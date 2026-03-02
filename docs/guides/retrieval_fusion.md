@@ -94,6 +94,84 @@ Notes:
 - Budgets/min-scores are only used when `fusion_strategy=budgeted_rrf` (ignored otherwise).
 - `fusion_min_scores` gates low-ranked “tail” candidates from a channel, using `rank_score = 1/rank`.
 
+### `weighted`
+
+Weighted fusion is a deterministic alternative to `linear` when you want explicit weights per channel:
+
+- Min-max normalize each channel to `[0,1]` (same normalization pass used by other fusion paths).
+- Compute a fused score per candidate:
+  - `score = w_vector * vector + w_bm25 * bm25 + w_lexical * lexical + w_sparse * sparse`
+- Weights are normalized to sum=1 (missing keys are treated as 0).
+- If weights are missing/invalid, the retriever falls back to `linear` fusion (safe default).
+
+#### Request Overrides (Evidence API / LangGraph)
+
+In the request `rag_config` you can override:
+- `fusion_strategy`: `weighted`
+- `fusion_weights`: per-channel weights (keys: `vector`, `bm25`, `lexical`, `sparse`)
+
+Example:
+
+```json
+{
+  "query": "PCI-DSS 4.0 requirement 10.4.2",
+  "dataset_id": "00000000-0000-0000-0000-000000000000",
+  "document_ids": [],
+  "rag_config": {
+    "retrieval_profile": "recall50",
+    "retrieval_mode": "hybrid",
+    "top_k": 50,
+    "fusion_strategy": "weighted",
+    "fusion_weights": { "vector": 0.55, "bm25": 0.25, "lexical": 0.15, "sparse": 0.05 }
+  }
+}
+```
+
+#### Per-Dataset Defaults
+
+You can persist per-dataset defaults under `datasets.metadata.rag_defaults` (recommended once weights are validated):
+
+```json
+{
+  "rag_defaults": {
+    "fusion_strategy": "weighted",
+    "fusion_weights": { "vector": 0.55, "bm25": 0.25, "lexical": 0.15, "sparse": 0.05 }
+  }
+}
+```
+
+#### Learning Weights (Offline)
+
+For a simple, deterministic weight fit loop:
+
+1) Learn weights via Evidence API (grid search):
+
+```bash
+python scripts/learn_fusion_weights_offline.py \\
+  --cases runs/regression/cases.json \\
+  --base-url http://localhost:8000/api/v1 \\
+  --tenant-id <TENANT_UUID> \\
+  --user-id <ACCOUNT_ID> \\
+  --step 0.2 \\
+  --objective mrr \\
+  --out-weights runs/fusion_weights/best.json
+```
+
+2) Apply to a dataset (safe by default; requires `--execute`):
+
+```bash
+python scripts/apply_fusion_weights_to_dataset.py \\
+  --dataset-id <DATASET_UUID> \\
+  --weights runs/fusion_weights/best.json \\
+  --execute
+```
+
+Rollback to defaults:
+
+```bash
+python scripts/apply_fusion_weights_to_dataset.py --dataset-id <DATASET_UUID> --clear --execute
+```
+
 ## Offline Evaluation (Report)
 
 Use `scripts/eval_retrieval_fusion_offline.py` to compare fusion variants on a regression cases bundle through the Evidence API.
@@ -143,4 +221,3 @@ Then:
 ```bash
 python scripts/eval_retrieval_fusion_offline.py --cases ... --matrix runs/fusion_eval/matrix.json
 ```
-

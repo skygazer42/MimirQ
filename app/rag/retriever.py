@@ -4467,8 +4467,11 @@ class HybridRetriever(BaseRetriever):
                 # Best-effort: surface weights used into retriever_debug.channels for diagnostics.
                 try:
                     if isinstance(self._last_channel_metrics, dict):
+                        weights_out = dict(sorted((k, round(float(v), 6)) for k, v in (weights or {}).items()))
+                        sig = ",".join([f"{k}:{weights_out.get(k, 0.0):.6f}" for k in sorted(weights_out.keys())])
                         self._last_channel_metrics["fusion_weighted"] = {
-                            "weights": dict(sorted((k, round(float(v), 6)) for k, v in (weights or {}).items())),
+                            "weights": weights_out,
+                            "weights_hash": stable_hash(sig, length=16) if sig else None,
                         }
                 except Exception:
                     pass
