@@ -22,7 +22,7 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
@@ -50,6 +50,7 @@ class _TableCandidate:
     row_count: int
     col_count: int
     columns: list[dict[str, Any]]
+    sample_rows: list[dict[str, Any]]
     score: int
 
 
@@ -100,6 +101,7 @@ def _score_candidate(
     filename: str,
     sheet_name: Optional[str],
     columns: list[dict[str, Any]],
+    sample_rows: list[dict[str, Any]],
 ) -> int:
     if not terms:
         return 0
@@ -107,6 +109,25 @@ def _score_candidate(
     fn = filename or ""
     sn = sheet_name or ""
     col_names = [str(c.get("name") or "") for c in (columns or []) if isinstance(c, dict)]
+
+    # Small bounded blob of values seen in metadata sample rows.
+    # This improves table selection when users mention values (IDs/names) rather than column names.
+    sample_vals: list[str] = []
+    for row in (sample_rows or [])[:12]:
+        if not isinstance(row, dict):
+            continue
+        for v in list(row.values())[:40]:
+            if v is None:
+                continue
+            s = str(v).strip()
+            if not s:
+                continue
+            sample_vals.append(s)
+            if len(sample_vals) >= 400:
+                break
+        if len(sample_vals) >= 400:
+            break
+    sample_blob = " ".join(sample_vals)[:8000]
 
     for t in terms:
         if _match_score(fn, t):
@@ -116,9 +137,26 @@ def _score_candidate(
             score += 4
             continue
         if any(_match_score(cn, t) for cn in col_names[:2000]):
-            score += 1
+            score += 2
+            continue
+        # Sample value match is intentionally weaker and only for "informative" terms
+        # (avoid matching short, common tokens like "no"/"ok").
+        if sample_blob:
+            if t.isascii() and len(t) < 4:
+                continue
+            if _match_score(sample_blob, t):
+                score += 1
             continue
     return int(score)
+
+
+def _tag_doc_uuid(table_id: str) -> UUID:
+    """
+    Deterministic UUID for TAG-injected docs.
+
+    Reason: chat API citations require UUID chunk_id; TAG context docs are not real chunks.
+    """
+    return uuid5(UUID("00000000-0000-0000-0000-000000000000"), f"mimirq:tag:{str(table_id or '').strip()}")
 
 
 def build_chat_tag_context_docs(
@@ -209,8 +247,16 @@ def build_chat_tag_context_docs(
                 col_count = 0
             cols = t.get("columns")
             cols_list = [c for c in cols if isinstance(c, dict)] if isinstance(cols, list) else []
+            samples = t.get("sample_rows")
+            samples_list = [r for r in samples if isinstance(r, dict)] if isinstance(samples, list) else []
 
-            score = _score_candidate(terms=terms, filename=filename, sheet_name=sheet_name, columns=cols_list)
+            score = _score_candidate(
+                terms=terms,
+                filename=filename,
+                sheet_name=sheet_name,
+                columns=cols_list,
+                sample_rows=samples_list,
+            )
             candidates.append(
                 _TableCandidate(
                     document_id=d.id,
@@ -222,6 +268,7 @@ def build_chat_tag_context_docs(
                     row_count=row_count,
                     col_count=col_count,
                     columns=cols_list,
+                    sample_rows=samples_list,
                     score=score,
                 )
             )
@@ -236,6 +283,23 @@ def build_chat_tag_context_docs(
         meta["reason"] = "no_intent_and_no_match"
         meta["best_score"] = int(best)
         return [], meta
+
+    # Hardening: if we have table intent but *no* match signal and the scope is ambiguous (multiple docs/tables),
+    # do not query a random table.
+    if intent and best < min_score:
+        unique_doc_ids = {c.document_id for c in candidates}
+        if len(doc_ids) == 1:
+            meta["selection_fallback"] = "single_document"
+        elif len(candidates) == 1:
+            meta["selection_fallback"] = "single_table"
+        elif len(unique_doc_ids) == 1 and len(doc_ids) == 1:
+            meta["selection_fallback"] = "single_document"
+        else:
+            meta["reason"] = "intent_no_match_ambiguous"
+            meta["best_score"] = int(best)
+            meta["candidates"] = int(len(candidates))
+            meta["documents_with_tables"] = int(len(unique_doc_ids))
+            return [], meta
 
     max_tables = int(getattr(settings, "CHAT_TAG_MAX_TABLES", 2) or 2)
     max_tables = max(0, min(max_tables, 5))
@@ -316,7 +380,8 @@ def build_chat_tag_context_docs(
                         "score": 1.0,
                         "retrieval_score": 1.0,
                     },
-                    id=f"tag:{c.table_id}",
+                    # Must be UUID-like for ChatResponse citation schema compatibility.
+                    id=str(_tag_doc_uuid(c.table_id)),
                 )
             )
         except Exception as exc:  # noqa: BLE001

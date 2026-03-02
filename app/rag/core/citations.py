@@ -6,8 +6,9 @@ structured citation payload returned by both streaming and non-streaming RAG
 pipelines.
 """
 
-
+import json
 import re
+import uuid
 from typing import Any, Dict, List
 
 from langchain_core.documents import Document
@@ -201,6 +202,115 @@ def _build_snippet_and_span(
     return snippet, matched, int(start), int(end)
 
 
+_NIL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+
+def _is_uuid_like(v: Any) -> bool:
+    if v is None:
+        return False
+    try:
+        uuid.UUID(str(v))
+        return True
+    except Exception:
+        return False
+
+
+def _stable_tag_chunk_id(table_id: str | None) -> str:
+    """
+    Deterministic UUID for TAG-injected "docs" so ChatResponse citations remain schema-compatible.
+    """
+    tid = str(table_id or "").strip()
+    return str(uuid.uuid5(_NIL_UUID, f"mimirq:tag:{tid}"))
+
+
+def _parse_json_object(text: str) -> dict[str, Any] | None:
+    s = str(text or "").strip()
+    if not s:
+        return None
+    try:
+        obj = json.loads(s)
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _format_tag_table_store_summary(doc: Document, *, meta: dict[str, Any]) -> str | None:
+    """
+    Convert a TAG table_store JSON payload into a human-readable summary for citations/UI.
+    """
+    payload = _parse_json_object(doc.page_content or "")
+    if not payload:
+        return None
+    if str(payload.get("kind") or "") != "tag_table_store":
+        return None
+
+    doc_name = str(payload.get("document") or meta.get("source") or "table").strip() or "table"
+    table_id = str(payload.get("table_id") or meta.get("table_id") or "").strip()
+
+    sheet_name = payload.get("sheet_name")
+    sheet_name = str(sheet_name).strip() if sheet_name is not None else ""
+    sheet_index = payload.get("sheet_index")
+    try:
+        sheet_index_i = int(sheet_index) if sheet_index is not None else None
+    except Exception:
+        sheet_index_i = None
+
+    row_count = payload.get("row_count")
+    col_count = payload.get("col_count")
+    try:
+        row_count_i = int(row_count) if row_count is not None else None
+    except Exception:
+        row_count_i = None
+    try:
+        col_count_i = int(col_count) if col_count is not None else None
+    except Exception:
+        col_count_i = None
+
+    sql = str(payload.get("sql") or "").strip()
+    columns = payload.get("columns") if isinstance(payload.get("columns"), list) else []
+    rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
+    truncated = bool(payload.get("truncated"))
+
+    parts: list[str] = ["[TAG] Table Query Result"]
+    parts.append(f"Document: {doc_name}")
+    if sheet_name:
+        sheet_extra = f" (sheet_{sheet_index_i})" if sheet_index_i is not None else ""
+        parts.append(f"Sheet: {sheet_name}{sheet_extra}")
+    elif sheet_index_i is not None:
+        parts.append(f"Sheet: sheet_{sheet_index_i}")
+    if row_count_i is not None and col_count_i is not None:
+        parts.append(f"Shape: {row_count_i} rows x {col_count_i} cols")
+    if table_id:
+        parts.append(f"Table ID: {table_id}")
+    if sql:
+        parts.append(f"SQL: {sql}")
+
+    cols_s = [str(c) for c in columns if str(c).strip()]
+    if cols_s and rows:
+        max_cols = 6
+        max_rows = 4
+        cols_s = cols_s[:max_cols]
+        parts.append("Rows (preview):")
+        for r in rows[:max_rows]:
+            if not isinstance(r, list):
+                continue
+            pairs: list[str] = []
+            for i, col in enumerate(cols_s):
+                v = r[i] if i < len(r) else None
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                pairs.append(f"{col}={s}")
+            if pairs:
+                parts.append("- " + ", ".join(pairs))
+    if truncated:
+        parts.append("(truncated)")
+
+    return "\n".join(parts).strip() or None
+
+
 def build_citations_from_docs(
     docs: List[Document],
     *,
@@ -221,6 +331,7 @@ def build_citations_from_docs(
 
         retrieval_role = meta.get("retrieval_role") or None
         neighbor_of = meta.get("neighbor_of") or None
+        is_tag = str(retrieval_role or "").strip().lower() == "tag" or str(meta.get("chunk_role") or "") == "tag_sql_result"
 
         page_number = None
         page_raw = meta.get("page")
@@ -231,7 +342,9 @@ def build_citations_from_docs(
         except Exception:
             page_number = None
 
-        if retrieval_mode == "mmr":
+        if is_tag:
+            hit_type = "tag"
+        elif retrieval_mode == "mmr":
             hit_type = "mmr"
         elif v_score_raw > b_score_raw:
             hit_type = "vector"
@@ -243,9 +356,26 @@ def build_citations_from_docs(
         img_id = meta.get("img_id")
         img_url = f"/api/v1/documents/image-url/{img_id}" if img_id else None
 
-        chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
+        raw_chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
+        chunk_id = raw_chunk_id
+        if is_tag and not _is_uuid_like(chunk_id):
+            # TAG docs are not real chunks; generate deterministic UUIDs so ChatResponse citation schema
+            # remains compatible even when callers used a non-UUID id (historical behavior/tests).
+            tag_table_id = str(meta.get("table_id") or "").strip()
+            if not tag_table_id:
+                payload = _parse_json_object(doc.page_content or "")
+                if payload:
+                    tag_table_id = str(payload.get("table_id") or "").strip()
+            chunk_id = _stable_tag_chunk_id(tag_table_id)
+
+        effective_text = doc.page_content or ""
+        if is_tag:
+            formatted = _format_tag_table_store_summary(doc, meta=meta)
+            if formatted:
+                effective_text = formatted
+
         snippet, matched_terms, evidence_start_in_chunk, evidence_end_in_chunk = _build_snippet_and_span(
-            doc.page_content or "", query, max_chars=220
+            effective_text, query, max_chars=220
         )
 
         start_char = meta.get("start_char")
@@ -268,7 +398,7 @@ def build_citations_from_docs(
             "chunk_id": chunk_id,
             "document_id": meta.get("document_id"),
             "document_name": meta.get("source", "Unknown"),
-            "chunk_content": snippet or ((doc.page_content or "")[:200] + "..."),
+            "chunk_content": snippet or ((effective_text or "")[:200] + "..."),
             "matched_terms": matched_terms,
             "page_number": page_number,
             "chunk_index": chunk_index,

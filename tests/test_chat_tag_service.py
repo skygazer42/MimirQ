@@ -279,3 +279,216 @@ def test_chat_tag_too_many_doc_ids_is_rejected(monkeypatch):  # noqa: ANN001
     docs, meta = build_chat_tag_context_docs(_FakeDB([]), tenant_id=uuid.uuid4(), document_ids=doc_ids, question="count?")
     assert docs == []
     assert "too_many_document_ids" in str(meta.get("reason"))
+
+
+def test_chat_tag_intent_with_no_match_skips_when_ambiguous(monkeypatch):  # noqa: ANN001
+    """
+    Selection hardening: when intent is "table-like" but we cannot match any table asset,
+    do not run TAG on a random table across multiple document_ids.
+    """
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    doc1_id = uuid.uuid4()
+    doc2_id = uuid.uuid4()
+
+    class _Doc:
+        def __init__(self, *, doc_id: uuid.UUID, filename: str) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = filename
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": f"doc:{doc_id}:sheet:0",
+                            "sheet_index": 0,
+                            "sheet_name": "Sheet1",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}, {"name": "region", "dtype": "text"}],
+                            "sample_rows": [],
+                        }
+                    ],
+                }
+            }
+
+    # Enable feature flags.
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1, raising=False)
+
+    # Ensure we do NOT call LLM/sql runner on ambiguous no-match queries.
+    import app.services.chat_tag_service as mod
+
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM called")), raising=True)
+    monkeypatch.setattr(mod, "run_table_query", lambda **kwargs: (_ for _ in ()).throw(AssertionError("SQL called")), raising=True)
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc(doc_id=doc1_id, filename="a.xlsx"), _Doc(doc_id=doc2_id, filename="b.xlsx")]),
+        tenant_id=tenant_id,
+        document_ids=[doc1_id, doc2_id],
+        question="统计一下总数",
+    )
+    assert docs == []
+    assert meta.get("used") is False
+    assert "ambiguous" in str(meta.get("reason") or "")
+
+
+def test_chat_tag_intent_with_no_match_falls_back_for_single_document(monkeypatch):  # noqa: ANN001
+    """
+    Selection fallback: when the user scope is a single document_id, allow TAG for intent queries
+    even when we can't match terms to columns/sheet names (common for "这张表有多少行" style questions).
+    """
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "sales.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "Sheet1",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}, {"name": "region", "dtype": "text"}],
+                            "sample_rows": [],
+                        }
+                    ],
+                }
+            }
+
+    # Enable feature flags.
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1, raising=False)
+
+    # Avoid real LLM + sqlite access.
+    import app.services.chat_tag_service as mod
+
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT COUNT(*) AS n FROM "sheet_0" LIMIT 1', raising=True)
+    monkeypatch.setattr(
+        mod,
+        "run_table_query",
+        lambda **kwargs: {"sql": kwargs.get("sql"), "columns": ["n"], "rows": [[10]], "truncated": False},
+        raising=True,
+    )
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="这张表有多少行？",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert meta.get("selection_fallback") == "single_document"
+    assert len(docs) == 1
+    assert docs[0].metadata.get("table_id") == table_id
+
+
+def test_chat_tag_can_match_sample_rows(monkeypatch):  # noqa: ANN001
+    """
+    Selection improvement: allow picking a table asset based on values seen in metadata sample_rows,
+    not just filename/sheet/column names.
+    """
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    table_a = f"doc:{doc_id}:sheet:0"
+    table_b = f"doc:{doc_id}:sheet:1"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "mixed.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_a,
+                            "sheet_index": 0,
+                            "sheet_name": "Sheet A",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "id", "dtype": "int"}, {"name": "value", "dtype": "text"}],
+                            "sample_rows": [{"id": 1, "value": "foo"}],
+                        },
+                        {
+                            "table_id": table_b,
+                            "sheet_index": 1,
+                            "sheet_name": "Sheet B",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "id", "dtype": "int"}, {"name": "value", "dtype": "text"}],
+                            "sample_rows": [{"id": 1, "value": "acme"}],
+                        },
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1, raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MAX_TABLES", 1, raising=False)
+
+    import app.services.chat_tag_service as mod
+
+    chosen: dict[str, str] = {}
+
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT "value" FROM "sheet_0" LIMIT 5', raising=True)
+
+    def _fake_run_table_query(**kwargs):  # noqa: ANN001
+        chosen["table_id"] = str(kwargs.get("table_id") or "")
+        return {"sql": kwargs.get("sql"), "columns": ["value"], "rows": [["acme"]], "truncated": False}
+
+    monkeypatch.setattr(mod, "run_table_query", _fake_run_table_query, raising=True)
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="acme",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert len(docs) == 1
+    assert chosen.get("table_id") == table_b
