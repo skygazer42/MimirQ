@@ -995,6 +995,7 @@ class ChunkAssetStage:
             load_image_for_ocr,
             ocr_image,
         )
+        from app.services.chunk_quality_scoring import score_chunk_quality
 
         max_images = max(0, int(image_ocr_max_images or 0))
         ocr_remaining: int | None = (max_images if max_images > 0 else None)
@@ -1062,6 +1063,11 @@ class ChunkAssetStage:
             content_norm = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
             meta.setdefault("content_len", len(content_norm.strip()))
             infer_chunk_structure(meta, content_norm)
+            # Per-chunk quality scoring (noise/boilerplate) for debug + downstream filtering.
+            try:
+                meta.setdefault("chunk_quality", score_chunk_quality(content_norm, meta=meta))
+            except Exception:
+                pass
             # Lightweight semantic role labels (deterministic): helps filtering/reranking.
             # Keep separate from existing `chunk_role` (parent/child/qa/etc).
             try:
@@ -1124,6 +1130,10 @@ class ChunkAssetStage:
                     ocr_content_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True)
                     ocr_meta.setdefault("content_len", len(ocr_content_norm.strip()))
                     infer_chunk_structure(ocr_meta, ocr_content_norm)
+                    try:
+                        ocr_meta.setdefault("chunk_quality", score_chunk_quality(ocr_content_norm, meta=ocr_meta))
+                    except Exception:
+                        pass
                     try:
                         ocr_meta.setdefault(
                             "chunk_semantic_role",
