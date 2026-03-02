@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   settingsApi,
+  ltrApi,
   metaApi,
   type SystemSettings,
   type SystemStatus,
@@ -33,6 +34,7 @@ import {
   type ChatConfig,
   type LangGraphConfig,
   type CacheConfig,
+  type LTRModelInfo,
 } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
@@ -243,6 +245,17 @@ export default function SettingsPage() {
   const [editedSettings, setEditedSettings] = useState<Partial<SystemSettings>>({})
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
 
+  // LTR 模型注册表（best-effort；依赖 settings 权限）
+  const [ltrModels, setLtrModels] = useState<LTRModelInfo[]>([])
+  const [ltrLoading, setLtrLoading] = useState(false)
+  const [ltrError, setLtrError] = useState<string | null>(null)
+  const [ltrMessage, setLtrMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [ltrUploading, setLtrUploading] = useState(false)
+  const [ltrUploadModelFile, setLtrUploadModelFile] = useState<File | null>(null)
+  const [ltrUploadManifestFile, setLtrUploadManifestFile] = useState<File | null>(null)
+  const [ltrUploadResetKey, setLtrUploadResetKey] = useState(0)
+  const [ltrBusyModelId, setLtrBusyModelId] = useState<string | null>(null)
+
   const ragMerged = useMemo(
     () => ({ ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}) }) as Partial<SystemSettings['rag']>,
     [settings?.rag, editedSettings.rag]
@@ -260,6 +273,7 @@ export default function SettingsPage() {
   // 加载配置
   useEffect(() => {
     loadSettings()
+    loadLtrModels()
   }, [])
 
   const loadSettings = async () => {
@@ -283,6 +297,111 @@ export default function SettingsPage() {
       setLoadError(withRequestId(msg, requestId))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadLtrModels = async () => {
+    setLtrLoading(true)
+    setLtrError(null)
+    try {
+      const res = await ltrApi.listModels()
+      setLtrModels(Array.isArray(res.items) ? res.items : [])
+    } catch (error) {
+      const err = error as any
+      const data = err?.response?.data
+      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
+      const msg = extractBackendMessage(data) || err?.message || '加载失败'
+      setLtrError(withRequestId(msg, requestId))
+    } finally {
+      setLtrLoading(false)
+    }
+  }
+
+  const formatBytes = (value: unknown): string => {
+    const n = typeof value === 'number' && Number.isFinite(value) ? value : Number(value)
+    if (!Number.isFinite(n) || n <= 0) return '-'
+    const units = ['B', 'KB', 'MB', 'GB']
+    let v = n
+    let u = 0
+    while (v >= 1024 && u < units.length - 1) {
+      v /= 1024
+      u += 1
+    }
+    const precision = v >= 100 ? 0 : v >= 10 ? 1 : 2
+    return `${v.toFixed(precision)} ${units[u]}`
+  }
+
+  const formatTime = (value: unknown): string => {
+    const raw = String(value || '').trim()
+    if (!raw) return '-'
+    // Best-effort render: keep stable, avoid locale/timezone surprises.
+    return raw.replace('T', ' ').replace('Z', '').slice(0, 19)
+  }
+
+  const shortId = (value: unknown, keep: number = 8): string => {
+    const s = String(value || '').trim()
+    if (!s) return '-'
+    const k = Math.max(4, Math.min(32, keep))
+    return s.length <= k ? s : `${s.slice(0, k)}…`
+  }
+
+  const registerLtrModel = async () => {
+    if (!ltrUploadModelFile || !ltrUploadManifestFile) return
+    setLtrUploading(true)
+    setLtrMessage(null)
+    try {
+      await ltrApi.registerModel({ modelFile: ltrUploadModelFile, manifestFile: ltrUploadManifestFile })
+      setLtrMessage({ type: 'success', text: '已注册 LTR 模型' })
+      setLtrUploadModelFile(null)
+      setLtrUploadManifestFile(null)
+      setLtrUploadResetKey((k) => k + 1)
+      await loadLtrModels()
+    } catch (error) {
+      const err = error as any
+      const data = err?.response?.data
+      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
+      const msg = extractBackendMessage(data) || err?.message || '注册失败'
+      setLtrMessage({ type: 'error', text: withRequestId(msg, requestId) })
+    } finally {
+      setLtrUploading(false)
+    }
+  }
+
+  const activateLtrModel = async (modelId: string) => {
+    const mid = String(modelId || '').trim()
+    if (!mid) return
+    setLtrBusyModelId(mid)
+    setLtrMessage(null)
+    try {
+      await ltrApi.activateModel(mid)
+      setLtrMessage({ type: 'success', text: `已激活模型: ${shortId(mid, 12)}` })
+      await loadLtrModels()
+    } catch (error) {
+      const err = error as any
+      const data = err?.response?.data
+      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
+      const msg = extractBackendMessage(data) || err?.message || '激活失败'
+      setLtrMessage({ type: 'error', text: withRequestId(msg, requestId) })
+    } finally {
+      setLtrBusyModelId(null)
+    }
+  }
+
+  const rollbackLtrModel = async () => {
+    setLtrBusyModelId('__rollback__')
+    setLtrMessage(null)
+    try {
+      await ltrApi.rollbackActiveModel()
+      setLtrMessage({ type: 'success', text: '已回滚到上一版本' })
+      await loadLtrModels()
+    } catch (error) {
+      const err = error as any
+      const data = err?.response?.data
+      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
+      const msg = extractBackendMessage(data) || err?.message || '回滚失败'
+      setLtrMessage({ type: 'error', text: withRequestId(msg, requestId) })
+    } finally {
+      setLtrBusyModelId(null)
     }
   }
 
@@ -561,7 +680,10 @@ export default function SettingsPage() {
           <>
             <Button
               variant="outline"
-              onClick={loadSettings}
+              onClick={() => {
+                loadSettings()
+                loadLtrModels()
+              }}
               disabled={loading}
               className="gap-2"
             >
@@ -1079,6 +1201,242 @@ export default function SettingsPage() {
                       </div>
                     )
                   })}
+                </div>
+              </section>
+
+              {/* LTR 模型注册表 */}
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-primary" />
+                    LTR 模型注册表
+                  </h2>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-muted text-muted-foreground rounded-full text-xs font-medium border border-border">
+                    <span>支持激活与一键回滚</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {ltrError ? (
+                    <Alert variant="destructive" className="shadow-soft/40">
+                      <XCircle className="h-4 w-4" />
+                      <div>
+                        <AlertTitle>LTR 注册表加载失败</AlertTitle>
+                        <AlertDescription className="text-foreground/80">{ltrError}</AlertDescription>
+                      </div>
+                    </Alert>
+                  ) : null}
+
+                  {ltrMessage ? (
+                    <Alert
+                      variant={ltrMessage.type === 'success' ? 'success' : 'destructive'}
+                      className="shadow-soft/40"
+                    >
+                      {ltrMessage.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                      <div>
+                        <AlertTitle>{ltrMessage.type === 'success' ? '操作成功' : '操作失败'}</AlertTitle>
+                        <AlertDescription className="text-foreground/80">{ltrMessage.text}</AlertDescription>
+                      </div>
+                    </Alert>
+                  ) : null}
+
+                  <Panel padding="lg" className="space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">上传并注册</div>
+                        <div className="text-xs text-muted-foreground mt-1 text-pretty">
+                          需要上传 XGBoost JSON 模型文件与 sidecar manifest（会校验 sha256 与 feature schema）。
+                        </div>
+                      </div>
+                      <Button
+                        onClick={registerLtrModel}
+                        disabled={!ltrUploadModelFile || !ltrUploadManifestFile || ltrUploading}
+                        className="gap-2"
+                      >
+                        <RefreshCw className={cn("h-4 w-4", ltrUploading && "animate-spin motion-reduce:animate-none")} />
+                        {ltrUploading ? '注册中...' : '注册模型'}
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground/80">模型文件（JSON）</label>
+                        <Input
+                          key={`ltr-model-${ltrUploadResetKey}`}
+                          type="file"
+                          accept=".json,application/json"
+                          onChange={(e) => setLtrUploadModelFile(e.target.files?.[0] || null)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground/80">Manifest（JSON）</label>
+                        <Input
+                          key={`ltr-manifest-${ltrUploadResetKey}`}
+                          type="file"
+                          accept=".json,application/json"
+                          onChange={(e) => setLtrUploadManifestFile(e.target.files?.[0] || null)}
+                        />
+                      </div>
+                    </div>
+                  </Panel>
+
+                  <Panel padding="lg" className="space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">已注册模型</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          激活后会在后端运行时使用该模型进行 LTR 重排序（失败时 fail-closed）。
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={loadLtrModels}
+                          disabled={ltrLoading || ltrBusyModelId !== null}
+                          className="gap-2"
+                        >
+                          <RefreshCw className={cn("h-4 w-4", ltrLoading && "animate-spin motion-reduce:animate-none")} />
+                          刷新列表
+                        </Button>
+
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              disabled={ltrLoading || ltrModels.length === 0 || ltrBusyModelId !== null}
+                              className="gap-2"
+                            >
+                              <AlertCircle className="h-4 w-4" />
+                              回滚
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>回滚 LTR 模型？</AlertDialogTitle>
+                              <AlertDialogDescription className="text-pretty">
+                                这会将当前激活模型切换回上一版本（仅支持一步回滚）。如果没有上一版本，会返回错误。
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>取消</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => rollbackLtrModel()}
+                                className="gap-2"
+                              >
+                                确认回滚
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+
+                    {ltrModels.length === 0 ? (
+                      <div className="rounded-xl border border-border bg-muted/30 p-6">
+                        <div className="text-sm font-medium text-foreground">暂无已注册模型</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          先在上方上传并注册一个模型，再进行激活或回滚。
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/40">
+                            <tr className="text-left">
+                              <th className="px-3 py-2 font-medium text-muted-foreground">状态</th>
+                              <th className="px-3 py-2 font-medium text-muted-foreground">模型 ID</th>
+                              <th className="px-3 py-2 font-medium text-muted-foreground">sha256</th>
+                              <th className="px-3 py-2 font-medium text-muted-foreground">特征</th>
+                              <th className="px-3 py-2 font-medium text-muted-foreground tabular-nums">大小</th>
+                              <th className="px-3 py-2 font-medium text-muted-foreground">创建时间</th>
+                              <th className="px-3 py-2 font-medium text-muted-foreground">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ltrModels.map((m) => {
+                              const isActive = Boolean(m.active)
+                              const isBusy = ltrBusyModelId === String(m.model_id || '').trim()
+                              return (
+                                <tr
+                                  key={m.model_id}
+                                  className={cn(
+                                    "border-t border-border",
+                                    isActive && "bg-emerald-50/50 dark:bg-emerald-500/10"
+                                  )}
+                                >
+                                  <td className="px-3 py-2">
+                                    {isActive ? (
+                                      <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30">
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        ACTIVE
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
+                                        idle
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 font-mono text-xs tabular-nums">
+                                    <span title={m.model_id}>{shortId(m.model_id, 16)}</span>
+                                  </td>
+                                  <td className="px-3 py-2 font-mono text-xs tabular-nums">
+                                    <span title={m.model_sha256}>{shortId(m.model_sha256, 12)}</span>
+                                  </td>
+                                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                                    <div className="tabular-nums">v{m.feature_spec_version}</div>
+                                    <div className="truncate max-w-[18rem]" title={m.feature_schema || ''}>
+                                      {m.feature_schema || '-'}
+                                    </div>
+                                    <div className="tabular-nums">{Array.isArray(m.feature_names) ? m.feature_names.length : 0} dims</div>
+                                  </td>
+                                  <td className="px-3 py-2 text-xs tabular-nums">{formatBytes(m.size_bytes)}</td>
+                                  <td className="px-3 py-2 text-xs tabular-nums">{formatTime(m.created_at)}</td>
+                                  <td className="px-3 py-2">
+                                    {isActive ? (
+                                      <Button variant="outline" disabled className="h-8 px-3 text-xs">
+                                        已激活
+                                      </Button>
+                                    ) : (
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            disabled={ltrBusyModelId !== null}
+                                            className="h-8 px-3 text-xs gap-2"
+                                          >
+                                            <RefreshCw className={cn("h-3.5 w-3.5", isBusy && "animate-spin motion-reduce:animate-none")} />
+                                            激活
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>激活该 LTR 模型？</AlertDialogTitle>
+                                            <AlertDialogDescription className="text-pretty">
+                                              将切换当前在线重排序模型到该版本。你可以使用“回滚”退回到上一版本。
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
+                                            <div className="font-mono">model_id: {String(m.model_id || '')}</div>
+                                            <div className="font-mono">sha256: {String(m.model_sha256 || '')}</div>
+                                          </div>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>取消</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => activateLtrModel(String(m.model_id || ''))}>
+                                              确认激活
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Panel>
                 </div>
               </section>
 
