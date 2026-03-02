@@ -3212,6 +3212,85 @@ class HybridRetriever(BaseRetriever):
 
         return expanded
 
+    def _stitch_results_for_continuity(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Reorder results to improve continuity by stitching contiguous chunk ranges.
+
+        This is order-only: it never drops or adds results.
+
+        Why:
+        - Retrieval pipelines often return chunks in score order, which can interleave documents
+          and fragment contiguous passages.
+        - For prompt context (and UI previews), grouping contiguous chunks improves readability
+          and reduces "jumping around" in the source material.
+        """
+        if not results:
+            return results
+        if not bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)):
+            return results
+
+        def _score(r: Dict[str, Any]) -> float:
+            try:
+                return float(r.get("score") or 0.0)
+            except Exception:
+                return 0.0
+
+        stitchable_by_doc: dict[str, list[tuple[int, int, Dict[str, Any]]]] = {}
+        singleton_groups: list[tuple[float, int, list[Dict[str, Any]]]] = []
+
+        for pos, r in enumerate(results):
+            meta = r.get("metadata") or {}
+            doc_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            doc_key = str(doc_id).strip() if doc_id is not None else ""
+            try:
+                idx = int(chunk_index) if chunk_index is not None else None
+            except Exception:
+                idx = None
+            if doc_key and idx is not None and idx >= 0:
+                stitchable_by_doc.setdefault(doc_key, []).append((idx, pos, r))
+            else:
+                singleton_groups.append((_score(r), pos, [r]))
+
+        groups: list[tuple[float, str, int, int, int, list[Dict[str, Any]]]] = []
+        # group tuple: (score, doc_id, start_idx, end_idx, min_pos, items)
+        for doc_id, entries in stitchable_by_doc.items():
+            entries.sort(key=lambda t: (t[0], t[1]))
+            run: list[tuple[int, int, Dict[str, Any]]] = []
+            for idx, pos, r in entries:
+                if not run:
+                    run = [(idx, pos, r)]
+                    continue
+                if idx == run[-1][0] + 1:
+                    run.append((idx, pos, r))
+                    continue
+                run_score = max(_score(x[2]) for x in run)
+                start_idx = int(run[0][0])
+                end_idx = int(run[-1][0])
+                min_pos = min(int(x[1]) for x in run)
+                groups.append((run_score, doc_id, start_idx, end_idx, min_pos, [x[2] for x in run]))
+                run = [(idx, pos, r)]
+
+            if run:
+                run_score = max(_score(x[2]) for x in run)
+                start_idx = int(run[0][0])
+                end_idx = int(run[-1][0])
+                min_pos = min(int(x[1]) for x in run)
+                groups.append((run_score, doc_id, start_idx, end_idx, min_pos, [x[2] for x in run]))
+
+        # Add singleton groups (no document_id/chunk_index); keep them sortable by score with stable tie-breakers.
+        for score, pos, items in singleton_groups:
+            groups.append((float(score), "", -1, -1, int(pos), items))
+
+        # Sort stitched groups by their max relevance score, then deterministic tie-breakers.
+        groups.sort(key=lambda g: (-float(g[0]), str(g[1]), int(g[2]), int(g[4])))
+
+        stitched: list[Dict[str, Any]] = []
+        for _score_g, _doc_id, _start, _end, _pos, items in groups:
+            stitched.extend(items)
+
+        return stitched
+
     def _auto_merge_parent_child(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Parent-child auto merge (LlamaIndex AutoMergingRetriever-style, simplified).
@@ -3625,8 +3704,17 @@ class HybridRetriever(BaseRetriever):
         results = self._enrich_results_with_db_metadata(results, stats=enrich2)
         debug["enrich_pass2"] = enrich2
         debug["final_results"] = len(results or [])
+        stitch_enabled = bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False))
+        debug["stitching_enabled"] = stitch_enabled
+        prefix = list(results[:requested_k]) if results else []
+        if stitch_enabled and prefix:
+            try:
+                prefix = self._stitch_results_for_continuity(prefix)
+            except Exception:
+                pass
+
         docs: List[Document] = []
-        for r in results:
+        for r in prefix:
             meta = dict(r.get("metadata") or {})
             meta["score"] = r.get("score")
             meta["vector_score"] = r.get("vector_score")
@@ -3650,7 +3738,7 @@ class HybridRetriever(BaseRetriever):
             docs.append(Document(page_content=r.get("content", ""), metadata=meta, id=r.get("chunk_id")))
         debug["final_docs"] = len(docs)
         self._last_debug_metrics = debug
-        return docs[:requested_k]
+        return docs
 
     async def _aget_relevant_documents(
         self,
