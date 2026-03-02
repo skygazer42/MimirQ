@@ -1000,7 +1000,13 @@ class ChunkAssetStage:
         ocr_remaining: int | None = (max_images if max_images > 0 else None)
 
         img_ids: List[str] = []
-        for idx, chunk in enumerate(chunks):
+        out_chunks: List[Document] = []
+        out_idx = 0
+        seen_ocr_hashes: set[str] = set()
+
+        for chunk in chunks:
+            # Assign chunk_index in output order (may differ from input order when we emit OCR chunks).
+            idx = int(out_idx)
             meta = dict(chunk.metadata or {})
             meta.setdefault("dataset_id", str(dataset_id))
             meta["document_id"] = str(document_id)
@@ -1015,6 +1021,9 @@ class ChunkAssetStage:
             ocr_text = ""
             doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
             if doc_type == "image":
+                # Structural chunk roles: keep this lightweight and deterministic so downstream
+                # can filter/rerank image vs OCR chunks explicitly.
+                meta.setdefault("chunk_role", "image")
                 if bool(image_caption_enabled):
                     try:
                         caption = derive_image_caption(chunk.page_content or "", meta)
@@ -1041,6 +1050,8 @@ class ChunkAssetStage:
                         meta["image_ocr_text"] = ocr_text
                         meta["image_ocr_chars"] = len(ocr_text)
 
+                # Keep OCR in the image chunk content for backwards compatibility (retrieval expects it),
+                # but also emit an OCR-only chunk (role="ocr") to enable dedup and explicit filtering.
                 if caption or ocr_text:
                     chunk.page_content = append_image_understanding_text(
                         chunk.page_content or "",
@@ -1086,7 +1097,52 @@ class ChunkAssetStage:
                 normalize_image_metadata(meta)
                 chunk.metadata = meta
                 img_ids.append(img_id)
-        return ChunkAssetResult(chunks=chunks, img_ids=img_ids)
+
+            # Emit the (possibly enriched) base chunk.
+            out_chunks.append(Document(page_content=chunk.page_content or "", metadata=meta, id=getattr(chunk, "id", None)))
+            out_idx += 1
+
+            # Optional: OCR child chunk (dedup by OCR text hash).
+            if doc_type == "image" and ocr_text:
+                ocr_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True).strip()
+                ocr_hash = hashlib.sha256(ocr_norm.encode("utf-8", "ignore")).hexdigest() if ocr_norm else ""
+                if ocr_hash and ocr_hash not in seen_ocr_hashes:
+                    seen_ocr_hashes.add(ocr_hash)
+                    ocr_meta = dict(meta)
+                    ocr_meta["chunk_index"] = int(out_idx)
+                    ocr_meta["chunk_key"] = f"{str(document_id)}:{int(out_idx)}"
+                    ocr_meta["doc_type_kwd"] = "ocr"
+                    ocr_meta["content_type"] = "ocr"
+                    ocr_meta["chunk_role"] = "ocr"
+                    ocr_meta["image_parent_chunk_index"] = int(idx)
+                    # Recompute content-derived fields for OCR chunk.
+                    for k in ("content_hash", "content_hash_algo", "content_len", "simhash64", "simhash_algo", "structure", "chunk_semantic_role"):
+                        ocr_meta.pop(k, None)
+                    ocr_meta["ocr_text_hash"] = str(ocr_hash)
+                    ocr_meta.setdefault("ocr_text_hash_algo", "sha256")
+
+                    ocr_content_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True)
+                    ocr_meta.setdefault("content_len", len(ocr_content_norm.strip()))
+                    infer_chunk_structure(ocr_meta, ocr_content_norm)
+                    try:
+                        ocr_meta.setdefault(
+                            "chunk_semantic_role",
+                            classify_chunk_semantic_role(content=ocr_content_norm, meta=ocr_meta),
+                        )
+                    except Exception:
+                        pass
+                    ocr_meta["content_hash"] = hashlib.sha256(ocr_content_norm.strip().encode("utf-8", "ignore")).hexdigest()
+                    ocr_meta.setdefault("content_hash_algo", "sha256")
+                    try:
+                        ocr_meta["simhash64"] = simhash64_hex(simhash64(ocr_content_norm))
+                        ocr_meta.setdefault("simhash_algo", "simhash64_sha1")
+                    except Exception:
+                        pass
+
+                    out_chunks.append(Document(page_content=ocr_text, metadata=ocr_meta))
+                    out_idx += 1
+
+        return ChunkAssetResult(chunks=out_chunks, img_ids=img_ids)
 
 
 class IndexStage:
