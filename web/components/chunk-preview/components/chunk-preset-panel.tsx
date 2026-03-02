@@ -156,7 +156,11 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
   const refresh = async () => {
     setLoading(true)
     try {
-      const res = await chunkPresetApi.list({ limit: 200 })
+      const ds = (datasetId || '').trim()
+      const res = await chunkPresetApi.list({
+        limit: 200,
+        ...(ds ? { dataset_id: ds, include_global: true } : {}),
+      })
       const next = (res?.items || []) as ChunkPreset[]
       setItems(next)
       if (selectedId && !next.some((p) => p.id === selectedId)) {
@@ -379,4 +383,3 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
     </div>
   )
 }
-

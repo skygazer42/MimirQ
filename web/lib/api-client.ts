@@ -1643,7 +1643,7 @@ export const governanceApi = {
 // ==================== Chunk Presets (Chunk Preview) API ====================
 
 export const chunkPresetApi = {
-  async list(params?: { q?: string; limit?: number }): Promise<ChunkPresetListResponse> {
+  async list(params?: { q?: string; limit?: number; dataset_id?: string; include_global?: boolean }): Promise<ChunkPresetListResponse> {
     const { data } = await apiClient.get('/chunk-presets', { params })
     return data
   },

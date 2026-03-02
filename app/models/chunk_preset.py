@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, DateTime, Index, String, Text
+from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
@@ -21,6 +21,7 @@ class ChunkPreset(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -33,5 +34,10 @@ class ChunkPreset(Base):
 
     __table_args__ = (
         Index("ix_chunk_presets_tenant_name", "tenant_id", "name"),
+        # Optional dataset scoping (governance): ensure dataset_id belongs to the same tenant.
+        ForeignKeyConstraint(
+            ["tenant_id", "dataset_id"],
+            ["datasets.tenant_id", "datasets.id"],
+            name="fk_chunk_presets_tenant_dataset",
+        ),
     )
-
