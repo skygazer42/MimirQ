@@ -543,3 +543,186 @@ def summarize_rag_query_analytics(
         top_slow_queries=top_slow_queries,
         timeseries=timeseries,
     )
+
+
+_TRACE_BUNDLE_CITATION_SAFE_KEYS = {
+    "chunk_id",
+    "document_id",
+    "chunk_index",
+    "page_number",
+    "start_char",
+    "end_char",
+    "retrieval_role",
+    "neighbor_of",
+    "doc_pipeline_key",
+    "pipeline_hash",
+    "relevance_score",
+    "vector_score",
+    "bm25_score",
+    "keyword_score",
+    "kg_path",
+    "kg_path_provenance",
+    "rerank_score",
+    "retrieval_score",
+    "reranker_provider",
+    "rerank_elapsed_sec",
+    "rerank_model_used",
+    "retrieval_mode",
+    "vector_backend",
+    "retrieval_elapsed_sec",
+    "hit_type",
+    "has_image",
+}
+
+
+def _sanitize_rag_trace_for_bundle(record: dict[str, Any]) -> dict[str, Any]:
+    """
+    Return a PII-safe copy of a rag_trace record (for incident bundles).
+
+    Guarantees:
+    - No raw question/query text in output
+    - Citations contain only identifiers + numeric fields (no snippets)
+    """
+
+    out = dict(record)
+
+    question = out.pop("question", None)
+    if isinstance(question, str) and question.strip():
+        q = question.strip()
+        out.setdefault("question_hash", _hash_for_analytics(q))
+        out.setdefault("question_chars", len(q))
+
+    query = out.pop("query_for_retrieval", None)
+    if isinstance(query, str) and query.strip():
+        q = query.strip()
+        out.setdefault("query_hash", _hash_for_analytics(q))
+        out.setdefault("query_chars", len(q))
+
+    citations = out.get("citations")
+    if isinstance(citations, list):
+        safe: list[dict[str, Any]] = []
+        for c in citations:
+            if not isinstance(c, dict):
+                continue
+            item: dict[str, Any] = {}
+            for k in _TRACE_BUNDLE_CITATION_SAFE_KEYS:
+                if k in c and c.get(k) is not None:
+                    item[k] = c.get(k)
+            if item:
+                safe.append(item)
+            if len(safe) >= 50:
+                break
+        out["citations"] = safe
+
+    return out
+
+
+def _sanitize_rag_done_for_bundle(record: dict[str, Any]) -> dict[str, Any]:
+    """
+    Return a PII-safe copy of a rag_done record (for incident bundles).
+
+    We defensively drop fields that can contain user/assistant text.
+    """
+
+    out = dict(record)
+    metrics = out.get("metrics")
+    if isinstance(metrics, dict):
+        safe = dict(metrics)
+        safe.pop("structured_data", None)
+        safe.pop("abstain_followup", None)
+        out["metrics"] = safe
+    return out
+
+
+@dataclass(frozen=True)
+class RagTraceBundle:
+    enabled: bool
+    path: str
+    window_minutes: int
+    truncated: bool
+    record_count: int
+    request_id: str
+    records: list[dict[str, Any]]
+
+
+def build_rag_trace_bundle(
+    *,
+    tenant_id: str | None,
+    request_id: str,
+    window_minutes: int = 24 * 60,
+    max_bytes: int = 5_000_000,
+) -> RagTraceBundle | None:
+    """
+    Export a PII-safe trace bundle for incident debugging by request_id.
+
+    Intended for admin-only ops workflows. This reads the metrics JSONL tail and
+    returns a small, sanitized set of records matching the request_id.
+    """
+
+    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path = Path(path_str)
+
+    request_id = str(request_id or "").strip()
+    if not request_id:
+        return None
+
+    window_minutes = max(1, int(window_minutes or 0))
+    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
+
+    raw_records, truncated_by_tail = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
+
+    tenant_key = str(tenant_id) if tenant_id else None
+    records: list[dict[str, Any]] = []
+    for r in raw_records:
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            ts_ms = 0
+        if ts_ms and ts_ms < cutoff_ms:
+            continue
+        if tenant_key:
+            rid = r.get("tenant_id")
+            if rid and str(rid) != tenant_key:
+                continue
+        records.append(r)
+
+    earliest_ts_ms: int | None = None
+    for r in records:
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            continue
+        if not ts_ms:
+            continue
+        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
+            earliest_ts_ms = ts_ms
+    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
+
+    matched: list[dict[str, Any]] = []
+    for r in records:
+        if str(r.get("request_id") or "") != request_id:
+            continue
+        event = str(r.get("event") or "")
+        if event == "rag_trace":
+            matched.append(_sanitize_rag_trace_for_bundle(r))
+        elif event == "rag_done":
+            matched.append(_sanitize_rag_done_for_bundle(r))
+        else:
+            # Best-effort: include other correlated events (already PII-safe by convention).
+            matched.append(dict(r))
+
+    if not matched:
+        return None
+
+    matched.sort(key=lambda x: int(x.get("ts_ms") or 0))
+
+    return RagTraceBundle(
+        enabled=enabled,
+        path=path_str,
+        window_minutes=window_minutes,
+        truncated=truncated,
+        record_count=len(records),
+        request_id=request_id,
+        records=matched,
+    )
