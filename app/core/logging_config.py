@@ -17,6 +17,7 @@ from typing import Any, Dict
 _request_id: ContextVar[str] = ContextVar("request_id", default="")
 _tenant_id: ContextVar[str] = ContextVar("tenant_id", default="")
 _user_id: ContextVar[str] = ContextVar("user_id", default="")
+_route: ContextVar[str] = ContextVar("route", default="")
 
 _record_factory_installed = False
 _include_trace_context = True
@@ -49,11 +50,12 @@ def _get_otel_trace_context() -> tuple[str, str]:
         return "", ""
 
 
-def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str = "") -> Dict[str, Any]:
+def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str = "", route: str = "") -> Dict[str, Any]:
     tokens: Dict[str, Any] = {}
     tokens["request_id"] = _request_id.set((request_id or "").strip())
     tokens["tenant_id"] = _tenant_id.set((tenant_id or "").strip())
     tokens["user_id"] = _user_id.set((user_id or "").strip())
+    tokens["route"] = _route.set((route or "").strip())
     return tokens
 
 
@@ -75,6 +77,15 @@ def set_request_tenant_id(tenant_id: str) -> None:
     """
     _tenant_id.set((tenant_id or "").strip())
 
+def set_request_route(route: str) -> None:
+    """
+    Update the current request's route template context.
+
+    Prefer route templates (e.g. `/api/v1/rag/retrieve`) over raw paths to keep
+    cardinality low in log search tools.
+    """
+    _route.set((route or "").strip())
+
 
 def reset_request_context(tokens: Dict[str, Any]) -> None:
     if not tokens:
@@ -83,6 +94,7 @@ def reset_request_context(tokens: Dict[str, Any]) -> None:
         _request_id.reset(tokens["request_id"])
         _tenant_id.reset(tokens["tenant_id"])
         _user_id.reset(tokens["user_id"])
+        _route.reset(tokens["route"])
     except (KeyError, ValueError):
         # Best-effort: never fail request processing due to logging context cleanup.
         return
@@ -93,6 +105,7 @@ def get_request_context() -> Dict[str, str]:
         "request_id": _request_id.get() or "",
         "tenant_id": _tenant_id.get() or "",
         "user_id": _user_id.get() or "",
+        "route": _route.get() or "",
     }
 
 
@@ -114,6 +127,10 @@ class JSONFormatter(logging.Formatter):
             payload["tenant_id"] = tenant_id
         if user_id:
             payload["user_id"] = user_id
+
+        route = getattr(record, "route", None) or _route.get() or ""
+        if route:
+            payload["route"] = route
 
         trace_id = getattr(record, "trace_id", None) or ""
         span_id = getattr(record, "span_id", None) or ""
@@ -141,6 +158,7 @@ def _install_record_factory() -> None:
         record.request_id = _request_id.get() or ""
         record.tenant_id = _tenant_id.get() or ""
         record.user_id = _user_id.get() or ""
+        record.route = _route.get() or ""
         trace_id, span_id = _get_otel_trace_context()
         record.trace_id = trace_id
         record.span_id = span_id

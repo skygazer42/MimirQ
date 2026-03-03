@@ -1,0 +1,34 @@
+"""
+Logging-related FastAPI dependencies.
+
+These are used to enrich request-scoped structured logs (contextvars) with
+low-cardinality fields like the route template.
+"""
+
+from __future__ import annotations
+
+from fastapi import Request
+
+from app.core.logging_config import set_request_route
+
+
+async def bind_route_context(request: Request) -> None:
+    """
+    Bind the current request's route template (best-effort).
+
+    Notes:
+    - This runs after routing, so `request.scope["route"]` should typically be set.
+    - We prefer route templates (e.g. `/api/v1/rag/retrieve`) over raw paths to avoid
+      high-cardinality logs (e.g. `/api/v1/documents/<uuid>`).
+    """
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    if template:
+        set_request_route(str(template))
+        return
+
+    # Fallback to raw path when routing information isn't available.
+    set_request_route(str(request.scope.get("path") or ""))
+
+
+__all__ = ["bind_route_context"]

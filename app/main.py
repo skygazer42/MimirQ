@@ -31,7 +31,7 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
@@ -71,6 +71,7 @@ import app.models.user  # noqa: F401
 
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
+from app.api.dependencies.logging import bind_route_context
 from app.api.middleware.process_time import ProcessTimeMiddleware
 from app.api.middleware.request_id import RequestIDMiddleware
 from app.api.v1 import router as api_v1_router
@@ -527,7 +528,7 @@ app.add_middleware(ResponseHeaderSanitizerMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 # Register routes
-app.include_router(api_v1_router, prefix="/api/v1")
+app.include_router(api_v1_router, prefix="/api/v1", dependencies=[Depends(bind_route_context)])
 
 # Register exception handlers
 register_exception_handlers(app)
