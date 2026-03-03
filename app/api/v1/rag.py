@@ -78,6 +78,11 @@ async def retrieve_preview(
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
+    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+
+    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
+
     scope_dataset_id: UUID | None = None
     scope_document_ids: list[UUID] = []
     if body.document_ids:
@@ -201,6 +206,7 @@ async def retrieve_preview(
     metrics = dict(metrics)
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
     metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
+    metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
     if dataset_rag_defaults_applied_fields:
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
@@ -265,6 +271,11 @@ async def image_search_preview(
     ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
 
+    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+
+    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
+
     from app.services.image_embedding_index import (
         build_image_citations,
         index_clip_image_embeddings_for_dataset,
@@ -301,7 +312,7 @@ async def image_search_preview(
         hits=hits,
         max_items=int(body.top_k or 0),
     )
-    metrics: dict[str, Any] = {"hits": int(len(citations)), "indexed": indexed}
+    metrics: dict[str, Any] = {"hits": int(len(citations)), "indexed": indexed, "tenant_qps_quota": tenant_qps_meta}
     return ImageSearchResponse(citations=citations, metrics=metrics)
 
 
@@ -351,6 +362,11 @@ async def retrieve_evidence(
     """
     t_api_start = time.monotonic()
     DatasetService.ensure_member(db, tenant_id, account_id)
+
+    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+
+    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
 
     scope_dataset_id: UUID | None = None
     scope_document_ids: list[UUID] = []
@@ -674,6 +690,8 @@ async def retrieve_evidence(
         if isinstance(query_debug, dict):
             query_debug.setdefault("iterative_retrieve", iterative_summary)
 
+    metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
+
     # Prometheus metrics (optional; no-op when disabled).
     try:
         from app.rag.retrieval.metrics import observe_evidence_retrieve
@@ -764,6 +782,11 @@ async def prompt_preview(
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
     t0 = time.time()
     DatasetService.ensure_member(db, tenant_id, account_id)
+
+    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+
+    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
 
     scope_dataset_id: UUID | None = None
     scope_document_ids: list[UUID] = []
@@ -924,6 +947,7 @@ async def prompt_preview(
 
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
     metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
+    metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
     if dataset_rag_defaults_applied_fields:
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
