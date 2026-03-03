@@ -5,6 +5,12 @@ type ErrorResponseLike = {
   request_id?: unknown
 }
 
+type RateLimitDetailLike = {
+  retry_after_sec?: unknown
+  limit?: unknown
+  scope?: unknown
+}
+
 function looksLikeHtmlDocument(value: string): boolean {
   const trimmed = (value || '').trimStart().slice(0, 200).toLowerCase()
   return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
@@ -25,6 +31,33 @@ function safeJson(value: unknown): string | undefined {
     return JSON.stringify(value)
   } catch {
     return undefined
+  }
+}
+
+function asFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function extractRateLimitDetail(data: unknown): { retryAfterSec?: number; limit?: number; scope?: string } | undefined {
+  if (!data || typeof data !== 'object') return undefined
+  const detail = (data as ErrorResponseLike).detail
+  if (!detail || typeof detail !== 'object') return undefined
+  const maybe = detail as RateLimitDetailLike
+
+  const retryAfterSec = asFiniteNumber(maybe.retry_after_sec)
+  const limit = asFiniteNumber(maybe.limit)
+  const scope = asNonEmptyString(maybe.scope)
+
+  if (retryAfterSec == null && limit == null && !scope) return undefined
+  return {
+    retryAfterSec: retryAfterSec == null ? undefined : Math.max(0, Math.round(retryAfterSec)),
+    limit,
+    scope,
   }
 }
 
@@ -135,8 +168,20 @@ export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorI
   const status = typeof axiosResponse?.status === 'number' ? axiosResponse.status : undefined
   const data = axiosResponse?.data
 
-  const message = extractBackendMessage(data) || (maybeError?.message && String(maybeError.message)) || fallbackMessage
+  let message = extractBackendMessage(data) || (maybeError?.message && String(maybeError.message)) || fallbackMessage
   const requestId = extractAxiosRequestId(err)
+
+  if (status === 429) {
+    const meta = extractRateLimitDetail(data)
+    const retryAfterSec = meta?.retryAfterSec
+    if (typeof retryAfterSec === 'number' && retryAfterSec > 0) {
+      const suffixBits: string[] = []
+      if (meta?.scope) suffixBits.push(`scope=${meta.scope}`)
+      if (typeof meta?.limit === 'number' && Number.isFinite(meta.limit) && meta.limit > 0) suffixBits.push(`limit=${meta.limit}`)
+      const suffix = suffixBits.length ? `（${suffixBits.join('，')}）` : ''
+      message = `请求过于频繁，请在 ${retryAfterSec} 秒后重试${suffix}`
+    }
+  }
 
   return { message, requestId, status }
 }

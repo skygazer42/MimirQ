@@ -311,6 +311,25 @@ export interface OpsConfigSnapshotResponse {
   config: Record<string, any>
 }
 
+export interface TaskQueueObservabilitySnapshotResponse {
+  schema: string
+  generated_at: string
+  source: string
+
+  enabled: boolean
+  queue_name: string
+
+  broker_up: boolean
+  queue_depth?: number | null
+  workers_active?: number | null
+
+  heartbeat_interval_sec: number
+  heartbeat_ttl_sec: number
+  poll_interval_sec: number
+
+  error?: string | null
+}
+
 export interface RagTraceBundleResponse {
   enabled: boolean
   path: string

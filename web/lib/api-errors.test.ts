@@ -48,4 +48,27 @@ describe('api-errors', () => {
     expect(info.requestId).toBe('rid')
     expect(info.message).toBe('boom')
   })
+
+  it('toApiErrorInfo formats 429 with retry_after_sec + scope + limit', () => {
+    const info = toApiErrorInfo(
+      {
+        response: {
+          status: 429,
+          headers: { 'x-request-id': 'rid' },
+          data: {
+            error: 'RATE_LIMIT_EXCEEDED',
+            message: 'Too many requests. Please try again later.',
+            detail: { retry_after_sec: 5, limit: 1, scope: 'api' },
+            request_id: 'rid',
+          },
+        },
+      },
+      'fallback'
+    )
+    expect(info.status).toBe(429)
+    expect(info.requestId).toBe('rid')
+    expect(info.message).toContain('5')
+    expect(info.message).toContain('scope=api')
+    expect(info.message).toContain('limit=1')
+  })
 })

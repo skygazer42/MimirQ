@@ -221,13 +221,14 @@ import type {
 	  RagvizSimilarityCalculateResponse,
 	  RagMetricsSummaryResponse,
 	  RagQueryAnalyticsResponse,
-	  RagTraceBundleResponse,
-	  OpsConfigSnapshotResponse,
-	  SloSnapshotResponse,
-	  IndexAuditResponse,
-	  IngestionDashboardSummaryResponse,
-	  RagTraceListResponse,
-	  RagasRegressionRunDiffResponse,
+		  RagTraceBundleResponse,
+		  OpsConfigSnapshotResponse,
+		  TaskQueueObservabilitySnapshotResponse,
+		  SloSnapshotResponse,
+		  IndexAuditResponse,
+		  IngestionDashboardSummaryResponse,
+		  RagTraceListResponse,
+		  RagasRegressionRunDiffResponse,
 	} from '@/types'
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
@@ -352,9 +353,31 @@ apiClient.interceptors.response.use(
           console.error('[API] 请求参数错误:', detail, requestId ? `(request_id=${requestId})` : '')
           break
         case 429: {
-          const retryAfter = error.response.headers?.['retry-after']
-          const extra = retryAfter ? `(retry_after=${String(retryAfter)}s)` : ''
-          console.error('[API] 请求过于频繁，请稍后重试', extra, requestId ? `(request_id=${requestId})` : '')
+          const retryAfterHeader = error.response.headers?.['retry-after']
+          const detailObj = data && typeof data === 'object' ? ((data as any).detail as any) : null
+          const retryAfterBody = detailObj?.retry_after_sec
+          const retryAfterSec =
+            typeof retryAfterBody === 'number'
+              ? retryAfterBody
+              : typeof retryAfterBody === 'string'
+                ? Number(retryAfterBody)
+                : retryAfterHeader
+                  ? Number(retryAfterHeader)
+                  : undefined
+          const scope = typeof detailObj?.scope === 'string' ? detailObj.scope : undefined
+          const limit = typeof detailObj?.limit === 'number' ? detailObj.limit : undefined
+
+          const bits: string[] = []
+          if (scope) bits.push(`scope=${scope}`)
+          if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) bits.push(`limit=${String(limit)}`)
+          if (typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0) bits.push(`retry_after=${String(retryAfterSec)}s`)
+          const extra = bits.length ? `(${bits.join(', ')})` : ''
+
+          const msg =
+            typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0
+              ? `[API] 请求过于频繁，请在 ${String(Math.round(retryAfterSec))} 秒后重试`
+              : '[API] 请求过于频繁，请稍后重试'
+          console.error(msg, extra, requestId ? `(request_id=${requestId})` : '')
           break
         }
         case 500:
@@ -3285,15 +3308,20 @@ export const observabilityApi = {
     return data
   },
 
-  async getOpsConfigSnapshot(): Promise<OpsConfigSnapshotResponse> {
-    const { data } = await apiClient.get('/observability/config/snapshot')
-    return data
-  },
+	  async getOpsConfigSnapshot(): Promise<OpsConfigSnapshotResponse> {
+	    const { data } = await apiClient.get('/observability/config/snapshot')
+	    return data
+	  },
 
-  async getSloSnapshot(): Promise<SloSnapshotResponse> {
-    const { data } = await apiClient.get('/observability/slo/snapshot')
-    return data
-  },
+	  async getTaskQueueSnapshot(params: { force_refresh?: boolean } = {}): Promise<TaskQueueObservabilitySnapshotResponse> {
+	    const { data } = await apiClient.get('/observability/task-queue/snapshot', { params })
+	    return data
+	  },
+
+	  async getSloSnapshot(): Promise<SloSnapshotResponse> {
+	    const { data } = await apiClient.get('/observability/slo/snapshot')
+	    return data
+	  },
 
   async getIngestionDashboardSummary(params: {
     window_hours?: number
