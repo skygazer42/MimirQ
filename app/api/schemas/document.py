@@ -507,6 +507,10 @@ class DocumentDetail(OrmModel):
     total_characters: int
     owner_id: Optional[str] = None
     access_mode: Optional[DocumentAccessMode] = None
+    lifecycle_owner: Optional[str] = None
+    review_due_at: Optional[datetime] = None
+    authority_level: Optional[int] = None
+    supersedes_document_id: Optional[UUID] = None
     archived_at: Optional[datetime] = None
     disabled_at: Optional[datetime] = None
     created_at: datetime
