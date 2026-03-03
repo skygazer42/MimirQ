@@ -56,6 +56,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 - Observability 概览：`GET /api/v1/observability/rag-metrics/summary`
 - Query Analytics（zero-hit/慢检索/错误）：`GET /api/v1/observability/rag-metrics/query-analytics`
 - Trace Bundle（按 request_id 导出 PII-safe 诊断包）：`GET /api/v1/observability/rag-metrics/trace-bundle?request_id=...`
+- Config Snapshot（脱敏配置快照 + 指纹）：`GET /api/v1/observability/config/snapshot`
 - Index 一致性检查：`GET /api/v1/observability/index-audit?dataset_id=...`
 - 审计日志列表：`GET /api/v1/audit/logs`
 - 审计日志导出（SIEM）：`GET /api/v1/audit/logs/export`
@@ -95,6 +96,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
    - request_id（前端会带 `X-Request-ID`，后端也会写入响应头/日志）
    - `/api/v1/observability/rag-metrics/summary`（聚合指标）
    - RAG trace / leaderboard / diff 报告（尽量用 hash / 指标，不要复制原始 query/文档）
+   - 一键打包（PII-safe）：`python scripts/incident_bundle.py --base-url <api> --tenant-id <tid> --token <admin_token> --request-id <rid>`
 3. **止血手段（按场景）**
    - **成本/滥用飙升**：启用/调严 rate-limit 与 tenant QPS quota；观察 `Retry-After` 与 429 频率。
    - **检索质量骤降**：优先排查配置变更（settings/env），用 `retrieval_config_hash` 对比“变更前后”的配置指纹。
