@@ -12,13 +12,13 @@ from typing import Any, Dict, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
-from app.services.rag_metrics_dashboard import summarize_rag_metrics
+from app.services.rag_metrics_dashboard import summarize_rag_metrics, summarize_rag_query_analytics
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter()
@@ -53,6 +53,32 @@ class RagMetricsSummaryResponse(BaseModel):
     hit_type_counts: Dict[str, int] = {}
     error_counts: Dict[str, int] = {}
     timeseries: Dict[str, List[Any]] = {}
+
+
+class RagQueryAnalyticsResponse(BaseModel):
+    enabled: bool
+    path: str
+    window_minutes: int
+    truncated: bool
+    record_count: int
+    rag_trace_count: int
+    unique_query_hashes: int
+
+    zero_hit_count: int
+    zero_hit_rate: float | None = None
+
+    slow_threshold_sec: float
+    slow_count: int
+    slow_rate: float | None = None
+
+    retrieval_p50_elapsed_sec: float | None = None
+    retrieval_p95_elapsed_sec: float | None = None
+    retrieval_p99_elapsed_sec: float | None = None
+
+    error_kind_counts: Dict[str, int] = Field(default_factory=dict)
+    top_zero_hit_queries: List[Dict[str, Any]] = Field(default_factory=list)
+    top_slow_queries: List[Dict[str, Any]] = Field(default_factory=list)
+    timeseries: Dict[str, List[Any]] = Field(default_factory=dict)
 
 
 class IndexAuditResponse(BaseModel):
@@ -100,6 +126,27 @@ def get_rag_metrics_summary(
     _ensure_admin(db, tenant_id, account_id)
     summary = summarize_rag_metrics(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
     # Dataclass -> dict (safe fields only by construction).
+    return summary.__dict__
+
+
+@router.get("/rag-metrics/query-analytics", response_model=RagQueryAnalyticsResponse)
+def get_rag_query_analytics(
+    window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
+    slow_threshold_sec: float = Query(default=2.0, ge=0.0, le=120.0),
+    top_n: int = Query(default=20, ge=1, le=200),
+    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+    summary = summarize_rag_query_analytics(
+        tenant_id=str(tenant_id),
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+        slow_threshold_sec=slow_threshold_sec,
+        top_n=top_n,
+    )
     return summary.__dict__
 
 

@@ -12,6 +12,7 @@ Design constraints:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections import defaultdict
@@ -306,4 +307,239 @@ def summarize_rag_metrics(
         hit_type_counts=dict(hit_type_counts),
         error_counts=dict(error_counts),
         timeseries=series,
+    )
+
+
+def _hash_for_analytics(text: str) -> str:
+    """
+    Stable short hash for query analytics.
+
+    Note: metrics JSONL already writes `query_hash`/`question_hash` when
+    METRICS_LOG_INCLUDE_TEXT=false. When text is included, we compute the same
+    hash at read time so analytics remain PII-safe.
+    """
+
+    raw = (text or "").encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class RagQueryAnalyticsSummary:
+    enabled: bool
+    path: str
+    window_minutes: int
+    truncated: bool
+    record_count: int
+    rag_trace_count: int
+    unique_query_hashes: int
+    zero_hit_count: int
+    zero_hit_rate: float | None
+    slow_threshold_sec: float
+    slow_count: int
+    slow_rate: float | None
+    retrieval_p50_elapsed_sec: float | None
+    retrieval_p95_elapsed_sec: float | None
+    retrieval_p99_elapsed_sec: float | None
+    error_kind_counts: dict[str, int]
+    top_zero_hit_queries: list[dict[str, Any]]
+    top_slow_queries: list[dict[str, Any]]
+    timeseries: dict[str, list[Any]]
+
+
+def summarize_rag_query_analytics(
+    *,
+    tenant_id: str | None,
+    window_minutes: int = 60,
+    max_bytes: int = 5_000_000,
+    slow_threshold_sec: float = 2.0,
+    top_n: int = 20,
+) -> RagQueryAnalyticsSummary:
+    """
+    Query analytics summary derived from `rag_trace` metrics JSONL records.
+
+    Output is PII-safe by construction:
+    - Only query hashes are returned (no raw text)
+    - Aggregates are numeric/categorical
+    """
+
+    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path = Path(path_str)
+
+    window_minutes = max(1, int(window_minutes or 0))
+    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
+    top_n = max(1, min(200, int(top_n or 0)))
+    slow_threshold_sec = max(0.0, float(slow_threshold_sec or 0.0))
+
+    raw_records, truncated_by_tail = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
+
+    # Tenant filter (avoid cross-tenant leakage on shared log files).
+    tenant_key = str(tenant_id) if tenant_id else None
+    records: list[dict[str, Any]] = []
+    for r in raw_records:
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            ts_ms = 0
+        if ts_ms and ts_ms < cutoff_ms:
+            continue
+        if tenant_key:
+            rid = r.get("tenant_id")
+            if rid and str(rid) != tenant_key:
+                continue
+        records.append(r)
+
+    earliest_ts_ms: int | None = None
+    for r in records:
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            continue
+        if not ts_ms:
+            continue
+        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
+            earliest_ts_ms = ts_ms
+    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
+
+    rag_trace_count = 0
+    query_hashes: set[str] = set()
+    retrieval_elapsed: list[float] = []
+
+    zero_hit_count = 0
+    slow_count = 0
+
+    error_kind_counts: dict[str, int] = defaultdict(int)
+    zero_hit_by_hash: dict[str, int] = defaultdict(int)
+    slow_by_hash_count: dict[str, int] = defaultdict(int)
+    slow_by_hash_max_elapsed: dict[str, float] = defaultdict(float)
+
+    # Simple minute-bucket time series (PII-safe).
+    bucket: dict[int, dict[str, Any]] = {}
+
+    for r in records:
+        if str(r.get("event") or "") != "rag_trace":
+            continue
+
+        rag_trace_count += 1
+
+        ts_ms = int(r.get("ts_ms") or 0) if r.get("ts_ms") is not None else 0
+        minute_ms = (ts_ms // 60_000) * 60_000 if ts_ms else 0
+        if minute_ms and minute_ms not in bucket:
+            bucket[minute_ms] = {"ts_ms": minute_ms, "requests": 0, "zero_hit": 0, "slow": 0, "errors": 0}
+        if minute_ms:
+            bucket[minute_ms]["requests"] += 1
+
+        qhash = r.get("query_hash") or r.get("question_hash")
+        if not qhash:
+            raw_query = r.get("query_for_retrieval") or r.get("question")
+            if isinstance(raw_query, str) and raw_query.strip():
+                qhash = _hash_for_analytics(raw_query.strip())
+
+        if isinstance(qhash, str) and qhash.strip():
+            qhash = qhash.strip()
+            query_hashes.add(qhash)
+        else:
+            qhash = None
+
+        citations_count = 0
+        try:
+            if r.get("citations_count") is not None:
+                citations_count = int(r.get("citations_count") or 0)
+            else:
+                citations = r.get("citations") or []
+                citations_count = len(citations) if isinstance(citations, list) else 0
+        except Exception:
+            citations_count = 0
+
+        retrieval = r.get("retrieval") if isinstance(r.get("retrieval"), dict) else {}
+        elapsed_sec: float | None = None
+        try:
+            v = retrieval.get("elapsed_sec") if isinstance(retrieval, dict) else None
+            if v is not None:
+                fv = float(v)
+                if fv >= 0:
+                    elapsed_sec = fv
+        except Exception:
+            elapsed_sec = None
+        if elapsed_sec is not None:
+            retrieval_elapsed.append(elapsed_sec)
+
+        errors = retrieval.get("errors") if isinstance(retrieval, dict) else None
+        has_error = False
+        if isinstance(errors, list) and errors:
+            has_error = True
+            for e in errors:
+                if not isinstance(e, str):
+                    continue
+                kind = e.split(":", 1)[0].strip().lower()
+                if not kind:
+                    continue
+                error_kind_counts[kind[:30]] += 1
+        if has_error and minute_ms:
+            bucket[minute_ms]["errors"] += 1
+
+        if citations_count == 0:
+            zero_hit_count += 1
+            if minute_ms:
+                bucket[minute_ms]["zero_hit"] += 1
+            if qhash:
+                zero_hit_by_hash[qhash] += 1
+
+        if slow_threshold_sec > 0 and elapsed_sec is not None and elapsed_sec >= slow_threshold_sec:
+            slow_count += 1
+            if minute_ms:
+                bucket[minute_ms]["slow"] += 1
+            if qhash:
+                slow_by_hash_count[qhash] += 1
+                slow_by_hash_max_elapsed[qhash] = max(float(slow_by_hash_max_elapsed.get(qhash) or 0.0), elapsed_sec)
+
+    zero_hit_rate = (zero_hit_count / rag_trace_count) if rag_trace_count else None
+    slow_rate = (slow_count / rag_trace_count) if rag_trace_count else None
+
+    top_zero = sorted(zero_hit_by_hash.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]
+    top_zero_hit_queries = [{"query_hash": h, "count": int(c)} for h, c in top_zero]
+
+    top_slow_items = sorted(
+        slow_by_hash_count.items(),
+        key=lambda kv: (-kv[1], -(float(slow_by_hash_max_elapsed.get(kv[0]) or 0.0)), kv[0]),
+    )[:top_n]
+    top_slow_queries: list[dict[str, Any]] = []
+    for h, c in top_slow_items:
+        top_slow_queries.append(
+            {
+                "query_hash": h,
+                "count": int(c),
+                "max_elapsed_sec": round(float(slow_by_hash_max_elapsed.get(h) or 0.0), 3),
+            }
+        )
+
+    ts_keys = sorted(k for k in bucket.keys() if k)
+    timeseries = {
+        "ts_ms": [k for k in ts_keys],
+        "requests": [int(bucket[k]["requests"]) for k in ts_keys],
+        "zero_hit": [int(bucket[k]["zero_hit"]) for k in ts_keys],
+        "slow": [int(bucket[k]["slow"]) for k in ts_keys],
+        "errors": [int(bucket[k]["errors"]) for k in ts_keys],
+    }
+
+    return RagQueryAnalyticsSummary(
+        enabled=enabled,
+        path=path_str,
+        window_minutes=int(window_minutes),
+        truncated=bool(truncated),
+        record_count=len(records),
+        rag_trace_count=int(rag_trace_count),
+        unique_query_hashes=len(query_hashes),
+        zero_hit_count=int(zero_hit_count),
+        zero_hit_rate=zero_hit_rate,
+        slow_threshold_sec=slow_threshold_sec,
+        slow_count=int(slow_count),
+        slow_rate=slow_rate,
+        retrieval_p50_elapsed_sec=_percentile(retrieval_elapsed, 50.0),
+        retrieval_p95_elapsed_sec=_percentile(retrieval_elapsed, 95.0),
+        retrieval_p99_elapsed_sec=_percentile(retrieval_elapsed, 99.0),
+        error_kind_counts=dict(error_kind_counts),
+        top_zero_hit_queries=top_zero_hit_queries,
+        top_slow_queries=top_slow_queries,
+        timeseries=timeseries,
     )
