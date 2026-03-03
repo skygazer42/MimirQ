@@ -102,6 +102,22 @@ class OpsConfigSnapshotResponse(BaseModel):
     config: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SloWindowSnapshotResponse(BaseModel):
+    window_minutes: int
+    source: str
+    rag_trace_count: int | None = None
+    retrieval_p95_elapsed_sec: float | None = None
+    retrieval_p99_elapsed_sec: float | None = None
+    zero_hit_rate: float | None = None
+    error_rate: float | None = None
+
+
+class SloSnapshotResponse(BaseModel):
+    schema: str
+    generated_at: datetime
+    windows: List[SloWindowSnapshotResponse] = Field(default_factory=list)
+
+
 class IndexAuditResponse(BaseModel):
     tenant_id: str
     dataset_id: str
@@ -201,6 +217,18 @@ def get_ops_config_snapshot(
     _ensure_admin(db, tenant_id, account_id)
     snap = build_ops_config_snapshot()
     return snap.__dict__
+
+
+@router.get("/slo/snapshot", response_model=SloSnapshotResponse)
+async def get_slo_snapshot(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+    from app.services.slo_snapshot_service import build_slo_snapshot
+
+    return await build_slo_snapshot(tenant_id=str(tenant_id))
 
 
 @router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse)

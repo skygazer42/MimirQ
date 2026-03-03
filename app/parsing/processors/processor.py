@@ -3148,6 +3148,7 @@ class DocumentProcessorService:
             if isinstance(meta, dict) and bool(meta.get("cancel_requested")) and str(status).lower() != "cancelled":
                 return
 
+            prev_stage = str(getattr(db_doc, "current_stage", None) or "")
             db_doc.status = status
             db_doc.processing_progress = progress
             db_doc.current_stage = stage
@@ -3157,6 +3158,19 @@ class DocumentProcessorService:
 
             db.commit()
             db.refresh(db_doc)
+
+            # Prometheus gauge: docs currently processing by stage (best-effort).
+            try:
+                from app.services.ingestion_prometheus_metrics import adjust_processing_stage_gauge
+
+                adjust_processing_stage_gauge(
+                    prev_status=current_status,
+                    prev_stage=prev_stage,
+                    new_status=str(status or ""),
+                    new_stage=str(stage or ""),
+                )
+            except Exception:
+                pass
 
             # Best-effort: update ingestion run manifest (never block ingestion/status updates).
             try:

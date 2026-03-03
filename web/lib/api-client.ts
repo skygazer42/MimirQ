@@ -220,6 +220,7 @@ import type {
 	  RagQueryAnalyticsResponse,
 	  RagTraceBundleResponse,
 	  OpsConfigSnapshotResponse,
+	  SloSnapshotResponse,
 	  IndexAuditResponse,
 	  IngestionDashboardSummaryResponse,
 	  RagTraceListResponse,
@@ -3239,6 +3240,11 @@ export const observabilityApi = {
 
   async getOpsConfigSnapshot(): Promise<OpsConfigSnapshotResponse> {
     const { data } = await apiClient.get('/observability/config/snapshot')
+    return data
+  },
+
+  async getSloSnapshot(): Promise<SloSnapshotResponse> {
+    const { data } = await apiClient.get('/observability/slo/snapshot')
     return data
   },
 

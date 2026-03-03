@@ -321,6 +321,22 @@ export interface RagTraceBundleResponse {
   records: Array<Record<string, any>>
 }
 
+export interface SloWindowSnapshotResponse {
+  window_minutes: number
+  source: string
+  rag_trace_count?: number | null
+  retrieval_p95_elapsed_sec?: number | null
+  retrieval_p99_elapsed_sec?: number | null
+  zero_hit_rate?: number | null
+  error_rate?: number | null
+}
+
+export interface SloSnapshotResponse {
+  schema: string
+  generated_at: string
+  windows: SloWindowSnapshotResponse[]
+}
+
 export interface IndexAuditResponse {
   tenant_id: string
   dataset_id: string

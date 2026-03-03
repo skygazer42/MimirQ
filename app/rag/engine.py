@@ -2126,6 +2126,20 @@ Requirements:
                 "claims_total": int(claim_check_total),
                 "claims_removed": int(claim_check_removed),
             }
+            # Prometheus SLI metrics (PII-safe; low-cardinality by default).
+            try:
+                from app.rag.metrics_sli import observe_rag_sli
+
+                observe_rag_sli(
+                    tenant_id=str(tenant_id) if tenant_id else None,
+                    dataset_id=str(dataset_id) if dataset_id else None,
+                    citations_count=len(citations),
+                    retrieval_elapsed_sec=float(retrieval_elapsed or 0.0),
+                    rerank_elapsed_sec=(float(rerank_elapsed_sec) if rerank_elapsed_sec is not None else None),
+                    has_error=bool(retrieval_errors),
+                )
+            except Exception:
+                pass
             log_metrics(rag_trace_payload)
 
             # Step 5: Send completion signal.
