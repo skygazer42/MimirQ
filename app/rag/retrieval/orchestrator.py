@@ -199,6 +199,42 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
             "bm25_candidates": int(counts.get("bm25_candidates") or 0),
         }
 
+    gp = dbg.get("governance_policy")
+    if isinstance(gp, dict):
+        gp_out: dict[str, Any] = {}
+        for k in (
+            "enabled",
+            "prefer_authority",
+            "prefer_latest",
+            "filter_superseded",
+            "reordered",
+        ):
+            if k in gp:
+                gp_out[k] = bool(gp.get(k))
+        for k in (
+            "input_results",
+            "output_results",
+            "candidate_docs",
+            "filtered_superseded",
+        ):
+            if k in gp:
+                try:
+                    gp_out[k] = int(gp.get(k) or 0)
+                except Exception:
+                    continue
+        for k in ("avg_boost", "max_boost"):
+            if k in gp:
+                try:
+                    gp_out[k] = float(gp.get(k) or 0.0)
+                except Exception:
+                    continue
+        if gp.get("skip_reason") is not None:
+            sr = str(gp.get("skip_reason") or "").strip()
+            if sr:
+                gp_out["skip_reason"] = sr[:80]
+        if gp_out:
+            out["governance_policy"] = gp_out
+
     channels = dbg.get("channels")
     if isinstance(channels, dict):
         out["channels"] = channels

@@ -311,6 +311,36 @@ class DocumentBatchUserMetadataPatchResponse(BaseModel):
     denied: List[UUID] = Field(default_factory=list)
 
 
+class DocumentLifecycleMetadata(BaseModel):
+    """
+    Document lifecycle governance metadata.
+
+    Notes:
+    - This is *not* the same as archive/disable lifecycle actions.
+    - Keep fields small and PII-minimal (no content).
+    """
+
+    lifecycle_owner: Optional[str] = Field(default=None, max_length=255)
+    review_due_at: Optional[datetime] = None
+    authority_level: Optional[int] = Field(default=None, ge=0, le=100)
+    supersedes_document_id: Optional[UUID] = None
+
+
+class DocumentLifecycleMetadataUpdateRequest(BaseModel):
+    """
+    Patch lifecycle governance fields for a document.
+
+    Patch semantics:
+    - Fields omitted from the payload are left unchanged.
+    - Fields present with value `null` are cleared.
+    """
+
+    lifecycle_owner: Optional[str] = Field(default=None, max_length=255)
+    review_due_at: Optional[datetime] = None
+    authority_level: Optional[int] = Field(default=None, ge=0, le=100)
+    supersedes_document_id: Optional[UUID] = None
+
+
 class DocumentBatchLifecycleRequest(BaseModel):
     """Batch document lifecycle update (enable/disable/archive/unarchive)."""
 

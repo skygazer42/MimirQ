@@ -49,6 +49,8 @@ import type {
   DocumentBatchUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchResponse,
   DocumentPipelinePatchRequest,
+  DocumentLifecycleMetadata,
+  DocumentLifecycleMetadataUpdateRequest,
   Conversation,
   Message,
   ChatRequest,
@@ -157,6 +159,7 @@ import type {
   GovernanceAnalyzeRequest,
   GovernanceAnalyzeResponse,
   GovernanceRulePackListResponse,
+  StaleDocumentsByDatasetResponse,
   GovernanceCommonLinesLearnRequest,
   GovernanceCommonLinesLearnResponse,
   GovernanceProfileListResponse,
@@ -945,6 +948,30 @@ export const documentApi = {
     })
   },
 
+  /**
+   * 获取文档 lifecycle 治理字段（owner / review_due / authority / supersedes）
+   *
+   * 说明：用于 UI 判断是否具备可写权限（dataset editor/admin）。
+   */
+  async getLifecycleMetadata(documentId: string): Promise<DocumentLifecycleMetadata> {
+    const { data } = await apiClient.get(`/documents/${encodeURIComponent(documentId)}/lifecycle-metadata`)
+    return data
+  },
+
+  /**
+   * 更新文档 lifecycle 治理字段（owner / review_due / authority / supersedes）
+   */
+  async patchLifecycleMetadata(
+    documentId: string,
+    payload: DocumentLifecycleMetadataUpdateRequest
+  ): Promise<DocumentLifecycleMetadata> {
+    const { data } = await apiClient.patch(
+      `/documents/${encodeURIComponent(documentId)}/lifecycle-metadata`,
+      payload
+    )
+    return data
+  },
+
   // Document pipeline versions (ops/debug/rollback)
   async listVersions(documentId: string, options?: ApiRequestOptions): Promise<DocumentVersionList> {
     return openapiRequest({
@@ -1658,6 +1685,26 @@ export const pipelineApi = {
 export const governanceApi = {
   async listRulePacks(): Promise<GovernanceRulePackListResponse> {
     const { data } = await apiClient.get('/governance/rule-packs')
+    return data
+  },
+
+  async listStaleDocumentsByDataset(
+    datasetId: string,
+    params?: {
+      mode?: 'overdue' | 'due_soon' | 'all'
+      due_within_days?: number
+      due_before?: string
+      as_of?: string
+      include_inactive?: boolean
+      skip?: number
+      limit?: number
+      order_by?: 'review_due_at' | 'authority_level' | 'updated_at' | 'created_at' | 'filename'
+      order_dir?: 'asc' | 'desc'
+    }
+  ): Promise<StaleDocumentsByDatasetResponse> {
+    const { data } = await apiClient.get(`/governance/datasets/${encodeURIComponent(datasetId)}/stale-documents`, {
+      params,
+    })
     return data
   },
 }

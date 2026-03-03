@@ -3703,6 +3703,13 @@ class HybridRetriever(BaseRetriever):
         enrich2: Dict[str, Any] = {}
         results = self._enrich_results_with_db_metadata(results, stats=enrich2)
         debug["enrich_pass2"] = enrich2
+
+        # Optional: lifecycle governance-aware retrieval policy (disabled by default).
+        gov_stats: Dict[str, Any] = {}
+        results = self._apply_governance_policy(results, stats=gov_stats)
+        if gov_stats:
+            debug["governance_policy"] = gov_stats
+
         debug["final_results"] = len(results or [])
         stitch_enabled = bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False))
         debug["stitching_enabled"] = stitch_enabled
@@ -3739,6 +3746,239 @@ class HybridRetriever(BaseRetriever):
         debug["final_docs"] = len(docs)
         self._last_debug_metrics = debug
         return docs
+
+    def _apply_governance_policy(
+        self,
+        results: List[Dict[str, Any]],
+        *,
+        stats: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Apply optional lifecycle governance preferences at the *final candidate ranking* stage.
+
+        This is disabled by default and must not change behavior unless explicitly enabled.
+
+        Policies (opt-in):
+        - prefer_authority: small additive boost based on documents.authority_level (0-100)
+        - prefer_latest: small additive boost for recently updated documents
+        - filter_superseded: drop documents that are superseded by another active-ready doc
+        """
+        if stats is not None:
+            stats.clear()
+
+        if not results:
+            return results
+
+        prefer_authority = bool(getattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY", False))
+        prefer_latest = bool(getattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_LATEST", False))
+        filter_superseded = bool(getattr(settings, "RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED", False))
+
+        enabled = bool(prefer_authority or prefer_latest or filter_superseded)
+        if stats is not None:
+            stats["enabled"] = bool(enabled)
+            stats["prefer_authority"] = bool(prefer_authority)
+            stats["prefer_latest"] = bool(prefer_latest)
+            stats["filter_superseded"] = bool(filter_superseded)
+
+        if not enabled:
+            return results
+
+        # Avoid surprises: only apply cross-document lifecycle policies when dataset scoped.
+        # (When callers explicitly scope by document_ids, do not remove/reorder docs implicitly.)
+        if self.dataset_id is None:
+            if stats is not None:
+                stats["skip_reason"] = "no_dataset_scope"
+            return results
+
+        tenant_id = self.tenant_id
+        if tenant_id is None:
+            if stats is not None:
+                stats["skip_reason"] = "no_tenant_scope"
+            return results
+
+        doc_ids: set[str] = set()
+        for r in results:
+            did = self._get_doc_id(r)
+            if did:
+                doc_ids.add(did)
+        if stats is not None:
+            stats["input_results"] = len(results)
+
+        if not doc_ids:
+            if stats is not None:
+                stats["skip_reason"] = "no_candidate_docs"
+            return results
+
+        doc_uuid_list: list[UUID] = []
+        for did in doc_ids:
+            try:
+                doc_uuid_list.append(UUID(str(did)))
+            except Exception:
+                continue
+        if stats is not None:
+            stats["candidate_docs"] = len(doc_uuid_list)
+        if not doc_uuid_list:
+            if stats is not None:
+                stats["skip_reason"] = "invalid_doc_ids"
+            return results
+
+        # Query doc-level features in a single bounded DB roundtrip.
+        # NOTE: Do not attach raw values to result metadata; keep observability in retriever_debug only.
+        doc_features: dict[str, dict[str, Any]] = {}
+        superseded_doc_ids: set[str] = set()
+
+        db = SessionLocal()
+        try:
+            if prefer_authority or prefer_latest:
+                rows = (
+                    db.query(
+                        DBDocument.id,
+                        DBDocument.authority_level,
+                        DBDocument.updated_at,
+                        DBDocument.created_at,
+                    )
+                    .filter(
+                        DBDocument.tenant_id == tenant_id,
+                        DBDocument.dataset_id == self.dataset_id,
+                        DBDocument.id.in_(sorted(doc_uuid_list)),
+                    )
+                    .all()
+                )
+                for did, auth, updated_at, created_at in rows:
+                    ts = updated_at or created_at
+                    try:
+                        ts_sec = float(ts.timestamp()) if ts is not None else None
+                    except Exception:
+                        ts_sec = None
+                    try:
+                        auth_i = int(auth) if auth is not None else 0
+                    except Exception:
+                        auth_i = 0
+                    doc_features[str(did)] = {"authority_level": auth_i, "updated_ts": ts_sec}
+
+            if filter_superseded:
+                sup_rows = (
+                    db.query(
+                        DBDocument.supersedes_document_id,
+                        DBDocument.status,
+                        DBDocument.doc_metadata,
+                        DBDocument.archived_at,
+                        DBDocument.disabled_at,
+                    )
+                    .filter(
+                        DBDocument.tenant_id == tenant_id,
+                        DBDocument.dataset_id == self.dataset_id,
+                        DBDocument.supersedes_document_id.isnot(None),
+                        DBDocument.supersedes_document_id.in_(sorted(doc_uuid_list)),
+                    )
+                    .all()
+                )
+                for supersedes_id, status, meta, archived_at, disabled_at in sup_rows:
+                    if supersedes_id is None:
+                        continue
+                    # Only treat as superseded when the superseding doc is "active-ready".
+                    # (If the newer doc is archived/disabled/processing, keep the older doc.)
+                    ready = False
+                    try:
+                        meta0 = meta if isinstance(meta, dict) else {}
+                        if "active_pipeline_ready" in meta0:
+                            ready = bool(meta0.get("active_pipeline_ready"))
+                        else:
+                            ready = str(status or "").lower() == "completed"
+                        if archived_at is not None or disabled_at is not None:
+                            ready = False
+                    except Exception:
+                        ready = False
+                    if not ready:
+                        continue
+                    superseded_doc_ids.add(str(supersedes_id))
+        except Exception:
+            # Fail open: governance policy must never break retrieval.
+            doc_features = {}
+            superseded_doc_ids = set()
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+        out = list(results)
+
+        filtered_superseded = 0
+        if filter_superseded and superseded_doc_ids:
+            before = len(out)
+            out = [r for r in out if self._get_doc_id(r) not in superseded_doc_ids]
+            filtered_superseded = max(0, before - len(out))
+
+        reordered = False
+        avg_boost = 0.0
+        max_boost = 0.0
+
+        if (prefer_authority or prefer_latest) and out:
+            auth_boost_max = float(getattr(settings, "RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX", 0.0) or 0.0)
+            latest_boost_max = float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0)
+            window_days = max(1, int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180))
+
+            now_ts = time.time()
+            boosts: list[float] = []
+            scored: list[tuple[float, int, Dict[str, Any]]] = []
+            for i, r in enumerate(out):
+                try:
+                    base = float(r.get("score") or r.get("retrieval_score") or 0.0)
+                except Exception:
+                    base = 0.0
+                did = self._get_doc_id(r)
+                feats = doc_features.get(did) if did else None
+                feats = feats if isinstance(feats, dict) else {}
+
+                boost = 0.0
+                if prefer_authority and auth_boost_max > 0.0:
+                    try:
+                        auth = int(feats.get("authority_level") or 0)
+                    except Exception:
+                        auth = 0
+                    auth = max(0, min(100, auth))
+                    boost += (float(auth) / 100.0) * auth_boost_max
+
+                if prefer_latest and latest_boost_max > 0.0:
+                    ts_sec = feats.get("updated_ts")
+                    try:
+                        ts_sec_f = float(ts_sec) if ts_sec is not None else None
+                    except Exception:
+                        ts_sec_f = None
+                    if ts_sec_f is not None and ts_sec_f > 0:
+                        age_days = max(0.0, (now_ts - ts_sec_f) / 86400.0)
+                        recency = max(0.0, 1.0 - (age_days / float(window_days)))
+                        boost += recency * latest_boost_max
+
+                comp = base + boost
+                boosts.append(boost)
+                scored.append((comp, i, r))
+
+            scored_sorted = sorted(scored, key=lambda x: (-x[0], x[1]))
+            out_sorted = [r for _score, _i, r in scored_sorted]
+            reordered = out_sorted != out
+            out = out_sorted
+
+            if boosts:
+                try:
+                    avg_boost = float(sum(boosts)) / float(len(boosts))
+                except Exception:
+                    avg_boost = 0.0
+                try:
+                    max_boost = float(max(boosts))
+                except Exception:
+                    max_boost = 0.0
+
+        if stats is not None:
+            stats["filtered_superseded"] = int(filtered_superseded)
+            stats["output_results"] = len(out)
+            stats["reordered"] = bool(reordered)
+            # Keep numeric-only summary for downstream debugging/observability.
+            stats["avg_boost"] = round(float(avg_boost), 6)
+            stats["max_boost"] = round(float(max_boost), 6)
+
+        return out
 
     async def _aget_relevant_documents(
         self,

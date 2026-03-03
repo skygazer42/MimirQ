@@ -544,6 +544,20 @@ class Settings(BaseSettings):
     # Hard cap for the over-fetched k (0 disables).
     RETRIEVAL_OVERFETCH_MAX_K: int = 50
 
+    # Lifecycle governance-aware retrieval policy (disabled by default; opt-in).
+    #
+    # Goal: keep enterprise knowledge bases fresh + authoritative without changing default retrieval behavior.
+    # - prefer_authority/latest: adds a small scoring bias at the candidate ranking stage
+    # - filter_superseded: optionally drop documents that have been superseded by another active doc
+    RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY: bool = False
+    RETRIEVAL_GOVERNANCE_PREFER_LATEST: bool = False
+    RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED: bool = False
+    # Max additive score boosts (keep small to avoid overpowering semantic relevance).
+    RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX: float = 0.02
+    RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX: float = 0.02
+    # Consider a document "latest" when updated within this window (older docs taper to 0 boost).
+    RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS: int = 180
+
     # Persistent lexical fallback (Postgres FTS / pg_trgm).
     # Helps reduce false negatives for numbers, codes, and exact phrases.
     LEXICAL_DB_ENABLED: bool = True
@@ -1413,6 +1427,14 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_OVERFETCH_MULTIPLIER must be >= 1")
         if int(getattr(self, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_OVERFETCH_MAX_K must be >= 0")
+        auth_boost = float(getattr(self, "RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX", 0.0) or 0.0)
+        if auth_boost < 0.0 or auth_boost > 1.0:
+            raise ValueError("RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX must be between 0 and 1")
+        latest_boost = float(getattr(self, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0)
+        if latest_boost < 0.0 or latest_boost > 1.0:
+            raise ValueError("RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX must be between 0 and 1")
+        if int(getattr(self, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 0) or 0) < 1:
+            raise ValueError("RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS must be >= 1")
         if int(getattr(self, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0) < 0:
             raise ValueError("MILVUS_EXPR_MAX_DOC_IDS must be >= 0")
 

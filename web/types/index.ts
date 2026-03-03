@@ -745,6 +745,46 @@ export interface GovernanceRulePackListResponse {
   items: string[]
 }
 
+// ==================== Governance (Lifecycle) ====================
+
+export interface DocumentLifecycleMetadata {
+  lifecycle_owner?: string | null
+  review_due_at?: string | null
+  authority_level?: number | null
+  supersedes_document_id?: string | null
+}
+
+export interface DocumentLifecycleMetadataUpdateRequest {
+  lifecycle_owner?: string | null
+  review_due_at?: string | null
+  authority_level?: number | null
+  supersedes_document_id?: string | null
+}
+
+export interface StaleDocumentItem {
+  id: string
+  filename: string
+  file_type: string
+  status: string
+  lifecycle_owner?: string | null
+  review_due_at?: string | null
+  authority_level?: number | null
+  supersedes_document_id?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface StaleDocumentsByDatasetResponse {
+  dataset_id: string
+  as_of: string
+  due_before: string
+  mode: 'overdue' | 'due_soon' | 'all'
+  skip: number
+  limit: number
+  total: number
+  items: StaleDocumentItem[]
+}
+
 export interface GovernanceCommonLineCandidate {
   signature: string
   sample: string

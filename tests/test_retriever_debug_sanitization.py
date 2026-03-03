@@ -77,3 +77,34 @@ def test_sanitize_retriever_debug_includes_enrich_filter_counters() -> None:
     assert ep2["filtered_metadata_filter"] == 1
     assert "exception" not in ep2
 
+
+def test_sanitize_retriever_debug_includes_governance_policy_summary() -> None:
+    from app.rag.retrieval.orchestrator import _sanitize_retriever_debug
+
+    dbg = {
+        "governance_policy": {
+            "enabled": True,
+            "prefer_authority": True,
+            "prefer_latest": False,
+            "filter_superseded": True,
+            "input_results": 10,
+            "output_results": 7,
+            "candidate_docs": 4,
+            "filtered_superseded": 2,
+            "reordered": True,
+            "avg_boost": 0.001,
+            "max_boost": 0.02,
+            # Should not be leaked by sanitizer (scope identifiers).
+            "dataset_id": "ds-secret",
+        }
+    }
+
+    out = _sanitize_retriever_debug(dbg)
+    assert isinstance(out, dict)
+    gp = out.get("governance_policy") or {}
+    assert isinstance(gp, dict)
+    assert gp.get("enabled") is True
+    assert gp.get("prefer_authority") is True
+    assert gp.get("filter_superseded") is True
+    assert gp.get("filtered_superseded") == 2
+    assert "dataset_id" not in gp
