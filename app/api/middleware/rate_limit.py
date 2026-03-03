@@ -7,6 +7,7 @@ Token bucket algorithm based FastAPI request rate limiting:
 - Thread-safe implementation
 """
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from threading import Lock
@@ -384,14 +385,27 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         allowed, retry_after = await limiter.acheck(key)
         if not allowed:
+            retry_after_sec = max(1, int(math.ceil(float(retry_after or 0.0))))
+            scope = "chat" if limiter is self.chat_limiter else "api"
             logger.warning("Rate limit exceeded for %s on %s", key, request.url.path)
+
+            from app.core.exceptions import ErrorResponse, get_request_id
+
+            detail = {
+                "retry_after_sec": retry_after_sec,
+                "limit": float(getattr(limiter, "requests_per_second", 0.0) or 0.0),
+                "scope": scope,
+            }
             return JSONResponse(
                 status_code=HTTP_429_TOO_MANY_REQUESTS,
-                content={
-                    "detail": "Too many requests. Please try again later.",
-                    "retry_after": round(retry_after, 2),
-                },
-                headers={"Retry-After": str(int(retry_after) + 1)},
+                headers={"Retry-After": str(retry_after_sec)},
+                content=ErrorResponse(
+                    error="RATE_LIMIT_EXCEEDED",
+                    message="Too many requests. Please try again later.",
+                    detail=detail,
+                    request_id=get_request_id(request),
+                    hint="You are being rate limited. Retry later, or reduce concurrent requests / embedding concurrency.",
+                ).model_dump(exclude_none=True),
             )
 
         return await call_next(request)
@@ -407,11 +421,14 @@ async def rate_limit_dependency(
     key = await get_client_key(request)
     allowed, retry_after = await limiter.acheck(key)
     if not allowed:
+        retry_after_sec = max(1, int(math.ceil(float(retry_after or 0.0))))
         raise HTTPException(
             status_code=HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "message": "Too many requests. Please try again later.",
-                "retry_after": round(retry_after, 2),
+                "retry_after_sec": retry_after_sec,
+                "limit": float(getattr(limiter, "requests_per_second", 0.0) or 0.0),
+                "scope": "api",
             },
-            headers={"Retry-After": str(int(retry_after) + 1)},
+            headers={"Retry-After": str(retry_after_sec)},
         )

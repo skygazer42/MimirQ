@@ -328,7 +328,15 @@ async def chat(
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
-        raise HTTPException(status_code=429, detail="Chat quota exceeded (assistant tokens)")
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Chat quota exceeded (assistant tokens)",
+                "retry_after_sec": None,
+                "limit": int(quota_meta.get("limit") or 0),
+                "scope": "chat_tokens",
+            },
+        )
 
     # 1) Load or create a conversation.
     #
@@ -960,7 +968,15 @@ async def stream_chat(
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
-        raise HTTPException(status_code=429, detail="Chat quota exceeded (assistant tokens)")
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Chat quota exceeded (assistant tokens)",
+                "retry_after_sec": None,
+                "limit": int(quota_meta.get("limit") or 0),
+                "scope": "chat_tokens",
+            },
+        )
 
     # 1. Load or create a conversation.
     #

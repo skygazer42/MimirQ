@@ -342,6 +342,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
     return JSONResponse(
         status_code=exc.status_code,
+        headers=exc.headers,
         content=ErrorResponse(
             error=error_code,
             message=message,

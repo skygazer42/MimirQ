@@ -11,6 +11,7 @@ Design goals:
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -143,10 +144,17 @@ def enforce_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> dict[str,
     meta = check_tenant_qps_quota(tenant_id=tenant_id, key=key)
     if meta.get("enabled") and (not meta.get("allowed")) and str(meta.get("mode") or "block") == "block":
         retry_after = float(meta.get("retry_after") or 0.0)
+        retry_after_sec = max(1, int(math.ceil(retry_after)))
+        scope_key = str(key or "chat").strip() or "chat"
         raise HTTPException(
             status_code=429,
-            detail="Tenant QPS quota exceeded",
-            headers={"Retry-After": str(int(retry_after) + 1)},
+            detail={
+                "message": "Tenant QPS quota exceeded",
+                "retry_after_sec": retry_after_sec,
+                "limit": float(meta.get("rps") or 0.0),
+                "scope": f"tenant_qps:{scope_key}",
+            },
+            headers={"Retry-After": str(retry_after_sec)},
         )
     return meta
 
@@ -316,14 +324,30 @@ def enforce_tenant_upload_quotas(
         limit = int(doc_meta.get("limit") or 0)
         used = int(doc_meta.get("used") or 0)
         if limit > 0 and (used + int(additional_docs or 0)) > limit:
-            raise HTTPException(status_code=429, detail="Tenant document quota exceeded")
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": "Tenant document quota exceeded",
+                    "retry_after_sec": None,
+                    "limit": limit,
+                    "scope": "tenant_documents",
+                },
+            )
 
     storage_meta = check_tenant_storage_quota(db, tenant_id=tenant_id)
     if storage_meta.get("enabled"):
         limit_b = int(storage_meta.get("limit_bytes") or 0)
         used_b = int(storage_meta.get("used_bytes") or 0)
         if limit_b > 0 and (used_b + int(additional_bytes or 0)) > limit_b:
-            raise HTTPException(status_code=429, detail="Tenant storage quota exceeded")
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": "Tenant storage quota exceeded",
+                    "retry_after_sec": None,
+                    "limit": limit_b,
+                    "scope": "tenant_storage",
+                },
+            )
 
 
 __all__ = [
