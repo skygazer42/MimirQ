@@ -52,6 +52,9 @@ secretEnv:
   TASK_QUEUE_NAME: "mimirq"
   TASK_WORKER_MAX_JOBS: "4"
 
+  # Prometheus metrics (optional): enables /metrics endpoint + request metrics middleware
+  PROMETHEUS_ENABLED: "false"
+
   # CORS (adjust for your frontend origin(s))
   CORS_ORIGINS: "http://localhost:3000"
 
@@ -79,6 +82,19 @@ api:
     timeoutSeconds: 3
     failureThreshold: 6
 
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    # targetMemoryUtilizationPercentage: 80
+
+  pdb:
+    enabled: false
+    # Use exactly ONE of: minAvailable / maxUnavailable.
+    minAvailable: 1
+    maxUnavailable: ""
+
   resources: {}
   podAnnotations: {}
   nodeSelector: {}
@@ -95,6 +111,17 @@ worker:
   command:
     - arq
     - app.tasks.worker.WorkerSettings
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+  pdb:
+    enabled: false
+    minAvailable: 1
+    maxUnavailable: ""
 
   resources: {}
   podAnnotations: {}
@@ -126,3 +153,9 @@ persistence:
       - ReadWriteOnce
     size: 20Gi
 
+prometheus:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    additionalLabels: {}

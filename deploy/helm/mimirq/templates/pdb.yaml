@@ -1,0 +1,39 @@
+{{- if and .Values.api.enabled .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "mimirq.fullname" . }}-api
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "mimirq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  {{- if .Values.api.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.api.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  {{- end }}
+{{- end }}
+
+{{- if and .Values.worker.enabled .Values.worker.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "mimirq.fullname" . }}-worker
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "mimirq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  {{- if .Values.worker.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.worker.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.worker.pdb.minAvailable }}
+  {{- end }}
+{{- end }}
+

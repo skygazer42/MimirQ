@@ -5,6 +5,7 @@ metadata:
   name: {{ include "mimirq.fullname" . }}
   labels:
     {{- include "mimirq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
 spec:
   type: {{ .Values.api.service.type }}
   ports:
@@ -16,4 +17,3 @@ spec:
     {{- include "mimirq.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api
 {{- end }}
-
