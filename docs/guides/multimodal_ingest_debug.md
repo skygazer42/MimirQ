@@ -9,6 +9,27 @@
 
 ---
 
+## 0. 快速诊断（先判断问题在哪一段）
+
+多模态问题通常分两类：**“没召回”** vs **“召回了但没渲染”**。两类问题走完全不同的排查路径。
+
+### A) 先看 citations：有没有 `img_url` / `img_id` / `retrieval_role`
+
+- **citations 里根本没有 image/table 相关字段**
+  - 大概率是检索链路问题（开关没开、索引缺失、权限裁剪、融合预算太小）
+  - 走第 3 节（检索链路）优先
+- **citations 里有 `img_url` / `img_id`，但前端没有图片**
+  - 大概率是资产服务问题（鉴权、404、Range、Content-Type、安全 URL allowlist）
+  - 走第 4 节（资产服务）优先
+
+### B) 再看浏览器 Network：`/api/v1/documents/image-url/...` 返回什么？
+
+重点看：
+- 状态码：200 / 206 / 304 vs 401 / 403 / 404 / 416
+- 响应头：`Content-Type`、`Accept-Ranges`、`Content-Range`、`Cache-Control`、`ETag`
+
+---
+
 ## 1. 功能地图（你在看什么）
 
 MimirQ 的多模态证据大体分两类：
@@ -48,6 +69,12 @@ MimirQ 的多模态证据大体分两类：
   - 如果未启用 MinIO，多模态引用的 `img_id` 仍可能存在，但 `img_url` 无法加载
 - `MINIO_DOCUMENTS_ENABLED`
   - 影响文档源文件是否走 MinIO；与图片是否可用是两条独立开关
+- `ASSET_CACHE_MAX_AGE_SEC`
+  - 控制资产响应的 `Cache-Control: private, max-age=...`
+  - 注意：当 URL 上带 `?token=` / `?access_token=` 时，后端会强制 `Cache-Control: no-store`（避免缓存 token-bearing URL）
+- `MINIO_METRICS_LOG_PATH`（默认：`./logs/minio_metrics.jsonl`）
+  - MinIO 相关操作的 best-effort 指标日志（presign/upload/download 等）
+  - 当你怀疑“图片/文档其实没从 MinIO 成功拉下来”时，可以用它做旁路确认
 
 ---
 
@@ -79,12 +106,27 @@ MimirQ 的多模态证据大体分两类：
 
 2. `GET /api/v1/documents/image-url/{img_id}`
    - MinIO 存储的图片（推荐路径）
-   - Wave19-T069 之后，该接口会直接 proxy 返回 bytes，并支持 `Range: bytes=...`（避免大图全量下载）
+   - Wave19-T069：该接口会直接 proxy 返回 bytes，并支持 `Range: bytes=...`（避免大图全量下载）
+   - `?token=` 场景：`Cache-Control: no-store`（避免缓存 token-bearing URL）
+   - header auth（无 token query param）：`Cache-Control: private, max-age=...` + `ETag`（允许 304）
+
+文档源文件预览/下载（PDF iframe/下载按钮）一般走：
+
+3. `GET /api/v1/documents/{document_id}/download`
+   - 本地文件系统与 MinIO 两条路径都支持 `Accept-Ranges: bytes`
+   - MinIO 路径：支持单段 Range（`Range: bytes=...`）；多段 Range 会返回 416（目前不支持 multipart/byteranges）
+   - `?token=` 场景：`Cache-Control: no-store`（避免缓存 token-bearing URL）
+   - header auth（无 token query param）：`Cache-Control: private, max-age=...` + `ETag`（允许 304）
 
 如果前端渲染异常，优先在浏览器 Network 中确认：
 - 返回码是否为 200/206
 - `Content-Type` 是否为 `image/jpeg`
 - 是否返回了 `Cache-Control` / `ETag` / `Accept-Ranges`
+
+如果你看到：
+- **401/403**：大概率是鉴权/tenant mismatch（URL 上 tenant_id 不一致、生产环境缺少 header）
+- **404**：大概率是对象不存在（MinIO object name 不匹配、上传失败、dataset/document 绑定不一致）
+- **416**：大概率是 Range 头不合法，或者请求了多段 Range（目前仅支持 single-range）
 
 ---
 
@@ -113,3 +155,14 @@ MimirQ 的多模态证据大体分两类：
 - 是否存在 dataset 权限/文档 ACL 过滤（security trimming）
 - `RETRIEVAL_TOP_K` 是否过小，导致通道结果被融合/多样性 cap 截断
 
+### Q3: 为什么 Network 里图片接口一直是 200，没有 304（好像没缓存）？
+
+说明：
+- 当请求 URL 上带 `?token=` / `?access_token=` 时，后端会强制 `Cache-Control: no-store`，这是**刻意的安全行为**（避免缓存 token-bearing URL）。
+- 如果你希望使用 304/缓存，推荐在可控场景下走 header auth（Authorization / X-User-ID 等），并确保 URL 不携带 token query param。
+
+### Q4: TAG 表格证据怎么确认“通道真的跑了”？
+
+建议：
+- 在 retrieval trace / debug payload 中搜索 `retrieval_role=tag` 或 `chunk_role=tag_sql_result`
+- 参考 `docs/guides/table_tag.md` 的“意图识别 / 候选表选择 / SQL 生成与裁剪”排查路径
