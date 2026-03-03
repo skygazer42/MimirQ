@@ -45,6 +45,7 @@ interface DocumentDetailDialogProps {
 const EMPTY_CHUNKS: DocumentChunk[] = []
 const ACTIVE_PIPELINE_VALUE = '__active__'
 const CHUNK_PAGE_SIZE = 200
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function asStatusBadgeStatus(status: string | undefined): StatusBadgeStatus {
   switch (status) {
@@ -110,6 +111,15 @@ function TraceRow({ label, value, mono }: { label: string; value: string; mono?:
   )
 }
 
+function toDatetimeLocalValue(value: string | null | undefined): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function DocumentDetailDialog({ document: initialDocument, trigger }: DocumentDetailDialogProps) {
   const [open, setOpen] = useState(false)
   const [activeView, setActiveView] = useState<'chunks' | 'timeline'>('chunks')
@@ -149,6 +159,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const [tagsDraft, setTagsDraft] = useState<string[]>([])
   const [tagsError, setTagsError] = useState<string | null>(null)
   const [isSavingTags, setIsSavingTags] = useState(false)
+
+  const [lifecycleWritable, setLifecycleWritable] = useState<boolean | null>(null)
+  const [lifecyclePermError, setLifecyclePermError] = useState<string | null>(null)
+  const [lifecycleEditing, setLifecycleEditing] = useState(false)
+  const [lifecycleOwnerDraft, setLifecycleOwnerDraft] = useState('')
+  const [lifecycleReviewDueDraft, setLifecycleReviewDueDraft] = useState('')
+  const [lifecycleAuthorityDraft, setLifecycleAuthorityDraft] = useState('')
+  const [lifecycleSupersedesDraft, setLifecycleSupersedesDraft] = useState('')
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null)
+  const [isSavingLifecycle, setIsSavingLifecycle] = useState(false)
 
   const canMutateChunks = viewPipelineHash === ACTIVE_PIPELINE_VALUE
 
@@ -253,16 +273,28 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const loadDetail = useCallback(async () => {
     setIsLoadingDoc(true)
     setDocError(null)
+    setLifecyclePermError(null)
+    setLifecycleWritable(null)
     try {
-      const [data, acl] = await Promise.all([
+      const [data, acl, lifecyclePerm] = await Promise.all([
         documentApi.get(initialDocument.id),
         documentApi.getAccess(initialDocument.id).catch((err) => {
           console.warn('Load document access error:', err)
           return null
         }),
+        documentApi
+          .getLifecycleMetadata(initialDocument.id)
+          .then(() => ({ writable: true as const, error: null }))
+          .catch((err) => {
+            const status = err?.response?.status
+            if (status === 403) return { writable: false as const, error: null }
+            return { writable: null, error: formatApiError(err, '无法确认 lifecycle 编辑权限') }
+          }),
       ])
       setDetail(data)
       setAccessInfo(acl)
+      setLifecycleWritable(lifecyclePerm.writable)
+      if (lifecyclePerm.error) setLifecyclePermError(lifecyclePerm.error)
     } catch (err: any) {
       console.error('Load document detail error:', err)
       setDocError(formatApiError(err, '获取文档详情失败'))
@@ -290,6 +322,117 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       setIsSavingTags(false)
     }
   }, [canSaveTags, initialDocument.id, loadDetail, tagsDraft])
+
+  const beginEditLifecycle = useCallback(() => {
+    const doc = detail || initialDocument
+    setLifecycleError(null)
+    setLifecycleOwnerDraft(String(doc.lifecycle_owner || ''))
+    setLifecycleReviewDueDraft(toDatetimeLocalValue(doc.review_due_at))
+    setLifecycleAuthorityDraft(doc.authority_level == null ? '' : String(doc.authority_level))
+    setLifecycleSupersedesDraft(String(doc.supersedes_document_id || ''))
+    setLifecycleEditing(true)
+  }, [detail, initialDocument])
+
+  const cancelEditLifecycle = useCallback(() => {
+    setLifecycleError(null)
+    setLifecycleOwnerDraft('')
+    setLifecycleReviewDueDraft('')
+    setLifecycleAuthorityDraft('')
+    setLifecycleSupersedesDraft('')
+    setLifecycleEditing(false)
+  }, [])
+
+  const lifecycleValidationError = useMemo(() => {
+    const sup = lifecycleSupersedesDraft.trim()
+    if (sup && !UUID_RE.test(sup)) return 'supersedes_document_id 不是合法 UUID'
+
+    const auth = lifecycleAuthorityDraft.trim()
+    if (auth) {
+      const n = Number.parseInt(auth, 10)
+      if (!Number.isFinite(n)) return 'authority_level 必须是整数'
+      if (n < 0 || n > 100) return 'authority_level 需在 0-100 之间'
+    }
+
+    const due = lifecycleReviewDueDraft.trim()
+    if (due) {
+      const d = new Date(due)
+      if (Number.isNaN(d.getTime())) return 'review_due_at 不是合法时间'
+    }
+
+    return null
+  }, [lifecycleAuthorityDraft, lifecycleReviewDueDraft, lifecycleSupersedesDraft])
+
+  const canSaveLifecycle = useMemo(() => {
+    if (!lifecycleEditing) return false
+    if (isSavingLifecycle) return false
+    if (lifecycleValidationError) return false
+
+    const doc = detail || initialDocument
+
+    const owner0 = String(doc.lifecycle_owner || '').trim()
+    const owner1 = lifecycleOwnerDraft.trim()
+
+    const due0 = toDatetimeLocalValue(doc.review_due_at)
+    const due1 = lifecycleReviewDueDraft.trim()
+
+    const auth0 = doc.authority_level == null ? '' : String(doc.authority_level)
+    const auth1 = lifecycleAuthorityDraft.trim()
+
+    const sup0 = String(doc.supersedes_document_id || '').trim()
+    const sup1 = lifecycleSupersedesDraft.trim()
+
+    return owner0 !== owner1 || due0 !== due1 || auth0 !== auth1 || sup0 !== sup1
+  }, [
+    detail,
+    initialDocument,
+    isSavingLifecycle,
+    lifecycleAuthorityDraft,
+    lifecycleEditing,
+    lifecycleOwnerDraft,
+    lifecycleReviewDueDraft,
+    lifecycleSupersedesDraft,
+    lifecycleValidationError,
+  ])
+
+  const saveLifecycle = useCallback(async () => {
+    if (!canSaveLifecycle) return
+    setIsSavingLifecycle(true)
+    setLifecycleError(null)
+    try {
+      const owner = lifecycleOwnerDraft.trim()
+      const sup = lifecycleSupersedesDraft.trim()
+      const authStr = lifecycleAuthorityDraft.trim()
+      const dueStr = lifecycleReviewDueDraft.trim()
+
+      const payload: any = {
+        lifecycle_owner: owner ? owner : null,
+        supersedes_document_id: sup ? sup : null,
+        authority_level: authStr ? Number.parseInt(authStr, 10) : null,
+        review_due_at: dueStr ? new Date(dueStr).toISOString() : null,
+      }
+
+      await documentApi.patchLifecycleMetadata(initialDocument.id, payload)
+      toast.success('已更新 lifecycle 信息')
+      cancelEditLifecycle()
+      await loadDetail()
+    } catch (err: any) {
+      console.error('Update document lifecycle metadata failed:', err)
+      const msg = formatApiError(err, '保存 lifecycle 信息失败')
+      setLifecycleError(msg)
+      toast.error(msg)
+    } finally {
+      setIsSavingLifecycle(false)
+    }
+  }, [
+    canSaveLifecycle,
+    cancelEditLifecycle,
+    initialDocument.id,
+    lifecycleAuthorityDraft,
+    lifecycleOwnerDraft,
+    lifecycleReviewDueDraft,
+    lifecycleSupersedesDraft,
+    loadDetail,
+  ])
 
   const loadVersions = useCallback(async () => {
     setIsLoadingVersions(true)
@@ -819,6 +962,149 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 <Alert variant="destructive">
                   <AlertTitle>保存失败</AlertTitle>
                   <AlertDescription>{tagsError}</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel className="rounded-2xl">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-warning/10 text-warning">
+                  <Calendar className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">Lifecycle</div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    owner / review_due / authority / supersedes（用于治理与检索偏好）
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 justify-end">
+                {lifecycleEditing ? (
+                  <>
+                    <Button variant="outline" size="sm" onClick={cancelEditLifecycle} disabled={isSavingLifecycle}>
+                      取消
+                    </Button>
+                    <Button size="sm" onClick={() => void saveLifecycle()} disabled={!canSaveLifecycle}>
+                      {isSavingLifecycle ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                      ) : null}
+                      保存
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={beginEditLifecycle}
+                    disabled={lifecycleWritable === false || lifecycleWritable == null}
+                    title={
+                      lifecycleWritable === false
+                        ? "只读：需要数据集编辑权限"
+                        : lifecycleWritable == null
+                          ? "权限确认中"
+                          : undefined
+                    }
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                    编辑
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {lifecyclePermError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>权限检查失败</AlertTitle>
+                  <AlertDescription>{lifecyclePermError}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              {lifecycleEditing ? (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium text-muted-foreground">owner</div>
+                    <Input
+                      value={lifecycleOwnerDraft}
+                      onChange={(e) => setLifecycleOwnerDraft(e.target.value)}
+                      placeholder="团队/负责人（建议使用 team alias，避免个人邮箱）"
+                      disabled={isSavingLifecycle}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium text-muted-foreground">review_due_at</div>
+                    <Input
+                      type="datetime-local"
+                      value={lifecycleReviewDueDraft}
+                      onChange={(e) => setLifecycleReviewDueDraft(e.target.value)}
+                      disabled={isSavingLifecycle}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium text-muted-foreground">authority_level</div>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={lifecycleAuthorityDraft}
+                      onChange={(e) => setLifecycleAuthorityDraft(e.target.value)}
+                      placeholder="0-100"
+                      disabled={isSavingLifecycle}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium text-muted-foreground">supersedes_document_id</div>
+                    <Input
+                      value={lifecycleSupersedesDraft}
+                      onChange={(e) => setLifecycleSupersedesDraft(e.target.value)}
+                      placeholder="被替代的旧文档 UUID（可留空）"
+                      disabled={isSavingLifecycle}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <TraceRow label="lifecycle_owner" value={String(displayDoc.lifecycle_owner || '-')} />
+                  <TraceRow
+                    label="review_due_at"
+                    value={
+                      displayDoc.review_due_at
+                        ? new Date(String(displayDoc.review_due_at)).toLocaleString('zh-CN')
+                        : '-'
+                    }
+                  />
+                  <TraceRow
+                    label="authority_level"
+                    value={displayDoc.authority_level == null ? '-' : String(displayDoc.authority_level)}
+                    mono
+                  />
+                  <TraceRow label="supersedes_document_id" value={String(displayDoc.supersedes_document_id || '-')} mono />
+
+                  {!displayDoc.lifecycle_owner && !displayDoc.review_due_at && displayDoc.authority_level == null && !displayDoc.supersedes_document_id ? (
+                    <div className="text-xs text-muted-foreground">暂无 lifecycle 信息（可用于 stale 报表、检索偏好与治理审计）</div>
+                  ) : null}
+                </div>
+              )}
+
+              {lifecycleValidationError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>输入有误</AlertTitle>
+                  <AlertDescription>{lifecycleValidationError}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              {lifecycleError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>保存失败</AlertTitle>
+                  <AlertDescription>{lifecycleError}</AlertDescription>
                 </Alert>
               ) : null}
             </div>

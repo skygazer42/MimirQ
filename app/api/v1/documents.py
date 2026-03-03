@@ -66,6 +66,8 @@ from app.api.schemas.document import (
     DocumentDetail,
     DocumentDuplicateList,
     DocumentList,
+    DocumentLifecycleMetadata,
+    DocumentLifecycleMetadataUpdateRequest,
     DocumentParsedContentResponse,
     DocumentParsePreview,
     DocumentPipelineOptions,
@@ -97,6 +99,7 @@ from app.parsing.processors.processor import document_processor
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies.separator import SeparatorChunker
+from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
@@ -6810,6 +6813,162 @@ async def patch_document_user_metadata(
     except Exception:
         db.rollback()
     return document
+
+
+@router.get("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata)
+async def get_document_lifecycle_metadata(
+    document_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Get document lifecycle governance metadata.
+
+    RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    return DocumentLifecycleMetadata(
+        lifecycle_owner=getattr(document, "lifecycle_owner", None),
+        review_due_at=getattr(document, "review_due_at", None),
+        authority_level=getattr(document, "authority_level", None),
+        supersedes_document_id=getattr(document, "supersedes_document_id", None),
+    )
+
+
+@router.patch("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata)
+async def patch_document_lifecycle_metadata(
+    document_id: uuid.UUID,
+    payload: DocumentLifecycleMetadataUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Patch document lifecycle governance metadata (owner/review_due/authority/supersedes).
+
+    Notes:
+    - This does not mutate `documents.metadata.*`; it updates first-class columns.
+    - Audit log is best-effort and PII-minimal by construction.
+
+    RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    fields_set = set(getattr(payload, "model_fields_set", set()) or set())
+    if not fields_set:
+        return DocumentLifecycleMetadata(
+            lifecycle_owner=getattr(document, "lifecycle_owner", None),
+            review_due_at=getattr(document, "review_due_at", None),
+            authority_level=getattr(document, "authority_level", None),
+            supersedes_document_id=getattr(document, "supersedes_document_id", None),
+        )
+
+    before = {
+        "lifecycle_owner": getattr(document, "lifecycle_owner", None),
+        "review_due_at": getattr(document, "review_due_at", None),
+        "authority_level": getattr(document, "authority_level", None),
+        "supersedes_document_id": getattr(document, "supersedes_document_id", None),
+    }
+
+    if "lifecycle_owner" in fields_set:
+        owner = payload.lifecycle_owner
+        if owner is not None:
+            owner = str(owner).strip()
+        if not owner:
+            owner = None
+        document.lifecycle_owner = owner  # type: ignore[assignment]
+
+    if "review_due_at" in fields_set:
+        document.review_due_at = payload.review_due_at  # type: ignore[assignment]
+
+    if "authority_level" in fields_set:
+        document.authority_level = payload.authority_level  # type: ignore[assignment]
+
+    if "supersedes_document_id" in fields_set:
+        sup = payload.supersedes_document_id
+        if sup is not None and str(sup) == str(document.id):
+            raise HTTPException(status_code=400, detail="supersedes_document_id cannot equal document_id")
+        document.supersedes_document_id = sup  # type: ignore[assignment]
+
+    db.commit()
+    db.refresh(document)
+
+    # Best-effort audit log:
+    # - never include raw owner string (could be PII); hash only.
+    # - include only small scalar fields; no content.
+    try:
+        after = {
+            "lifecycle_owner": getattr(document, "lifecycle_owner", None),
+            "review_due_at": getattr(document, "review_due_at", None),
+            "authority_level": getattr(document, "authority_level", None),
+            "supersedes_document_id": getattr(document, "supersedes_document_id", None),
+        }
+        changed_fields: list[str] = []
+        for k in ("lifecycle_owner", "review_due_at", "authority_level", "supersedes_document_id"):
+            if k in fields_set and before.get(k) != after.get(k):
+                changed_fields.append(k)
+
+        details: dict[str, Any] = {
+            "fields": sorted(list(fields_set))[:50],
+            "changed_fields": changed_fields[:50],
+        }
+        if "lifecycle_owner" in fields_set:
+            raw = str(after.get("lifecycle_owner") or "")
+            details["lifecycle_owner_hash"] = stable_hash(raw, length=16) if raw else None
+        if "review_due_at" in fields_set:
+            due = after.get("review_due_at")
+            details["review_due_at"] = due.isoformat() if due is not None else None
+        if "authority_level" in fields_set:
+            details["authority_level"] = after.get("authority_level")
+        if "supersedes_document_id" in fields_set:
+            sid = after.get("supersedes_document_id")
+            details["supersedes_document_id"] = str(sid) if sid is not None else None
+
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="document.lifecycle_metadata.patch",
+            resource_type="document",
+            resource_id=str(document_id),
+            details=details,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return DocumentLifecycleMetadata(
+        lifecycle_owner=getattr(document, "lifecycle_owner", None),
+        review_due_at=getattr(document, "review_due_at", None),
+        authority_level=getattr(document, "authority_level", None),
+        supersedes_document_id=getattr(document, "supersedes_document_id", None),
+    )
 
 
 @router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse)

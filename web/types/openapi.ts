@@ -691,6 +691,38 @@ export interface paths {
         patch: operations["patch_document_user_metadata_api_v1_documents__document_id__metadata_patch"];
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/lifecycle-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Lifecycle Metadata
+         * @description Get document lifecycle governance metadata.
+         *
+         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
+         */
+        get: operations["get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document Lifecycle Metadata
+         * @description Patch document lifecycle governance metadata (owner/review_due/authority/supersedes).
+         *
+         *     Notes:
+         *     - This does not mutate `documents.metadata.*`; it updates first-class columns.
+         *     - Audit log is best-effort and PII-minimal by construction.
+         *
+         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
+         */
+        patch: operations["patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch"];
+        trace?: never;
+    };
     "/api/v1/documents/batch/metadata": {
         parameters: {
             query?: never;
@@ -1024,7 +1056,9 @@ export interface paths {
         /**
          * Get Image Url
          * @description Get MinIO presigned URL by img_id ({tenant_id}:{dataset_id}:{document_id}:{chunk_index}).
-         *     Returns a 302 redirect to the image URL.
+         *     Bandwidth-aware serving (Wave19-T069):
+         *     - Serve bytes directly (StreamingResponse) so clients can use Range requests.
+         *     - Avoid leaking presigned URLs to the browser/network logs.
          */
         get: operations["get_image_url_api_v1_documents_image_url__img_id__get"];
         put?: never;
@@ -3204,6 +3238,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evidence/suites/{suite_id}/export-ltr-training": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Evidence Suite Ltr Training Bundle
+         * @description Export a PII-minimized LTR training bundle from an Evidence Suite.
+         *
+         *     Contents:
+         *     - manifest.json: export metadata + feature spec
+         *     - training_rows.ndjson: per-citation features + labels (0/1), grouped by query_hash
+         *     - hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash
+         *
+         *     Notes:
+         *     - This endpoint intentionally avoids including raw query text in training rows.
+         *     - It relies on per-item retrieval_snapshot for reproducibility; items without a snapshot are skipped.
+         */
+        get: operations["export_evidence_suite_ltr_training_bundle_api_v1_evidence_suites__suite_id__export_ltr_training_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ltr/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ltr Models */
+        get: operations["list_ltr_models_api_v1_ltr_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ltr/models/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Ltr Model */
+        post: operations["register_ltr_model_api_v1_ltr_models_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ltr/models/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Ltr Model */
+        post: operations["activate_ltr_model_api_v1_ltr_models_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ltr/models/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Ltr Model */
+        post: operations["rollback_ltr_model_api_v1_ltr_models_rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings": {
         parameters: {
             query?: never;
@@ -3277,6 +3408,28 @@ export interface paths {
         };
         /** List Rule Packs */
         get: operations["list_rule_packs_api_v1_governance_rule_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/governance/datasets/{dataset_id}/stale-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stale Documents By Dataset
+         * @description List documents with `review_due_at` due/overdue within a dataset (pagination + sort).
+         *
+         *     RBAC: dataset editor/admin (dataset writable).
+         */
+        get: operations["list_stale_documents_by_dataset_api_v1_governance_datasets__dataset_id__stale_documents_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3417,6 +3570,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluations/ragas/regression/cases/synthetic-hardcases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Synthetic Hardcases
+         * @description Generate synthetic "hardcase" regression cases (PII-safe, deterministic).
+         *
+         *     This is a quality-program helper:
+         *     - Takes existing regression cases as seeds
+         *     - Generates harder query variants (alias/skill pressure) using KG-derived candidates
+         *     - Reuses the same reference_sources so evaluation remains grounded
+         */
+        post: operations["generate_synthetic_hardcases_api_v1_evaluations_ragas_regression_cases_synthetic_hardcases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluations/ragas/regression/runs": {
         parameters: {
             query?: never;
@@ -3475,6 +3653,49 @@ export interface paths {
         get: operations["get_ragas_regression_run_api_v1_evaluations_ragas_regression_runs__run_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/ragas/regression/runs/{run_id}/export-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Ragas Regression Run Bundle Api
+         * @description Export a compact regression run bundle (PII-safe by default).
+         */
+        get: operations["export_ragas_regression_run_bundle_api_api_v1_evaluations_ragas_regression_runs__run_id__export_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/ragas/regression/runs/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Ragas Regression Runs
+         * @description Purge old regression runs for the current tenant (bounded).
+         *
+         *     Security:
+         *     - Admin-only (lifecycle.manage). Evaluation artifacts can contain sensitive content.
+         */
+        post: operations["purge_ragas_regression_runs_api_v1_evaluations_ragas_regression_runs_purge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4664,6 +4885,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rag/image-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Index Image Embeddings
+         * @description Build/update the CLIP image embedding index for a dataset (best-effort).
+         *
+         *     Security:
+         *     - Requires dataset write permission (indexing is a compute-heavy admin action).
+         */
+        post: operations["index_image_embeddings_api_v1_rag_image_index_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rag/image-search-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Image Search Preview
+         * @description Search the image embedding index using CLIP (text -> image space).
+         *
+         *     Notes:
+         *     - Dataset-scoped only.
+         *     - Returns citation-like chunk payloads (including img_id/img_url) for UI consumers.
+         */
+        post: operations["image_search_preview_api_v1_rag_image_search_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rag/retrieve": {
         parameters: {
             query?: never;
@@ -4738,6 +5006,40 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rbac/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tenant Members */
+        get: operations["list_tenant_members_api_v1_rbac_members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rbac/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Tenant Member Role */
+        patch: operations["patch_tenant_member_role_api_v1_rbac_members__user_id__patch"];
         trace?: never;
     };
     "/api/v1/reports/datasets/{dataset_id}": {
@@ -4841,6 +5143,98 @@ export interface paths {
         };
         /** Get Rag Metrics Summary */
         get: operations["get_rag_metrics_summary_api_v1_observability_rag_metrics_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/rag-metrics/query-analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rag Query Analytics */
+        get: operations["get_rag_query_analytics_api_v1_observability_rag_metrics_query_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/rag-metrics/trace-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rag Trace Bundle */
+        get: operations["get_rag_trace_bundle_api_v1_observability_rag_metrics_trace_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/config/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ops Config Snapshot */
+        get: operations["get_ops_config_snapshot_api_v1_observability_config_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/slo/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Slo Snapshot */
+        get: operations["get_slo_snapshot_api_v1_observability_slo_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/ingestion/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ingestion Dashboard Summary
+         * @description Return ingestion throughput + error taxonomy aggregates (admin-only, PII-safe).
+         *
+         *     Notes:
+         *     - Uses coarse time buckets (hour/day) for stability.
+         *     - Normalizes error messages into "reason keys" to avoid leaking raw exception details.
+         */
+        get: operations["get_ingestion_dashboard_summary_api_v1_observability_ingestion_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4961,6 +5355,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/usage/tenant/quotas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tenant Quota Summary
+         * @description Return tenant quota status (docs/storage/embedding/QPS).
+         *
+         *     Intended for admin dashboards and operational visibility. All fields are
+         *     PII-safe aggregates.
+         */
+        get: operations["get_tenant_quota_summary_api_v1_usage_tenant_quotas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usage/chat/tokens/summary": {
         parameters: {
             query?: never;
@@ -4977,6 +5394,30 @@ export interface paths {
          *     - For multi-dataset chats (or legacy rows), dataset_id may be null.
          */
         get: operations["get_chat_token_usage_summary_api_v1_usage_chat_tokens_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/usage/chat/cost/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chat Cost Usage Summary
+         * @description Summarize per-request cost attribution grouped by dataset_id (best-effort).
+         *
+         *     Source of truth:
+         *     - `Message.message_metadata` fields written by chat/RAG engines
+         *       (Wave22-T095: cost attribution).
+         */
+        get: operations["get_chat_cost_usage_summary_api_v1_usage_chat_cost_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5401,6 +5842,21 @@ export interface components {
             /** Governance Common Lines Min Ratio */
             governance_common_lines_min_ratio?: number | null;
         };
+        /** Body_register_ltr_model_api_v1_ltr_models_register_post */
+        Body_register_ltr_model_api_v1_ltr_models_register_post: {
+            /**
+             * Model File
+             * Format: binary
+             * @description XGBoost model bytes (JSON)
+             */
+            model_file: string;
+            /**
+             * Manifest File
+             * Format: binary
+             * @description LTR manifest JSON (validated)
+             */
+            manifest_file: string;
+        };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
             /**
@@ -5603,6 +6059,58 @@ export interface components {
              */
             stream_cancel_on_disconnect: boolean;
         };
+        /** ChatCostUsageRow */
+        ChatCostUsageRow: {
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Assistant Messages */
+            assistant_messages: number;
+            /** Llm Prompt Tokens */
+            llm_prompt_tokens: number;
+            /** Llm Completion Tokens */
+            llm_completion_tokens: number;
+            /** Llm Total Tokens */
+            llm_total_tokens: number;
+            /** Embedding Query Tokens */
+            embedding_query_tokens: number;
+            /** Embedding Query Chars */
+            embedding_query_chars: number;
+            /** Retrieval Elapsed Sec Sum */
+            retrieval_elapsed_sec_sum: number;
+            /** Rerank Elapsed Sec Sum */
+            rerank_elapsed_sec_sum: number;
+        };
+        /** ChatCostUsageSummary */
+        ChatCostUsageSummary: {
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /** Total Assistant Messages */
+            total_assistant_messages: number;
+            /** Total Llm Prompt Tokens */
+            total_llm_prompt_tokens: number;
+            /** Total Llm Completion Tokens */
+            total_llm_completion_tokens: number;
+            /** Total Llm Total Tokens */
+            total_llm_total_tokens: number;
+            /** Total Embedding Query Tokens */
+            total_embedding_query_tokens: number;
+            /** Total Embedding Query Chars */
+            total_embedding_query_chars: number;
+            /** Total Retrieval Elapsed Sec */
+            total_retrieval_elapsed_sec: number;
+            /** Total Rerank Elapsed Sec */
+            total_rerank_elapsed_sec: number;
+            /** By Dataset */
+            by_dataset: components["schemas"]["ChatCostUsageRow"][];
+        };
         /**
          * ChatRAGConfig
          * @description RAG parameters specific to the chat endpoint.
@@ -5610,6 +6118,8 @@ export interface components {
         ChatRAGConfig: {
             /** Retrieval Profile */
             retrieval_profile?: string | null;
+            /** Intent Router */
+            intent_router?: boolean | null;
             /** Enable Query Alias Expansion */
             enable_query_alias_expansion?: boolean | null;
             /** Query Aliases */
@@ -5653,6 +6163,10 @@ export interface components {
             } | null;
             /** Fusion Min Scores */
             fusion_min_scores?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Weights */
+            fusion_weights?: {
                 [key: string]: number;
             } | null;
             /**
@@ -9179,6 +9693,20 @@ export interface components {
             retrieval_mode?: string | null;
             /** Alpha */
             alpha?: number | null;
+            /** Fusion Strategy */
+            fusion_strategy?: string | null;
+            /** Fusion Budgets */
+            fusion_budgets?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Min Scores */
+            fusion_min_scores?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Weights */
+            fusion_weights?: {
+                [key: string]: number;
+            } | null;
             /** Enable Weight Rerank */
             enable_weight_rerank?: boolean | null;
             /** Vector Weight */
@@ -9919,6 +10447,14 @@ export interface components {
             owner_id?: string | null;
             /** Access Mode */
             access_mode?: ("inherit" | "only_me" | "all_team_members" | "partial_members") | null;
+            /** Lifecycle Owner */
+            lifecycle_owner?: string | null;
+            /** Review Due At */
+            review_due_at?: string | null;
+            /** Authority Level */
+            authority_level?: number | null;
+            /** Supersedes Document Id */
+            supersedes_document_id?: string | null;
             /** Archived At */
             archived_at?: string | null;
             /** Disabled At */
@@ -10009,6 +10545,42 @@ export interface components {
              */
             total_with_source_path: number;
             root: components["schemas"]["DocumentFolderNode"];
+        };
+        /**
+         * DocumentLifecycleMetadata
+         * @description Document lifecycle governance metadata.
+         *
+         *     Notes:
+         *     - This is *not* the same as archive/disable lifecycle actions.
+         *     - Keep fields small and PII-minimal (no content).
+         */
+        DocumentLifecycleMetadata: {
+            /** Lifecycle Owner */
+            lifecycle_owner?: string | null;
+            /** Review Due At */
+            review_due_at?: string | null;
+            /** Authority Level */
+            authority_level?: number | null;
+            /** Supersedes Document Id */
+            supersedes_document_id?: string | null;
+        };
+        /**
+         * DocumentLifecycleMetadataUpdateRequest
+         * @description Patch lifecycle governance fields for a document.
+         *
+         *     Patch semantics:
+         *     - Fields omitted from the payload are left unchanged.
+         *     - Fields present with value `null` are cleared.
+         */
+        DocumentLifecycleMetadataUpdateRequest: {
+            /** Lifecycle Owner */
+            lifecycle_owner?: string | null;
+            /** Review Due At */
+            review_due_at?: string | null;
+            /** Authority Level */
+            authority_level?: number | null;
+            /** Supersedes Document Id */
+            supersedes_document_id?: string | null;
         };
         /**
          * DocumentList
@@ -10367,6 +10939,11 @@ export interface components {
              * @description Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).
              */
             embedding_context_prefix_enabled?: boolean | null;
+            /**
+             * Embedding Field Aware Enabled
+             * @description When enabled, store extra field-aware embeddings (title/heading) alongside body embeddings to improve recall. Backwards compatible but increases vector write volume.
+             */
+            embedding_field_aware_enabled?: boolean | null;
             /** Chunk Vector Enabled */
             chunk_vector_enabled?: boolean | null;
             /** Bm25 Index Enabled */
@@ -12194,6 +12771,50 @@ export interface components {
             /** Content */
             content: string;
         };
+        /** ImageIndexRequest */
+        ImageIndexRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Max Chunks
+             * @default 3000
+             */
+            max_chunks: number;
+            /**
+             * Upsert
+             * @description Upsert into the image embedding index (overwrite existing vectors)
+             * @default true
+             */
+            upsert: boolean;
+        };
+        /** ImageIndexResponse */
+        ImageIndexResponse: {
+            /**
+             * Indexed
+             * @default 0
+             */
+            indexed: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Dim
+             * @default 0
+             */
+            dim: number;
+            /** Errors */
+            errors?: string[];
+        };
         /** ImageInfo */
         ImageInfo: {
             /** Id */
@@ -12202,6 +12823,38 @@ export interface components {
             url: string;
             /** Filename */
             filename: string;
+        };
+        /** ImageSearchRequest */
+        ImageSearchRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Query */
+            query: string;
+            /**
+             * Top K
+             * @default 8
+             */
+            top_k: number;
+            /**
+             * Auto Index
+             * @description Best-effort: index images for the dataset before searching
+             * @default false
+             */
+            auto_index: boolean;
+        };
+        /** ImageSearchResponse */
+        ImageSearchResponse: {
+            /** Citations */
+            citations?: {
+                [key: string]: unknown;
+            }[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
         };
         /** IndexAuditResponse */
         IndexAuditResponse: {
@@ -12254,6 +12907,60 @@ export interface components {
              * @default []
              */
             milvus_orphan_ids_sample: string[];
+        };
+        /** IngestionDashboardSummaryResponse */
+        IngestionDashboardSummaryResponse: {
+            /** Window Hours */
+            window_hours: number;
+            /** Bucket Minutes */
+            bucket_minutes: number;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /**
+             * Created Count
+             * @default 0
+             */
+            created_count: number;
+            /**
+             * By Status
+             * @default {}
+             */
+            by_status: {
+                [key: string]: number;
+            };
+            /**
+             * By Stage Processing
+             * @default {}
+             */
+            by_stage_processing: {
+                [key: string]: number;
+            };
+            /** Avg Completed Latency Sec */
+            avg_completed_latency_sec?: number | null;
+            /**
+             * Top Error Reasons
+             * @default {}
+             */
+            top_error_reasons: {
+                [key: string]: number;
+            };
+            /**
+             * Timeseries
+             * @default {}
+             */
+            timeseries: {
+                [key: string]: unknown[];
+            };
         };
         /** IngestionPolicy */
         "IngestionPolicy-Input": {
@@ -13525,6 +14232,68 @@ export interface components {
              */
             max_retries: number;
         };
+        /** LTRModelActivateRequest */
+        LTRModelActivateRequest: {
+            /** Model Id */
+            model_id: string;
+        };
+        /** LTRModelActivateResponse */
+        LTRModelActivateResponse: {
+            /** Active */
+            active: {
+                [key: string]: unknown;
+            };
+        };
+        /** LTRModelInfo */
+        LTRModelInfo: {
+            /** Model Id */
+            model_id: string;
+            /** Model Sha256 */
+            model_sha256: string;
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Created By */
+            created_by?: string | null;
+            /**
+             * Feature Spec Version
+             * @default 1
+             */
+            feature_spec_version: number;
+            /**
+             * Feature Schema
+             * @default
+             */
+            feature_schema: string;
+            /** Feature Names */
+            feature_names?: string[];
+            /**
+             * Has Manifest
+             * @default true
+             */
+            has_manifest: boolean;
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+        };
+        /** LTRModelListResponse */
+        LTRModelListResponse: {
+            /** Items */
+            items?: components["schemas"]["LTRModelInfo"][];
+        };
+        /** LTRModelRegisterResponse */
+        LTRModelRegisterResponse: {
+            model: components["schemas"]["LTRModelInfo"];
+        };
         /**
          * LangGraphConfig
          * @description LangGraph execution mode config.
@@ -13978,6 +14747,17 @@ export interface components {
              * @default false
              */
             metrics_log_include_text: boolean;
+        };
+        /** OpsConfigSnapshotResponse */
+        OpsConfigSnapshotResponse: {
+            /** Schema */
+            schema: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * PDFQualityScore
@@ -14744,6 +15524,55 @@ export interface components {
                 [key: string]: unknown[];
             };
         };
+        /** RagQueryAnalyticsResponse */
+        RagQueryAnalyticsResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Path */
+            path: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Record Count */
+            record_count: number;
+            /** Rag Trace Count */
+            rag_trace_count: number;
+            /** Unique Query Hashes */
+            unique_query_hashes: number;
+            /** Zero Hit Count */
+            zero_hit_count: number;
+            /** Zero Hit Rate */
+            zero_hit_rate?: number | null;
+            /** Slow Threshold Sec */
+            slow_threshold_sec: number;
+            /** Slow Count */
+            slow_count: number;
+            /** Slow Rate */
+            slow_rate?: number | null;
+            /** Retrieval P50 Elapsed Sec */
+            retrieval_p50_elapsed_sec?: number | null;
+            /** Retrieval P95 Elapsed Sec */
+            retrieval_p95_elapsed_sec?: number | null;
+            /** Retrieval P99 Elapsed Sec */
+            retrieval_p99_elapsed_sec?: number | null;
+            /** Error Kind Counts */
+            error_kind_counts?: {
+                [key: string]: number;
+            };
+            /** Top Zero Hit Queries */
+            top_zero_hit_queries?: {
+                [key: string]: unknown;
+            }[];
+            /** Top Slow Queries */
+            top_slow_queries?: {
+                [key: string]: unknown;
+            }[];
+            /** Timeseries */
+            timeseries?: {
+                [key: string]: unknown[];
+            };
+        };
         /** RagTrace */
         RagTrace: {
             /**
@@ -14771,6 +15600,25 @@ export interface components {
             citations_count: number;
             /** Steps */
             steps?: components["schemas"]["RagTraceStep"][];
+        };
+        /** RagTraceBundleResponse */
+        RagTraceBundleResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Path */
+            path: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Record Count */
+            record_count: number;
+            /** Request Id */
+            request_id: string;
+            /** Records */
+            records?: {
+                [key: string]: unknown;
+            }[];
         };
         /** RagTraceCitation */
         RagTraceCitation: {
@@ -14800,6 +15648,10 @@ export interface components {
             vector_score?: number | null;
             /** Bm25 Score */
             bm25_score?: number | null;
+            /** Lexical Score */
+            lexical_score?: number | null;
+            /** Sparse Score */
+            sparse_score?: number | null;
             /** Keyword Score */
             keyword_score?: number | null;
             /** Rerank Score */
@@ -14829,6 +15681,10 @@ export interface components {
             kg_path?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Kg Path Provenance */
+            kg_path_provenance?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RagTraceListResponse */
         RagTraceListResponse: {
@@ -15274,6 +16130,7 @@ export interface components {
             };
             /** Metric Diffs */
             metric_diffs?: components["schemas"]["RegressionRunMetricDiff"][];
+            diff_score?: components["schemas"]["RegressionRunDiffScore"] | null;
             /** Slice Diffs */
             slice_diffs?: {
                 [key: string]: components["schemas"]["RegressionRunSliceDiff"];
@@ -15547,6 +16404,41 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * RegressionRunDiffScore
+         * @description Compact score payload for CI / dashboards.
+         *
+         *     Notes:
+         *     - This is intentionally a small, stable schema (PII-safe numeric aggregates only).
+         *     - `weights` are the effective normalized weights applied to the `used_metric_keys` set.
+         */
+        RegressionRunDiffScore: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: string;
+            /** Used Metric Keys */
+            used_metric_keys?: string[];
+            /** Weights */
+            weights?: {
+                [key: string]: number;
+            };
+            /** Base Score */
+            base_score?: number | null;
+            /** Target Score */
+            target_score?: number | null;
+            /** Delta */
+            delta?: number | null;
+            /** Base Metrics */
+            base_metrics?: {
+                [key: string]: number;
+            };
+            /** Target Metrics */
+            target_metrics?: {
+                [key: string]: number;
+            };
+        };
         /** RegressionRunMetricDiff */
         RegressionRunMetricDiff: {
             /** Key */
@@ -15726,6 +16618,195 @@ export interface components {
              */
             max_items: number | null;
         };
+        /** SloSnapshotResponse */
+        SloSnapshotResponse: {
+            /** Schema */
+            schema: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Windows */
+            windows?: components["schemas"]["SloWindowSnapshotResponse"][];
+        };
+        /** SloWindowSnapshotResponse */
+        SloWindowSnapshotResponse: {
+            /** Window Minutes */
+            window_minutes: number;
+            /** Source */
+            source: string;
+            /** Rag Trace Count */
+            rag_trace_count?: number | null;
+            /** Retrieval P95 Elapsed Sec */
+            retrieval_p95_elapsed_sec?: number | null;
+            /** Retrieval P99 Elapsed Sec */
+            retrieval_p99_elapsed_sec?: number | null;
+            /** Zero Hit Rate */
+            zero_hit_rate?: number | null;
+            /** Error Rate */
+            error_rate?: number | null;
+        };
+        /**
+         * StaleDocumentItem
+         * @description PII-safe document row for lifecycle governance reporting.
+         *
+         *     Intentionally excludes:
+         *     - document content
+         *     - chunk content
+         *     - raw metadata blobs
+         */
+        StaleDocumentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** File Type */
+            file_type: string;
+            /** Status */
+            status: string;
+            /** Lifecycle Owner */
+            lifecycle_owner?: string | null;
+            /** Review Due At */
+            review_due_at?: string | null;
+            /** Authority Level */
+            authority_level?: number | null;
+            /** Supersedes Document Id */
+            supersedes_document_id?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** StaleDocumentsByDatasetResponse */
+        StaleDocumentsByDatasetResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Due Before
+             * Format: date-time
+             */
+            due_before: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "overdue" | "due_soon" | "all";
+            /** Skip */
+            skip: number;
+            /** Limit */
+            limit: number;
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["StaleDocumentItem"][];
+        };
+        /**
+         * SyntheticHardcaseGenerateRequest
+         * @description Generate synthetic "hardcase" regression cases from an existing dataset suite.
+         *
+         *     PII-safe defaults:
+         *     - deterministic only (no LLM calls)
+         *     - reuses existing reference_sources (no evidence snippets are generated)
+         */
+        SyntheticHardcaseGenerateRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Case Ids
+             * @description Optional base case ids (else pick by recency)
+             */
+            case_ids?: string[];
+            /**
+             * Max Cases
+             * @description Max base cases to use
+             * @default 50
+             */
+            max_cases: number;
+            /**
+             * Hardcases Per Case
+             * @description Max synthetic hardcases per base case
+             * @default 4
+             */
+            hardcases_per_case: number;
+            /**
+             * Max Created
+             * @description Global cap on created cases
+             * @default 500
+             */
+            max_created: number;
+            /**
+             * Mode
+             * @default deterministic
+             * @constant
+             */
+            mode: "deterministic";
+            /**
+             * Dry Run
+             * @description Plan only; do not persist new cases
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Tag
+             * @description Tag to add to created cases
+             * @default synthetic_hardcase
+             */
+            tag: string;
+        };
+        /** SyntheticHardcaseGenerateResponse */
+        SyntheticHardcaseGenerateResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Base Cases Total
+             * @default 0
+             */
+            base_cases_total: number;
+            /**
+             * Base Cases Evaluated
+             * @default 0
+             */
+            base_cases_evaluated: number;
+            /**
+             * Hardcases Generated
+             * @default 0
+             */
+            hardcases_generated: number;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Skipped Duplicates
+             * @default 0
+             */
+            skipped_duplicates: number;
+            /** Created Case Ids */
+            created_case_ids?: string[];
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+        };
         /**
          * SystemSettings
          * @description Full system config.
@@ -15834,6 +16915,125 @@ export interface components {
              * @default false
              */
             truncated: boolean;
+        };
+        /** TenantDocumentQuotaStatus */
+        TenantDocumentQuotaStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Limit */
+            limit: number;
+            /** Used */
+            used: number;
+            /** Remaining */
+            remaining: number;
+            /** Exceeded */
+            exceeded: boolean;
+        };
+        /** TenantEmbeddingCharQuotaStatus */
+        TenantEmbeddingCharQuotaStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Mode */
+            mode: string;
+            /** Limit Chars */
+            limit_chars: number;
+            /** Used Chars */
+            used_chars: number;
+            /** Remaining Chars */
+            remaining_chars: number;
+            /** Exceeded */
+            exceeded: boolean;
+            /** Window Hours */
+            window_hours: number;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+        };
+        /** TenantMemberListResponse */
+        TenantMemberListResponse: {
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["TenantMemberOut"][];
+        };
+        /** TenantMemberOut */
+        TenantMemberOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** User Id */
+            user_id?: string | null;
+            /**
+             * Role
+             * @description owner|admin|auditor|editor|dataset_operator|viewer
+             * @default viewer
+             */
+            role: string;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** TenantMemberUpdateRequest */
+        TenantMemberUpdateRequest: {
+            /**
+             * Role
+             * @description owner|admin|auditor|editor|dataset_operator|viewer
+             */
+            role: string;
+        };
+        /** TenantQpsQuotaConfig */
+        TenantQpsQuotaConfig: {
+            /** Enabled */
+            enabled: boolean;
+            /** Mode */
+            mode: string;
+            /** Rps */
+            rps: number;
+            /** Burst */
+            burst: number;
+        };
+        /** TenantQuotaSummary */
+        TenantQuotaSummary: {
+            documents: components["schemas"]["TenantDocumentQuotaStatus"];
+            storage: components["schemas"]["TenantStorageQuotaStatus"];
+            embedding_chars: components["schemas"]["TenantEmbeddingCharQuotaStatus"];
+            qps: components["schemas"]["TenantQpsQuotaConfig"];
+        };
+        /** TenantStorageQuotaStatus */
+        TenantStorageQuotaStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Limit Bytes */
+            limit_bytes: number;
+            /** Used Bytes */
+            used_bytes: number;
+            /** Remaining Bytes */
+            remaining_bytes: number;
+            /** Exceeded */
+            exceeded: boolean;
         };
         /**
          * TestGenFromConversationsRequest
@@ -17412,6 +18612,80 @@ export interface operations {
             };
         };
     };
+    get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLifecycleMetadata"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentLifecycleMetadataUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLifecycleMetadata"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post: {
         parameters: {
             query?: never;
@@ -18447,6 +19721,8 @@ export interface operations {
             query?: {
                 q?: string | null;
                 limit?: number;
+                dataset_id?: string | null;
+                include_global?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -22954,6 +24230,185 @@ export interface operations {
             };
         };
     };
+    export_evidence_suite_ltr_training_bundle_api_v1_evidence_suites__suite_id__export_ltr_training_get: {
+        parameters: {
+            query?: {
+                include_archived_items?: boolean;
+                /** @description Max items to include in export */
+                max_items?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ltr_models_api_v1_ltr_models_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LTRModelListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_ltr_model_api_v1_ltr_models_register_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_register_ltr_model_api_v1_ltr_models_register_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LTRModelRegisterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_ltr_model_api_v1_ltr_models_activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LTRModelActivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LTRModelActivateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_ltr_model_api_v1_ltr_models_rollback_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LTRModelActivateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_settings_api_v1_settings_get: {
         parameters: {
             query?: never;
@@ -23114,6 +24569,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GovernanceRulePackListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_stale_documents_by_dataset_api_v1_governance_datasets__dataset_id__stale_documents_get: {
+        parameters: {
+            query?: {
+                mode?: "overdue" | "due_soon" | "all";
+                /** @description Used for mode=due_soon/all when due_before is not set */
+                due_within_days?: number;
+                /** @description Optional explicit upper bound for review_due_at */
+                due_before?: string | null;
+                /** @description Optional reference time (defaults to now, UTC) */
+                as_of?: string | null;
+                /** @description Include archived/disabled documents */
+                include_inactive?: boolean;
+                skip?: number;
+                limit?: number;
+                order_by?: "review_due_at" | "authority_level" | "updated_at" | "created_at" | "filename";
+                order_dir?: "asc" | "desc";
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaleDocumentsByDatasetResponse"];
                 };
             };
             /** @description Validation Error */
@@ -23457,6 +24961,43 @@ export interface operations {
             };
         };
     };
+    generate_synthetic_hardcases_api_v1_evaluations_ragas_regression_cases_synthetic_hardcases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyntheticHardcaseGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyntheticHardcaseGenerateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_ragas_regression_runs_api_v1_evaluations_ragas_regression_runs_get: {
         parameters: {
             query?: {
@@ -23598,6 +25139,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RagasRegressionRunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_ragas_regression_run_bundle_api_api_v1_evaluations_ragas_regression_runs__run_id__export_bundle_get: {
+        parameters: {
+            query?: {
+                /** @description Include raw question/response (may include PII; default false) */
+                include_text?: boolean;
+                /** @description Include retrieved_contexts (may include PII; requires include_text=true) */
+                include_contexts?: boolean;
+                /** @description Redact internal ids (tenant/dataset/case/run) into stable hashes for sharing (default true) */
+                redact_ids?: boolean;
+                /** @description Max regression items to include */
+                max_items?: number;
+                /** @description Max citations per item (PII-safe allowlist) */
+                max_citations?: number;
+                /** @description Set Content-Disposition to download as a file */
+                download?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_ragas_regression_runs_api_v1_evaluations_ragas_regression_runs_purge_post: {
+        parameters: {
+            query?: {
+                /** @description Delete runs older than N days */
+                retention_days?: number;
+                /** @description Max runs to delete in this call */
+                max_delete?: number;
+                /** @description Plan only; do not delete rows */
+                dry_run?: boolean;
+                /** @description Optional dataset scope */
+                dataset_id?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -25785,6 +27416,80 @@ export interface operations {
             };
         };
     };
+    index_image_embeddings_api_v1_rag_image_index_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageIndexRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageIndexResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    image_search_preview_api_v1_rag_image_search_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retrieve_evidence_api_v1_rag_retrieve_post: {
         parameters: {
             query?: never;
@@ -25916,6 +27621,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimilarityCalculateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tenant_members_api_v1_rbac_members_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantMemberListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_tenant_member_role_api_v1_rbac_members__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantMemberUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantMemberOut"];
                 };
             };
             /** @description Validation Error */
@@ -26162,6 +27942,186 @@ export interface operations {
             };
         };
     };
+    get_rag_query_analytics_api_v1_observability_rag_metrics_query_analytics_get: {
+        parameters: {
+            query?: {
+                window_minutes?: number;
+                slow_threshold_sec?: number;
+                top_n?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagQueryAnalyticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rag_trace_bundle_api_v1_observability_rag_metrics_trace_bundle_get: {
+        parameters: {
+            query: {
+                /** @description X-Request-ID to export */
+                request_id: string;
+                window_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagTraceBundleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ops_config_snapshot_api_v1_observability_config_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsConfigSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_slo_snapshot_api_v1_observability_slo_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SloSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ingestion_dashboard_summary_api_v1_observability_ingestion_summary_get: {
+        parameters: {
+            query?: {
+                window_hours?: number;
+                bucket_minutes?: number;
+                /** @description Optional dataset_id filter */
+                dataset_id?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionDashboardSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_index_audit_api_v1_observability_index_audit_get: {
         parameters: {
             query: {
@@ -26371,6 +28331,39 @@ export interface operations {
             };
         };
     };
+    get_tenant_quota_summary_api_v1_usage_tenant_quotas_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantQuotaSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_chat_token_usage_summary_api_v1_usage_chat_tokens_summary_get: {
         parameters: {
             query?: {
@@ -26395,6 +28388,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatTokenUsageSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_cost_usage_summary_api_v1_usage_chat_cost_summary_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatCostUsageSummary"];
                 };
             };
             /** @description Validation Error */
