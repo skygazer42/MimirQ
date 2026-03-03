@@ -54,6 +54,8 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 以下端点通常只允许 owner/admin（部分允许 auditor）：
 
 - Observability 概览：`GET /api/v1/observability/rag-metrics/summary`
+- Query Analytics（zero-hit/慢检索/错误）：`GET /api/v1/observability/rag-metrics/query-analytics`
+- Trace Bundle（按 request_id 导出 PII-safe 诊断包）：`GET /api/v1/observability/rag-metrics/trace-bundle?request_id=...`
 - Index 一致性检查：`GET /api/v1/observability/index-audit?dataset_id=...`
 - 审计日志列表：`GET /api/v1/audit/logs`
 - 审计日志导出（SIEM）：`GET /api/v1/audit/logs/export`

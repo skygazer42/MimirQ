@@ -27,6 +27,8 @@ METRICS_LOG_PATH=./logs/rag_metrics.jsonl
 
 - 前端页面：`/observability`（仅 owner/admin）
 - API：`GET /api/v1/observability/rag-metrics/summary?window_minutes=60`
+- API（Query Analytics）：`GET /api/v1/observability/rag-metrics/query-analytics?window_minutes=60`
+- API（Trace Bundle，incident 调试）：`GET /api/v1/observability/rag-metrics/trace-bundle?request_id=...`
 
 ## Index Audit（索引一致性检查）
 

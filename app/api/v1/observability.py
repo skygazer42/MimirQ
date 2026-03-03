@@ -11,14 +11,14 @@ from datetime import datetime
 from typing import Any, Dict, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
-from app.services.rag_metrics_dashboard import summarize_rag_metrics, summarize_rag_query_analytics
+from app.services.rag_metrics_dashboard import build_rag_trace_bundle, summarize_rag_metrics, summarize_rag_query_analytics
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter()
@@ -79,6 +79,16 @@ class RagQueryAnalyticsResponse(BaseModel):
     top_zero_hit_queries: List[Dict[str, Any]] = Field(default_factory=list)
     top_slow_queries: List[Dict[str, Any]] = Field(default_factory=list)
     timeseries: Dict[str, List[Any]] = Field(default_factory=dict)
+
+
+class RagTraceBundleResponse(BaseModel):
+    enabled: bool
+    path: str
+    window_minutes: int
+    truncated: bool
+    record_count: int
+    request_id: str
+    records: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class IndexAuditResponse(BaseModel):
@@ -148,6 +158,27 @@ def get_rag_query_analytics(
         top_n=top_n,
     )
     return summary.__dict__
+
+
+@router.get("/rag-metrics/trace-bundle", response_model=RagTraceBundleResponse)
+def get_rag_trace_bundle(
+    request_id: str = Query(..., min_length=1, max_length=200, description="X-Request-ID to export"),
+    window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
+    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+    bundle = build_rag_trace_bundle(
+        tenant_id=str(tenant_id),
+        request_id=request_id,
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="trace bundle not found for request_id")
+    return bundle.__dict__
 
 
 @router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse)
