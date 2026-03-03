@@ -11,6 +11,7 @@
 - [guides/rag_optimization.md](./guides/rag_optimization.md)：检索效果与回答质量优化方案。
 - [guides/lexical_fallback.md](./guides/lexical_fallback.md)：Lexical fallback（Postgres FTS + pg_trgm）配置、索引与可观测性。
 - [guides/knowledge_graph.md](./guides/knowledge_graph.md)：知识图谱（KG）的开启、抽取、可视化与导出。
+- [guides/explainability_workflows.md](./guides/explainability_workflows.md)：可解释性工作台使用工作流（检索/KG/入库/报告串联）。
 - [guides/multimodal_ingest_debug.md](./guides/multimodal_ingest_debug.md)：多模态证据（图片/表格）入库与排障指南。
 - [guides/chunk_preview.md](./guides/chunk_preview.md)：切块预览页（chunk preview）的使用说明、参数建议与快捷键。
 - [guides/connectors.md](./guides/connectors.md)：连接器（Connectors）与批量导入/增量同步（Connector Runs / Configs）。
