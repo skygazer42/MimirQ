@@ -22,6 +22,7 @@ Key companion guides:
 - Reranking: `docs/guides/reranking_colbert.md`, `docs/guides/reranking_ltr.md`
 - Evidence API: `docs/guides/evidence_api.md`
 - Regression gate: `docs/guides/regression_gate.md`
+- Evaluation maturity model: `docs/guides/evaluation_maturity_model.md`
 - Knowledge Graph (optional): `docs/guides/knowledge_graph.md`
 
 ## 1) Chunking (Ingestion Quality)

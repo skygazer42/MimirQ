@@ -32,6 +32,7 @@
 
 ## 优化与审计
 - [guides/regression_gate.md](./guides/regression_gate.md)：离线评测回归（Retrieval gate / RAGAS / CI）。
+- [guides/evaluation_maturity_model.md](./guides/evaluation_maturity_model.md)：评测成熟度模型（从手工 QA → CI 门禁 → 持续评测）。
 - 数据画像（Web）：`/datasets/{id}/profile`（入库后画像）
 - 预检扫描（Web）：`/datasets/{id}/precheck`（入库前摸底）
 - 报告中心（Web）：`/reports`（数据集报告 / RAG Audit 导出）
