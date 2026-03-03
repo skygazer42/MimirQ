@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from app.services.ops_config_snapshot_service import build_ops_config_snapshot
 from app.services.rag_metrics_dashboard import (
     build_rag_trace_bundle,
     summarize_rag_metrics,
@@ -93,6 +94,12 @@ class RagTraceBundleResponse(BaseModel):
     record_count: int
     request_id: str
     records: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class OpsConfigSnapshotResponse(BaseModel):
+    schema: str
+    fingerprint: str
+    config: Dict[str, Any] = Field(default_factory=dict)
 
 
 class IndexAuditResponse(BaseModel):
@@ -183,6 +190,17 @@ def get_rag_trace_bundle(
     if bundle is None:
         raise HTTPException(status_code=404, detail="trace bundle not found for request_id")
     return bundle.__dict__
+
+
+@router.get("/config/snapshot", response_model=OpsConfigSnapshotResponse)
+def get_ops_config_snapshot(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+    snap = build_ops_config_snapshot()
+    return snap.__dict__
 
 
 @router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse)
