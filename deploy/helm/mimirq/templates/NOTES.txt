@@ -3,6 +3,11 @@ MimirQ has been deployed.
 Useful endpoints:
 - Health:  /api/v1/health
 - Ready:   /api/v1/health/ready
+- Metrics: /metrics (requires PROMETHEUS_ENABLED=true)
+
+Prometheus Operator:
+- Set prometheus.serviceMonitor.enabled=true to create a ServiceMonitor
+- Remember to also set secretEnv.PROMETHEUS_ENABLED=true so /metrics is enabled
 
 If you enabled Ingress:
   kubectl -n {{ .Release.Namespace }} get ingress {{ include "mimirq.fullname" . }}
@@ -13,4 +18,3 @@ If you did NOT enable Ingress, you can port-forward:
 
 Env secret used:
   {{ include "mimirq.secretName" . }}
-
