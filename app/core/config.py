@@ -192,6 +192,15 @@ class Settings(BaseSettings):
 
     # Prometheus metrics
     PROMETHEUS_ENABLED: bool = False
+    # Optional high-cardinality labels (off by default).
+    # When disabled, metrics still include the label keys but collapse values to "all"
+    # to keep time series count low.
+    PROMETHEUS_RAG_LABEL_TENANT_ID: bool = False
+    PROMETHEUS_RAG_LABEL_DATASET_ID: bool = False
+    # Optional: Prometheus HTTP API base URL for SLO snapshot queries.
+    # Example: http://prometheus.monitoring.svc:9090
+    PROMETHEUS_QUERY_BASE_URL: str = ""
+    PROMETHEUS_QUERY_TIMEOUT_SEC: float = 3.0
 
     # Error monitoring
     SENTRY_DSN: str = ""

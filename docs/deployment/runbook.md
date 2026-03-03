@@ -64,6 +64,36 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 
 ---
 
+## 3.1) Prometheus Metrics（可选）
+
+当 `PROMETHEUS_ENABLED=true` 时，会额外暴露 `GET /metrics`（Prometheus 抓取入口）。
+
+> 建议：`/metrics` 通常不做 RBAC，但应通过网关 / 网络策略限制访问范围（仅 Prometheus 可抓取）。
+
+### RAG SLI（PII-safe）
+
+- `rag_zero_hit_total`：`citations_count=0` 的请求总量（用于 zero-hit 率）
+- `rag_errors_total`：发生检索错误的请求总量（用于 error rate）
+- `rag_citations_count`：引用数直方图（含 `_bucket/_sum/_count`）
+- `rag_retrieval_elapsed_seconds`：检索耗时直方图（含 p95/p99 计算所需 buckets）
+- `rag_rerank_elapsed_seconds`：重排耗时直方图（仅在有 rerank 数据时 observe）
+
+Labels 策略（默认安全）：
+- 指标包含 `tenant_id`/`dataset_id` label keys，但默认 value 会折叠为 `"all"` 以控制基数。
+- 如确需按租户/数据集拆分，可显式开启：
+  - `PROMETHEUS_RAG_LABEL_TENANT_ID=true`
+  - `PROMETHEUS_RAG_LABEL_DATASET_ID=true`
+
+### Ingestion（PII-safe）
+
+- `ingestion_runs_total{status,kind}`：ingestion run created/completed/failed/cancelled 总量
+- `ingestion_run_duration_seconds{status,kind}`：ingestion run 耗时直方图
+- `ingestion_processing_stage_total{stage}`：当前处于 `processing` 状态的文档，按 stage 聚合的分布
+
+以上指标不包含文件名/路径/URL 等敏感字段。
+
+---
+
 ## 4) 数据生命周期（当前状态）
 
 项目正在补齐“导出/删除/保留策略”。当前已具备：

@@ -103,6 +103,12 @@ class IngestionRunService:
         db.add(run)
         db.commit()
         db.refresh(run)
+        try:
+            from app.services.ingestion_prometheus_metrics import observe_ingestion_run_created
+
+            observe_ingestion_run_created(kind=run.kind)
+        except Exception:
+            pass
         return run
 
     @staticmethod
@@ -152,6 +158,7 @@ class IngestionRunService:
         except Exception:
             run = None
 
+        finished_meta: tuple[str | None, str | None, float | None] | None = None
         if run is not None:
             try:
                 stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
@@ -181,6 +188,13 @@ class IngestionRunService:
                         run.status = "completed"
                     if run.finished_at is None:
                         run.finished_at = _now_utc()
+                        try:
+                            dur = None
+                            if run.started_at is not None and run.finished_at is not None:
+                                dur = float((run.finished_at - run.started_at).total_seconds())
+                            finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), dur)
+                        except Exception:
+                            finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), None)
 
                 # Track pipeline version distribution (best-effort) to support run compare/audit.
                 meta = doc_meta if isinstance(doc_meta, dict) else {}
@@ -201,6 +215,14 @@ class IngestionRunService:
         except Exception:
             # Best-effort only; callers should not fail ingestion because of manifest.
             return
+        if finished_meta is not None:
+            try:
+                from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
+
+                kind, status, dur = finished_meta
+                observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
+            except Exception:
+                pass
 
     @staticmethod
     def on_document_status_update(
@@ -254,6 +276,7 @@ class IngestionRunService:
 
         # Update each run attachment (a doc may belong to multiple runs, e.g. replays).
         now = _now_utc()
+        finished_runs: list[tuple[str | None, str | None, float | None]] = []
         for row in rows:
             try:
                 run = (
@@ -327,6 +350,13 @@ class IngestionRunService:
                     run.status = "completed"
                 if run.finished_at is None:
                     run.finished_at = now
+                    try:
+                        dur = None
+                        if run.started_at is not None and run.finished_at is not None:
+                            dur = float((run.finished_at - run.started_at).total_seconds())
+                        finished_runs.append((getattr(run, "kind", None), getattr(run, "status", None), dur))
+                    except Exception:
+                        finished_runs.append((getattr(run, "kind", None), getattr(run, "status", None), None))
                     # Touch dataset.updated_at so API instances can invalidate dataset-scoped caches
                     # (e.g., in-memory BM25 indices) after ingestion completes.
                     try:
@@ -349,6 +379,14 @@ class IngestionRunService:
             db.commit()
         except Exception:
             return
+        if finished_runs:
+            try:
+                from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
+
+                for kind, status, dur in finished_runs:
+                    observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
+            except Exception:
+                pass
 
     @staticmethod
     def compare_runs(*, run_a: IngestionRun, run_b: IngestionRun) -> dict[str, Any]:
