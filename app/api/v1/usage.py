@@ -126,6 +126,7 @@ class TenantQpsQuotaConfig(BaseModel):
     mode: str
     rps: float
     burst: int
+    scopes: List[str]
 
 
 class TenantQuotaSummary(BaseModel):
@@ -245,6 +246,7 @@ def get_tenant_quota_summary(
             mode=str(qps_cfg.get("mode") or "block"),
             rps=float(qps_cfg.get("rps") or 0.0),
             burst=int(qps_cfg.get("burst") or 0),
+            scopes=["chat", "retrieval"],
         ),
     )
 

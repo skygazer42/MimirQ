@@ -1228,6 +1228,18 @@ class Settings(BaseSettings):
     RATE_LIMIT_REDIS_PREFIX: str = "rl"
     RATE_LIMIT_REDIS_KEY_TTL_SEC: int = 600
 
+    # Tenant QPS quota (aggregate across callers; best-effort).
+    #
+    # This is independent of rate-limit middleware, which keys by user/ip. The quota
+    # is keyed by tenant_id (+ scope key) and is useful as a guardrail to protect
+    # shared retrieval backends in multi-tenant deployments.
+    TENANT_QPS_QUOTA_ENABLED: bool = False
+    TENANT_QPS_QUOTA_MODE: str = "block"  # block | warn
+    TENANT_QPS_QUOTA_REQUESTS_PER_SECOND: float = 0.0
+    TENANT_QPS_QUOTA_BURST_SIZE: int = 0
+    TENANT_QPS_QUOTA_REDIS_PREFIX: str = "tq"
+    TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC: int = 600
+
     # MCP (Model Context Protocol) configuration
     MCP_ENABLED: bool = False
     MCP_SERVER_URL: str = ""
