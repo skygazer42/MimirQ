@@ -28,7 +28,16 @@ from app.rag.core.logging import get_logger
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
-from app.tasks.locks import acquire_lock, get_retry_exc, make_lock_value, release_lock, tenant_acquire, tenant_release
+from app.tasks.locks import (
+    acquire_lock,
+    dataset_acquire,
+    dataset_release,
+    get_retry_exc,
+    make_lock_value,
+    release_lock,
+    tenant_acquire,
+    tenant_release,
+)
 
 logger = get_logger("tasks.jobs")
 
@@ -141,6 +150,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
     ingest_lock_key = None
     ingest_lock_val = None
     sem_key = None
+    dataset_sem_key = None
     try:
         # Re-validate tenant/document ownership.
         doc = (
@@ -175,6 +185,14 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 tenant_id=tenant_id,
                 kind="doc",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+                ttl_sec=120,
+            )
+            dataset_sem_key = await dataset_acquire(
+                redis,
+                tenant_id=tenant_id,
+                dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
+                kind="doc",
+                limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 0) or 0),
                 ttl_sec=120,
             )
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
@@ -330,6 +348,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             await release_lock(redis, key=lock_key, value=lock_val)
         if redis is not None and ingest_lock_key and ingest_lock_val:
             await release_lock(redis, key=ingest_lock_key, value=ingest_lock_val)
+        await dataset_release(redis, dataset_sem_key)
         await tenant_release(redis, sem_key)
         db.close()
 
@@ -565,6 +584,7 @@ async def extract_kg_job(
     db = SessionLocal()
     redis = None
     sem_key = None
+    dataset_sem_key = None
     lock_key = None
     lock_val = None
     try:
@@ -591,6 +611,16 @@ async def extract_kg_job(
             if retry_cls:
                 raise retry_cls(defer=5)
             return {"ok": False, "reason": "document_not_completed", "status": doc.status}
+
+        if redis is not None:
+            dataset_sem_key = await dataset_acquire(
+                redis,
+                tenant_id=tenant_id,
+                dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
+                kind="kg",
+                limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0),
+                ttl_sec=120,
+            )
 
         # Versioning: default to the active pipeline version so extraction doesn't mix
         # multiple chunk versions for the same document.
@@ -679,6 +709,7 @@ async def extract_kg_job(
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
+        await dataset_release(redis, dataset_sem_key)
         await tenant_release(redis, sem_key)
         db.close()
 

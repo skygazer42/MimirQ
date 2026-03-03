@@ -38,19 +38,88 @@ async def tenant_acquire(  # noqa: ANN201
         return None
 
     key = f"sem:tenant:{tenant_id}:{kind}"
+    retry_cls = None
+    try:
+        retry_cls = get_retry_exc()
+    except Exception:  # noqa: BLE001
+        retry_cls = None
     try:
         val = await redis.incr(key)
         await redis.expire(key, ttl_sec)
         if int(val) > int(limit):
             await redis.decr(key)
-            retry_cls = get_retry_exc()
             if retry_cls:
                 raise retry_cls(defer=int(retry_defer_sec))
             return None
         return key
     except Exception as exc:  # noqa: BLE001
+        if retry_cls is not None:
+            try:
+                if isinstance(exc, retry_cls):
+                    raise
+            except TypeError:
+                pass
         logger.warning("Tenant semaphore acquire failed (skip limit): %s", str(exc)[:200])
         return None
+
+
+async def dataset_acquire(  # noqa: ANN201
+    redis: Any,
+    *,
+    tenant_id: str,
+    dataset_id: str,
+    kind: str,
+    limit: int,
+    ttl_sec: int = 120,
+    retry_defer_sec: int = 2,
+):
+    """
+    Simple per-dataset concurrency limit (Redis counting semaphore).
+
+    Semantics match tenant_acquire(), but the scope is a dataset within a tenant.
+    """
+    if redis is None or limit <= 0:
+        return None
+
+    ds = str(dataset_id or "").strip()
+    if not ds:
+        return None
+
+    key = f"sem:dataset:{tenant_id}:{ds}:{kind}"
+    retry_cls = None
+    try:
+        retry_cls = get_retry_exc()
+    except Exception:  # noqa: BLE001
+        retry_cls = None
+    try:
+        val = await redis.incr(key)
+        await redis.expire(key, ttl_sec)
+        if int(val) > int(limit):
+            await redis.decr(key)
+            if retry_cls:
+                raise retry_cls(defer=int(retry_defer_sec))
+            return None
+        return key
+    except Exception as exc:  # noqa: BLE001
+        if retry_cls is not None:
+            try:
+                if isinstance(exc, retry_cls):
+                    raise
+            except TypeError:
+                pass
+        logger.warning("Dataset semaphore acquire failed (skip limit): %s", str(exc)[:200])
+        return None
+
+
+async def dataset_release(redis: Any, key: str | None) -> None:
+    if redis is None or not key:
+        return
+    try:
+        val = await redis.decr(key)
+        if int(val) <= 0:
+            await redis.delete(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Dataset semaphore release failed: %s", str(exc)[:200])
 
 
 async def tenant_release(redis: Any, key: str | None) -> None:
