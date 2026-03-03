@@ -124,3 +124,27 @@ python scripts/regression_gate.py \
 - `AUTH_MODE=header` 用 `--user-id`；`AUTH_MODE=jwt` 用 `--bearer`。
 - `--skip-import` 可以跳过导入（假设用例已在系统中存在）。
 
+## 8) 结构化日志（JSON logs）
+
+后端支持可选的结构化 JSON 日志，便于 ELK / Datadog / Loki 检索与关联：
+
+- 开启方式：设置 `LOG_FORMAT=json`
+- 常见字段：
+  - `request_id`：请求链路 id（响应头也会返回 `X-Request-ID`）
+  - `tenant_id`：租户 id（来自 `TENANT_HEADER`，默认 `X-Tenant-ID`；在 JWT 模式下可优先使用 token claim）
+  - `route`：路由模板（低基数，例如 `/api/v1/rag/retrieve`，用于聚合与检索）
+  - `trace_id` / `span_id`：当启用 OpenTelemetry 时自动附带
+
+示例（字段会按实际情况出现/缺省）：
+
+```json
+{
+  "ts": "2026-03-03T12:00:00+00:00",
+  "level": "INFO",
+  "logger": "api.rag",
+  "msg": "RAG request completed",
+  "request_id": "b1a2c3d4",
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "route": "/api/v1/rag/retrieve"
+}
+```
