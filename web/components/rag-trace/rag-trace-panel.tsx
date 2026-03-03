@@ -1,10 +1,10 @@
 'use client'
 
 import * as React from 'react'
-import { Loader2, Route, Quote, Timer, Database, ExternalLink } from 'lucide-react'
+import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { chatApi } from '@/lib/api-client'
+import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
@@ -36,6 +36,17 @@ function shortHash(value: string, opts?: { head?: number; tail?: number }) {
   const tail = Math.max(0, Number(opts?.tail ?? 4) || 4)
   if (v.length <= head + tail + 1) return v
   return `${v.slice(0, head)}...${v.slice(-tail)}`
+}
+
+function safeIsoForFilename(ts: string) {
+  return (ts || new Date().toISOString()).replace(/[:.]/g, '-')
+}
+
+function safeIdForFilename(value: string) {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .slice(0, 80) || 'request'
 }
 
 function formatScore(v?: number | null, digits = 3) {
@@ -71,6 +82,9 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
   const [data, setData] = React.useState<RagTraceListResponse | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [selectedIndex, setSelectedIndex] = React.useState(0)
+  const [bundleDownloading, setBundleDownloading] = React.useState(false)
+  const [bundleError, setBundleError] = React.useState<string | null>(null)
+  const bundleDownloadingRef = React.useRef(false)
 
   const items = data?.items ?? []
   const selected = items[selectedIndex] ?? items[0] ?? null
@@ -80,6 +94,67 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
   const rerankMeta = (channels as any)?.rerank as Record<string, any> | null | undefined
   const rerankSkipReason = rerankMeta?.skip_reason ? String(rerankMeta.skip_reason) : null
   const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
+  const requestId = String(selected?.request_id || '').trim()
+
+  const downloadBundle = React.useCallback(async () => {
+    const rid = requestId
+    if (!rid) return
+    if (bundleDownloadingRef.current) return
+
+    bundleDownloadingRef.current = true
+    setBundleDownloading(true)
+    setBundleError(null)
+    try {
+      const [meta, ready, configSnapshot, traceBundle] = await Promise.all([
+        metaApi.get(),
+        healthApi.ready(),
+        observabilityApi.getOpsConfigSnapshot(),
+        observabilityApi.getRagTraceBundle({ request_id: rid }),
+      ])
+
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+      zip.file('meta.json', JSON.stringify(meta, null, 2))
+      zip.file('health_ready.json', JSON.stringify(ready, null, 2))
+      zip.file('config_snapshot.json', JSON.stringify(configSnapshot, null, 2))
+      zip.file('trace_bundle.json', JSON.stringify(traceBundle, null, 2))
+      zip.file(
+        'README.txt',
+        [
+          'MimirQ Incident Bundle (PII-safe)',
+          `exported_at: ${new Date().toISOString()}`,
+          `request_id: ${rid}`,
+          '',
+          'Files:',
+          '- meta.json',
+          '- health_ready.json',
+          '- config_snapshot.json',
+          '- trace_bundle.json',
+          '',
+          'Notes:',
+          '- query text is NOT included; only hashes/aggregates are exported.',
+          '- trace_bundle.json is produced by /api/v1/observability/rag-metrics/trace-bundle',
+        ].join('\n')
+      )
+
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const filename = `incident_bundle_${safeIdForFilename(rid)}_${safeIsoForFilename(new Date().toISOString())}.zip`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('已下载 incident bundle')
+    } catch (err) {
+      const msg = formatApiError(err, '下载 bundle 失败')
+      setBundleError(msg)
+      toast.error(msg)
+    } finally {
+      bundleDownloadingRef.current = false
+      setBundleDownloading(false)
+    }
+  }, [requestId])
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -219,11 +294,34 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     citations: {selected.citations_count}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Timer className="h-4 w-4" />
-                  Retrieve {formatSec(selected?.retrieval?.elapsed_sec)} · Rerank {formatSec(selected?.rerank?.elapsed_sec)}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Timer className="h-4 w-4" />
+                    Retrieve {formatSec(selected?.retrieval?.elapsed_sec)} · Rerank {formatSec(selected?.rerank?.elapsed_sec)}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 rounded-xl"
+                    disabled={!requestId || bundleDownloading}
+                    onClick={() => void downloadBundle()}
+                    title="下载 request_id bundle（admin-only）"
+                  >
+                    {bundleDownloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    下载 bundle
+                  </Button>
                 </div>
               </div>
+
+              {bundleError ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  {bundleError}
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <Panel variant="muted" className="flex items-center gap-3">

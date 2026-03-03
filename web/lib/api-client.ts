@@ -213,10 +213,13 @@ import type {
 	  IngestionPolicyRollbackRequest,
 	  IngestionPolicyVersionListResponse,
 	  IngestionPreviewResponse,
-  RagvizSimilarityCollectionsResponse,
+	  RagvizSimilarityCollectionsResponse,
 	  RagvizSimilarityRequest,
 	  RagvizSimilarityCalculateResponse,
 	  RagMetricsSummaryResponse,
+	  RagQueryAnalyticsResponse,
+	  RagTraceBundleResponse,
+	  OpsConfigSnapshotResponse,
 	  IndexAuditResponse,
 	  IngestionDashboardSummaryResponse,
 	  RagTraceListResponse,
@@ -3216,6 +3219,26 @@ export const metaApi = {
 export const observabilityApi = {
   async getRagMetricsSummary(params: { window_minutes?: number; max_bytes?: number }): Promise<RagMetricsSummaryResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/summary', { params })
+    return data
+  },
+
+  async getRagQueryAnalytics(params: {
+    window_minutes?: number
+    slow_threshold_sec?: number
+    top_n?: number
+    max_bytes?: number
+  }): Promise<RagQueryAnalyticsResponse> {
+    const { data } = await apiClient.get('/observability/rag-metrics/query-analytics', { params })
+    return data
+  },
+
+  async getRagTraceBundle(params: { request_id: string; window_minutes?: number; max_bytes?: number }): Promise<RagTraceBundleResponse> {
+    const { data } = await apiClient.get('/observability/rag-metrics/trace-bundle', { params })
+    return data
+  },
+
+  async getOpsConfigSnapshot(): Promise<OpsConfigSnapshotResponse> {
+    const { data } = await apiClient.get('/observability/config/snapshot')
     return data
   },
 
