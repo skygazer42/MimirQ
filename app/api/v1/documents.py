@@ -6948,17 +6948,48 @@ async def download_document(
         if total_size <= 0:
             raise HTTPException(status_code=404, detail="Document file not found")
 
+        # Security: when auth is provided via query param (`?token=`) for <iframe>/<a>,
+        # ensure downstream caches never store token-bearing URLs.
+        token_in_url = bool(
+            (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
+        )
+        max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
+        cache_control = "no-store" if token_in_url else (f"private, max-age={max_age}" if max_age > 0 else "no-cache")
+
+        etag_raw = str(getattr(stat, "etag", "") or "").strip()
+        etag = f"\"{etag_raw}\"" if etag_raw and not etag_raw.startswith("\"") else (etag_raw or None)
+
         range_header = (request.headers.get("range") or "").strip()
         offset = 0
         length: Optional[int] = None
         status_code = 200
         headers: dict[str, str] = {
-            "Cache-Control": "no-store",
-            "Pragma": "no-cache",
-            "Expires": "0",
+            "Cache-Control": cache_control,
+            "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff",
             "Accept-Ranges": "bytes",
+            **({"ETag": etag} if etag else {}),
         }
+        if token_in_url:
+            headers["Pragma"] = "no-cache"
+            headers["Expires"] = "0"
+
+        # Conditional GET (only for full responses; ranges must be served).
+        if etag and not range_header:
+            if_none_match = (request.headers.get("if-none-match") or "").strip()
+            if if_none_match:
+                candidates_etag = [p.strip() for p in if_none_match.split(",") if p.strip()]
+                if "*" in candidates_etag or etag in candidates_etag:
+                    headers_304 = {
+                        "ETag": etag,
+                        "Cache-Control": cache_control,
+                        "Referrer-Policy": "no-referrer",
+                        "X-Content-Type-Options": "nosniff",
+                    }
+                    if token_in_url:
+                        headers_304["Pragma"] = "no-cache"
+                        headers_304["Expires"] = "0"
+                    return Response(status_code=304, headers=headers_304)
 
         # Basic single-range support for PDF iframe previews.
         if range_header.lower().startswith("bytes="):
@@ -7029,13 +7060,19 @@ async def download_document(
     if not media_type:
         media_type = "application/octet-stream"
 
-    # Avoid caching sensitive content; tokens may be embedded in URLs.
+    token_in_url = bool((request.query_params.get("token") or request.query_params.get("access_token") or "").strip())
+    max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
+    cache_control = "no-store" if token_in_url else (f"private, max-age={max_age}" if max_age > 0 else "no-cache")
+
+    # Avoid caching token-bearing URLs; allow private caching for header-auth downloads.
     headers = {
-        "Cache-Control": "no-store",
-        "Pragma": "no-cache",
-        "Expires": "0",
+        "Cache-Control": cache_control,
+        "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
     }
+    if token_in_url:
+        headers["Pragma"] = "no-cache"
+        headers["Expires"] = "0"
 
     return FileResponse(
         path,
