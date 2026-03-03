@@ -5,7 +5,9 @@ Start method (container/local):
   arq app.tasks.worker.WorkerSettings
 """
 
-
+import asyncio
+import contextlib
+import os
 import socket
 
 from arq.connections import RedisSettings
@@ -25,6 +27,7 @@ from app.tasks.jobs import (
 logger = get_logger("tasks.worker")
 
 _SOCKET_CONNECT_PROBE_TIMEOUT_SEC = 0.2
+_WORKER_HEARTBEAT_TASK_KEY = "_mimirq_worker_heartbeat_task"
 
 
 def _warn_if_redis_unreachable(redis_settings: RedisSettings) -> None:
@@ -67,10 +70,37 @@ def _build_worker_redis_settings() -> RedisSettings:
 
 async def startup(ctx):  # noqa: ANN001
     logger.info("Arq worker starting... max_jobs=%s", getattr(settings, "TASK_WORKER_MAX_JOBS", 10))
+    try:
+        from app.services.task_queue_observability_service import observe_task_worker_heartbeat
+
+        queue_name = str(getattr(settings, "TASK_QUEUE_NAME", "mimirq") or "mimirq")
+        worker_id = f"{socket.gethostname()}:{os.getpid()}"
+        interval = float(getattr(settings, "TASK_WORKER_HEARTBEAT_INTERVAL_SEC", 5.0) or 5.0)
+        interval = max(1.0, interval)
+
+        async def _heartbeat_loop() -> None:
+            redis = ctx.get("redis")
+            while True:
+                await observe_task_worker_heartbeat(redis=redis, queue_name=queue_name, worker_id=worker_id)
+                await asyncio.sleep(interval)
+
+        # Fire-and-forget: never block worker startup.
+        ctx[_WORKER_HEARTBEAT_TASK_KEY] = asyncio.create_task(_heartbeat_loop())
+        logger.info("Worker heartbeat enabled queue=%s interval_sec=%s", queue_name, interval)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to start worker heartbeat: %s", str(exc)[:200])
 
 
 async def shutdown(ctx):  # noqa: ANN001
     logger.info("Arq worker shutting down...")
+    task = ctx.get(_WORKER_HEARTBEAT_TASK_KEY)
+    if task is not None:
+        try:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        finally:
+            ctx.pop(_WORKER_HEARTBEAT_TASK_KEY, None)
 
 
 class WorkerSettings:

@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     TASK_QUEUE_NAME: str = "mimirq"
     # Worker concurrency (Arq max_jobs).
     TASK_WORKER_MAX_JOBS: int = 10
+    # Worker liveness heartbeat (best-effort ops observability).
+    # Interval: how frequently workers update heartbeat in Redis.
+    TASK_WORKER_HEARTBEAT_INTERVAL_SEC: float = 5.0
+    # TTL: how long a worker can go silent before being considered inactive.
+    TASK_WORKER_HEARTBEAT_TTL_SEC: int = 30
     # Task execution timeout (seconds).
     TASK_JOB_TIMEOUT_SEC: int = 60 * 30
     # Default retry count (network/external API jitter).
@@ -92,6 +97,9 @@ class Settings(BaseSettings):
     TASK_TENANT_MAX_CONCURRENCY_DOC: int = 2
     TASK_TENANT_MAX_CONCURRENCY_KG: int = 1
     TASK_TENANT_MAX_CONCURRENCY_CONNECTOR: int = 1
+    # API-side queue observability poll interval (seconds).
+    # Used only when PROMETHEUS_ENABLED=true to keep gauges fresh for scraping.
+    TASK_QUEUE_OBSERVABILITY_POLL_INTERVAL_SEC: float = 10.0
 
     # Subprocess worker guardrails (parsing backends).
     # 0 disables.
