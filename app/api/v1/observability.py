@@ -102,6 +102,25 @@ class OpsConfigSnapshotResponse(BaseModel):
     config: Dict[str, Any] = Field(default_factory=dict)
 
 
+class TaskQueueObservabilitySnapshotResponse(BaseModel):
+    schema: str
+    generated_at: datetime
+    source: str
+
+    enabled: bool
+    queue_name: str
+
+    broker_up: bool
+    queue_depth: int | None = None
+    workers_active: int | None = None
+
+    heartbeat_interval_sec: float = 0.0
+    heartbeat_ttl_sec: int = 0
+    poll_interval_sec: float = 0.0
+
+    error: str | None = None
+
+
 class SloWindowSnapshotResponse(BaseModel):
     window_minutes: int
     source: str
@@ -216,6 +235,29 @@ def get_ops_config_snapshot(
 ):
     _ensure_admin(db, tenant_id, account_id)
     snap = build_ops_config_snapshot()
+    return snap.__dict__
+
+
+@router.get("/task-queue/snapshot", response_model=TaskQueueObservabilitySnapshotResponse)
+async def get_task_queue_observability_snapshot(
+    force_refresh: bool = Query(default=False, description="Force refresh from broker (best-effort)"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Task queue observability snapshot (admin-only, PII-safe).
+
+    Includes:
+    - Broker health (ping)
+    - Queue depth
+    - Active worker count (heartbeat-based, aggregated)
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.task_queue_observability_service import get_task_queue_observability_snapshot
+
+    snap = await get_task_queue_observability_snapshot(force_refresh=bool(force_refresh))
     return snap.__dict__
 
 

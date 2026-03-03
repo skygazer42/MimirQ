@@ -247,6 +247,15 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to init task queue: %s", str(exc)[:200])
 
+    # Task queue observability poller (optional; keeps Prometheus gauges fresh).
+    if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+        try:
+            from app.services.task_queue_observability_service import start_task_queue_observability_poller
+
+            start_task_queue_observability_poller()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to start task queue observability poller: %s", str(exc)[:200])
+
     # Initialize BM25 index (optional; large deployments can rely on lazy-build).
     if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
         logger.info("BM25 indexing disabled; skipping startup build")
@@ -312,6 +321,15 @@ async def lifespan(app: FastAPI):
     # Close HTTP client pool.
     await close_http_client_pool()
     logger.info("HTTP client pool closed")
+
+    # Stop task queue observability poller (optional).
+    if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+        try:
+            from app.services.task_queue_observability_service import stop_task_queue_observability_poller
+
+            await stop_task_queue_observability_poller()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to stop task queue observability poller: %s", str(exc)[:200])
 
     # Close task queue connection (optional).
     await close_queue()
