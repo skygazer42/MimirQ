@@ -18,7 +18,11 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
-from app.services.rag_metrics_dashboard import build_rag_trace_bundle, summarize_rag_metrics, summarize_rag_query_analytics
+from app.services.rag_metrics_dashboard import (
+    build_rag_trace_bundle,
+    summarize_rag_metrics,
+    summarize_rag_query_analytics,
+)
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter()
