@@ -56,6 +56,14 @@ class Document(Base):
     owner_id = Column(String(255), nullable=True)
     access_mode = Column(String(50), nullable=True)
 
+    # Content lifecycle metadata (ops/governance workflows).
+    #
+    # Note: this is separate from ACL `owner_id` above.
+    lifecycle_owner = Column(String(255), nullable=True)
+    review_due_at = Column(DateTime(timezone=True), nullable=True)
+    authority_level = Column(Integer, nullable=True)
+    supersedes_document_id = Column(UUID(as_uuid=True), nullable=True)
+
     # Processing status
     status = Column(String(20), nullable=False, default='pending')  # pending | processing | completed | failed
     processing_progress = Column(Integer, default=0)  # 0-100
