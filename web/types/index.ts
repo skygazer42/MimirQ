@@ -279,6 +279,48 @@ export interface RagMetricsSummaryResponse {
   timeseries: Record<string, any[]>
 }
 
+export interface RagQueryAnalyticsResponse {
+  enabled: boolean
+  path: string
+  window_minutes: number
+  truncated: boolean
+  record_count: number
+  rag_trace_count: number
+  unique_query_hashes: number
+
+  zero_hit_count: number
+  zero_hit_rate?: number | null
+
+  slow_threshold_sec: number
+  slow_count: number
+  slow_rate?: number | null
+
+  retrieval_p50_elapsed_sec?: number | null
+  retrieval_p95_elapsed_sec?: number | null
+  retrieval_p99_elapsed_sec?: number | null
+
+  error_kind_counts: Record<string, number>
+  top_zero_hit_queries: Array<{ query_hash: string; count: number } | Record<string, any>>
+  top_slow_queries: Array<{ query_hash: string; count: number; max_elapsed_sec: number } | Record<string, any>>
+  timeseries: Record<string, any[]>
+}
+
+export interface OpsConfigSnapshotResponse {
+  schema: string
+  fingerprint: string
+  config: Record<string, any>
+}
+
+export interface RagTraceBundleResponse {
+  enabled: boolean
+  path: string
+  window_minutes: number
+  truncated: boolean
+  record_count: number
+  request_id: string
+  records: Array<Record<string, any>>
+}
+
 export interface IndexAuditResponse {
   tenant_id: string
   dataset_id: string
