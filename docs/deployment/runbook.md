@@ -179,6 +179,7 @@ Labels 策略（默认安全）：
 - Regression runs retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --regression-runs --dry-run`
 - DB maintenance runner（VACUUM/ANALYZE + retention；适合 CronJob，默认 dry-run）：`python scripts/run_db_maintenance_jobs.py --vacuum --analyze --audit-logs --dry-run`（详见：`docs/deployment/db_maintenance.md`）
 - 备份/恢复指南（Postgres + MinIO + vector backend）：`docs/deployment/backup_restore.md`
+- DR drill（恢复验证 checklist + automation）：`docs/deployment/dr_drill.md`
 - Index audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --index-audit --dry-run`
 - Evidence drift audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --evidence-drift-audit --dry-run`
 - Evidence drift repair enqueue（适合队列；bounded）：`POST /api/v1/evidence/suites/{suite_id}/repair-reference-sources?async_mode=true`（需要 `TASK_QUEUE_ENABLED=true`；返回 202 + `X-Task-Id`）
