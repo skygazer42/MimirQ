@@ -22,6 +22,7 @@ from app.services.ops_config_snapshot_service import build_ops_config_snapshot
 from app.services.rag_metrics_dashboard import (
     build_rag_trace_bundle,
     build_rag_trace_bundle_diff,
+    summarize_rag_cost_attribution,
     summarize_rag_metrics,
     summarize_rag_query_analytics,
 )
@@ -86,6 +87,34 @@ class RagQueryAnalyticsResponse(BaseModel):
     top_slow_queries: List[Dict[str, Any]] = Field(default_factory=list)
     timeseries: Dict[str, List[Any]] = Field(default_factory=dict)
     anomalies: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class RagCostAttributionResponse(BaseModel):
+    enabled: bool
+    path: str
+    window_minutes: int
+    truncated: bool
+    record_count: int
+    rag_trace_count: int
+
+    llm_prompt_tokens: int = 0
+    llm_completion_tokens: int = 0
+    llm_total_tokens: int = 0
+    llm_model_counts: Dict[str, int] = Field(default_factory=dict)
+    llm_source_counts: Dict[str, int] = Field(default_factory=dict)
+
+    embed_query_tokens: int = 0
+    embed_query_chars: int = 0
+    embed_query_count: int = 0
+    embed_provider_counts: Dict[str, int] = Field(default_factory=dict)
+    embed_model_counts: Dict[str, int] = Field(default_factory=dict)
+
+    retrieval_elapsed_avg_sec: float | None = None
+    retrieval_elapsed_p95_sec: float | None = None
+    rerank_elapsed_avg_sec: float | None = None
+    rerank_elapsed_p95_sec: float | None = None
+    retrieval_vector_backend_counts: Dict[str, int] = Field(default_factory=dict)
+    retrieval_query_count: int = 0
 
 
 class RagTraceBundleResponse(BaseModel):
@@ -251,6 +280,19 @@ def get_rag_query_analytics(
         slow_threshold_sec=slow_threshold_sec,
         top_n=top_n,
     )
+    return summary.__dict__
+
+
+@router.get("/rag-metrics/cost-attribution", response_model=RagCostAttributionResponse)
+def get_rag_cost_attribution(
+    window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
+    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+    summary = summarize_rag_cost_attribution(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
     return summary.__dict__
 
 

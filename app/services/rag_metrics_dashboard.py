@@ -333,6 +333,210 @@ def summarize_rag_metrics(
     )
 
 
+@dataclass(frozen=True)
+class RagCostAttributionSummary:
+    enabled: bool
+    path: str
+    window_minutes: int
+    truncated: bool
+    record_count: int
+    rag_trace_count: int
+
+    llm_prompt_tokens: int
+    llm_completion_tokens: int
+    llm_total_tokens: int
+    llm_model_counts: dict[str, int]
+    llm_source_counts: dict[str, int]
+
+    embed_query_tokens: int
+    embed_query_chars: int
+    embed_query_count: int
+    embed_provider_counts: dict[str, int]
+    embed_model_counts: dict[str, int]
+
+    retrieval_elapsed_avg_sec: float | None
+    retrieval_elapsed_p95_sec: float | None
+    rerank_elapsed_avg_sec: float | None
+    rerank_elapsed_p95_sec: float | None
+    retrieval_vector_backend_counts: dict[str, int]
+    retrieval_query_count: int
+
+
+def summarize_rag_cost_attribution(
+    *,
+    tenant_id: str | None,
+    window_minutes: int = 60,
+    max_bytes: int = 5_000_000,
+) -> RagCostAttributionSummary:
+    """
+    Cost attribution aggregates derived from `rag_trace.cost_attribution` records.
+
+    Output is PII-safe by construction (numeric/categorical fields only).
+    """
+
+    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path = Path(path_str)
+
+    window_minutes = max(1, int(window_minutes or 0))
+    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
+
+    raw_records, truncated_by_tail = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
+
+    # Tenant filter (avoid cross-tenant leakage on shared log files).
+    tenant_key = str(tenant_id) if tenant_id else None
+    records: list[dict[str, Any]] = []
+    for r in raw_records:
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            ts_ms = 0
+        if ts_ms and ts_ms < cutoff_ms:
+            continue
+        if tenant_key:
+            rid = r.get("tenant_id")
+            if rid and str(rid) != tenant_key:
+                continue
+        records.append(r)
+
+    earliest_ts_ms: int | None = None
+    for r in records:
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            continue
+        if not ts_ms:
+            continue
+        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
+            earliest_ts_ms = ts_ms
+    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
+
+    rag_trace_count = 0
+
+    llm_prompt_tokens = 0
+    llm_completion_tokens = 0
+    llm_total_tokens = 0
+    llm_model_counts: dict[str, int] = defaultdict(int)
+    llm_source_counts: dict[str, int] = defaultdict(int)
+
+    embed_query_tokens = 0
+    embed_query_chars = 0
+    embed_query_count = 0
+    embed_provider_counts: dict[str, int] = defaultdict(int)
+    embed_model_counts: dict[str, int] = defaultdict(int)
+
+    retrieval_elapsed: list[float] = []
+    rerank_elapsed: list[float] = []
+    retrieval_vector_backend_counts: dict[str, int] = defaultdict(int)
+    retrieval_query_count = 0
+
+    for r in records:
+        if str(r.get("event") or "") != "rag_trace":
+            continue
+
+        rag_trace_count += 1
+
+        cost = r.get("cost_attribution")
+        if not isinstance(cost, dict) or not cost:
+            continue
+
+        llm = cost.get("llm") if isinstance(cost.get("llm"), dict) else {}
+        if isinstance(llm, dict):
+            try:
+                llm_prompt_tokens += int(llm.get("prompt_tokens") or 0)
+            except Exception:
+                pass
+            try:
+                llm_completion_tokens += int(llm.get("completion_tokens") or 0)
+            except Exception:
+                pass
+            try:
+                llm_total_tokens += int(llm.get("total_tokens") or 0)
+            except Exception:
+                pass
+            model_used = str(llm.get("model_used") or "").strip()
+            if model_used:
+                llm_model_counts[model_used[:120]] += 1
+            source = str(llm.get("source") or "").strip()
+            if source:
+                llm_source_counts[source[:50]] += 1
+
+        emb = cost.get("embeddings") if isinstance(cost.get("embeddings"), dict) else {}
+        if isinstance(emb, dict):
+            try:
+                embed_query_tokens += int(emb.get("query_tokens") or 0)
+            except Exception:
+                pass
+            try:
+                embed_query_chars += int(emb.get("query_chars") or 0)
+            except Exception:
+                pass
+            try:
+                embed_query_count += int(emb.get("query_count") or 0)
+            except Exception:
+                pass
+
+            provider = str(emb.get("provider") or "").strip()
+            if provider:
+                embed_provider_counts[provider[:50]] += 1
+            model = str(emb.get("model") or "").strip()
+            if model:
+                embed_model_counts[model[:80]] += 1
+
+        retrieval = cost.get("retrieval") if isinstance(cost.get("retrieval"), dict) else {}
+        if isinstance(retrieval, dict):
+            v = retrieval.get("elapsed_sec")
+            if v is not None:
+                try:
+                    fv = float(v)
+                    if fv >= 0:
+                        retrieval_elapsed.append(fv)
+                except Exception:
+                    pass
+
+            v = retrieval.get("rerank_elapsed_sec")
+            if v is not None:
+                try:
+                    fv = float(v)
+                    if fv >= 0:
+                        rerank_elapsed.append(fv)
+                except Exception:
+                    pass
+
+            vector_backend = str(retrieval.get("vector_backend") or "").strip()
+            if vector_backend:
+                retrieval_vector_backend_counts[vector_backend[:50]] += 1
+            try:
+                retrieval_query_count += int(retrieval.get("query_count") or 0)
+            except Exception:
+                pass
+
+    return RagCostAttributionSummary(
+        enabled=enabled,
+        path=path_str,
+        window_minutes=int(window_minutes),
+        truncated=bool(truncated),
+        record_count=len(records),
+        rag_trace_count=int(rag_trace_count),
+        llm_prompt_tokens=int(llm_prompt_tokens),
+        llm_completion_tokens=int(llm_completion_tokens),
+        llm_total_tokens=int(llm_total_tokens),
+        llm_model_counts=dict(llm_model_counts),
+        llm_source_counts=dict(llm_source_counts),
+        embed_query_tokens=int(embed_query_tokens),
+        embed_query_chars=int(embed_query_chars),
+        embed_query_count=int(embed_query_count),
+        embed_provider_counts=dict(embed_provider_counts),
+        embed_model_counts=dict(embed_model_counts),
+        retrieval_elapsed_avg_sec=_mean(retrieval_elapsed),
+        retrieval_elapsed_p95_sec=_percentile(retrieval_elapsed, 95.0),
+        rerank_elapsed_avg_sec=_mean(rerank_elapsed),
+        rerank_elapsed_p95_sec=_percentile(rerank_elapsed, 95.0),
+        retrieval_vector_backend_counts=dict(retrieval_vector_backend_counts),
+        retrieval_query_count=int(retrieval_query_count),
+    )
+
+
 def _hash_for_analytics(text: str) -> str:
     """
     Stable short hash for query analytics.

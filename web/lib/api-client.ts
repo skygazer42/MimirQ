@@ -216,11 +216,12 @@ import type {
 	  IngestionPolicyRollbackRequest,
 	  IngestionPolicyVersionListResponse,
 	  IngestionPreviewResponse,
-	  RagvizSimilarityCollectionsResponse,
-	  RagvizSimilarityRequest,
-	  RagvizSimilarityCalculateResponse,
+		  RagvizSimilarityCollectionsResponse,
+		  RagvizSimilarityRequest,
+		  RagvizSimilarityCalculateResponse,
 		  RagMetricsSummaryResponse,
 		  RagQueryAnalyticsResponse,
+		  RagCostAttributionResponse,
 			  RagTraceBundleResponse,
 			  RagTraceBundleDiffResponse,
 			  OpsConfigSnapshotResponse,
@@ -3301,6 +3302,11 @@ export const observabilityApi = {
     max_bytes?: number
   }): Promise<RagQueryAnalyticsResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/query-analytics', { params })
+    return data
+  },
+
+  async getRagCostAttribution(params: { window_minutes?: number; max_bytes?: number }): Promise<RagCostAttributionResponse> {
+    const { data } = await apiClient.get('/observability/rag-metrics/cost-attribution', { params })
     return data
   },
 

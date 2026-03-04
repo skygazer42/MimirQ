@@ -305,6 +305,34 @@ export interface RagQueryAnalyticsResponse {
   timeseries: Record<string, any[]>
 }
 
+export interface RagCostAttributionResponse {
+  enabled: boolean
+  path: string
+  window_minutes: number
+  truncated: boolean
+  record_count: number
+  rag_trace_count: number
+
+  llm_prompt_tokens: number
+  llm_completion_tokens: number
+  llm_total_tokens: number
+  llm_model_counts: Record<string, number>
+  llm_source_counts: Record<string, number>
+
+  embed_query_tokens: number
+  embed_query_chars: number
+  embed_query_count: number
+  embed_provider_counts: Record<string, number>
+  embed_model_counts: Record<string, number>
+
+  retrieval_elapsed_avg_sec?: number | null
+  retrieval_elapsed_p95_sec?: number | null
+  rerank_elapsed_avg_sec?: number | null
+  rerank_elapsed_p95_sec?: number | null
+  retrieval_vector_backend_counts: Record<string, number>
+  retrieval_query_count: number
+}
+
 export interface OpsConfigSnapshotResponse {
   schema: string
   fingerprint: string
