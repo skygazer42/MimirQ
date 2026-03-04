@@ -225,6 +225,7 @@ import type {
 			  RagTraceBundleResponse,
 			  RagTraceBundleDiffResponse,
 			  OpsConfigSnapshotResponse,
+			  DepsDiagnosticsResponse,
 			  TaskQueueObservabilitySnapshotResponse,
 			  SloSnapshotResponse,
 			  IndexAuditResponse,
@@ -3307,6 +3308,16 @@ export const observabilityApi = {
 
   async getRagCostAttribution(params: { window_minutes?: number; max_bytes?: number }): Promise<RagCostAttributionResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/cost-attribution', { params })
+    return data
+  },
+
+  async getRagMetricsTail(params: { window_minutes?: number; max_bytes?: number }): Promise<ArrayBuffer> {
+    const { data } = await apiClient.get('/observability/rag-metrics/tail', { params, responseType: 'arraybuffer' })
+    return data
+  },
+
+  async getDepsDiagnosticsSnapshot(): Promise<DepsDiagnosticsResponse> {
+    const { data } = await apiClient.get('/observability/diagnostics/deps')
     return data
   },
 
