@@ -1,0 +1,91 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mimirq.fullname" . }}-api-ingress
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "mimirq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+  {{- $apiExtraFrom := .Values.networkPolicy.api.ingress.extraFrom | default (list) -}}
+  {{- if or .Values.networkPolicy.api.ingress.allowSameNamespace (gt (len $apiExtraFrom) 0) }}
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8000
+      from:
+        {{- if .Values.networkPolicy.api.ingress.allowSameNamespace }}
+        - podSelector: {}
+        {{- end }}
+        {{- with $apiExtraFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  {{- else }}
+  ingress: []
+  {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mimirq.fullname" . }}-worker-ingress
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "mimirq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  policyTypes:
+    - Ingress
+  {{- $workerExtraFrom := .Values.networkPolicy.worker.ingress.extraFrom | default (list) -}}
+  {{- if or .Values.networkPolicy.worker.ingress.allowSameNamespace (gt (len $workerExtraFrom) 0) }}
+  ingress:
+    - from:
+        {{- if .Values.networkPolicy.worker.ingress.allowSameNamespace }}
+        - podSelector: {}
+        {{- end }}
+        {{- with $workerExtraFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  {{- else }}
+  ingress: []
+  {{- end }}
+{{- if .Values.networkPolicy.egress.restrict }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mimirq.fullname" . }}-egress
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "mimirq.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  {{- $egressRules := .Values.networkPolicy.egress.rules | default (list) -}}
+  {{- if or .Values.networkPolicy.egress.allowDNS (gt (len $egressRules) 0) }}
+  egress:
+    {{- if .Values.networkPolicy.egress.allowDNS }}
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- with $egressRules }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- else }}
+  egress: []
+  {{- end }}
+{{- end }}
+{{- end }}
