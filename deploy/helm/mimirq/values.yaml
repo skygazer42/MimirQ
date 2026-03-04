@@ -212,6 +212,42 @@ ingress:
           pathType: Prefix
   tls: []
 
+# Optional NetworkPolicies (Kubernetes NetworkPolicy).
+#
+# Defaults:
+# - disabled (no policy objects created; cluster default behavior applies)
+# - when enabled: ingress is restricted (api allow same-namespace by default; worker deny ingress)
+# - egress is still allow-all unless `networkPolicy.egress.restrict=true`
+networkPolicy:
+  enabled: false
+
+  api:
+    ingress:
+      allowSameNamespace: true
+      # List of NetworkPolicyPeer objects (raw K8s shape). Example:
+      # extraFrom:
+      #   - namespaceSelector:
+      #       matchLabels:
+      #         kubernetes.io/metadata.name: ingress-nginx
+      #     podSelector:
+      #       matchLabels:
+      #         app.kubernetes.io/name: ingress-nginx
+      extraFrom: []
+
+  worker:
+    ingress:
+      # Worker typically does not need ingress.
+      allowSameNamespace: false
+      extraFrom: []
+
+  egress:
+    # When false: do not create any egress policy (allow-all egress).
+    # When true: only allow DNS + configured allowlist rules.
+    restrict: false
+    allowDNS: true
+    # List of raw NetworkPolicyEgressRule items (to/ports).
+    rules: []
+
 persistence:
   uploads:
     enabled: true
