@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.core.constants import UserRoles
 from app.core.env import is_production_env
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant import Tenant, TenantMember
+from app.models.tenant_group import TenantGroup, TenantGroupMember
 
 EDIT_ROLES = UserRoles.EDIT_ROLES
 
@@ -73,11 +75,13 @@ class DatasetService:
         permission: DatasetPermissionEnum,
         owner_id: str,
         partial_members: Optional[List[str]] = None,
+        partial_groups: Optional[List[UUID]] = None,
     ) -> Dataset:
         member = DatasetService.ensure_member(db, tenant_id, owner_id)
         DatasetService._assert_edit_role(member)
         if permission != DatasetPermissionEnum.PARTIAL_MEMBERS:
             partial_members = []
+            partial_groups = []
 
         exists = (
             db.query(Dataset.id)
@@ -100,6 +104,8 @@ class DatasetService:
 
         if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members:
             DatasetPermissionService.update_partial_member_list(db, tenant_id, dataset.id, partial_members)
+        if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups:
+            DatasetGroupPermissionService.update_partial_group_list(db, tenant_id, dataset.id, partial_groups)
 
         return dataset
 
@@ -112,6 +118,7 @@ class DatasetService:
         description: Optional[str],
         permission: Optional[DatasetPermissionEnum],
         partial_members: Optional[List[str]],
+        partial_groups: Optional[List[UUID]],
     ) -> Dataset:
         member = DatasetService.ensure_member(db, dataset.tenant_id, updater_id)
         DatasetService._assert_edit_role(member)
@@ -139,12 +146,20 @@ class DatasetService:
                 DatasetPermissionService.update_partial_member_list(
                     db, dataset.tenant_id, dataset.id, partial_members or []
                 )
+                DatasetGroupPermissionService.update_partial_group_list(
+                    db, dataset.tenant_id, dataset.id, partial_groups or []
+                )
             else:
                 DatasetPermissionService.clear_partial_member_list(db, dataset.tenant_id, dataset.id)
+                DatasetGroupPermissionService.clear_partial_group_list(db, dataset.tenant_id, dataset.id)
         else:
             if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members is not None:
                 DatasetPermissionService.update_partial_member_list(
                     db, dataset.tenant_id, dataset.id, partial_members
+                )
+            if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups is not None:
+                DatasetGroupPermissionService.update_partial_group_list(
+                    db, dataset.tenant_id, dataset.id, partial_groups
                 )
 
         return dataset
@@ -170,7 +185,33 @@ class DatasetService:
             DatasetPermission.tenant_id == dataset.tenant_id,
             DatasetPermission.account_id == account_id
         ).first()
-        return bool(exists)
+        if exists:
+            return True
+
+        # Group-based allowlist (enterprise): allow when any of the account's tenant groups
+        # is granted access to the dataset.
+        group_rows = (
+            db.query(TenantGroupMember.group_id)
+            .filter(
+                TenantGroupMember.tenant_id == dataset.tenant_id,
+                TenantGroupMember.user_id == account_id,
+            )
+            .all()
+        )
+        group_ids = [row[0] for row in group_rows if row and row[0]]
+        if not group_ids:
+            return False
+
+        group_perm = (
+            db.query(DatasetGroupPermission.id)
+            .filter(
+                DatasetGroupPermission.tenant_id == dataset.tenant_id,
+                DatasetGroupPermission.dataset_id == dataset.id,
+                DatasetGroupPermission.group_id.in_(group_ids),
+            )
+            .first()
+        )
+        return bool(group_perm)
 
     @staticmethod
     def assert_dataset_readable(db: Session, dataset: Dataset, account_id: str):
@@ -194,6 +235,28 @@ class DatasetService:
             ).first()
             if exists:
                 return
+
+            group_rows = (
+                db.query(TenantGroupMember.group_id)
+                .filter(
+                    TenantGroupMember.tenant_id == dataset.tenant_id,
+                    TenantGroupMember.user_id == account_id,
+                )
+                .all()
+            )
+            group_ids = [row[0] for row in group_rows if row and row[0]]
+            if group_ids:
+                group_perm = (
+                    db.query(DatasetGroupPermission.id)
+                    .filter(
+                        DatasetGroupPermission.tenant_id == dataset.tenant_id,
+                        DatasetGroupPermission.dataset_id == dataset.id,
+                        DatasetGroupPermission.group_id.in_(group_ids),
+                    )
+                    .first()
+                )
+                if group_perm:
+                    return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No dataset write permission")
 
 
@@ -263,4 +326,81 @@ class DatasetPermissionService:
             DatasetPermission.tenant_id == tenant_id,
             DatasetPermission.dataset_id == dataset_id
         ).delete()
+        db.commit()
+
+
+class DatasetGroupPermissionService:
+    @staticmethod
+    def get_dataset_partial_group_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> List[UUID]:
+        rows = (
+            db.query(DatasetGroupPermission.group_id)
+            .filter(
+                DatasetGroupPermission.tenant_id == tenant_id,
+                DatasetGroupPermission.dataset_id == dataset_id,
+            )
+            .all()
+        )
+        return [row[0] for row in rows if row and row[0]]
+
+    @staticmethod
+    def update_partial_group_list(
+        db: Session,
+        tenant_id: UUID,
+        dataset_id: UUID,
+        group_ids: List[UUID],
+        *,
+        max_groups: int = 200,
+    ) -> None:
+        normalized: list[UUID] = []
+        seen: set[UUID] = set()
+        for raw in group_ids or []:
+            try:
+                gid = UUID(str(raw))
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="Invalid group id") from exc
+            if gid in seen:
+                continue
+            seen.add(gid)
+            normalized.append(gid)
+            if max_groups and len(normalized) >= max_groups:
+                break
+
+        if normalized:
+            rows = (
+                db.query(TenantGroup.id)
+                .filter(
+                    TenantGroup.tenant_id == tenant_id,
+                    TenantGroup.id.in_(normalized),
+                )
+                .all()
+            )
+            found = {row[0] for row in rows if row and row[0]}
+            missing = [str(gid) for gid in normalized if gid not in found]
+            if missing:
+                raise HTTPException(status_code=400, detail=f"Unknown tenant groups: {', '.join(missing[:20])}")
+
+        db.query(DatasetGroupPermission).filter(
+            DatasetGroupPermission.tenant_id == tenant_id,
+            DatasetGroupPermission.dataset_id == dataset_id,
+        ).delete(synchronize_session=False)
+
+        if normalized:
+            db.add_all(
+                [
+                    DatasetGroupPermission(
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        group_id=gid,
+                    )
+                    for gid in normalized
+                ]
+            )
+        db.commit()
+
+    @staticmethod
+    def clear_partial_group_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> None:
+        db.query(DatasetGroupPermission).filter(
+            DatasetGroupPermission.tenant_id == tenant_id,
+            DatasetGroupPermission.dataset_id == dataset_id,
+        ).delete(synchronize_session=False)
         db.commit()

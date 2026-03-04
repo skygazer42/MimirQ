@@ -10,6 +10,8 @@ from app.models.dataset_precheck_scan import DatasetPrecheckScanRun
 from app.models.dataset_profile_scan import DatasetProfileScanRun
 from app.models.db_catalog import DbCatalogTable
 from app.models.document import Document
+from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
+from app.models.tenant_group import TenantGroup, TenantGroupMember
 
 
 def _has_unique(table, cols: set[str]) -> bool:
@@ -106,3 +108,43 @@ def test_dataset_category_memberships_tenant_safe_fks():
         {("tenant_id", "dataset_categories.tenant_id"), ("category_id", "dataset_categories.id")},
     )
 
+
+def test_tenant_groups_has_required_unique_constraints():
+    t = TenantGroup.__table__
+    assert _has_unique(t, {"tenant_id", "id"})
+    assert _has_unique(t, {"tenant_id", "name"})
+
+
+def test_tenant_group_members_has_composite_group_fk():
+    assert _has_fk_mapping(
+        TenantGroupMember.__table__,
+        {("tenant_id", "tenant_groups.tenant_id"), ("group_id", "tenant_groups.id")},
+    )
+
+
+def test_dataset_group_permissions_has_composite_dataset_fk():
+    assert _has_fk_mapping(
+        DatasetGroupPermission.__table__,
+        {("tenant_id", "datasets.tenant_id"), ("dataset_id", "datasets.id")},
+    )
+
+
+def test_dataset_group_permissions_has_composite_group_fk():
+    assert _has_fk_mapping(
+        DatasetGroupPermission.__table__,
+        {("tenant_id", "tenant_groups.tenant_id"), ("group_id", "tenant_groups.id")},
+    )
+
+
+def test_document_group_permissions_has_document_fk():
+    assert _has_fk_mapping(
+        DocumentGroupPermission.__table__,
+        {("document_id", "documents.id")},
+    )
+
+
+def test_document_group_permissions_has_composite_group_fk():
+    assert _has_fk_mapping(
+        DocumentGroupPermission.__table__,
+        {("tenant_id", "tenant_groups.tenant_id"), ("group_id", "tenant_groups.id")},
+    )

@@ -60,6 +60,7 @@ from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDataset
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
+from app.models.group_permissions import DatasetGroupPermission
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
@@ -72,7 +73,7 @@ from app.services.dataset_profile_service import (
     list_bucket_documents,
     list_finding_documents,
 )
-from app.services.dataset_service import DatasetPermissionService, DatasetService
+from app.services.dataset_service import DatasetGroupPermissionService, DatasetPermissionService, DatasetService
 from app.services.fls_policy import parse_fls_policy_from_metadata, validate_and_normalize_fls_policy
 from app.services.ingestion_policy import (
     export_policy_json,
@@ -283,6 +284,7 @@ def create_dataset(
         permission=payload.permission,
         owner_id=account_id,
         partial_members=payload.partial_member_list or [],
+        partial_groups=payload.partial_group_list or [],
     )
 
     # Optional dataset-level defaults (stored in datasets.metadata).
@@ -353,8 +355,10 @@ def create_dataset(
         db.refresh(dataset)
 
     partial_list = None
+    partial_groups = None
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-        partial_list = payload.partial_member_list or []
+        partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset.id)
+        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, dataset.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
@@ -385,8 +389,8 @@ def create_dataset(
         description=dataset.description,
         permission=dataset.permission,
         owner_id=dataset.owner_id,
-        partial_member_list=partial_list
-        ,
+        partial_member_list=partial_list,
+        partial_group_list=partial_groups,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(dataset),
@@ -443,6 +447,7 @@ def list_datasets(
     # Avoid N+1 queries for PARTIAL_MEMBERS datasets
     partial_ids = [ds.id for ds in datasets if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS]
     partial_member_map = {}
+    partial_group_map = {}
     if partial_ids:
         rows = (
             db.query(DatasetPermission)
@@ -459,11 +464,26 @@ def list_datasets(
             tmp[row.dataset_id].append(row.account_id)
         partial_member_map = dict(tmp)
 
+        rows = (
+            db.query(DatasetGroupPermission)
+            .filter(
+                DatasetGroupPermission.tenant_id == tenant_id,
+                DatasetGroupPermission.dataset_id.in_(partial_ids),
+            )
+            .all()
+        )
+        tmp_g = defaultdict(list)
+        for row in rows:
+            tmp_g[row.dataset_id].append(row.group_id)
+        partial_group_map = dict(tmp_g)
+
     results = []
     for ds in datasets:
         partial_list = None
+        partial_groups = None
         if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
             partial_list = partial_member_map.get(ds.id, [])
+            partial_groups = partial_group_map.get(ds.id, [])
         default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
         prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
         chunk_targets_v2 = _dataset_chunk_targets_v2_out(ds)
@@ -475,6 +495,7 @@ def list_datasets(
             permission=ds.permission,
             owner_id=ds.owner_id,
             partial_member_list=partial_list,
+            partial_group_list=partial_groups,
             default_parser_backend=default_parser_backend,
             default_chunk_strategy=default_chunk_strategy,
             rag_defaults=_dataset_rag_defaults_out(ds),
@@ -497,8 +518,10 @@ def get_dataset(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
     partial_list = None
+    partial_groups = None
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
+        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, dataset_id)
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
@@ -510,6 +533,7 @@ def get_dataset(
         permission=dataset.permission,
         owner_id=dataset.owner_id,
         partial_member_list=partial_list,
+        partial_group_list=partial_groups,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(dataset),
@@ -569,6 +593,7 @@ def update_dataset(
         description=payload.description,
         permission=payload.permission,
         partial_members=payload.partial_member_list,
+        partial_groups=payload.partial_group_list,
     )
 
     # Update dataset-level defaults (stored in datasets.metadata).
@@ -641,8 +666,10 @@ def update_dataset(
         db.refresh(updated)
 
     partial_list = None
+    partial_groups = None
     if updated.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, updated.id)
+        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, updated.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(updated)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(updated)
@@ -674,6 +701,7 @@ def update_dataset(
         permission=updated.permission,
         owner_id=updated.owner_id,
         partial_member_list=partial_list,
+        partial_group_list=partial_groups,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(updated),
@@ -865,8 +893,10 @@ def import_dataset_config(
         db.commit()
 
     partial_list = None
+    partial_groups = None
     if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, ds.id)
+        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, ds.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
@@ -880,6 +910,7 @@ def import_dataset_config(
         permission=ds.permission,
         owner_id=ds.owner_id,
         partial_member_list=partial_list,
+        partial_group_list=partial_groups,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(ds),
@@ -906,8 +937,10 @@ def clone_dataset(
 
     permission = src.permission if payload.copy_permission else DatasetPermissionEnum.ALL_TEAM_MEMBERS
     partial_members: list[str] = []
+    partial_groups: list[UUID] = []
     if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and payload.copy_partial_members:
         partial_members = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, src.id) or []
+        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, src.id) or []
 
     created = DatasetService.create_dataset(
         db=db,
@@ -917,6 +950,7 @@ def clone_dataset(
         permission=permission,
         owner_id=account_id,
         partial_members=partial_members,
+        partial_groups=partial_groups,
     )
 
     # Copy portable config keys from the source dataset.
@@ -937,8 +971,10 @@ def clone_dataset(
         db.commit()
 
     partial_list = None
+    partial_groups_out = None
     if created.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, created.id)
+        partial_groups_out = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, created.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(created)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(created)
@@ -952,6 +988,7 @@ def clone_dataset(
         permission=created.permission,
         owner_id=created.owner_id,
         partial_member_list=partial_list,
+        partial_group_list=partial_groups_out,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(created),

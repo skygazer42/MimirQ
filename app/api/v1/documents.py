@@ -111,7 +111,7 @@ from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_p
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_folders import build_document_folder_tree
-from app.services.document_permission_service import DocumentPermissionService
+from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.document_qa_service import generate_and_index_document_qa
 from app.services.indexer import Indexer
 from app.services.ingestion_policy import (
@@ -5191,13 +5191,16 @@ async def get_document_access(
 
     mode = (str(getattr(document, "access_mode", "") or "")).strip().lower() or "inherit"
     allowlist: list[str] | None = None
+    allowlist_groups: list[UUID] | None = None
     if mode == "partial_members":
         allowlist = DocumentPermissionService.get_document_partial_member_list(db, tenant_id, document_id)
+        allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(db, tenant_id, document_id)
 
     return DocumentAccessInfo(
         mode=mode,  # type: ignore[arg-type]
         owner_id=(getattr(document, "owner_id", None) or None),
         partial_member_list=allowlist,
+        partial_group_list=allowlist_groups,
     )
 
 
@@ -5245,20 +5248,30 @@ async def put_document_access(
             document_id,
             list(payload.partial_member_list or []),
         )
+        DocumentGroupPermissionService.update_partial_group_list(
+            db,
+            tenant_id,
+            document_id,
+            list(payload.partial_group_list or []),
+        )
     else:
         DocumentPermissionService.clear_partial_member_list(db, tenant_id, document_id)
+        DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, document_id)
 
     db.commit()
     db.refresh(document)
 
     allowlist: list[str] | None = None
+    allowlist_groups: list[UUID] | None = None
     if mode == "partial_members":
         allowlist = DocumentPermissionService.get_document_partial_member_list(db, tenant_id, document_id)
+        allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(db, tenant_id, document_id)
 
     return DocumentAccessInfo(
         mode=mode,  # type: ignore[arg-type]
         owner_id=(getattr(document, "owner_id", None) or None),
         partial_member_list=allowlist,
+        partial_group_list=allowlist_groups,
     )
 
 

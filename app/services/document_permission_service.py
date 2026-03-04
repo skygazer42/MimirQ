@@ -12,8 +12,10 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.models.group_permissions import DocumentGroupPermission
 from app.models.document import DocumentPermission
 from app.models.tenant import TenantMember
+from app.models.tenant_group import TenantGroup
 
 
 class DocumentPermissionService:
@@ -88,3 +90,70 @@ class DocumentPermissionService:
                 )
             )
 
+
+class DocumentGroupPermissionService:
+    @staticmethod
+    def get_document_partial_group_list(db: Session, tenant_id: UUID, document_id: UUID) -> List[UUID]:
+        rows = (
+            db.query(DocumentGroupPermission.group_id)
+            .filter(
+                DocumentGroupPermission.tenant_id == tenant_id,
+                DocumentGroupPermission.document_id == document_id,
+            )
+            .all()
+        )
+        return [row[0] for row in rows if row and row[0]]
+
+    @staticmethod
+    def clear_partial_group_list(db: Session, tenant_id: UUID, document_id: UUID) -> None:
+        db.query(DocumentGroupPermission).filter(
+            DocumentGroupPermission.tenant_id == tenant_id,
+            DocumentGroupPermission.document_id == document_id,
+        ).delete(synchronize_session=False)
+
+    @staticmethod
+    def update_partial_group_list(
+        db: Session,
+        tenant_id: UUID,
+        document_id: UUID,
+        group_ids: List[UUID],
+        *,
+        max_groups: int = 200,
+    ) -> None:
+        normalized: list[UUID] = []
+        seen: set[UUID] = set()
+        for raw in group_ids or []:
+            try:
+                gid = UUID(str(raw))
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="Invalid group id") from exc
+            if gid in seen:
+                continue
+            seen.add(gid)
+            normalized.append(gid)
+            if max_groups and len(normalized) >= max_groups:
+                break
+
+        if normalized:
+            rows = (
+                db.query(TenantGroup.id)
+                .filter(
+                    TenantGroup.tenant_id == tenant_id,
+                    TenantGroup.id.in_(normalized),
+                )
+                .all()
+            )
+            found = {row[0] for row in rows if row and row[0]}
+            missing = [str(gid) for gid in normalized if gid not in found]
+            if missing:
+                raise HTTPException(status_code=400, detail=f"Unknown tenant groups: {', '.join(missing[:20])}")
+
+        DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, document_id)
+        for gid in normalized:
+            db.add(
+                DocumentGroupPermission(
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    group_id=gid,
+                )
+            )

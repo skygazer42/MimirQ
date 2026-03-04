@@ -1,0 +1,186 @@
+"""
+Tenant groups API (enterprise directory primitive).
+"""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy.orm import Session
+
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
+from app.api.schemas.group import (
+    TenantGroupCreateRequest,
+    TenantGroupListResponse,
+    TenantGroupMemberListResponse,
+    TenantGroupMemberOut,
+    TenantGroupMembersUpdateRequest,
+    TenantGroupMembersUpdateResponse,
+    TenantGroupOut,
+    TenantGroupUpdateRequest,
+)
+from app.core.database import get_db
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
+from app.services.tenant_group_service import TenantGroupService
+
+router = APIRouter()
+
+
+@router.get("/", response_model=TenantGroupListResponse)
+def list_groups(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_READ,
+        detail="No permission to view groups",
+    )
+    total, groups = TenantGroupService.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
+    return TenantGroupListResponse(total=total, items=[TenantGroupOut.model_validate(g) for g in groups])
+
+
+@router.post("/", response_model=TenantGroupOut, status_code=201)
+def create_group(
+    payload: TenantGroupCreateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage groups",
+    )
+    group = TenantGroupService.create_group(db, tenant_id=tenant_id, name=payload.name, external_id=payload.external_id)
+    return TenantGroupOut.model_validate(group)
+
+
+@router.get("/{group_id}", response_model=TenantGroupOut)
+def get_group(
+    group_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_READ,
+        detail="No permission to view groups",
+    )
+    group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
+    return TenantGroupOut.model_validate(group)
+
+
+@router.patch("/{group_id}", response_model=TenantGroupOut)
+def patch_group(
+    group_id: UUID,
+    payload: TenantGroupUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage groups",
+    )
+    group = TenantGroupService.update_group(
+        db,
+        tenant_id=tenant_id,
+        group_id=group_id,
+        name=payload.name,
+        external_id=payload.external_id,
+    )
+    return TenantGroupOut.model_validate(group)
+
+
+@router.delete("/{group_id}", status_code=204)
+def delete_group(
+    group_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage groups",
+    )
+    TenantGroupService.delete_group(db, tenant_id=tenant_id, group_id=group_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{group_id}/members", response_model=TenantGroupMemberListResponse)
+def list_group_members(
+    group_id: UUID,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=1000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_READ,
+        detail="No permission to view group members",
+    )
+    total, rows = TenantGroupService.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=skip, limit=limit)
+    items = [TenantGroupMemberOut(user_id=str(r.user_id or ""), created_at=r.created_at) for r in rows]
+    return TenantGroupMemberListResponse(total=total, items=items)
+
+
+@router.post("/{group_id}/members", response_model=TenantGroupMembersUpdateResponse)
+def add_group_members(
+    group_id: UUID,
+    payload: TenantGroupMembersUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage group members",
+    )
+    added = TenantGroupService.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
+    return TenantGroupMembersUpdateResponse(updated=int(added))
+
+
+@router.post("/{group_id}/members/remove", response_model=TenantGroupMembersUpdateResponse)
+def remove_group_members(
+    group_id: UUID,
+    payload: TenantGroupMembersUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage group members",
+    )
+    removed = TenantGroupService.remove_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
+    return TenantGroupMembersUpdateResponse(updated=int(removed))
+

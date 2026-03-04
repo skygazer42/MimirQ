@@ -5008,6 +5008,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/groups/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Groups */
+        get: operations["list_groups_api_v1_groups__get"];
+        put?: never;
+        /** Create Group */
+        post: operations["create_group_api_v1_groups__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Group */
+        get: operations["get_group_api_v1_groups__group_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Group */
+        delete: operations["delete_group_api_v1_groups__group_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Group */
+        patch: operations["patch_group_api_v1_groups__group_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Group Members */
+        get: operations["list_group_members_api_v1_groups__group_id__members_get"];
+        put?: never;
+        /** Add Group Members */
+        post: operations["add_group_members_api_v1_groups__group_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/members/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove Group Members */
+        post: operations["remove_group_members_api_v1_groups__group_id__members_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rbac/members": {
         parameters: {
             query?: never;
@@ -8150,6 +8222,8 @@ export interface components {
             permission: components["schemas"]["DatasetPermissionEnum"];
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Partial Group List */
+            partial_group_list?: string[] | null;
             /** Default Parser Backend */
             default_parser_backend?: string | null;
             /** Default Chunk Strategy */
@@ -8590,6 +8664,8 @@ export interface components {
             owner_id: string | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Partial Group List */
+            partial_group_list?: string[] | null;
             /** Default Parser Backend */
             default_parser_backend?: string | null;
             /** Default Chunk Strategy */
@@ -9913,6 +9989,8 @@ export interface components {
             permission?: components["schemas"]["DatasetPermissionEnum"] | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Partial Group List */
+            partial_group_list?: string[] | null;
             /** Default Parser Backend */
             default_parser_backend?: string | null;
             /** Default Chunk Strategy */
@@ -10109,6 +10187,8 @@ export interface components {
             owner_id?: string | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Partial Group List */
+            partial_group_list?: string[] | null;
         };
         /**
          * DocumentAccessUpdateRequest
@@ -10123,6 +10203,8 @@ export interface components {
             mode: "inherit" | "only_me" | "all_team_members" | "partial_members";
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            /** Partial Group List */
+            partial_group_list?: string[] | null;
         };
         /**
          * DocumentAnalyticsBundle
@@ -17302,6 +17384,78 @@ export interface components {
              * Format: date-time
              */
             window_end: string;
+        };
+        /** TenantGroupCreateRequest */
+        TenantGroupCreateRequest: {
+            /** Name */
+            name: string;
+            /** External Id */
+            external_id?: string | null;
+        };
+        /** TenantGroupListResponse */
+        TenantGroupListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["TenantGroupOut"][];
+        };
+        /** TenantGroupMemberListResponse */
+        TenantGroupMemberListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["TenantGroupMemberOut"][];
+        };
+        /** TenantGroupMemberOut */
+        TenantGroupMemberOut: {
+            /** User Id */
+            user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** TenantGroupMembersUpdateRequest */
+        TenantGroupMembersUpdateRequest: {
+            /** Member Ids */
+            member_ids?: string[];
+        };
+        /** TenantGroupMembersUpdateResponse */
+        TenantGroupMembersUpdateResponse: {
+            /** Updated */
+            updated: number;
+        };
+        /** TenantGroupOut */
+        TenantGroupOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Name */
+            name: string;
+            /** External Id */
+            external_id?: string | null;
+        };
+        /** TenantGroupUpdateRequest */
+        TenantGroupUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** External Id */
+            external_id?: string | null;
         };
         /** TenantMemberListResponse */
         TenantMemberListResponse: {
@@ -27975,6 +28129,302 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimilarityCalculateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_groups_api_v1_groups__get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantGroupListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_group_api_v1_groups__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantGroupCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantGroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_group_api_v1_groups__group_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantGroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_group_api_v1_groups__group_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_group_api_v1_groups__group_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantGroupUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantGroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_group_members_api_v1_groups__group_id__members_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantGroupMemberListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_group_members_api_v1_groups__group_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantGroupMembersUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantGroupMembersUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_group_members_api_v1_groups__group_id__members_remove_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantGroupMembersUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantGroupMembersUpdateResponse"];
                 };
             };
             /** @description Validation Error */

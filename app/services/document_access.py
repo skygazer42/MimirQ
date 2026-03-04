@@ -6,14 +6,37 @@ from sqlalchemy.orm import Session
 
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
+from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.document import DocumentPermission
 from app.services.dataset_service import DatasetService
+from app.models.tenant_group import TenantGroupMember
 
 # Document-level ACL ("security trimming") modes.
 _DOC_ACCESS_DEFAULTS = {"", "inherit"}
 _DOC_ACCESS_ALL = "all_team_members"
 _DOC_ACCESS_OWNER_ONLY = "only_me"
 _DOC_ACCESS_PARTIAL = "partial_members"
+
+
+def _resolve_account_group_ids(db: Session, *, tenant_id: UUID, account_id: str) -> Set[UUID]:
+    """
+    Resolve tenant-scoped group ids for an account.
+
+    Note: this is a low-level helper used by permission checks; it must not raise
+    for missing memberships (empty set means "no groups").
+    """
+    uid = (str(account_id or "")).strip()
+    if not uid:
+        return set()
+    rows = (
+        db.query(TenantGroupMember.group_id)
+        .filter(
+            TenantGroupMember.tenant_id == tenant_id,
+            TenantGroupMember.user_id == uid,
+        )
+        .all()
+    )
+    return {row[0] for row in rows if row and row[0]}
 
 
 def _normalize_doc_access_mode(value: object) -> str:
@@ -89,6 +112,19 @@ def _resolve_allowed_dataset_ids(
         )
         allowed_dataset_ids.update(row[0] for row in rows)
 
+        group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        if group_ids:
+            rows = (
+                db.query(DatasetGroupPermission.dataset_id)
+                .filter(
+                    DatasetGroupPermission.tenant_id == tenant_id,
+                    DatasetGroupPermission.dataset_id.in_(list(partial_dataset_ids)),
+                    DatasetGroupPermission.group_id.in_(list(group_ids)),
+                )
+                .all()
+            )
+            allowed_dataset_ids.update(row[0] for row in rows if row and row[0])
+
     return dataset_map, allowed_dataset_ids
 
 
@@ -145,6 +181,18 @@ def get_allowed_document_id_sets(
             .all()
         )
         allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+        group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        if group_ids:
+            rows = (
+                db.query(DocumentGroupPermission.document_id)
+                .filter(
+                    DocumentGroupPermission.tenant_id == tenant_id,
+                    DocumentGroupPermission.document_id.in_(doc_ids_needing_allowlist),
+                    DocumentGroupPermission.group_id.in_(list(group_ids)),
+                )
+                .all()
+            )
+            allowlist_doc_ids.update({row[0] for row in rows if row and row[0]})
 
     allowed_ids: Set[UUID] = set()
     for doc_id, dataset_id, access_mode, owner_id in documents:
@@ -272,6 +320,18 @@ def list_accessible_document_ids(
             .all()
         )
         allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+        group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        if group_ids:
+            rows = (
+                db.query(DocumentGroupPermission.document_id)
+                .filter(
+                    DocumentGroupPermission.tenant_id == tenant_id,
+                    DocumentGroupPermission.document_id.in_(doc_ids_needing_allowlist),
+                    DocumentGroupPermission.group_id.in_(list(group_ids)),
+                )
+                .all()
+            )
+            allowlist_doc_ids.update({row[0] for row in rows if row and row[0]})
 
     accessible: List[UUID] = []
     for doc_id, dataset_id, access_mode, owner_id, _ in documents:

@@ -244,6 +244,7 @@ class DocumentAccessInfo(BaseModel):
     mode: DocumentAccessMode = "inherit"
     owner_id: Optional[str] = Field(default=None, max_length=255)
     partial_member_list: Optional[List[str]] = Field(default=None, max_length=200)
+    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
 
 
 class DocumentAccessUpdateRequest(BaseModel):
@@ -251,6 +252,7 @@ class DocumentAccessUpdateRequest(BaseModel):
 
     mode: DocumentAccessMode = Field(default="inherit")
     partial_member_list: Optional[List[str]] = Field(default=None, max_length=200)
+    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _normalize(self) -> "DocumentAccessUpdateRequest":
@@ -270,9 +272,26 @@ class DocumentAccessUpdateRequest(BaseModel):
                     break
             self.partial_member_list = normalized
 
+        if self.partial_group_list is not None:
+            seen_g: set[UUID] = set()
+            normalized_g: list[UUID] = []
+            for raw in self.partial_group_list:
+                try:
+                    gid = UUID(str(raw))
+                except Exception as exc:
+                    raise ValueError("partial_group_list contains invalid UUID") from exc
+                if gid in seen_g:
+                    continue
+                seen_g.add(gid)
+                normalized_g.append(gid)
+                if len(normalized_g) >= 200:
+                    break
+            self.partial_group_list = normalized_g
+
         # Non-partial modes ignore allowlist (server will clear).
         if self.mode != "partial_members":
             self.partial_member_list = None
+            self.partial_group_list = None
         return self
 
 
