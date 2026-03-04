@@ -9,6 +9,7 @@ Key goals:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import re
@@ -42,10 +43,10 @@ from app.api.schemas.evidence_repair import (
     EvidenceReferenceRepairRequest,
     EvidenceReferenceRepairResponse,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
 from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.services.audit_log_service import audit_log_event
@@ -127,33 +128,12 @@ def _audit_reference_sources_drift(
     )
 
 
-def _select_quote_needle(quote: str) -> str:
-    """
-    Build a bounded, search-friendly needle from a quote excerpt.
-
-    We avoid returning the quote itself in API responses; this is internal only.
-    """
-    import re
-
-    raw = " ".join(str(quote or "").split()).strip()
-    if not raw:
-        return ""
-    # Prefer longer contiguous alnum/CJK runs (more specific than punctuation-heavy prefixes).
-    runs = re.findall(r"[A-Za-z0-9\u4e00-\u9fff]{12,}", raw)
-    if runs:
-        runs.sort(key=lambda s: (-len(s), s))
-        return runs[0][:80]
-    return raw[:80]
-
-
-def _escape_like(s: str) -> str:
-    return (s or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 @router.post("/suites/{suite_id}/repair-reference-sources", response_model=EvidenceReferenceRepairResponse)
 async def repair_evidence_suite_reference_sources(
     suite_id: UUID,
     payload: EvidenceReferenceRepairRequest,
+    response: Response,
+    async_mode: bool = Query(default=False, description="Enqueue repair via task queue (arq)"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -185,356 +165,98 @@ async def repair_evidence_suite_reference_sources(
     else:
         DatasetService.assert_dataset_readable(db, ds, account_id)
 
-    max_items = int(payload.max_items or 0)
-    q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
-    if not bool(payload.include_archived_items):
-        q = q.filter(EvidenceItem.status != "archived")
-    items = q.order_by(EvidenceItem.updated_at.desc()).limit(max_items).all()
+    # Optional async enqueue: run repair as a queue job (default remains synchronous for compatibility).
+    if bool(async_mode):
+        if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+            raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
+        try:
+            from app.tasks.queue import enqueue_evidence_reference_sources_repair
 
-    from app.services.evidence_drift_audit import classify_reference_source_drift
-
-    scanned_refs = 0
-    drifted_refs = 0
-    repaired_refs = 0
-    skipped_approved = 0
-    skipped_archived = 0
-    changes: list[dict[str, Any]] = []
-    changes_truncated = False
-
-    def _append_change(change: dict[str, Any]) -> None:
-        nonlocal changes_truncated
-        if len(changes) < int(payload.max_changes or 0):
-            changes.append(change)
-        else:
-            changes_truncated = True
-
-    for it in items:
-        st = str(getattr(it, "status", "") or "").strip().lower() or "unknown"
-        if st == "archived" and not bool(payload.include_archived_items):
-            skipped_archived += 1
-            continue
-        if st == "approved" and not bool(payload.allow_approved):
-            skipped_approved += 1
-            continue
-
-        raw_refs = getattr(it, "reference_sources", None)
-        refs = raw_refs if isinstance(raw_refs, list) else []
-        if not refs:
-            continue
-
-        # Guardrail per item to avoid pathological payloads.
-        refs = refs[: int(payload.max_refs_per_item or 0)]
-
-        # Prefetch docs/chunks for drift classification.
-        doc_ids: set[UUID] = set()
-        chunk_ids: set[UUID] = set()
-        for ref in refs:
-            if not isinstance(ref, dict):
-                continue
-            try:
-                doc_ids.add(UUID(str(ref.get("document_id"))))
-                chunk_ids.add(UUID(str(ref.get("chunk_id"))))
-            except Exception:
-                continue
-
-        doc_rows = (
-            db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.file_type, DBDocument.doc_metadata)
-            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(sorted(doc_ids)))
-            .all()
-            if doc_ids
-            else []
-        )
-        doc_map: dict[UUID, dict[str, Any]] = {
-            row[0]: {"id": row[0], "dataset_id": row[1], "file_type": row[2], "metadata": row[3] if isinstance(row[3], dict) else {}}
-            for row in doc_rows
-            if row and row[0] is not None
-        }
-        chunk_rows = (
-            db.query(DocumentChunk.id, DocumentChunk.document_id, DocumentChunk.chunk_index, DocumentChunk.doc_metadata, DocumentChunk.page_number, DocumentChunk.start_char, DocumentChunk.end_char, DocumentChunk.disabled_at)
-            .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.id.in_(sorted(chunk_ids)))
-            .all()
-            if chunk_ids
-            else []
-        )
-        chunk_map: dict[UUID, dict[str, Any]] = {
-            row[0]: {
-                "id": row[0],
-                "document_id": row[1],
-                "chunk_index": row[2],
-                "metadata": row[3] if isinstance(row[3], dict) else {},
-                "page_number": row[4],
-                "start_char": row[5],
-                "end_char": row[6],
-                "disabled_at": row[7],
-            }
-            for row in chunk_rows
-            if row and row[0] is not None
-        }
-
-        patched_refs: list[dict[str, Any]] = []
-        changed_item = False
-
-        for ref in refs:
-            if not isinstance(ref, dict):
-                patched_refs.append(ref)
-                continue
-
-            scanned_refs += 1
-            try:
-                doc_uuid = UUID(str(ref.get("document_id")))
-                chunk_uuid = UUID(str(ref.get("chunk_id")))
-            except Exception:
-                drifted_refs += 1
-                patched_refs.append(ref)
-                continue
-
-            doc = doc_map.get(doc_uuid)
-            chunk = chunk_map.get(chunk_uuid)
-
-            ok, reason, _expected, _observed = classify_reference_source_drift(
-                reference_source=ref,
-                document_row=doc,
-                chunk_row=chunk,
-                suite_dataset_id=suite.dataset_id,
+            cfg = payload.model_dump()
+            cfg_json = json.dumps(cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            cfg_hash = hashlib.sha256(cfg_json.encode("utf-8", "ignore")).hexdigest()[:16]
+            job_id = f"evidence_repair:{tenant_id}:{suite_id}:{cfg_hash}"
+            task_id = await enqueue_evidence_reference_sources_repair(
+                tenant_id=tenant_id,
+                suite_id=suite_id,
+                requested_by=account_id,
+                job_id=job_id,
+                apply=bool(payload.apply),
+                allow_approved=bool(payload.allow_approved),
+                include_archived_items=bool(payload.include_archived_items),
+                max_items=int(payload.max_items or 0),
+                max_refs_per_item=int(payload.max_refs_per_item or 0),
+                max_changes=int(payload.max_changes or 0),
             )
-            if ok:
-                patched_refs.append(ref)
-                continue
 
-            drifted_refs += 1
-
-            # Do not attempt repair if the document is missing or out of scope.
-            if reason in {"document_missing", "document_dataset_mismatch"}:
-                _append_change(
-                    {
-                        "suite_id": suite_id,
-                        "item_id": it.id,
-                        "item_status": st,
-                        "dataset_id": it.dataset_id,
-                        "document_id": doc_uuid,
-                        "chunk_id_before": chunk_uuid,
-                        "chunk_id_after": None,
-                        "reason": reason,
-                        "repaired": False,
-                        "method": None,
-                        "meta": {},
-                    }
-                )
-                patched_refs.append(ref)
-                continue
-
-            repaired = False
-            method: str | None = None
-            new_chunk_id: UUID | None = None
-            new_chunk_row: dict[str, Any] | None = None
-
-            # 1) Exact relink by (doc_pipeline_key + chunk_index) within the same document.
-            dpk = ref.get("doc_pipeline_key")
-            ci = ref.get("chunk_index")
-            if isinstance(dpk, str) and dpk.strip() and ci is not None:
-                try:
-                    ci_int = int(ci)
-                except Exception:
-                    ci_int = None
-                if ci_int is not None:
-                    try:
-                        row = (
-                            db.query(
-                                DocumentChunk.id,
-                                DocumentChunk.document_id,
-                                DocumentChunk.chunk_index,
-                                DocumentChunk.doc_metadata,
-                                DocumentChunk.page_number,
-                                DocumentChunk.start_char,
-                                DocumentChunk.end_char,
-                                DocumentChunk.disabled_at,
-                            )
-                            .filter(
-                                DocumentChunk.tenant_id == tenant_id,
-                                DocumentChunk.document_id == doc_uuid,
-                                DocumentChunk.chunk_index == ci_int,
-                                DocumentChunk.disabled_at.is_(None),
-                                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == dpk.strip(),  # type: ignore[attr-defined]
-                            )
-                            .limit(1)
-                            .first()
-                        )
-                    except Exception:
-                        row = None
-                    if row and row[0] is not None:
-                        new_chunk_id = row[0]
-                        new_chunk_row = {
-                            "id": row[0],
-                            "document_id": row[1],
-                            "chunk_index": row[2],
-                            "metadata": row[3] if isinstance(row[3], dict) else {},
-                            "page_number": row[4],
-                            "start_char": row[5],
-                            "end_char": row[6],
-                            "disabled_at": row[7],
-                        }
-                        if new_chunk_id != chunk_uuid:
-                            repaired = True
-                            method = "doc_pipeline_key+chunk_index"
-
-            # 2) Quote needle match (prefer active pipeline when available).
-            if not repaired:
-                quote = ref.get("quote")
-                if isinstance(quote, str) and quote.strip():
-                    needle = _select_quote_needle(quote)
-                    if needle and len(needle) >= 12 and doc is not None:
-                        doc_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-                        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
-                        active_key = f"{doc_uuid}:{active_hash}" if active_hash else ""
-                        pattern = f"%{_escape_like(needle)}%"
-                        q2 = (
-                            db.query(
-                                DocumentChunk.id,
-                                DocumentChunk.document_id,
-                                DocumentChunk.chunk_index,
-                                DocumentChunk.doc_metadata,
-                                DocumentChunk.page_number,
-                                DocumentChunk.start_char,
-                                DocumentChunk.end_char,
-                            )
-                            .filter(
-                                DocumentChunk.tenant_id == tenant_id,
-                                DocumentChunk.document_id == doc_uuid,
-                                DocumentChunk.disabled_at.is_(None),
-                                DocumentChunk.content.ilike(pattern, escape="\\"),
-                            )
-                        )
-                        if active_key:
-                            try:
-                                q2 = q2.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
-                            except Exception:
-                                pass
-                        rows = q2.limit(20).all()
-                        if rows:
-                            # Pick the lowest chunk_index (stable) among matches.
-                            rows_sorted = sorted(rows, key=lambda r: (int(r[2] or 0), str(r[0] or "")))
-                            best = rows_sorted[0]
-                            if best and best[0] is not None:
-                                new_chunk_id = best[0]
-                                new_chunk_row = {
-                                    "id": best[0],
-                                    "document_id": best[1],
-                                    "chunk_index": best[2],
-                                    "metadata": best[3] if isinstance(best[3], dict) else {},
-                                    "page_number": best[4],
-                                    "start_char": best[5],
-                                    "end_char": best[6],
-                                    "disabled_at": None,
-                                }
-                                if new_chunk_id != chunk_uuid:
-                                    repaired = True
-                                    method = "quote_needle"
-
-            if repaired and new_chunk_id is not None and new_chunk_row is not None:
-                repaired_refs += 1
-                patched = dict(ref)
-                patched["chunk_id"] = str(new_chunk_id)
-                # Refresh audit fields from the newly linked chunk (best-effort).
-                try:
-                    patched["chunk_index"] = int(new_chunk_row.get("chunk_index") or 0)
-                except Exception:
-                    pass
-                cmeta = new_chunk_row.get("metadata") if isinstance(new_chunk_row.get("metadata"), dict) else {}
-                ph = str(cmeta.get("pipeline_hash") or "").strip()
-                if ph:
-                    patched["pipeline_hash"] = ph
-                dpk2 = str(cmeta.get("doc_pipeline_key") or "").strip()
-                if dpk2:
-                    patched["doc_pipeline_key"] = dpk2
-                pn = new_chunk_row.get("page_number")
-                if isinstance(pn, int) and pn > 0:
-                    patched["page_number"] = pn
-                sc = new_chunk_row.get("start_char")
-                if isinstance(sc, int) and sc >= 0:
-                    patched["start_char"] = sc
-                ec = new_chunk_row.get("end_char")
-                if isinstance(ec, int) and ec >= 0:
-                    patched["end_char"] = ec
-
-                if bool(payload.apply):
-                    changed_item = True
-                patched_refs.append(patched)
-
-                _append_change(
-                    {
-                        "suite_id": suite_id,
-                        "item_id": it.id,
-                        "item_status": st,
-                        "dataset_id": it.dataset_id,
-                        "document_id": doc_uuid,
-                        "chunk_id_before": chunk_uuid,
-                        "chunk_id_after": new_chunk_id,
-                        "reason": reason,
-                        "repaired": True,
-                        "method": method,
-                        "meta": {"needle_len": len(_select_quote_needle(str(ref.get("quote") or ""))) if method == "quote_needle" else None},
-                    }
-                )
-                continue
-
-            # No repair found.
-            _append_change(
-                {
-                    "suite_id": suite_id,
-                    "item_id": it.id,
-                    "item_status": st,
-                    "dataset_id": it.dataset_id,
-                    "document_id": doc_uuid,
-                    "chunk_id_before": chunk_uuid,
-                    "chunk_id_after": None,
-                    "reason": reason,
-                    "repaired": False,
-                    "method": None,
-                    "meta": {},
-                }
-            )
-            patched_refs.append(ref)
-
-        if bool(payload.apply) and changed_item:
-            it.reference_sources = patched_refs
-            db.add(it)
-            db.commit()
-            db.refresh(it)
-            # Best-effort audit log (do not include evidence content).
+            # Best-effort audit log for enqueue (PII-safe).
             try:
-                from app.services.audit_log_service import audit_log_event
-
                 audit_log_event(
                     db,
                     tenant_id=tenant_id,
                     actor_id=account_id,
-                    action="evidence.reference_sources.repair",
-                    resource_type="evidence_item",
-                    resource_id=str(it.id),
+                    action="evidence.reference_sources.repair.enqueue",
+                    resource_type="evidence_suite",
+                    resource_id=str(suite_id),
                     details={
-                        "suite_id": str(suite_id),
-                        "dataset_id": str(suite.dataset_id),
-                        "item_status": st,
-                        "applied": True,
+                        "async": True,
+                        "task_id": str(task_id) if task_id else None,
+                        "applied": bool(payload.apply),
+                        "allow_approved": bool(payload.allow_approved),
+                        "include_archived_items": bool(payload.include_archived_items),
+                        "max_items": int(payload.max_items or 0),
+                        "max_refs_per_item": int(payload.max_refs_per_item or 0),
+                        "max_changes": int(payload.max_changes or 0),
                     },
                 )
                 db.commit()
             except Exception:
-                db.rollback()
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
-    return EvidenceReferenceRepairResponse(
-        suite_id=suite_id,
-        dataset_id=suite.dataset_id,
-        applied=bool(payload.apply),
-        scanned_items=len(items),
-        scanned_references=int(scanned_refs),
-        drifted_references=int(drifted_refs),
-        repaired_references=int(repaired_refs),
-        skipped_approved_items=int(skipped_approved),
-        skipped_archived_items=int(skipped_archived),
-        changes_truncated=bool(changes_truncated),
-        changes=changes,
+            if response is not None:
+                response.status_code = 202
+                if task_id:
+                    response.headers["X-Task-Id"] = str(task_id)
+
+            return EvidenceReferenceRepairResponse(
+                suite_id=suite_id,
+                dataset_id=suite.dataset_id,
+                applied=bool(payload.apply),
+                scanned_items=0,
+                scanned_references=0,
+                drifted_references=0,
+                repaired_references=0,
+                skipped_approved_items=0,
+                skipped_archived_items=0,
+                changes_truncated=False,
+                changes=[],
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=503, detail=f"Failed to enqueue repair job: {str(exc)[:200]}") from exc
+
+    from app.services.evidence_reference_repair_service import (
+        repair_evidence_suite_reference_sources_with_dataset,
     )
+
+    result = repair_evidence_suite_reference_sources_with_dataset(
+        db,
+        tenant_id=tenant_id,
+        suite_id=suite_id,
+        suite_dataset_id=suite.dataset_id,
+        apply=bool(payload.apply),
+        allow_approved=bool(payload.allow_approved),
+        include_archived_items=bool(payload.include_archived_items),
+        max_items=int(payload.max_items or 0),
+        max_refs_per_item=int(payload.max_refs_per_item or 0),
+        max_changes=int(payload.max_changes or 0),
+        actor_id=account_id,
+    )
+    return EvidenceReferenceRepairResponse(**result)
 
 
 @router.post("/suites", response_model=EvidenceSuiteOut, status_code=201)

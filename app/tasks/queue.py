@@ -233,3 +233,45 @@ async def enqueue_connector_run(
         _job_try=1,
     )
     return getattr(job, "job_id", None) or job_id
+
+
+async def enqueue_evidence_reference_sources_repair(
+    *,
+    tenant_id: UUID,
+    suite_id: UUID,
+    requested_by: str,
+    apply: bool,
+    allow_approved: bool,
+    include_archived_items: bool,
+    max_items: int,
+    max_refs_per_item: int,
+    max_changes: int,
+    job_id: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Enqueue an EvidenceSuite reference_sources repair job (bounded).
+
+    Returns:
+        - task_id/job_id (queue enabled)
+        - None (queue disabled)
+    """
+    q = await get_queue()
+    if q is None:
+        return None
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    job = await q.enqueue_job(
+        "evidence_reference_sources_repair_job",
+        str(tenant_id),
+        str(suite_id),
+        requested_by,
+        bool(apply),
+        bool(allow_approved),
+        bool(include_archived_items),
+        int(max_items or 0),
+        int(max_refs_per_item or 0),
+        int(max_changes or 0),
+        _queue_name=queue_name,
+        _job_id=job_id,
+        _job_try=1,
+    )
+    return getattr(job, "job_id", None) or job_id
