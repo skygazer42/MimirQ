@@ -21,6 +21,7 @@ from app.core.database import get_db
 from app.services.ops_config_snapshot_service import build_ops_config_snapshot
 from app.services.rag_metrics_dashboard import (
     build_rag_trace_bundle,
+    build_rag_trace_bundle_diff,
     summarize_rag_metrics,
     summarize_rag_query_analytics,
 )
@@ -94,6 +95,52 @@ class RagTraceBundleResponse(BaseModel):
     record_count: int
     request_id: str
     records: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class RagTraceBundleSummaryResponse(BaseModel):
+    request_id: str
+    window_minutes: int
+    truncated: bool
+
+    retrieval_config_hash: str | None = None
+    retrieval_mode: str | None = None
+    retrieval_requested_mode: str | None = None
+    retrieval_auto_routed: bool | None = None
+    retrieval_profile: str | None = None
+    retrieval_top_k: int | None = None
+    retrieval_alpha: float | None = None
+    retrieval_enable_reranker: bool | None = None
+    retrieval_reranker_provider: str | None = None
+    retrieval_reranker_top_n: int | None = None
+    retrieval_query_parallelism: int | None = None
+    retrieval_query_count: int | None = None
+    retrieval_elapsed_sec: float | None = None
+    retrieval_error_kinds: Dict[str, int] = Field(default_factory=dict)
+
+    citations_count: int | None = None
+
+    model_route: str | None = None
+    model_used: str | None = None
+    vector_backend: str | None = None
+
+
+class RagTraceBundleDiffItem(BaseModel):
+    key: str
+    a: Any | None = None
+    b: Any | None = None
+    delta: float | None = None
+
+
+class RagTraceBundleDiffResponse(BaseModel):
+    schema: str
+    generated_at: datetime
+    request_id_a: str
+    request_id_b: str
+    truncated: bool
+
+    summary_a: RagTraceBundleSummaryResponse
+    summary_b: RagTraceBundleSummaryResponse
+    diff: List[RagTraceBundleDiffItem] = Field(default_factory=list)
 
 
 class OpsConfigSnapshotResponse(BaseModel):
@@ -225,6 +272,47 @@ def get_rag_trace_bundle(
     if bundle is None:
         raise HTTPException(status_code=404, detail="trace bundle not found for request_id")
     return bundle.__dict__
+
+
+@router.get("/rag-metrics/trace-bundle/diff", response_model=RagTraceBundleDiffResponse)
+def get_rag_trace_bundle_diff(
+    request_id_a: str = Query(..., min_length=1, max_length=200, description="X-Request-ID A to compare"),
+    request_id_b: str = Query(..., min_length=1, max_length=200, description="X-Request-ID B to compare"),
+    window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
+    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+
+    a = str(request_id_a or "").strip()
+    b = str(request_id_b or "").strip()
+    if not a or not b:
+        raise HTTPException(status_code=400, detail="request_id_a and request_id_b are required")
+    if a == b:
+        raise HTTPException(status_code=400, detail="request_id_a and request_id_b must be different")
+
+    bundle_a = build_rag_trace_bundle(
+        tenant_id=str(tenant_id),
+        request_id=a,
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
+    if bundle_a is None:
+        raise HTTPException(status_code=404, detail="trace bundle not found for request_id_a")
+
+    bundle_b = build_rag_trace_bundle(
+        tenant_id=str(tenant_id),
+        request_id=b,
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
+    if bundle_b is None:
+        raise HTTPException(status_code=404, detail="trace bundle not found for request_id_b")
+
+    diff = build_rag_trace_bundle_diff(bundle_a=bundle_a, bundle_b=bundle_b)
+    return diff.__dict__
 
 
 @router.get("/config/snapshot", response_model=OpsConfigSnapshotResponse)

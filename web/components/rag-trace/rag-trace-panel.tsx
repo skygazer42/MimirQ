@@ -1,19 +1,20 @@
 'use client'
 
-import * as React from 'react'
-import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download } from 'lucide-react'
-import { toast } from 'sonner'
+	import * as React from 'react'
+	import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from 'lucide-react'
+	import { toast } from 'sonner'
 
 import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
-import { Panel } from '@/components/ui/panel'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import type { RagTrace, RagTraceCitation, RagTraceListResponse } from '@/types'
+	import { Badge } from '@/components/ui/badge'
+	import { Button } from '@/components/ui/button'
+	import { EmptyState } from '@/components/ui/empty-state'
+	import { Input } from '@/components/ui/input'
+	import { Panel } from '@/components/ui/panel'
+	import { ScrollArea } from '@/components/ui/scroll-area'
+	import type { RagTrace, RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
 
 function formatTs(tsMs: number) {
   try {
@@ -63,6 +64,20 @@ function isNonZero(v?: number | null, eps = 1e-12) {
   return Math.abs(n) > eps
 }
 
+function formatDiffValue(value: any, maxLen = 160): string {
+  if (value == null) return '—'
+  if (typeof value === 'string') return value.trim() ? value : '—'
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    const s = JSON.stringify(value)
+    if (!s) return '—'
+    return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s
+  } catch {
+    const s = String(value)
+    return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s
+  }
+}
+
 function getPrimaryScore(c: RagTraceCitation) {
   // Prefer rerank score when available.
   const v = c.rerank_score ?? c.retrieval_score ?? c.relevance_score ?? null
@@ -81,10 +96,15 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
 
   const [data, setData] = React.useState<RagTraceListResponse | null>(null)
   const [loading, setLoading] = React.useState(false)
-  const [selectedIndex, setSelectedIndex] = React.useState(0)
-  const [bundleDownloading, setBundleDownloading] = React.useState(false)
-  const [bundleError, setBundleError] = React.useState<string | null>(null)
-  const bundleDownloadingRef = React.useRef(false)
+	const [selectedIndex, setSelectedIndex] = React.useState(0)
+	const [bundleDownloading, setBundleDownloading] = React.useState(false)
+	const [bundleError, setBundleError] = React.useState<string | null>(null)
+	const bundleDownloadingRef = React.useRef(false)
+	const [diffOpen, setDiffOpen] = React.useState(false)
+	const [diffOtherRequestId, setDiffOtherRequestId] = React.useState('')
+	const [diffLoading, setDiffLoading] = React.useState(false)
+	const [diffError, setDiffError] = React.useState<string | null>(null)
+	const [diffResult, setDiffResult] = React.useState<RagTraceBundleDiffResponse | null>(null)
 
   const items = data?.items ?? []
   const selected = items[selectedIndex] ?? items[0] ?? null
@@ -154,12 +174,42 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
       bundleDownloadingRef.current = false
       setBundleDownloading(false)
     }
-  }, [requestId])
+	  }, [requestId])
 
-  const load = React.useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await chatApi.getRagTraces(conversationId, { limit: 40, window_minutes: 24 * 60 })
+	  const runDiff = React.useCallback(async () => {
+	    const a = requestId
+	    const b = diffOtherRequestId.trim()
+	    if (!a || !b) return
+	    if (a === b) {
+	      toast.error('请提供两个不同的 request_id')
+	      return
+	    }
+
+	    setDiffLoading(true)
+	    setDiffError(null)
+	    try {
+	      const res = await observabilityApi.getRagTraceBundleDiff({ request_id_a: a, request_id_b: b })
+	      setDiffResult(res)
+	    } catch (err) {
+	      const msg = formatApiError(err, '加载 diff 失败')
+	      setDiffResult(null)
+	      setDiffError(msg)
+	      toast.error(msg)
+	    } finally {
+	      setDiffLoading(false)
+	    }
+	  }, [diffOtherRequestId, requestId])
+
+	  React.useEffect(() => {
+	    // Clear diff results when switching the selected trace.
+	    setDiffResult(null)
+	    setDiffError(null)
+	  }, [requestId])
+
+	  const load = React.useCallback(async () => {
+	    setLoading(true)
+	    try {
+	      const res = await chatApi.getRagTraces(conversationId, { limit: 40, window_minutes: 24 * 60 })
       setData(res)
       setSelectedIndex(0)
     } catch (err) {
@@ -299,31 +349,128 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     <Timer className="h-4 w-4" />
                     Retrieve {formatSec(selected?.retrieval?.elapsed_sec)} · Rerank {formatSec(selected?.rerank?.elapsed_sec)}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2 rounded-xl"
-                    disabled={!requestId || bundleDownloading}
-                    onClick={() => void downloadBundle()}
-                    title="下载 request_id bundle（admin-only）"
-                  >
-                    {bundleDownloading ? (
-                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                    下载 bundle
-                  </Button>
-                </div>
-              </div>
+	                  <Button
+	                    variant="outline"
+	                    size="sm"
+	                    className="gap-2 rounded-xl"
+	                    disabled={!requestId || bundleDownloading}
+	                    onClick={() => void downloadBundle()}
+	                    title="下载 request_id bundle（admin-only）"
+	                  >
+	                    {bundleDownloading ? (
+	                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+	                    ) : (
+	                      <Download className="h-4 w-4" />
+	                    )}
+	                    下载 bundle
+	                  </Button>
+	                  <Button
+	                    variant="outline"
+	                    size="sm"
+	                    className="gap-2 rounded-xl"
+	                    disabled={!requestId}
+	                    onClick={() => setDiffOpen((v) => !v)}
+	                    title="对比两个 request_id 的 trace bundle（admin-only）"
+	                  >
+	                    <GitCompare className="h-4 w-4" />
+	                    对比
+	                  </Button>
+	                </div>
+	              </div>
 
-              {bundleError ? (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  {bundleError}
-                </div>
-              ) : null}
+	              {bundleError ? (
+	                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+	                  {bundleError}
+	                </div>
+	              ) : null}
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+	              {diffOpen ? (
+	                <Panel variant="muted" className="space-y-3">
+	                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+	                    <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
+	                      <div className="space-y-1">
+	                        <div className="text-[11px] text-muted-foreground">request_id A</div>
+	                        <Input value={requestId} readOnly className="font-mono text-xs" />
+	                      </div>
+	                      <div className="space-y-1">
+	                        <div className="text-[11px] text-muted-foreground">request_id B</div>
+	                        <Input
+	                          value={diffOtherRequestId}
+	                          onChange={(e) => setDiffOtherRequestId(e.target.value)}
+	                          placeholder="输入另一个 request_id"
+	                          className="font-mono text-xs"
+	                        />
+	                      </div>
+	                    </div>
+	                    <Button
+	                      variant="outline"
+	                      size="sm"
+	                      className="gap-2 rounded-xl"
+	                      disabled={!requestId || !diffOtherRequestId.trim() || diffLoading}
+	                      onClick={() => void runDiff()}
+	                    >
+	                      {diffLoading ? (
+	                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+	                      ) : (
+	                        <GitCompare className="h-4 w-4" />
+	                      )}
+	                      比较
+	                    </Button>
+	                  </div>
+
+	                  {diffError ? (
+	                    <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+	                      {diffError}
+	                    </div>
+	                  ) : null}
+
+	                  {diffResult ? (
+	                    <div className="space-y-3">
+	                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+	                        <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+	                          <div className="text-[11px] text-muted-foreground">A</div>
+	                          <div className="mt-1 text-xs text-muted-foreground">
+	                            mode={diffResult.summary_a?.retrieval_mode || '—'} · cfg=
+	                            {diffResult.summary_a?.retrieval_config_hash ? shortHash(diffResult.summary_a.retrieval_config_hash) : '—'} · citations=
+	                            {diffResult.summary_a?.citations_count ?? '—'}
+	                          </div>
+	                        </div>
+	                        <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+	                          <div className="text-[11px] text-muted-foreground">B</div>
+	                          <div className="mt-1 text-xs text-muted-foreground">
+	                            mode={diffResult.summary_b?.retrieval_mode || '—'} · cfg=
+	                            {diffResult.summary_b?.retrieval_config_hash ? shortHash(diffResult.summary_b.retrieval_config_hash) : '—'} · citations=
+	                            {diffResult.summary_b?.citations_count ?? '—'}
+	                          </div>
+	                        </div>
+	                      </div>
+
+	                      <div className="text-[11px] text-muted-foreground">
+	                        changes: {diffResult.diff?.length ?? 0} · truncated: {diffResult.truncated ? 'yes' : 'no'}
+	                      </div>
+	                      <div className="space-y-2">
+	                        {(diffResult.diff || []).map((it, idx) => (
+	                          <div
+	                            key={`${it.key}-${idx}`}
+	                            className="grid grid-cols-1 gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 md:grid-cols-3"
+	                          >
+	                            <div className="text-xs font-mono text-foreground">{it.key}</div>
+	                            <div className="text-xs text-muted-foreground break-words">{formatDiffValue(it.a)}</div>
+	                            <div className="text-xs text-muted-foreground break-words">
+	                              {formatDiffValue(it.b)}
+	                              {it.delta != null && Number.isFinite(Number(it.delta)) ? (
+	                                <span className="ml-2 font-mono text-[11px] text-foreground/80">Δ {String(it.delta)}</span>
+	                              ) : null}
+	                            </div>
+	                          </div>
+	                        ))}
+	                      </div>
+	                    </div>
+	                  ) : null}
+	                </Panel>
+	              ) : null}
+
+	              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <Panel variant="muted" className="flex items-center gap-3">
                   <Timer className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                   <div>
