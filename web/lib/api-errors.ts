@@ -109,6 +109,19 @@ function extractHeaderRequestId(headers: any): string | undefined {
   return asNonEmptyString(String(raw))
 }
 
+function extractHeaderRetryAfterSec(headers: any): number | undefined {
+  if (!headers) return undefined
+  const raw =
+    headers['retry-after'] ??
+    headers['Retry-After'] ??
+    headers['retry-after'.toLowerCase()] ??
+    headers['Retry-After'.toLowerCase()]
+  if (raw == null) return undefined
+  const parsed = asFiniteNumber(raw)
+  if (parsed == null) return undefined
+  return Math.max(0, Math.round(parsed))
+}
+
 function extractConfigRequestId(headers: any): string | undefined {
   if (!headers) return undefined
   try {
@@ -173,7 +186,7 @@ export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorI
 
   if (status === 429) {
     const meta = extractRateLimitDetail(data)
-    const retryAfterSec = meta?.retryAfterSec
+    const retryAfterSec = meta?.retryAfterSec ?? extractHeaderRetryAfterSec(axiosResponse?.headers)
     if (typeof retryAfterSec === 'number' && retryAfterSec > 0) {
       const suffixBits: string[] = []
       if (meta?.scope) suffixBits.push(`scope=${meta.scope}`)
