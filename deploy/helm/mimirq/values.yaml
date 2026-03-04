@@ -5,6 +5,9 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
+# Optional image pull secrets for private registries.
+imagePullSecrets: []
+
 nameOverride: ""
 fullnameOverride: ""
 
