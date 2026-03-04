@@ -27,6 +27,7 @@ spec:
             {{- end }}
         spec:
           restartPolicy: Never
+          {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.dbMaintenance.podSecurityContext) | nindent 10 }}
           containers:
             - name: db-maintenance
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
@@ -75,6 +76,7 @@ spec:
               env:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
+              {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.cronjobs.dbMaintenance.securityContext) | nindent 14 }}
               {{- with .Values.cronjobs.dbMaintenance.resources }}
               resources:
                 {{- toYaml . | nindent 16 }}

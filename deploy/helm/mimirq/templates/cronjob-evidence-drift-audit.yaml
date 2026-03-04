@@ -27,6 +27,7 @@ spec:
             {{- end }}
         spec:
           restartPolicy: Never
+          {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.evidenceDriftAudit.podSecurityContext) | nindent 10 }}
           containers:
             - name: evidence-drift-audit
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
@@ -68,6 +69,7 @@ spec:
               env:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
+              {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.cronjobs.evidenceDriftAudit.securityContext) | nindent 14 }}
               {{- with .Values.cronjobs.evidenceDriftAudit.resources }}
               resources:
                 {{- toYaml . | nindent 16 }}
@@ -85,4 +87,3 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
 {{- end }}
-
