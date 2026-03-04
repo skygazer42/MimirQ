@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -54,6 +55,27 @@ def _mean(values: Iterable[float]) -> Optional[float]:
     if not vals:
         return None
     return sum(vals) / len(vals)
+
+
+def _stddev(values: Iterable[float]) -> Optional[float]:
+    vals: List[float] = []
+    for v in values:
+        try:
+            fv = float(v)
+        except Exception:
+            continue
+        if not math.isfinite(fv):
+            continue
+        vals.append(fv)
+    if not vals:
+        return None
+    if len(vals) == 1:
+        return 0.0
+    mu = _mean(vals)
+    if mu is None:
+        return None
+    var = sum((x - mu) ** 2 for x in vals) / len(vals)
+    return math.sqrt(max(0.0, var))
 
 
 def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]], bool]:
@@ -345,6 +367,240 @@ class RagQueryAnalyticsSummary:
     top_zero_hit_queries: list[dict[str, Any]]
     top_slow_queries: list[dict[str, Any]]
     timeseries: dict[str, list[Any]]
+    anomalies: list[dict[str, Any]]
+
+
+def _safe_rate(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return float(numerator) / float(denominator)
+
+
+def _detect_rate_spike(
+    *,
+    metric: str,
+    baseline_rates: list[float],
+    current_rate: float,
+    current_requests: int,
+    baseline_requests: int,
+    baseline_window_minutes: int,
+    current_window_minutes: int,
+    abs_threshold: float,
+    ratio_threshold: float,
+    zscore_threshold: float,
+    hints: list[str],
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if current_requests <= 0 or baseline_requests <= 0:
+        return None
+
+    baseline_rate = _mean(baseline_rates) if baseline_rates else 0.0
+    baseline_std = _stddev(baseline_rates) if baseline_rates else 0.0
+
+    # Guard: avoid division explosions when baseline is near zero.
+    ratio = None
+    if baseline_rate and baseline_rate > 1e-9:
+        ratio = current_rate / baseline_rate
+
+    z_score = None
+    if baseline_std is not None and baseline_std > 1e-9:
+        z_score = (current_rate - baseline_rate) / baseline_std
+
+    meets_abs = current_rate >= float(abs_threshold or 0.0)
+    meets_ratio = ratio is not None and ratio >= float(ratio_threshold or 0.0)
+    meets_z = z_score is not None and z_score >= float(zscore_threshold or 0.0)
+    meets_spike = meets_abs and (meets_ratio or meets_z or (baseline_rate <= 1e-9))
+    if not meets_spike:
+        return None
+
+    severity = "warning"
+    if (ratio is not None and ratio >= (float(ratio_threshold or 0.0) * 2.0)) or (
+        z_score is not None and z_score >= (float(zscore_threshold or 0.0) * 2.0)
+    ):
+        severity = "critical"
+
+    message = f"{metric} spike: current={current_rate:.3f} baseline={baseline_rate:.3f}"
+    payload: dict[str, Any] = {
+        "key": f"rag.{metric}.spike",
+        "metric": metric,
+        "severity": severity,
+        "message": message,
+        "baseline_window_minutes": int(baseline_window_minutes),
+        "current_window_minutes": int(current_window_minutes),
+        "current_rate": round(float(current_rate), 6),
+        "baseline_rate": round(float(baseline_rate), 6),
+        "baseline_std": round(float(baseline_std or 0.0), 6) if baseline_std is not None else None,
+        "ratio": round(float(ratio), 6) if ratio is not None else None,
+        "z_score": round(float(z_score), 6) if z_score is not None else None,
+        "current_requests": int(current_requests),
+        "baseline_requests": int(baseline_requests),
+        "hints": list(hints or []),
+    }
+    if extra:
+        payload["extra"] = dict(extra)
+    return payload
+
+
+def _detect_query_analytics_anomalies(
+    *,
+    bucket: dict[int, dict[str, Any]],
+    records: list[dict[str, Any]],
+    ts_keys: list[int],
+    window_minutes: int,
+) -> list[dict[str, Any]]:
+    if not bool(getattr(settings, "OBS_ANOMALY_ENABLED", True)):
+        return []
+
+    if not ts_keys:
+        return []
+
+    window_minutes = max(1, int(window_minutes or 0))
+
+    baseline_win = max(1, int(getattr(settings, "OBS_ANOMALY_BASELINE_WINDOW_MINUTES", 60) or 60))
+    current_win = max(1, int(getattr(settings, "OBS_ANOMALY_CURRENT_WINDOW_MINUTES", 5) or 5))
+    min_reqs = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET", 5) or 5))
+    min_baseline_buckets = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_BASELINE_BUCKETS", 10) or 10))
+
+    current_win = min(current_win, window_minutes)
+    baseline_win = min(baseline_win, max(0, window_minutes - current_win))
+    if baseline_win <= 0 or current_win <= 0:
+        return []
+
+    last_ts_ms = max(ts_keys)
+    current_start_ms = last_ts_ms - ((current_win - 1) * 60_000)
+    baseline_start_ms = current_start_ms - (baseline_win * 60_000)
+
+    baseline_keys = [k for k in ts_keys if baseline_start_ms <= k < current_start_ms]
+    current_keys = [k for k in ts_keys if k >= current_start_ms]
+
+    baseline_rates_zero: list[float] = []
+    baseline_rates_error: list[float] = []
+    baseline_req = 0
+    current_req = 0
+    baseline_zero = 0
+    current_zero = 0
+    baseline_error = 0
+    current_error = 0
+    baseline_bucket_count = 0
+    current_bucket_count = 0
+
+    for k in baseline_keys:
+        req = int((bucket.get(k) or {}).get("requests") or 0)
+        if req < min_reqs:
+            continue
+        zh = int((bucket.get(k) or {}).get("zero_hit") or 0)
+        er = int((bucket.get(k) or {}).get("errors") or 0)
+        baseline_bucket_count += 1
+        baseline_req += req
+        baseline_zero += zh
+        baseline_error += er
+        baseline_rates_zero.append(_safe_rate(zh, req))
+        baseline_rates_error.append(_safe_rate(er, req))
+
+    for k in current_keys:
+        req = int((bucket.get(k) or {}).get("requests") or 0)
+        if req < min_reqs:
+            continue
+        zh = int((bucket.get(k) or {}).get("zero_hit") or 0)
+        er = int((bucket.get(k) or {}).get("errors") or 0)
+        current_bucket_count += 1
+        current_req += req
+        current_zero += zh
+        current_error += er
+
+    # Not enough baseline -> skip to avoid noisy alerts on low traffic.
+    if baseline_bucket_count < min_baseline_buckets or current_req <= 0 or baseline_req <= 0:
+        return []
+
+    current_zero_rate = _safe_rate(current_zero, current_req)
+    current_error_rate = _safe_rate(current_error, current_req)
+
+    # Error kinds for the current window (PII-safe: only kind prefixes).
+    current_error_kinds: dict[str, int] = defaultdict(int)
+    for r in records:
+        if str(r.get("event") or "") != "rag_trace":
+            continue
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            ts_ms = 0
+        if ts_ms and ts_ms < current_start_ms:
+            continue
+        retrieval = r.get("retrieval") if isinstance(r.get("retrieval"), dict) else {}
+        errors = retrieval.get("errors") if isinstance(retrieval, dict) else None
+        if not isinstance(errors, list) or not errors:
+            continue
+        for e in errors:
+            if not isinstance(e, str):
+                continue
+            kind = e.split(":", 1)[0].strip().lower()
+            if not kind:
+                continue
+            current_error_kinds[kind[:30]] += 1
+    top_error_kind = None
+    if current_error_kinds:
+        top_error_kind = sorted(current_error_kinds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+    anomalies: list[dict[str, Any]] = []
+
+    zero_hit_hints = [
+        "Index 可能为空或入库未完成：检查 ingestion/queue 状态与 index-audit。",
+        "检索 scope 过窄或 ACL 过滤过严：确认 dataset/document scope 与权限配置。",
+        "检索配置变更：对比 retrieval_config_hash 或最近配置变更。",
+    ]
+    err_hints = [
+        "向量/检索后端异常：检查 /health/ready 与依赖延迟（DB/Redis/vector）。",
+        "reranker 上游故障或 429：检查 provider 状态与限流/配额。",
+        "查看 error_kind_counts 以定位主要失败类型。",
+    ]
+
+    zh_abs = float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD", 0.6) or 0.6)
+    zh_ratio = float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD", 2.0) or 2.0)
+    zh_z = float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0)
+    er_abs = float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD", 0.05) or 0.05)
+    er_ratio = float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD", 3.0) or 3.0)
+    er_z = float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0)
+
+    zh = _detect_rate_spike(
+        metric="zero_hit_rate",
+        baseline_rates=baseline_rates_zero,
+        current_rate=current_zero_rate,
+        current_requests=current_req,
+        baseline_requests=baseline_req,
+        baseline_window_minutes=baseline_win,
+        current_window_minutes=current_win,
+        abs_threshold=zh_abs,
+        ratio_threshold=zh_ratio,
+        zscore_threshold=zh_z,
+        hints=zero_hit_hints,
+        extra={"baseline_buckets": baseline_bucket_count, "current_buckets": current_bucket_count},
+    )
+    if zh:
+        anomalies.append(zh)
+
+    er = _detect_rate_spike(
+        metric="error_rate",
+        baseline_rates=baseline_rates_error,
+        current_rate=current_error_rate,
+        current_requests=current_req,
+        baseline_requests=baseline_req,
+        baseline_window_minutes=baseline_win,
+        current_window_minutes=current_win,
+        abs_threshold=er_abs,
+        ratio_threshold=er_ratio,
+        zscore_threshold=er_z,
+        hints=err_hints,
+        extra={
+            "top_error_kind": top_error_kind,
+            "baseline_buckets": baseline_bucket_count,
+            "current_buckets": current_bucket_count,
+        },
+    )
+    if er:
+        anomalies.append(er)
+
+    anomalies.sort(key=lambda x: str(x.get("metric") or ""))
+    return anomalies
 
 
 def summarize_rag_query_analytics(
@@ -523,6 +779,13 @@ def summarize_rag_query_analytics(
         "errors": [int(bucket[k]["errors"]) for k in ts_keys],
     }
 
+    anomalies = _detect_query_analytics_anomalies(
+        bucket=bucket,
+        records=records,
+        ts_keys=ts_keys,
+        window_minutes=window_minutes,
+    )
+
     return RagQueryAnalyticsSummary(
         enabled=enabled,
         path=path_str,
@@ -543,6 +806,7 @@ def summarize_rag_query_analytics(
         top_zero_hit_queries=top_zero_hit_queries,
         top_slow_queries=top_slow_queries,
         timeseries=timeseries,
+        anomalies=anomalies,
     )
 
 
