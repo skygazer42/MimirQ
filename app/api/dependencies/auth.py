@@ -116,6 +116,20 @@ async def get_current_account_id_from_headers(
         set_request_tenant_id(jwt_tenant_id)
         if request is not None:
             request.state.tenant_id = UUID(jwt_tenant_id)
+
+        # Optional enterprise: best-effort group sync from verified JWT payload (opt-in).
+        if bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)):
+            try:
+                from app.services.jwt_group_sync_service import maybe_sync_jwt_groups  # noqa: WPS433
+
+                maybe_sync_jwt_groups(
+                    tenant_id=UUID(jwt_tenant_id),
+                    account_id=user_id,
+                    jwt_payload=payload,
+                )
+            except Exception:
+                # Never block auth due to sync failures.
+                pass
     return user_id
 
 
