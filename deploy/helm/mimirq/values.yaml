@@ -41,6 +41,13 @@ security:
         - ALL
     runAsNonRoot: true
 
+  # Optional /tmp emptyDir. Useful when enabling readOnlyRootFilesystem or when
+  # runtime needs a guaranteed-writable temp directory.
+  tmpEmptyDir:
+    enabled: false
+    mountPath: /tmp
+    sizeLimit: ""
+
 # Security baseline: do not mount the Kubernetes service account token unless explicitly needed.
 # This chart does not require in-cluster K8s API access by default.
 automountServiceAccountToken: false

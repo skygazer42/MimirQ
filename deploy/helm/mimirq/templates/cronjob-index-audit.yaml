@@ -69,10 +69,25 @@ spec:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
               {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.cronjobs.indexAudit.securityContext) | nindent 14 }}
+              {{- if .Values.security.tmpEmptyDir.enabled }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: {{ default "/tmp" .Values.security.tmpEmptyDir.mountPath | quote }}
+              {{- end }}
               {{- with .Values.cronjobs.indexAudit.resources }}
               resources:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
+          {{- if .Values.security.tmpEmptyDir.enabled }}
+          volumes:
+            - name: tmp
+              {{- if .Values.security.tmpEmptyDir.sizeLimit }}
+              emptyDir:
+                sizeLimit: {{ .Values.security.tmpEmptyDir.sizeLimit | quote }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+          {{- end }}
           {{- with .Values.cronjobs.indexAudit.nodeSelector }}
           nodeSelector:
             {{- toYaml . | nindent 12 }}

@@ -69,6 +69,10 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
+            {{- if .Values.security.tmpEmptyDir.enabled }}
+            - name: tmp
+              mountPath: {{ default "/tmp" .Values.security.tmpEmptyDir.mountPath | quote }}
+            {{- end }}
             {{- if .Values.persistence.uploads.enabled }}
             - name: uploads
               mountPath: /data/uploads
@@ -77,6 +81,15 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- if .Values.security.tmpEmptyDir.enabled }}
+        - name: tmp
+          {{- if .Values.security.tmpEmptyDir.sizeLimit }}
+          emptyDir:
+            sizeLimit: {{ .Values.security.tmpEmptyDir.sizeLimit | quote }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
         {{- if .Values.persistence.uploads.enabled }}
         - name: uploads
           persistentVolumeClaim:
