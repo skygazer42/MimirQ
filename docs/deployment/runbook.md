@@ -28,6 +28,9 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 
 - PrometheusRule（K8s / Prometheus Operator）：`docs/ops/templates/prometheus-rule-mimirq.yaml`
 - Grafana Dashboard（Ops Overview）：`docs/ops/templates/grafana-dashboard-mimirq.json`
+- Helm（可选，一键安装）：`deploy/helm/mimirq`
+  - `prometheus.prometheusRule.enabled=true`
+  - `grafana.dashboard.enabled=true`（需要 Grafana sidecar 或手动导入）
 
 > 注意：这些阈值是 **baseline 默认值**，不保证适配所有负载；生产请结合你的 SLO、实例数、峰值 QPS 做调参。
 

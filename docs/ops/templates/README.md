@@ -36,6 +36,30 @@ Alerts and dashboards are aligned to the built-in metrics shipped by MimirQ:
 
 ## How to use
 
+### Helm (recommended for Kubernetes installs)
+
+If you deploy MimirQ via the built-in Helm chart (`deploy/helm/mimirq`), you can enable these templates via values:
+
+```yaml
+prometheus:
+  # Requires Prometheus Operator CRDs.
+  prometheusRule:
+    enabled: true
+    # Many Prometheus Operator installs use label selectors; set this to match your Prometheus.
+    additionalLabels: {}
+
+grafana:
+  dashboard:
+    enabled: true
+    # Grafana sidecar usually watches ConfigMaps with a specific label, e.g. grafana_dashboard=1.
+    labels:
+      grafana_dashboard: "1"
+```
+
+Notes:
+- The chart also supports `prometheus.serviceMonitor.enabled=true` (ServiceMonitor CRD) to configure scraping.
+- The Grafana dashboard is provided as a ConfigMap; you need a sidecar (or manual import) to load it.
+
 ### PrometheusRule (K8s)
 
 Apply the rule to the same namespace where Prometheus Operator watches for rules:
@@ -58,4 +82,3 @@ Notes:
 
 - If you enable tenant/dataset labels for RAG metrics (`PROMETHEUS_RAG_LABEL_TENANT_ID`, `PROMETHEUS_RAG_LABEL_DATASET_ID`),
   consider scoping alert queries (or using separate dashboards) to avoid noisy global alerts.
-
