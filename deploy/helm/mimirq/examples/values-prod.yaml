@@ -1,0 +1,26 @@
+# Example: production-ish Helm values for MimirQ.
+#
+# Usage:
+#   helm upgrade --install mimirq deploy/helm/mimirq -n mimirq -f deploy/helm/mimirq/examples/values-prod.yaml
+
+image:
+  repository: "<your-registry>/mimirq"
+  tag: "<tag>"
+
+# Prefer creating this Secret outside Helm (Vault/ESO/KMS) and referencing it here.
+existingSecretName: "mimirq-env"
+
+api:
+  replicas: 2
+
+worker:
+  replicas: 2
+
+persistence:
+  uploads:
+    enabled: true
+    size: 50Gi
+
+prometheus:
+  serviceMonitor:
+    enabled: true

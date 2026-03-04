@@ -73,6 +73,13 @@
 
 ## 7) 安全基线（必须）
 
+- [ ] **Helm/K8s 安全开关（推荐）**：
+  - [ ] `security.hardened=true`（opt-in 安全上下文默认值）
+  - [ ] `automountServiceAccountToken=false`（默认即为 false，除非明确需要）
+  - [ ] 可选：`serviceAccount.create=true`（或 `serviceAccount.name=...`）
+  - [ ] 可选：`networkPolicy.enabled=true`（先在预发演练；如开启 egress allowlist：`networkPolicy.egress.restrict=true`）
+  - [ ] 可选：`security.tmpEmptyDir.enabled=true`（配合 readOnlyRootFilesystem 或需要可写 /tmp）
+  - [ ] PVC 权限：必要时设置 `security.podSecurityContext.fsGroup`（避免 non-root 写入失败）
 - [ ] **密钥管理**：SECRET_KEY 不使用默认值；支持轮换（fallback keys）
 - [ ] **CORS/Hosts**：生产环境限制 `ALLOWED_HOSTS` 与 CORS 来源
 - [ ] **限流与配额**：启用 request rate limit（必要时 Redis）；启用 chat token quota（按租户）
@@ -85,4 +92,3 @@
 - [ ] **迁移**：数据库迁移可回滚策略明确（至少有备份与演练）
 - [ ] **回滚**：配置变更与检索策略可通过指纹/版本化回退
 - [ ] **备份演练**：至少完成一次 DB + 对象存储恢复演练并记录
-
