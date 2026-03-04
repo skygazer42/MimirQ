@@ -386,7 +386,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         allowed, retry_after = await limiter.acheck(key)
         if not allowed:
             retry_after_sec = max(1, int(math.ceil(float(retry_after or 0.0))))
-            scope = "chat" if limiter is self.chat_limiter else "api"
+            rate_scope = "chat" if limiter is self.chat_limiter else "api"
             logger.warning("Rate limit exceeded for %s on %s", key, request.url.path)
 
             from app.core.exceptions import ErrorResponse, get_request_id
@@ -394,7 +394,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             detail = {
                 "retry_after_sec": retry_after_sec,
                 "limit": float(getattr(limiter, "requests_per_second", 0.0) or 0.0),
-                "scope": scope,
+                "scope": f"rate_limit:{rate_scope}",
             }
             return JSONResponse(
                 status_code=HTTP_429_TOO_MANY_REQUESTS,

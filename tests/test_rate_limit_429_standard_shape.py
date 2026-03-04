@@ -66,7 +66,8 @@ def test_rate_limit_middleware_returns_standard_429_body_and_header() -> None:
     detail = payload.get("detail") or {}
 
     assert payload.get("error") == "RATE_LIMIT_EXCEEDED"
-    assert detail.get("scope") == "api"
+    assert payload.get("message") == "Too many requests. Please try again later."
+    assert detail.get("scope") == "rate_limit:api"
     assert detail.get("limit") == 1.0
     assert isinstance(detail.get("retry_after_sec"), int)
     assert second.headers.get("Retry-After") == str(detail.get("retry_after_sec"))
