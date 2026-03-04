@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
-from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.document import DocumentPermission
-from app.services.dataset_service import DatasetService
+from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.tenant_group import TenantGroupMember
+from app.services.dataset_service import DatasetService
 
 # Document-level ACL ("security trimming") modes.
 _DOC_ACCESS_DEFAULTS = {"", "inherit"}
