@@ -13,6 +13,7 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant import Tenant, TenantMember
 from app.models.tenant_group import TenantGroup
+from app.services.audit_log_service import audit_log_event
 from app.services.tenant_group_service import TenantGroupService
 
 EDIT_ROLES = UserRoles.EDIT_ROLES
@@ -106,7 +107,13 @@ class DatasetService:
         if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members:
             DatasetPermissionService.update_partial_member_list(db, tenant_id, dataset.id, partial_members)
         if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups:
-            DatasetGroupPermissionService.update_partial_group_list(db, tenant_id, dataset.id, partial_groups)
+            DatasetGroupPermissionService.update_partial_group_list(
+                db,
+                tenant_id,
+                dataset.id,
+                partial_groups,
+                actor_id=owner_id,
+            )
 
         return dataset
 
@@ -148,11 +155,20 @@ class DatasetService:
                     db, dataset.tenant_id, dataset.id, partial_members or []
                 )
                 DatasetGroupPermissionService.update_partial_group_list(
-                    db, dataset.tenant_id, dataset.id, partial_groups or []
+                    db,
+                    dataset.tenant_id,
+                    dataset.id,
+                    partial_groups or [],
+                    actor_id=updater_id,
                 )
             else:
                 DatasetPermissionService.clear_partial_member_list(db, dataset.tenant_id, dataset.id)
-                DatasetGroupPermissionService.clear_partial_group_list(db, dataset.tenant_id, dataset.id)
+                DatasetGroupPermissionService.clear_partial_group_list(
+                    db,
+                    dataset.tenant_id,
+                    dataset.id,
+                    actor_id=updater_id,
+                )
         else:
             if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members is not None:
                 DatasetPermissionService.update_partial_member_list(
@@ -160,7 +176,11 @@ class DatasetService:
                 )
             if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups is not None:
                 DatasetGroupPermissionService.update_partial_group_list(
-                    db, dataset.tenant_id, dataset.id, partial_groups
+                    db,
+                    dataset.tenant_id,
+                    dataset.id,
+                    partial_groups,
+                    actor_id=updater_id,
                 )
 
         return dataset
@@ -346,6 +366,7 @@ class DatasetGroupPermissionService:
         dataset_id: UUID,
         group_ids: List[UUID],
         *,
+        actor_id: str | None = None,
         max_groups: int = 200,
     ) -> None:
         normalized: list[UUID] = []
@@ -392,12 +413,44 @@ class DatasetGroupPermissionService:
                     for gid in normalized
                 ]
             )
+
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action="dataset.access.groups.update",
+            resource_type="dataset",
+            resource_id=str(dataset_id),
+            details={
+                "requested_count": int(len(group_ids or [])),
+                "group_count": int(len(normalized or [])),
+            },
+        )
         db.commit()
 
     @staticmethod
-    def clear_partial_group_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> None:
+    def clear_partial_group_list(
+        db: Session,
+        tenant_id: UUID,
+        dataset_id: UUID,
+        *,
+        actor_id: str | None = None,
+    ) -> None:
         db.query(DatasetGroupPermission).filter(
             DatasetGroupPermission.tenant_id == tenant_id,
             DatasetGroupPermission.dataset_id == dataset_id,
         ).delete(synchronize_session=False)
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action="dataset.access.groups.update",
+            resource_type="dataset",
+            resource_id=str(dataset_id),
+            details={
+                "requested_count": 0,
+                "group_count": 0,
+                "cleared": True,
+            },
+        )
         db.commit()

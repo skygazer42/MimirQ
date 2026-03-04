@@ -4,6 +4,7 @@ Tenant groups API (enterprise directory primitive).
 
 from __future__ import annotations
 
+import contextlib
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -22,6 +23,7 @@ from app.api.schemas.group import (
     TenantGroupUpdateRequest,
 )
 from app.core.database import get_db
+from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.tenant_group_service import TenantGroupService
 
@@ -62,6 +64,20 @@ def create_group(
         detail="No permission to manage groups",
     )
     group = TenantGroupService.create_group(db, tenant_id=tenant_id, name=payload.name, external_id=payload.external_id)
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="group.create",
+        resource_type="tenant_group",
+        resource_id=str(group.id),
+        details={
+            "name": str(getattr(group, "name", "") or "")[:255],
+            "has_external_id": bool(getattr(group, "external_id", None)),
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
     return TenantGroupOut.model_validate(group)
 
 
@@ -105,6 +121,20 @@ def patch_group(
         name=payload.name,
         external_id=payload.external_id,
     )
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="group.update",
+        resource_type="tenant_group",
+        resource_id=str(group_id),
+        details={
+            "name": str(getattr(group, "name", "") or "")[:255],
+            "has_external_id": bool(getattr(group, "external_id", None)),
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
     return TenantGroupOut.model_validate(group)
 
 
@@ -123,6 +153,17 @@ def delete_group(
         detail="No permission to manage groups",
     )
     TenantGroupService.delete_group(db, tenant_id=tenant_id, group_id=group_id)
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="group.delete",
+        resource_type="tenant_group",
+        resource_id=str(group_id),
+        details={},
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -163,6 +204,20 @@ def add_group_members(
         detail="No permission to manage group members",
     )
     added = TenantGroupService.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="group.members.add",
+        resource_type="tenant_group",
+        resource_id=str(group_id),
+        details={
+            "member_count_requested": int(len(payload.member_ids or [])),
+            "member_count_updated": int(added or 0),
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
     return TenantGroupMembersUpdateResponse(updated=int(added))
 
 
@@ -182,5 +237,18 @@ def remove_group_members(
         detail="No permission to manage group members",
     )
     removed = TenantGroupService.remove_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="group.members.remove",
+        resource_type="tenant_group",
+        resource_id=str(group_id),
+        details={
+            "member_count_requested": int(len(payload.member_ids or [])),
+            "member_count_updated": int(removed or 0),
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
     return TenantGroupMembersUpdateResponse(updated=int(removed))
-

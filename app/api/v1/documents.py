@@ -5267,6 +5267,23 @@ async def put_document_access(
         allowlist = DocumentPermissionService.get_document_partial_member_list(db, tenant_id, document_id)
         allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(db, tenant_id, document_id)
 
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.access.update",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={
+            "mode": mode,
+            "dataset_id": str(getattr(document, "dataset_id", None) or "") or None,
+            "partial_member_count": int(len(allowlist or [])),
+            "partial_group_count": int(len(allowlist_groups or [])),
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
     return DocumentAccessInfo(
         mode=mode,  # type: ignore[arg-type]
         owner_id=(getattr(document, "owner_id", None) or None),
