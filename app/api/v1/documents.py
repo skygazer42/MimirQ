@@ -6906,6 +6906,7 @@ async def get_document_lifecycle_metadata(
         review_due_at=getattr(document, "review_due_at", None),
         authority_level=getattr(document, "authority_level", None),
         supersedes_document_id=getattr(document, "supersedes_document_id", None),
+        publication_status=str(getattr(document, "publication_status", "published") or "published"),
     )
 
 
@@ -6947,6 +6948,7 @@ async def patch_document_lifecycle_metadata(
             review_due_at=getattr(document, "review_due_at", None),
             authority_level=getattr(document, "authority_level", None),
             supersedes_document_id=getattr(document, "supersedes_document_id", None),
+            publication_status=str(getattr(document, "publication_status", "published") or "published"),
         )
 
     before = {
@@ -6954,6 +6956,7 @@ async def patch_document_lifecycle_metadata(
         "review_due_at": getattr(document, "review_due_at", None),
         "authority_level": getattr(document, "authority_level", None),
         "supersedes_document_id": getattr(document, "supersedes_document_id", None),
+        "publication_status": getattr(document, "publication_status", None),
     }
 
     if "lifecycle_owner" in fields_set:
@@ -6976,6 +6979,9 @@ async def patch_document_lifecycle_metadata(
             raise HTTPException(status_code=400, detail="supersedes_document_id cannot equal document_id")
         document.supersedes_document_id = sup  # type: ignore[assignment]
 
+    if "publication_status" in fields_set:
+        document.publication_status = str(payload.publication_status or "published")  # type: ignore[assignment]
+
     db.commit()
     db.refresh(document)
 
@@ -6988,9 +6994,10 @@ async def patch_document_lifecycle_metadata(
             "review_due_at": getattr(document, "review_due_at", None),
             "authority_level": getattr(document, "authority_level", None),
             "supersedes_document_id": getattr(document, "supersedes_document_id", None),
+            "publication_status": getattr(document, "publication_status", None),
         }
         changed_fields: list[str] = []
-        for k in ("lifecycle_owner", "review_due_at", "authority_level", "supersedes_document_id"):
+        for k in ("lifecycle_owner", "review_due_at", "authority_level", "supersedes_document_id", "publication_status"):
             if k in fields_set and before.get(k) != after.get(k):
                 changed_fields.append(k)
 
@@ -7009,6 +7016,8 @@ async def patch_document_lifecycle_metadata(
         if "supersedes_document_id" in fields_set:
             sid = after.get("supersedes_document_id")
             details["supersedes_document_id"] = str(sid) if sid is not None else None
+        if "publication_status" in fields_set:
+            details["publication_status"] = after.get("publication_status")
 
         audit_log_event(
             db,
@@ -7028,6 +7037,7 @@ async def patch_document_lifecycle_metadata(
         review_due_at=getattr(document, "review_due_at", None),
         authority_level=getattr(document, "authority_level", None),
         supersedes_document_id=getattr(document, "supersedes_document_id", None),
+        publication_status=str(getattr(document, "publication_status", "published") or "published"),
     )
 
 

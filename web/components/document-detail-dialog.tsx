@@ -163,6 +163,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const [lifecycleWritable, setLifecycleWritable] = useState<boolean | null>(null)
   const [lifecyclePermError, setLifecyclePermError] = useState<string | null>(null)
   const [lifecycleEditing, setLifecycleEditing] = useState(false)
+  const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] = useState<
+    'draft' | 'published' | 'deprecated'
+  >('published')
   const [lifecycleOwnerDraft, setLifecycleOwnerDraft] = useState('')
   const [lifecycleReviewDueDraft, setLifecycleReviewDueDraft] = useState('')
   const [lifecycleAuthorityDraft, setLifecycleAuthorityDraft] = useState('')
@@ -326,6 +329,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const beginEditLifecycle = useCallback(() => {
     const doc = detail || initialDocument
     setLifecycleError(null)
+    const ps = String(doc.publication_status || 'published').trim()
+    setLifecyclePublicationStatusDraft(ps === 'draft' || ps === 'deprecated' ? ps : 'published')
     setLifecycleOwnerDraft(String(doc.lifecycle_owner || ''))
     setLifecycleReviewDueDraft(toDatetimeLocalValue(doc.review_due_at))
     setLifecycleAuthorityDraft(doc.authority_level == null ? '' : String(doc.authority_level))
@@ -335,6 +340,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
 
   const cancelEditLifecycle = useCallback(() => {
     setLifecycleError(null)
+    setLifecyclePublicationStatusDraft('published')
     setLifecycleOwnerDraft('')
     setLifecycleReviewDueDraft('')
     setLifecycleAuthorityDraft('')
@@ -369,6 +375,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
 
     const doc = detail || initialDocument
 
+    const ps0 = String(doc.publication_status || 'published').trim()
+    const ps1 = lifecyclePublicationStatusDraft
+
     const owner0 = String(doc.lifecycle_owner || '').trim()
     const owner1 = lifecycleOwnerDraft.trim()
 
@@ -381,7 +390,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     const sup0 = String(doc.supersedes_document_id || '').trim()
     const sup1 = lifecycleSupersedesDraft.trim()
 
-    return owner0 !== owner1 || due0 !== due1 || auth0 !== auth1 || sup0 !== sup1
+    return ps0 !== ps1 || owner0 !== owner1 || due0 !== due1 || auth0 !== auth1 || sup0 !== sup1
   }, [
     detail,
     initialDocument,
@@ -389,6 +398,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     lifecycleAuthorityDraft,
     lifecycleEditing,
     lifecycleOwnerDraft,
+    lifecyclePublicationStatusDraft,
     lifecycleReviewDueDraft,
     lifecycleSupersedesDraft,
     lifecycleValidationError,
@@ -405,6 +415,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       const dueStr = lifecycleReviewDueDraft.trim()
 
       const payload: any = {
+        publication_status: lifecyclePublicationStatusDraft,
         lifecycle_owner: owner ? owner : null,
         supersedes_document_id: sup ? sup : null,
         authority_level: authStr ? Number.parseInt(authStr, 10) : null,
@@ -429,6 +440,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     initialDocument.id,
     lifecycleAuthorityDraft,
     lifecycleOwnerDraft,
+    lifecyclePublicationStatusDraft,
     lifecycleReviewDueDraft,
     lifecycleSupersedesDraft,
     loadDetail,
@@ -1027,6 +1039,26 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
               {lifecycleEditing ? (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="space-y-1.5">
+                    <div className="text-xs font-medium text-muted-foreground">publication_status</div>
+                    <Select
+                      value={lifecyclePublicationStatusDraft}
+                      onValueChange={(v) =>
+                        setLifecyclePublicationStatusDraft(v === 'draft' || v === 'deprecated' ? v : 'published')
+                      }
+                      disabled={isSavingLifecycle}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="published" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="published">published（默认参与检索）</SelectItem>
+                        <SelectItem value="draft">draft（默认不参与检索）</SelectItem>
+                        <SelectItem value="deprecated">deprecated（默认不参与检索）</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">owner</div>
                     <Input
                       value={lifecycleOwnerDraft}
@@ -1072,6 +1104,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 </div>
               ) : (
                 <div className="space-y-1.5">
+                  <TraceRow label="publication_status" value={String(displayDoc.publication_status || 'published')} />
                   <TraceRow label="lifecycle_owner" value={String(displayDoc.lifecycle_owner || '-')} />
                   <TraceRow
                     label="review_due_at"

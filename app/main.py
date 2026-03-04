@@ -275,6 +275,7 @@ async def lifespan(app: FastAPI):
                 db.query(func.count(DocumentChunk.id))
                 .join(DBDocument)
                 .filter(DBDocument.status == "completed")
+                .filter(DBDocument.publication_status == "published")
                 .scalar()
             ) or 0
 
@@ -292,6 +293,7 @@ async def lifespan(app: FastAPI):
                     db.query(DocumentChunk.tenant_id)
                     .join(DBDocument)
                     .filter(DBDocument.status == "completed")
+                    .filter(DBDocument.publication_status == "published")
                     .distinct()
                     .execution_options(stream_results=True)
                     .enable_eagerloads(False)

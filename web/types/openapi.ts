@@ -5168,6 +5168,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/rag-metrics/tail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Rag Metrics Tail
+         * @description Download a redacted tail of the metrics JSONL log (gzip).
+         *
+         *     Intended for offline incident/support debugging. Always strips raw text fields.
+         */
+        get: operations["get_rag_metrics_tail_api_v1_observability_rag_metrics_tail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/rag-metrics/cost-attribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rag Cost Attribution */
+        get: operations["get_rag_cost_attribution_api_v1_observability_rag_metrics_cost_attribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/diagnostics/deps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Deps Diagnostics Snapshot
+         * @description Snapshot dependency connectivity + latency + versions (admin-only, PII-safe).
+         */
+        get: operations["get_deps_diagnostics_snapshot_api_v1_observability_diagnostics_deps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/rag-metrics/trace-bundle": {
         parameters: {
             query?: never;
@@ -5185,6 +5244,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/rag-metrics/trace-bundle/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rag Trace Bundle Diff */
+        get: operations["get_rag_trace_bundle_diff_api_v1_observability_rag_metrics_trace_bundle_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/config/snapshot": {
         parameters: {
             query?: never;
@@ -5194,6 +5270,31 @@ export interface paths {
         };
         /** Get Ops Config Snapshot */
         get: operations["get_ops_config_snapshot_api_v1_observability_config_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/task-queue/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task Queue Observability Snapshot
+         * @description Task queue observability snapshot (admin-only, PII-safe).
+         *
+         *     Includes:
+         *     - Broker health (ping)
+         *     - Queue depth
+         *     - Active worker count (heartbeat-based, aggregated)
+         */
+        get: operations["get_task_queue_observability_snapshot_api_v1_observability_task_queue_snapshot_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9967,6 +10068,32 @@ export interface components {
              */
             created_at: string;
         };
+        /** DepsDiagnosticsResponse */
+        DepsDiagnosticsResponse: {
+            /** Schema */
+            schema: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Postgres */
+            postgres?: {
+                [key: string]: unknown;
+            };
+            /** Redis */
+            redis?: {
+                [key: string]: unknown;
+            };
+            /** Minio */
+            minio?: {
+                [key: string]: unknown;
+            };
+            /** Milvus */
+            milvus?: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * DocumentAccessInfo
          * @description Document-level ACL (additional restriction on top of dataset permissions).
@@ -10447,6 +10574,13 @@ export interface components {
             owner_id?: string | null;
             /** Access Mode */
             access_mode?: ("inherit" | "only_me" | "all_team_members" | "partial_members") | null;
+            /**
+             * Publication Status
+             * @description draft|published|deprecated
+             * @default published
+             * @enum {string}
+             */
+            publication_status: "draft" | "published" | "deprecated";
             /** Lifecycle Owner */
             lifecycle_owner?: string | null;
             /** Review Due At */
@@ -10563,6 +10697,13 @@ export interface components {
             authority_level?: number | null;
             /** Supersedes Document Id */
             supersedes_document_id?: string | null;
+            /**
+             * Publication Status
+             * @description draft|published|deprecated
+             * @default published
+             * @enum {string}
+             */
+            publication_status: "draft" | "published" | "deprecated";
         };
         /**
          * DocumentLifecycleMetadataUpdateRequest
@@ -10581,6 +10722,13 @@ export interface components {
             authority_level?: number | null;
             /** Supersedes Document Id */
             supersedes_document_id?: string | null;
+            /**
+             * Publication Status
+             * @description draft|published|deprecated
+             * @default published
+             * @enum {string}
+             */
+            publication_status: "draft" | "published" | "deprecated";
         };
         /**
          * DocumentList
@@ -15459,6 +15607,84 @@ export interface components {
              */
             enable_reranker: boolean;
         };
+        /** RagCostAttributionResponse */
+        RagCostAttributionResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Path */
+            path: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Record Count */
+            record_count: number;
+            /** Rag Trace Count */
+            rag_trace_count: number;
+            /**
+             * Llm Prompt Tokens
+             * @default 0
+             */
+            llm_prompt_tokens: number;
+            /**
+             * Llm Completion Tokens
+             * @default 0
+             */
+            llm_completion_tokens: number;
+            /**
+             * Llm Total Tokens
+             * @default 0
+             */
+            llm_total_tokens: number;
+            /** Llm Model Counts */
+            llm_model_counts?: {
+                [key: string]: number;
+            };
+            /** Llm Source Counts */
+            llm_source_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Embed Query Tokens
+             * @default 0
+             */
+            embed_query_tokens: number;
+            /**
+             * Embed Query Chars
+             * @default 0
+             */
+            embed_query_chars: number;
+            /**
+             * Embed Query Count
+             * @default 0
+             */
+            embed_query_count: number;
+            /** Embed Provider Counts */
+            embed_provider_counts?: {
+                [key: string]: number;
+            };
+            /** Embed Model Counts */
+            embed_model_counts?: {
+                [key: string]: number;
+            };
+            /** Retrieval Elapsed Avg Sec */
+            retrieval_elapsed_avg_sec?: number | null;
+            /** Retrieval Elapsed P95 Sec */
+            retrieval_elapsed_p95_sec?: number | null;
+            /** Rerank Elapsed Avg Sec */
+            rerank_elapsed_avg_sec?: number | null;
+            /** Rerank Elapsed P95 Sec */
+            rerank_elapsed_p95_sec?: number | null;
+            /** Retrieval Vector Backend Counts */
+            retrieval_vector_backend_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Retrieval Query Count
+             * @default 0
+             */
+            retrieval_query_count: number;
+        };
         /** RagMetricsSummaryResponse */
         RagMetricsSummaryResponse: {
             /** Enabled */
@@ -15572,6 +15798,10 @@ export interface components {
             timeseries?: {
                 [key: string]: unknown[];
             };
+            /** Anomalies */
+            anomalies?: {
+                [key: string]: unknown;
+            }[];
         };
         /** RagTrace */
         RagTrace: {
@@ -15601,6 +15831,37 @@ export interface components {
             /** Steps */
             steps?: components["schemas"]["RagTraceStep"][];
         };
+        /** RagTraceBundleDiffItem */
+        RagTraceBundleDiffItem: {
+            /** Key */
+            key: string;
+            /** A */
+            a?: unknown | null;
+            /** B */
+            b?: unknown | null;
+            /** Delta */
+            delta?: number | null;
+        };
+        /** RagTraceBundleDiffResponse */
+        RagTraceBundleDiffResponse: {
+            /** Schema */
+            schema: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Request Id A */
+            request_id_a: string;
+            /** Request Id B */
+            request_id_b: string;
+            /** Truncated */
+            truncated: boolean;
+            summary_a: components["schemas"]["RagTraceBundleSummaryResponse"];
+            summary_b: components["schemas"]["RagTraceBundleSummaryResponse"];
+            /** Diff */
+            diff?: components["schemas"]["RagTraceBundleDiffItem"][];
+        };
         /** RagTraceBundleResponse */
         RagTraceBundleResponse: {
             /** Enabled */
@@ -15619,6 +15880,53 @@ export interface components {
             records?: {
                 [key: string]: unknown;
             }[];
+        };
+        /** RagTraceBundleSummaryResponse */
+        RagTraceBundleSummaryResponse: {
+            /** Request Id */
+            request_id: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Retrieval Config Hash */
+            retrieval_config_hash?: string | null;
+            /** Retrieval Mode */
+            retrieval_mode?: string | null;
+            /** Retrieval Requested Mode */
+            retrieval_requested_mode?: string | null;
+            /** Retrieval Auto Routed */
+            retrieval_auto_routed?: boolean | null;
+            /** Retrieval Profile */
+            retrieval_profile?: string | null;
+            /** Retrieval Top K */
+            retrieval_top_k?: number | null;
+            /** Retrieval Alpha */
+            retrieval_alpha?: number | null;
+            /** Retrieval Enable Reranker */
+            retrieval_enable_reranker?: boolean | null;
+            /** Retrieval Reranker Provider */
+            retrieval_reranker_provider?: string | null;
+            /** Retrieval Reranker Top N */
+            retrieval_reranker_top_n?: number | null;
+            /** Retrieval Query Parallelism */
+            retrieval_query_parallelism?: number | null;
+            /** Retrieval Query Count */
+            retrieval_query_count?: number | null;
+            /** Retrieval Elapsed Sec */
+            retrieval_elapsed_sec?: number | null;
+            /** Retrieval Error Kinds */
+            retrieval_error_kinds?: {
+                [key: string]: number;
+            };
+            /** Citations Count */
+            citations_count?: number | null;
+            /** Model Route */
+            model_route?: string | null;
+            /** Model Used */
+            model_used?: string | null;
+            /** Vector Backend */
+            vector_backend?: string | null;
         };
         /** RagTraceCitation */
         RagTraceCitation: {
@@ -16916,6 +17224,45 @@ export interface components {
              */
             truncated: boolean;
         };
+        /** TaskQueueObservabilitySnapshotResponse */
+        TaskQueueObservabilitySnapshotResponse: {
+            /** Schema */
+            schema: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Source */
+            source: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Queue Name */
+            queue_name: string;
+            /** Broker Up */
+            broker_up: boolean;
+            /** Queue Depth */
+            queue_depth?: number | null;
+            /** Workers Active */
+            workers_active?: number | null;
+            /**
+             * Heartbeat Interval Sec
+             * @default 0
+             */
+            heartbeat_interval_sec: number;
+            /**
+             * Heartbeat Ttl Sec
+             * @default 0
+             */
+            heartbeat_ttl_sec: number;
+            /**
+             * Poll Interval Sec
+             * @default 0
+             */
+            poll_interval_sec: number;
+            /** Error */
+            error?: string | null;
+        };
         /** TenantDocumentQuotaStatus */
         TenantDocumentQuotaStatus: {
             /** Enabled */
@@ -17014,6 +17361,8 @@ export interface components {
             rps: number;
             /** Burst */
             burst: number;
+            /** Scopes */
+            scopes: string[];
         };
         /** TenantQuotaSummary */
         TenantQuotaSummary: {
@@ -21425,6 +21774,8 @@ export interface operations {
                 after_id?: string | null;
                 /** @description Include sensitive fields (admin-only) */
                 include_sensitive?: boolean;
+                /** @description ndjson|json */
+                export_format?: string;
                 /** @description Return gzip-compressed NDJSON (Content-Encoding: gzip) */
                 gzip?: boolean;
             };
@@ -23590,7 +23941,10 @@ export interface operations {
     };
     repair_evidence_suite_reference_sources_api_v1_evidence_suites__suite_id__repair_reference_sources_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Enqueue repair via task queue (arq) */
+                async_mode?: boolean;
+            };
             header?: {
                 "x-tenant-id"?: string | null;
                 authorization?: string | null;
@@ -27980,6 +28334,111 @@ export interface operations {
             };
         };
     };
+    get_rag_metrics_tail_api_v1_observability_rag_metrics_tail_get: {
+        parameters: {
+            query?: {
+                window_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rag_cost_attribution_api_v1_observability_rag_metrics_cost_attribution_get: {
+        parameters: {
+            query?: {
+                window_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagCostAttributionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_deps_diagnostics_snapshot_api_v1_observability_diagnostics_deps_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepsDiagnosticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_rag_trace_bundle_api_v1_observability_rag_metrics_trace_bundle_get: {
         parameters: {
             query: {
@@ -28018,6 +28477,46 @@ export interface operations {
             };
         };
     };
+    get_rag_trace_bundle_diff_api_v1_observability_rag_metrics_trace_bundle_diff_get: {
+        parameters: {
+            query: {
+                /** @description X-Request-ID A to compare */
+                request_id_a: string;
+                /** @description X-Request-ID B to compare */
+                request_id_b: string;
+                window_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagTraceBundleDiffResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_ops_config_snapshot_api_v1_observability_config_snapshot_get: {
         parameters: {
             query?: never;
@@ -28038,6 +28537,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpsConfigSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_queue_observability_snapshot_api_v1_observability_task_queue_snapshot_get: {
+        parameters: {
+            query?: {
+                /** @description Force refresh from broker (best-effort) */
+                force_refresh?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueueObservabilitySnapshotResponse"];
                 };
             };
             /** @description Validation Error */

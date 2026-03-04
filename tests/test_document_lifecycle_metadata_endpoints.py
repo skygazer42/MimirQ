@@ -74,6 +74,7 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
             self.id = doc_id
             self.tenant_id = tenant_id
             self.dataset_id = dataset_id
+            self.publication_status = "published"
             self.lifecycle_owner = None
             self.review_due_at = None
             self.authority_level = None
@@ -99,6 +100,7 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
         "review_due_at": None,
         "authority_level": None,
         "supersedes_document_id": None,
+        "publication_status": "published",
     }
 
     due = datetime(2026, 3, 3, 12, 0, tzinfo=timezone.utc)
@@ -115,10 +117,12 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
     assert body["lifecycle_owner"] == "alice@example.com"
     assert body["review_due_at"].startswith("2026-03-03T12:00:00")
     assert body["authority_level"] == 10
+    assert body["publication_status"] == "published"
 
     assert dummy_doc.lifecycle_owner == "alice@example.com"
     assert dummy_doc.authority_level == 10
     assert dummy_doc.review_due_at == due
+    assert dummy_doc.publication_status == "published"
 
     assert captured, "expected audit log event"
     details = captured[-1]
@@ -134,6 +138,15 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
     assert res3.status_code == 200, res3.text
     assert res3.json()["lifecycle_owner"] is None
     assert dummy_doc.lifecycle_owner is None
+
+    # Publication status patch.
+    res4 = client.patch(
+        f"/api/v1/documents/{doc_id}/lifecycle-metadata",
+        json={"publication_status": "draft"},
+    )
+    assert res4.status_code == 200, res4.text
+    assert res4.json()["publication_status"] == "draft"
+    assert dummy_doc.publication_status == "draft"
 
 
 def test_document_lifecycle_metadata_patch_denied_when_not_writable(monkeypatch):  # noqa: ANN001
@@ -196,4 +209,3 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
     assert res.status_code in {400, 422}, res.text
     if res.status_code == 400:
         assert "supersedes_document_id" in res.text
-

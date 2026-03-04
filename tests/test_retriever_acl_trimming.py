@@ -50,7 +50,7 @@ class _FakeSession:
     def query(self, *args, **_kwargs):  # noqa: ANN001
         # `_enrich_results_with_db_metadata` issues:
         # - query(DocumentChunk) -> model class
-        # - query(DBDocument.id, DBDocument.dataset_id, DBDocument.status, DBDocument.doc_metadata) -> 4 columns
+        # - query(DBDocument.id, DBDocument.dataset_id, DBDocument.status, DBDocument.doc_metadata, archived_at, disabled_at, publication_status)
         if len(args) == 1 and getattr(args[0], "__name__", "") == "DocumentChunk":
             return _FakeQuery(self._chunks)
         return _FakeQuery(self._doc_rows)
@@ -86,8 +86,8 @@ def test_retriever_candidate_acl_trims_disallowed_docs(monkeypatch: pytest.Monke
     ]
     # (doc_id, dataset_id, status, doc_metadata)
     doc_rows = [
-        (doc_allowed, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None),
-        (doc_denied, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None),
+        (doc_allowed, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+        (doc_denied, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
     ]
 
     monkeypatch.setattr(
@@ -154,6 +154,7 @@ def test_retriever_filters_archived_documents(monkeypatch: pytest.MonkeyPatch) -
             {"active_pipeline_ready": True, "pipeline_hash": "h"},
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             None,
+            "published",
         )
     ]
 
@@ -195,7 +196,47 @@ def test_retriever_filters_disabled_chunks(monkeypatch: pytest.MonkeyPatch) -> N
 
     chunks = [disabled_chunk]
     doc_rows = [
-        (document_id, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None),
+        (document_id, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+    ]
+
+    monkeypatch.setattr(
+        "app.rag.retriever.SessionLocal",
+        lambda: _FakeSession(chunks=chunks, doc_rows=doc_rows),
+    )
+
+    retriever = HybridRetriever(tenant_id=tenant_id)
+    results = [
+        {
+            "chunk_id": str(chunk_id),
+            "content": "VECTOR CONTENT",
+            "metadata": {"document_id": str(document_id), "chunk_index": 0},
+            "score": 0.9,
+        }
+    ]
+
+    stats: dict = {}
+    out = retriever._enrich_results_with_db_metadata(results, stats=stats)
+    assert out == []
+    assert stats["filtered_not_ready"] == 1
+
+
+def test_retriever_filters_non_published_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid4()
+    document_id = uuid4()
+    chunk_id = uuid4()
+
+    chunks = [
+        _FakeChunk(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            chunk_index=0,
+            content="draft doc",
+            chunk_id=chunk_id,
+            doc_metadata={"pipeline_hash": "h"},
+        )
+    ]
+    doc_rows = [
+        (document_id, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "draft"),
     ]
 
     monkeypatch.setattr(
