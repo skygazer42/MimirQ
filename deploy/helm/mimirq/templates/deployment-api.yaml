@@ -28,6 +28,9 @@ spec:
       {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.api.automountServiceAccountToken) | nindent 6 }}
       {{- include "mimirq.serviceAccountNameBlock" . | nindent 6 }}
       {{- include "mimirq.imagePullSecretsBlock" . | nindent 6 }}
+      {{- if .Values.api.priorityClassName }}
+      priorityClassName: {{ .Values.api.priorityClassName | quote }}
+      {{- end }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"

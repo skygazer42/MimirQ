@@ -31,6 +31,9 @@ spec:
           {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.evidenceDriftAudit.automountServiceAccountToken) | nindent 10 }}
           {{- include "mimirq.serviceAccountNameBlock" . | nindent 10 }}
           {{- include "mimirq.imagePullSecretsBlock" . | nindent 10 }}
+          {{- if .Values.cronjobs.evidenceDriftAudit.priorityClassName }}
+          priorityClassName: {{ .Values.cronjobs.evidenceDriftAudit.priorityClassName | quote }}
+          {{- end }}
           containers:
             - name: evidence-drift-audit
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
