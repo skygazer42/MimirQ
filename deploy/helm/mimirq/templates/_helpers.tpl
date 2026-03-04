@@ -54,6 +54,16 @@ serviceAccountName: {{ include "mimirq.serviceAccountName" . }}
 {{- end -}}
 
 {{/*
+Render imagePullSecrets block when configured.
+*/}}
+{{- define "mimirq.imagePullSecretsBlock" -}}
+{{- with .Values.imagePullSecrets -}}
+imagePullSecrets:
+{{ toYaml . | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Render a merged podSecurityContext block.
 
 Inputs:
