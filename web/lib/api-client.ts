@@ -233,7 +233,16 @@ import type {
 		  RagTraceListResponse,
 		  RagasRegressionRunDiffResponse,
 	} from '@/types'
-import type { MetaResponse } from '@/types/backend'
+import type {
+  MetaResponse,
+  TenantGroupCreateRequest,
+  TenantGroupListResponse,
+  TenantGroupMemberListResponse,
+  TenantGroupMembersUpdateRequest,
+  TenantGroupMembersUpdateResponse,
+  TenantGroupOut,
+  TenantGroupUpdateRequest,
+} from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
 import { buildFetchError } from '@/lib/fetch-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
@@ -3458,6 +3467,55 @@ export const rbacApi = {
 
   async patchTenantMemberRole(userId: string, payload: { role: string }): Promise<TenantMember> {
     const { data } = await apiClient.patch(`/rbac/members/${encodeURIComponent(userId)}`, payload)
+    return data
+  },
+}
+
+// ==================== Groups API ====================
+
+export const groupApi = {
+  async listGroups(params: { skip?: number; limit?: number } = {}): Promise<TenantGroupListResponse> {
+    const { data } = await apiClient.get('/groups', { params })
+    return data
+  },
+
+  async createGroup(payload: TenantGroupCreateRequest): Promise<TenantGroupOut> {
+    const { data } = await apiClient.post('/groups', payload)
+    return data
+  },
+
+  async getGroup(groupId: string): Promise<TenantGroupOut> {
+    const { data } = await apiClient.get(`/groups/${encodeURIComponent(groupId)}`)
+    return data
+  },
+
+  async patchGroup(groupId: string, payload: TenantGroupUpdateRequest): Promise<TenantGroupOut> {
+    const { data } = await apiClient.patch(`/groups/${encodeURIComponent(groupId)}`, payload)
+    return data
+  },
+
+  async deleteGroup(groupId: string): Promise<void> {
+    await apiClient.delete(`/groups/${encodeURIComponent(groupId)}`)
+  },
+
+  async listGroupMembers(
+    groupId: string,
+    params: { skip?: number; limit?: number } = {}
+  ): Promise<TenantGroupMemberListResponse> {
+    const { data } = await apiClient.get(`/groups/${encodeURIComponent(groupId)}/members`, { params })
+    return data
+  },
+
+  async addGroupMembers(groupId: string, payload: TenantGroupMembersUpdateRequest): Promise<TenantGroupMembersUpdateResponse> {
+    const { data } = await apiClient.post(`/groups/${encodeURIComponent(groupId)}/members`, payload)
+    return data
+  },
+
+  async removeGroupMembers(
+    groupId: string,
+    payload: TenantGroupMembersUpdateRequest
+  ): Promise<TenantGroupMembersUpdateResponse> {
+    const { data } = await apiClient.post(`/groups/${encodeURIComponent(groupId)}/members/remove`, payload)
     return data
   },
 }

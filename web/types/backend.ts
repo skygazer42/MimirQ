@@ -18,6 +18,17 @@ export type AuthResponse = OpenApiSchema<'AuthResponse'>
 export type RegisterRequest = OpenApiSchema<'RegisterRequest'>
 export type LoginRequest = OpenApiSchema<'LoginRequest'>
 
+// ==================== Groups (Tenant Directory) ====================
+
+export type TenantGroupOut = OpenApiSchema<'TenantGroupOut'>
+export type TenantGroupListResponse = OpenApiSchema<'TenantGroupListResponse'>
+export type TenantGroupCreateRequest = OpenApiSchema<'TenantGroupCreateRequest'>
+export type TenantGroupUpdateRequest = OpenApiSchema<'TenantGroupUpdateRequest'>
+export type TenantGroupMemberOut = OpenApiSchema<'TenantGroupMemberOut'>
+export type TenantGroupMemberListResponse = OpenApiSchema<'TenantGroupMemberListResponse'>
+export type TenantGroupMembersUpdateRequest = OpenApiSchema<'TenantGroupMembersUpdateRequest'>
+export type TenantGroupMembersUpdateResponse = OpenApiSchema<'TenantGroupMembersUpdateResponse'>
+
 // ==================== Documents ====================
 
 export type Document = OpenApiSchema<'DocumentDetail'>
