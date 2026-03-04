@@ -453,6 +453,15 @@ class Settings(BaseSettings):
     # When enabled (and JWT_TENANT_CLAIM is set), require X-Tenant-ID header to match the JWT tenant claim.
     # This mitigates cross-tenant spoofing via headers in AUTH_MODE=jwt while staying backwards compatible by default.
     JWT_ENFORCE_TENANT_HEADER_MATCH: bool = False
+    # Optional: sync tenant groups from a verified JWT claim (enterprise directory primitive).
+    # Safe defaults: disabled.
+    JWT_GROUPS_SYNC_ENABLED: bool = False
+    # JWT claim that contains group names/ids (supports dotted paths like "realm_access.roles").
+    JWT_GROUPS_CLAIM: str = "groups"
+    # Guardrail: cap claim items processed per request (best-effort).
+    JWT_GROUPS_MAX_GROUPS: int = 200
+    # Throttle to avoid write amplification (seconds; best-effort in-process cache; 0 disables).
+    JWT_GROUPS_SYNC_TTL_SEC: int = 60
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
 

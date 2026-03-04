@@ -158,6 +158,35 @@ EMBEDDING_PROVIDER=local
 
 ---
 
+## 🔐 JWT 组同步（Enterprise，可选）
+
+当 `AUTH_MODE=jwt` 时，可以选择从 **已验证的 JWT** 中读取 groups claim，并将其同步为：
+- `tenant_groups`（租户组）
+- `tenant_group_members`（组成员关系）
+
+用途：支持 dataset/doc 的 group allowlist（`partial_members`）并与企业 IdP（OIDC）组声明对齐。
+
+**默认关闭（安全）**。建议同时配置 `JWT_TENANT_CLAIM`，避免在无法验证 tenant 归属时进行跨租户写入。
+
+配置示例：
+
+```bash
+AUTH_MODE=jwt
+JWT_TENANT_CLAIM=tenant_id
+
+JWT_GROUPS_SYNC_ENABLED=true
+JWT_GROUPS_CLAIM=groups
+JWT_GROUPS_MAX_GROUPS=200
+JWT_GROUPS_SYNC_TTL_SEC=60
+```
+
+说明：
+- best-effort：同步失败不会阻塞请求（不会影响鉴权结果）。
+- 有节流：`JWT_GROUPS_SYNC_TTL_SEC` 用于降低写放大（单进程内 best-effort TTL）。
+- 当前实现为 add-only（仅补齐缺失的组/成员，不做删除）。
+
+---
+
 ## 🔗 相关文档
 
 - [OpenAI Embeddings API](https://platform.openai.com/docs/guides/embeddings)
