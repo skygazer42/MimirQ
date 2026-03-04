@@ -36,6 +36,8 @@ from app.models.dataset import Dataset
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent, DocumentPermission
+from app.models.group_permissions import DocumentGroupPermission
+from app.models.tenant_group import TenantGroupMember
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
 from app.services.dataset_profile_utils import (
@@ -321,6 +323,20 @@ def build_dataset_documents_query(
         DocumentPermission.tenant_id == tenant_id,
         DocumentPermission.account_id == account_id,
     )
+    doc_group_perm_subq = (
+        select(DocumentGroupPermission.document_id)
+        .join(
+            TenantGroupMember,
+            and_(
+                TenantGroupMember.tenant_id == DocumentGroupPermission.tenant_id,
+                TenantGroupMember.group_id == DocumentGroupPermission.group_id,
+            ),
+        )
+        .where(
+            DocumentGroupPermission.tenant_id == tenant_id,
+            TenantGroupMember.user_id == account_id,
+        )
+    )
     owner_dataset_ids_subq = select(Dataset.id).where(
         Dataset.tenant_id == tenant_id,
         Dataset.owner_id == account_id,
@@ -335,7 +351,13 @@ def build_dataset_documents_query(
             # Doc owner override.
             DBDocument.owner_id == account_id,
             # Allowlist.
-            and_(DBDocument.access_mode == "partial_members", DBDocument.id.in_(doc_perm_subq)),
+            and_(
+                DBDocument.access_mode == "partial_members",
+                or_(
+                    DBDocument.id.in_(doc_perm_subq),
+                    DBDocument.id.in_(doc_group_perm_subq),
+                ),
+            ),
         )
     )
     return dataset, query
