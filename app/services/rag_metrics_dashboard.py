@@ -12,6 +12,7 @@ Design constraints:
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import math
@@ -1101,6 +1102,97 @@ def _sanitize_rag_done_for_bundle(record: dict[str, Any]) -> dict[str, Any]:
         safe.pop("abstain_followup", None)
         out["metrics"] = safe
     return out
+
+
+def build_redacted_metrics_tail_gzip(
+    *,
+    tenant_id: str | None,
+    window_minutes: int = 60,
+    max_bytes: int = 5_000_000,
+) -> bytes:
+    """
+    Export a redacted JSONL tail for incident/support bundles (PII-safe).
+
+    Guarantees:
+    - Strips raw question/query text even when the metrics log includes text.
+    - Sanitizes citations to identifiers/numerics only (no snippets).
+    - Applies lightweight secret/PII masking on remaining strings (best-effort).
+    """
+
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path = Path(path_str)
+
+    window_minutes = max(1, int(window_minutes or 0))
+    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
+
+    raw_records, _truncated = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
+
+    tenant_key = str(tenant_id) if tenant_id else None
+    records: list[dict[str, Any]] = []
+    for r in raw_records:
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            ts_ms = 0
+        if ts_ms and ts_ms < cutoff_ms:
+            continue
+        if tenant_key:
+            rid = r.get("tenant_id")
+            if rid and str(rid) != tenant_key:
+                continue
+        records.append(r)
+
+    # Apply additional masking on remaining strings (independent of global PII_REDACTION_ENABLED).
+    try:
+        from app.core.pii_redaction import PIIRedactor
+
+        redactor = PIIRedactor(mask="[REDACTED]")
+    except Exception:  # noqa: BLE001
+        redactor = None
+
+    lines: list[str] = []
+    for r in records:
+        if not isinstance(r, dict):
+            continue
+        event = str(r.get("event") or "")
+        if event == "rag_trace":
+            safe = _sanitize_rag_trace_for_bundle(r)
+        elif event == "rag_done":
+            safe = _sanitize_rag_done_for_bundle(r)
+        else:
+            safe = dict(r)
+            for k in (
+                "question",
+                "query_for_retrieval",
+                "prompt",
+                "response",
+                "messages",
+                "snippets",
+                "structured_data",
+                "abstain_followup",
+                "text",
+                "content",
+            ):
+                safe.pop(k, None)
+            metrics = safe.get("metrics")
+            if isinstance(metrics, dict):
+                m = dict(metrics)
+                m.pop("structured_data", None)
+                m.pop("abstain_followup", None)
+                safe["metrics"] = m
+
+        if redactor is not None:
+            safe = redactor.redact_obj(safe)
+
+        try:
+            lines.append(json.dumps(safe, ensure_ascii=False, default=str))
+        except Exception:
+            continue
+
+    text = "\n".join(lines)
+    if text:
+        text += "\n"
+    return gzip.compress(text.encode("utf-8"))
 
 
 @dataclass(frozen=True)

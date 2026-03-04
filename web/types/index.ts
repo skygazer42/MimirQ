@@ -305,6 +305,16 @@ export interface RagQueryAnalyticsResponse {
   timeseries: Record<string, any[]>
 }
 
+export interface DepsDiagnosticsResponse {
+  schema: string
+  generated_at: string
+
+  postgres: Record<string, any>
+  redis: Record<string, any>
+  minio: Record<string, any>
+  milvus: Record<string, any>
+}
+
 export interface RagCostAttributionResponse {
   enabled: boolean
   path: string

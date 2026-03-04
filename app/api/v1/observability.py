@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -248,6 +248,16 @@ class IngestionDashboardSummaryResponse(BaseModel):
     timeseries: Dict[str, List[Any]] = {}
 
 
+class DepsDiagnosticsResponse(BaseModel):
+    schema: str
+    generated_at: datetime
+
+    postgres: Dict[str, Any] = Field(default_factory=dict)
+    redis: Dict[str, Any] = Field(default_factory=dict)
+    minio: Dict[str, Any] = Field(default_factory=dict)
+    milvus: Dict[str, Any] = Field(default_factory=dict)
+
+
 @router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse)
 def get_rag_metrics_summary(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
@@ -283,6 +293,41 @@ def get_rag_query_analytics(
     return summary.__dict__
 
 
+@router.get("/rag-metrics/tail")
+def get_rag_metrics_tail(
+    window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
+    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Download a redacted tail of the metrics JSONL log (gzip).
+
+    Intended for offline incident/support debugging. Always strips raw text fields.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.rag_metrics_dashboard import build_redacted_metrics_tail_gzip
+
+    payload = build_redacted_metrics_tail_gzip(
+        tenant_id=str(tenant_id),
+        window_minutes=int(window_minutes),
+        max_bytes=int(max_bytes),
+    )
+
+    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    filename = f"rag-metrics-tail.{ts}.jsonl.gz"
+    return Response(
+        content=payload,
+        media_type="application/gzip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.get("/rag-metrics/cost-attribution", response_model=RagCostAttributionResponse)
 def get_rag_cost_attribution(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
@@ -294,6 +339,23 @@ def get_rag_cost_attribution(
     _ensure_admin(db, tenant_id, account_id)
     summary = summarize_rag_cost_attribution(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
     return summary.__dict__
+
+
+@router.get("/diagnostics/deps", response_model=DepsDiagnosticsResponse)
+def get_deps_diagnostics_snapshot(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Snapshot dependency connectivity + latency + versions (admin-only, PII-safe).
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.deps_diagnostics_service import build_deps_diagnostics_snapshot
+
+    snap = build_deps_diagnostics_snapshot()
+    return snap.__dict__
 
 
 @router.get("/rag-metrics/trace-bundle", response_model=RagTraceBundleResponse)
