@@ -36,6 +36,23 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{- define "mimirq.serviceAccountName" -}}
+{{- if .Values.serviceAccount.name -}}
+{{- .Values.serviceAccount.name -}}
+{{- else -}}
+{{- include "mimirq.fullname" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render serviceAccountName when the chart creates or references a ServiceAccount.
+*/}}
+{{- define "mimirq.serviceAccountNameBlock" -}}
+{{- if or .Values.serviceAccount.create .Values.serviceAccount.name -}}
+serviceAccountName: {{ include "mimirq.serviceAccountName" . }}
+{{- end -}}
+{{- end -}}
+
 {{/*
 Render a merged podSecurityContext block.
 

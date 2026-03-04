@@ -29,6 +29,7 @@ spec:
           restartPolicy: Never
           {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.evidenceDriftAudit.podSecurityContext) | nindent 10 }}
           {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.evidenceDriftAudit.automountServiceAccountToken) | nindent 10 }}
+          {{- include "mimirq.serviceAccountNameBlock" . | nindent 10 }}
           containers:
             - name: evidence-drift-audit
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"

@@ -42,6 +42,13 @@ security:
 # This chart does not require in-cluster K8s API access by default.
 automountServiceAccountToken: false
 
+serviceAccount:
+  create: false
+  # If set, use this ServiceAccount name. When empty and create=true, a chart-managed
+  # ServiceAccount named "<release>-mimirq" (fullname) is created.
+  name: ""
+  annotations: {}
+
 # Values to write into the chart-managed Secret (only used when existingSecretName is empty).
 # IMPORTANT: Kubernetes Secrets are not encrypted by default; prefer creating an external secret
 # via your cluster's secret manager and setting existingSecretName.
