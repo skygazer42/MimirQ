@@ -12,6 +12,32 @@ fullnameOverride: ""
 # The secret should contain key/value pairs corresponding to app config env vars.
 existingSecretName: ""
 
+# Optional security hardening presets for Kubernetes.
+#
+# Design:
+# - Default is minimal and compatibility-first (no behavior changes).
+# - When `security.hardened=true`, the chart will apply a set of safe defaults
+#   (non-root, seccomp RuntimeDefault, drop ALL capabilities, etc.).
+# - You can override globally (security.*Context) and/or per component
+#   (api/worker/cronjobs.*.*Context).
+security:
+  hardened: false
+
+  # Global defaults applied to all pods/containers (merged with per-component overrides).
+  podSecurityContext: {}
+  containerSecurityContext: {}
+
+  # Only applied when `security.hardened=true` (still overrideable per component).
+  hardenedPodSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  hardenedContainerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    runAsNonRoot: true
+
 # Values to write into the chart-managed Secret (only used when existingSecretName is empty).
 # IMPORTANT: Kubernetes Secrets are not encrypted by default; prefer creating an external secret
 # via your cluster's secret manager and setting existingSecretName.
@@ -96,6 +122,8 @@ api:
     maxUnavailable: ""
 
   resources: {}
+  podSecurityContext: {}
+  securityContext: {}
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []
@@ -124,6 +152,8 @@ worker:
     maxUnavailable: ""
 
   resources: {}
+  podSecurityContext: {}
+  securityContext: {}
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []
@@ -192,6 +222,8 @@ cronjobs:
     sampleLimit: 20
 
     resources: {}
+    podSecurityContext: {}
+    securityContext: {}
     podAnnotations: {}
     nodeSelector: {}
     tolerations: []
@@ -220,6 +252,8 @@ cronjobs:
     sliceTopN: 20
 
     resources: {}
+    podSecurityContext: {}
+    securityContext: {}
     podAnnotations: {}
     nodeSelector: {}
     tolerations: []
@@ -257,6 +291,8 @@ cronjobs:
     maxDelete: 100000
 
     resources: {}
+    podSecurityContext: {}
+    securityContext: {}
     podAnnotations: {}
     nodeSelector: {}
     tolerations: []

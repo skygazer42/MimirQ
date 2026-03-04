@@ -27,6 +27,7 @@ spec:
             {{- end }}
         spec:
           restartPolicy: Never
+          {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.indexAudit.podSecurityContext) | nindent 10 }}
           containers:
             - name: index-audit
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
@@ -64,6 +65,7 @@ spec:
               env:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
+              {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.cronjobs.indexAudit.securityContext) | nindent 14 }}
               {{- with .Values.cronjobs.indexAudit.resources }}
               resources:
                 {{- toYaml . | nindent 16 }}
@@ -81,4 +83,3 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
 {{- end }}
-

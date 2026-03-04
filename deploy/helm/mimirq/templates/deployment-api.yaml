@@ -24,6 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.api.podSecurityContext) | nindent 6 }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
@@ -39,6 +40,7 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.api.securityContext) | nindent 10 }}
           {{- if .Values.api.readinessProbe.enabled }}
           readinessProbe:
             httpGet:

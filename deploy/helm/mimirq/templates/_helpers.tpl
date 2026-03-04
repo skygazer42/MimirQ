@@ -36,3 +36,58 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{/*
+Render a merged podSecurityContext block.
+
+Inputs:
+- root: the chart root context (.)
+- extra: component-specific podSecurityContext overrides (map)
+*/}}
+{{- define "mimirq.podSecurityContext" -}}
+{{- $root := .root -}}
+{{- $extra := .extra -}}
+{{- $ctx := dict -}}
+{{- with $root.Values.security.podSecurityContext -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- if $root.Values.security.hardened -}}
+{{- with $root.Values.security.hardenedPodSecurityContext -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- end -}}
+{{- with $extra -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- if $ctx -}}
+podSecurityContext:
+{{ toYaml $ctx | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render a merged container securityContext block.
+
+Inputs:
+- root: the chart root context (.)
+- extra: component-specific securityContext overrides (map)
+*/}}
+{{- define "mimirq.containerSecurityContext" -}}
+{{- $root := .root -}}
+{{- $extra := .extra -}}
+{{- $ctx := dict -}}
+{{- with $root.Values.security.containerSecurityContext -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- if $root.Values.security.hardened -}}
+{{- with $root.Values.security.hardenedContainerSecurityContext -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- end -}}
+{{- with $extra -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- if $ctx -}}
+securityContext:
+{{ toYaml $ctx | nindent 2 }}
+{{- end -}}
+{{- end -}}

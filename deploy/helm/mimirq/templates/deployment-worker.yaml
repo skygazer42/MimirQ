@@ -24,6 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.worker.podSecurityContext) | nindent 6 }}
       containers:
         - name: worker
           image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
@@ -37,6 +38,7 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.worker.securityContext) | nindent 10 }}
           {{- with .Values.worker.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -71,4 +73,3 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}
-
