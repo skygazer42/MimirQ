@@ -1,0 +1,182 @@
+{{- if .Values.prometheus.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "mimirq.fullname" . }}-alerts
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: observability
+    {{- with .Values.prometheus.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: mimirq.http
+      rules:
+        - alert: MimirQHighHttp5xxRate
+          expr: |
+            (
+              sum(rate(http_requests_total{status=~"5.."}[5m]))
+              /
+              clamp_min(sum(rate(http_requests_total[5m])), 1)
+            ) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            component: http
+          annotations:
+            summary: "High HTTP 5xx rate"
+            description: "5xx ratio > 5% over 5m (sustained for 10m)."
+
+        - alert: MimirQHighHttpLatencyP95
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+            ) > 1.0
+          for: 10m
+          labels:
+            severity: warning
+            component: http
+          annotations:
+            summary: "High HTTP latency (p95)"
+            description: "Global HTTP p95 latency > 1s over 5m (sustained for 10m)."
+
+    - name: mimirq.rag
+      rules:
+        - alert: MimirQHighRagRetrievalLatencyP95
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(rag_retrieval_elapsed_seconds_bucket[5m])) by (le)
+            ) > 2.0
+          for: 10m
+          labels:
+            severity: warning
+            component: rag
+          annotations:
+            summary: "High RAG retrieval latency (p95)"
+            description: "RAG retrieval p95 > 2s over 5m (sustained for 10m)."
+
+        - alert: MimirQHighRagRetrievalLatencyP99
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum(rate(rag_retrieval_elapsed_seconds_bucket[5m])) by (le)
+            ) > 6.0
+          for: 10m
+          labels:
+            severity: critical
+            component: rag
+          annotations:
+            summary: "High RAG retrieval latency (p99)"
+            description: "RAG retrieval p99 > 6s over 5m (sustained for 10m)."
+
+        - alert: MimirQHighRagErrorRate
+          expr: |
+            (
+              sum(rate(rag_errors_total[5m]))
+              /
+              clamp_min(sum(rate(rag_retrieval_elapsed_seconds_count[5m])), 1)
+            ) > 0.02
+          for: 10m
+          labels:
+            severity: warning
+            component: rag
+          annotations:
+            summary: "High RAG error rate"
+            description: "RAG error rate > 2% over 5m (sustained for 10m)."
+
+        - alert: MimirQHighRagZeroHitRate
+          expr: |
+            (
+              sum(rate(rag_zero_hit_total[10m]))
+              /
+              clamp_min(sum(rate(rag_retrieval_elapsed_seconds_count[10m])), 1)
+            ) > 0.30
+          for: 20m
+          labels:
+            severity: warning
+            component: rag
+          annotations:
+            summary: "High RAG zero-hit rate"
+            description: "Zero-hit rate > 30% over 10m (sustained for 20m)."
+
+    - name: mimirq.evidence
+      rules:
+        - alert: MimirQHighEvidenceRetrieveLatencyP95
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(rag_evidence_retrieve_duration_seconds_bucket[5m])) by (le)
+            ) > 2.0
+          for: 10m
+          labels:
+            severity: warning
+            component: evidence
+          annotations:
+            summary: "High Evidence API latency (p95)"
+            description: "Evidence API p95 > 2s over 5m (sustained for 10m)."
+
+    - name: mimirq.ingestion
+      rules:
+        - alert: MimirQIngestionFailures
+          expr: |
+            sum(rate(ingestion_runs_total{status="failed"}[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: ingestion
+          annotations:
+            summary: "Ingestion failures detected"
+            description: "At least one ingestion run failed in the last 15m (sustained for 15m)."
+
+        - alert: MimirQIngestionLatencyP95High
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(ingestion_run_duration_seconds_bucket[15m])) by (le)
+            ) > 3600
+          for: 30m
+          labels:
+            severity: warning
+            component: ingestion
+          annotations:
+            summary: "High ingestion latency (p95)"
+            description: "Ingestion p95 duration > 1h over 15m (sustained for 30m)."
+
+    - name: mimirq.task_queue
+      rules:
+        - alert: MimirQTaskQueueBrokerDown
+          expr: |
+            min(task_queue_broker_up) < 0.5
+          for: 5m
+          labels:
+            severity: critical
+            component: queue
+          annotations:
+            summary: "Task queue broker is down"
+            description: "task_queue_broker_up is 0 for at least 5m."
+
+        - alert: MimirQTaskQueueDepthHigh
+          expr: |
+            max(task_queue_depth) > 1000
+          for: 15m
+          labels:
+            severity: warning
+            component: queue
+          annotations:
+            summary: "Task queue depth is high"
+            description: "task_queue_depth > 1000 for at least 15m."
+
+        - alert: MimirQTaskQueueNoWorkersButHasBacklog
+          expr: |
+            (max(task_queue_depth) > 0) and (max(task_queue_workers_active) < 1)
+          for: 10m
+          labels:
+            severity: critical
+            component: queue
+          annotations:
+            summary: "Queue backlog but no active workers"
+            description: "task_queue_depth > 0 while task_queue_workers_active < 1 for at least 10m."
+{{- end }}

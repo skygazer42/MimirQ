@@ -1,0 +1,19 @@
+{{- if .Values.grafana.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mimirq.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: observability
+    {{- with .Values.grafana.dashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.grafana.dashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  grafana-dashboard-mimirq.json: |-
+{{ .Files.Get "files/grafana-dashboard-mimirq.json" | indent 4 }}
+{{- end }}
