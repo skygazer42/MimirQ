@@ -12,8 +12,8 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models.group_permissions import DocumentGroupPermission
 from app.models.document import DocumentPermission
+from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroup
 
