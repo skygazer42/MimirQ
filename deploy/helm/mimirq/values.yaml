@@ -264,6 +264,20 @@ prometheus:
     scrapeTimeout: 10s
     additionalLabels: {}
 
+  # Prometheus Operator alert rules (PrometheusRule CRD).
+  prometheusRule:
+    enabled: false
+    additionalLabels: {}
+
+grafana:
+  dashboard:
+    # When enabled, the chart creates a ConfigMap containing the dashboard JSON.
+    # This is compatible with the Grafana sidecar pattern (configmap dashboards).
+    enabled: false
+    labels:
+      grafana_dashboard: "1"
+    annotations: {}
+
 # Optional Kubernetes CronJobs (ops automation).
 #
 # Notes:
