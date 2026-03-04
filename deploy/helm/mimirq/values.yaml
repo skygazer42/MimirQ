@@ -151,6 +151,7 @@ api:
     minAvailable: 1
     maxUnavailable: ""
 
+  terminationGracePeriodSeconds: null
   priorityClassName: ""
   resources: {}
   podSecurityContext: {}
@@ -183,6 +184,7 @@ worker:
     minAvailable: 1
     maxUnavailable: ""
 
+  terminationGracePeriodSeconds: null
   priorityClassName: ""
   resources: {}
   podSecurityContext: {}
@@ -255,6 +257,7 @@ cronjobs:
     milvusListLimit: 2000
     sampleLimit: 20
 
+    terminationGracePeriodSeconds: null
     priorityClassName: ""
     resources: {}
     podSecurityContext: {}
@@ -287,6 +290,7 @@ cronjobs:
     detailsLimit: 0
     sliceTopN: 20
 
+    terminationGracePeriodSeconds: null
     priorityClassName: ""
     resources: {}
     podSecurityContext: {}
@@ -328,6 +332,7 @@ cronjobs:
     retentionDays: 90
     maxDelete: 100000
 
+    terminationGracePeriodSeconds: null
     priorityClassName: ""
     resources: {}
     podSecurityContext: {}
