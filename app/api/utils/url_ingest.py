@@ -209,6 +209,9 @@ class DownloadedURL:
     size_bytes: int
     content_type: str | None
     final_url: str
+    # Best-effort HTTP origin metadata (used by connector staleness checks).
+    last_modified: str | None = None
+    etag: str | None = None
 
 
 async def download_url_to_path(
@@ -293,10 +296,17 @@ async def download_url_to_path(
                             raise HTTPException(status_code=413, detail="remote file too large")
                         await f.write(chunk)
 
+                last_modified = (resp.headers.get("last-modified") or "").strip() or None
+                etag = (resp.headers.get("etag") or "").strip() or None
+                if etag and len(etag) > 500:
+                    etag = etag[:500]
+
                 return DownloadedURL(
                     size_bytes=int(size),
                     content_type=resp.headers.get("content-type"),
                     final_url=str(resp.url),
+                    last_modified=last_modified,
+                    etag=etag,
                 )
     except HTTPException:
         with contextlib.suppress(OSError):

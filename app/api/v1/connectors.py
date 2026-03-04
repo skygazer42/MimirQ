@@ -51,6 +51,7 @@ from app.api.v1.documents import (
     UrlUploadRequest,
     _ingest_local_html_request,
     _ingest_url_upload_request,
+    _normalize_datetime_utc_iso,
     _resolve_writable_dataset,
 )
 from app.core.config import settings
@@ -2477,6 +2478,11 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                     # Attach connector metadata (must not affect pipeline_hash).
                     try:
                         meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                        if lm:
+                            lm_iso = _normalize_datetime_utc_iso(lm) or lm
+                            meta0["source_last_modified_at"] = lm_iso
+                            meta0["source_last_modified_source"] = "connector:confluence:last_modified"
+                            meta0["source_last_modified_raw"] = meta0.get("source_last_modified_raw") or lm
                         meta0["connector"] = {
                             "connector_id": "confluence_space",
                             "base_url": base_url,
