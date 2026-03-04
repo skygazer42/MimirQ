@@ -181,6 +181,7 @@ Labels 策略（默认安全）：
 - Index audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --index-audit --dry-run`
 - Evidence drift audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --evidence-drift-audit --dry-run`
 - Evidence drift repair enqueue（适合队列；bounded）：`POST /api/v1/evidence/suites/{suite_id}/repair-reference-sources?async_mode=true`（需要 `TASK_QUEUE_ENABLED=true`；返回 202 + `X-Task-Id`）
+- Runbook 内容治理 SOP（作者/审核/更新/废弃）：`docs/deployment/content_governance_sop.md`
 
 审计日志检索（用于 SIEM / 巡检）：
 - Index audit daily action：`observability.index_audit.daily`
