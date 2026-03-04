@@ -28,6 +28,7 @@ spec:
         spec:
           restartPolicy: Never
           {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.dbMaintenance.podSecurityContext) | nindent 10 }}
+          {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.dbMaintenance.automountServiceAccountToken) | nindent 10 }}
           containers:
             - name: db-maintenance
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"

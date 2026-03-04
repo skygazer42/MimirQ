@@ -78,6 +78,27 @@ Inputs:
 {{- with $root.Values.security.containerSecurityContext -}}
 {{- $ctx = mergeOverwrite $ctx . -}}
 {{- end -}}
+
+{{/*
+Render automountServiceAccountToken for a pod spec.
+
+Why helper: Helm's `default` treats boolean false as "empty", which makes it
+hard to override a global true -> per-component false. We use a nil-aware
+override instead.
+
+Inputs:
+- root: chart root context (.)
+- override: component-level override (bool or nil)
+*/}}
+{{- define "mimirq.automountServiceAccountToken" -}}
+{{- $root := .root -}}
+{{- $override := .override -}}
+{{- $val := $root.Values.automountServiceAccountToken -}}
+{{- if kindIs "bool" $override -}}
+{{- $val = $override -}}
+{{- end -}}
+automountServiceAccountToken: {{ $val }}
+{{- end -}}
 {{- if $root.Values.security.hardened -}}
 {{- with $root.Values.security.hardenedContainerSecurityContext -}}
 {{- $ctx = mergeOverwrite $ctx . -}}

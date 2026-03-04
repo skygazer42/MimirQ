@@ -25,6 +25,7 @@ spec:
         {{- end }}
     spec:
       {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.worker.podSecurityContext) | nindent 6 }}
+      {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.worker.automountServiceAccountToken) | nindent 6 }}
       containers:
         - name: worker
           image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
