@@ -38,6 +38,10 @@ security:
         - ALL
     runAsNonRoot: true
 
+# Security baseline: do not mount the Kubernetes service account token unless explicitly needed.
+# This chart does not require in-cluster K8s API access by default.
+automountServiceAccountToken: false
+
 # Values to write into the chart-managed Secret (only used when existingSecretName is empty).
 # IMPORTANT: Kubernetes Secrets are not encrypted by default; prefer creating an external secret
 # via your cluster's secret manager and setting existingSecretName.
@@ -124,6 +128,7 @@ api:
   resources: {}
   podSecurityContext: {}
   securityContext: {}
+  automountServiceAccountToken: null
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []
@@ -154,6 +159,7 @@ worker:
   resources: {}
   podSecurityContext: {}
   securityContext: {}
+  automountServiceAccountToken: null
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []
@@ -224,6 +230,7 @@ cronjobs:
     resources: {}
     podSecurityContext: {}
     securityContext: {}
+    automountServiceAccountToken: null
     podAnnotations: {}
     nodeSelector: {}
     tolerations: []
@@ -254,6 +261,7 @@ cronjobs:
     resources: {}
     podSecurityContext: {}
     securityContext: {}
+    automountServiceAccountToken: null
     podAnnotations: {}
     nodeSelector: {}
     tolerations: []
@@ -293,6 +301,7 @@ cronjobs:
     resources: {}
     podSecurityContext: {}
     securityContext: {}
+    automountServiceAccountToken: null
     podAnnotations: {}
     nodeSelector: {}
     tolerations: []
