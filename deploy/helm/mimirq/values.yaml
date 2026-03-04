@@ -27,6 +27,11 @@ security:
   hardened: false
 
   # Global defaults applied to all pods/containers (merged with per-component overrides).
+  #
+  # Tip (PVC permissions): if the uploads PVC is not writable for the image user,
+  # configure a pod-level fsGroup, e.g.:
+  #   fsGroup: 1000
+  #   fsGroupChangePolicy: "OnRootMismatch"
   podSecurityContext: {}
   containerSecurityContext: {}
 
