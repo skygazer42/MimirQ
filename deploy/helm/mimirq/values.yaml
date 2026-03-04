@@ -225,3 +225,40 @@ cronjobs:
     tolerations: []
     affinity: {}
     extraEnv: []
+
+  dbMaintenance:
+    enabled: false
+    schedule: "0 3 * * 0"
+    suspend: false
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 3
+
+    # Jobs: pick 1+ when enabled.
+    vacuum: false
+    analyze: false
+    verbose: false
+    tables: []
+
+    auditLogs: false
+    regressionRuns: false
+
+    # Tenant scope (retention only, mutually exclusive):
+    # - allTenants=true   -> pass --all-tenants
+    # - tenantId="<uuid>" -> pass --tenant-id
+    # - neither           -> default tenant (DEFAULT_TENANT_ID)
+    allTenants: false
+    tenantId: ""
+
+    # Script mode: when true, performs writes (VACUUM/retention). Start with dry-run first.
+    execute: false
+
+    retentionDays: 90
+    maxDelete: 100000
+
+    resources: {}
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    extraEnv: []

@@ -1,0 +1,94 @@
+{{- if .Values.cronjobs.dbMaintenance.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "mimirq.fullname" . }}-db-maintenance
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronjobs.dbMaintenance.schedule | quote }}
+  suspend: {{ .Values.cronjobs.dbMaintenance.suspend }}
+  concurrencyPolicy: {{ .Values.cronjobs.dbMaintenance.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronjobs.dbMaintenance.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjobs.dbMaintenance.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "mimirq.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cronjob-db-maintenance
+          annotations:
+            {{- if not .Values.existingSecretName }}
+            checksum/env: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+            {{- end }}
+            {{- with .Values.cronjobs.dbMaintenance.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: db-maintenance
+              image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python
+                - scripts/run_db_maintenance_jobs.py
+                {{- if .Values.cronjobs.dbMaintenance.vacuum }}
+                - --vacuum
+                {{- end }}
+                {{- if .Values.cronjobs.dbMaintenance.analyze }}
+                - --analyze
+                {{- end }}
+                {{- if .Values.cronjobs.dbMaintenance.verbose }}
+                - --verbose
+                {{- end }}
+                {{- range .Values.cronjobs.dbMaintenance.tables }}
+                - --table
+                - {{ . | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.dbMaintenance.auditLogs }}
+                - --audit-logs
+                {{- end }}
+                {{- if .Values.cronjobs.dbMaintenance.regressionRuns }}
+                - --regression-runs
+                {{- end }}
+                {{- if .Values.cronjobs.dbMaintenance.allTenants }}
+                - --all-tenants
+                {{- else if .Values.cronjobs.dbMaintenance.tenantId }}
+                - --tenant-id
+                - {{ .Values.cronjobs.dbMaintenance.tenantId | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.dbMaintenance.execute }}
+                - --execute
+                {{- else }}
+                - --dry-run
+                {{- end }}
+                - --retention-days
+                - {{ .Values.cronjobs.dbMaintenance.retentionDays | quote }}
+                - --max-delete
+                - {{ .Values.cronjobs.dbMaintenance.maxDelete | quote }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "mimirq.secretName" . }}
+              {{- with .Values.cronjobs.dbMaintenance.extraEnv }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .Values.cronjobs.dbMaintenance.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- with .Values.cronjobs.dbMaintenance.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.dbMaintenance.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.dbMaintenance.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
