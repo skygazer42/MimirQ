@@ -40,6 +40,10 @@ security:
       drop:
         - ALL
     runAsNonRoot: true
+    # NOTE: readOnlyRootFilesystem is intentionally NOT enabled by default.
+    # Some optional local backends (e.g., Chroma/FAISS) may write under /app.
+    # If you enable it, consider also enabling `security.tmpEmptyDir` and mounting
+    # writable volumes for any required paths.
 
   # Optional /tmp emptyDir. Useful when enabling readOnlyRootFilesystem or when
   # runtime needs a guaranteed-writable temp directory.
