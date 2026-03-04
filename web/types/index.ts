@@ -340,6 +340,52 @@ export interface RagTraceBundleResponse {
   records: Array<Record<string, any>>
 }
 
+export interface RagTraceBundleSummaryResponse {
+  request_id: string
+  window_minutes: number
+  truncated: boolean
+
+  retrieval_config_hash?: string | null
+  retrieval_mode?: string | null
+  retrieval_requested_mode?: string | null
+  retrieval_auto_routed?: boolean | null
+  retrieval_profile?: string | null
+  retrieval_top_k?: number | null
+  retrieval_alpha?: number | null
+  retrieval_enable_reranker?: boolean | null
+  retrieval_reranker_provider?: string | null
+  retrieval_reranker_top_n?: number | null
+  retrieval_query_parallelism?: number | null
+  retrieval_query_count?: number | null
+  retrieval_elapsed_sec?: number | null
+  retrieval_error_kinds: Record<string, number>
+
+  citations_count?: number | null
+
+  model_route?: string | null
+  model_used?: string | null
+  vector_backend?: string | null
+}
+
+export interface RagTraceBundleDiffItem {
+  key: string
+  a?: any | null
+  b?: any | null
+  delta?: number | null
+}
+
+export interface RagTraceBundleDiffResponse {
+  schema: string
+  generated_at: string
+  request_id_a: string
+  request_id_b: string
+  truncated: boolean
+
+  summary_a: RagTraceBundleSummaryResponse
+  summary_b: RagTraceBundleSummaryResponse
+  diff: RagTraceBundleDiffItem[]
+}
+
 export interface SloWindowSnapshotResponse {
   window_minutes: number
   source: string

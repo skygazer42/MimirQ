@@ -219,13 +219,14 @@ import type {
 	  RagvizSimilarityCollectionsResponse,
 	  RagvizSimilarityRequest,
 	  RagvizSimilarityCalculateResponse,
-	  RagMetricsSummaryResponse,
-	  RagQueryAnalyticsResponse,
-		  RagTraceBundleResponse,
-		  OpsConfigSnapshotResponse,
-		  TaskQueueObservabilitySnapshotResponse,
-		  SloSnapshotResponse,
-		  IndexAuditResponse,
+		  RagMetricsSummaryResponse,
+		  RagQueryAnalyticsResponse,
+			  RagTraceBundleResponse,
+			  RagTraceBundleDiffResponse,
+			  OpsConfigSnapshotResponse,
+			  TaskQueueObservabilitySnapshotResponse,
+			  SloSnapshotResponse,
+			  IndexAuditResponse,
 		  IngestionDashboardSummaryResponse,
 		  RagTraceListResponse,
 		  RagasRegressionRunDiffResponse,
@@ -3303,10 +3304,20 @@ export const observabilityApi = {
     return data
   },
 
-  async getRagTraceBundle(params: { request_id: string; window_minutes?: number; max_bytes?: number }): Promise<RagTraceBundleResponse> {
-    const { data } = await apiClient.get('/observability/rag-metrics/trace-bundle', { params })
-    return data
-  },
+	  async getRagTraceBundle(params: { request_id: string; window_minutes?: number; max_bytes?: number }): Promise<RagTraceBundleResponse> {
+	    const { data } = await apiClient.get('/observability/rag-metrics/trace-bundle', { params })
+	    return data
+	  },
+
+	  async getRagTraceBundleDiff(params: {
+	    request_id_a: string
+	    request_id_b: string
+	    window_minutes?: number
+	    max_bytes?: number
+	  }): Promise<RagTraceBundleDiffResponse> {
+	    const { data } = await apiClient.get('/observability/rag-metrics/trace-bundle/diff', { params })
+	    return data
+	  },
 
 	  async getOpsConfigSnapshot(): Promise<OpsConfigSnapshotResponse> {
 	    const { data } = await apiClient.get('/observability/config/snapshot')

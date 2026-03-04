@@ -17,6 +17,7 @@ import json
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, List, Optional
 
@@ -645,6 +646,174 @@ class RagTraceBundle:
     records: list[dict[str, Any]]
 
 
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _first_event(records: list[dict[str, Any]], event: str) -> dict[str, Any] | None:
+    for r in records:
+        if str(r.get("event") or "") == event:
+            return r
+    return None
+
+
+def _extract_error_kind_counts(errors: Any) -> dict[str, int]:
+    if not isinstance(errors, list) or not errors:
+        return {}
+    out: dict[str, int] = defaultdict(int)
+    for e in errors:
+        if not isinstance(e, str):
+            continue
+        kind = e.split(":", 1)[0].strip().lower()
+        if not kind:
+            continue
+        out[kind[:30]] += 1
+    return dict(out)
+
+
+def _coerce_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _coerce_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _extract_trace_bundle_summary(bundle: RagTraceBundle) -> dict[str, Any]:
+    trace = _first_event(bundle.records, "rag_trace") or {}
+    done = _first_event(bundle.records, "rag_done") or {}
+
+    retrieval = trace.get("retrieval") if isinstance(trace.get("retrieval"), dict) else {}
+    route_trace = trace.get("route") if isinstance(trace.get("route"), dict) else {}
+
+    citations_count: int | None = None
+    try:
+        if trace.get("citations_count") is not None:
+            citations_count = int(trace.get("citations_count") or 0)
+        else:
+            citations = trace.get("citations") or []
+            citations_count = len(citations) if isinstance(citations, list) else 0
+    except Exception:
+        citations_count = None
+
+    retrieval_elapsed_sec = _coerce_float(retrieval.get("elapsed_sec"))
+    if retrieval_elapsed_sec is not None:
+        retrieval_elapsed_sec = round(max(0.0, retrieval_elapsed_sec), 3)
+
+    retrieval_alpha = _coerce_float(retrieval.get("alpha"))
+    if retrieval_alpha is not None:
+        retrieval_alpha = round(retrieval_alpha, 6)
+
+    out: dict[str, Any] = {
+        "request_id": bundle.request_id,
+        "window_minutes": int(bundle.window_minutes),
+        "truncated": bool(bundle.truncated),
+        # Config fingerprint (stable, PII-safe): per-request retrieval config hash.
+        "retrieval_config_hash": (str(retrieval.get("retrieval_config_hash") or "").strip() or None),
+        "retrieval_mode": (str(retrieval.get("mode") or done.get("retrieval_mode") or "").strip() or None),
+        "retrieval_requested_mode": (str(retrieval.get("requested_mode") or "").strip() or None),
+        "retrieval_auto_routed": bool(retrieval.get("auto_routed")) if retrieval.get("auto_routed") is not None else None,
+        "retrieval_profile": (str(retrieval.get("profile") or "").strip() or None),
+        "retrieval_top_k": _coerce_int(retrieval.get("top_k")),
+        "retrieval_alpha": retrieval_alpha,
+        "retrieval_enable_reranker": bool(retrieval.get("enable_reranker"))
+        if retrieval.get("enable_reranker") is not None
+        else None,
+        "retrieval_reranker_provider": (str(retrieval.get("reranker_provider") or "").strip() or None),
+        "retrieval_reranker_top_n": _coerce_int(retrieval.get("reranker_top_n")),
+        "retrieval_query_parallelism": _coerce_int(retrieval.get("query_parallelism")),
+        "retrieval_query_count": _coerce_int(retrieval.get("query_count")),
+        "retrieval_elapsed_sec": retrieval_elapsed_sec,
+        "retrieval_error_kinds": _extract_error_kind_counts(retrieval.get("errors")),
+        "citations_count": citations_count,
+        "model_route": (str(route_trace.get("model_route") or done.get("route") or "").strip() or None),
+        "model_used": (str(route_trace.get("model_used") or done.get("model_used") or "").strip() or None),
+        "vector_backend": (str(done.get("vector_backend") or "").strip() or None),
+    }
+    return out
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _diff_trace_summaries(a: dict[str, Any], b: dict[str, Any]) -> list[dict[str, Any]]:
+    diff_keys = [
+        "retrieval_config_hash",
+        "retrieval_mode",
+        "retrieval_requested_mode",
+        "retrieval_auto_routed",
+        "retrieval_profile",
+        "retrieval_top_k",
+        "retrieval_alpha",
+        "retrieval_enable_reranker",
+        "retrieval_reranker_provider",
+        "retrieval_reranker_top_n",
+        "retrieval_query_parallelism",
+        "retrieval_query_count",
+        "retrieval_elapsed_sec",
+        "citations_count",
+        "retrieval_error_kinds",
+        "model_route",
+        "model_used",
+        "vector_backend",
+    ]
+
+    out: list[dict[str, Any]] = []
+    for k in diff_keys:
+        av = a.get(k)
+        bv = b.get(k)
+        if av == bv:
+            continue
+        delta = None
+        if _is_number(av) and _is_number(bv):
+            try:
+                delta_raw = float(bv) - float(av)
+                delta = round(delta_raw, 6)
+            except Exception:
+                delta = None
+        out.append({"key": k, "a": av, "b": bv, "delta": delta})
+    return out
+
+
+@dataclass(frozen=True)
+class RagTraceBundleDiff:
+    schema: str
+    generated_at: datetime
+    request_id_a: str
+    request_id_b: str
+    truncated: bool
+    summary_a: dict[str, Any]
+    summary_b: dict[str, Any]
+    diff: list[dict[str, Any]]
+
+
+def build_rag_trace_bundle_diff(*, bundle_a: RagTraceBundle, bundle_b: RagTraceBundle) -> RagTraceBundleDiff:
+    summary_a = _extract_trace_bundle_summary(bundle_a)
+    summary_b = _extract_trace_bundle_summary(bundle_b)
+    diff = _diff_trace_summaries(summary_a, summary_b)
+    return RagTraceBundleDiff(
+        schema="mimirq.rag_trace_bundle_diff.v1",
+        generated_at=_now_utc(),
+        request_id_a=bundle_a.request_id,
+        request_id_b=bundle_b.request_id,
+        truncated=bool(bundle_a.truncated or bundle_b.truncated),
+        summary_a=summary_a,
+        summary_b=summary_b,
+        diff=diff,
+    )
+
+
 def build_rag_trace_bundle(
     *,
     tenant_id: str | None,
@@ -726,3 +895,11 @@ def build_rag_trace_bundle(
         request_id=request_id,
         records=matched,
     )
+
+
+__all__ = [
+    "RagTraceBundle",
+    "build_rag_trace_bundle",
+    "RagTraceBundleDiff",
+    "build_rag_trace_bundle_diff",
+]
