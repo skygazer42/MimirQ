@@ -64,6 +64,10 @@ class Document(Base):
     authority_level = Column(Integer, nullable=True)
     supersedes_document_id = Column(UUID(as_uuid=True), nullable=True)
 
+    # Publication/approval workflow state (governance).
+    # Keep separate from processing `status` below.
+    publication_status = Column(String(20), nullable=False, default="published", index=True)  # draft|published|deprecated
+
     # Processing status
     status = Column(String(20), nullable=False, default='pending')  # pending | processing | completed | failed
     processing_progress = Column(Integer, default=0)  # 0-100

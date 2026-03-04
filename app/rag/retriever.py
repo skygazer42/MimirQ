@@ -872,6 +872,7 @@ class HybridRetriever(BaseRetriever):
                                 )
                                 .join(DBDocument)
                                 .filter(DBDocument.status == "completed")
+                                .filter(DBDocument.publication_status == "published")
                                 .filter(DocumentChunk.tenant_id == tenant_uuid)
                                 .filter(DocumentChunk.document_id.in_(document_ids))
                                 .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
@@ -926,6 +927,7 @@ class HybridRetriever(BaseRetriever):
                             )
                             .join(DBDocument)
                             .filter(DBDocument.status == "completed")
+                            .filter(DBDocument.publication_status == "published")
                             .filter(DocumentChunk.tenant_id == tenant_uuid)
                             .filter(DocumentChunk.document_id.in_(list(missing)))
                             .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
@@ -983,6 +985,7 @@ class HybridRetriever(BaseRetriever):
                     )
                     .join(DBDocument)
                     .filter(DBDocument.status == "completed")
+                    .filter(DBDocument.publication_status == "published")
                     .filter(DocumentChunk.tenant_id == tenant_uuid)
                 )
                 q = _maybe_call(q, "enable_eagerloads", False)
@@ -1115,6 +1118,7 @@ class HybridRetriever(BaseRetriever):
             )
             .join(DBDocument)
             .filter(DBDocument.status == "completed")
+            .filter(DBDocument.publication_status == "published")
             .filter(DocumentChunk.tenant_id == tenant_id)
             .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
             .enable_eagerloads(False)
@@ -1875,6 +1879,7 @@ class HybridRetriever(BaseRetriever):
                     )
                     .join(DBDocument, DocumentChunk.document_id == DBDocument.id)
                     .filter(DBDocument.status == "completed")
+                    .filter(DBDocument.publication_status == "published")
                     .filter(DBDocument.archived_at.is_(None))
                     .filter(DBDocument.disabled_at.is_(None))
                     .filter(DocumentChunk.disabled_at.is_(None))
@@ -2810,10 +2815,11 @@ class HybridRetriever(BaseRetriever):
                         DBDocument.doc_metadata,
                         DBDocument.archived_at,
                         DBDocument.disabled_at,
+                        DBDocument.publication_status,
                     ).filter(DBDocument.id.in_(sorted(doc_ids)))
                     if tenant_filter:
                         dq = dq.filter(DBDocument.tenant_id == tenant_filter)
-                    for doc_id, ds_id, status, doc_meta, archived_at, disabled_at in dq.all():
+                    for doc_id, ds_id, status, doc_meta, archived_at, disabled_at, publication_status in dq.all():
                         meta0 = doc_meta if isinstance(doc_meta, dict) else {}
                         user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
                         if user0:
@@ -2828,6 +2834,8 @@ class HybridRetriever(BaseRetriever):
                             else (str(status or "").lower() == "completed")
                         )
                         if archived_at is not None or disabled_at is not None:
+                            ready = False
+                        if str(publication_status or "published").strip().lower() != "published":
                             ready = False
                         doc_ready_by_id[str(doc_id)] = bool(ready)
 
@@ -3864,6 +3872,7 @@ class HybridRetriever(BaseRetriever):
                         DBDocument.doc_metadata,
                         DBDocument.archived_at,
                         DBDocument.disabled_at,
+                        DBDocument.publication_status,
                     )
                     .filter(
                         DBDocument.tenant_id == tenant_id,
@@ -3873,7 +3882,7 @@ class HybridRetriever(BaseRetriever):
                     )
                     .all()
                 )
-                for supersedes_id, status, meta, archived_at, disabled_at in sup_rows:
+                for supersedes_id, status, meta, archived_at, disabled_at, publication_status in sup_rows:
                     if supersedes_id is None:
                         continue
                     # Only treat as superseded when the superseding doc is "active-ready".
@@ -3886,6 +3895,8 @@ class HybridRetriever(BaseRetriever):
                         else:
                             ready = str(status or "").lower() == "completed"
                         if archived_at is not None or disabled_at is not None:
+                            ready = False
+                        if str(publication_status or "published").strip().lower() != "published":
                             ready = False
                     except Exception:
                         ready = False

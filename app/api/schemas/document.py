@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field, ValidationError, model_validator
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator, model_validator
 
 from .base import OrmModel
 
@@ -20,6 +20,16 @@ class DocumentStatusEnum(str, Enum):
     failed = "failed"
     quarantined = "quarantined"
     cancelled = "cancelled"
+
+
+DocumentPublicationStatus = Literal["draft", "published", "deprecated"]
+
+
+def _normalize_publication_status(value: object) -> str:
+    s = str(value or "published").strip().lower()
+    if s in {"draft", "published", "deprecated"}:
+        return s
+    return "published"
 
 
 class GovernanceRegexRule(BaseModel):
@@ -324,6 +334,12 @@ class DocumentLifecycleMetadata(BaseModel):
     review_due_at: Optional[datetime] = None
     authority_level: Optional[int] = Field(default=None, ge=0, le=100)
     supersedes_document_id: Optional[UUID] = None
+    publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
+
+    @field_validator("publication_status", mode="before")
+    @classmethod
+    def _coerce_publication_status(cls, v: object) -> str:
+        return _normalize_publication_status(v)
 
 
 class DocumentLifecycleMetadataUpdateRequest(BaseModel):
@@ -339,6 +355,7 @@ class DocumentLifecycleMetadataUpdateRequest(BaseModel):
     review_due_at: Optional[datetime] = None
     authority_level: Optional[int] = Field(default=None, ge=0, le=100)
     supersedes_document_id: Optional[UUID] = None
+    publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
 
 
 class DocumentBatchLifecycleRequest(BaseModel):
@@ -537,6 +554,7 @@ class DocumentDetail(OrmModel):
     total_characters: int
     owner_id: Optional[str] = None
     access_mode: Optional[DocumentAccessMode] = None
+    publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
     lifecycle_owner: Optional[str] = None
     review_due_at: Optional[datetime] = None
     authority_level: Optional[int] = None
@@ -577,6 +595,11 @@ class DocumentDetail(OrmModel):
         # Best-effort: attach pipeline provenance for UI/debug; never fail the response.
         self.pipeline = DocumentPipelineProvenance.from_metadata(meta)
         return self
+
+    @field_validator("publication_status", mode="before")
+    @classmethod
+    def _coerce_detail_publication_status(cls, v: object) -> str:
+        return _normalize_publication_status(v)
 
 
 class ParsedSegment(BaseModel):

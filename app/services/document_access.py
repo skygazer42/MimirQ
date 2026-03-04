@@ -230,6 +230,7 @@ def list_accessible_document_ids(
         db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.access_mode, DBDocument.owner_id, DBDocument.updated_at)
         .filter(DBDocument.tenant_id == tenant_id)
     )
+    query = query.filter(DBDocument.publication_status == "published")
     if status:
         if str(status).lower() == "completed":
             # Versioning: allow documents that are currently reprocessing/failed/cancelled,

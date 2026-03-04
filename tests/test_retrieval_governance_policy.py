@@ -157,7 +157,7 @@ def test_retrieval_governance_policy_filters_superseded(monkeypatch: pytest.Monk
 
     sup_rows = [
         # A newer, active-ready doc supersedes `old`.
-        (old, "completed", {}, None, None),
+        (old, "completed", {}, None, None, "published"),
     ]
 
     class _DummyQuery:
@@ -192,4 +192,3 @@ def test_retrieval_governance_policy_filters_superseded(monkeypatch: pytest.Monk
 
     assert [r._get_doc_id(x) for x in out] == [str(other)]
     assert stats.get("filtered_superseded") == 1
-

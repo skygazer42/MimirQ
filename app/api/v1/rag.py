@@ -114,6 +114,7 @@ async def retrieve_preview(
                 account_id=account_id,
                 dataset_id=scope_dataset_id,
             )
+            q = q.filter(DBDocument.publication_status == "published")
             q = q.filter(
                 (DBDocument.status == "completed")
                 | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
@@ -398,6 +399,7 @@ async def retrieve_evidence(
                 account_id=account_id,
                 dataset_id=scope_dataset_id,
             )
+            q = q.filter(DBDocument.publication_status == "published")
             q = q.filter(
                 (DBDocument.status == "completed")
                 | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
@@ -817,6 +819,7 @@ async def prompt_preview(
                 account_id=account_id,
                 dataset_id=scope_dataset_id,
             )
+            q = q.filter(DBDocument.publication_status == "published")
             q = q.filter(
                 (DBDocument.status == "completed")
                 | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
