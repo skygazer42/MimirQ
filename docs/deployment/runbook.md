@@ -224,6 +224,31 @@ Incident Response Cookbook（可执行命令集）：`docs/deployment/incident_r
    - **索引一致性异常**：跑 index-audit 端点；必要时暂停新 ingestion，避免越写越乱。
    - **对象存储/向量库不可用**：Readiness 503 时先恢复依赖，再考虑回放/补偿任务。
 
+### 5.1) 429（Rate Limit / Quota）快速诊断
+
+当客户端/前端出现 **HTTP 429** 时，优先检查响应体与响应头：
+
+- Header：`Retry-After`（秒）
+- Body：`detail.retry_after_sec` / `detail.limit` / `detail.scope`
+
+常见 `scope`（示例）：
+
+- `rate_limit:api` / `rate_limit:chat`：全局 rate-limit middleware（保护后端）
+- `tenant_qps:chat` / `tenant_qps:retrieval`：租户级 QPS 配额（建议结合峰值与实例数调参）
+- `chat_tokens`：Chat 助手 token 配额（成本治理）
+- `tenant_documents` / `tenant_storage`：上传配额（文档数 / 存储容量）
+
+处置建议（先止血）：
+
+1. **尊重 Retry-After**：让客户端按 `Retry-After` 退避重试（避免雪崩）。
+2. **确认是哪一类限流**（看 `scope`）：
+   - `rate_limit:*`：调 `RATE_LIMIT_*`，必要时启用 Redis 分布式限流（避免多副本下“各自放水/各自限流”）。
+   - `tenant_qps:*`：调 `TENANT_QPS_QUOTA_*`，同时观察 p95/p99 与后端依赖瓶颈；必要时扩容。
+   - `chat_tokens`：从“用量与成本”页或聚合指标确认是否异常；必要时提升 quota 或切换为 warn 模式。
+3. **回看告警/趋势**：429 往往是“更大问题的先兆”（依赖抖动、队列堆积、成本爆炸）。
+
+配置项汇总：`docs/deployment/quota_rate_limit.md`
+
 ---
 
 <a id="rb-rollback"></a>
