@@ -85,6 +85,7 @@ class RagQueryAnalyticsResponse(BaseModel):
     top_zero_hit_queries: List[Dict[str, Any]] = Field(default_factory=list)
     top_slow_queries: List[Dict[str, Any]] = Field(default_factory=list)
     timeseries: Dict[str, List[Any]] = Field(default_factory=dict)
+    anomalies: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class RagTraceBundleResponse(BaseModel):

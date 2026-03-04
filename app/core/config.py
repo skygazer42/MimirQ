@@ -821,6 +821,22 @@ class Settings(BaseSettings):
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
     # When false (default), omit raw question/query/snippets from metrics logs to reduce PII leakage.
     METRICS_LOG_INCLUDE_TEXT: bool = False
+
+    # Observability: simple anomaly detection (rolling baseline; PII-safe).
+    # Used by query analytics to flag spikes in zero-hit/error rates.
+    OBS_ANOMALY_ENABLED: bool = True
+    OBS_ANOMALY_BASELINE_WINDOW_MINUTES: int = 60
+    OBS_ANOMALY_CURRENT_WINDOW_MINUTES: int = 5
+    OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET: int = 5
+    OBS_ANOMALY_MIN_BASELINE_BUCKETS: int = 10
+
+    OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD: float = 0.6
+    OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD: float = 2.0
+    OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD: float = 3.0
+
+    OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD: float = 0.05
+    OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD: float = 3.0
+    OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD: float = 3.0
     ENABLE_QUERY_REWRITE: bool = False
     QUERY_REWRITE_TEMPERATURE: float = 0.2
     QUERY_REWRITE_MAX_CHARS: int = 120
