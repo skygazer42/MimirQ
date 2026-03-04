@@ -8,8 +8,8 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
-from app.models.tenant_group import TenantGroupMember
 from app.services.dataset_service import DatasetService
+from app.services.tenant_group_service import TenantGroupService
 
 # Document-level ACL ("security trimming") modes.
 _DOC_ACCESS_DEFAULTS = {"", "inherit"}
@@ -25,18 +25,7 @@ def _resolve_account_group_ids(db: Session, *, tenant_id: UUID, account_id: str)
     Note: this is a low-level helper used by permission checks; it must not raise
     for missing memberships (empty set means "no groups").
     """
-    uid = (str(account_id or "")).strip()
-    if not uid:
-        return set()
-    rows = (
-        db.query(TenantGroupMember.group_id)
-        .filter(
-            TenantGroupMember.tenant_id == tenant_id,
-            TenantGroupMember.user_id == uid,
-        )
-        .all()
-    )
-    return {row[0] for row in rows if row and row[0]}
+    return TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
 
 
 def _normalize_doc_access_mode(value: object) -> str:

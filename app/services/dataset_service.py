@@ -12,7 +12,8 @@ from app.core.env import is_production_env
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant import Tenant, TenantMember
-from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.models.tenant_group import TenantGroup
+from app.services.tenant_group_service import TenantGroupService
 
 EDIT_ROLES = UserRoles.EDIT_ROLES
 
@@ -190,15 +191,13 @@ class DatasetService:
 
         # Group-based allowlist (enterprise): allow when any of the account's tenant groups
         # is granted access to the dataset.
-        group_rows = (
-            db.query(TenantGroupMember.group_id)
-            .filter(
-                TenantGroupMember.tenant_id == dataset.tenant_id,
-                TenantGroupMember.user_id == account_id,
+        group_ids = list(
+            TenantGroupService.resolve_account_group_ids(
+                db,
+                tenant_id=dataset.tenant_id,
+                account_id=account_id,
             )
-            .all()
         )
-        group_ids = [row[0] for row in group_rows if row and row[0]]
         if not group_ids:
             return False
 
@@ -236,15 +235,13 @@ class DatasetService:
             if exists:
                 return
 
-            group_rows = (
-                db.query(TenantGroupMember.group_id)
-                .filter(
-                    TenantGroupMember.tenant_id == dataset.tenant_id,
-                    TenantGroupMember.user_id == account_id,
+            group_ids = list(
+                TenantGroupService.resolve_account_group_ids(
+                    db,
+                    tenant_id=dataset.tenant_id,
+                    account_id=account_id,
                 )
-                .all()
             )
-            group_ids = [row[0] for row in group_rows if row and row[0]]
             if group_ids:
                 group_perm = (
                     db.query(DatasetGroupPermission.id)
