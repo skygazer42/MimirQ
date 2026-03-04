@@ -161,6 +161,7 @@ api:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  topologySpreadConstraints: []
 
   extraEnv: []
   extraVolumeMounts: []
@@ -194,6 +195,7 @@ worker:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  topologySpreadConstraints: []
 
   extraEnv: []
   extraVolumeMounts: []
