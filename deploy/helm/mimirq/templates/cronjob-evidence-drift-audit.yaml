@@ -1,0 +1,88 @@
+{{- if .Values.cronjobs.evidenceDriftAudit.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "mimirq.fullname" . }}-evidence-drift-audit
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronjobs.evidenceDriftAudit.schedule | quote }}
+  suspend: {{ .Values.cronjobs.evidenceDriftAudit.suspend }}
+  concurrencyPolicy: {{ .Values.cronjobs.evidenceDriftAudit.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronjobs.evidenceDriftAudit.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjobs.evidenceDriftAudit.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "mimirq.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cronjob-evidence-drift-audit
+          annotations:
+            {{- if not .Values.existingSecretName }}
+            checksum/env: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+            {{- end }}
+            {{- with .Values.cronjobs.evidenceDriftAudit.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: evidence-drift-audit
+              image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python
+                - scripts/run_periodic_audit_jobs.py
+                - --evidence-drift-audit
+                {{- if .Values.cronjobs.evidenceDriftAudit.allTenants }}
+                - --all-tenants
+                {{- else if .Values.cronjobs.evidenceDriftAudit.tenantId }}
+                - --tenant-id
+                - {{ .Values.cronjobs.evidenceDriftAudit.tenantId | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.evidenceDriftAudit.execute }}
+                - --execute
+                {{- else }}
+                - --dry-run
+                {{- end }}
+                - --max-datasets
+                - {{ .Values.cronjobs.evidenceDriftAudit.maxDatasets | quote }}
+                - --slice-top-n
+                - {{ .Values.cronjobs.evidenceDriftAudit.sliceTopN | quote }}
+                {{- if .Values.cronjobs.evidenceDriftAudit.includeArchivedItems }}
+                - --include-archived-items
+                {{- end }}
+                {{- if .Values.cronjobs.evidenceDriftAudit.includeDetails }}
+                - --include-details
+                - --details-limit
+                - {{ .Values.cronjobs.evidenceDriftAudit.detailsLimit | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.evidenceDriftAudit.force }}
+                - --force
+                {{- end }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "mimirq.secretName" . }}
+              {{- with .Values.cronjobs.evidenceDriftAudit.extraEnv }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .Values.cronjobs.evidenceDriftAudit.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- with .Values.cronjobs.evidenceDriftAudit.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.evidenceDriftAudit.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.evidenceDriftAudit.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+

@@ -1,0 +1,84 @@
+{{- if .Values.cronjobs.indexAudit.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "mimirq.fullname" . }}-index-audit
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronjobs.indexAudit.schedule | quote }}
+  suspend: {{ .Values.cronjobs.indexAudit.suspend }}
+  concurrencyPolicy: {{ .Values.cronjobs.indexAudit.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronjobs.indexAudit.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjobs.indexAudit.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "mimirq.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cronjob-index-audit
+          annotations:
+            {{- if not .Values.existingSecretName }}
+            checksum/env: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+            {{- end }}
+            {{- with .Values.cronjobs.indexAudit.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: index-audit
+              image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python
+                - scripts/run_periodic_audit_jobs.py
+                - --index-audit
+                {{- if .Values.cronjobs.indexAudit.allTenants }}
+                - --all-tenants
+                {{- else if .Values.cronjobs.indexAudit.tenantId }}
+                - --tenant-id
+                - {{ .Values.cronjobs.indexAudit.tenantId | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.indexAudit.execute }}
+                - --execute
+                {{- else }}
+                - --dry-run
+                {{- end }}
+                - --max-datasets
+                - {{ .Values.cronjobs.indexAudit.maxDatasets | quote }}
+                - --max-check-ids
+                - {{ .Values.cronjobs.indexAudit.maxCheckIds | quote }}
+                - --milvus-list-limit
+                - {{ .Values.cronjobs.indexAudit.milvusListLimit | quote }}
+                - --sample-limit
+                - {{ .Values.cronjobs.indexAudit.sampleLimit | quote }}
+                {{- if .Values.cronjobs.indexAudit.force }}
+                - --force
+                {{- end }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "mimirq.secretName" . }}
+              {{- with .Values.cronjobs.indexAudit.extraEnv }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .Values.cronjobs.indexAudit.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- with .Values.cronjobs.indexAudit.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.indexAudit.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.indexAudit.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+

@@ -83,7 +83,52 @@ def run_dataset_index_audit(
     # Ensure the caller is at least a tenant member; the API layer enforces admin role separately.
     DatasetService.ensure_member(db, tenant_id, account_id)
     DatasetService.get_dataset(db, tenant_id, dataset_id)
+    return _run_dataset_index_audit_core(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        max_check_ids=max_check_ids,
+        milvus_list_limit=milvus_list_limit,
+        sample_limit=sample_limit,
+    )
 
+
+def run_dataset_index_audit_internal(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    max_check_ids: int = 5000,
+    milvus_list_limit: int = 2000,
+    sample_limit: int = 20,
+) -> dict[str, Any]:
+    """
+    Dataset-scoped index audit intended for internal automation (cron / jobs).
+
+    Differences vs `run_dataset_index_audit`:
+    - does NOT require an account_id / membership check
+    - still validates the dataset exists for the tenant
+    """
+    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    return _run_dataset_index_audit_core(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        max_check_ids=max_check_ids,
+        milvus_list_limit=milvus_list_limit,
+        sample_limit=sample_limit,
+    )
+
+
+def _run_dataset_index_audit_core(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    max_check_ids: int,
+    milvus_list_limit: int,
+    sample_limit: int,
+) -> dict[str, Any]:
     # "Active" documents: searchable in RAG (mirrors retrieval readiness checks).
     doc_ready_clause = or_(
         DBDocument.status == "completed",
@@ -218,5 +263,5 @@ def run_dataset_index_audit(
 __all__ = [
     "compute_index_audit_summary",
     "run_dataset_index_audit",
+    "run_dataset_index_audit_internal",
 ]
-
