@@ -1856,6 +1856,16 @@ def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[st
     pipeline_hash = str(meta.get("pipeline_hash") or "").strip() or None
     active_pipeline_hash = str(meta.get("active_pipeline_hash") or "").strip() or None
     doc_pipeline_key = build_doc_pipeline_key(doc.id, active_hash) if active_hash else None
+    file_sha256 = str(meta.get("file_sha256") or "").strip().lower() or None
+
+    source_url = str(meta.get("source_url") or "").strip() or None
+    source_path = str(meta.get("source_path") or "").strip() or None
+    source_last_modified_at = str(meta.get("source_last_modified_at") or "").strip() or None
+    source_last_modified_source = str(meta.get("source_last_modified_source") or "").strip() or None
+    source_fetched_at = str(meta.get("source_fetched_at") or "").strip() or None
+    source_etag = str(meta.get("source_etag") or "").strip() or None
+    if source_etag and len(source_etag) > 500:
+        source_etag = source_etag[:500]
 
     out: dict[str, Any] = {
         "schema": "mimirq.dataset_document_export.v1",
@@ -1872,9 +1882,23 @@ def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[st
         "processed_at": _dt_to_json(getattr(doc, "processed_at", None)),
         "archived_at": _dt_to_json(getattr(doc, "archived_at", None)),
         "disabled_at": _dt_to_json(getattr(doc, "disabled_at", None)),
+        # Lifecycle / governance workflow signals (PII-safe by default).
+        "lifecycle_owner_hash": None,
+        "review_due_at": _dt_to_json(getattr(doc, "review_due_at", None)),
+        "authority_level": (int(getattr(doc, "authority_level", 0) or 0) if getattr(doc, "authority_level", None) is not None else None),
+        "supersedes_document_id": (str(getattr(doc, "supersedes_document_id", "") or "") or None),
+        # Stable fingerprints.
+        "file_sha256": file_sha256,
         "doc_pipeline_key": doc_pipeline_key,
         "pipeline_hash": pipeline_hash,
         "active_pipeline_hash": active_pipeline_hash,
+        # Source / connector staleness signals (no raw content).
+        "source_url_hash": (stable_hash(source_url, length=16) if source_url and not include_sensitive else None),
+        "source_path_hash": (stable_hash(source_path, length=16) if source_path and not include_sensitive else None),
+        "source_last_modified_at": source_last_modified_at,
+        "source_last_modified_source": source_last_modified_source,
+        "source_fetched_at": source_fetched_at,
+        "source_etag": source_etag,
     }
 
     if include_sensitive:
@@ -1884,6 +1908,7 @@ def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[st
                 "file_path": str(getattr(doc, "file_path", "") or ""),
                 "owner_id": (str(getattr(doc, "owner_id", "") or "") or None),
                 "access_mode": (str(getattr(doc, "access_mode", "") or "") or None),
+                "lifecycle_owner": (str(getattr(doc, "lifecycle_owner", "") or "") or None),
                 "error_message": (str(getattr(doc, "error_message", "") or "") or None),
                 "doc_metadata": meta,
             }
@@ -1892,12 +1917,14 @@ def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[st
         filename = str(getattr(doc, "filename", "") or "").strip()
         file_path = str(getattr(doc, "file_path", "") or "").strip()
         owner_id = str(getattr(doc, "owner_id", "") or "").strip()
+        lifecycle_owner = str(getattr(doc, "lifecycle_owner", "") or "").strip()
         error_message = str(getattr(doc, "error_message", "") or "").strip()
         out.update(
             {
                 "filename_hash": (stable_hash(filename, length=16) if filename else None),
                 "file_path_hash": (stable_hash(file_path, length=16) if file_path else None),
                 "owner_id_hash": (stable_hash(owner_id, length=16) if owner_id else None),
+                "lifecycle_owner_hash": (stable_hash(lifecycle_owner, length=16) if lifecycle_owner else None),
                 "has_error": bool(error_message),
                 "doc_metadata_summary": _summarize_document_metadata(meta),
             }
@@ -1913,6 +1940,7 @@ def export_dataset_documents_ndjson(
     after_created_at: datetime | None = Query(default=None, description="Cursor: last seen created_at"),
     after_id: UUID | None = Query(default=None, description="Cursor: last seen id (tie-breaker)"),
     include_sensitive: bool = Query(default=False, description="Include sensitive fields (admin-only)"),
+    export_format: str = Query(default="ndjson", description="ndjson|json"),
     gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON (Content-Encoding: gzip)"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -1934,6 +1962,9 @@ def export_dataset_documents_ndjson(
     )
 
     ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    fmt = str(export_format or "ndjson").strip().lower() or "ndjson"
+    if fmt not in {"ndjson", "json"}:
+        raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
 
     q = (
         db.query(DBDocument)
@@ -1970,6 +2001,7 @@ def export_dataset_documents_ndjson(
                 "cursor_after_created_at": (after_created_at.isoformat() if after_created_at else None),
                 "cursor_after_id": (str(after_id) if after_id else None),
                 "include_sensitive": bool(include_sensitive),
+                "export_format": fmt,
                 "gzip": bool(gzip),
             },
         )
@@ -1980,6 +2012,42 @@ def export_dataset_documents_ndjson(
         except Exception:
             pass
 
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    headers = {"Cache-Control": "no-store"}
+
+    if fmt == "json":
+        items = [_export_document_row(row, include_sensitive=bool(include_sensitive)) for row in rows]
+        next_cursor = None
+        if rows:
+            last = rows[-1]
+            next_cursor = {
+                "after_created_at": _dt_to_json(last.created_at),
+                "after_id": str(last.id),
+            }
+
+        payload = {
+            "schema": "mimirq.dataset_document_export_page.v1",
+            "dataset_id": str(dataset_id),
+            "limit": int(limit or 0),
+            "returned": int(len(items)),
+            "next_cursor": next_cursor,
+            "items": items,
+        }
+        content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+
+        filename = f"{safe}.documents.json"
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        if gzip:
+            headers["Content-Encoding"] = "gzip"
+            headers["Content-Disposition"] = f'attachment; filename="{filename}.gz"'
+            content = gzip_lib.compress(content)
+
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers=headers,
+        )
+
     def _iter_lines() -> Iterator[bytes]:
         for row in rows:
             payload = _export_document_row(row, include_sensitive=bool(include_sensitive))
@@ -1987,23 +2055,15 @@ def export_dataset_documents_ndjson(
             yield line.encode("utf-8")
 
     body_iter: Iterator[bytes] = _iter_lines()
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(ds, "name", "") or "dataset"))[:64]
     filename = f"{safe}.documents.ndjson"
 
-    headers = {
-        "Cache-Control": "no-store",
-        "Content-Disposition": f'attachment; filename="{filename}"',
-    }
+    headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     if gzip:
         headers["Content-Encoding"] = "gzip"
         headers["Content-Disposition"] = f'attachment; filename="{filename}.gz"'
         body_iter = _iter_gzip_chunks(body_iter)
 
-    return StreamingResponse(
-        body_iter,
-        media_type="application/x-ndjson",
-        headers=headers,
-    )
+    return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
 
 
 @router.get("/{dataset_id}/export")

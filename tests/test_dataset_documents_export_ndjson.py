@@ -329,3 +329,129 @@ def test_dataset_documents_export_ndjson_supports_gzip(monkeypatch):  # noqa: AN
     got = _parse_ndjson(text)
     assert [r.get("id") for r in got] == [str(doc.id)]
 
+
+def test_dataset_documents_export_ndjson_includes_source_and_lifecycle_fields_redacted(monkeypatch):  # noqa: ANN001
+    from app.rag.core.hashing import stable_hash
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    supersedes = uuid.uuid4()
+    source_url = "https://example.com/private/doc.txt"
+
+    doc = Document(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        filename="secret.txt",
+        file_type="txt",
+        file_size=123,
+        file_path="minio://bucket/tenant/dataset/doc.txt",
+        status="completed",
+        created_at=now,
+        updated_at=now,
+        lifecycle_owner="user-123",
+        review_due_at=now,
+        authority_level=7,
+        supersedes_document_id=supersedes,
+        doc_metadata={
+            "pipeline_hash": "ph1",
+            "file_sha256": "ABC123",
+            "source_url": source_url,
+            "source_last_modified_at": "2026-03-01T00:00:00Z",
+            "source_last_modified_source": "http:last-modified",
+            "source_fetched_at": "2026-03-02T00:00:00Z",
+            "source_etag": "etag-1",
+        },
+    )
+
+    client = _build_client(monkeypatch=monkeypatch, items=[doc], allow=True)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}/documents/export?limit=10")
+    assert res.status_code == 200, res.text
+    body = _parse_ndjson(res.text)
+    assert len(body) == 1
+    row = body[0]
+
+    assert row.get("file_sha256") == "abc123"
+    assert row.get("source_last_modified_at") == "2026-03-01T00:00:00Z"
+    assert row.get("source_last_modified_source") == "http:last-modified"
+    assert row.get("source_fetched_at") == "2026-03-02T00:00:00Z"
+    assert row.get("source_etag") == "etag-1"
+    assert row.get("source_url_hash") == stable_hash(source_url, length=16)
+
+    assert row.get("lifecycle_owner_hash") == stable_hash("user-123", length=16)
+    assert "lifecycle_owner" not in row
+    assert row.get("review_due_at") and str(row.get("review_due_at")).endswith("Z")
+    assert row.get("authority_level") == 7
+    assert row.get("supersedes_document_id") == str(supersedes)
+
+
+def test_dataset_documents_export_json_format_returns_items_and_cursor(monkeypatch):  # noqa: ANN001
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    t0 = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=1)
+    t2 = t0 + timedelta(seconds=2)
+
+    docs = [
+        Document(
+            id=uuid.UUID(int=1),
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            filename="a",
+            file_type="txt",
+            file_size=1,
+            file_path="p1",
+            status="completed",
+            created_at=t0,
+            updated_at=t0,
+            doc_metadata={},
+        ),
+        Document(
+            id=uuid.UUID(int=2),
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            filename="b",
+            file_type="txt",
+            file_size=1,
+            file_path="p2",
+            status="completed",
+            created_at=t1,
+            updated_at=t1,
+            doc_metadata={},
+        ),
+        Document(
+            id=uuid.UUID(int=3),
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            filename="c",
+            file_type="txt",
+            file_size=1,
+            file_path="p3",
+            status="completed",
+            created_at=t2,
+            updated_at=t2,
+            doc_metadata={},
+        ),
+    ]
+
+    client = _build_client(monkeypatch=monkeypatch, items=docs, allow=True)
+
+    res0 = client.get(f"/api/v1/datasets/{dataset_id}/documents/export?limit=2&export_format=json")
+    assert res0.status_code == 200, res0.text
+    page0 = res0.json()
+    assert page0.get("returned") == 2
+    assert [r.get("id") for r in (page0.get("items") or [])] == [str(uuid.UUID(int=1)), str(uuid.UUID(int=2))]
+
+    cur = page0.get("next_cursor") or {}
+    after_created_at = cur.get("after_created_at")
+    after_id = cur.get("after_id")
+    assert after_created_at and after_id
+
+    res1 = client.get(
+        f"/api/v1/datasets/{dataset_id}/documents/export?limit=10&export_format=json&after_created_at={after_created_at}&after_id={after_id}"
+    )
+    assert res1.status_code == 200, res1.text
+    page1 = res1.json()
+    assert [r.get("id") for r in (page1.get("items") or [])] == [str(uuid.UUID(int=3))]
