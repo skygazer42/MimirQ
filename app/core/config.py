@@ -97,6 +97,7 @@ class Settings(BaseSettings):
     TASK_TENANT_MAX_CONCURRENCY_DOC: int = 2
     TASK_TENANT_MAX_CONCURRENCY_KG: int = 1
     TASK_TENANT_MAX_CONCURRENCY_CONNECTOR: int = 1
+    TASK_TENANT_MAX_CONCURRENCY_EVIDENCE_REPAIR: int = 1
     # Per-dataset concurrency limit (within a tenant) to avoid single dataset starvation (0 = unlimited).
     TASK_DATASET_MAX_CONCURRENCY_DOC: int = 0
     TASK_DATASET_MAX_CONCURRENCY_KG: int = 0

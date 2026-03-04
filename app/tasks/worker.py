@@ -18,6 +18,7 @@ from app.tasks.jobs import (
     connector_run_job,
     dataset_precheck_scan_job,
     dataset_profile_scan_job,
+    evidence_reference_sources_repair_job,
     extract_kg_job,
     ping_job,
     process_document_job,
@@ -112,6 +113,7 @@ class WorkerSettings:
         rebuild_indexes_job,
         dataset_profile_scan_job,
         dataset_precheck_scan_job,
+        evidence_reference_sources_repair_job,
         connector_run_job,
         ping_job,
     ]

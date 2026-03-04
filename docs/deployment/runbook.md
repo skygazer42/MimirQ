@@ -179,10 +179,13 @@ Labels 策略（默认安全）：
 - Regression runs retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --regression-runs --dry-run`
 - Index audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --index-audit --dry-run`
 - Evidence drift audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --evidence-drift-audit --dry-run`
+- Evidence drift repair enqueue（适合队列；bounded）：`POST /api/v1/evidence/suites/{suite_id}/repair-reference-sources?async_mode=true`（需要 `TASK_QUEUE_ENABLED=true`；返回 202 + `X-Task-Id`）
 
 审计日志检索（用于 SIEM / 巡检）：
 - Index audit daily action：`observability.index_audit.daily`
 - Evidence drift audit daily action：`evidence.drift_audit.daily`
+- Evidence repair enqueue action：`evidence.reference_sources.repair.enqueue`
+- Evidence repair job action：`evidence.reference_sources.repair.job`
 
 后续将补齐：
 

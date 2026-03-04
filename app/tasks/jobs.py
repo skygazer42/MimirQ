@@ -6,7 +6,6 @@ Notes:
 - Jobs use best-effort Redis locks/semaphores to avoid duplicate work.
 """
 
-
 import asyncio
 import contextlib
 import time
@@ -25,8 +24,13 @@ from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetPr
 from app.models.document import Document as DBDocument
 from app.parsing.processors.processor import document_processor
 from app.rag.core.logging import get_logger
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
+from app.services.evidence_reference_repair_service import (
+    EvidenceSuiteNotFoundError,
+    repair_evidence_suite_reference_sources,
+)
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.locks import (
     acquire_lock,
@@ -45,6 +49,111 @@ logger = get_logger("tasks.jobs")
 async def ping_job(ctx) -> dict:  # noqa: ANN001
     """Queue healthcheck job (for E2E benchmark)."""
     return {"ok": True}
+
+
+async def evidence_reference_sources_repair_job(  # noqa: ANN001
+    ctx,
+    tenant_id: str,
+    suite_id: str,
+    requested_by: str,
+    apply: bool,
+    allow_approved: bool,
+    include_archived_items: bool,
+    max_items: int,
+    max_refs_per_item: int,
+    max_changes: int,
+) -> dict:
+    """
+    EvidenceSuite reference_sources repair job (bounded, retryable).
+
+    Args:
+        tenant_id: tenant UUID string
+        suite_id: suite UUID string
+        requested_by: account_id (for audit/logging only)
+    """
+    t0 = time.perf_counter()
+    tid = UUID(tenant_id)
+    sid = UUID(suite_id)
+
+    db = SessionLocal()
+    redis = None
+    lock_key = None
+    lock_val = None
+    sem_key = None
+    try:
+        try:
+            redis = ctx.get("redis") if isinstance(ctx, dict) else None
+        except Exception:  # noqa: BLE001
+            redis = None
+
+        if redis is not None:
+            sem_key = await tenant_acquire(
+                redis,
+                tenant_id=tenant_id,
+                kind="evidence_repair",
+                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_EVIDENCE_REPAIR", 0) or 0),
+                ttl_sec=120,
+            )
+            lock_key = f"lock:evidence_repair:{tenant_id}:{suite_id}"
+            lock_val = make_lock_value(requested_by)
+            lock_ttl = 60 * 60  # 60 min
+            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
+            if not acquired:
+                logger.info("Skip evidence repair job due to active lock: %s", lock_key)
+                return {"ok": True, "skipped": "locked", "tenant_id": tenant_id, "suite_id": suite_id}
+
+        try:
+            result = repair_evidence_suite_reference_sources(
+                db,
+                tenant_id=tid,
+                suite_id=sid,
+                apply=bool(apply),
+                allow_approved=bool(allow_approved),
+                include_archived_items=bool(include_archived_items),
+                max_items=int(max_items or 0),
+                max_refs_per_item=int(max_refs_per_item or 0),
+                max_changes=int(max_changes or 0),
+                actor_id=requested_by,
+            )
+        except EvidenceSuiteNotFoundError:
+            return {"ok": False, "reason": "suite_not_found", "tenant_id": tenant_id, "suite_id": suite_id}
+
+        # Best-effort job-level audit summary (PII-safe; no raw evidence content).
+        try:
+            audit_log_event(
+                db,
+                tenant_id=tid,
+                actor_id=requested_by,
+                action="evidence.reference_sources.repair.job",
+                resource_type="evidence_suite",
+                resource_id=str(suite_id),
+                details={
+                    "async": True,
+                    "applied": bool(apply),
+                    "allow_approved": bool(allow_approved),
+                    "include_archived_items": bool(include_archived_items),
+                    "max_items": int(max_items or 0),
+                    "max_refs_per_item": int(max_refs_per_item or 0),
+                    "max_changes": int(max_changes or 0),
+                    "scanned_items": int(result.get("scanned_items") or 0),
+                    "scanned_references": int(result.get("scanned_references") or 0),
+                    "drifted_references": int(result.get("drifted_references") or 0),
+                    "repaired_references": int(result.get("repaired_references") or 0),
+                    "changes_truncated": bool(result.get("changes_truncated") is True),
+                },
+            )
+            db.commit()
+        except Exception:  # noqa: BLE001
+            with contextlib.suppress(Exception):  # noqa: BLE001
+                db.rollback()
+
+        elapsed = time.perf_counter() - t0
+        return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
+    finally:
+        if redis is not None and lock_key and lock_val:
+            await release_lock(redis, key=lock_key, value=lock_val)
+        await tenant_release(redis, sem_key)
+        db.close()
 
 
 async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str) -> dict:  # noqa: ANN001
