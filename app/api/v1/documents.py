@@ -15,6 +15,7 @@ import uuid
 from collections import Counter
 from dataclasses import asdict
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, List, Literal, Optional
 from uuid import UUID
@@ -2025,6 +2026,43 @@ class UrlUploadRequest(BaseModel):
     pipeline: Optional[DocumentPipelineOptions] = None
 
 
+def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
+    """
+    Best-effort datetime parser for connector source metadata.
+
+    Supports:
+    - HTTP-date (e.g. Last-Modified: "Wed, 21 Oct 2015 07:28:00 GMT")
+    - ISO 8601 timestamps (e.g. "2026-03-04T10:00:00Z")
+    """
+    value = str(raw or "").strip()
+    if not value:
+        return None
+
+    with contextlib.suppress(Exception):
+        dt = parsedate_to_datetime(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    with contextlib.suppress(Exception):
+        iso = value
+        if iso.endswith("Z"):
+            iso = iso[:-1] + "+00:00"
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    return None
+
+
+def _normalize_datetime_utc_iso(raw: str | None) -> str | None:
+    dt = _parse_datetime_best_effort(raw)
+    if dt is None:
+        return None
+    return dt.isoformat()
+
+
 class LocalHtmlIngestRequest(BaseModel):
     """Ingest a local HTML payload as a document (internal connector helper)."""
 
@@ -2076,6 +2114,17 @@ async def _ingest_url_upload_request(
         user_agent=(body.user_agent or None),
         extra_headers=(body.fetch_headers or None),
     )
+
+    fetched_at_iso = datetime.now(timezone.utc).isoformat()
+    last_modified_raw = str(getattr(downloaded, "last_modified", "") or "").strip() or None
+    last_modified_norm = _normalize_datetime_utc_iso(last_modified_raw) if last_modified_raw else None
+    etag_raw = str(getattr(downloaded, "etag", "") or "").strip() or None
+    if etag_raw and len(etag_raw) > 500:
+        etag_raw = etag_raw[:500]
+
+    # Staleness signal: prefer origin last_modified; fallback to fetch timestamp when unknown.
+    source_last_modified_at = last_modified_norm or fetched_at_iso
+    source_last_modified_source = "http:last-modified" if last_modified_norm else "fallback:fetched_at"
 
     content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()
 
@@ -2283,6 +2332,11 @@ async def _ingest_url_upload_request(
         "chunk_strategy": resolved_chunk_strategy,
         "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
         "source_url": url,
+        "source_fetched_at": fetched_at_iso,
+        "source_last_modified_at": source_last_modified_at,
+        "source_last_modified_source": source_last_modified_source,
+        "source_last_modified_raw": last_modified_raw,
+        "source_etag": etag_raw,
         "url_content_type": content_type or None,
         "url_final_url": url_final or None,
         "url_canonical_url": url_canonical,
@@ -2919,6 +2973,7 @@ async def _ingest_local_html_request(
     content_type = "text/html"
     source_url = (str(body.source_url or "").strip() or None)
     url_normalized = normalize_url_for_dedup(source_url) if source_url else None
+    fetched_at_iso = datetime.now(timezone.utc).isoformat()
 
     # 3) Resolve ingestion policy (best-effort) based on filename/ext.
     pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
@@ -3046,6 +3101,11 @@ async def _ingest_local_html_request(
         "chunk_strategy": resolved_chunk_strategy,
         "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
         "source_url": source_url,
+        "source_fetched_at": fetched_at_iso,
+        "source_last_modified_at": fetched_at_iso,
+        "source_last_modified_source": "fallback:fetched_at",
+        "source_last_modified_raw": None,
+        "source_etag": None,
         "url_content_type": content_type,
         "url_final_url": source_url,
         "url_normalized_url": url_normalized or None,
