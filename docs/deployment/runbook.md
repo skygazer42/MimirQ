@@ -200,6 +200,8 @@ Labels 策略（默认安全）：
 
 目标：先止血，再定位，再验证修复。
 
+Incident Response Cookbook（可执行命令集）：`docs/deployment/incident_response_cookbook.md`
+
 1. **确认影响面**
    - 是所有租户还是单租户？
    - 是单数据集还是所有数据集？
