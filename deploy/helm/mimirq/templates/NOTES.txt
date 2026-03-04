@@ -9,6 +9,17 @@ Prometheus Operator:
 - Set prometheus.serviceMonitor.enabled=true to create a ServiceMonitor
 - Remember to also set secretEnv.PROMETHEUS_ENABLED=true so /metrics is enabled
 
+Security / Hardening (optional):
+- Set security.hardened=true to apply recommended securityContext defaults
+- By default automountServiceAccountToken=false (safer); set api/worker/cronjobs.*.automountServiceAccountToken=true if needed
+- Use serviceAccount.create=true (or serviceAccount.name=...) to run pods under a dedicated ServiceAccount
+
+NetworkPolicy (optional):
+- Set networkPolicy.enabled=true to restrict ingress (api allow same-namespace by default; worker denies ingress)
+- Egress is still allow-all unless networkPolicy.egress.restrict=true
+- After install:
+  kubectl -n {{ .Release.Namespace }} get networkpolicy | grep {{ include "mimirq.fullname" . }}
+
 If you enabled Ingress:
   kubectl -n {{ .Release.Namespace }} get ingress {{ include "mimirq.fullname" . }}
 
