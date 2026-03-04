@@ -159,3 +159,69 @@ prometheus:
     interval: 30s
     scrapeTimeout: 10s
     additionalLabels: {}
+
+# Optional Kubernetes CronJobs (ops automation).
+#
+# Notes:
+# - Schedules are evaluated by the Kubernetes control-plane timezone (often UTC).
+# - Jobs are bounded by default; adjust max_* carefully for large deployments.
+cronjobs:
+  indexAudit:
+    enabled: false
+    schedule: "0 2 * * *"
+    suspend: false
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 3
+
+    # Tenant scope (mutually exclusive):
+    # - allTenants=true   -> pass --all-tenants
+    # - tenantId="<uuid>" -> pass --tenant-id
+    # - neither           -> default tenant (DEFAULT_TENANT_ID)
+    allTenants: false
+    tenantId: ""
+
+    # Script mode: when true, writes an audit log entry (best-effort).
+    execute: true
+    force: false
+
+    # Bounds
+    maxDatasets: 50
+    maxCheckIds: 5000
+    milvusListLimit: 2000
+    sampleLimit: 20
+
+    resources: {}
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    extraEnv: []
+
+  evidenceDriftAudit:
+    enabled: false
+    schedule: "30 2 * * *"
+    suspend: false
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 3
+
+    allTenants: false
+    tenantId: ""
+
+    execute: true
+    force: false
+
+    # Bounds
+    maxDatasets: 50
+    includeArchivedItems: false
+    includeDetails: false
+    detailsLimit: 0
+    sliceTopN: 20
+
+    resources: {}
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    extraEnv: []

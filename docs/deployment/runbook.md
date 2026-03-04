@@ -177,6 +177,12 @@ Labels 策略（默认安全）：
 - Dataset purge（删除 dataset 内 documents/chunks/KG 衍生物；bounded，默认 dry-run）：`POST /api/v1/datasets/{dataset_id}/purge`
 - Regression runs purge（评估工件保留清理；bounded，默认 dry-run）：`POST /api/v1/evaluations/ragas/regression/runs/purge`
 - Regression runs retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --regression-runs --dry-run`
+- Index audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --index-audit --dry-run`
+- Evidence drift audit periodic runner（适合 CronJob；bounded）：`python scripts/run_periodic_audit_jobs.py --evidence-drift-audit --dry-run`
+
+审计日志检索（用于 SIEM / 巡检）：
+- Index audit daily action：`observability.index_audit.daily`
+- Evidence drift audit daily action：`evidence.drift_audit.daily`
 
 后续将补齐：
 
