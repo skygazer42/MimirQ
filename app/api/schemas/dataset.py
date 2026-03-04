@@ -172,6 +172,7 @@ class DatasetBase(BaseModel):
     description: Optional[str] = None
     permission: DatasetPermissionEnum = DatasetPermissionEnum.ALL_TEAM_MEMBERS
     partial_member_list: Optional[List[str]] = None
+    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
     # Dataset-level ingestion defaults (applied when the request uses global defaults).
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
@@ -196,6 +197,7 @@ class DatasetUpdate(BaseModel):
     description: Optional[str] = None
     permission: Optional[DatasetPermissionEnum] = None
     partial_member_list: Optional[List[str]] = None
+    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
     rag_defaults: Optional[DatasetRAGDefaults] = None
@@ -214,6 +216,7 @@ class DatasetOut(OrmModel):
     permission: DatasetPermissionEnum
     owner_id: Optional[str]
     partial_member_list: Optional[List[str]] = None
+    partial_group_list: Optional[List[UUID]] = None
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
     rag_defaults: Optional[DatasetRAGDefaults] = None
