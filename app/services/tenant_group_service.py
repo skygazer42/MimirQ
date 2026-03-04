@@ -8,12 +8,14 @@ This is intentionally simple:
 
 from __future__ import annotations
 
+import contextlib
 from typing import Iterable, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.request_state import get_request_state
 from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroup, TenantGroupMember
 
@@ -35,6 +37,51 @@ def _normalize_member_ids(member_ids: Iterable[str], *, max_items: int = 200) ->
 
 
 class TenantGroupService:
+    @staticmethod
+    def resolve_account_group_ids(db: Session, *, tenant_id: UUID, account_id: str) -> set[UUID]:
+        """
+        Resolve tenant-scoped group ids for an account (best-effort cached per request).
+
+        Cache is stored on `request.state` to avoid repeated DB queries across multiple
+        permission checks in the same API request.
+        """
+        uid = (str(account_id or "")).strip()
+        if not uid:
+            return set()
+
+        state = get_request_state()
+        cache_key = (tenant_id, uid)
+        if state is not None:
+            cached = None
+            with contextlib.suppress(Exception):
+                cache = getattr(state, "_mimirq_group_ids_cache", None)
+                if isinstance(cache, dict):
+                    cached = cache.get(cache_key)
+            if isinstance(cached, set):
+                return cached
+            if isinstance(cached, (list, tuple)):
+                return {gid for gid in cached if gid}
+
+        rows = (
+            db.query(TenantGroupMember.group_id)
+            .filter(
+                TenantGroupMember.tenant_id == tenant_id,
+                TenantGroupMember.user_id == uid,
+            )
+            .all()
+        )
+        group_ids = {row[0] for row in rows if row and row[0]}
+
+        if state is not None:
+            with contextlib.suppress(Exception):
+                cache = getattr(state, "_mimirq_group_ids_cache", None)
+                if not isinstance(cache, dict):
+                    cache = {}
+                    setattr(state, "_mimirq_group_ids_cache", cache)
+                cache[cache_key] = group_ids
+
+        return group_ids
+
     @staticmethod
     def list_groups(db: Session, *, tenant_id: UUID, skip: int = 0, limit: int = 200) -> tuple[int, List[TenantGroup]]:
         q = db.query(TenantGroup).filter(TenantGroup.tenant_id == tenant_id)
@@ -230,4 +277,3 @@ class TenantGroupService:
         )
         db.commit()
         return int(deleted or 0)
-

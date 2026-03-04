@@ -17,6 +17,7 @@ from starlette.responses import Response
 
 from app.core.config import settings
 from app.core.logging_config import bind_request_context, reset_request_context
+from app.core.request_state import bind_request_state, reset_request_state
 
 _SAFE_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-:.]{0,127}$")
 
@@ -39,6 +40,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         request_id = _normalize_request_id(request.headers.get(self.header_name))
         request.state.request_id = request_id
+        state_token = bind_request_state(request.state)
 
         tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
         tenant_id = (request.headers.get(tenant_header) or "").strip()
@@ -54,6 +56,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         finally:
+            reset_request_state(state_token)
             reset_request_context(tokens)
 
         response.headers[self.header_name] = request_id
