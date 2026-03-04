@@ -34,6 +34,9 @@ spec:
           {{- if .Values.cronjobs.indexAudit.priorityClassName }}
           priorityClassName: {{ .Values.cronjobs.indexAudit.priorityClassName | quote }}
           {{- end }}
+          {{- if .Values.cronjobs.indexAudit.terminationGracePeriodSeconds }}
+          terminationGracePeriodSeconds: {{ .Values.cronjobs.indexAudit.terminationGracePeriodSeconds }}
+          {{- end }}
           containers:
             - name: index-audit
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"

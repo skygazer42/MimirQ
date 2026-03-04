@@ -31,6 +31,9 @@ spec:
       {{- if .Values.api.priorityClassName }}
       priorityClassName: {{ .Values.api.priorityClassName | quote }}
       {{- end }}
+      {{- if .Values.api.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      {{- end }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"

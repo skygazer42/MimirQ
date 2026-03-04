@@ -34,6 +34,9 @@ spec:
           {{- if .Values.cronjobs.dbMaintenance.priorityClassName }}
           priorityClassName: {{ .Values.cronjobs.dbMaintenance.priorityClassName | quote }}
           {{- end }}
+          {{- if .Values.cronjobs.dbMaintenance.terminationGracePeriodSeconds }}
+          terminationGracePeriodSeconds: {{ .Values.cronjobs.dbMaintenance.terminationGracePeriodSeconds }}
+          {{- end }}
           containers:
             - name: db-maintenance
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
