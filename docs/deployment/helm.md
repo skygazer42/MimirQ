@@ -82,6 +82,11 @@ persistence:
     size: 50Gi
 ```
 
+你也可以直接从内置示例开始（推荐先复制一份再改）：
+
+- `deploy/helm/mimirq/examples/values-prod.yaml`
+- `deploy/helm/mimirq/examples/values-hardened.yaml`
+
 如果你要配置 Ingress：
 
 ```yaml
@@ -95,9 +100,82 @@ ingress:
           pathType: Prefix
 ```
 
+### 4.1 安全基线（可选，但强烈建议用于生产）
+
+Chart 提供了一个 opt-in 的 hardening 预设：`security.hardened=true`。它会合并一组更安全的默认 `securityContext`（非 root、drop capabilities、seccomp 等），但**默认不会**强行开启可能破坏兼容性的选项（例如 `readOnlyRootFilesystem`）。
+
+常见配置示例：
+
+```yaml
+security:
+  hardened: true
+  # 若你启用 readOnlyRootFilesystem（自行在 *securityContext 里设置），建议开启：
+  tmpEmptyDir:
+    enabled: true
+
+# 默认值为 false：不挂载 K8s ServiceAccount token（更安全）。
+automountServiceAccountToken: false
+
+# 可选：使用 chart 创建专用 SA（或引用已有 SA）
+serviceAccount:
+  create: true
+  # name: "mimirq-sa"
+
+# 可选：限制网络访问（见 4.3）
+networkPolicy:
+  enabled: false
+```
+
+### 4.2 可观测（Prometheus / Grafana，可选）
+
+前提：后端必须开启 `/metrics`（通过 env）：
+
+- `PROMETHEUS_ENABLED=true`（推荐由外部 Secret 提供）
+
+Kubernetes / Prometheus Operator 环境下，你可以用 Helm 一键启用：
+
+```yaml
+prometheus:
+  serviceMonitor:
+    enabled: true
+
+  # PrometheusRule CRD（告警规则）
+  prometheusRule:
+    enabled: true
+    # 你的 Prometheus Operator 可能用 label selector 选择规则；
+    # 这里填入它要求的 labels（如 release: prometheus）。
+    additionalLabels: {}
+
+grafana:
+  dashboard:
+    enabled: true
+    # Grafana sidecar 通常通过 label 发现 dashboards（如 grafana_dashboard=1）。
+    labels:
+      grafana_dashboard: "1"
+```
+
+### 4.3 NetworkPolicy（可选）
+
+当 `networkPolicy.enabled=true` 时：
+
+- `api`：默认允许 **同 namespace** 的 ingress（你需要根据 Ingress Controller 所在 namespace 调整）
+- `worker`：默认拒绝 ingress
+- `egress`：默认仍是 allow-all；只有 `networkPolicy.egress.restrict=true` 才会变成 allowlist 模式（务必补全规则）
+
+更多配方与注意事项见：`docs/deployment/security_baseline.md`。
+
 ---
 
 ## 5) 安装 / 升级
+
+### 5.1 Helm 模板自检（推荐）
+
+安装前建议先做一次渲染检查（能提前发现 values/模板语法错误）：
+
+```bash
+make helm-template
+make helm-lint
+```
 
 ```bash
 helm upgrade --install mimirq deploy/helm/mimirq \
