@@ -31,6 +31,9 @@ spec:
           {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.indexAudit.automountServiceAccountToken) | nindent 10 }}
           {{- include "mimirq.serviceAccountNameBlock" . | nindent 10 }}
           {{- include "mimirq.imagePullSecretsBlock" . | nindent 10 }}
+          {{- if .Values.cronjobs.indexAudit.priorityClassName }}
+          priorityClassName: {{ .Values.cronjobs.indexAudit.priorityClassName | quote }}
+          {{- end }}
           containers:
             - name: index-audit
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"

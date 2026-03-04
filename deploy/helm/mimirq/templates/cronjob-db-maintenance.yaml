@@ -31,6 +31,9 @@ spec:
           {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.dbMaintenance.automountServiceAccountToken) | nindent 10 }}
           {{- include "mimirq.serviceAccountNameBlock" . | nindent 10 }}
           {{- include "mimirq.imagePullSecretsBlock" . | nindent 10 }}
+          {{- if .Values.cronjobs.dbMaintenance.priorityClassName }}
+          priorityClassName: {{ .Values.cronjobs.dbMaintenance.priorityClassName | quote }}
+          {{- end }}
           containers:
             - name: db-maintenance
               image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"

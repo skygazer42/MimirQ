@@ -151,6 +151,7 @@ api:
     minAvailable: 1
     maxUnavailable: ""
 
+  priorityClassName: ""
   resources: {}
   podSecurityContext: {}
   securityContext: {}
@@ -182,6 +183,7 @@ worker:
     minAvailable: 1
     maxUnavailable: ""
 
+  priorityClassName: ""
   resources: {}
   podSecurityContext: {}
   securityContext: {}
@@ -253,6 +255,7 @@ cronjobs:
     milvusListLimit: 2000
     sampleLimit: 20
 
+    priorityClassName: ""
     resources: {}
     podSecurityContext: {}
     securityContext: {}
@@ -284,6 +287,7 @@ cronjobs:
     detailsLimit: 0
     sliceTopN: 20
 
+    priorityClassName: ""
     resources: {}
     podSecurityContext: {}
     securityContext: {}
@@ -324,6 +328,7 @@ cronjobs:
     retentionDays: 90
     maxDelete: 100000
 
+    priorityClassName: ""
     resources: {}
     podSecurityContext: {}
     securityContext: {}
