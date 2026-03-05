@@ -9,6 +9,7 @@ import pytest
 async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors
     from app.models.connector import ConnectorRun
+    from app.rag.core.hashing import stable_hash
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -80,9 +81,14 @@ async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatc
             self.id = created_doc_id
             self.access_mode = None
             self.owner_id = None
+            self.doc_metadata = {}
+
+    created_docs: list[_Doc] = []
 
     async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
-        return _Doc()
+        d = _Doc()
+        created_docs.append(d)
+        return d
 
     monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest, raising=True)
 
@@ -121,3 +127,16 @@ async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatc
     assert set(seen.get("external_ids") or []) == {"drive:group:eng@acme.com"}
     assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
 
+    assert len(created_docs) == 1
+    prov = (created_docs[0].doc_metadata or {}).get("acl_provenance")
+    assert isinstance(prov, dict)
+    assert prov.get("schema") == "mimirq.document_acl_provenance.v1"
+    assert (prov.get("applied_by") or {}).get("connector_id") == "drive_files"
+    assert (prov.get("applied_by") or {}).get("run_id") == str(run_id)
+
+    src = prov.get("source_acl") or {}
+    assert src.get("mode") == "inherit"
+    assert src.get("fallback_used") is False
+    assert src.get("anyone_detected") is False
+    assert stable_hash("drive:group:eng@acme.com", length=32) in (src.get("principal_hashes") or [])
+    assert "drive:group:eng@acme.com" not in str(prov)

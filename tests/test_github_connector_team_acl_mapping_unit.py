@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-import httpx
 import pytest
 
 
@@ -10,6 +9,7 @@ import pytest
 async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors
     from app.models.connector import ConnectorRun
+    from app.rag.core.hashing import stable_hash
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -117,9 +117,14 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
             self.id = created_doc_id
             self.access_mode = None
             self.owner_id = None
+            self.doc_metadata = {}
+
+    created_docs: list[_Doc] = []
 
     async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
-        return _Doc()
+        d = _Doc()
+        created_docs.append(d)
+        return d
 
     monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest, raising=True)
 
@@ -165,3 +170,18 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
     assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
     assert seen.get("audit_action") == "github_repo.source_acl.applied"
     assert (seen.get("audit_details") or {}).get("mapped_group_count") == 1
+
+    assert len(created_docs) == 1
+    prov = (created_docs[0].doc_metadata or {}).get("acl_provenance")
+    assert isinstance(prov, dict)
+    assert prov.get("schema") == "mimirq.document_acl_provenance.v1"
+    assert (prov.get("applied_by") or {}).get("connector_id") == "github_repo"
+    assert (prov.get("applied_by") or {}).get("run_id") == str(run_id)
+    assert (prov.get("effective_access") or {}).get("mode") == "partial_members"
+
+    src = prov.get("source_acl") or {}
+    assert src.get("mode") == "inherit"
+    assert src.get("fallback_used") is False
+    assert src.get("principal_hash_alg") == "sha256"
+    assert stable_hash(expected_external_ids[0], length=32) in (src.get("principal_hashes") or [])
+    assert expected_external_ids[0] not in str(prov)

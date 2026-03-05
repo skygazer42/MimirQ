@@ -1813,6 +1813,9 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
         source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
 
+        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+
         user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
         auth_headers = _build_auth_headers(cfg)
         headers = {
@@ -1829,9 +1832,11 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         # Optional: source ACL inheritance (org teams -> tenant groups by external_id).
         source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
         source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
+        enable_source_acl = bool(source_acl_mode == "inherit" and not has_manual_access_override)
         source_acl_access: dict | None = None
         team_principal_keys: list[str] = []
         mapped_group_ids: set[UUID] = set()
+        source_acl_provenance: dict | None = None
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             resp = await client.get(api_url, headers=headers)
@@ -1839,7 +1844,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 raise RuntimeError(f"github api failed (status={resp.status_code})")
             data = resp.json()
 
-            if source_acl_mode == "inherit":
+            if enable_source_acl:
                 # Best-effort: this can fail due to missing org permissions; we still ingest but fail-closed.
                 with contextlib.suppress(Exception):
                     team_principal_keys = await _github_fetch_repo_team_principal_keys(
@@ -1849,7 +1854,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                         headers=headers,
                     )
 
-        if source_acl_mode == "inherit":
+        if enable_source_acl:
             with contextlib.suppress(Exception):
                 mapped_group_ids = _resolve_tenant_group_ids_by_external_id(
                     db,
@@ -1886,6 +1891,20 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     },
                 )
 
+            with contextlib.suppress(Exception):
+                from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+                source_acl_provenance = build_document_acl_provenance(
+                    connector_id="github_repo",
+                    connector_run_id=str(run_id),
+                    effective_access=source_acl_access,
+                    source_acl_mode=source_acl_mode,
+                    source_acl_fallback_mode=source_acl_fallback_mode,
+                    source_principal_external_ids=team_principal_keys,
+                    mapped_group_ids=mapped_group_ids,
+                    fallback_used=not bool(mapped_group_ids),
+                )
+
         tree = data.get("tree")
         items = tree if isinstance(tree, list) else []
         paths: list[str] = []
@@ -1911,9 +1930,6 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         stats0.update({"total_files": int(len(paths)), "processed_files": 0, "cursor": 0, "created": 0, "failed": 0, "failed_paths": []})
         run.stats = stats0
         db.commit()
-
-        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
 
         for idx, path in enumerate(paths):
             try:
@@ -1954,6 +1970,12 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     access=effective_access,
                     connector_id="github_repo",
                 )
+
+                if effective_access is source_acl_access and isinstance(source_acl_provenance, dict):
+                    with contextlib.suppress(Exception):
+                        from app.services.document_acl_provenance_service import apply_document_acl_provenance
+
+                        apply_document_acl_provenance(doc, provenance=source_acl_provenance)
 
                 db.add(
                     ConnectorRunDocument(
@@ -2100,7 +2122,12 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                         raise ValueError("unsupported_drive_url")
 
                     effective_access = access
+                    acl_provenance: dict | None = None
                     if drive_client is not None:
+                        ext_ids: list[str] = []
+                        mapped_gids: set[UUID] = set()
+                        has_anyone = False
+                        fallback_used = False
                         try:
                             perms = await _drive_fetch_file_permissions(
                                 client=drive_client,
@@ -2108,8 +2135,6 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                                 headers=auth_headers,
                             )
 
-                            has_anyone = False
-                            ext_ids: list[str] = []
                             seen_ext: set[str] = set()
                             for p in perms or []:
                                 if not isinstance(p, dict):
@@ -2130,22 +2155,42 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
 
                             if has_anyone and bool(allow_anyone):
                                 effective_access = {"mode": "all_team_members"}
+                                fallback_used = False
                             else:
-                                gids = _resolve_tenant_group_ids_by_external_id(
+                                mapped_gids = _resolve_tenant_group_ids_by_external_id(
                                     db,
                                     tenant_id=tenant_id,
                                     external_ids=ext_ids,
                                 )
-                                if gids:
-                                    ordered = sorted(gids, key=lambda v: str(v))
+                                if mapped_gids:
+                                    ordered = sorted(mapped_gids, key=lambda v: str(v))
                                     effective_access = {
                                         "mode": "partial_members",
                                         "partial_group_list": [str(gid) for gid in ordered],
                                     }
+                                    fallback_used = False
                                 else:
                                     effective_access = {"mode": source_acl_fallback_mode}
+                                    fallback_used = True
                         except Exception:
                             effective_access = {"mode": source_acl_fallback_mode}
+                            fallback_used = True
+
+                        with contextlib.suppress(Exception):
+                            from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+                            acl_provenance = build_document_acl_provenance(
+                                connector_id="drive_files",
+                                connector_run_id=str(run_id),
+                                effective_access=effective_access,
+                                source_acl_mode=source_acl_mode,
+                                source_acl_fallback_mode=source_acl_fallback_mode,
+                                source_principal_external_ids=ext_ids,
+                                mapped_group_ids=mapped_gids,
+                                fallback_used=fallback_used,
+                                allow_anyone=allow_anyone,
+                                anyone_detected=has_anyone,
+                            )
 
                     dl_url = _drive_direct_download_url(file_id)
                     body = UrlUploadRequest(
@@ -2173,6 +2218,11 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                         access=effective_access,
                         connector_id="drive_files",
                     )
+                    if isinstance(acl_provenance, dict):
+                        with contextlib.suppress(Exception):
+                            from app.services.document_acl_provenance_service import apply_document_acl_provenance
+
+                            apply_document_acl_provenance(doc, provenance=acl_provenance)
                     db.add(
                         ConnectorRunDocument(
                             tenant_id=tenant_id,
@@ -2888,6 +2938,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                 try:
                     # Optional: source ACL inheritance (Confluence page restrictions -> tenant groups).
                     effective_access = access
+                    acl_provenance: dict | None = None
                     if (
                         not has_manual_access_override
                         and source_acl_mode == "inherit"
@@ -2927,9 +2978,40 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                                         }
                                     else:
                                         effective_access = {"mode": source_acl_fallback_mode}
+
+                                    with contextlib.suppress(Exception):
+                                        from app.services.document_acl_provenance_service import (
+                                            build_document_acl_provenance,
+                                        )
+
+                                        acl_provenance = build_document_acl_provenance(
+                                            connector_id="confluence_space",
+                                            connector_run_id=str(run_id),
+                                            effective_access=effective_access,
+                                            source_acl_mode=source_acl_mode,
+                                            source_acl_fallback_mode=source_acl_fallback_mode,
+                                            source_principal_external_ids=ext_ids,
+                                            mapped_group_ids=gids,
+                                            fallback_used=not bool(gids),
+                                            restricted=True,
+                                        )
                         except Exception:
                             # Fail-closed when source ACL is enabled but restrictions can't be fetched/parsed.
                             effective_access = {"mode": source_acl_fallback_mode}
+                            with contextlib.suppress(Exception):
+                                from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+                                acl_provenance = build_document_acl_provenance(
+                                    connector_id="confluence_space",
+                                    connector_run_id=str(run_id),
+                                    effective_access=effective_access,
+                                    source_acl_mode=source_acl_mode,
+                                    source_acl_fallback_mode=source_acl_fallback_mode,
+                                    source_principal_external_ids=[],
+                                    mapped_group_ids=[],
+                                    fallback_used=True,
+                                    restricted=None,
+                                )
 
                     filename = None
                     if page_id:
@@ -3033,6 +3115,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             meta0["source_last_modified_at"] = lm_iso
                             meta0["source_last_modified_source"] = "connector:confluence:last_modified"
                             meta0["source_last_modified_raw"] = meta0.get("source_last_modified_raw") or lm
+                        if isinstance(acl_provenance, dict):
+                            meta0["acl_provenance"] = dict(acl_provenance)
                         meta0["connector"] = {
                             "connector_id": "confluence_space",
                             "base_url": base_url,
@@ -3156,6 +3240,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                                         # Attach connector metadata (must not affect pipeline_hash).
                                         try:
                                             meta_att = dict(getattr(att_doc, "doc_metadata", None) or {})
+                                            if isinstance(acl_provenance, dict):
+                                                meta_att["acl_provenance"] = dict(acl_provenance)
                                             meta_att["connector"] = _confluence_attachment_connector_metadata(
                                                 base_url=base_url,
                                                 space_key=space_key,
