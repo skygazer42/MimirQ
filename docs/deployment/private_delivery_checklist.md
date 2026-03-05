@@ -24,10 +24,38 @@
   - [ ] 设置 `JWT_ISSUER` / `JWT_AUDIENCE`（如适用）
   - [ ] 配置 `JWT_TENANT_CLAIM`（如启用多租户 claim 绑定）
   - [ ] 可选：`JWT_ENFORCE_TENANT_HEADER_MATCH=true` 防跨租户 header spoofing
+- [ ] **Tenant Groups（组目录，推荐企业必须）**：
+  - [ ] 组管理 API 可用：`GET/POST /api/v1/groups`、`GET /api/v1/groups/{id}`、`GET/POST /api/v1/groups/{id}/members`
+  - [ ] 权限收敛：仅具备 settings 权限的账号可管理 groups/memberships（避免越权加组）
+  - [ ] 组 provisioning 策略明确（两选一或组合）：
+    - [ ] **手工/半自动**：通过 UI / API 创建组、维护成员（最稳妥，便于灰度）
+    - [ ] **IdP 同步**（可选）：从 JWT groups claim best-effort 同步（见下一项）
+- [ ] **OIDC/JWT groups claim 同步（可选，默认关闭）**：
+  - [ ] 已完成安全前置：签名校验 + `JWT_ISSUER`/`JWT_AUDIENCE` 约束（信任边界明确）
+  - [ ] 已启用 tenant 绑定：`JWT_TENANT_CLAIM=...`（建议同时 `JWT_ENFORCE_TENANT_HEADER_MATCH=true`）
+  - [ ] 安全默认值（建议起步）：
+    - [ ] `JWT_GROUPS_SYNC_ENABLED=true`（仅在预发/灰度阶段打开）
+    - [ ] `JWT_GROUPS_CLAIM=groups`（或 `realm_access.roles` 等）
+    - [ ] `JWT_GROUPS_MAX_GROUPS=200`（防过大 groups 列表放大写入/基数）
+    - [ ] `JWT_GROUPS_SYNC_TTL_SEC=60`（降低写放大；逐步调优）
+  - [ ] 明确限制：当前实现 **add-only**（只补齐，不做删除）；撤权/离职需要额外流程（见 access review）
+  - [ ] 配置与 IdP 示例文档：`docs/guides/oidc_groups_claim.md`
 - [ ] **RBAC**：owner/admin/auditor/viewer 角色在关键 API 端点生效（settings/observability/audit/lifecycle）
 - [ ] **审计日志**：
   - [ ] 能记录敏感操作：数据删除、purge、导出、治理策略变更、连接器运行等
   - [ ] 提供 NDJSON 导出：`GET /api/v1/audit/logs/export`（SIEM 友好）
+- [ ] **Access Review（访问复核，强烈建议）**：
+  - [ ] 定义复核节奏：例如每月/每季度一次（按数据敏感等级分层）
+  - [ ] 复核内容至少包含：
+    - [ ] tenant groups 列表与成员关系（`/api/v1/groups` + `/members`）
+    - [ ] dataset/document allowlists（`partial_member_list` / `partial_group_list`）
+    - [ ] 关键变更审计：group/ACL 变更审计日志 NDJSON 导出留痕
+  - [ ] 撤权流程明确：当 IdP 组变更不能自动删除时，必须有“手工移除成员/禁用账号/回收 token”的兜底
+
+> 推荐 rollout（从安全到可用的最短路径）：
+> 1) 先用手工 groups + allowlist 跑通权限语义（小租户/小数据集验证）
+> 2) 再在预发开启 JWT groups 同步，观察审计与指标（确认没有跨租户写入/异常基数）
+> 3) 最后在生产灰度开启，同步 TTL/上限保守起步，配套 access review 与撤权兜底
 
 ---
 
