@@ -326,3 +326,105 @@ Incident Response Cookbook（可执行命令集）：`docs/deployment/incident_r
 1. 回滚到上一版本镜像（Docker tag / Helm release）
 2. 若涉及 DB migration：确保有备份与演练；优先做“向后兼容”变更，避免强依赖回滚
 3. 回滚后跑健康检查 + 回归套件
+
+---
+
+<a id="rb-access-review"></a>
+## 7) Access Review（访问审查）工作流（cadence + diff + troubleshooting）
+
+本节给 oncall/安全/平台团队一套 **可执行** 的访问审查流程，目标是：
+
+- 发现“目录/组/allowlist”层面的异常变更（权限漂移）
+- 发现权限配置导致的拒绝/越权风险（默认 fail-closed）
+- 让审查过程 **可追溯**（audit logs + snapshots + diff）
+
+> 原则：默认 **PII-safe**。优先使用计数/哈希/指标；除非合规需要，不要导出 raw user_id/group 名称。
+
+### 7.1) 推荐节奏（Cadence）
+
+**Daily（自动化）**
+
+1. 运行 access review daily summary（适合 CronJob）：
+   - `python scripts/run_periodic_audit_jobs.py --access-review --execute`
+   - 写入审计日志 action：`compliance.access_review.daily`（resource_type=`access_review_summary`）
+2. 监控新鲜度（staleness）：
+   - `GET /api/v1/observability/periodic-jobs/freshness`（admin-only，PII-safe）
+
+**Weekly（人工审查）**
+
+- 导出一次 access graph snapshot（NDJSON）并与上周对比（diff），重点关注：
+  - group membership churn 是否异常
+  - dataset/document allowlist 是否被大量更改
+  - dataset/document 的 access_mode/permission 分布是否出现突变
+
+**Monthly / Quarterly（合规审计）**
+
+- 在合规要求下，允许 `include_sensitive=true` 导出（可能包含 group name / external_id / user_id），但必须：
+  - 存储在受控位置（最小权限）
+  - 严格限定导出窗口与用途
+
+### 7.2) 审查所用数据源（端点 / 工具）
+
+- 汇总（计数视角，最常用）：`GET /api/v1/audit/access-graph/summary`
+- 导出（快照，分页）：`GET /api/v1/audit/access-graph/export`
+  - 推荐：`export_format=ndjson&gzip=true`（带 `X-Next-Cursor` 方便续传）
+  - 默认：`include_sensitive=false`（只含 hashes，不含 raw ids）
+- 快速过滤审计日志（UI）：`/audit` → 使用“快速预设”（Access Review / Index Audit / Evidence Drift / Access Graph）
+- Diff 工具（PII-safe、有界输出）：`python scripts/access_graph_diff.py --a <snapshotA> --b <snapshotB>`
+- 一键打包（PII-safe）：`python scripts/incident_bundle.py --request-id <rid> ...`
+  - 当前 bundle 会包含：config snapshot / trace bundle / access-graph summary / periodic job freshness
+
+### 7.3) 实操流程（Step-by-step）
+
+#### Step 1：确认自动化是否健康（Freshness）
+
+1. 调用 freshness 端点：
+   - `GET /api/v1/observability/periodic-jobs/freshness`
+2. 关注：
+   - `stale=true` 的条目（说明 job 可能没有跑、或写 audit log 失败）
+   - `age_seconds` 是否明显超过预期（默认 stale_after≈36h）
+3. 如果 stale：
+   - 检查 CronJob 是否启用与 schedule 是否正确（K8s 通常用 UTC）
+   - 检查是否因 DB/权限导致 audit log 写入失败（查看 api/worker 日志）
+
+#### Step 2：导出 access graph snapshot（默认 PII-safe）
+
+建议每次导出生成一个带时间戳的文件名，存放到受控的审计工件位置。
+
+推荐方式：
+
+- Web UI：`/access-review` → “下载导出”
+- 或直接导出（NDJSON）：
+  - `GET /api/v1/audit/access-graph/export?export_format=ndjson&gzip=true&limit=10000`
+
+> 注意：浏览器通常会自动解压 `Content-Encoding: gzip`，所以保存下来的文件未必是 `.gz`。
+
+#### Step 3：做 diff（有界总结 + churn 线索）
+
+拿到两次快照（例如 `access-graph.20260301.ndjson` 与 `access-graph.20260308.ndjson`）后：
+
+```bash
+python scripts/access_graph_diff.py --a access-graph.20260301.ndjson --b access-graph.20260308.ndjson
+```
+
+你会得到：
+
+- kinds 级别的 `added/removed/changed` 统计（group/dataset/document + 各类 membership/allowlist）
+- top churn（按 group_id / dataset_id / document_id 聚合的增删数量）
+
+推荐审阅顺序：
+
+1. 先看 **group_member_by_group_id**（组成员变动是否集中在某些组）
+2. 再看 dataset/document 的 allowlist 相关 kinds（是否出现大面积增删）
+3. 最后看 group/dataset/document 的 `changed_fields` 示例（是否权限模式发生变化）
+
+#### Step 4：异常时的最短定位路径
+
+如果你看到 **deny / 权限异常**，优先结合：
+
+- Prometheus 指标：`authz_group_permission_total{resource,action,result}`
+  - `deny_no_groups`：更像“没有解析到 groups”（OIDC groups claim / 同步链路问题）
+  - `deny_no_match`：更像“allowlist 未命中”（权限配置/组映射错误）
+- 以及本 runbook 的：[5.2) ACL / Group Deny 快速诊断](#rb-authz-deny)
+
+如果你看到 **429/限流告警**，优先看：[5.1) 429 快速诊断](#rb-429) 并避免重试风暴。
