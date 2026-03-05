@@ -2384,7 +2384,7 @@ LLM_MODEL=gpt-4o-mini
 
 ```bash
 # 安装依赖
-pip install -r requirements.txt
+pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
 # 数据库迁移
 alembic upgrade head
