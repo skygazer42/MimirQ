@@ -10,6 +10,7 @@ import pytest
 async def test_confluence_connector_applies_restriction_groups_as_doc_acl(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors
     from app.models.connector import ConnectorRun
+    from app.rag.core.hashing import stable_hash
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -121,8 +122,12 @@ async def test_confluence_connector_applies_restriction_groups_as_doc_acl(monkey
             self.owner_id = None
             self.doc_metadata = {}
 
+    created_docs: list[_Doc] = []
+
     async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
-        return _Doc()
+        d = _Doc()
+        created_docs.append(d)
+        return d
 
     monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest, raising=True)
 
@@ -150,3 +155,16 @@ async def test_confluence_connector_applies_restriction_groups_as_doc_acl(monkey
     assert set(seen.get("external_ids") or []) == {"confluence:group:confluence-users"}
     assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
 
+    assert len(created_docs) == 1
+    prov = (created_docs[0].doc_metadata or {}).get("acl_provenance")
+    assert isinstance(prov, dict)
+    assert prov.get("schema") == "mimirq.document_acl_provenance.v1"
+    assert (prov.get("applied_by") or {}).get("connector_id") == "confluence_space"
+    assert (prov.get("applied_by") or {}).get("run_id") == str(run_id)
+
+    src = prov.get("source_acl") or {}
+    assert src.get("mode") == "inherit"
+    assert src.get("restricted") is True
+    assert src.get("fallback_used") is False
+    assert stable_hash("confluence:group:confluence-users", length=32) in (src.get("principal_hashes") or [])
+    assert "confluence:group:confluence-users" not in str(prov)

@@ -10,8 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.api.schemas.document import DocumentAccessUpdateRequest, DocumentPipelineOptions
 from app.api.schemas.connector_acl import ConnectorSourceAclConfig
+from app.api.schemas.document import DocumentAccessUpdateRequest, DocumentPipelineOptions
 
 # NOTE: keep connector identifiers forward-compatible.
 # The API layer still validates supported connector ids at runtime.
