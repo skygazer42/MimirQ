@@ -1,6 +1,7 @@
 """
 Dataset service: creation, permission checks, partial member management.
 """
+
 from typing import List, Optional
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant import Tenant, TenantMember
 from app.models.tenant_group import TenantGroup
 from app.services.audit_log_service import audit_log_event
+from app.services.authz_prometheus_metrics import observe_group_permission_check
 from app.services.tenant_group_service import TenantGroupService
 
 EDIT_ROLES = UserRoles.EDIT_ROLES
@@ -22,10 +24,11 @@ EDIT_ROLES = UserRoles.EDIT_ROLES
 class DatasetService:
     @staticmethod
     def ensure_member(db: Session, tenant_id: UUID, account_id: str) -> TenantMember:
-        member = db.query(TenantMember).filter(
-            TenantMember.tenant_id == tenant_id,
-            TenantMember.user_id == account_id
-        ).first()
+        member = (
+            db.query(TenantMember)
+            .filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == account_id)
+            .first()
+        )
         if not member:
             if not is_production_env():
                 # Dev-friendly bootstrap: create tenant + membership on first use.
@@ -60,10 +63,7 @@ class DatasetService:
 
     @staticmethod
     def get_dataset(db: Session, tenant_id: UUID, dataset_id: UUID) -> Dataset:
-        dataset = db.query(Dataset).filter(
-            Dataset.id == dataset_id,
-            Dataset.tenant_id == tenant_id
-        ).first()
+        dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.tenant_id == tenant_id).first()
         if not dataset:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
         return dataset
@@ -85,20 +85,12 @@ class DatasetService:
             partial_members = []
             partial_groups = []
 
-        exists = (
-            db.query(Dataset.id)
-            .filter(Dataset.tenant_id == tenant_id, Dataset.name == name)
-            .first()
-        )
+        exists = db.query(Dataset.id).filter(Dataset.tenant_id == tenant_id, Dataset.name == name).first()
         if exists:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset name already exists")
 
         dataset = Dataset(
-            tenant_id=tenant_id,
-            name=name,
-            description=description,
-            permission=permission,
-            owner_id=owner_id
+            tenant_id=tenant_id, name=name, description=description, permission=permission, owner_id=owner_id
         )
         db.add(dataset)
         db.commit()
@@ -171,9 +163,7 @@ class DatasetService:
                 )
         else:
             if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members is not None:
-                DatasetPermissionService.update_partial_member_list(
-                    db, dataset.tenant_id, dataset.id, partial_members
-                )
+                DatasetPermissionService.update_partial_member_list(db, dataset.tenant_id, dataset.id, partial_members)
             if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups is not None:
                 DatasetGroupPermissionService.update_partial_group_list(
                     db,
@@ -201,11 +191,15 @@ class DatasetService:
         if dataset.permission == DatasetPermissionEnum.ONLY_ME:
             return False
         # partial_members
-        exists = db.query(DatasetPermission).filter(
-            DatasetPermission.dataset_id == dataset.id,
-            DatasetPermission.tenant_id == dataset.tenant_id,
-            DatasetPermission.account_id == account_id
-        ).first()
+        exists = (
+            db.query(DatasetPermission)
+            .filter(
+                DatasetPermission.dataset_id == dataset.id,
+                DatasetPermission.tenant_id == dataset.tenant_id,
+                DatasetPermission.account_id == account_id,
+            )
+            .first()
+        )
         if exists:
             return True
 
@@ -219,6 +213,7 @@ class DatasetService:
             )
         )
         if not group_ids:
+            observe_group_permission_check(resource="dataset", action="read", result="deny_no_groups")
             return False
 
         group_perm = (
@@ -230,7 +225,11 @@ class DatasetService:
             )
             .first()
         )
-        return bool(group_perm)
+        if group_perm:
+            observe_group_permission_check(resource="dataset", action="read", result="allow")
+            return True
+        observe_group_permission_check(resource="dataset", action="read", result="deny_no_match")
+        return False
 
     @staticmethod
     def assert_dataset_readable(db: Session, dataset: Dataset, account_id: str):
@@ -247,11 +246,15 @@ class DatasetService:
         if dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS:
             return
         if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-            exists = db.query(DatasetPermission).filter(
-                DatasetPermission.dataset_id == dataset.id,
-                DatasetPermission.tenant_id == dataset.tenant_id,
-                DatasetPermission.account_id == account_id
-            ).first()
+            exists = (
+                db.query(DatasetPermission)
+                .filter(
+                    DatasetPermission.dataset_id == dataset.id,
+                    DatasetPermission.tenant_id == dataset.tenant_id,
+                    DatasetPermission.account_id == account_id,
+                )
+                .first()
+            )
             if exists:
                 return
 
@@ -273,17 +276,22 @@ class DatasetService:
                     .first()
                 )
                 if group_perm:
+                    observe_group_permission_check(resource="dataset", action="write", result="allow")
                     return
+                observe_group_permission_check(resource="dataset", action="write", result="deny_no_match")
+            else:
+                observe_group_permission_check(resource="dataset", action="write", result="deny_no_groups")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No dataset write permission")
 
 
 class DatasetPermissionService:
     @staticmethod
     def get_dataset_partial_member_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> List[str]:
-        rows = db.query(DatasetPermission).filter(
-            DatasetPermission.tenant_id == tenant_id,
-            DatasetPermission.dataset_id == dataset_id
-        ).all()
+        rows = (
+            db.query(DatasetPermission)
+            .filter(DatasetPermission.tenant_id == tenant_id, DatasetPermission.dataset_id == dataset_id)
+            .all()
+        )
         return [row.account_id for row in rows]
 
     @staticmethod
@@ -340,8 +348,7 @@ class DatasetPermissionService:
     @staticmethod
     def clear_partial_member_list(db: Session, tenant_id: UUID, dataset_id: UUID):
         db.query(DatasetPermission).filter(
-            DatasetPermission.tenant_id == tenant_id,
-            DatasetPermission.dataset_id == dataset_id
+            DatasetPermission.tenant_id == tenant_id, DatasetPermission.dataset_id == dataset_id
         ).delete()
         db.commit()
 

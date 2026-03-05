@@ -33,6 +33,8 @@ Alerts and dashboards are aligned to the built-in metrics shipped by MimirQ:
   - `task_queue_broker_up`
   - `task_queue_depth`
   - `task_queue_workers_active`
+- **AuthZ / ACL (groups)**
+  - `authz_group_permission_total`
 
 ## How to use
 

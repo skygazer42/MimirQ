@@ -8,6 +8,7 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
+from app.services.authz_prometheus_metrics import observe_group_permission_check
 from app.services.dataset_service import DatasetService
 from app.services.tenant_group_service import TenantGroupService
 
@@ -73,11 +74,7 @@ def _resolve_allowed_dataset_ids(
     if not dataset_ids:
         return {}, set()
 
-    datasets = (
-        db.query(Dataset)
-        .filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(list(dataset_ids)))
-        .all()
-    )
+    datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(list(dataset_ids))).all()
     dataset_map = {ds.id: ds for ds in datasets}
 
     allowed_dataset_ids: Set[UUID] = set()
@@ -99,9 +96,11 @@ def _resolve_allowed_dataset_ids(
             )
             .all()
         )
-        allowed_dataset_ids.update(row[0] for row in rows)
+        member_allowed_dataset_ids = {row[0] for row in rows if row and row[0]}
+        allowed_dataset_ids.update(member_allowed_dataset_ids)
 
         group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        group_allowed_dataset_ids: Set[UUID] = set()
         if group_ids:
             rows = (
                 db.query(DatasetGroupPermission.dataset_id)
@@ -112,7 +111,17 @@ def _resolve_allowed_dataset_ids(
                 )
                 .all()
             )
-            allowed_dataset_ids.update(row[0] for row in rows if row and row[0])
+            group_allowed_dataset_ids = {row[0] for row in rows if row and row[0]}
+            allowed_dataset_ids.update(group_allowed_dataset_ids)
+
+        # Group permission checks are a fallback after explicit (member) allowlists.
+        for ds_id in partial_dataset_ids - member_allowed_dataset_ids:
+            if not group_ids:
+                observe_group_permission_check(resource="dataset", action="read", result="deny_no_groups")
+            elif ds_id in group_allowed_dataset_ids:
+                observe_group_permission_check(resource="dataset", action="read", result="allow")
+            else:
+                observe_group_permission_check(resource="dataset", action="read", result="deny_no_match")
 
     return dataset_map, allowed_dataset_ids
 
@@ -159,6 +168,9 @@ def get_allowed_document_id_sets(
             doc_ids_needing_allowlist.append(doc_id)
 
     allowlist_doc_ids: Set[UUID] = set()
+    member_allowlist_doc_ids: Set[UUID] = set()
+    group_allowlist_doc_ids: Set[UUID] = set()
+    allowlist_group_ids: Set[UUID] = set()
     if doc_ids_needing_allowlist:
         rows = (
             db.query(DocumentPermission.document_id)
@@ -169,24 +181,37 @@ def get_allowed_document_id_sets(
             )
             .all()
         )
-        allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
-        group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
-        if group_ids:
+        member_allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+        allowlist_group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        if allowlist_group_ids:
             rows = (
                 db.query(DocumentGroupPermission.document_id)
                 .filter(
                     DocumentGroupPermission.tenant_id == tenant_id,
                     DocumentGroupPermission.document_id.in_(doc_ids_needing_allowlist),
-                    DocumentGroupPermission.group_id.in_(list(group_ids)),
+                    DocumentGroupPermission.group_id.in_(list(allowlist_group_ids)),
                 )
                 .all()
             )
-            allowlist_doc_ids.update({row[0] for row in rows if row and row[0]})
+            group_allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+        allowlist_doc_ids = member_allowlist_doc_ids | group_allowlist_doc_ids
 
     allowed_ids: Set[UUID] = set()
     for doc_id, dataset_id, access_mode, owner_id in documents:
         if not dataset_id:
             # legacy document without dataset binding: allow for now
+            mode = _normalize_doc_access_mode(access_mode)
+            if (
+                mode == _DOC_ACCESS_PARTIAL
+                and (str(owner_id or "").strip() != account_id)
+                and doc_id not in member_allowlist_doc_ids
+            ):
+                if not allowlist_group_ids:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_groups")
+                elif doc_id in group_allowlist_doc_ids:
+                    observe_group_permission_check(resource="document", action="read", result="allow")
+                else:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_match")
             if _doc_access_allows(
                 doc_id=doc_id,
                 access_mode=access_mode,
@@ -204,6 +229,18 @@ def get_allowed_document_id_sets(
             if ds is not None and str(getattr(ds, "owner_id", "") or "") == account_id:
                 allowed_ids.add(doc_id)
                 continue
+            mode = _normalize_doc_access_mode(access_mode)
+            if (
+                mode == _DOC_ACCESS_PARTIAL
+                and (str(owner_id or "").strip() != account_id)
+                and doc_id not in member_allowlist_doc_ids
+            ):
+                if not allowlist_group_ids:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_groups")
+                elif doc_id in group_allowlist_doc_ids:
+                    observe_group_permission_check(resource="document", action="read", result="allow")
+                else:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_match")
             if _doc_access_allows(
                 doc_id=doc_id,
                 access_mode=access_mode,
@@ -263,18 +300,16 @@ def list_accessible_document_ids(
     It enforces dataset permissions without issuing 1 query per document.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    query = (
-        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.access_mode, DBDocument.owner_id, DBDocument.updated_at)
-        .filter(DBDocument.tenant_id == tenant_id)
-    )
+    query = db.query(
+        DBDocument.id, DBDocument.dataset_id, DBDocument.access_mode, DBDocument.owner_id, DBDocument.updated_at
+    ).filter(DBDocument.tenant_id == tenant_id)
     query = query.filter(DBDocument.publication_status == "published")
     if status:
         if str(status).lower() == "completed":
             # Versioning: allow documents that are currently reprocessing/failed/cancelled,
             # as long as they still have an active pipeline that was completed before.
             query = query.filter(
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+                (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
             )
         else:
             query = query.filter(DBDocument.status == status)
@@ -298,6 +333,9 @@ def list_accessible_document_ids(
             doc_ids_needing_allowlist.append(doc_id)
 
     allowlist_doc_ids: Set[UUID] = set()
+    member_allowlist_doc_ids: Set[UUID] = set()
+    group_allowlist_doc_ids: Set[UUID] = set()
+    allowlist_group_ids: Set[UUID] = set()
     if doc_ids_needing_allowlist:
         rows = (
             db.query(DocumentPermission.document_id)
@@ -308,23 +346,36 @@ def list_accessible_document_ids(
             )
             .all()
         )
-        allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
-        group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
-        if group_ids:
+        member_allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+        allowlist_group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        if allowlist_group_ids:
             rows = (
                 db.query(DocumentGroupPermission.document_id)
                 .filter(
                     DocumentGroupPermission.tenant_id == tenant_id,
                     DocumentGroupPermission.document_id.in_(doc_ids_needing_allowlist),
-                    DocumentGroupPermission.group_id.in_(list(group_ids)),
+                    DocumentGroupPermission.group_id.in_(list(allowlist_group_ids)),
                 )
                 .all()
             )
-            allowlist_doc_ids.update({row[0] for row in rows if row and row[0]})
+            group_allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+        allowlist_doc_ids = member_allowlist_doc_ids | group_allowlist_doc_ids
 
     accessible: List[UUID] = []
     for doc_id, dataset_id, access_mode, owner_id, _ in documents:
         if not dataset_id:
+            mode = _normalize_doc_access_mode(access_mode)
+            if (
+                mode == _DOC_ACCESS_PARTIAL
+                and (str(owner_id or "").strip() != account_id)
+                and doc_id not in member_allowlist_doc_ids
+            ):
+                if not allowlist_group_ids:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_groups")
+                elif doc_id in group_allowlist_doc_ids:
+                    observe_group_permission_check(resource="document", action="read", result="allow")
+                else:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_match")
             if _doc_access_allows(
                 doc_id=doc_id,
                 access_mode=access_mode,
@@ -341,6 +392,18 @@ def list_accessible_document_ids(
             if ds is not None and str(getattr(ds, "owner_id", "") or "") == account_id:
                 accessible.append(doc_id)
                 continue
+            mode = _normalize_doc_access_mode(access_mode)
+            if (
+                mode == _DOC_ACCESS_PARTIAL
+                and (str(owner_id or "").strip() != account_id)
+                and doc_id not in member_allowlist_doc_ids
+            ):
+                if not allowlist_group_ids:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_groups")
+                elif doc_id in group_allowlist_doc_ids:
+                    observe_group_permission_check(resource="document", action="read", result="allow")
+                else:
+                    observe_group_permission_check(resource="document", action="read", result="deny_no_match")
             if _doc_access_allows(
                 doc_id=doc_id,
                 access_mode=access_mode,
