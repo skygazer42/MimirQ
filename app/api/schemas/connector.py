@@ -450,6 +450,25 @@ class ConnectorRunDocumentOut(BaseModel):
     status: str = "created"
 
 
+class ConnectorRunAclSummaryOut(BaseModel):
+    """
+    Run-level summary of document ACL applied to connector-created documents.
+
+    Privacy:
+    - contains counts only (no member ids)
+    """
+
+    mode: str = Field(default="inherit", description="Normalized access_mode; 'mixed' when docs have multiple modes.")
+    documents_total: int = 0
+    access_mode_counts: Dict[str, int] = Field(default_factory=dict)
+
+    partial_members_doc_count: int = 0
+    partial_member_count_min: Optional[int] = None
+    partial_member_count_max: Optional[int] = None
+    partial_group_count_min: Optional[int] = None
+    partial_group_count_max: Optional[int] = None
+
+
 class ConnectorRunOut(BaseModel):
     id: UUID
     tenant_id: UUID
@@ -464,6 +483,7 @@ class ConnectorRunOut(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    acl_summary: Optional[ConnectorRunAclSummaryOut] = None
     documents: List[ConnectorRunDocumentOut] = Field(default_factory=list)
 
 

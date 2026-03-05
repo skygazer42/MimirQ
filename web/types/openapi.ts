@@ -5114,6 +5114,131 @@ export interface paths {
         patch: operations["patch_tenant_member_role_api_v1_rbac_members__user_id__patch"];
         trace?: never;
     };
+    "/api/v1/scim/v2/ServiceProviderConfig": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Service Provider Config */
+        get: operations["get_service_provider_config_api_v1_scim_v2_ServiceProviderConfig_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scim/v2/Schemas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Schemas */
+        get: operations["list_schemas_api_v1_scim_v2_Schemas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scim/v2/ResourceTypes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Resource Types */
+        get: operations["list_resource_types_api_v1_scim_v2_ResourceTypes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scim/v2/Groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Groups */
+        get: operations["list_groups_api_v1_scim_v2_Groups_get"];
+        put?: never;
+        /** Create Group */
+        post: operations["create_group_api_v1_scim_v2_Groups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scim/v2/Groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Group */
+        get: operations["get_group_api_v1_scim_v2_Groups__group_id__get"];
+        /** Put Group */
+        put: operations["put_group_api_v1_scim_v2_Groups__group_id__put"];
+        post?: never;
+        /** Delete Group */
+        delete: operations["delete_group_api_v1_scim_v2_Groups__group_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Group Membership */
+        patch: operations["patch_group_membership_api_v1_scim_v2_Groups__group_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/scim/v2/Users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_v1_scim_v2_Users_get"];
+        put?: never;
+        /** Create User */
+        post: operations["create_user_api_v1_scim_v2_Users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scim/v2/Users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get User */
+        get: operations["get_user_api_v1_scim_v2_Users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch User */
+        patch: operations["patch_user_api_v1_scim_v2_Users__user_id__patch"];
+        trace?: never;
+    };
     "/api/v1/reports/datasets/{dataset_id}": {
         parameters: {
             query?: never;
@@ -5350,6 +5475,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/periodic-jobs/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Periodic Job Freshness
+         * @description Periodic job freshness snapshot (admin-only, PII-safe).
+         *
+         *     Summarizes the latest "daily audit/access review" events written to audit logs and
+         *     reports staleness/age for oncall dashboards.
+         */
+        get: operations["get_periodic_job_freshness_api_v1_observability_periodic_jobs_freshness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/task-queue/snapshot": {
         parameters: {
             query?: never;
@@ -5500,6 +5648,59 @@ export interface paths {
          *     - Admin-only (owner/admin). Auditors can read/export logs but cannot purge.
          */
         post: operations["purge_audit_logs_api_v1_audit_logs_purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/access-graph/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Access Graph Ndjson
+         * @description Export an access graph page (groups + memberships + allowlists) as NDJSON or JSON.
+         *
+         *     Stable paging:
+         *     - The export is deterministic across kinds and ordered by (created_at, id) within each kind.
+         *     - Cursor uses (after_kind, after_created_at, after_id).
+         *
+         *     Security posture:
+         *     - Requires audit.read (owner/admin/auditor).
+         *     - PII-safe by default (include_sensitive=false): raw user ids are omitted; only hashes are exported.
+         *     - Never exports document content/filenames/paths.
+         */
+        get: operations["export_access_graph_ndjson_api_v1_audit_access_graph_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/access-graph/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Access Graph Summary
+         * @description PII-minimal access review summary for a tenant (bounded JSON).
+         *
+         *     Intended for:
+         *     - Security audits / access reviews
+         *     - Troubleshooting "why is this user denied" (at the directory/config level)
+         */
+        get: operations["access_graph_summary_api_v1_audit_access_graph_summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7646,6 +7847,43 @@ export interface components {
              */
             supports_incremental: boolean;
         };
+        /**
+         * ConnectorRunAclSummaryOut
+         * @description Run-level summary of document ACL applied to connector-created documents.
+         *
+         *     Privacy:
+         *     - contains counts only (no member ids)
+         */
+        ConnectorRunAclSummaryOut: {
+            /**
+             * Mode
+             * @description Normalized access_mode; 'mixed' when docs have multiple modes.
+             * @default inherit
+             */
+            mode: string;
+            /**
+             * Documents Total
+             * @default 0
+             */
+            documents_total: number;
+            /** Access Mode Counts */
+            access_mode_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Partial Members Doc Count
+             * @default 0
+             */
+            partial_members_doc_count: number;
+            /** Partial Member Count Min */
+            partial_member_count_min?: number | null;
+            /** Partial Member Count Max */
+            partial_member_count_max?: number | null;
+            /** Partial Group Count Min */
+            partial_group_count_min?: number | null;
+            /** Partial Group Count Max */
+            partial_group_count_max?: number | null;
+        };
         /** ConnectorRunCreateRequest */
         ConnectorRunCreateRequest: {
             /**
@@ -7726,6 +7964,7 @@ export interface components {
             started_at?: string | null;
             /** Finished At */
             finished_at?: string | null;
+            acl_summary?: components["schemas"]["ConnectorRunAclSummaryOut"] | null;
             /** Documents */
             documents?: components["schemas"]["ConnectorRunDocumentOut"][];
         };
@@ -15158,6 +15397,50 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** PeriodicJobFreshnessItemResponse */
+        PeriodicJobFreshnessItemResponse: {
+            /** Key */
+            key: string;
+            /** Action */
+            action: string;
+            /** Resource Type */
+            resource_type: string;
+            /**
+             * Expected Interval Hours
+             * @default 24
+             */
+            expected_interval_hours: number;
+            /**
+             * Stale After Hours
+             * @default 36
+             */
+            stale_after_hours: number;
+            /** Last Created At */
+            last_created_at?: string | null;
+            /** Last Resource Id */
+            last_resource_id?: string | null;
+            /** Age Seconds */
+            age_seconds?: number | null;
+            /**
+             * Stale
+             * @default true
+             */
+            stale: boolean;
+        };
+        /** PeriodicJobFreshnessResponse */
+        PeriodicJobFreshnessResponse: {
+            /** Schema */
+            schema: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Tenant Id */
+            tenant_id: string;
+            /** Items */
+            items?: components["schemas"]["PeriodicJobFreshnessItemResponse"][];
+        };
         /** PipelineCapabilitiesResponse */
         PipelineCapabilitiesResponse: {
             /** Default Parser Backend */
@@ -17487,6 +17770,11 @@ export interface components {
              * @default viewer
              */
             role: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
             /**
              * Is Current
              * @default false
@@ -28513,6 +28801,467 @@ export interface operations {
             };
         };
     };
+    get_service_provider_config_api_v1_scim_v2_ServiceProviderConfig_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_schemas_api_v1_scim_v2_Schemas_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_resource_types_api_v1_scim_v2_ResourceTypes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_groups_api_v1_scim_v2_Groups_get: {
+        parameters: {
+            query?: {
+                startIndex?: number;
+                count?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_group_api_v1_scim_v2_Groups_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_group_api_v1_scim_v2_Groups__group_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_group_api_v1_scim_v2_Groups__group_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_group_api_v1_scim_v2_Groups__group_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_group_membership_api_v1_scim_v2_Groups__group_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_scim_v2_Users_get: {
+        parameters: {
+            query?: {
+                startIndex?: number;
+                count?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_api_v1_scim_v2_Users_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_api_v1_scim_v2_Users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_user_api_v1_scim_v2_Users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dataset_report_api_v1_reports_datasets__dataset_id__get: {
         parameters: {
             query?: {
@@ -29000,6 +29749,39 @@ export interface operations {
             };
         };
     };
+    get_periodic_job_freshness_api_v1_observability_periodic_jobs_freshness_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeriodicJobFreshnessResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_task_queue_observability_snapshot_api_v1_observability_task_queue_snapshot_get: {
         parameters: {
             query?: {
@@ -29270,6 +30052,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditLogPurgeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_access_graph_ndjson_api_v1_audit_access_graph_export_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Cursor: last seen kind */
+                after_kind?: string | null;
+                /** @description Cursor: last seen created_at */
+                after_created_at?: string | null;
+                /** @description Cursor: last seen id (tie-breaker) */
+                after_id?: string | null;
+                /** @description Include raw user/group/dataset identifiers (admin/auditor only) */
+                include_sensitive?: boolean;
+                /** @description ndjson|json */
+                export_format?: string;
+                /** @description Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip) */
+                gzip?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    access_graph_summary_api_v1_audit_access_graph_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

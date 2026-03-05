@@ -84,6 +84,42 @@ function formatDurationMs(ms: number): string {
   return `${s}s`
 }
 
+function formatAclModeLabel(mode: string): string {
+  switch (String(mode || '').toLowerCase()) {
+    case 'inherit':
+      return '继承'
+    case 'only_me':
+      return '仅我'
+    case 'all_team_members':
+      return '全员'
+    case 'partial_members':
+      return '白名单'
+    case 'mixed':
+      return '混合'
+    default:
+      return String(mode || 'inherit')
+  }
+}
+
+function formatAclCountRange(min: number | null | undefined, max: number | null | undefined): string | null {
+  if (min == null || max == null) return null
+  const lo = Number(min)
+  const hi = Number(max)
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null
+  if (lo === hi) return String(lo)
+  return `${lo}-${hi}`
+}
+
+function formatAclModeBreakdown(counts: Record<string, number> | null | undefined): string | null {
+  if (!counts) return null
+  const parts = Object.entries(counts)
+    .filter(([, v]) => Number(v) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 4)
+    .map(([m, v]) => `${formatAclModeLabel(m)} ${Number(v)}`)
+  return parts.length ? parts.join(' · ') : null
+}
+
 export function KnowledgeSettingsPanel({
   selectedDatasetId,
   connectorRuns,
@@ -457,7 +493,17 @@ export function KnowledgeSettingsPanel({
                     status === 'cancelled' &&
                     totalUrls > processedUrls
 
-                  const hasDocs = Array.isArray((run as any).documents) && (run as any).documents.length > 0
+                  const hasDocs = Array.isArray(run.documents) && run.documents.length > 0
+                  const acl = run.acl_summary
+                  const aclDocsTotal = Number(acl?.documents_total || 0)
+                  const aclModeRaw = String(acl?.mode || '').trim()
+                  const aclMode = aclModeRaw ? aclModeRaw.toLowerCase() : ''
+                  const aclModeLabel = aclMode ? formatAclModeLabel(aclMode) : null
+                  const aclMemberRange = formatAclCountRange(acl?.partial_member_count_min, acl?.partial_member_count_max)
+                  const aclGroupRange = formatAclCountRange(acl?.partial_group_count_min, acl?.partial_group_count_max)
+                  const aclBreakdown = aclMode === 'mixed' ? formatAclModeBreakdown(acl?.access_mode_counts) : null
+                  const aclHasAllowlist =
+                    Number(acl?.partial_members_doc_count || 0) > 0 || aclMemberRange !== null || aclGroupRange !== null
 
                   return (
                     <div
@@ -494,6 +540,23 @@ export function KnowledgeSettingsPanel({
                             created <span className="font-mono">{created}</span> · failed{' '}
                             <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
                           </div>
+
+                          {aclModeLabel && aclDocsTotal > 0 ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              ACL <span className="font-mono">{aclModeLabel}</span>
+                              {aclBreakdown ? <span className="text-muted-foreground/60">（{aclBreakdown}）</span> : null}
+                              <span className="text-muted-foreground/40"> · </span>
+                              文档 <span className="font-mono tabular-nums">{aclDocsTotal}</span>
+                              {aclHasAllowlist ? (
+                                <>
+                                  <span className="text-muted-foreground/40"> · </span>
+                                  成员 <span className="font-mono tabular-nums">{aclMemberRange ?? '—'}</span>
+                                  <span className="text-muted-foreground/40"> · </span>
+                                  组 <span className="font-mono tabular-nums">{aclGroupRange ?? '—'}</span>
+                                </>
+                              ) : null}
+                            </div>
+                          ) : null}
 
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <Button
