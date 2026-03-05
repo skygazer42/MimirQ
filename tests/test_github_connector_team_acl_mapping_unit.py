@@ -134,8 +134,11 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
     import app.services.audit_log_service as audit_log_service
 
     def _audit_stub(_db, *, action: str, **kwargs):  # noqa: ANN001
-        seen["audit_action"] = action
-        seen["audit_details"] = dict(kwargs.get("details") or {})
+        seen.setdefault("audit_actions", []).append(action)
+        details = dict(kwargs.get("details") or {})
+        by_action = seen.setdefault("audit_details_by_action", {})
+        if isinstance(by_action, dict):
+            by_action[action] = details
 
     monkeypatch.setattr(audit_log_service, "audit_log_event", _audit_stub, raising=True)
 
@@ -147,6 +150,12 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
 
     monkeypatch.setattr(connectors.DocumentGroupPermissionService, "update_partial_group_list", _upd_groups, raising=True)
     monkeypatch.setattr(connectors.DocumentGroupPermissionService, "clear_partial_group_list", lambda *_a, **_k: None, raising=True)
+
+    def _delta_stub(_db, *, source_url: str, **_k):  # noqa: ANN001
+        seen["delta_source_url"] = source_url
+        return 2
+
+    monkeypatch.setattr(connectors, "_delta_sync_connector_documents_acl_by_source_url", _delta_stub, raising=True)
 
     # Source ACL mapping stubs (this is what we are adding in Wave26-T22).
     expected_external_ids = ["github:team:acme/dev"]
@@ -168,8 +177,14 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
     assert run.status == "completed"
     assert set(seen.get("external_ids") or []) == set(expected_external_ids)
     assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
-    assert seen.get("audit_action") == "github_repo.source_acl.applied"
-    assert (seen.get("audit_details") or {}).get("mapped_group_count") == 1
+    assert "github_repo.source_acl.applied" in (seen.get("audit_actions") or [])
+    assert (seen.get("audit_details_by_action") or {}).get("github_repo.source_acl.applied", {}).get("mapped_group_count") == 1
+    assert "github_repo.source_acl.delta_sync" in (seen.get("audit_actions") or [])
+    assert (seen.get("audit_details_by_action") or {}).get("github_repo.source_acl.delta_sync", {}).get("updated_documents") == 2
+    assert (seen.get("audit_details_by_action") or {}).get("github_repo.source_acl.delta_sync", {}).get("updated_sources") == 1
+    assert "raw.githubusercontent.com" in str(seen.get("delta_source_url") or "")
+    assert (run.stats or {}).get("acl_delta_sync_updated_documents") == 2
+    assert (run.stats or {}).get("acl_delta_sync_updated_sources") == 1
 
     assert len(created_docs) == 1
     prov = (created_docs[0].doc_metadata or {}).get("acl_provenance")
