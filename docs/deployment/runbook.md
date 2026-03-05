@@ -166,6 +166,20 @@ Labels 策略（默认安全）：
 
 以上指标不包含文件名/路径/URL 等敏感字段。
 
+### AuthZ / ACL（Groups, PII-safe）
+
+- `authz_group_permission_total{resource,action,result}`：组权限命中/拒绝计数（用于排查“组同步/组权限配置”类问题）
+
+Labels（低基数、默认安全）：
+- `resource`：`dataset` / `document`
+- `action`：`read` / `write`
+- `result`：
+  - `allow`：通过 group allowlist 放行
+  - `deny_no_groups`：当前账号未解析到任何 tenant groups（常见于 OIDC groups claim 未配置/未开启同步）
+  - `deny_no_match`：有 groups 但未命中资源 allowlist
+
+以上指标不包含 tenant_id / account_id / group_id 等敏感 label。
+
 ---
 
 ## 4) 数据生命周期（当前状态）
