@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from app.api.schemas.document import DocumentAccessUpdateRequest, DocumentPipelineOptions
+from app.api.schemas.connector_acl import ConnectorSourceAclConfig
 
 # NOTE: keep connector identifiers forward-compatible.
 # The API layer still validates supported connector ids at runtime.
@@ -90,6 +91,7 @@ class UrlBatchConnectorConfig(BaseModel):
     chunk_strategy: str = Field(default="langchain_recursive")
     pipeline: Optional[DocumentPipelineOptions] = None
     access: Optional[DocumentAccessUpdateRequest] = None
+    source_acl: Optional[ConnectorSourceAclConfig] = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "UrlBatchConnectorConfig":
@@ -139,6 +141,7 @@ class WebCrawlConnectorConfig(BaseModel):
     chunk_strategy: str = Field(default="langchain_recursive")
     pipeline: Optional[DocumentPipelineOptions] = None
     access: Optional[DocumentAccessUpdateRequest] = None
+    source_acl: Optional[ConnectorSourceAclConfig] = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "WebCrawlConnectorConfig":
@@ -192,6 +195,7 @@ class GitHubRepoConnectorConfig(BaseModel):
     chunk_strategy: str = Field(default="langchain_recursive")
     pipeline: Optional[DocumentPipelineOptions] = None
     access: Optional[DocumentAccessUpdateRequest] = None
+    source_acl: Optional[ConnectorSourceAclConfig] = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "GitHubRepoConnectorConfig":
@@ -246,6 +250,7 @@ class DriveFilesConnectorConfig(BaseModel):
     chunk_strategy: str = Field(default="langchain_recursive")
     pipeline: Optional[DocumentPipelineOptions] = None
     access: Optional[DocumentAccessUpdateRequest] = None
+    source_acl: Optional[ConnectorSourceAclConfig] = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "DriveFilesConnectorConfig":
@@ -276,6 +281,7 @@ class MinioBucketConnectorConfig(BaseModel):
     chunk_strategy: str = Field(default="langchain_recursive")
     pipeline: Optional[DocumentPipelineOptions] = None
     access: Optional[DocumentAccessUpdateRequest] = None
+    source_acl: Optional[ConnectorSourceAclConfig] = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "MinioBucketConnectorConfig":
@@ -334,6 +340,7 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
     chunk_strategy: str = Field(default="langchain_recursive")
     pipeline: Optional[DocumentPipelineOptions] = None
     access: Optional[DocumentAccessUpdateRequest] = None
+    source_acl: Optional[ConnectorSourceAclConfig] = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "ConfluenceSpaceConnectorConfig":

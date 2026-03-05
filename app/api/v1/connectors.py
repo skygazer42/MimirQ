@@ -465,7 +465,8 @@ def _validate_connector_schema(connector_id: str, config: dict[str, Any]) -> tup
     else:
         raise ValueError("Unsupported connector_id")
 
-    cfg_dict = cfg_obj.model_dump(exclude_none=True)
+    # Use JSON mode to ensure the output is JSON-serializable (UUIDs, datetimes, etc.).
+    cfg_dict = cfg_obj.model_dump(mode="json", exclude_none=True)
     return cfg_obj, cfg_dict
 
 
@@ -764,6 +765,25 @@ async def validate_connector_config(
                 checks["access_groups"] = {"ok": False, "missing": missing[:20], "total_missing": len(missing)}
             else:
                 checks["access_groups"] = {"ok": True, "count": len(group_ids)}
+
+        # Validate tenant group ids referenced by source ACL mapping config (connector-level).
+        source_acl = getattr(cfg_obj, "source_acl", None)
+        rules = list(getattr(source_acl, "group_mappings", None) or [])
+        source_acl_group_ids = [getattr(r, "group_id", None) for r in rules]
+        source_acl_group_ids = [gid for gid in source_acl_group_ids if gid]
+        if source_acl_group_ids:
+            missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=source_acl_group_ids)
+            if missing:
+                errors.append(
+                    {
+                        "loc": ("source_acl", "group_mappings"),
+                        "msg": f"Unknown tenant groups: {', '.join(missing[:20])}",
+                        "type": "value_error",
+                    }
+                )
+                checks["source_acl_groups"] = {"ok": False, "missing": missing[:20], "total_missing": len(missing)}
+            else:
+                checks["source_acl_groups"] = {"ok": True, "count": len(source_acl_group_ids)}
 
     if not errors and bool(payload.check_connectivity) and cfg_obj is not None:
         more_checks, more_warnings = await _best_effort_connectivity_checks(connector_id=connector_id, cfg=cfg_obj)
@@ -1114,27 +1134,18 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                     db=db,
                 )
 
-                # Apply document-level ACL overrides for connector-created docs (no impact on pipeline_hash).
-                doc.access_mode = None if access_mode == "inherit" else access_mode
-                if not (getattr(doc, "owner_id", None) or "").strip():
-                    doc.owner_id = requested_by
-
-                if access_mode == "partial_members":
-                    DocumentPermissionService.update_partial_member_list(
-                        db,
-                        tenant_id,
-                        doc.id,
-                        list(access_members),
-                    )
-                    DocumentGroupPermissionService.update_partial_group_list(
-                        db,
-                        tenant_id,
-                        doc.id,
-                        list(access_groups),
-                    )
-                else:
-                    DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
-                    DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
+                _apply_document_access_from_config(
+                    db,
+                    tenant_id=tenant_id,
+                    requested_by=requested_by,
+                    doc=doc,
+                    access={
+                        "mode": access_mode,
+                        "partial_member_list": list(access_members),
+                        "partial_group_list": list(access_groups),
+                    },
+                    connector_id="url_batch",
+                )
 
                 db.add(
                     ConnectorRunDocument(
@@ -1277,6 +1288,60 @@ def _drive_direct_download_url(file_id: str) -> str:
     return f"https://drive.google.com/uc?export=download&id={fid}"
 
 
+def _drive_group_principal_key(email: str) -> str:
+    """
+    Build a stable source principal key for a Google Drive group permission.
+
+    Format (bounded to TenantGroup.external_id max_length=255):
+      drive:group:<email>
+    """
+    e = str(email or "").strip().lower()
+    if not e:
+        return ""
+    return f"drive:group:{e}"[:255]
+
+
+async def _drive_fetch_file_permissions(
+    *,
+    client: httpx.AsyncClient,
+    file_id: str,
+    headers: dict[str, str],
+    max_items: int = 500,
+) -> list[dict[str, Any]]:
+    """
+    Best-effort: fetch Drive file permissions via Google Drive API v3.
+
+    Notes:
+    - Requires OAuth bearer token with appropriate scopes (e.g., drive.readonly).
+    - Caller should treat failures as "unknown" and fail-closed if ACL inheritance is enabled.
+    """
+    fid = str(file_id or "").strip()
+    if not fid:
+        return []
+
+    url = f"https://www.googleapis.com/drive/v3/files/{quote(fid, safe='')}/permissions"
+    params = {
+        "fields": "permissions(type,role,emailAddress,domain,deleted)",
+        # Some environments need this for shared drives; harmless otherwise.
+        "supportsAllDrives": "true",
+    }
+    resp = await client.get(url, params=params, headers=headers)
+    if int(resp.status_code or 0) >= 400:
+        raise RuntimeError(f"drive api failed (status={resp.status_code})")
+
+    data = resp.json()
+    perms = data.get("permissions") if isinstance(data, dict) else None
+    items = perms if isinstance(perms, list) else []
+    out: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        out.append(dict(it))
+        if max_items and len(out) >= max_items:
+            break
+    return out
+
+
 def _github_raw_url(*, owner: str, repo: str, branch: str, path: str) -> str:
     """
     Build a raw.githubusercontent.com URL for a file path.
@@ -1288,6 +1353,140 @@ def _github_raw_url(*, owner: str, repo: str, branch: str, path: str) -> str:
     if not o or not r or not p:
         raise ValueError("invalid_github_raw_url_parts")
     return f"https://raw.githubusercontent.com/{o}/{r}/{quote(b, safe='')}/{quote(p, safe='/')}"  # noqa: E501
+
+
+def _github_team_principal_key(*, org: str, team_slug: str) -> str:
+    """
+    Build a stable source principal key for a GitHub org team.
+
+    Format (bounded to TenantGroup.external_id max_length=255):
+      github:team:<org>/<slug>
+    """
+    o = str(org or "").strip()
+    s = str(team_slug or "").strip()
+    if not o or not s:
+        return ""
+    key = f"github:team:{o.lower()}/{s.lower()}"
+    return key[:255]
+
+
+def _parse_link_header_next(url: str, link_header: str | None) -> str | None:
+    """
+    Best-effort parse GitHub-style RFC5988 Link header for rel="next".
+    """
+    raw = str(link_header or "").strip()
+    if not raw:
+        return None
+    for part in raw.split(","):
+        p = part.strip()
+        if not p:
+            continue
+        if 'rel="next"' not in p and "rel=next" not in p:
+            continue
+        # Format: <url>; rel="next"
+        if "<" in p and ">" in p:
+            start = p.find("<")
+            end = p.find(">", start + 1)
+            if start >= 0 and end > start:
+                candidate = p[start + 1 : end].strip()
+                return candidate or None
+    return None
+
+
+async def _github_fetch_repo_team_principal_keys(
+    *,
+    client: httpx.AsyncClient,
+    owner: str,
+    repo: str,
+    headers: dict[str, str],
+    max_pages: int = 3,
+    max_items: int = 200,
+) -> list[str]:
+    """
+    Best-effort: list org teams with access to a repo and return stable principal keys.
+
+    Notes:
+    - GitHub requires authentication + org permissions (read:org) for this endpoint.
+    - Fail-open at fetch level (return empty list on errors) but downstream mapping should fail-closed.
+    """
+    o = str(owner or "").strip()
+    r = str(repo or "").strip()
+    if not o or not r:
+        return []
+
+    url = f"https://api.github.com/repos/{quote(o, safe='')}/{quote(r, safe='')}/teams?per_page=100"
+    out: list[str] = []
+    seen: set[str] = set()
+
+    for _page in range(max(1, min(int(max_pages or 0), 10))):
+        resp = await client.get(url, headers=headers)
+        if resp.status_code >= 400:
+            return out
+        data = resp.json()
+        items = data if isinstance(data, list) else []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            slug = str(it.get("slug") or "").strip()
+            org_obj = it.get("organization")
+            org_login = ""
+            if isinstance(org_obj, dict):
+                org_login = str(org_obj.get("login") or "").strip()
+            if not org_login:
+                org_login = o
+            key = _github_team_principal_key(org=org_login, team_slug=slug)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+            if max_items and len(out) >= max_items:
+                return out
+
+        link = None
+        with contextlib.suppress(Exception):
+            link = resp.headers.get("Link")
+        next_url = _parse_link_header_next(url, link)
+        if not next_url:
+            break
+        url = next_url
+
+    return out
+
+
+def _resolve_tenant_group_ids_by_external_id(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    external_ids: list[str],
+    max_items: int = 200,
+) -> set[UUID]:
+    """
+    Resolve tenant group ids by external_id (tenant-scoped).
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+    for raw in external_ids or []:
+        ext = str(raw or "").strip()
+        if not ext or ext in seen:
+            continue
+        seen.add(ext)
+        # TenantGroup.external_id max_length is 255.
+        ids.append(ext[:255])
+        if max_items and len(ids) >= max_items:
+            break
+
+    if not ids:
+        return set()
+
+    rows = (
+        db.query(TenantGroup.id)
+        .filter(
+            TenantGroup.tenant_id == tenant_id,
+            TenantGroup.external_id.in_(ids),
+        )
+        .all()
+    )
+    return {row[0] for row in rows if row and row[0]}
 
 
 async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -1423,17 +1622,18 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                     db=db,
                 )
 
-                # Apply document-level ACL overrides for connector-created docs (no impact on pipeline_hash).
-                doc.access_mode = None if access_mode == "inherit" else access_mode
-                if not (getattr(doc, "owner_id", None) or "").strip():
-                    doc.owner_id = requested_by
-
-                if access_mode == "partial_members":
-                    DocumentPermissionService.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
-                    DocumentGroupPermissionService.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
-                else:
-                    DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
-                    DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
+                _apply_document_access_from_config(
+                    db,
+                    tenant_id=tenant_id,
+                    requested_by=requested_by,
+                    doc=doc,
+                    access={
+                        "mode": access_mode,
+                        "partial_member_list": list(access_members),
+                        "partial_group_list": list(access_groups),
+                    },
+                    connector_id="web_crawl",
+                )
 
                 db.add(
                     ConnectorRunDocument(
@@ -1514,6 +1714,7 @@ def _apply_document_access_from_config(
     requested_by: str,
     doc,  # noqa: ANN001
     access: dict | None,
+    connector_id: str | None = None,
 ) -> None:
     """
     Apply optional document-level ACL overrides for connector-created docs.
@@ -1530,16 +1731,33 @@ def _apply_document_access_from_config(
         access_groups = []
     access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
 
-    doc.access_mode = None if access_mode == "inherit" else access_mode
-    if not (getattr(doc, "owner_id", None) or "").strip():
-        doc.owner_id = requested_by
+    try:
+        doc.access_mode = None if access_mode == "inherit" else access_mode
+        if not (getattr(doc, "owner_id", None) or "").strip():
+            doc.owner_id = requested_by
 
-    if access_mode == "partial_members":
-        DocumentPermissionService.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
-        DocumentGroupPermissionService.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
+        if access_mode == "partial_members":
+            DocumentPermissionService.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
+            DocumentGroupPermissionService.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
+        else:
+            DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
+            DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
+    except Exception:
+        with contextlib.suppress(Exception):
+            from app.services.connector_acl_prometheus_metrics import observe_connector_acl_apply_error
+
+            observe_connector_acl_apply_error(connector_id=connector_id, mode=access_mode)
+        raise
     else:
-        DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
-        DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
+        with contextlib.suppress(Exception):
+            from app.services.connector_acl_prometheus_metrics import observe_connector_acl_apply
+
+            observe_connector_acl_apply(
+                connector_id=connector_id,
+                mode=access_mode,
+                member_count=len(access_members),
+                group_count=len(access_groups),
+            )
 
 
 async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -1593,6 +1811,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
         pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
         access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+        source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
 
         user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
         auth_headers = _build_auth_headers(cfg)
@@ -1607,11 +1826,65 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         failed = 0
         created_doc_ids: list[UUID] = []
 
+        # Optional: source ACL inheritance (org teams -> tenant groups by external_id).
+        source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+        source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
+        source_acl_access: dict | None = None
+        team_principal_keys: list[str] = []
+        mapped_group_ids: set[UUID] = set()
+
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             resp = await client.get(api_url, headers=headers)
             if resp.status_code >= 400:
                 raise RuntimeError(f"github api failed (status={resp.status_code})")
             data = resp.json()
+
+            if source_acl_mode == "inherit":
+                # Best-effort: this can fail due to missing org permissions; we still ingest but fail-closed.
+                with contextlib.suppress(Exception):
+                    team_principal_keys = await _github_fetch_repo_team_principal_keys(
+                        client=client,
+                        owner=owner,
+                        repo=repo_name,
+                        headers=headers,
+                    )
+
+        if source_acl_mode == "inherit":
+            with contextlib.suppress(Exception):
+                mapped_group_ids = _resolve_tenant_group_ids_by_external_id(
+                    db,
+                    tenant_id=tenant_id,
+                    external_ids=team_principal_keys,
+                )
+            if mapped_group_ids:
+                ordered = sorted(mapped_group_ids, key=lambda v: str(v))
+                source_acl_access = {
+                    "mode": "partial_members",
+                    "partial_group_list": [str(gid) for gid in ordered],
+                }
+            else:
+                source_acl_access = {"mode": source_acl_fallback_mode}
+
+            # Best-effort audit log (do not block connector execution).
+            with contextlib.suppress(Exception):
+                from app.services.audit_log_service import audit_log_event
+
+                audit_log_event(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=requested_by,
+                    action="github_repo.source_acl.applied",
+                    resource_type="connector_run",
+                    resource_id=str(run_id),
+                    details={
+                        "dataset_id": str(run.dataset_id),
+                        "connector_id": "github_repo",
+                        "repo": repo,
+                        "team_principal_count": int(len(team_principal_keys)),
+                        "mapped_group_count": int(len(mapped_group_ids)),
+                        "fallback_mode": source_acl_fallback_mode,
+                    },
+                )
 
         tree = data.get("tree")
         items = tree if isinstance(tree, list) else []
@@ -1638,6 +1911,9 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         stats0.update({"total_files": int(len(paths)), "processed_files": 0, "cursor": 0, "created": 0, "failed": 0, "failed_paths": []})
         run.stats = stats0
         db.commit()
+
+        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
 
         for idx, path in enumerate(paths):
             try:
@@ -1667,7 +1943,17 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     db=db,
                 )
 
-                _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
+                effective_access = access
+                if not has_manual_access_override and isinstance(source_acl_access, dict):
+                    effective_access = source_acl_access
+                _apply_document_access_from_config(
+                    db,
+                    tenant_id=tenant_id,
+                    requested_by=requested_by,
+                    doc=doc,
+                    access=effective_access,
+                    connector_id="github_repo",
+                )
 
                 db.add(
                     ConnectorRunDocument(
@@ -1774,6 +2060,7 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
         pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
         access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+        source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
 
         auth_headers = _build_auth_headers(cfg)
 
@@ -1786,68 +2073,141 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         run.stats = stats0
         db.commit()
 
-        for idx, url in enumerate(urls):
-            try:
-                db.refresh(run)
-            except Exception:
-                pass
-            if str(run.status or "").lower() == "cancelled":
-                break
+        source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+        source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
+        allow_anyone = bool(source_acl.get("allow_anyone", False)) if isinstance(source_acl, dict) else False
 
-            try:
-                file_id = _extract_drive_file_id(url)
-                if not file_id:
-                    raise ValueError("unsupported_drive_url")
-                dl_url = _drive_direct_download_url(file_id)
-                body = UrlUploadRequest(
-                    url=dl_url,
-                    dataset_id=run.dataset_id,
-                    filename=filename,
-                    fetch_headers=auth_headers or None,
-                    user_agent=user_agent,
-                    parser_backend=str(parser_backend),
-                    chunk_strategy=str(chunk_strategy),
-                    pipeline=pipeline,  # type: ignore[arg-type]
-                )
-                doc = await _ingest_url_upload_request(
-                    background_tasks=None,
-                    body=body,
-                    tenant_id=tenant_id,
-                    account_id=requested_by,
-                    db=db,
-                )
-                _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
-                db.add(
-                    ConnectorRunDocument(
-                        tenant_id=tenant_id,
-                        run_id=run.id,
-                        document_id=doc.id,
-                        source_ref=url,
-                        status="created",
+        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+        enable_source_acl = bool(source_acl_mode == "inherit" and not has_manual_access_override)
+
+        drive_client: httpx.AsyncClient | None = None
+        if enable_source_acl:
+            drive_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
+
+        try:
+            for idx, url in enumerate(urls):
+                try:
+                    db.refresh(run)
+                except Exception:
+                    pass
+                if str(run.status or "").lower() == "cancelled":
+                    break
+
+                try:
+                    file_id = _extract_drive_file_id(url)
+                    if not file_id:
+                        raise ValueError("unsupported_drive_url")
+
+                    effective_access = access
+                    if drive_client is not None:
+                        try:
+                            perms = await _drive_fetch_file_permissions(
+                                client=drive_client,
+                                file_id=file_id,
+                                headers=auth_headers,
+                            )
+
+                            has_anyone = False
+                            ext_ids: list[str] = []
+                            seen_ext: set[str] = set()
+                            for p in perms or []:
+                                if not isinstance(p, dict):
+                                    continue
+                                if bool(p.get("deleted", False)):
+                                    continue
+                                t = str(p.get("type") or "").strip().lower()
+                                if t == "anyone":
+                                    has_anyone = True
+                                    continue
+                                if t == "group":
+                                    key = _drive_group_principal_key(str(p.get("emailAddress") or ""))
+                                    if key and key not in seen_ext:
+                                        seen_ext.add(key)
+                                        ext_ids.append(key)
+                                        if len(ext_ids) >= 200:
+                                            break
+
+                            if has_anyone and bool(allow_anyone):
+                                effective_access = {"mode": "all_team_members"}
+                            else:
+                                gids = _resolve_tenant_group_ids_by_external_id(
+                                    db,
+                                    tenant_id=tenant_id,
+                                    external_ids=ext_ids,
+                                )
+                                if gids:
+                                    ordered = sorted(gids, key=lambda v: str(v))
+                                    effective_access = {
+                                        "mode": "partial_members",
+                                        "partial_group_list": [str(gid) for gid in ordered],
+                                    }
+                                else:
+                                    effective_access = {"mode": source_acl_fallback_mode}
+                        except Exception:
+                            effective_access = {"mode": source_acl_fallback_mode}
+
+                    dl_url = _drive_direct_download_url(file_id)
+                    body = UrlUploadRequest(
+                        url=dl_url,
+                        dataset_id=run.dataset_id,
+                        filename=filename,
+                        fetch_headers=auth_headers or None,
+                        user_agent=user_agent,
+                        parser_backend=str(parser_backend),
+                        chunk_strategy=str(chunk_strategy),
+                        pipeline=pipeline,  # type: ignore[arg-type]
                     )
-                )
-                created += 1
-                created_doc_ids.append(doc.id)
-            except Exception as exc:  # noqa: BLE001
-                failed += 1
-                stats = dict(run.stats or {})
-                stats = _append_connector_error(stats, url=url, exc=exc)
-                run.stats = stats
-            finally:
-                processed = idx + 1
-                stats = dict(run.stats or {})
-                stats.update(
-                    {
-                        "total_urls": int(len(urls)),
-                        "processed_urls": int(processed),
-                        "cursor": int(processed),
-                        "created": int(created),
-                        "failed": int(failed),
-                        "document_ids": [str(d) for d in created_doc_ids],
-                    }
-                )
-                run.stats = _finalize_connector_stats(stats)
-                db.commit()
+                    doc = await _ingest_url_upload_request(
+                        background_tasks=None,
+                        body=body,
+                        tenant_id=tenant_id,
+                        account_id=requested_by,
+                        db=db,
+                    )
+                    _apply_document_access_from_config(
+                        db,
+                        tenant_id=tenant_id,
+                        requested_by=requested_by,
+                        doc=doc,
+                        access=effective_access,
+                        connector_id="drive_files",
+                    )
+                    db.add(
+                        ConnectorRunDocument(
+                            tenant_id=tenant_id,
+                            run_id=run.id,
+                            document_id=doc.id,
+                            source_ref=url,
+                            status="created",
+                        )
+                    )
+                    created += 1
+                    created_doc_ids.append(doc.id)
+                except Exception as exc:  # noqa: BLE001
+                    failed += 1
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=url, exc=exc)
+                    run.stats = stats
+                finally:
+                    processed = idx + 1
+                    stats = dict(run.stats or {})
+                    stats.update(
+                        {
+                            "total_urls": int(len(urls)),
+                            "processed_urls": int(processed),
+                            "cursor": int(processed),
+                            "created": int(created),
+                            "failed": int(failed),
+                            "document_ids": [str(d) for d in created_doc_ids],
+                        }
+                    )
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+        finally:
+            if drive_client is not None:
+                with contextlib.suppress(Exception):
+                    await drive_client.aclose()
 
         try:
             db.refresh(run)
@@ -1981,7 +2341,14 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
                     account_id=requested_by,
                     db=db,
                 )
-                _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
+                _apply_document_access_from_config(
+                    db,
+                    tenant_id=tenant_id,
+                    requested_by=requested_by,
+                    doc=doc,
+                    access=access,
+                    connector_id="minio_bucket",
+                )
                 db.add(
                     ConnectorRunDocument(
                         tenant_id=tenant_id,
@@ -2117,6 +2484,75 @@ def _confluence_extract_last_modified(page: dict) -> str | None:
             if isinstance(when, str) and when.strip():
                 return when.strip()
     return None
+
+
+def _confluence_group_principal_key(group_name: str) -> str:
+    """
+    Build a stable source principal key for a Confluence group name.
+
+    Format (bounded to TenantGroup.external_id max_length=255):
+      confluence:group:<group_name>
+    """
+    name = str(group_name or "").strip()
+    if not name:
+        return ""
+    key = f"confluence:group:{name.lower()}"
+    return key[:255]
+
+
+def _confluence_parse_read_restriction_groups(data: object, *, max_groups: int = 200) -> tuple[bool, list[str], int]:
+    """
+    Parse read restrictions for a page and extract allowed group names.
+
+    Returns: (is_restricted, group_names, user_count)
+    - is_restricted=False means "unrestricted" (no view restrictions)
+    - is_restricted=True means "restricted" (some restrictions exist, even if we can't map them)
+    """
+    if not isinstance(data, dict):
+        return True, [], 0
+
+    results = data.get("results")
+    items = results if isinstance(results, list) else []
+    group_names: list[str] = []
+    seen_g: set[str] = set()
+    user_count = 0
+
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        restrictions = it.get("restrictions")
+        if not isinstance(restrictions, dict):
+            continue
+
+        group_obj = restrictions.get("group")
+        if isinstance(group_obj, dict):
+            g_res = group_obj.get("results")
+            g_items = g_res if isinstance(g_res, list) else []
+            for g in g_items:
+                if not isinstance(g, dict):
+                    continue
+                name = str(g.get("name") or "").strip()
+                if not name:
+                    continue
+                k = name.lower()
+                if k in seen_g:
+                    continue
+                seen_g.add(k)
+                group_names.append(name)
+                if max_groups and len(group_names) >= max_groups:
+                    break
+
+        user_obj = restrictions.get("user")
+        if isinstance(user_obj, dict):
+            u_res = user_obj.get("results")
+            u_items = u_res if isinstance(u_res, list) else []
+            user_count += int(len(u_items))
+
+        if max_groups and len(group_names) >= max_groups:
+            break
+
+    is_restricted = bool(group_names or user_count)
+    return is_restricted, group_names, int(user_count)
 
 
 def _confluence_ingest_method(cfg: dict) -> str:
@@ -2316,6 +2752,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
         pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
         access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+        source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
 
         user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
         auth_headers = _build_auth_headers(cfg)
@@ -2381,6 +2818,11 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         listing_complete = False
         stopped_mid_batch = False
 
+        source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+        source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
+        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+
         while processed < max_pages:
             # Best-effort cancellation check between API pages.
             try:
@@ -2444,6 +2886,51 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                     continue
 
                 try:
+                    # Optional: source ACL inheritance (Confluence page restrictions -> tenant groups).
+                    effective_access = access
+                    if (
+                        not has_manual_access_override
+                        and source_acl_mode == "inherit"
+                        and page_id
+                    ):
+                        restrictions_url = f"{api_base}/content/{page_id}/restriction/byOperation/read"
+                        restrictions_params = {"expand": "restrictions.group,restrictions.user"}
+                        try:
+                            r_resp = await _confluence_request(
+                                pool,
+                                "GET",
+                                restrictions_url,
+                                params=restrictions_params,
+                                headers=headers,
+                            )
+                            if r_resp is not None and int(getattr(r_resp, "status_code", 0) or 0) == 404:
+                                # Unrestricted (best-effort): treat as no override.
+                                effective_access = access
+                            else:
+                                r_data = r_resp.json() if r_resp is not None else {}
+                                restricted, group_names, _user_count = _confluence_parse_read_restriction_groups(r_data)
+                                if not restricted:
+                                    effective_access = access
+                                else:
+                                    ext_ids = [_confluence_group_principal_key(n) for n in (group_names or [])]
+                                    ext_ids = [e for e in ext_ids if e]
+                                    gids = _resolve_tenant_group_ids_by_external_id(
+                                        db,
+                                        tenant_id=tenant_id,
+                                        external_ids=ext_ids,
+                                    )
+                                    if gids:
+                                        ordered = sorted(gids, key=lambda v: str(v))
+                                        effective_access = {
+                                            "mode": "partial_members",
+                                            "partial_group_list": [str(gid) for gid in ordered],
+                                        }
+                                    else:
+                                        effective_access = {"mode": source_acl_fallback_mode}
+                        except Exception:
+                            # Fail-closed when source ACL is enabled but restrictions can't be fetched/parsed.
+                            effective_access = {"mode": source_acl_fallback_mode}
+
                     filename = None
                     if page_id:
                         base_name = f"{page_id}-{title}".strip("-").strip() if title else str(page_id)
@@ -2529,7 +3016,14 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             ingestion_kind="upload_url",
                         )
 
-                    _apply_document_access_from_config(db, tenant_id=tenant_id, requested_by=requested_by, doc=doc, access=access)
+                    _apply_document_access_from_config(
+                        db,
+                        tenant_id=tenant_id,
+                        requested_by=requested_by,
+                        doc=doc,
+                        access=effective_access,
+                        connector_id="confluence_space",
+                    )
 
                     # Attach connector metadata (must not affect pipeline_hash).
                     try:
@@ -2655,7 +3149,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                                             tenant_id=tenant_id,
                                             requested_by=requested_by,
                                             doc=att_doc,
-                                            access=access,
+                                            access=effective_access,
+                                            connector_id="confluence_space",
                                         )
 
                                         # Attach connector metadata (must not affect pipeline_hash).
@@ -2885,35 +3380,43 @@ async def create_connector_run(
 
     if connector_id == "url_batch":
         cfg = UrlBatchConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "web_crawl":
         cfg = WebCrawlConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "github_repo":
         cfg = GitHubRepoConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "drive_files":
         cfg = DriveFilesConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "minio_bucket":
         cfg = MinioBucketConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "confluence_space":
         cfg = ConfluenceSpaceConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "mysql_catalog":
         cfg = MySQLCatalogConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "sqlserver_catalog":
         cfg = SQLServerCatalogConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     else:
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
 
+    # Validate tenant groups referenced in config (fail-closed; prevents typos silently weakening ACLs).
+    group_ids_to_check: list[UUID] = []
     access = getattr(cfg, "access", None)
-    access_group_ids = list(getattr(access, "partial_group_list", None) or [])
-    if access_group_ids:
-        missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=access_group_ids)
+    group_ids_to_check.extend(list(getattr(access, "partial_group_list", None) or []))
+    source_acl = getattr(cfg, "source_acl", None)
+    for rule in list(getattr(source_acl, "group_mappings", None) or []):
+        gid = getattr(rule, "group_id", None)
+        if gid:
+            group_ids_to_check.append(gid)
+
+    if group_ids_to_check:
+        missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=group_ids_to_check)
         if missing:
             raise HTTPException(status_code=400, detail=f"Unknown tenant groups: {', '.join(missing[:20])}")
 

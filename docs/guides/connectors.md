@@ -75,8 +75,12 @@ URL 类连接器（`url_batch` / `web_crawl` / `github_repo` / `drive_files` / `
 - `chunk_strategy`：切分策略（例如 `langchain_recursive`）
 - `pipeline`：DocumentPipelineOptions（治理/切分参数等）
 - `access`：Document ACL（inherit/only_me/partial_members 等，取决于后端支持）
+- `source_acl`：**源权限继承**（Source ACL → Document ACL，按 tenant groups 映射；默认关闭）
 
 这些字段与文件上传、URL 导入保持一致，便于复用既有 pipeline 配置。
+
+关于 `source_acl` 的详细运维说明、external_id 映射约定、示例与排障见：
+- [docs/guides/connector_acl_inheritance.md](./connector_acl_inheritance.md)
 
 ## 5) 内置连接器清单与示例
 
