@@ -202,8 +202,10 @@ def train_ltr_xgboost_model(
             raise ValueError("group_sizes must sum to the number of training rows")
         # Grouped ranking objective support.
         dtrain.set_group(sizes)
+
+    obj = str(objective or "binary:logistic")
     params = {
-        "objective": str(objective or "binary:logistic"),
+        "objective": obj,
         "max_depth": 3,
         "eta": 0.3,
         "subsample": 1.0,
@@ -214,8 +216,16 @@ def train_ltr_xgboost_model(
         "min_child_weight": 0.0,
         "gamma": 0.0,
         "seed": int(seed),
-        "eval_metric": ("ndcg@10" if str(objective or "").startswith("rank:") else "logloss"),
+        "eval_metric": ("ndcg@10" if obj.startswith("rank:") else "logloss"),
     }
+
+    # Newer xgboost versions infer base_score from training labels. For tiny
+    # datasets it can become exactly 0/1 (e.g., all-positive labels), which is
+    # invalid for logistic loss.
+    if obj in {"binary:logistic", "reg:logistic"}:
+        eps = 1e-6
+        mean_label = float(y_arr.mean()) if y_arr.size else 0.5
+        params["base_score"] = min(max(mean_label, eps), 1.0 - eps)
 
     booster = xgb.train(params=params, dtrain=dtrain, num_boost_round=max(1, int(num_boost_round or 0)))
     raw = booster.save_raw(raw_format="json")
