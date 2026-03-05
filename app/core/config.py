@@ -464,6 +464,9 @@ class Settings(BaseSettings):
     JWT_GROUPS_MAX_GROUPS: int = 200
     # Throttle to avoid write amplification (seconds; best-effort in-process cache; 0 disables).
     JWT_GROUPS_SYNC_TTL_SEC: int = 60
+    # Optional enterprise: auto-provision tenant_members for JWT-authenticated users when a
+    # verified JWT tenant claim is present. Safe default: disabled.
+    JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED: bool = False
 
     # SCIM v2 provisioning (enterprise; opt-in).
     #
@@ -487,6 +490,8 @@ class Settings(BaseSettings):
     # Optional write endpoints (default disabled).
     SCIM_USERS_CREATE_ENABLED: bool = False
     SCIM_USERS_PATCH_ACTIVE_ENABLED: bool = False
+    # Deprovision policy (opt-in): when a user is deactivated via SCIM, revoke group memberships.
+    SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED: bool = False
     SCIM_GROUPS_MUTATION_ENABLED: bool = False
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
@@ -1377,6 +1382,14 @@ class Settings(BaseSettings):
             raise ValueError(f"Unsupported AUTH_MODE: {auth_mode}")
         if auth_mode == "header" and is_production:
             raise ValueError("AUTH_MODE=header is not allowed in production")
+
+        # Security: JWT tenant member auto-provision guard (enterprise).
+        if bool(getattr(self, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
+            if auth_mode != "jwt":
+                raise ValueError("JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED requires AUTH_MODE=jwt")
+            claim = str(getattr(self, "JWT_TENANT_CLAIM", "") or "").strip()
+            if not claim:
+                raise ValueError("JWT_TENANT_CLAIM required when JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED=true")
 
         # Security: SCIM provisioning auth guard (enterprise).
         if bool(getattr(self, "SCIM_ENABLED", False)):

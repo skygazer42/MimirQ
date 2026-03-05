@@ -396,6 +396,58 @@ def test_scim_users_create_and_patch_active(monkeypatch: pytest.MonkeyPatch) -> 
     assert called["audit"] >= 2
 
 
+def test_scim_deprovision_policy_revokes_group_memberships(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.scim as scim_api
+
+    token = "scim-test-token"
+    monkeypatch.setattr(scim_api.settings, "SCIM_ENABLED", True, raising=False)
+    monkeypatch.setattr(scim_api.settings, "SCIM_BEARER_TOKEN", token, raising=False)
+    monkeypatch.setattr(scim_api.settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", True, raising=False)
+    monkeypatch.setattr(scim_api.settings, "SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED", True, raising=False)
+
+    tenant_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    user = SimpleNamespace(tenant_id=tenant_id, user_id="alice", is_active=True, is_current=False, created_at=now, updated_at=now)
+
+    def _override_get_tenant_id(_request=None):  # noqa: ANN001, ANN202
+        return tenant_id
+
+    def _get_user(_db, *, tenant_id, user_id):  # noqa: ANN001
+        return user if str(user_id) == "alice" else None
+
+    monkeypatch.setattr(scim_api, "_get_user", _get_user, raising=True)
+
+    called = {"audit": 0, "revoke": 0}
+    monkeypatch.setattr(scim_api, "audit_log_event", lambda *_a, **_k: called.__setitem__("audit", called["audit"] + 1), raising=True)
+
+    def _revoke(_db, *, tenant_id, user_id):  # noqa: ANN001
+        called["revoke"] += 1
+        assert str(user_id) == "alice"
+        return 3
+
+    monkeypatch.setattr(scim_api, "_revoke_group_memberships_for_user", _revoke, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.include_router(scim_api.router, prefix="/api/v1/scim/v2")
+    client = TestClient(app)
+
+    res = client.patch(
+        "/api/v1/scim/v2/Users/alice",
+        headers=_auth(token),
+        json={
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+            "Operations": [{"op": "Replace", "path": "active", "value": False}],
+        },
+    )
+    assert res.status_code == 200, res.text
+    assert res.json().get("active") is False
+    assert called["revoke"] == 1
+    assert called["audit"] >= 1
+
+
 def test_scim_groups_create_put_delete_and_external_id_uniqueness(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.scim as scim_api
 

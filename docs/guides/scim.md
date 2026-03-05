@@ -34,6 +34,7 @@ SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED=false
 # 可选：开启写入能力（默认全部关闭）
 SCIM_USERS_CREATE_ENABLED=false
 SCIM_USERS_PATCH_ACTIVE_ENABLED=false
+SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED=false
 SCIM_GROUPS_MUTATION_ENABLED=false
 ```
 
@@ -160,6 +161,7 @@ curl -fsS \
 ## 4) 当前限制（重要）
 
 - 默认仍然是 **读为主**：写入能力需要显式开启（见第 1 节 flags）。
-- `PATCH /Users/{id}` 当前只支持 `active`（用于启用/停用）；更强的撤权闭环（移除组/缓存等）在后续 deprovision policy 里完善。
+- `PATCH /Users/{id}` 当前只支持 `active`（用于启用/停用）。
+  - 可选：启用 `SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED=true` 时，停用会撤销该用户的 tenant group memberships（幂等）。
 - `PATCH /Groups/{id}` 当前专注于成员增删；组属性更新走 `PUT /Groups/{id}`。
 - `Users` 仅暴露 `tenant_members.user_id` 非空的成员；若你的租户成员尚未落库，请先通过现有登录/成员引导流程建立 `tenant_members`。

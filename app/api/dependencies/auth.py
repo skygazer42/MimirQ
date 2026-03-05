@@ -40,6 +40,16 @@ def _get_jwt_tenant_id(payload: dict) -> str | None:
     return tenant_id
 
 
+def _best_effort_client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return (forwarded.split(",")[0] or "").strip() or None
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return (real_ip or "").strip() or None
+    return request.client.host if request.client and request.client.host else None
+
+
 async def get_current_account_id_from_headers(
     *,
     authorization: str | None,
@@ -129,6 +139,34 @@ async def get_current_account_id_from_headers(
                 )
             except Exception:  # noqa: BLE001
                 # Never block auth due to sync failures.
+                pass
+
+        # Optional enterprise: auto-provision tenant_members for JWT-authenticated users (opt-in).
+        if bool(getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
+            try:
+                from app.core.database import SessionLocal  # noqa: WPS433
+                from app.services.tenant_member_provisioning_service import (  # noqa: WPS433
+                    maybe_auto_provision_jwt_tenant_member_best_effort,
+                )
+
+                request_id = None
+                ip = None
+                user_agent = None
+                if request is not None:
+                    request_id = str(getattr(request.state, "request_id", "") or "").strip() or None
+                    ip = _best_effort_client_ip(request)
+                    user_agent = (request.headers.get("User-Agent") or "").strip() or None
+
+                maybe_auto_provision_jwt_tenant_member_best_effort(
+                    db_factory=SessionLocal,
+                    tenant_id=UUID(jwt_tenant_id),
+                    user_id=user_id,
+                    request_id=request_id,
+                    ip=ip,
+                    user_agent=user_agent,
+                )
+            except Exception:  # noqa: BLE001
+                # Never block auth due to auto-provisioning failures.
                 pass
     return user_id
 
