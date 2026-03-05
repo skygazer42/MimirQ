@@ -89,7 +89,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/three": "^0.183.1",
     "autoprefixer": "^10.4.27",
-    "eslint": "^10.0.2",
+    "eslint": "^9.0.0",
     "eslint-config-next": "^16.1.6",
     "openapi-typescript": "7.13.0",
     "postcss": "^8.5.8",

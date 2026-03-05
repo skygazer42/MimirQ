@@ -362,6 +362,27 @@ export interface OpsConfigSnapshotResponse {
   config: Record<string, any>
 }
 
+export interface PeriodicJobFreshnessItemResponse {
+  key: string
+  action: string
+  resource_type: string
+
+  expected_interval_hours: number
+  stale_after_hours: number
+
+  last_created_at?: string | null
+  last_resource_id?: string | null
+  age_seconds?: number | null
+  stale: boolean
+}
+
+export interface PeriodicJobFreshnessResponse {
+  schema: string
+  generated_at: string
+  tenant_id: string
+  items: PeriodicJobFreshnessItemResponse[]
+}
+
 export interface TaskQueueObservabilitySnapshotResponse {
   schema: string
   generated_at: string

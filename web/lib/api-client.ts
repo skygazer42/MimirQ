@@ -225,6 +225,7 @@ import type {
 			  RagTraceBundleResponse,
 			  RagTraceBundleDiffResponse,
 			  OpsConfigSnapshotResponse,
+			  PeriodicJobFreshnessResponse,
 			  DepsDiagnosticsResponse,
 			  TaskQueueObservabilitySnapshotResponse,
 			  SloSnapshotResponse,
@@ -3353,6 +3354,11 @@ export const observabilityApi = {
 	    return data
 	  },
 
+	  async getPeriodicJobFreshness(): Promise<PeriodicJobFreshnessResponse> {
+	    const { data } = await apiClient.get('/observability/periodic-jobs/freshness')
+	    return data
+	  },
+
 	  async getTaskQueueSnapshot(params: { force_refresh?: boolean } = {}): Promise<TaskQueueObservabilitySnapshotResponse> {
 	    const { data } = await apiClient.get('/observability/task-queue/snapshot', { params })
 	    return data
@@ -3626,6 +3632,27 @@ export const scimApi = {
     return data
   },
 
+  async createGroup(params: { tenantId: string; scimToken: string; payload: any }): Promise<any> {
+    const { data } = await apiClient.post('/scim/v2/Groups', params.payload, {
+      headers: buildScimHeaders(params.scimToken, params.tenantId),
+    })
+    return data
+  },
+
+  async updateGroup(params: { tenantId: string; scimToken: string; groupId: string; payload: any }): Promise<any> {
+    const { data } = await apiClient.put(`/scim/v2/Groups/${encodeURIComponent(params.groupId)}`, params.payload, {
+      headers: buildScimHeaders(params.scimToken, params.tenantId),
+    })
+    return data
+  },
+
+  async deleteGroup(params: { tenantId: string; scimToken: string; groupId: string }): Promise<any> {
+    const { data } = await apiClient.delete(`/scim/v2/Groups/${encodeURIComponent(params.groupId)}`, {
+      headers: buildScimHeaders(params.scimToken, params.tenantId),
+    })
+    return data
+  },
+
   async listUsers(params: { tenantId: string; scimToken: string; startIndex?: number; count?: number }): Promise<any> {
     const { tenantId, scimToken, ...query } = params
     const { data } = await apiClient.get('/scim/v2/Users', {
@@ -3637,6 +3664,20 @@ export const scimApi = {
 
   async getUser(params: { tenantId: string; scimToken: string; userId: string }): Promise<any> {
     const { data } = await apiClient.get(`/scim/v2/Users/${encodeURIComponent(params.userId)}`, {
+      headers: buildScimHeaders(params.scimToken, params.tenantId),
+    })
+    return data
+  },
+
+  async createUser(params: { tenantId: string; scimToken: string; payload: any }): Promise<any> {
+    const { data } = await apiClient.post('/scim/v2/Users', params.payload, {
+      headers: buildScimHeaders(params.scimToken, params.tenantId),
+    })
+    return data
+  },
+
+  async patchUser(params: { tenantId: string; scimToken: string; userId: string; payload: any }): Promise<any> {
+    const { data } = await apiClient.patch(`/scim/v2/Users/${encodeURIComponent(params.userId)}`, params.payload, {
       headers: buildScimHeaders(params.scimToken, params.tenantId),
     })
     return data
