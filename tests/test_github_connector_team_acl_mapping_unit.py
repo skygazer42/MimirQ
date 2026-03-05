@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import uuid
+
+import httpx
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors
+    from app.models.connector import ConnectorRun
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    requested_by = "test-account"
+
+    # Fake run in DB.
+    run = type(
+        "_Run",
+        (),
+        {
+            "id": run_id,
+            "tenant_id": tenant_id,
+            "dataset_id": dataset_id,
+            "connector_id": "github_repo",
+            "requested_by": requested_by,
+            "status": "pending",
+            "config": {
+                "repo": "acme/demo",
+                "branch": "main",
+                "max_files": 1,
+                "include_extensions": [".md"],
+                "source_acl": {"mode": "inherit"},
+            },
+            "stats": {},
+            "error_message": None,
+            "task_id": None,
+            "started_at": None,
+            "finished_at": None,
+            "documents": [],
+        },
+    )()
+
+    class _DummyQuery:
+        def __init__(self, model):  # noqa: ANN001
+            self.model = model
+
+        def options(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def first(self):  # noqa: ANN201
+            if self.model is ConnectorRun:
+                return run
+            return None
+
+    class _DummyDB:
+        def query(self, model):  # noqa: ANN001
+            return _DummyQuery(model)
+
+        def add(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            return None
+
+        def refresh(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def close(self) -> None:
+            return None
+
+    dummy_db = _DummyDB()
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+
+    # Fake GitHub tree API call (files listing).
+    class _FakeResp:
+        def __init__(self, status_code: int, payload):  # noqa: ANN001
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):  # noqa: ANN201
+            return self._payload
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            return None
+
+        async def __aenter__(self):  # noqa: ANN201
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201
+            return False
+
+        async def get(self, url: str, headers=None):  # noqa: ANN001, ANN201
+            assert "/git/trees/" in url
+            return _FakeResp(
+                200,
+                {
+                    "tree": [
+                        {"type": "blob", "path": "README.md"},
+                    ]
+                },
+            )
+
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *a, **k: _FakeClient(), raising=True)
+
+    # Stub: ingest always returns a new doc object.
+    created_doc_id = uuid.uuid4()
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = created_doc_id
+            self.access_mode = None
+            self.owner_id = None
+
+    async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
+        return _Doc()
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest, raising=True)
+
+    # Capture applied group ACLs.
+    seen: dict[str, object] = {}
+
+    import app.services.audit_log_service as audit_log_service
+
+    def _audit_stub(_db, *, action: str, **kwargs):  # noqa: ANN001
+        seen["audit_action"] = action
+        seen["audit_details"] = dict(kwargs.get("details") or {})
+
+    monkeypatch.setattr(audit_log_service, "audit_log_event", _audit_stub, raising=True)
+
+    monkeypatch.setattr(connectors.DocumentPermissionService, "update_partial_member_list", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors.DocumentPermissionService, "clear_partial_member_list", lambda *_a, **_k: None, raising=True)
+
+    def _upd_groups(_db, _tenant_id, _doc_id, group_ids, **_k):  # noqa: ANN001
+        seen["group_ids"] = list(group_ids)
+
+    monkeypatch.setattr(connectors.DocumentGroupPermissionService, "update_partial_group_list", _upd_groups, raising=True)
+    monkeypatch.setattr(connectors.DocumentGroupPermissionService, "clear_partial_group_list", lambda *_a, **_k: None, raising=True)
+
+    # Source ACL mapping stubs (this is what we are adding in Wave26-T22).
+    expected_external_ids = ["github:team:acme/dev"]
+    mapped_group_id = uuid.uuid4()
+
+    async def _fake_fetch_team_keys(*_a, **_k):  # noqa: ANN001, ANN201
+        return list(expected_external_ids)
+
+    monkeypatch.setattr(connectors, "_github_fetch_repo_team_principal_keys", _fake_fetch_team_keys, raising=True)
+
+    def _fake_resolve_groups(*_a, **_k):  # noqa: ANN001
+        seen["external_ids"] = list(_k.get("external_ids") or [])
+        return {mapped_group_id}
+
+    monkeypatch.setattr(connectors, "_resolve_tenant_group_ids_by_external_id", _fake_resolve_groups, raising=True)
+
+    await connectors._execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+
+    assert run.status == "completed"
+    assert set(seen.get("external_ids") or []) == set(expected_external_ids)
+    assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
+    assert seen.get("audit_action") == "github_repo.source_acl.applied"
+    assert (seen.get("audit_details") or {}).get("mapped_group_count") == 1

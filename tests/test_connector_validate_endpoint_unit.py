@@ -97,3 +97,92 @@ def test_connectors_validate_redacts_password(monkeypatch):  # noqa: ANN001
     assert body.get("ok") is True
     assert (body.get("config") or {}).get("password") == "<redacted>"
 
+
+def test_connectors_validate_rejects_unknown_source_acl_groups(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+
+    # Bypass membership checks for unit test.
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    async def _ok_url(url: str) -> str:
+        return url
+
+    monkeypatch.setattr(connectors_module, "validate_url_for_ingest", _ok_url, raising=False)
+
+    missing_group_id = uuid.uuid4()
+    monkeypatch.setattr(
+        connectors_module,
+        "_unknown_tenant_groups",
+        lambda *_a, **_k: [str(missing_group_id)],
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/validate")(connectors_module.validate_connector_config)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/validate",
+        json={
+            "connector_id": "url_batch",
+            "config": {
+                "urls": ["https://example.com/a.txt"],
+                "source_acl": {
+                    "mode": "inherit",
+                    "group_mappings": [
+                        {
+                            "source": {"system": "github", "kind": "team", "id": "acme/dev"},
+                            "group_id": str(missing_group_id),
+                        }
+                    ],
+                },
+            },
+            "check_connectivity": False,
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("ok") is False
+    errors = body.get("errors") or []
+    assert any(e.get("loc") == ["source_acl", "group_mappings"] for e in errors), errors
+
+
+def test_connectors_validate_rejects_unknown_access_groups(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    missing_group_id = uuid.uuid4()
+    monkeypatch.setattr(
+        connectors_module,
+        "_unknown_tenant_groups",
+        lambda *_a, **_k: [str(missing_group_id)],
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/validate")(connectors_module.validate_connector_config)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/validate",
+        json={
+            "connector_id": "url_batch",
+            "config": {
+                "urls": ["https://example.com/a.txt"],
+                "access": {"mode": "partial_members", "partial_group_list": [str(missing_group_id)]},
+            },
+            "check_connectivity": False,
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("ok") is False
+    errors = body.get("errors") or []
+    assert any(e.get("loc") == ["access", "partial_group_list"] for e in errors), errors

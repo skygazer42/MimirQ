@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+import uuid
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors
+    from app.models.connector import ConnectorRun
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    requested_by = "test-account"
+
+    run = type(
+        "_Run",
+        (),
+        {
+            "id": run_id,
+            "tenant_id": tenant_id,
+            "dataset_id": dataset_id,
+            "connector_id": "drive_files",
+            "requested_by": requested_by,
+            "status": "pending",
+            "config": {
+                "urls": ["https://drive.google.com/file/d/FILEID/view?usp=sharing"],
+                "auth": {"type": "bearer", "token": "token"},
+                "source_acl": {"mode": "inherit"},
+            },
+            "stats": {},
+            "error_message": None,
+            "task_id": None,
+            "started_at": None,
+            "finished_at": None,
+            "documents": [],
+        },
+    )()
+
+    class _DummyQuery:
+        def __init__(self, model):  # noqa: ANN001
+            self.model = model
+
+        def options(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def first(self):  # noqa: ANN201
+            if self.model is ConnectorRun:
+                return run
+            return None
+
+    class _DummyDB:
+        def query(self, model):  # noqa: ANN001
+            return _DummyQuery(model)
+
+        def add(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            return None
+
+        def refresh(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def close(self) -> None:
+            return None
+
+    dummy_db = _DummyDB()
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+
+    created_doc_id = uuid.uuid4()
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = created_doc_id
+            self.access_mode = None
+            self.owner_id = None
+
+    async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
+        return _Doc()
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest, raising=True)
+
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(connectors.DocumentPermissionService, "update_partial_member_list", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors.DocumentPermissionService, "clear_partial_member_list", lambda *_a, **_k: None, raising=True)
+
+    def _upd_groups(_db, _tenant_id, _doc_id, group_ids, **_k):  # noqa: ANN001
+        seen["group_ids"] = list(group_ids)
+
+    monkeypatch.setattr(connectors.DocumentGroupPermissionService, "update_partial_group_list", _upd_groups, raising=True)
+    monkeypatch.setattr(connectors.DocumentGroupPermissionService, "clear_partial_group_list", lambda *_a, **_k: None, raising=True)
+
+    async def _fake_fetch_permissions(*_a, **_k):  # noqa: ANN001, ANN201
+        return [
+            {
+                "type": "group",
+                "role": "reader",
+                "emailAddress": "eng@acme.com",
+            }
+        ]
+
+    monkeypatch.setattr(connectors, "_drive_fetch_file_permissions", _fake_fetch_permissions, raising=True)
+
+    mapped_group_id = uuid.uuid4()
+
+    def _fake_resolve_groups(*_a, **_k):  # noqa: ANN001
+        seen["external_ids"] = list(_k.get("external_ids") or [])
+        return {mapped_group_id}
+
+    monkeypatch.setattr(connectors, "_resolve_tenant_group_ids_by_external_id", _fake_resolve_groups, raising=True)
+
+    await connectors._execute_drive_files_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+
+    assert run.status == "completed"
+    assert set(seen.get("external_ids") or []) == {"drive:group:eng@acme.com"}
+    assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
+

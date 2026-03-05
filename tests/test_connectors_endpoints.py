@@ -132,6 +132,118 @@ def test_connectors_create_run_happy_path(monkeypatch):  # noqa: ANN001
     assert (body.get("config") or {}).get("urls") == ["https://example.com/a.txt", "https://example.com/b.txt"]
 
 
+def test_connectors_create_run_rejects_unknown_source_acl_groups(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+    from app.api.v1.connectors import create_connector_run
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
+
+    # Bypass dataset permission enforcement for unit test (covered elsewhere).
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self, dataset_id: uuid.UUID):  # noqa: ANN001
+            self.id = dataset_id
+
+    monkeypatch.setattr(
+        connectors_module,
+        "_resolve_writable_dataset",
+        lambda *_a, **_k: _Dataset(dataset_id),
+        raising=True,
+    )
+
+    missing_group_id = uuid.uuid4()
+    monkeypatch.setattr(
+        connectors_module,
+        "_unknown_tenant_groups",
+        lambda *_a, **_k: [str(missing_group_id)],
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/runs", status_code=201, response_model=ConnectorRunOut)(create_connector_run)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/runs",
+        json={
+            "connector_id": "url_batch",
+            "dataset_id": str(dataset_id),
+            "config": {
+                "urls": ["https://example.com/a.txt"],
+                "source_acl": {
+                    "mode": "inherit",
+                    "group_mappings": [
+                        {
+                            "source": {"system": "github", "kind": "team", "id": "acme/dev"},
+                            "group_id": str(missing_group_id),
+                        }
+                    ],
+                },
+            },
+        },
+    )
+    assert res.status_code == 400, res.text
+    assert "Unknown tenant groups" in (res.json() or {}).get("detail", "")
+
+
+def test_connectors_create_run_rejects_unknown_access_groups(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+    from app.api.v1.connectors import create_connector_run
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self, dataset_id: uuid.UUID):  # noqa: ANN001
+            self.id = dataset_id
+
+    monkeypatch.setattr(
+        connectors_module,
+        "_resolve_writable_dataset",
+        lambda *_a, **_k: _Dataset(dataset_id),
+        raising=True,
+    )
+
+    missing_group_id = uuid.uuid4()
+    monkeypatch.setattr(
+        connectors_module,
+        "_unknown_tenant_groups",
+        lambda *_a, **_k: [str(missing_group_id)],
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/runs", status_code=201, response_model=ConnectorRunOut)(create_connector_run)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/runs",
+        json={
+            "connector_id": "url_batch",
+            "dataset_id": str(dataset_id),
+            "config": {
+                "urls": ["https://example.com/a.txt"],
+                "access": {"mode": "partial_members", "partial_group_list": [str(missing_group_id)]},
+            },
+        },
+    )
+    assert res.status_code == 400, res.text
+    assert "Unknown tenant groups" in (res.json() or {}).get("detail", "")
+
+
 def test_connectors_create_web_crawl_run_redacts_auth(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors_module
     from app.api.v1.connectors import create_connector_run
