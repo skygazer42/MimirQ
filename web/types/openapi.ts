@@ -5999,10 +5999,7 @@ export interface components {
         };
         /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
         Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace
@@ -6012,18 +6009,12 @@ export interface components {
         };
         /** Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post */
         Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
         Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Overwrite
@@ -6033,10 +6024,7 @@ export interface components {
         };
         /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
         Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Dataset Id
@@ -6055,20 +6043,14 @@ export interface components {
         };
         /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
         Body_parse_preview_api_v1_pipeline_parse_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Parser Backend */
             parser_backend?: string | null;
         };
         /** Body_preview_chunking_api_v1_documents_chunk_preview_post */
         Body_preview_chunking_api_v1_documents_chunk_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6176,10 +6158,7 @@ export interface components {
         };
         /** Body_preview_document_api_v1_documents_preview_post */
         Body_preview_document_api_v1_documents_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6220,23 +6199,18 @@ export interface components {
         Body_register_ltr_model_api_v1_ltr_models_register_post: {
             /**
              * Model File
-             * Format: binary
              * @description XGBoost model bytes (JSON)
              */
             model_file: string;
             /**
              * Manifest File
-             * Format: binary
              * @description LTR manifest JSON (validated)
              */
             manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6356,10 +6330,7 @@ export interface components {
         };
         /** Body_upload_parsing_document_api_v1_parsing_documents_post */
         Body_upload_parsing_document_api_v1_parsing_documents_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6369,10 +6340,7 @@ export interface components {
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Dataset Id */
             dataset_id: string;
@@ -18099,6 +18067,12 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: {
+                [key: string]: unknown;
+            };
         };
         /** VectorStatus */
         VectorStatus: {
