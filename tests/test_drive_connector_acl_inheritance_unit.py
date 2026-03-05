@@ -93,6 +93,18 @@ async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatc
     monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest, raising=True)
 
     seen: dict[str, object] = {}
+
+    import app.services.audit_log_service as audit_log_service
+
+    def _audit_stub(_db, *, action: str, **kwargs):  # noqa: ANN001
+        seen.setdefault("audit_actions", []).append(action)
+        details = dict(kwargs.get("details") or {})
+        by_action = seen.setdefault("audit_details_by_action", {})
+        if isinstance(by_action, dict):
+            by_action[action] = details
+
+    monkeypatch.setattr(audit_log_service, "audit_log_event", _audit_stub, raising=True)
+
     monkeypatch.setattr(connectors.DocumentPermissionService, "update_partial_member_list", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(connectors.DocumentPermissionService, "clear_partial_member_list", lambda *_a, **_k: None, raising=True)
 
@@ -121,11 +133,23 @@ async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatc
 
     monkeypatch.setattr(connectors, "_resolve_tenant_group_ids_by_external_id", _fake_resolve_groups, raising=True)
 
+    def _delta_stub(_db, *, source_url: str, **_k):  # noqa: ANN001
+        seen["delta_source_url"] = source_url
+        return 1
+
+    monkeypatch.setattr(connectors, "_delta_sync_connector_documents_acl_by_source_url", _delta_stub, raising=True)
+
     await connectors._execute_drive_files_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
 
     assert run.status == "completed"
     assert set(seen.get("external_ids") or []) == {"drive:group:eng@acme.com"}
     assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
+    assert (run.stats or {}).get("acl_delta_sync_updated_documents") == 1
+    assert (run.stats or {}).get("acl_delta_sync_updated_sources") == 1
+    assert "drive_files.source_acl.delta_sync" in (seen.get("audit_actions") or [])
+    assert (seen.get("audit_details_by_action") or {}).get("drive_files.source_acl.delta_sync", {}).get("updated_documents") == 1
+    assert (seen.get("audit_details_by_action") or {}).get("drive_files.source_acl.delta_sync", {}).get("updated_sources") == 1
+    assert "FILEID" in str(seen.get("delta_source_url") or "")
 
     assert len(created_docs) == 1
     prov = (created_docs[0].doc_metadata or {}).get("acl_provenance")

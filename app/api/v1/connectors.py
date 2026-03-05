@@ -1760,6 +1760,190 @@ def _apply_document_access_from_config(
             )
 
 
+def _delta_sync_connector_documents_acl_by_source_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    connector_id: str,
+    source_url: str,
+    requested_by: str,
+    access: dict | None,
+    acl_provenance: dict | None,
+    max_docs: int = 50_000,
+) -> int:
+    """
+    Best-effort ACL delta sync for connector-managed documents (revoke/adjust access).
+
+    This updates *existing* documents that were previously created by the same
+    connector and have the same `documents.metadata.source_url`.
+
+    Security:
+    - We join against connector run tables to avoid touching manually-uploaded docs
+      that happen to share the same source URL.
+    - When source ACL changes, we re-apply the computed effective doc ACL to revoke
+      access (fail-closed mapping already happens earlier).
+    """
+    if dataset_id is None:
+        return 0
+    source_url = str(source_url or "").strip()
+    if not source_url:
+        return 0
+
+    # Query via joins to ensure "connector-managed" scope.
+    q = (
+        db.query(DBDocument)
+        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
+        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+            ConnectorRun.tenant_id == tenant_id,
+            ConnectorRun.dataset_id == dataset_id,
+            ConnectorRun.connector_id == str(connector_id or "").strip(),
+        )
+        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)  # type: ignore[attr-defined]
+        .distinct()
+        .order_by(DBDocument.created_at.desc())
+    )
+
+    max_docs = max(0, int(max_docs or 0))
+    if max_docs:
+        q = q.limit(max_docs)
+
+    updated = 0
+    for doc in q.yield_per(200):
+        _apply_document_access_from_config(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=doc,
+            access=access,
+            connector_id=connector_id,
+        )
+        if isinstance(acl_provenance, dict):
+            try:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                meta0["acl_provenance"] = dict(acl_provenance)
+                doc.doc_metadata = meta0
+            except Exception:
+                # Best-effort: never fail due to metadata patching.
+                pass
+        updated += 1
+
+    return int(updated)
+
+
+def _delta_sync_confluence_documents_acl_by_page_id(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    space_key: str,
+    page_id: str,
+    requested_by: str,
+    access: dict | None,
+    acl_provenance: dict | None,
+    max_docs_scan: int = 5000,
+) -> int:
+    """
+    ACL delta sync for Confluence documents by `(base_url, space_key, page_id)`.
+
+    This updates both the page doc and any attachment docs for the same page
+    because attachments inherit the same effective access.
+    """
+    if dataset_id is None:
+        return 0
+    pid = str(page_id or "").strip()
+    if not pid:
+        return 0
+    base_url = str(base_url or "").strip()
+    space_key = str(space_key or "").strip()
+
+    updated = 0
+    try:
+        q = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "confluence_space")  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["space_key"].astext == space_key)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["page_id"].astext == pid)  # type: ignore[attr-defined]
+            .order_by(DBDocument.created_at.desc())
+        )
+        for doc in q.yield_per(200):
+            _apply_document_access_from_config(
+                db,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                doc=doc,
+                access=access,
+                connector_id="confluence_space",
+            )
+            if isinstance(acl_provenance, dict):
+                try:
+                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                    meta0["acl_provenance"] = dict(acl_provenance)
+                    doc.doc_metadata = meta0
+                except Exception:
+                    pass
+            updated += 1
+    except Exception:
+        # Best-effort fallback: scan a bounded recent window and filter in Python.
+        max_docs_scan = max(0, int(max_docs_scan or 0))
+        if max_docs_scan <= 0:
+            max_docs_scan = 5000
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .order_by(DBDocument.created_at.desc())
+            .limit(max_docs_scan)
+            .all()
+        )
+        for doc in docs or []:
+            meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+            conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+            if str(conn.get("connector_id") or "") != "confluence_space":
+                continue
+            if str(conn.get("base_url") or "") != base_url:
+                continue
+            if str(conn.get("space_key") or "") != space_key:
+                continue
+            if str(conn.get("page_id") or "") != pid:
+                continue
+            _apply_document_access_from_config(
+                db,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                doc=doc,
+                access=access,
+                connector_id="confluence_space",
+            )
+            if isinstance(acl_provenance, dict):
+                try:
+                    meta0 = dict(meta or {})
+                    meta0["acl_provenance"] = dict(acl_provenance)
+                    doc.doc_metadata = meta0
+                except Exception:
+                    pass
+            updated += 1
+
+    return int(updated)
+
+
 async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for github_repo connector.
@@ -1828,6 +2012,8 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         created = 0
         failed = 0
         created_doc_ids: list[UUID] = []
+        delta_acl_docs_updated = 0
+        delta_acl_sources_updated = 0
 
         # Optional: source ACL inheritance (org teams -> tenant groups by external_id).
         source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
@@ -1941,6 +2127,27 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
 
             try:
                 raw_url = _github_raw_url(owner=owner, repo=repo_name, branch=branch, path=path)
+                effective_access = access
+                if not has_manual_access_override and isinstance(source_acl_access, dict):
+                    effective_access = source_acl_access
+
+                # Delta sync: update existing connector-managed docs for this URL so ACL changes
+                # in the source system can revoke access (idempotent; fail-closed).
+                if effective_access is source_acl_access:
+                    updated_existing = _delta_sync_connector_documents_acl_by_source_url(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=run.dataset_id,
+                        connector_id="github_repo",
+                        source_url=raw_url,
+                        requested_by=requested_by,
+                        access=effective_access,
+                        acl_provenance=source_acl_provenance,
+                    )
+                    delta_acl_docs_updated += int(updated_existing)
+                    if updated_existing:
+                        delta_acl_sources_updated += 1
+
                 body = UrlUploadRequest(
                     url=raw_url,
                     dataset_id=run.dataset_id,
@@ -1959,9 +2166,6 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     db=db,
                 )
 
-                effective_access = access
-                if not has_manual_access_override and isinstance(source_acl_access, dict):
-                    effective_access = source_acl_access
                 _apply_document_access_from_config(
                     db,
                     tenant_id=tenant_id,
@@ -2004,6 +2208,8 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                         "created": int(created),
                         "failed": int(failed),
                         "document_ids": [str(d) for d in created_doc_ids],
+                        "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                        "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
                     }
                 )
                 run.stats = _finalize_connector_stats(stats)
@@ -2023,10 +2229,36 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
             return
 
         stats = dict(run.stats or {})
-        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        stats.update(
+            {
+                "document_ids": [str(d) for d in created_doc_ids],
+                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+            }
+        )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        if enable_source_acl:
+            with contextlib.suppress(Exception):
+                from app.services.audit_log_service import audit_log_event
+
+                audit_log_event(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=requested_by,
+                    action="github_repo.source_acl.delta_sync",
+                    resource_type="connector_run",
+                    resource_id=str(run_id),
+                    details={
+                        "dataset_id": str(run.dataset_id),
+                        "connector_id": "github_repo",
+                        "repo": repo,
+                        "branch": branch,
+                        "updated_documents": int(delta_acl_docs_updated),
+                        "updated_sources": int(delta_acl_sources_updated),
+                    },
+                )
         db.commit()
         with contextlib.suppress(Exception):
             _sync_connector_config_from_run(db, run=run)
@@ -2089,6 +2321,8 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         created = 0
         failed = 0
         created_doc_ids: list[UUID] = []
+        delta_acl_docs_updated = 0
+        delta_acl_sources_updated = 0
 
         stats0 = dict(run.stats or {})
         stats0.update({"total_urls": int(len(urls)), "processed_urls": 0, "cursor": 0, "created": 0, "failed": 0, "failed_urls": []})
@@ -2193,6 +2427,20 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                             )
 
                     dl_url = _drive_direct_download_url(file_id)
+                    if drive_client is not None:
+                        updated_existing = _delta_sync_connector_documents_acl_by_source_url(
+                            db,
+                            tenant_id=tenant_id,
+                            dataset_id=run.dataset_id,
+                            connector_id="drive_files",
+                            source_url=dl_url,
+                            requested_by=requested_by,
+                            access=effective_access,
+                            acl_provenance=acl_provenance,
+                        )
+                        delta_acl_docs_updated += int(updated_existing)
+                        if updated_existing:
+                            delta_acl_sources_updated += 1
                     body = UrlUploadRequest(
                         url=dl_url,
                         dataset_id=run.dataset_id,
@@ -2250,6 +2498,8 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                             "created": int(created),
                             "failed": int(failed),
                             "document_ids": [str(d) for d in created_doc_ids],
+                            "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                            "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
                         }
                     )
                     run.stats = _finalize_connector_stats(stats)
@@ -2273,10 +2523,36 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
             return
 
         stats = dict(run.stats or {})
-        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        stats.update(
+            {
+                "document_ids": [str(d) for d in created_doc_ids],
+                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+            }
+        )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        if enable_source_acl:
+            with contextlib.suppress(Exception):
+                from app.services.audit_log_service import audit_log_event
+
+                audit_log_event(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=requested_by,
+                    action="drive_files.source_acl.delta_sync",
+                    resource_type="connector_run",
+                    resource_id=str(run_id),
+                    details={
+                        "dataset_id": str(run.dataset_id),
+                        "connector_id": "drive_files",
+                        "updated_documents": int(delta_acl_docs_updated),
+                        "updated_sources": int(delta_acl_sources_updated),
+                        "allow_anyone": bool(allow_anyone),
+                        "fallback_mode": source_acl_fallback_mode,
+                    },
+                )
         db.commit()
         with contextlib.suppress(Exception):
             _sync_connector_config_from_run(db, run=run)
@@ -2830,6 +3106,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         attachments_failed = 0
         attachments_skipped = 0
         created_doc_ids: list[UUID] = []
+        delta_acl_docs_updated = 0
+        delta_acl_pages_updated = 0
         observed_page_ids: set[str] = set()
         last_modified_seen: str | None = None
 
@@ -2872,6 +3150,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
         access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
         has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+        enable_source_acl = bool(source_acl_mode == "inherit" and not has_manual_access_override)
 
         while processed < max_pages:
             # Best-effort cancellation check between API pages.
@@ -2944,6 +3223,10 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                         and source_acl_mode == "inherit"
                         and page_id
                     ):
+                        ext_ids: list[str] = []
+                        gids: set[UUID] = set()
+                        restricted_flag: bool | None = None
+                        fallback_used = False
                         restrictions_url = f"{api_base}/content/{page_id}/restriction/byOperation/read"
                         restrictions_params = {"expand": "restrictions.group,restrictions.user"}
                         try:
@@ -2957,12 +3240,15 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             if r_resp is not None and int(getattr(r_resp, "status_code", 0) or 0) == 404:
                                 # Unrestricted (best-effort): treat as no override.
                                 effective_access = access
+                                restricted_flag = False
                             else:
                                 r_data = r_resp.json() if r_resp is not None else {}
                                 restricted, group_names, _user_count = _confluence_parse_read_restriction_groups(r_data)
                                 if not restricted:
                                     effective_access = access
+                                    restricted_flag = False
                                 else:
+                                    restricted_flag = True
                                     ext_ids = [_confluence_group_principal_key(n) for n in (group_names or [])]
                                     ext_ids = [e for e in ext_ids if e]
                                     gids = _resolve_tenant_group_ids_by_external_id(
@@ -2978,40 +3264,42 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                                         }
                                     else:
                                         effective_access = {"mode": source_acl_fallback_mode}
-
-                                    with contextlib.suppress(Exception):
-                                        from app.services.document_acl_provenance_service import (
-                                            build_document_acl_provenance,
-                                        )
-
-                                        acl_provenance = build_document_acl_provenance(
-                                            connector_id="confluence_space",
-                                            connector_run_id=str(run_id),
-                                            effective_access=effective_access,
-                                            source_acl_mode=source_acl_mode,
-                                            source_acl_fallback_mode=source_acl_fallback_mode,
-                                            source_principal_external_ids=ext_ids,
-                                            mapped_group_ids=gids,
-                                            fallback_used=not bool(gids),
-                                            restricted=True,
-                                        )
+                                        fallback_used = True
                         except Exception:
                             # Fail-closed when source ACL is enabled but restrictions can't be fetched/parsed.
                             effective_access = {"mode": source_acl_fallback_mode}
-                            with contextlib.suppress(Exception):
-                                from app.services.document_acl_provenance_service import build_document_acl_provenance
+                            restricted_flag = None
+                            fallback_used = True
 
-                                acl_provenance = build_document_acl_provenance(
-                                    connector_id="confluence_space",
-                                    connector_run_id=str(run_id),
-                                    effective_access=effective_access,
-                                    source_acl_mode=source_acl_mode,
-                                    source_acl_fallback_mode=source_acl_fallback_mode,
-                                    source_principal_external_ids=[],
-                                    mapped_group_ids=[],
-                                    fallback_used=True,
-                                    restricted=None,
-                                )
+                        with contextlib.suppress(Exception):
+                            from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+                            acl_provenance = build_document_acl_provenance(
+                                connector_id="confluence_space",
+                                connector_run_id=str(run_id),
+                                effective_access=effective_access,
+                                source_acl_mode=source_acl_mode,
+                                source_acl_fallback_mode=source_acl_fallback_mode,
+                                source_principal_external_ids=ext_ids,
+                                mapped_group_ids=gids,
+                                fallback_used=fallback_used,
+                                restricted=restricted_flag,
+                            )
+
+                        updated_existing = _delta_sync_confluence_documents_acl_by_page_id(
+                            db,
+                            tenant_id=tenant_id,
+                            dataset_id=run.dataset_id,
+                            base_url=base_url,
+                            space_key=space_key,
+                            page_id=page_id,
+                            requested_by=requested_by,
+                            access=effective_access,
+                            acl_provenance=acl_provenance,
+                        )
+                        delta_acl_docs_updated += int(updated_existing)
+                        if updated_existing:
+                            delta_acl_pages_updated += 1
 
                     filename = None
                     if page_id:
@@ -3297,6 +3585,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             "failed_attachments": int(attachments_failed),
                             "skipped_attachments": int(attachments_skipped),
                             "document_ids": [str(d) for d in created_doc_ids],
+                            "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                            "acl_delta_sync_updated_sources": int(delta_acl_pages_updated),
                         }
                     )
                     if last_modified_seen:
@@ -3414,10 +3704,38 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
             return
 
         stats = dict(run.stats or {})
-        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        stats.update(
+            {
+                "document_ids": [str(d) for d in created_doc_ids],
+                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                "acl_delta_sync_updated_sources": int(delta_acl_pages_updated),
+            }
+        )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        if enable_source_acl:
+            with contextlib.suppress(Exception):
+                from app.services.audit_log_service import audit_log_event
+
+                audit_log_event(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=requested_by,
+                    action="confluence_space.source_acl.delta_sync",
+                    resource_type="connector_run",
+                    resource_id=str(run_id),
+                    details={
+                        "dataset_id": str(run.dataset_id),
+                        "connector_id": "confluence_space",
+                        "base_url": base_url,
+                        "space_key": space_key,
+                        "mode": effective_mode,
+                        "updated_documents": int(delta_acl_docs_updated),
+                        "updated_pages": int(delta_acl_pages_updated),
+                        "fallback_mode": source_acl_fallback_mode,
+                    },
+                )
         db.commit()
         with contextlib.suppress(Exception):
             _sync_connector_config_from_run(db, run=run)

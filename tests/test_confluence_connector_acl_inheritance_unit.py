@@ -132,6 +132,18 @@ async def test_confluence_connector_applies_restriction_groups_as_doc_acl(monkey
     monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest, raising=True)
 
     seen: dict[str, object] = {}
+
+    import app.services.audit_log_service as audit_log_service
+
+    def _audit_stub(_db, *, action: str, **kwargs):  # noqa: ANN001
+        seen.setdefault("audit_actions", []).append(action)
+        details = dict(kwargs.get("details") or {})
+        by_action = seen.setdefault("audit_details_by_action", {})
+        if isinstance(by_action, dict):
+            by_action[action] = details
+
+    monkeypatch.setattr(audit_log_service, "audit_log_event", _audit_stub, raising=True)
+
     monkeypatch.setattr(connectors.DocumentPermissionService, "update_partial_member_list", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(connectors.DocumentPermissionService, "clear_partial_member_list", lambda *_a, **_k: None, raising=True)
 
@@ -149,11 +161,23 @@ async def test_confluence_connector_applies_restriction_groups_as_doc_acl(monkey
 
     monkeypatch.setattr(connectors, "_resolve_tenant_group_ids_by_external_id", _fake_resolve_groups, raising=True)
 
+    def _delta_stub(_db, *, page_id: str, **_k):  # noqa: ANN001
+        seen["delta_page_id"] = page_id
+        return 3
+
+    monkeypatch.setattr(connectors, "_delta_sync_confluence_documents_acl_by_page_id", _delta_stub, raising=True)
+
     await connectors._execute_confluence_space_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
 
     assert run.status == "completed"
     assert set(seen.get("external_ids") or []) == {"confluence:group:confluence-users"}
     assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
+    assert seen.get("delta_page_id") == "123"
+    assert (run.stats or {}).get("acl_delta_sync_updated_documents") == 3
+    assert (run.stats or {}).get("acl_delta_sync_updated_sources") == 1
+    assert "confluence_space.source_acl.delta_sync" in (seen.get("audit_actions") or [])
+    assert (seen.get("audit_details_by_action") or {}).get("confluence_space.source_acl.delta_sync", {}).get("updated_documents") == 3
+    assert (seen.get("audit_details_by_action") or {}).get("confluence_space.source_acl.delta_sync", {}).get("updated_pages") == 1
 
     assert len(created_docs) == 1
     prov = (created_docs[0].doc_metadata or {}).get("acl_provenance")
