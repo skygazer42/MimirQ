@@ -19,6 +19,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.services.ops_config_snapshot_service import build_ops_config_snapshot
+from app.services.periodic_job_freshness_service import build_periodic_job_freshness_snapshot
 from app.services.rag_metrics_dashboard import (
     build_rag_trace_bundle,
     build_rag_trace_bundle_diff,
@@ -196,6 +197,27 @@ class TaskQueueObservabilitySnapshotResponse(BaseModel):
     poll_interval_sec: float = 0.0
 
     error: str | None = None
+
+
+class PeriodicJobFreshnessItemResponse(BaseModel):
+    key: str
+    action: str
+    resource_type: str
+
+    expected_interval_hours: int = 24
+    stale_after_hours: int = 36
+
+    last_created_at: datetime | None = None
+    last_resource_id: str | None = None
+    age_seconds: int | None = None
+    stale: bool = True
+
+
+class PeriodicJobFreshnessResponse(BaseModel):
+    schema: str
+    generated_at: datetime
+    tenant_id: str
+    items: List[PeriodicJobFreshnessItemResponse] = Field(default_factory=list)
 
 
 class SloWindowSnapshotResponse(BaseModel):
@@ -429,6 +451,22 @@ def get_ops_config_snapshot(
     _ensure_admin(db, tenant_id, account_id)
     snap = build_ops_config_snapshot()
     return snap.__dict__
+
+
+@router.get("/periodic-jobs/freshness", response_model=PeriodicJobFreshnessResponse)
+def get_periodic_job_freshness(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Periodic job freshness snapshot (admin-only, PII-safe).
+
+    Summarizes the latest "daily audit/access review" events written to audit logs and
+    reports staleness/age for oncall dashboards.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+    return build_periodic_job_freshness_snapshot(db=db, tenant_id=tenant_id)
 
 
 @router.get("/task-queue/snapshot", response_model=TaskQueueObservabilitySnapshotResponse)

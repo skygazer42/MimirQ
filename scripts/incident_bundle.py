@@ -93,6 +93,10 @@ def main(argv: list[str] | None = None) -> int:
         meta = _fetch_json(client, url=f"{base_url}/api/v1/meta", headers=headers)
         ready = _fetch_json(client, url=f"{base_url}/api/v1/health/ready", headers=headers)
         config = _fetch_json(client, url=f"{base_url}/api/v1/observability/config/snapshot", headers=headers)
+        access_graph_summary = _fetch_json(client, url=f"{base_url}/api/v1/audit/access-graph/summary", headers=headers)
+        periodic_job_freshness = _fetch_json(
+            client, url=f"{base_url}/api/v1/observability/periodic-jobs/freshness", headers=headers
+        )
         trace = _fetch_json(
             client,
             url=(
@@ -112,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         health_ready=_pick_body(ready),
         config_snapshot=_pick_body(config),
         trace_bundle=_pick_body(trace),
+        access_graph_summary=_pick_body(access_graph_summary),
+        periodic_job_freshness=_pick_body(periodic_job_freshness),
     )
 
     print(str(out_file))

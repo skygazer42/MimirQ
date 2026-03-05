@@ -20,6 +20,7 @@ Alerts and dashboards are aligned to the built-in metrics shipped by MimirQ:
 - **HTTP**
   - `http_requests_total`
   - `http_request_duration_seconds`
+  - 429 saturation (rate-limit/quota) via `http_requests_total{status="429"}`
 - **RAG SLIs (chat path)**
   - `rag_retrieval_elapsed_seconds`
   - `rag_zero_hit_total`
@@ -84,3 +85,9 @@ Notes:
 
 - If you enable tenant/dataset labels for RAG metrics (`PROMETHEUS_RAG_LABEL_TENANT_ID`, `PROMETHEUS_RAG_LABEL_DATASET_ID`),
   consider scoping alert queries (or using separate dashboards) to avoid noisy global alerts.
+
+- Default alert thresholds are conservative and workload-dependent:
+  - `MimirQHighHttp429Ratio`: 429 ratio > 2% over 10m, only when overall traffic > 1 rps (sustained 15m).
+  - `MimirQAuthzGroupDenyRatioHigh`: group deny ratio > 20% over 10m (sustained 20m).
+  - `MimirQAuthzGroupDenySpike`: > 200 denies over 5m (sustained 15m).
+  If you have a known “expected deny” workload (e.g. many anonymous probes), tune these down/up accordingly.

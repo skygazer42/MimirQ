@@ -37,6 +37,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 | Alert（PrometheusRule） | 默认阈值（模板） | 典型影响面 | 优先定位（最短路径） | 止血手段（先救火） | Runbook |
 | --- | --- | --- | --- | --- | --- |
 | `MimirQHighHttp5xxRate` | 5xx 比例 > 5%（5m），持续 10m | API 大面积失败 | 1) `GET /api/v1/health/ready`<br>2) 看依赖：Postgres / Redis / Vector / MinIO<br>3) 看网关/Ingress 5xx | 1) 恢复依赖（优先）<br>2) 临时降级：关掉高成本开关（如 rerank/部分检索增强）<br>3) 扩容 API 实例 | [A. Readiness 503](#rb-readiness-503) / [1) 健康检查](#rb-health) |
+| `MimirQHighHttp429Ratio` | 429 比例 > 2%（10m）且总流量 > 1 rps，持续 15m | 客户端频繁 429、前端重试风暴、可用性下降 | 1) 看响应 `Retry-After` 与 `detail.scope`（区分 rate_limit / tenant_qps / quota）<br>2) 看是否与峰值流量/发布变更相关<br>3) 检查 Redis 分布式限流是否开启 | 1) 让客户端尊重 `Retry-After`（先止雪崩）<br>2) 临时放宽 `RATE_LIMIT_*` / `TENANT_QPS_QUOTA_*`（谨慎）<br>3) 扩容后端/依赖，避免长期靠放宽限流 | [5.1) 429 快速诊断](#rb-429) |
 | `MimirQHighHttpLatencyP95` | HTTP p95 > 1s（5m），持续 10m | API 慢、超时、前端卡顿 | 1) Grafana 看 p95/p99 走势<br>2) 检查 CPU/内存/连接池<br>3) 看向量库/DB 慢查询 | 1) 扩容（API/向量库）<br>2) 临时降低 top_k / reranker_top_n<br>3) 走配置回滚（最快） | [5) IR](#rb-ir) / [6) 配置回滚](#rb-rollback) |
 | `MimirQHighRagRetrievalLatencyP95` | 检索 p95 > 2s（5m），持续 10m | chat/RAG 慢、成本升高 | 1) 看 `rag_retrieval_elapsed_seconds`<br>2) 对比 deploy/config 指纹（config snapshot）<br>3) 检查向量库健康 | 1) 临时关闭 reranker 或降低 reranker_top_n<br>2) 降低 retrieval_profile/top_k（牺牲召回换稳定）<br>3) 回滚配置/版本 | [C. 检索质量下降](#rb-retrieval-quality) / [6) 配置回滚](#rb-rollback) |
 | `MimirQHighRagRetrievalLatencyP99` | 检索 p99 > 6s（5m），持续 10m | 尾延迟恶化、SLO 破坏 | 1) 看 p99 是否只在峰值触发<br>2) 检查依赖抖动（向量库/DB/外部 API）<br>3) 采样 request_id 导出 trace bundle | 1) 启用限流/收紧 tenant QPS quota（保护后端）<br>2) 降级检索增强链路（multi-query/query rewrite）<br>3) 扩容向量库/缓存 | [5) IR](#rb-ir) |
@@ -48,6 +49,8 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 | `MimirQTaskQueueBrokerDown` | `task_queue_broker_up=0` 持续 5m | 队列不可用、异步 ingest 堵塞 | 1) `/api/v1/observability/task-queue/snapshot`<br>2) 检查 Redis 连接/网络策略<br>3) worker 启动日志是否重试 | 1) 恢复 Redis（优先）<br>2) 紧急：关闭队列（`TASK_QUEUE_ENABLED=false`）<br>3) 扩容/重启 worker | [A. Readiness 503](#rb-readiness-503) / [B. ingestion](#rb-ingestion) |
 | `MimirQTaskQueueDepthHigh` | `task_queue_depth > 1000` 持续 15m | ingest 排队、延迟上升 | 1) 看 `task_queue_depth` 与 `task_queue_workers_active`<br>2) 检查 worker 并发、配额限制<br>3) 检查 slow external deps（embedding/parsers） | 1) 扩容 worker / 提升 max_jobs（谨慎）<br>2) 启用 backpressure：限制单租户/数据集并发<br>3) 降级高成本 pipeline | [B. ingestion](#rb-ingestion) |
 | `MimirQTaskQueueNoWorkersButHasBacklog` | depth>0 且 workers_active<1 持续 10m | 队列堆积但无人消费 | 1) 确认 worker deployment 是否存活<br>2) 检查 worker heartbeat 是否写入 Redis<br>3) 检查 RBAC/网络策略 | 1) 立刻拉起 worker / 回滚 worker 发布<br>2) 临时限流 ingest 入口（避免越堆越多）<br>3) 恢复后观察 backlog 下降 | [B. ingestion](#rb-ingestion) |
+| `MimirQAuthzGroupDenyRatioHigh` | deny 比例 > 20%（10m），持续 20m | 大量“没权限/被拒绝”，访问异常（常见于组同步/allowlist 配置问题） | 1) 看 `authz_group_permission_total{result}`：`deny_no_groups` vs `deny_no_match`<br>2) 检查 OIDC groups claim / group sync 配置<br>3) 使用 access-graph summary/export 做 tenant 级排查 | 1) 回滚最近的权限/组映射变更（最快）<br>2) 修复 groups claim 映射、触发 group 同步<br>3) 临时放宽受影响资源的 allowlist（风险评估后） | [5.2) ACL deny 快速诊断](#rb-authz-deny) |
+| `MimirQAuthzGroupDenySpike` | 5m 内 deny > 200，持续 15m | 突发性拒绝飙升（配置/目录同步突变/大批量访问触发） | 1) 对齐发生时间点与发布/配置变更<br>2) 查看 deny 结果分类与资源维度（dataset/document + read/write）<br>3) 采样用户侧报错 request_id（避免复制 query） | 1) 先止血：回滚/冻结最近的权限变更<br>2) 临时启用更严格限流（避免级联）<br>3) 修复后做 access review diff（验证恢复） | [5.2) ACL deny 快速诊断](#rb-authz-deny) |
 
 #### 调参建议（快速）
 
@@ -129,6 +132,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 - Query Analytics（zero-hit/慢检索/错误）：`GET /api/v1/observability/rag-metrics/query-analytics`
 - Trace Bundle（按 request_id 导出 PII-safe 诊断包）：`GET /api/v1/observability/rag-metrics/trace-bundle?request_id=...`
 - Config Snapshot（脱敏配置快照 + 指纹）：`GET /api/v1/observability/config/snapshot`
+- Periodic Jobs Freshness（周期巡检新鲜度/滞后）：`GET /api/v1/observability/periodic-jobs/freshness`
 - Index 一致性检查：`GET /api/v1/observability/index-audit?dataset_id=...`
 - Task Queue Snapshot（队列观测快照）：`GET /api/v1/observability/task-queue/snapshot`
 - 审计日志列表：`GET /api/v1/audit/logs`
@@ -235,13 +239,14 @@ Incident Response Cookbook（可执行命令集）：`docs/deployment/incident_r
    - request_id（前端会带 `X-Request-ID`，后端也会写入响应头/日志）
    - `/api/v1/observability/rag-metrics/summary`（聚合指标）
    - RAG trace / leaderboard / diff 报告（尽量用 hash / 指标，不要复制原始 query/文档）
-   - 一键打包（PII-safe）：`python scripts/incident_bundle.py --base-url <api> --tenant-id <tid> --token <admin_token> --request-id <rid>`
+   - 一键打包（PII-safe；含 config snapshot / trace bundle / access-graph summary / periodic job freshness）：`python scripts/incident_bundle.py --base-url <api> --tenant-id <tid> --token <admin_token> --request-id <rid>`
 3. **止血手段（按场景）**
    - **成本/滥用飙升**：启用/调严 rate-limit 与 tenant QPS quota；观察 `Retry-After` 与 429 频率。
    - **检索质量骤降**：优先排查配置变更（settings/env），用 `retrieval_config_hash` 对比“变更前后”的配置指纹。
    - **索引一致性异常**：跑 index-audit 端点；必要时暂停新 ingestion，避免越写越乱。
    - **对象存储/向量库不可用**：Readiness 503 时先恢复依赖，再考虑回放/补偿任务。
 
+<a id="rb-429"></a>
 ### 5.1) 429（Rate Limit / Quota）快速诊断
 
 当客户端/前端出现 **HTTP 429** 时，优先检查响应体与响应头：
@@ -266,6 +271,24 @@ Incident Response Cookbook（可执行命令集）：`docs/deployment/incident_r
 3. **回看告警/趋势**：429 往往是“更大问题的先兆”（依赖抖动、队列堆积、成本爆炸）。
 
 配置项汇总：`docs/deployment/quota_rate_limit.md`
+
+<a id="rb-authz-deny"></a>
+### 5.2) ACL / Group Deny 快速诊断（AuthZ）
+
+当触发 `MimirQAuthzGroupDenyRatioHigh` / `MimirQAuthzGroupDenySpike` 时，优先按“先分类、再定位、再止血”的顺序：
+
+1. **先分类（deny 原因）**：看 Prometheus 指标的 `result` 标签：
+   - `deny_no_groups`：通常是“没有解析到 tenant groups”（OIDC groups claim 未配置/未启用/同步失败）
+   - `deny_no_match`：通常是“有 groups 但未命中 allowlist”（权限配置/组映射错误）
+2. **定位（最短路径）**
+   - 目录/认证侧：对照 `docs/guides/oidc_groups_claim.md` 检查 groups claim 配置与映射策略
+   - Tenant 权限面：使用 access-graph：
+     - 汇总：`GET /api/v1/audit/access-graph/summary`（计数视角）
+     - 导出：`GET /api/v1/audit/access-graph/export`（NDJSON/JSON；默认 PII-safe）
+3. **止血（慎重）**
+   - 最优先：回滚最近的组同步/权限映射/allowlist 变更（可配置项回滚最快）
+   - 需要业务评估后才做：临时放宽受影响资源的 allowlist（避免扩大越权面）
+   - 若同时伴随 429/依赖抖动：先用 rate-limit/quota 保护后端，避免告警风暴
 
 ---
 

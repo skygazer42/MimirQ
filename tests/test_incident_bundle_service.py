@@ -18,6 +18,8 @@ def test_write_incident_bundle_zip(tmp_path: Path):  # noqa: ANN001
         health_ready={"status": "ok"},
         config_snapshot={"schema": "mimirq.ops_config_snapshot.v1", "fingerprint": "abc", "config": {}},
         trace_bundle={"request_id": "req-1", "records": []},
+        access_graph_summary={"schema": "mimirq.access_graph_summary.v1", "group_count": 1},
+        periodic_job_freshness={"schema": "mimirq.periodic_job_freshness.v1", "items": []},
     )
 
     assert result_path == out_path
@@ -30,8 +32,9 @@ def test_write_incident_bundle_zip(tmp_path: Path):  # noqa: ANN001
         assert "health_ready.json" in names
         assert "config_snapshot.json" in names
         assert "trace_bundle.json" in names
+        assert "access_graph_summary.json" in names
+        assert "periodic_job_freshness.json" in names
 
         manifest = json.loads(zf.read("manifest.json"))
         assert manifest.get("request_id") == "req-1"
         assert manifest.get("base_url") == "http://example.com"
-
