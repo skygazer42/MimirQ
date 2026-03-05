@@ -114,6 +114,7 @@ class UserService:
                     tenant_id=tenant_id,
                     user_id=user_id,
                     role="owner",
+                    is_active=True,
                     is_current=True,
                 )
             )

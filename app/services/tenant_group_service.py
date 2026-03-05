@@ -113,6 +113,10 @@ class TenantGroupService:
         if len(n) > 255:
             raise HTTPException(status_code=400, detail="name too long (max=255)")
 
+        ext = str(external_id or "").strip() or None
+        if ext is not None and len(ext) > 255:
+            raise HTTPException(status_code=400, detail="external_id too long (max=255)")
+
         exists = (
             db.query(TenantGroup.id)
             .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.name == n)
@@ -121,10 +125,19 @@ class TenantGroupService:
         if exists:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
 
+        if ext is not None:
+            ext_exists = (
+                db.query(TenantGroup.id)
+                .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.external_id == ext)
+                .first()
+            )
+            if ext_exists:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group external_id already exists")
+
         group = TenantGroup(
             tenant_id=tenant_id,
             name=n,
-            external_id=(str(external_id or "").strip() or None),
+            external_id=ext,
         )
         db.add(group)
         db.commit()
@@ -159,7 +172,22 @@ class TenantGroupService:
                 group.name = n
 
         if external_id is not None:
-            group.external_id = str(external_id or "").strip() or None
+            ext = str(external_id or "").strip() or None
+            if ext is not None and len(ext) > 255:
+                raise HTTPException(status_code=400, detail="external_id too long (max=255)")
+            if ext is not None:
+                ext_exists = (
+                    db.query(TenantGroup.id)
+                    .filter(
+                        TenantGroup.tenant_id == tenant_id,
+                        TenantGroup.external_id == ext,
+                        TenantGroup.id != group_id,
+                    )
+                    .first()
+                )
+                if ext_exists:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group external_id already exists")
+            group.external_id = ext
 
         db.commit()
         db.refresh(group)

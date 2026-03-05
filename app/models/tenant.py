@@ -33,6 +33,8 @@ class TenantMember(Base):
     # No user system yet; reserve user_id/external_id as placeholders.
     user_id = Column(String(255), nullable=True)
     role = Column(String(32), default="owner")
+    # Enterprise lifecycle: allow deprovisioning without hard-deleting membership rows.
+    is_active = Column(Boolean, default=True)
     is_current = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
