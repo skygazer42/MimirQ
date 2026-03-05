@@ -134,6 +134,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 - 审计日志列表：`GET /api/v1/audit/logs`
 - 审计日志导出（SIEM）：`GET /api/v1/audit/logs/export`
 - 权限访问图谱导出（Groups + ACL，NDJSON/JSON 分页）：`GET /api/v1/audit/access-graph/export`
+- 权限访问图谱汇总（PII-minimal 计数汇总）：`GET /api/v1/audit/access-graph/summary`
 - 审计日志保留清理（admin-only）：`POST /api/v1/audit/logs/purge`
 
 ---

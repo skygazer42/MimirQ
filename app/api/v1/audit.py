@@ -23,7 +23,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
-from app.models.dataset import Dataset, DatasetPermission
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document, DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.tenant_group import TenantGroup, TenantGroupMember
@@ -675,3 +675,130 @@ def export_access_graph_ndjson(
         body_iter = _iter_gzip_chunks(body_iter)
 
     return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
+
+
+@router.get("/access-graph/summary")
+def access_graph_summary(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    PII-minimal access review summary for a tenant (bounded JSON).
+
+    Intended for:
+    - Security audits / access reviews
+    - Troubleshooting "why is this user denied" (at the directory/config level)
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    group_count = int(db.query(TenantGroup).filter(TenantGroup.tenant_id == tenant_id).count())
+    group_member_count = int(db.query(TenantGroupMember).filter(TenantGroupMember.tenant_id == tenant_id).count())
+
+    dataset_count = int(db.query(Dataset).filter(Dataset.tenant_id == tenant_id).count())
+    dataset_permission_counts = {
+        "all_team_members": int(
+            db.query(Dataset)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS)
+            .count()
+        ),
+        "only_me": int(
+            db.query(Dataset)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.permission == DatasetPermissionEnum.ONLY_ME)
+            .count()
+        ),
+        "partial_members": int(
+            db.query(Dataset)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS)
+            .count()
+        ),
+    }
+
+    dataset_member_allowlist_count = int(
+        db.query(DatasetPermission).filter(DatasetPermission.tenant_id == tenant_id).count()
+    )
+    dataset_group_allowlist_count = int(
+        db.query(DatasetGroupPermission).filter(DatasetGroupPermission.tenant_id == tenant_id).count()
+    )
+
+    document_count = int(db.query(Document).filter(Document.tenant_id == tenant_id).count())
+
+    doc_inherit_count = int(
+        db.query(Document)
+        .filter(
+            Document.tenant_id == tenant_id,
+            or_(
+                Document.access_mode == None,  # noqa: E711
+                Document.access_mode == "",
+                Document.access_mode == "inherit",
+            ),
+        )
+        .count()
+    )
+    doc_partial_count = int(
+        db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "partial_members").count()
+    )
+    doc_only_me_count = int(
+        db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "only_me").count()
+    )
+    doc_all_team_count = int(
+        db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "all_team_members").count()
+    )
+    doc_known = doc_inherit_count + doc_partial_count + doc_only_me_count + doc_all_team_count
+    doc_unknown_count = max(0, int(document_count - doc_known))
+
+    document_access_mode_counts = {
+        "inherit": int(doc_inherit_count),
+        "partial_members": int(doc_partial_count),
+        "only_me": int(doc_only_me_count),
+        "all_team_members": int(doc_all_team_count),
+        "unknown": int(doc_unknown_count),
+    }
+
+    document_member_allowlist_count = int(
+        db.query(DocumentPermission).filter(DocumentPermission.tenant_id == tenant_id).count()
+    )
+    document_group_allowlist_count = int(
+        db.query(DocumentGroupPermission).filter(DocumentGroupPermission.tenant_id == tenant_id).count()
+    )
+
+    payload = {
+        "schema": "mimirq.access_graph_summary.v1",
+        "tenant_id": str(tenant_id),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "group_count": int(group_count),
+        "group_member_count": int(group_member_count),
+        "dataset_count": int(dataset_count),
+        "dataset_permission_counts": dict(dataset_permission_counts),
+        "dataset_member_allowlist_count": int(dataset_member_allowlist_count),
+        "dataset_group_allowlist_count": int(dataset_group_allowlist_count),
+        "document_count": int(document_count),
+        "document_access_mode_counts": dict(document_access_mode_counts),
+        "document_member_allowlist_count": int(document_member_allowlist_count),
+        "document_group_allowlist_count": int(document_group_allowlist_count),
+    }
+
+    # Best-effort audit log (PII-safe).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="compliance.access_graph.summary",
+            resource_type="tenant",
+            resource_id=str(tenant_id),
+            details={
+                "group_count": int(group_count),
+                "group_member_count": int(group_member_count),
+                "dataset_count": int(dataset_count),
+                "document_count": int(document_count),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    return payload
