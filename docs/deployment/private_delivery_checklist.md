@@ -46,6 +46,7 @@
   - [ ] 提供 NDJSON 导出：`GET /api/v1/audit/logs/export`（SIEM 友好）
 - [ ] **权限访问图谱导出（合规）**：
   - [ ] 可导出 groups + ACL allowlists 的 NDJSON/JSON 分页快照：`GET /api/v1/audit/access-graph/export`
+  - [ ] 可获取 PII-minimal 的计数汇总（access review 快速体检）：`GET /api/v1/audit/access-graph/summary`
 - [ ] **Access Review（访问复核，强烈建议）**：
   - [ ] 定义复核节奏：例如每月/每季度一次（按数据敏感等级分层）
   - [ ] 复核内容至少包含：
