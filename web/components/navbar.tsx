@@ -101,6 +101,7 @@ const menuSections: Array<{ title: string; items: MenuItem[] }> = [
       { icon: Activity, label: '诊断', href: '/diagnostics' },
       { icon: Coins, label: '用量/配额', href: '/usage' },
       { icon: ShieldCheck, label: '审计日志', href: '/audit' },
+      { icon: ShieldCheck, label: '访问审查', href: '/access-review' },
       { icon: User, label: '成员权限', href: '/settings/rbac' },
       { icon: Users, label: '组管理', href: '/settings/groups' },
       { icon: Settings, label: '设置', href: '/settings' },
