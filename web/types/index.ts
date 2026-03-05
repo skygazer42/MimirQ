@@ -145,6 +145,18 @@ export interface ConnectorRunDocumentOut {
   status?: string
 }
 
+export interface ConnectorRunAclSummaryOut {
+  mode: string
+  documents_total: number
+  access_mode_counts?: Record<string, number>
+
+  partial_members_doc_count?: number
+  partial_member_count_min?: number | null
+  partial_member_count_max?: number | null
+  partial_group_count_min?: number | null
+  partial_group_count_max?: number | null
+}
+
 export interface ConnectorRunOut {
   id: string
   tenant_id: string
@@ -159,6 +171,7 @@ export interface ConnectorRunOut {
   created_at: string
   started_at?: string | null
   finished_at?: string | null
+  acl_summary?: ConnectorRunAclSummaryOut | null
   documents?: ConnectorRunDocumentOut[]
 }
 

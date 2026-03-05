@@ -479,3 +479,116 @@ def test_connectors_accept_sqlserver_catalog_config(monkeypatch):  # noqa: ANN00
     assert body.get("connector_id") == "sqlserver_catalog"
     assert body.get("dataset_id") == str(dataset_id)
     assert (body.get("config") or {}).get("password") == "<redacted>"
+
+
+def test_connectors_runs_list_includes_acl_summary(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+    from app.models.connector import ConnectorRun
+
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+
+    class _DummyRunDoc:
+        def __init__(self) -> None:
+            self.document_id = uuid.uuid4()
+            self.source_ref = "https://example.com/a.txt"
+            self.status = "created"
+
+    class _DummyRun:
+        def __init__(self) -> None:
+            self.id = run_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.connector_id = "url_batch"
+            self.requested_by = "test-account"
+            self.status = "completed"
+            self.config = {"urls": ["https://example.com/a.txt"], "access": {"mode": "partial_members"}}
+            self.stats = {}
+            self.error_message = None
+            self.task_id = None
+            self.created_at = datetime.now(timezone.utc)
+            self.started_at = self.created_at
+            self.finished_at = self.created_at
+            self.documents = [_DummyRunDoc()]
+
+    dummy_run = _DummyRun()
+
+    class _DummyQuery:
+        def __init__(self, model):  # noqa: ANN001
+            self.model = model
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def count(self) -> int:
+            return 1
+
+        def options(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def order_by(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def offset(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def limit(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def all(self):  # noqa: ANN001
+            if self.model is ConnectorRun:
+                return [dummy_run]
+            return []
+
+    class _DummyDB:
+        def query(self, model):  # noqa: ANN001
+            return _DummyQuery(model)
+
+    dummy_db = _DummyDB()
+
+    def _override_get_db():  # noqa: ANN202
+        yield dummy_db
+
+    def _override_get_tenant_id() -> uuid.UUID:
+        return tenant_id
+
+    def _override_get_current_account_id() -> str:
+        return "test-account"
+
+    monkeypatch.setattr(
+        connectors_module,
+        "_fetch_connector_run_acl_summaries",
+        lambda *_a, **_k: {
+            run_id: {
+                "mode": "partial_members",
+                "documents_total": 1,
+                "access_mode_counts": {"partial_members": 1},
+                "partial_members_doc_count": 1,
+                "partial_member_count_min": 3,
+                "partial_member_count_max": 3,
+                "partial_group_count_min": 2,
+                "partial_group_count_max": 2,
+            }
+        },
+        raising=False,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.include_router(connectors_module.router, prefix="/api/v1/connectors")
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/connectors/runs?dataset_id={dataset_id}&limit=20")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert (body.get("total") or 0) >= 1
+    items = body.get("items") or []
+    assert len(items) == 1
+    assert (items[0].get("acl_summary") or {}).get("mode") == "partial_members"

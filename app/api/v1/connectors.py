@@ -21,6 +21,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from pydantic import ValidationError
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies.auth import get_current_account_id
@@ -61,6 +62,8 @@ from app.core.secrets import decrypt_connector_config_secrets, encrypt_connector
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.connector_config import ConnectorConfig
 from app.models.document import Document as DBDocument
+from app.models.document import DocumentPermission
+from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
@@ -201,7 +204,168 @@ def _unknown_tenant_groups(db: Session, *, tenant_id: UUID, group_ids: list[UUID
     return [str(gid) for gid in ids if gid not in found]
 
 
-def _run_out(run: ConnectorRun) -> ConnectorRunOut:
+def _normalize_doc_access_mode(value: object) -> str:
+    """
+    Normalize document access_mode to stable strings.
+
+    - NULL / "" / "inherit" -> "inherit"
+    """
+    mode = str(value or "").strip().lower()
+    if not mode or mode == "inherit":
+        return "inherit"
+    return mode
+
+
+def _fetch_connector_run_acl_summaries(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    run_ids: list[UUID],
+) -> dict[UUID, dict[str, Any]]:
+    """
+    Fetch a lightweight per-run ACL summary for connector-created documents.
+
+    Privacy:
+    - returns counts only (no member ids / group ids)
+    """
+    if not run_ids:
+        return {}
+
+    # Dedupe but preserve order (avoid pathological IN lists).
+    seen: set[UUID] = set()
+    normalized_run_ids: list[UUID] = []
+    for rid in run_ids:
+        if rid in seen:
+            continue
+        seen.add(rid)
+        normalized_run_ids.append(rid)
+
+    # 1) Access mode distribution across docs created by each run.
+    mode_counts: dict[UUID, dict[str, int]] = {}
+    rows = (
+        db.query(ConnectorRunDocument.run_id, DBDocument.access_mode, func.count(DBDocument.id))
+        .join(DBDocument, DBDocument.id == ConnectorRunDocument.document_id)
+        .filter(
+            ConnectorRunDocument.tenant_id == tenant_id,
+            ConnectorRunDocument.run_id.in_(normalized_run_ids),
+        )
+        .group_by(ConnectorRunDocument.run_id, DBDocument.access_mode)
+        .all()
+    )
+    for run_id, access_mode, count in rows:
+        mode = _normalize_doc_access_mode(access_mode)
+        by = mode_counts.setdefault(run_id, {})
+        by[mode] = int(by.get(mode, 0)) + int(count or 0)
+
+    # 2) Allowlist member counts for docs in partial_members mode (per-doc stats aggregated to run).
+    partial_member_counts_per_doc = (
+        db.query(
+            ConnectorRunDocument.run_id.label("run_id"),
+            ConnectorRunDocument.document_id.label("document_id"),
+            func.count(DocumentPermission.id).label("allowlist_count"),
+        )
+        .join(DBDocument, DBDocument.id == ConnectorRunDocument.document_id)
+        .outerjoin(
+            DocumentPermission,
+            and_(
+                DocumentPermission.tenant_id == tenant_id,
+                DocumentPermission.document_id == ConnectorRunDocument.document_id,
+            ),
+        )
+        .filter(
+            ConnectorRunDocument.tenant_id == tenant_id,
+            ConnectorRunDocument.run_id.in_(normalized_run_ids),
+            func.lower(DBDocument.access_mode) == "partial_members",
+        )
+        .group_by(ConnectorRunDocument.run_id, ConnectorRunDocument.document_id)
+        .subquery()
+    )
+    member_stats_rows = (
+        db.query(
+            partial_member_counts_per_doc.c.run_id,
+            func.count(partial_member_counts_per_doc.c.document_id).label("doc_count"),
+            func.min(partial_member_counts_per_doc.c.allowlist_count).label("min_count"),
+            func.max(partial_member_counts_per_doc.c.allowlist_count).label("max_count"),
+        )
+        .group_by(partial_member_counts_per_doc.c.run_id)
+        .all()
+    )
+    member_stats_by_run: dict[UUID, dict[str, int]] = {}
+    for run_id, doc_count, min_count, max_count in member_stats_rows:
+        member_stats_by_run[run_id] = {
+            "partial_members_doc_count": int(doc_count or 0),
+            "partial_member_count_min": int(min_count or 0),
+            "partial_member_count_max": int(max_count or 0),
+        }
+
+    # 3) Allowlist group counts (partial_members docs only).
+    partial_group_counts_per_doc = (
+        db.query(
+            ConnectorRunDocument.run_id.label("run_id"),
+            ConnectorRunDocument.document_id.label("document_id"),
+            func.count(DocumentGroupPermission.id).label("allowlist_count"),
+        )
+        .join(DBDocument, DBDocument.id == ConnectorRunDocument.document_id)
+        .outerjoin(
+            DocumentGroupPermission,
+            and_(
+                DocumentGroupPermission.tenant_id == tenant_id,
+                DocumentGroupPermission.document_id == ConnectorRunDocument.document_id,
+            ),
+        )
+        .filter(
+            ConnectorRunDocument.tenant_id == tenant_id,
+            ConnectorRunDocument.run_id.in_(normalized_run_ids),
+            func.lower(DBDocument.access_mode) == "partial_members",
+        )
+        .group_by(ConnectorRunDocument.run_id, ConnectorRunDocument.document_id)
+        .subquery()
+    )
+    group_stats_rows = (
+        db.query(
+            partial_group_counts_per_doc.c.run_id,
+            func.min(partial_group_counts_per_doc.c.allowlist_count).label("min_count"),
+            func.max(partial_group_counts_per_doc.c.allowlist_count).label("max_count"),
+        )
+        .group_by(partial_group_counts_per_doc.c.run_id)
+        .all()
+    )
+    group_stats_by_run: dict[UUID, dict[str, int]] = {}
+    for run_id, min_count, max_count in group_stats_rows:
+        group_stats_by_run[run_id] = {
+            "partial_group_count_min": int(min_count or 0),
+            "partial_group_count_max": int(max_count or 0),
+        }
+
+    out: dict[UUID, dict[str, Any]] = {}
+    for rid in normalized_run_ids:
+        counts = mode_counts.get(rid, {})
+        documents_total = sum(int(v or 0) for v in counts.values())
+        if documents_total <= 0:
+            continue
+
+        distinct_modes = [m for m, v in counts.items() if int(v or 0) > 0]
+        mode = distinct_modes[0] if len(distinct_modes) == 1 else "mixed"
+
+        summary: dict[str, Any] = {
+            "mode": mode,
+            "documents_total": int(documents_total),
+            "access_mode_counts": counts,
+        }
+
+        partial_docs = int(counts.get("partial_members", 0) or 0)
+        if partial_docs > 0:
+            summary["partial_members_doc_count"] = int(partial_docs)
+
+        summary.update(member_stats_by_run.get(rid, {}))
+        summary.update(group_stats_by_run.get(rid, {}))
+
+        out[rid] = summary
+
+    return out
+
+
+def _run_out(run: ConnectorRun, *, acl_summary: dict[str, Any] | None = None) -> ConnectorRunOut:
     docs = getattr(run, "documents", None) or []
     connector_id = str(getattr(run, "connector_id", "") or "").strip()
     config = redact_secrets(dict(run.config or {}))
@@ -220,6 +384,7 @@ def _run_out(run: ConnectorRun) -> ConnectorRunOut:
         created_at=run.created_at,
         started_at=run.started_at,
         finished_at=run.finished_at,
+        acl_summary=(acl_summary or None),
         documents=[
             {
                 "document_id": d.document_id,
@@ -3913,7 +4078,13 @@ def list_connector_runs(
             allowed.append(run)
         runs = allowed
 
-    return {"total": total, "items": [_run_out(r) for r in runs]}
+    summaries = _fetch_connector_run_acl_summaries(
+        db,
+        tenant_id=tenant_id,
+        run_ids=[r.id for r in runs],
+    )
+
+    return {"total": total, "items": [_run_out(r, acl_summary=summaries.get(r.id)) for r in runs]}
 
 
 @router.get("/runs/{run_id}", response_model=ConnectorRunOut)
@@ -3939,7 +4110,13 @@ def get_connector_run(
         ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    return _run_out(run)
+    summary = _fetch_connector_run_acl_summaries(
+        db,
+        tenant_id=tenant_id,
+        run_ids=[run.id],
+    ).get(run.id)
+
+    return _run_out(run, acl_summary=summary)
 
 
 def _extract_failed_urls(stats: dict) -> list[str]:
