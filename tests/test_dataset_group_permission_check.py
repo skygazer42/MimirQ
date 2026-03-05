@@ -109,3 +109,120 @@ def test_assert_dataset_writable_allows_via_group_membership(monkeypatch: pytest
     # Should not raise.
     ds.DatasetService.assert_dataset_writable(db, dataset, "bob")
 
+
+def test_check_dataset_permission_denies_when_no_groups_and_no_member_allowlist() -> None:
+    import app.services.dataset_service as ds
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+
+    dataset = _Dataset(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        owner_id="alice",
+        permission=DatasetPermissionEnum.PARTIAL_MEMBERS,
+    )
+    db = _FakeSession(
+        member_perm_exists=False,
+        group_ids=[],
+        group_perm_exists=False,
+    )
+    assert ds.DatasetService.check_dataset_permission(db, dataset, "bob") is False
+
+
+def test_check_dataset_permission_denies_when_group_perm_missing() -> None:
+    import app.services.dataset_service as ds
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    group_id = uuid4()
+
+    dataset = _Dataset(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        owner_id="alice",
+        permission=DatasetPermissionEnum.PARTIAL_MEMBERS,
+    )
+    db = _FakeSession(
+        member_perm_exists=False,
+        group_ids=[group_id],
+        group_perm_exists=False,
+    )
+    assert ds.DatasetService.check_dataset_permission(db, dataset, "bob") is False
+
+
+def test_check_dataset_permission_allows_via_member_allowlist() -> None:
+    import app.services.dataset_service as ds
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+
+    dataset = _Dataset(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        owner_id="alice",
+        permission=DatasetPermissionEnum.PARTIAL_MEMBERS,
+    )
+    db = _FakeSession(
+        member_perm_exists=True,
+        group_ids=[],
+        group_perm_exists=False,
+    )
+    assert ds.DatasetService.check_dataset_permission(db, dataset, "bob") is True
+
+
+def test_assert_dataset_writable_raises_when_no_groups_and_no_member_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.dataset_service as ds
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+
+    dataset = _Dataset(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        owner_id="alice",
+        permission=DatasetPermissionEnum.PARTIAL_MEMBERS,
+    )
+    db = _FakeSession(
+        member_perm_exists=False,
+        group_ids=[],
+        group_perm_exists=False,
+    )
+
+    class _Member:
+        role = "editor"
+
+    monkeypatch.setattr(ds.DatasetService, "ensure_member", lambda *_a, **_k: _Member(), raising=True)
+
+    with pytest.raises(ds.HTTPException) as excinfo:  # type: ignore[attr-defined]
+        ds.DatasetService.assert_dataset_writable(db, dataset, "bob")
+    assert int(getattr(excinfo.value, "status_code", 0)) == 403
+
+
+def test_assert_dataset_writable_raises_when_group_perm_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.dataset_service as ds
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    group_id = uuid4()
+
+    dataset = _Dataset(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        owner_id="alice",
+        permission=DatasetPermissionEnum.PARTIAL_MEMBERS,
+    )
+    db = _FakeSession(
+        member_perm_exists=False,
+        group_ids=[group_id],
+        group_perm_exists=False,
+    )
+
+    class _Member:
+        role = "editor"
+
+    monkeypatch.setattr(ds.DatasetService, "ensure_member", lambda *_a, **_k: _Member(), raising=True)
+
+    with pytest.raises(ds.HTTPException) as excinfo:  # type: ignore[attr-defined]
+        ds.DatasetService.assert_dataset_writable(db, dataset, "bob")
+    assert int(getattr(excinfo.value, "status_code", 0)) == 403
