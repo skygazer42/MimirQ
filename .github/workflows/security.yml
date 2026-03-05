@@ -53,7 +53,7 @@ jobs:
           python -m pip install pip-audit==2.10.0
 
       - name: Audit Python direct requirements
-        run: pip-audit -r requirements.txt --no-deps --disable-pip
+        run: pip-audit -r requirements.txt --no-deps --disable-pip --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

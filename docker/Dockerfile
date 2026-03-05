@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
     # Avoid fetching "build dependencies" in isolated envs when network is flaky.
     # Most of our sdists are pure-Python and build fine with setuptools already present.
-    && /opt/venv/bin/pip install --retries 10 --no-build-isolation -r "/tmp/requirements.txt" \
+    && /opt/venv/bin/pip install --retries 10 --no-cache-dir --no-build-isolation --extra-index-url https://download.pytorch.org/whl/cpu -r "/tmp/requirements.txt" \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

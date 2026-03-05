@@ -1,10 +1,11 @@
-# FastAPI Core
-# NOTE: We intentionally avoid `--extra-index-url https://download.pytorch.org/whl/cpu` here.
-# It causes pip to hit download.pytorch.org for *every* dependency which is slow/flaky in some environments.
-# CPU wheels for torch/torchvision are available on PyPI for our supported Python versions.
-
-torch==2.10.0
-torchvision==0.25.0
+# PyTorch
+# On Linux, installing `torch` from PyPI pulls in CUDA runtime libraries (`nvidia-*`) which are huge and can
+# exhaust CI runner / docker builder disk. Use the official CPU wheels for Linux from download.pytorch.org.
+# NOTE: Linux installs must pass `--extra-index-url https://download.pytorch.org/whl/cpu` to pip.
+torch==2.10.0+cpu; platform_system == "Linux"
+torch==2.10.0; platform_system != "Linux"
+torchvision==0.25.0+cpu; platform_system == "Linux"
+torchvision==0.25.0; platform_system != "Linux"
 sentence-transformers==5.2.3
 
 fastapi==0.135.1
