@@ -22,6 +22,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- CI: install Linux CPU-only PyTorch wheels to avoid pulling huge CUDA runtime dependencies (disk exhaustion in CI/docker builds).
+- CI: ensure `pnpm` is available before enabling `actions/setup-node` pnpm caching.
+- OpenAPI: regenerate `web/types/openapi.ts` so `make openapi-check` stays stable in CI.
+- Web: cover missing backend routes in `web/lib/api-client.ts` (SCIM Groups/Users mutations; observability periodic job freshness).
+- Web: pin ESLint to v9 to avoid a runtime crash in `eslint-plugin-react` when linting.
+
 ## [0.2] - 2026-02-22
 
 ### Added
