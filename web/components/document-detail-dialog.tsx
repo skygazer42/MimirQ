@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { TagInput } from '@/components/ui/tag-input'
 import { Textarea } from '@/components/ui/textarea'
+import { GroupChipsInput } from '@/components/groups/group-chips-input'
 import { documentApi, kgApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
@@ -271,6 +272,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     [canMutateChunks, initialDocument.id]
   )
   const [accessMembersText, setAccessMembersText] = useState('')
+  const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
   const [isSavingAccess, setIsSavingAccess] = useState(false)
 
   const loadDetail = useCallback(async () => {
@@ -587,7 +589,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       case 'only_me':
         return '仅我可见'
       case 'partial_members':
-        return '指定成员'
+        return '指定成员/组'
       case 'all_team_members':
         return '团队成员'
       default:
@@ -742,6 +744,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       const payload = {
         mode: accessMode,
         partial_member_list: accessMode === 'partial_members' ? parseAccessMembers(accessMembersText) : null,
+        partial_group_list: accessMode === 'partial_members' ? accessGroupIds : null,
       }
       const res = await documentApi.updateAccess(displayDoc.id, payload)
       setAccessInfo(res)
@@ -762,7 +765,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     } finally {
       setIsSavingAccess(false)
     }
-  }, [accessMode, accessMembersText, displayDoc?.id, parseAccessMembers])
+  }, [accessMode, accessMembersText, accessGroupIds, displayDoc?.id, parseAccessMembers])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -1772,6 +1775,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                   if (next) {
                     setAccessMode(effectiveAccessMode)
                     setAccessMembersText((accessInfo?.partial_member_list || []).join('\n'))
+                    setAccessGroupIds((accessInfo?.partial_group_list || []).map(String))
                   }
                   setAccessDialogOpen(next)
                 }}
@@ -1798,7 +1802,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                         <SelectContent>
                           <SelectItem value="inherit">继承数据集</SelectItem>
                           <SelectItem value="only_me">仅我可见</SelectItem>
-                          <SelectItem value="partial_members">指定成员</SelectItem>
+                          <SelectItem value="partial_members">指定成员/组</SelectItem>
                           <SelectItem value="all_team_members">团队成员</SelectItem>
                         </SelectContent>
                       </Select>
@@ -1808,14 +1812,26 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     </div>
 
                     {accessMode === 'partial_members' ? (
-                      <div className="space-y-2">
-                        <div className="text-sm font-medium">允许成员（每行一个 user_id）</div>
-                        <Textarea
-                          value={accessMembersText}
-                          onChange={(e) => setAccessMembersText(e.target.value)}
-                          placeholder="例如：\nalice\nbob\ncharlie"
-                        />
-                        <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium">允许组（可选）</div>
+                          <GroupChipsInput
+                            value={accessGroupIds}
+                            onChange={setAccessGroupIds}
+                            placeholder="选择组（组内成员将自动获得访问权限）"
+                          />
+                          <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的组。</div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium">允许成员（每行一个 user_id）</div>
+                          <Textarea
+                            value={accessMembersText}
+                            onChange={(e) => setAccessMembersText(e.target.value)}
+                            placeholder="例如：\nalice\nbob\ncharlie"
+                          />
+                          <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
+                        </div>
                       </div>
                     ) : null}
                   </div>

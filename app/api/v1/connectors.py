@@ -61,8 +61,9 @@ from app.core.secrets import decrypt_connector_config_secrets, encrypt_connector
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.connector_config import ConnectorConfig
 from app.models.document import Document as DBDocument
+from app.models.tenant_group import TenantGroup
 from app.services.dataset_service import DatasetService
-from app.services.document_permission_service import DocumentPermissionService
+from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
 from app.services.web_crawler import crawl_site
 from app.tasks.queue import enqueue_connector_run, get_queue
@@ -172,6 +173,32 @@ def _finalize_connector_stats(stats: dict) -> dict:
         # Keep `key` for stable grouping across incremental updates, but it is optional for the UI.
         stats["error_groups"] = groups_sorted
     return stats
+
+
+def _unknown_tenant_groups(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> list[str]:
+    ids: list[UUID] = []
+    seen: set[UUID] = set()
+    for gid in group_ids or []:
+        if gid in seen:
+            continue
+        seen.add(gid)
+        ids.append(gid)
+        if len(ids) >= 200:
+            break
+
+    if not ids:
+        return []
+
+    rows = (
+        db.query(TenantGroup.id)
+        .filter(
+            TenantGroup.tenant_id == tenant_id,
+            TenantGroup.id.in_(ids),
+        )
+        .all()
+    )
+    found = {row[0] for row in rows if row and row[0]}
+    return [str(gid) for gid in ids if gid not in found]
 
 
 def _run_out(run: ConnectorRun) -> ConnectorRunOut:
@@ -720,6 +747,24 @@ async def validate_connector_config(
     config_out = redact_secrets(dict(cfg_dict or {}))
     config_out = redact_connection_info(config_out, enabled=connector_id in _DB_CONNECTOR_IDS)
 
+    if not errors and cfg_obj is not None:
+        # Validate group allowlist existence (fail-closed) for connector access config.
+        access = getattr(cfg_obj, "access", None)
+        group_ids = list(getattr(access, "partial_group_list", None) or [])
+        if group_ids:
+            missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=group_ids)
+            if missing:
+                errors.append(
+                    {
+                        "loc": ("access", "partial_group_list"),
+                        "msg": f"Unknown tenant groups: {', '.join(missing[:20])}",
+                        "type": "value_error",
+                    }
+                )
+                checks["access_groups"] = {"ok": False, "missing": missing[:20], "total_missing": len(missing)}
+            else:
+                checks["access_groups"] = {"ok": True, "count": len(group_ids)}
+
     if not errors and bool(payload.check_connectivity) and cfg_obj is not None:
         more_checks, more_warnings = await _best_effort_connectivity_checks(connector_id=connector_id, cfg=cfg_obj)
         checks.update(more_checks)
@@ -985,6 +1030,10 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         if not isinstance(access_members, list):
             access_members = []
         access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
+        access_groups = access.get("partial_group_list") if isinstance(access, dict) else None
+        if not isinstance(access_groups, list):
+            access_groups = []
+        access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
 
         auth_headers = _build_auth_headers(cfg)
 
@@ -1077,8 +1126,15 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                         doc.id,
                         list(access_members),
                     )
+                    DocumentGroupPermissionService.update_partial_group_list(
+                        db,
+                        tenant_id,
+                        doc.id,
+                        list(access_groups),
+                    )
                 else:
                     DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
+                    DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
 
                 db.add(
                     ConnectorRunDocument(
@@ -1289,6 +1345,10 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         if not isinstance(access_members, list):
             access_members = []
         access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
+        access_groups = access.get("partial_group_list") if isinstance(access, dict) else None
+        if not isinstance(access_groups, list):
+            access_groups = []
+        access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
 
         auth_headers = _build_auth_headers(cfg)
 
@@ -1369,15 +1429,11 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                     doc.owner_id = requested_by
 
                 if access_mode == "partial_members":
-                    DocumentPermissionService.update_partial_member_list(
-                        db,
-                        tenant_id,
-                        document_id=doc.id,
-                        owner_id=requested_by,
-                        member_ids=access_members,
-                    )
+                    DocumentPermissionService.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
+                    DocumentGroupPermissionService.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
                 else:
                     DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
+                    DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
 
                 db.add(
                     ConnectorRunDocument(
@@ -1469,21 +1525,21 @@ def _apply_document_access_from_config(
     if not isinstance(access_members, list):
         access_members = []
     access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
+    access_groups = access.get("partial_group_list") if isinstance(access, dict) else None
+    if not isinstance(access_groups, list):
+        access_groups = []
+    access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
 
     doc.access_mode = None if access_mode == "inherit" else access_mode
     if not (getattr(doc, "owner_id", None) or "").strip():
         doc.owner_id = requested_by
 
     if access_mode == "partial_members":
-        DocumentPermissionService.update_partial_member_list(
-            db,
-            tenant_id,
-            document_id=doc.id,
-            owner_id=requested_by,
-            member_ids=access_members,
-        )
+        DocumentPermissionService.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
+        DocumentGroupPermissionService.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
     else:
         DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
+        DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
 
 
 async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -2853,6 +2909,13 @@ async def create_connector_run(
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(exclude_none=True))
     else:
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
+
+    access = getattr(cfg, "access", None)
+    access_group_ids = list(getattr(access, "partial_group_list", None) or [])
+    if access_group_ids:
+        missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=access_group_ids)
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Unknown tenant groups: {', '.join(missing[:20])}")
 
     run = ConnectorRun(
         tenant_id=tenant_id,

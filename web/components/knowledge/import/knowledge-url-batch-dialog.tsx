@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { GroupChipsInput } from '@/components/groups/group-chips-input'
 import { Button } from '@/components/ui/button'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -90,6 +91,7 @@ export function KnowledgeUrlBatchDialog({
   const [datasetId, setDatasetId] = useState<string>(datasetDefaultValue)
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
   const [accessMembers, setAccessMembers] = useState('')
+  const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -113,6 +115,7 @@ export function KnowledgeUrlBatchDialog({
           : {
               mode: accessMode,
               partial_member_list: accessMode === 'partial_members' ? parseAccessMembers(accessMembers) : null,
+              partial_group_list: accessMode === 'partial_members' ? accessGroupIds : null,
             }
 
       const run = await connectorApi.createRun({
@@ -141,6 +144,7 @@ export function KnowledgeUrlBatchDialog({
       setFilename('')
       setAccessMode('inherit')
       setAccessMembers('')
+      setAccessGroupIds([])
       void loadConnectorRuns({ datasetId: selectedDatasetId })
       void loadDocuments()
     } catch (err: any) {
@@ -150,6 +154,7 @@ export function KnowledgeUrlBatchDialog({
     }
   }, [
     accessMembers,
+    accessGroupIds,
     accessMode,
     chunkStrategy,
     datasetDefaultValue,
@@ -220,20 +225,32 @@ export function KnowledgeUrlBatchDialog({
               <SelectContent>
                 <SelectItem value="inherit">继承数据集</SelectItem>
                 <SelectItem value="only_me">仅我可见</SelectItem>
-                <SelectItem value="partial_members">指定成员</SelectItem>
+                <SelectItem value="partial_members">指定成员/组</SelectItem>
                 <SelectItem value="all_team_members">团队成员</SelectItem>
               </SelectContent>
             </Select>
             {accessMode === 'partial_members' ? (
-              <div className="space-y-2 pt-2">
-                <div className="text-sm font-medium text-foreground/80">允许成员（每行一个 user_id）</div>
-                <Textarea
-                  value={accessMembers}
-                  onChange={(e) => setAccessMembers(e.target.value)}
-                  placeholder={'alice\nbob\ncharlie'}
-                  className="font-mono min-h-[110px]"
-                />
-                <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-foreground/80">允许组（可选）</div>
+                  <GroupChipsInput
+                    value={accessGroupIds}
+                    onChange={setAccessGroupIds}
+                    placeholder="选择组（组内成员将自动获得访问权限）"
+                  />
+                  <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的组。</div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-foreground/80">允许成员（每行一个 user_id）</div>
+                  <Textarea
+                    value={accessMembers}
+                    onChange={(e) => setAccessMembers(e.target.value)}
+                    placeholder={'alice\nbob\ncharlie'}
+                    className="font-mono min-h-[110px]"
+                  />
+                  <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
+                </div>
               </div>
             ) : null}
           </div>

@@ -1,0 +1,102 @@
+{{- if .Values.cronjobs.accessReviewSummary.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "mimirq.fullname" . }}-access-review-summary
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronjobs.accessReviewSummary.schedule | quote }}
+  suspend: {{ .Values.cronjobs.accessReviewSummary.suspend }}
+  concurrencyPolicy: {{ .Values.cronjobs.accessReviewSummary.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronjobs.accessReviewSummary.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjobs.accessReviewSummary.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "mimirq.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cronjob-access-review-summary
+          annotations:
+            {{- if not .Values.existingSecretName }}
+            checksum/env: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+            {{- end }}
+            {{- with .Values.cronjobs.accessReviewSummary.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: Never
+          {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.accessReviewSummary.podSecurityContext) | nindent 10 }}
+          {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.accessReviewSummary.automountServiceAccountToken) | nindent 10 }}
+          {{- include "mimirq.serviceAccountNameBlock" . | nindent 10 }}
+          {{- include "mimirq.imagePullSecretsBlock" . | nindent 10 }}
+          {{- if .Values.cronjobs.accessReviewSummary.priorityClassName }}
+          priorityClassName: {{ .Values.cronjobs.accessReviewSummary.priorityClassName | quote }}
+          {{- end }}
+          {{- if .Values.cronjobs.accessReviewSummary.terminationGracePeriodSeconds }}
+          terminationGracePeriodSeconds: {{ .Values.cronjobs.accessReviewSummary.terminationGracePeriodSeconds }}
+          {{- end }}
+          containers:
+            - name: access-review-summary
+              image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python
+                - scripts/run_periodic_audit_jobs.py
+                - --access-review
+                {{- if .Values.cronjobs.accessReviewSummary.allTenants }}
+                - --all-tenants
+                {{- else if .Values.cronjobs.accessReviewSummary.tenantId }}
+                - --tenant-id
+                - {{ .Values.cronjobs.accessReviewSummary.tenantId | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.accessReviewSummary.execute }}
+                - --execute
+                {{- else }}
+                - --dry-run
+                {{- end }}
+                {{- if .Values.cronjobs.accessReviewSummary.force }}
+                - --force
+                {{- end }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "mimirq.secretName" . }}
+              {{- with .Values.cronjobs.accessReviewSummary.extraEnv }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.cronjobs.accessReviewSummary.securityContext) | nindent 14 }}
+              {{- if .Values.security.tmpEmptyDir.enabled }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: {{ default "/tmp" .Values.security.tmpEmptyDir.mountPath | quote }}
+              {{- end }}
+              {{- with .Values.cronjobs.accessReviewSummary.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- if .Values.security.tmpEmptyDir.enabled }}
+          volumes:
+            - name: tmp
+              {{- if .Values.security.tmpEmptyDir.sizeLimit }}
+              emptyDir:
+                sizeLimit: {{ .Values.security.tmpEmptyDir.sizeLimit | quote }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+          {{- end }}
+          {{- with .Values.cronjobs.accessReviewSummary.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.accessReviewSummary.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.accessReviewSummary.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+

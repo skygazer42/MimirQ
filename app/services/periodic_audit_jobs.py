@@ -22,12 +22,15 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
-from app.models.dataset import Dataset
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.document import Document, DocumentPermission
 from app.models.evidence import EvidenceItem, EvidenceSuite
+from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
+from app.models.tenant_group import TenantGroup, TenantGroupMember
 from app.services.audit_log_service import audit_log_event
 from app.services.evidence_drift_audit_service import audit_reference_sources_drift
 from app.services.index_audit_service import run_dataset_index_audit_internal
@@ -502,8 +505,166 @@ def run_daily_evidence_drift_audit_report(
         return summary
 
 
+def run_daily_access_review_summary(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    execute: bool,
+    force: bool = False,
+    actor_id: str | None = "system:periodic_audit",
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Generate a bounded, PII-safe access review summary for one tenant.
+
+    If execute=True, writes exactly one audit log entry per tenant per day (unless --force).
+
+    The payload is intentionally small: counts + ids only (no document content).
+    """
+    now0 = now or datetime.now(timezone.utc)
+    report_date = now0.date().isoformat()
+
+    if bool(execute) and (not bool(force)) and _audit_already_written(
+        db,
+        tenant_id=tenant_id,
+        action="compliance.access_review.daily",
+        resource_type="access_review_summary",
+        report_date=report_date,
+    ):
+        return {
+            "tenant_id": str(tenant_id),
+            "report_date": report_date,
+            "ran_at": _dt_to_json(now0),
+            "ok": True,
+            "skipped": True,
+            "skip_reason": "already_written",
+        }
+
+    try:
+        group_count = int(db.query(TenantGroup).filter(TenantGroup.tenant_id == tenant_id).count())
+        group_member_count = int(db.query(TenantGroupMember).filter(TenantGroupMember.tenant_id == tenant_id).count())
+
+        dataset_count = int(db.query(Dataset).filter(Dataset.tenant_id == tenant_id).count())
+        dataset_permission_counts = {
+            "all_team_members": int(
+                db.query(Dataset)
+                .filter(Dataset.tenant_id == tenant_id, Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS)
+                .count()
+            ),
+            "only_me": int(
+                db.query(Dataset)
+                .filter(Dataset.tenant_id == tenant_id, Dataset.permission == DatasetPermissionEnum.ONLY_ME)
+                .count()
+            ),
+            "partial_members": int(
+                db.query(Dataset)
+                .filter(Dataset.tenant_id == tenant_id, Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS)
+                .count()
+            ),
+        }
+
+        dataset_member_allowlist_count = int(db.query(DatasetPermission).filter(DatasetPermission.tenant_id == tenant_id).count())
+        dataset_group_allowlist_count = int(
+            db.query(DatasetGroupPermission).filter(DatasetGroupPermission.tenant_id == tenant_id).count()
+        )
+
+        document_count = int(db.query(Document).filter(Document.tenant_id == tenant_id).count())
+        doc_inherit_count = int(
+            db.query(Document)
+            .filter(
+                Document.tenant_id == tenant_id,
+                or_(
+                    Document.access_mode == None,  # noqa: E711
+                    Document.access_mode == "",
+                    Document.access_mode == "inherit",
+                ),
+            )
+            .count()
+        )
+        doc_partial_count = int(
+            db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "partial_members").count()
+        )
+        doc_only_me_count = int(
+            db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "only_me").count()
+        )
+        doc_all_team_count = int(
+            db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "all_team_members").count()
+        )
+        doc_known = doc_inherit_count + doc_partial_count + doc_only_me_count + doc_all_team_count
+        doc_unknown_count = max(0, int(document_count - doc_known))
+        document_access_mode_counts = {
+            "inherit": int(doc_inherit_count),
+            "partial_members": int(doc_partial_count),
+            "only_me": int(doc_only_me_count),
+            "all_team_members": int(doc_all_team_count),
+            "unknown": int(doc_unknown_count),
+        }
+
+        document_member_allowlist_count = int(
+            db.query(DocumentPermission).filter(DocumentPermission.tenant_id == tenant_id).count()
+        )
+        document_group_allowlist_count = int(
+            db.query(DocumentGroupPermission).filter(DocumentGroupPermission.tenant_id == tenant_id).count()
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "tenant_id": str(tenant_id),
+            "report_date": report_date,
+            "ran_at": _dt_to_json(now0),
+            "ok": False,
+            "skipped": False,
+            "error": str(exc)[:200],
+        }
+
+    summary: dict[str, Any] = {
+        "schema": "mimirq.access_review_daily.v1",
+        "tenant_id": str(tenant_id),
+        "report_date": report_date,
+        "ran_at": _dt_to_json(now0),
+        "group_count": int(group_count),
+        "group_member_count": int(group_member_count),
+        "dataset_count": int(dataset_count),
+        "dataset_permission_counts": dict(dataset_permission_counts),
+        "dataset_member_allowlist_count": int(dataset_member_allowlist_count),
+        "dataset_group_allowlist_count": int(dataset_group_allowlist_count),
+        "document_count": int(document_count),
+        "document_access_mode_counts": dict(document_access_mode_counts),
+        "document_member_allowlist_count": int(document_member_allowlist_count),
+        "document_group_allowlist_count": int(document_group_allowlist_count),
+        "ok": True,
+        "skipped": False,
+    }
+
+    if not bool(execute):
+        summary["dry_run"] = True
+        return summary
+
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action="compliance.access_review.daily",
+            resource_type="access_review_summary",
+            resource_id=report_date,
+            details={k: v for k, v in summary.items() if k not in {"ok"}},
+        )
+        db.commit()
+        summary["dry_run"] = False
+        return summary
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        summary["ok"] = False
+        summary["dry_run"] = False
+        summary["audit_write_error"] = True
+        return summary
+
+
 __all__ = [
     "run_daily_evidence_drift_audit_report",
+    "run_daily_access_review_summary",
     "run_daily_index_audit_report",
 ]
-

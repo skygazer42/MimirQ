@@ -37,12 +37,14 @@ import { GovernanceProfileSelector } from '@/components/governance-profile-selec
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { DatasetCategoryTree } from '@/components/dataset-categories/category-tree'
 import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/category-multi-select'
+import { GroupChipsInput } from '@/components/groups/group-chips-input'
 
 type DatasetFormState = {
   name: string
   description: string
   permission: PermissionEnum
   partialMembersText: string
+  partialGroupIds: string[]
   pipelineEnabled: boolean
   pipelineOptions: DocumentPipelineOptions
 }
@@ -83,6 +85,7 @@ export default function DatasetsPage() {
     description: '',
     permission: 'all_team_members',
     partialMembersText: '',
+    partialGroupIds: [],
     pipelineEnabled: false,
     pipelineOptions: { ...defaultPipelineOptions },
   })
@@ -93,6 +96,7 @@ export default function DatasetsPage() {
       description: '',
       permission: 'all_team_members',
       partialMembersText: '',
+      partialGroupIds: [],
       pipelineEnabled: false,
       pipelineOptions: { ...defaultPipelineOptions },
     })
@@ -131,6 +135,11 @@ export default function DatasetsPage() {
     }
     if (form.permission === 'partial_members') {
       payload.partial_member_list = parseMembers(form.partialMembersText)
+      payload.partial_group_list = (form.partialGroupIds || []).map(String)
+    } else {
+      // Fail-closed: when switching away from partial, explicitly clear allowlists.
+      payload.partial_member_list = null
+      payload.partial_group_list = null
     }
     if (mode === 'create') {
       if (form.pipelineEnabled) {
@@ -165,6 +174,7 @@ export default function DatasetsPage() {
       description: ds.description || '',
       permission: ds.permission || 'all_team_members',
       partialMembersText: (ds.partial_member_list || []).join('\n'),
+      partialGroupIds: (ds.partial_group_list || []).map(String),
       pipelineEnabled: !!ds.pipeline,
       pipelineOptions: mergedPipeline,
     })
@@ -323,6 +333,12 @@ export default function DatasetsPage() {
                           <span className="flex items-center gap-1.5">
                             <span className="w-1 h-1 rounded-full bg-primary/50" />
                             MEMBERS: {(ds.partial_member_list || []).length}
+                          </span>
+                        )}
+                        {ds.permission === 'partial_members' && (ds.partial_group_list || []).length > 0 && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-1 h-1 rounded-full bg-primary/50" />
+                            GROUPS: {(ds.partial_group_list || []).length}
                           </span>
                         )}
                         <span>ID: {ds.id.slice(0, 8)}</span>
@@ -507,15 +523,29 @@ function DatasetForm({
       </div>
 
       {form.permission === 'partial_members' && (
-        <div className="grid gap-2">
-          <Label htmlFor="ds-members">成员列表（account_id，一行一个或逗号分隔）</Label>
-          <Textarea
-            id="ds-members"
-            value={form.partialMembersText}
-            onChange={(e) => setForm({ ...form, partialMembersText: e.target.value })}
-            placeholder="user_1\nuser_2"
-            className="font-mono text-sm"
-          />
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label>允许组（可选）</Label>
+            <GroupChipsInput
+              value={form.partialGroupIds}
+              onChange={(next) => setForm({ ...form, partialGroupIds: next })}
+              placeholder="选择组（组内成员将自动获得访问权限）"
+            />
+            <div className="text-xs text-muted-foreground">
+              组 allowlist 与成员 allowlist 同时生效（满足任一即可访问）。
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="ds-members">允许成员（account_id，一行一个或逗号分隔）</Label>
+            <Textarea
+              id="ds-members"
+              value={form.partialMembersText}
+              onChange={(e) => setForm({ ...form, partialMembersText: e.target.value })}
+              placeholder="user_1\nuser_2"
+              className="font-mono text-sm"
+            />
+          </div>
         </div>
       )}
 
