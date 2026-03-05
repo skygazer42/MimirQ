@@ -218,7 +218,7 @@ compileall-docker:
 	$(COMPOSE) exec -T mimirq-api python -m compileall -q app
 
 audit-py:
-	pip-audit -r requirements.txt --no-deps --disable-pip
+	pip-audit -r requirements.txt --no-deps --disable-pip --extra-index-url https://download.pytorch.org/whl/cpu
 
 audit-web:
 	cd web && pnpm audit --prod --audit-level high --registry https://registry.npmjs.org/ --ignore-registry-errors
