@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, desc, or_
@@ -23,6 +23,11 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
+from app.models.dataset import Dataset, DatasetPermission
+from app.models.document import Document, DocumentPermission
+from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
+from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.rag.core.hashing import stable_hash
 from app.services.audit_log_retention import plan_audit_log_purge, purge_audit_log_rows
 from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
@@ -133,6 +138,26 @@ def _iter_gzip_chunks(chunks: Iterator[bytes], *, flush_bytes: int = 64 * 1024) 
             yield data
 
 
+def _dt_to_json(v: Any) -> str | None:
+    """
+    Serialize datetime-like objects for export-friendly JSON.
+
+    We prefer the "Z" suffix for UTC to avoid "+" being interpreted as a space
+    when callers reuse cursors in query strings.
+    """
+    if v is None:
+        return None
+    if not isinstance(v, datetime):
+        return None
+    try:
+        s = v.isoformat()
+    except Exception:
+        return None
+    if s.endswith("+00:00"):
+        s = s[:-6] + "Z"
+    return s
+
+
 @router.get("/logs", response_model=AuditLogListResponse)
 def list_audit_logs(
     skip: int = Query(default=0, ge=0),
@@ -169,12 +194,7 @@ def list_audit_logs(
         q = q.filter(AuditLog.created_at <= until)
 
     total = int(q.count())
-    items = (
-        q.order_by(desc(AuditLog.created_at), desc(AuditLog.id))
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    items = q.order_by(desc(AuditLog.created_at), desc(AuditLog.id)).offset(skip).limit(limit).all()
     payload: list[AuditLogOut] = []
     for item in items:
         obj = AuditLogOut.model_validate(item)
@@ -239,11 +259,7 @@ def export_audit_logs(
         else:
             q = q.filter(AuditLog.created_at > after_created_at)
 
-    rows = (
-        q.order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
-        .limit(limit)
-        .all()
-    )
+    rows = q.order_by(AuditLog.created_at.asc(), AuditLog.id.asc()).limit(limit).all()
 
     def _iter_lines() -> Iterator[bytes]:
         for row in rows:
@@ -341,3 +357,321 @@ def purge_audit_logs(
         eligible=int(eligible or 0),
         deleted=int(deleted or 0),
     )
+
+
+_ACCESS_GRAPH_RECORD_SCHEMA = "mimirq.access_graph_export_record.v1"
+_ACCESS_GRAPH_PAGE_SCHEMA = "mimirq.access_graph_export_page.v1"
+_ACCESS_GRAPH_KINDS = [
+    "group",
+    "group_member",
+    "dataset",
+    "dataset_member_permission",
+    "dataset_group_permission",
+    "document",
+    "document_member_permission",
+    "document_group_permission",
+]
+
+
+def _hash16(raw: object) -> str | None:
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    return stable_hash(s, length=16)
+
+
+def _apply_created_cursor(q, model, *, after_created_at: datetime | None, after_id: UUID | None):  # noqa: ANN001
+    if after_created_at is None:
+        return q
+    if after_id is not None:
+        return q.filter(
+            or_(
+                model.created_at > after_created_at,
+                and_(model.created_at == after_created_at, model.id > after_id),
+            )
+        )
+    return q.filter(model.created_at > after_created_at)
+
+
+def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "schema": _ACCESS_GRAPH_RECORD_SCHEMA,
+        "kind": kind,
+        "id": str(getattr(row, "id", "") or ""),
+        "tenant_id": str(getattr(row, "tenant_id", "") or ""),
+        "created_at": _dt_to_json(getattr(row, "created_at", None)),
+    }
+
+    if kind == "group":
+        name = str(getattr(row, "name", "") or "")
+        external_id = str(getattr(row, "external_id", "") or "")
+        base.update(
+            {
+                "name": (name or None) if include_sensitive else None,
+                "name_hash": _hash16(name) if name else None,
+                "external_id": (external_id or None) if include_sensitive else None,
+                "external_id_hash": _hash16(external_id) if external_id else None,
+                "updated_at": _dt_to_json(getattr(row, "updated_at", None)),
+            }
+        )
+        return base
+
+    if kind == "group_member":
+        user_id = str(getattr(row, "user_id", "") or "")
+        base.update(
+            {
+                "group_id": str(getattr(row, "group_id", "") or ""),
+                "user_id": (user_id or None) if include_sensitive else None,
+                "user_id_hash": _hash16(user_id) if user_id else None,
+            }
+        )
+        return base
+
+    if kind == "dataset":
+        name = str(getattr(row, "name", "") or "")
+        owner_id = str(getattr(row, "owner_id", "") or "")
+        perm = getattr(row, "permission", None)
+        perm_value = getattr(perm, "value", None) or str(perm or "")
+        base.update(
+            {
+                "name": (name or None) if include_sensitive else None,
+                "name_hash": _hash16(name) if name else None,
+                "permission": str(perm_value or ""),
+                "owner_id": (owner_id or None) if include_sensitive else None,
+                "owner_id_hash": _hash16(owner_id) if owner_id else None,
+                "updated_at": _dt_to_json(getattr(row, "updated_at", None)),
+            }
+        )
+        return base
+
+    if kind == "dataset_member_permission":
+        account_id = str(getattr(row, "account_id", "") or "")
+        base.update(
+            {
+                "dataset_id": str(getattr(row, "dataset_id", "") or ""),
+                "account_id": (account_id or None) if include_sensitive else None,
+                "account_id_hash": _hash16(account_id) if account_id else None,
+            }
+        )
+        return base
+
+    if kind == "dataset_group_permission":
+        base.update(
+            {
+                "dataset_id": str(getattr(row, "dataset_id", "") or ""),
+                "group_id": str(getattr(row, "group_id", "") or ""),
+            }
+        )
+        return base
+
+    if kind == "document":
+        owner_id = str(getattr(row, "owner_id", "") or "")
+        access_mode = str(getattr(row, "access_mode", "") or "").strip() or None
+        dataset_id = getattr(row, "dataset_id", None)
+        base.update(
+            {
+                "dataset_id": (str(dataset_id) if dataset_id is not None else None),
+                "access_mode": access_mode,
+                "owner_id": (owner_id or None) if include_sensitive else None,
+                "owner_id_hash": _hash16(owner_id) if owner_id else None,
+                "updated_at": _dt_to_json(getattr(row, "updated_at", None)),
+            }
+        )
+        return base
+
+    if kind == "document_member_permission":
+        account_id = str(getattr(row, "account_id", "") or "")
+        base.update(
+            {
+                "document_id": str(getattr(row, "document_id", "") or ""),
+                "account_id": (account_id or None) if include_sensitive else None,
+                "account_id_hash": _hash16(account_id) if account_id else None,
+            }
+        )
+        return base
+
+    if kind == "document_group_permission":
+        base.update(
+            {
+                "document_id": str(getattr(row, "document_id", "") or ""),
+                "group_id": str(getattr(row, "group_id", "") or ""),
+            }
+        )
+        return base
+
+    base["kind"] = "unknown"
+    return base
+
+
+@router.get("/access-graph/export")
+def export_access_graph_ndjson(
+    limit: int = Query(default=1000, ge=1, le=10_000),
+    after_kind: str | None = Query(default=None, max_length=64, description="Cursor: last seen kind"),
+    after_created_at: datetime | None = Query(default=None, description="Cursor: last seen created_at"),
+    after_id: UUID | None = Query(default=None, description="Cursor: last seen id (tie-breaker)"),
+    include_sensitive: bool = Query(
+        default=False, description="Include raw user/group/dataset identifiers (admin/auditor only)"
+    ),
+    export_format: str = Query(default="ndjson", description="ndjson|json"),
+    gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip)"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export an access graph page (groups + memberships + allowlists) as NDJSON or JSON.
+
+    Stable paging:
+    - The export is deterministic across kinds and ordered by (created_at, id) within each kind.
+    - Cursor uses (after_kind, after_created_at, after_id).
+
+    Security posture:
+    - Requires audit.read (owner/admin/auditor).
+    - PII-safe by default (include_sensitive=false): raw user ids are omitted; only hashes are exported.
+    - Never exports document content/filenames/paths.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    fmt = str(export_format or "ndjson").strip().lower() or "ndjson"
+    if fmt not in {"ndjson", "json"}:
+        raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
+
+    k = str(after_kind or "").strip().lower() or None
+    if (after_created_at is not None or after_id is not None) and not k:
+        raise HTTPException(status_code=400, detail="after_kind is required when using after_created_at/after_id")
+    if k is not None and k not in _ACCESS_GRAPH_KINDS:
+        raise HTTPException(status_code=400, detail=f"after_kind must be one of: {', '.join(_ACCESS_GRAPH_KINDS)}")
+
+    start_idx = _ACCESS_GRAPH_KINDS.index(k) if k else 0
+    max_items = int(limit or 0)
+
+    out: list[dict[str, Any]] = []
+
+    def _query_rows(kind: str, *, after_dt: datetime | None, after_row_id: UUID | None, take: int):  # noqa: ANN001
+        if kind == "group":
+            q = db.query(TenantGroup).filter(TenantGroup.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, TenantGroup, after_created_at=after_dt, after_id=after_row_id)
+            return q.order_by(TenantGroup.created_at.asc(), TenantGroup.id.asc()).limit(take).all()
+        if kind == "group_member":
+            q = db.query(TenantGroupMember).filter(TenantGroupMember.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, TenantGroupMember, after_created_at=after_dt, after_id=after_row_id)
+            return q.order_by(TenantGroupMember.created_at.asc(), TenantGroupMember.id.asc()).limit(take).all()
+        if kind == "dataset":
+            q = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, Dataset, after_created_at=after_dt, after_id=after_row_id)
+            return q.order_by(Dataset.created_at.asc(), Dataset.id.asc()).limit(take).all()
+        if kind == "dataset_member_permission":
+            q = db.query(DatasetPermission).filter(DatasetPermission.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, DatasetPermission, after_created_at=after_dt, after_id=after_row_id)
+            return q.order_by(DatasetPermission.created_at.asc(), DatasetPermission.id.asc()).limit(take).all()
+        if kind == "dataset_group_permission":
+            q = db.query(DatasetGroupPermission).filter(DatasetGroupPermission.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, DatasetGroupPermission, after_created_at=after_dt, after_id=after_row_id)
+            return (
+                q.order_by(DatasetGroupPermission.created_at.asc(), DatasetGroupPermission.id.asc()).limit(take).all()
+            )
+        if kind == "document":
+            q = db.query(Document).filter(Document.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, Document, after_created_at=after_dt, after_id=after_row_id)
+            return q.order_by(Document.created_at.asc(), Document.id.asc()).limit(take).all()
+        if kind == "document_member_permission":
+            q = db.query(DocumentPermission).filter(DocumentPermission.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, DocumentPermission, after_created_at=after_dt, after_id=after_row_id)
+            return q.order_by(DocumentPermission.created_at.asc(), DocumentPermission.id.asc()).limit(take).all()
+        if kind == "document_group_permission":
+            q = db.query(DocumentGroupPermission).filter(DocumentGroupPermission.tenant_id == tenant_id)
+            q = _apply_created_cursor(q, DocumentGroupPermission, after_created_at=after_dt, after_id=after_row_id)
+            return (
+                q.order_by(DocumentGroupPermission.created_at.asc(), DocumentGroupPermission.id.asc()).limit(take).all()
+            )
+        return []
+
+    for kind in _ACCESS_GRAPH_KINDS[start_idx:]:
+        remaining = max_items - len(out)
+        if remaining <= 0:
+            break
+        rows = _query_rows(
+            kind,
+            after_dt=(after_created_at if kind == k else None),
+            after_row_id=(after_id if kind == k else None),
+            take=remaining,
+        )
+        for row in rows:
+            out.append(_export_access_graph_row(kind=kind, row=row, include_sensitive=bool(include_sensitive)))
+            if len(out) >= max_items:
+                break
+        if len(out) >= max_items:
+            break
+
+        # Kind exhausted: keep filling from the next kind in the same page.
+        if len(rows) >= remaining:
+            break
+
+    has_more = bool(len(out) >= max_items and out)
+    next_cursor = None
+    if has_more:
+        last = out[-1]
+        next_cursor = {
+            "after_kind": str(last.get("kind") or ""),
+            "after_created_at": last.get("created_at"),
+            "after_id": last.get("id"),
+        }
+
+    # Best-effort audit log (PII-safe).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="compliance.access_graph.export",
+            resource_type="tenant",
+            resource_id=str(tenant_id),
+            details={
+                "limit": int(limit or 0),
+                "returned": int(len(out)),
+                "after_kind": k,
+                "after_created_at": (after_created_at.isoformat() if after_created_at else None),
+                "after_id": (str(after_id) if after_id else None),
+                "include_sensitive": bool(include_sensitive),
+                "export_format": fmt,
+                "gzip": bool(gzip),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    headers: dict[str, str] = {
+        "Cache-Control": "no-store",
+    }
+    if next_cursor:
+        headers["X-Next-Cursor"] = json.dumps(next_cursor, ensure_ascii=True, separators=(",", ":"))
+
+    if fmt == "json":
+        payload = {
+            "schema": _ACCESS_GRAPH_PAGE_SCHEMA,
+            "limit": int(limit or 0),
+            "returned": int(len(out)),
+            "next_cursor": next_cursor,
+            "items": out,
+        }
+        content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+        if gzip:
+            headers["Content-Encoding"] = "gzip"
+            content = gzip_lib.compress(content)
+        return Response(content=content, media_type="application/json", headers=headers)
+
+    def _iter_lines() -> Iterator[bytes]:
+        for item in out:
+            line = json.dumps(item, ensure_ascii=False, separators=(",", ":"), default=str) + "\n"
+            yield line.encode("utf-8")
+
+    body_iter: Iterator[bytes] = _iter_lines()
+    if gzip:
+        headers["Content-Encoding"] = "gzip"
+        body_iter = _iter_gzip_chunks(body_iter)
+
+    return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
