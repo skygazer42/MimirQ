@@ -166,6 +166,59 @@ grafana:
 
 ---
 
+### 4.4 周期巡检 CronJobs（Periodic Audits / Access Review，可选）
+
+Chart 内置了一组 **可选 CronJob**，用于把“健康巡检/合规审查”做成可复用的运维自动化：
+
+- `cronjobs.indexAudit`：每日 index 一致性巡检汇总（写入审计日志：`observability.index_audit.daily`）
+- `cronjobs.evidenceDriftAudit`：每日 evidence reference drift 巡检汇总（写入审计日志：`evidence.drift_audit.daily`）
+- `cronjobs.accessReviewSummary`：每日 access review 汇总（写入审计日志：`compliance.access_review.daily`）
+
+特点：
+
+- **默认 PII-safe**：只写入计数/ID（无文档内容、无 query 原文）。
+- **Bounded**：每次运行都有上限参数（如 `maxDatasets` / `maxCheckIds`），避免无限扫描。
+- **审计可追溯**：结果会进入 audit logs（可用于 SIEM 或合规导出）。
+
+推荐 values（示例，复制即用；建议先 `execute=false` 验证，再切换为 `true`）：
+
+```yaml
+cronjobs:
+  indexAudit:
+    enabled: true
+    schedule: "0 2 * * *"
+    execute: false
+    # 作用域（互斥）：allTenants=true 或 tenantId="<uuid>"
+    allTenants: true
+    # Bounds（按规模调参）
+    maxDatasets: 50
+    maxCheckIds: 5000
+    milvusListLimit: 2000
+    sampleLimit: 20
+
+  evidenceDriftAudit:
+    enabled: true
+    schedule: "30 2 * * *"
+    execute: false
+    allTenants: true
+    maxDatasets: 50
+    sliceTopN: 20
+    includeArchivedItems: false
+    includeDetails: false
+
+  accessReviewSummary:
+    enabled: true
+    schedule: "0 3 * * *"
+    execute: false
+    allTenants: true
+```
+
+补充说明：
+
+- Cron schedule 由 K8s 控制面解释（通常是 UTC）；请结合你的时区调整。
+- Job 输出会体现在审计日志中；结合 `/api/v1/observability/periodic-jobs/freshness` 可做 “新鲜度” 监控。
+- 完整示例文件：`deploy/helm/mimirq/examples/values-periodic-audits.yaml`
+
 ## 5) 安装 / 升级
 
 ### 5.1 Helm 模板自检（推荐）

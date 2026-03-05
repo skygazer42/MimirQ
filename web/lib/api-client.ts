@@ -3457,6 +3457,39 @@ export const auditApi = {
     return data as Blob
   },
 
+  async exportAccessGraphPage(params: {
+    limit?: number
+    after_kind?: string
+    after_created_at?: string
+    after_id?: string
+    include_sensitive?: boolean
+    export_format?: 'ndjson' | 'json'
+    gzip?: boolean
+  } = {}): Promise<{
+    blob: Blob
+    nextCursor: { after_kind: string; after_created_at: string; after_id: string } | null
+  }> {
+    const resp = await apiClient.get('/audit/access-graph/export', { params, responseType: 'blob' })
+    const headers: Record<string, any> = (resp as any)?.headers || {}
+    const raw = headers['x-next-cursor'] || headers['X-Next-Cursor'] || ''
+    let nextCursor: { after_kind: string; after_created_at: string; after_id: string } | null = null
+    if (raw) {
+      try {
+        const obj = JSON.parse(String(raw))
+        if (obj && typeof obj === 'object' && obj.after_kind && obj.after_created_at && obj.after_id) {
+          nextCursor = {
+            after_kind: String(obj.after_kind),
+            after_created_at: String(obj.after_created_at),
+            after_id: String(obj.after_id),
+          }
+        }
+      } catch {
+        // Ignore cursor parse errors; callers can treat it as "no more pages".
+      }
+    }
+    return { blob: resp.data as Blob, nextCursor }
+  },
+
   async getAccessGraphSummary(): Promise<any> {
     const { data } = await apiClient.get('/audit/access-graph/summary')
     return data

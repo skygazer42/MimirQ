@@ -51,6 +51,16 @@ export default function AuditLogsPage() {
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
+  const presets = useMemo(
+    () => [
+      { label: 'Access Review（日常）', action: 'compliance.access_review.daily' },
+      { label: 'Index Audit（日常）', action: 'observability.index_audit.daily' },
+      { label: 'Evidence Drift（日常）', action: 'evidence.drift_audit.daily' },
+      { label: 'Access Graph（导出）', action: 'compliance.access_graph.export' },
+    ],
+    []
+  )
+
   const params = useMemo(() => {
     const p: Record<string, any> = { skip, limit }
     for (const [k, v] of Object.entries(filters)) {
@@ -130,7 +140,34 @@ export default function AuditLogsPage() {
           }
         >
           <Panel padding="lg" className="mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xs text-muted-foreground">快速预设：</div>
+              {presets.map((p) => (
+                <Button
+                  key={p.action}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-xl"
+                  onClick={() => {
+                    setSkip(0)
+                    setExpandedId(null)
+                    setFilters({
+                      actor_id: '',
+                      action: p.action,
+                      resource_type: '',
+                      resource_id: '',
+                      request_id: '',
+                      since: '',
+                      until: '',
+                    })
+                  }}
+                >
+                  {p.label}
+                </Button>
+              ))}
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
               <Input
                 placeholder="action (e.g. chat.ask)"
                 value={filters.action}

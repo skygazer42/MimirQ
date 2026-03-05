@@ -1,0 +1,35 @@
+# Periodic audits + access review CronJobs (copy/paste example).
+#
+# Notes:
+# - Schedules are evaluated by the Kubernetes control-plane timezone (often UTC).
+# - Start with execute=false to validate configuration, then flip to true.
+# - Jobs are bounded; tune max_* carefully for large tenants.
+
+cronjobs:
+  indexAudit:
+    enabled: true
+    schedule: "0 2 * * *"
+    execute: false
+    allTenants: true
+    maxDatasets: 50
+    maxCheckIds: 5000
+    milvusListLimit: 2000
+    sampleLimit: 20
+
+  evidenceDriftAudit:
+    enabled: true
+    schedule: "30 2 * * *"
+    execute: false
+    allTenants: true
+    maxDatasets: 50
+    sliceTopN: 20
+    includeArchivedItems: false
+    includeDetails: false
+    detailsLimit: 0
+
+  accessReviewSummary:
+    enabled: true
+    schedule: "0 3 * * *"
+    execute: false
+    allTenants: true
+
