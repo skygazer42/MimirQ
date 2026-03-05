@@ -133,6 +133,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 - Task Queue Snapshot（队列观测快照）：`GET /api/v1/observability/task-queue/snapshot`
 - 审计日志列表：`GET /api/v1/audit/logs`
 - 审计日志导出（SIEM）：`GET /api/v1/audit/logs/export`
+- 权限访问图谱导出（Groups + ACL，NDJSON/JSON 分页）：`GET /api/v1/audit/access-graph/export`
 - 审计日志保留清理（admin-only）：`POST /api/v1/audit/logs/purge`
 
 ---
