@@ -892,15 +892,35 @@ curl http://localhost:8000/api/v1/chat/conversations/CONV_ID/messages \
 ```json
 {
   "name": "产品文档",
-  "description": "产品相关文档集合"
+  "description": "产品相关文档集合",
+  "permission": "partial_members",
+  "partial_member_list": ["alice", "bob"],
+  "partial_group_list": ["11111111-1111-1111-1111-111111111111"]
 }
 ```
+
+说明：
+- `permission` 支持：`all_team_members`（默认）/ `only_me` / `partial_members`
+- 当 `permission=partial_members` 时，支持同时配置：
+  - `partial_member_list`（成员 allowlist）
+  - `partial_group_list`（组 allowlist，UUID；tenant-scoped）
+- 详见：`docs/guides/dataset_permissions.md`
 
 ### GET /datasets/ - 获取数据集列表
 
 ### GET /datasets/{id} - 获取数据集详情
 
 ### PATCH /datasets/{id} - 更新数据集
+
+示例（更新 allowlist）：
+
+```json
+{
+  "permission": "partial_members",
+  "partial_member_list": ["alice"],
+  "partial_group_list": ["11111111-1111-1111-1111-111111111111"]
+}
+```
 
 ### DELETE /datasets/{id} - 删除数据集
 
