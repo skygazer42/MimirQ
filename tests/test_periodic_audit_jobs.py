@@ -160,3 +160,175 @@ def test_run_daily_index_audit_report_execute_dedupes(monkeypatch):  # noqa: ANN
     assert out.get("skip_reason") == "already_written"
     assert db.commits == 0
 
+
+class _FakeCountQuery:
+    def __init__(self, *, model, counts):  # noqa: ANN001
+        self._model = model
+        self._counts = counts
+        self._filters: dict[str, object] = {}
+        self._has_or = False
+
+    def filter(self, *conds, **_kwargs):  # noqa: ANN001
+        for expr in conds:
+            left_key = getattr(getattr(expr, "left", None), "key", None)
+            right_val = getattr(getattr(expr, "right", None), "value", None)
+            if left_key:
+                self._filters[str(left_key)] = right_val
+                continue
+            if hasattr(expr, "clauses"):
+                # Best-effort: mark OR expressions used by inherit-mode queries.
+                self._has_or = True
+        return self
+
+    def count(self) -> int:
+        key = (self._model, tuple(sorted(self._filters.items())), bool(self._has_or))
+        if key in self._counts:
+            return int(self._counts[key] or 0)
+        key2 = (self._model, tuple(sorted(self._filters.items())))
+        if key2 in self._counts:
+            return int(self._counts[key2] or 0)
+        if self._model in self._counts:
+            return int(self._counts[self._model] or 0)
+        return 0
+
+
+class _FakeCountDB(_FakeDB):
+    def __init__(self, *, counts):  # noqa: ANN001
+        super().__init__()
+        self._counts = counts
+
+    def query(self, model):  # noqa: ANN001
+        return _FakeCountQuery(model=model, counts=self._counts)
+
+
+def test_run_daily_access_review_summary_dry_run_is_pii_safe_and_bounded(monkeypatch):  # noqa: ANN001
+    from app.services import periodic_audit_jobs
+
+    tenant_id = uuid.uuid4()
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+
+    counts = {
+        (periodic_audit_jobs.TenantGroup, (("tenant_id", tenant_id),), False): 3,
+        (periodic_audit_jobs.TenantGroupMember, (("tenant_id", tenant_id),), False): 9,
+        (periodic_audit_jobs.Dataset, (("tenant_id", tenant_id),), False): 8,
+        (periodic_audit_jobs.Dataset, (("permission", periodic_audit_jobs.DatasetPermissionEnum.ALL_TEAM_MEMBERS), ("tenant_id", tenant_id)), False): 6,
+        (periodic_audit_jobs.Dataset, (("permission", periodic_audit_jobs.DatasetPermissionEnum.ONLY_ME), ("tenant_id", tenant_id)), False): 1,
+        (periodic_audit_jobs.Dataset, (("permission", periodic_audit_jobs.DatasetPermissionEnum.PARTIAL_MEMBERS), ("tenant_id", tenant_id)), False): 1,
+        (periodic_audit_jobs.DatasetPermission, (("tenant_id", tenant_id),), False): 11,
+        (periodic_audit_jobs.DatasetGroupPermission, (("tenant_id", tenant_id),), False): 5,
+        (periodic_audit_jobs.Document, (("tenant_id", tenant_id),), False): 10,
+        (periodic_audit_jobs.Document, (("tenant_id", tenant_id),), True): 2,  # inherit-mode OR clause
+        (periodic_audit_jobs.Document, (("access_mode", "partial_members"), ("tenant_id", tenant_id)), False): 3,
+        (periodic_audit_jobs.Document, (("access_mode", "only_me"), ("tenant_id", tenant_id)), False): 1,
+        (periodic_audit_jobs.Document, (("access_mode", "all_team_members"), ("tenant_id", tenant_id)), False): 4,
+        (periodic_audit_jobs.DocumentPermission, (("tenant_id", tenant_id),), False): 21,
+        (periodic_audit_jobs.DocumentGroupPermission, (("tenant_id", tenant_id),), False): 7,
+    }
+
+    db = _FakeCountDB(counts=counts)
+
+    monkeypatch.setattr(
+        periodic_audit_jobs,
+        "audit_log_event",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("dry-run must not write audit logs")),
+        raising=True,
+    )
+
+    out = periodic_audit_jobs.run_daily_access_review_summary(
+        db,
+        tenant_id=tenant_id,
+        execute=False,
+        force=False,
+        now=now,
+    )
+
+    assert out.get("ok") is True
+    assert out.get("dry_run") is True
+    assert out.get("tenant_id") == str(tenant_id)
+    assert out.get("report_date") == "2026-03-04"
+    assert out.get("group_count") == 3
+    assert out.get("group_member_count") == 9
+    assert out.get("dataset_count") == 8
+    assert out.get("dataset_member_allowlist_count") == 11
+    assert out.get("dataset_group_allowlist_count") == 5
+    assert out.get("document_count") == 10
+    assert out.get("document_member_allowlist_count") == 21
+    assert out.get("document_group_allowlist_count") == 7
+    assert (out.get("document_access_mode_counts") or {}).get("unknown") == 0
+    assert db.commits == 0
+
+
+def test_run_daily_access_review_summary_execute_writes_audit(monkeypatch):  # noqa: ANN001
+    from app.services import periodic_audit_jobs
+
+    tenant_id = uuid.uuid4()
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+
+    counts = {
+        (periodic_audit_jobs.TenantGroup, (("tenant_id", tenant_id),), False): 1,
+        (periodic_audit_jobs.TenantGroupMember, (("tenant_id", tenant_id),), False): 2,
+        (periodic_audit_jobs.Dataset, (("tenant_id", tenant_id),), False): 0,
+        (periodic_audit_jobs.Dataset, (("permission", periodic_audit_jobs.DatasetPermissionEnum.ALL_TEAM_MEMBERS), ("tenant_id", tenant_id)), False): 0,
+        (periodic_audit_jobs.Dataset, (("permission", periodic_audit_jobs.DatasetPermissionEnum.ONLY_ME), ("tenant_id", tenant_id)), False): 0,
+        (periodic_audit_jobs.Dataset, (("permission", periodic_audit_jobs.DatasetPermissionEnum.PARTIAL_MEMBERS), ("tenant_id", tenant_id)), False): 0,
+        (periodic_audit_jobs.DatasetPermission, (("tenant_id", tenant_id),), False): 0,
+        (periodic_audit_jobs.DatasetGroupPermission, (("tenant_id", tenant_id),), False): 0,
+        (periodic_audit_jobs.Document, (("tenant_id", tenant_id),), False): 0,
+        (periodic_audit_jobs.Document, (("tenant_id", tenant_id),), True): 0,
+        (periodic_audit_jobs.DocumentPermission, (("tenant_id", tenant_id),), False): 0,
+        (periodic_audit_jobs.DocumentGroupPermission, (("tenant_id", tenant_id),), False): 0,
+    }
+    db = _FakeCountDB(counts=counts)
+
+    monkeypatch.setattr(periodic_audit_jobs, "_audit_already_written", lambda *_a, **_k: False, raising=True)
+
+    called = {"audit": 0}
+
+    def _audit(_db, **kwargs):  # noqa: ANN001
+        called["audit"] += 1
+        assert kwargs.get("action") == "compliance.access_review.daily"
+        assert kwargs.get("resource_type") == "access_review_summary"
+        assert kwargs.get("resource_id") == "2026-03-04"
+        details = kwargs.get("details") or {}
+        assert details.get("schema") == "mimirq.access_review_daily.v1"
+        assert details.get("report_date") == "2026-03-04"
+        assert details.get("tenant_id") == str(tenant_id)
+        assert "ok" not in details
+
+    monkeypatch.setattr(periodic_audit_jobs, "audit_log_event", _audit, raising=True)
+
+    out = periodic_audit_jobs.run_daily_access_review_summary(
+        db,
+        tenant_id=tenant_id,
+        execute=True,
+        force=True,
+        now=now,
+    )
+
+    assert out.get("ok") is True
+    assert out.get("dry_run") is False
+    assert called["audit"] == 1
+    assert db.commits == 1
+
+
+def test_run_daily_access_review_summary_execute_dedupes(monkeypatch):  # noqa: ANN001
+    from app.services import periodic_audit_jobs
+
+    db = _FakeCountDB(counts={})
+    tenant_id = uuid.uuid4()
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(periodic_audit_jobs, "_audit_already_written", lambda *_a, **_k: True, raising=True)
+
+    out = periodic_audit_jobs.run_daily_access_review_summary(
+        db,
+        tenant_id=tenant_id,
+        execute=True,
+        force=False,
+        now=now,
+    )
+
+    assert out.get("ok") is True
+    assert out.get("skipped") is True
+    assert out.get("skip_reason") == "already_written"
+    assert db.commits == 0

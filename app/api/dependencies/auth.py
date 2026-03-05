@@ -127,7 +127,7 @@ async def get_current_account_id_from_headers(
                     account_id=user_id,
                     jwt_payload=payload,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # Never block auth due to sync failures.
                 pass
     return user_id

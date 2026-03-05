@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
 
 import pytest
 from fastapi import Depends, FastAPI, Request
@@ -124,4 +123,3 @@ def test_auth_dependency_never_blocks_on_group_sync_failures(monkeypatch: pytest
     client = TestClient(app)
     res = client.get("/state", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200
-

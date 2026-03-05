@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 from types import SimpleNamespace
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -84,4 +84,3 @@ def test_resolve_account_group_ids_falls_back_when_no_request_state():  # noqa: 
     assert isinstance(ids, set)
     assert ids == {group_id}
     assert db.query_calls == 1
-

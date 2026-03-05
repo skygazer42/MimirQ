@@ -1179,6 +1179,7 @@ export interface Dataset {
   permission: PermissionEnum
   owner_id?: string | null
   partial_member_list?: string[] | null
+  partial_group_list?: string[] | null
   pipeline?: DocumentPipelineOptions | null
 }
 
@@ -1187,6 +1188,7 @@ export interface DatasetCreate {
   description?: string | null
   permission: PermissionEnum
   partial_member_list?: string[] | null
+  partial_group_list?: string[] | null
   pipeline?: DocumentPipelineOptions | null
 }
 
@@ -1195,6 +1197,7 @@ export interface DatasetUpdate {
   description?: string | null
   permission?: PermissionEnum | null
   partial_member_list?: string[] | null
+  partial_group_list?: string[] | null
   pipeline?: DocumentPipelineOptions | null
 }
 

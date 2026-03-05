@@ -77,7 +77,7 @@ class TenantGroupService:
                 cache = getattr(state, "_mimirq_group_ids_cache", None)
                 if not isinstance(cache, dict):
                     cache = {}
-                    setattr(state, "_mimirq_group_ids_cache", cache)
+                    state._mimirq_group_ids_cache = cache
                 cache[cache_key] = group_ids
 
         return group_ids

@@ -33,6 +33,7 @@ from app.api.v1 import (
     ragviz,
     rbac,
     reports,
+    scim,
     settings,
     usage,
 )
@@ -67,6 +68,7 @@ router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])
 router.include_router(groups.router, prefix="/groups", tags=["Groups"])
 router.include_router(rbac.router, prefix="/rbac", tags=["RBAC"])
+router.include_router(scim.router, prefix="/scim/v2", tags=["SCIM v2"])
 router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 router.include_router(observability.router, prefix="/observability", tags=["Observability"])
 router.include_router(audit.router, prefix="/audit", tags=["Audit"])

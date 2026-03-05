@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { GroupChipsInput } from '@/components/groups/group-chips-input'
 import { Button } from '@/components/ui/button'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -142,6 +143,7 @@ export function KnowledgeWebCrawlDialog({
   const [authPassword, setAuthPassword] = useState('')
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
   const [accessMembers, setAccessMembers] = useState('')
+  const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -194,6 +196,7 @@ export function KnowledgeWebCrawlDialog({
           : {
               mode: accessMode,
               partial_member_list: accessMode === 'partial_members' ? parseAccessMembers(accessMembers) : null,
+              partial_group_list: accessMode === 'partial_members' ? accessGroupIds : null,
             }
 
       const run = await connectorApi.createRun({
@@ -248,6 +251,7 @@ export function KnowledgeWebCrawlDialog({
       setAuthPassword('')
       setAccessMode('inherit')
       setAccessMembers('')
+      setAccessGroupIds([])
       void loadConnectorRuns({ datasetId: selectedDatasetId })
       void loadDocuments()
     } catch (err: any) {
@@ -257,6 +261,7 @@ export function KnowledgeWebCrawlDialog({
     }
   }, [
     accessMembers,
+    accessGroupIds,
     accessMode,
     authCookie,
     authPassword,
@@ -511,19 +516,30 @@ export function KnowledgeWebCrawlDialog({
               <SelectContent>
                 <SelectItem value="inherit">Inherit dataset</SelectItem>
                 <SelectItem value="only_me">Only me</SelectItem>
-                <SelectItem value="partial_members">Partial members</SelectItem>
+                <SelectItem value="partial_members">Partial members/groups</SelectItem>
                 <SelectItem value="all_team_members">All team members</SelectItem>
               </SelectContent>
             </Select>
             {accessMode === 'partial_members' ? (
-              <div className="space-y-2 pt-2">
-                <div className="text-sm font-medium text-foreground/80">Allowed members (one user_id per line)</div>
-                <Textarea
-                  value={accessMembers}
-                  onChange={(e) => setAccessMembers(e.target.value)}
-                  placeholder={'alice\nbob\ncharlie'}
-                  className="font-mono min-h-[110px]"
-                />
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-foreground/80">Allowed groups (optional)</div>
+                  <GroupChipsInput
+                    value={accessGroupIds}
+                    onChange={setAccessGroupIds}
+                    placeholder="Select groups (members will inherit access)"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-foreground/80">Allowed members (one user_id per line)</div>
+                  <Textarea
+                    value={accessMembers}
+                    onChange={(e) => setAccessMembers(e.target.value)}
+                    placeholder={'alice\nbob\ncharlie'}
+                    className="font-mono min-h-[110px]"
+                  />
+                </div>
               </div>
             ) : null}
           </div>

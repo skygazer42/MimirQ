@@ -8,6 +8,7 @@ PII-safe periodic audits and (optionally) write a small summary to audit logs.
 Currently implemented:
 - Index audit summary (dataset-scoped, bounded)
 - Evidence reference drift audit summary (dataset-scoped, bounded)
+- Access review summary (tenant-scoped, bounded)
 
 Examples:
   # Dry-run (no audit write) for default tenant
@@ -31,7 +32,11 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.tenant import Tenant
-from app.services.periodic_audit_jobs import run_daily_evidence_drift_audit_report, run_daily_index_audit_report
+from app.services.periodic_audit_jobs import (
+    run_daily_access_review_summary,
+    run_daily_evidence_drift_audit_report,
+    run_daily_index_audit_report,
+)
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -45,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run MimirQ periodic audit jobs (bounded, auditable).")
     p.add_argument("--index-audit", action="store_true", help="Run dataset index-audit report")
     p.add_argument("--evidence-drift-audit", action="store_true", help="Run evidence reference drift-audit report")
+    p.add_argument("--access-review", action="store_true", help="Run daily access review summary (tenant-scoped)")
 
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID to operate on")
@@ -71,8 +77,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
-    if (not bool(args.index_audit)) and (not bool(args.evidence_drift_audit)):
-        print("No job selected. Use --index-audit and/or --evidence-drift-audit.", file=sys.stderr)
+    if (not bool(args.index_audit)) and (not bool(args.evidence_drift_audit)) and (not bool(args.access_review)):
+        print("No job selected. Use --index-audit and/or --evidence-drift-audit and/or --access-review.", file=sys.stderr)
         return 2
 
     execute = bool(args.execute)
@@ -99,6 +105,19 @@ def main(argv: list[str] | None = None) -> int:
     for tid in tenant_ids:
         db = SessionLocal()
         try:
+            if bool(args.access_review):
+                res = run_daily_access_review_summary(
+                    db,
+                    tenant_id=tid,
+                    execute=bool(execute),
+                    force=bool(args.force),
+                    actor_id="system:periodic_audit",
+                    now=ran_at,
+                )
+                res["job"] = "access_review_summary"
+                results.append(res)
+                ok = ok and bool(res.get("ok") is True)
+
             if bool(args.index_audit):
                 res = run_daily_index_audit_report(
                     db,
@@ -142,4 +161,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

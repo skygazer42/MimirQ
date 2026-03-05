@@ -129,6 +129,7 @@ from app.services.pipeline_config import (
     upsert_pipeline_metadata,
 )
 from app.services.preview_cache import ParseCacheEntry, preview_parse_cache, preview_parse_locks
+from app.services.tenant_group_service import TenantGroupService
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.queue import enqueue_document_processing
 from app.types.document_analytics import compute_document_analytics
@@ -1933,6 +1934,20 @@ def _assert_document_acl_readable(
         )
         if exists:
             return
+
+        # Group allowlist (fail-closed): allow if the account is a member of any allowed group.
+        group_ids = TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        if group_ids:
+            allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(
+                db,
+                tenant_id,
+                document.id,
+            )
+            if allowlist_groups:
+                allowed = set(allowlist_groups)
+                if any(gid in allowed for gid in group_ids):
+                    return
+
         raise HTTPException(status_code=403, detail="No document access")
 
     # Unknown mode: fail closed.

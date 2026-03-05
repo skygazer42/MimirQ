@@ -354,6 +354,33 @@ cronjobs:
     affinity: {}
     extraEnv: []
 
+  accessReviewSummary:
+    enabled: false
+    schedule: "0 1 * * *"
+    suspend: false
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 3
+
+    allTenants: false
+    tenantId: ""
+
+    # Script mode: when true, writes an audit log entry (best-effort).
+    execute: true
+    force: false
+
+    terminationGracePeriodSeconds: null
+    priorityClassName: ""
+    resources: {}
+    podSecurityContext: {}
+    securityContext: {}
+    automountServiceAccountToken: null
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    extraEnv: []
+
   dbMaintenance:
     enabled: false
     schedule: "0 3 * * 0"

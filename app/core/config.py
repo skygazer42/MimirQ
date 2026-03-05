@@ -462,6 +462,17 @@ class Settings(BaseSettings):
     JWT_GROUPS_MAX_GROUPS: int = 200
     # Throttle to avoid write amplification (seconds; best-effort in-process cache; 0 disables).
     JWT_GROUPS_SYNC_TTL_SEC: int = 60
+
+    # SCIM v2 provisioning (enterprise; opt-in).
+    #
+    # Design:
+    # - default disabled (no extra auth surface)
+    # - guarded by static bearer token (IdP-friendly)
+    # - read-only endpoints first; PATCH membership is separate opt-in
+    SCIM_ENABLED: bool = False
+    SCIM_BEARER_TOKEN: str = ""
+    SCIM_PAGE_SIZE_MAX: int = 200
+    SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED: bool = False
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
 
@@ -1351,6 +1362,12 @@ class Settings(BaseSettings):
             raise ValueError(f"Unsupported AUTH_MODE: {auth_mode}")
         if auth_mode == "header" and is_production:
             raise ValueError("AUTH_MODE=header is not allowed in production")
+
+        # Security: SCIM provisioning auth guard (enterprise).
+        if bool(getattr(self, "SCIM_ENABLED", False)):
+            token = str(getattr(self, "SCIM_BEARER_TOKEN", "") or "").strip()
+            if not token:
+                raise ValueError("SCIM_BEARER_TOKEN required when SCIM_ENABLED=true")
 
         # Security: Validate SECRET_KEY (required for JWT verification)
         if auth_mode == "jwt":
