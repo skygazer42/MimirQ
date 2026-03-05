@@ -47,6 +47,16 @@ JWT_TENANT_CLAIM=tenant_id
 JWT_ENFORCE_TENANT_HEADER_MATCH=true
 ```
 
+可选（推荐与 groups 同步配套）：自动落库 `tenant_members`（便于后续 SCIM / 组权限 / ACL 校验）：
+
+```bash
+JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED=true
+```
+
+说明：
+- 仅在解析到 **已验证的 tenant claim** 时才会创建（tenant-safe）
+- 默认不会“自动复活”已被 deprovision 的成员（以免绕过撤权）
+
 ---
 
 ## 2) 启用 MimirQ groups claim 同步
@@ -193,4 +203,3 @@ JWT_GROUPS_CLAIM=urn:mimirq:groups
 
 相关指标（当 `PROMETHEUS_ENABLED=true`）：
 - `authz_group_permission_total{resource,action,result}`
-

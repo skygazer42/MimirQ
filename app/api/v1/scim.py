@@ -31,6 +31,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.tenant import TenantMember
+from app.models.tenant_group import TenantGroupMember
 from app.services.audit_log_service import audit_log_event
 from app.services.tenant_group_service import TenantGroupService
 
@@ -616,6 +617,26 @@ def _audit_scim(
     )
 
 
+def _revoke_group_memberships_for_user(db: Session, *, tenant_id: UUID, user_id: str) -> int:
+    """
+    Best-effort deprovisioning primitive: remove all group memberships for a user.
+
+    Caller decides whether to commit (we intentionally do not commit here).
+    """
+    uid = str(user_id or "").strip()
+    if not uid or len(uid) > 255:
+        return 0
+    deleted = (
+        db.query(TenantGroupMember)
+        .filter(
+            TenantGroupMember.tenant_id == tenant_id,
+            TenantGroupMember.user_id == uid,
+        )
+        .delete(synchronize_session=False)
+    )
+    return int(deleted or 0)
+
+
 @router.post("/Users")
 def create_user(
     payload: dict[str, Any],
@@ -737,6 +758,14 @@ def patch_user(
         with contextlib.suppress(Exception):
             member.is_current = False
 
+    revoked = 0
+    if not after and bool(getattr(settings, "SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED", False)):
+        revoked = _revoke_group_memberships_for_user(
+            db,
+            tenant_id=tenant_id,
+            user_id=str(getattr(member, "user_id", user_id) or ""),
+        )
+
     _audit_scim(
         db,
         tenant_id=tenant_id,
@@ -750,6 +779,7 @@ def patch_user(
             "active_before": bool(before),
             "active_after": bool(after),
             "changed": bool(changed),
+            "group_memberships_revoked": int(revoked),
         },
     )
 
