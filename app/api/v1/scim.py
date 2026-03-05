@@ -2,20 +2,28 @@
 SCIM v2 API (enterprise provisioning; opt-in).
 
 Notes:
-- Guarded behind `SCIM_ENABLED` and a static bearer token (`SCIM_BEARER_TOKEN`).
-- Read-only initially: Users/Groups list + get.
-- Optional: PATCH group membership (`SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED`).
+- Guarded behind `SCIM_ENABLED` and bearer token auth (`SCIM_BEARER_TOKEN`).
+- Defense-in-depth: optional IP allowlist (`SCIM_IP_ALLOWLIST_CIDRS`).
+- Default read-only; write endpoints are separately opt-in:
+  - Users: `SCIM_USERS_CREATE_ENABLED`, `SCIM_USERS_PATCH_ACTIVE_ENABLED`
+  - Groups: `SCIM_GROUPS_MUTATION_ENABLED`
+  - Group membership PATCH: `SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED`
+- Token rotation: `SCIM_BEARER_TOKEN` may contain a comma/space-separated active set,
+  and each token may be stored as raw or `sha256:<hex>` for safer config handling.
 """
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import hmac
+import ipaddress
 import re
 from datetime import datetime, timezone
 from typing import Any, Iterable
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -40,6 +48,7 @@ _URN_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Schema"
 _URN_RESOURCE_TYPE = "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
 _URN_SERVICE_PROVIDER_CONFIG = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"
 
+_TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
 _REMOVE_MEMBER_FILTER_RE = re.compile(r'members\[\s*value\s+eq\s+"([^"]+)"\s*\]', re.IGNORECASE)
 
 
@@ -64,15 +73,84 @@ def _scim_error(*, status_code: int, detail: str, scim_type: str | None = None) 
         out["scimType"] = str(scim_type)
     return _scim_json(out, status_code=status_code)
 
+def _hash_pii(value: object) -> str:
+    """Stable short hash for potentially sensitive identifiers."""
+    raw = str(value or "").strip().encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
-def _require_scim_actor(authorization: str | None = Header(default=None)) -> str:
+
+def _split_items(raw: object) -> list[str]:
+    return [p for p in _TOKEN_SPLIT_RE.split(str(raw or "").strip()) if p]
+
+
+def _token_matches(provided_token: str, expected_token: str) -> bool:
+    expected = str(expected_token or "").strip()
+    provided = str(provided_token or "").strip()
+    if not expected or not provided:
+        return False
+    if expected.lower().startswith("sha256:"):
+        digest = expected.split(":", 1)[1].strip().lower()
+        if not digest:
+            return False
+        provided_digest = hashlib.sha256(provided.encode("utf-8", "ignore")).hexdigest()
+        return hmac.compare_digest(provided_digest, digest)
+    return hmac.compare_digest(provided, expected)
+
+
+def _extract_client_ip(request: Request) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        candidate = (forwarded.split(",")[0] or "").strip()
+    else:
+        real_ip = request.headers.get("X-Real-IP")
+        candidate = (real_ip or "").strip() if real_ip else (request.client.host if request.client else "")
+    if not candidate:
+        return None
+    try:
+        return ipaddress.ip_address(candidate)
+    except ValueError:
+        return None
+
+
+_allowlist_cache: dict[str, list[ipaddress.IPv4Network | ipaddress.IPv6Network]] = {}
+
+
+def _parse_ip_allowlist(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    key = str(raw or "").strip()
+    if not key:
+        return []
+    cached = _allowlist_cache.get(key)
+    if cached is not None:
+        return cached
+    nets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for part in _split_items(key):
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            # Fail-closed behavior is handled by the caller (empty allowlist => deny all).
+            continue
+    _allowlist_cache[key] = nets
+    return nets
+
+
+def _require_scim_actor(request: Request, authorization: str | None = Header(default=None)) -> str:
     if not bool(getattr(settings, "SCIM_ENABLED", False)):
         raise HTTPException(status_code=404, detail="SCIM not enabled")
 
-    expected = str(getattr(settings, "SCIM_BEARER_TOKEN", "") or "").strip()
-    if not expected:
+    expected_raw = str(getattr(settings, "SCIM_BEARER_TOKEN", "") or "").strip()
+    expected_tokens = _split_items(expected_raw)
+    if not expected_tokens:
         # Misconfiguration; do not expose further detail.
         raise HTTPException(status_code=404, detail="SCIM not enabled")
+
+    allowlist_raw = str(getattr(settings, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
+    if allowlist_raw:
+        client_ip = _extract_client_ip(request)
+        if client_ip is None:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        networks = _parse_ip_allowlist(allowlist_raw)
+        if not networks or not any(client_ip in net for net in networks):
+            raise HTTPException(status_code=403, detail="Forbidden")
 
     auth = (authorization or "").strip()
     if not auth:
@@ -84,7 +162,7 @@ def _require_scim_actor(authorization: str | None = Header(default=None)) -> str
     else:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    if token != expected:
+    if not any(_token_matches(token, expected) for expected in expected_tokens):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     return "system:scim"
@@ -116,7 +194,7 @@ def _scim_user(member: TenantMember) -> dict[str, Any]:
         "schemas": [_URN_USER],
         "id": uid,
         "userName": uid,
-        "active": bool(getattr(member, "is_current", False)),
+        "active": bool(getattr(member, "is_active", getattr(member, "is_current", False))),
         "meta": {
             "resourceType": "User",
             "created": _dt_iso(getattr(member, "created_at", None)),
@@ -183,7 +261,9 @@ def _get_user(db: Session, *, tenant_id: UUID, user_id: str) -> TenantMember | N
 @router.get("/ServiceProviderConfig")
 def get_service_provider_config(_actor: str = Depends(_require_scim_actor)):
     # See RFC7644 §4 and RFC7643 (ServiceProviderConfig schema).
-    patch_supported = bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False))
+    patch_supported = bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)) or bool(
+        getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)
+    )
     return _scim_json(
         {
             "schemas": [_URN_SERVICE_PROVIDER_CONFIG],
@@ -244,7 +324,7 @@ def list_resource_types(_actor: str = Depends(_require_scim_actor)):
             "name": "User",
             "endpoint": "/Users",
             "schema": _URN_USER,
-            "description": "Tenant users (read-only).",
+            "description": "Tenant users (read; optional create/patch via flags).",
         },
         {
             "schemas": [_URN_RESOURCE_TYPE],
@@ -252,7 +332,7 @@ def list_resource_types(_actor: str = Depends(_require_scim_actor)):
             "name": "Group",
             "endpoint": "/Groups",
             "schema": _URN_GROUP,
-            "description": "Tenant groups (read-only; optional membership PATCH).",
+            "description": "Tenant groups (read; optional mutate/membership PATCH via flags).",
         },
     ]
     return _scim_json(_list_response(resources=resources, total=len(resources), start_index=1, items_per_page=len(resources)))
@@ -288,6 +368,173 @@ def get_group(
     return _scim_json(_scim_group(group, include_members=True, members=members))
 
 
+@router.post("/Groups")
+def create_group(
+    payload: dict[str, Any],
+    http_request: Request,
+    tenant_id: UUID = Depends(get_tenant_id),
+    actor_id: str = Depends(_require_scim_actor),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+        return _scim_error(status_code=404, detail="POST /Groups not enabled")
+
+    if not isinstance(payload, dict):
+        return _scim_error(status_code=400, detail="Invalid SCIM payload", scim_type="invalidSyntax")
+
+    display_name = str(payload.get("displayName") or "").strip()
+    if not display_name:
+        return _scim_error(status_code=400, detail="displayName is required", scim_type="invalidValue")
+    if len(display_name) > 255:
+        return _scim_error(status_code=400, detail="displayName too long (max=255)", scim_type="invalidValue")
+
+    ext_raw = payload.get("externalId", None)
+    external_id = None
+    if ext_raw is not None:
+        external_id = str(ext_raw or "").strip() or None
+        if external_id is not None and len(external_id) > 255:
+            return _scim_error(status_code=400, detail="externalId too long (max=255)", scim_type="invalidValue")
+
+    try:
+        group = TenantGroupService.create_group(db, tenant_id=tenant_id, name=display_name, external_id=external_id)
+    except HTTPException as exc:
+        scim_type = "uniqueness" if int(exc.status_code) == 409 else None
+        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"), scim_type=scim_type)
+
+    members_provided = payload.get("members")
+    member_count = 0
+    if isinstance(members_provided, list):
+        member_count = len(members_provided)
+
+    _audit_scim(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="scim.group.create",
+        resource_type="tenant_group",
+        resource_id=str(getattr(group, "id", "") or ""),
+        http_request=http_request,
+        details={
+            "group_id": str(getattr(group, "id", "") or ""),
+            "display_name_hash": _hash_pii(display_name),
+            "external_id_hash": _hash_pii(external_id) if external_id else None,
+            "members_provided_count": int(member_count),
+            "members_apply_via": "PATCH /Groups/{id} (SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED)",
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    return _scim_json(_scim_group(group, include_members=False), status_code=201)
+
+
+@router.put("/Groups/{group_id}")
+def put_group(
+    group_id: UUID,
+    payload: dict[str, Any],
+    http_request: Request,
+    tenant_id: UUID = Depends(get_tenant_id),
+    actor_id: str = Depends(_require_scim_actor),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+        return _scim_error(status_code=404, detail="PUT /Groups not enabled")
+
+    if not isinstance(payload, dict):
+        return _scim_error(status_code=400, detail="Invalid SCIM payload", scim_type="invalidSyntax")
+
+    display_name = str(payload.get("displayName") or "").strip()
+    if not display_name:
+        return _scim_error(status_code=400, detail="displayName is required", scim_type="invalidValue")
+    if len(display_name) > 255:
+        return _scim_error(status_code=400, detail="displayName too long (max=255)", scim_type="invalidValue")
+
+    # Only update externalId when explicitly provided. Allow clearing via "".
+    external_id_arg: str | None = None
+    external_id_hash: str | None = None
+    if "externalId" in payload:
+        raw_ext = str(payload.get("externalId") or "").strip()
+        if len(raw_ext) > 255:
+            return _scim_error(status_code=400, detail="externalId too long (max=255)", scim_type="invalidValue")
+        external_id_arg = raw_ext  # may be "" to clear
+        external_id_hash = _hash_pii(raw_ext) if raw_ext else None
+
+    try:
+        group = TenantGroupService.update_group(
+            db,
+            tenant_id=tenant_id,
+            group_id=group_id,
+            name=display_name,
+            external_id=external_id_arg,
+        )
+    except HTTPException as exc:
+        scim_type = "uniqueness" if int(exc.status_code) == 409 else None
+        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"), scim_type=scim_type)
+
+    _audit_scim(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="scim.group.put",
+        resource_type="tenant_group",
+        resource_id=str(getattr(group, "id", "") or ""),
+        http_request=http_request,
+        details={
+            "group_id": str(getattr(group, "id", "") or ""),
+            "display_name_hash": _hash_pii(display_name),
+            "external_id_hash": external_id_hash,
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    return _scim_json(_scim_group(group, include_members=False))
+
+
+@router.delete("/Groups/{group_id}")
+def delete_group(
+    group_id: UUID,
+    http_request: Request,
+    tenant_id: UUID = Depends(get_tenant_id),
+    actor_id: str = Depends(_require_scim_actor),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+        return _scim_error(status_code=404, detail="DELETE /Groups not enabled")
+
+    try:
+        group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
+    except HTTPException as exc:
+        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+
+    display_name = str(getattr(group, "name", "") or "")
+    external_id = getattr(group, "external_id", None)
+
+    try:
+        TenantGroupService.delete_group(db, tenant_id=tenant_id, group_id=group_id)
+    except HTTPException as exc:
+        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+
+    _audit_scim(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="scim.group.delete",
+        resource_type="tenant_group",
+        resource_id=str(group_id),
+        http_request=http_request,
+        details={
+            "group_id": str(group_id),
+            "display_name_hash": _hash_pii(display_name),
+            "external_id_hash": _hash_pii(external_id) if external_id else None,
+        },
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    return Response(status_code=204)
+
+
 @router.get("/Users")
 def list_users(
     start_index: int = Query(default=1, ge=1, alias="startIndex"),
@@ -313,6 +560,201 @@ def get_user(
     member = _get_user(db, tenant_id=tenant_id, user_id=user_id)
     if member is None:
         return _scim_error(status_code=404, detail="User not found")
+    return _scim_json(_scim_user(member))
+
+
+def _coerce_bool(raw: Any) -> bool | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        if int(raw) in {0, 1}:
+            return bool(int(raw))
+        return None
+    if isinstance(raw, str):
+        v = raw.strip().lower()
+        if v in {"true", "1", "yes", "y", "on"}:
+            return True
+        if v in {"false", "0", "no", "n", "off"}:
+            return False
+    return None
+
+
+def _audit_scim(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: str,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    http_request: Request | None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    request_id = None
+    ip = None
+    user_agent = None
+    if http_request is not None:
+        request_id = str(getattr(http_request.state, "request_id", "") or "").strip() or None
+        user_agent = (http_request.headers.get("User-Agent") or "").strip() or None
+        with contextlib.suppress(Exception):
+            parsed_ip = _extract_client_ip(http_request)
+            ip = str(parsed_ip) if parsed_ip is not None else None
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        request_id=request_id,
+        ip=ip,
+        user_agent=user_agent,
+        details=details,
+    )
+
+
+@router.post("/Users")
+def create_user(
+    payload: dict[str, Any],
+    http_request: Request,
+    tenant_id: UUID = Depends(get_tenant_id),
+    actor_id: str = Depends(_require_scim_actor),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "SCIM_USERS_CREATE_ENABLED", False)):
+        return _scim_error(status_code=404, detail="POST /Users not enabled")
+
+    if not isinstance(payload, dict):
+        return _scim_error(status_code=400, detail="Invalid SCIM payload", scim_type="invalidSyntax")
+
+    user_name = str(payload.get("userName") or "").strip()
+    if not user_name:
+        return _scim_error(status_code=400, detail="userName is required", scim_type="invalidValue")
+    if len(user_name) > 255:
+        return _scim_error(status_code=400, detail="userName too long (max=255)", scim_type="invalidValue")
+
+    raw_active = payload.get("active", None)
+    active = _coerce_bool(raw_active)
+    if raw_active is not None and active is None:
+        return _scim_error(status_code=400, detail="active must be boolean", scim_type="invalidValue")
+    if active is None:
+        active = True
+
+    existing = _get_user(db, tenant_id=tenant_id, user_id=user_name)
+    if existing is not None:
+        return _scim_error(status_code=409, detail="User already exists", scim_type="uniqueness")
+
+    member = TenantMember(
+        tenant_id=tenant_id,
+        user_id=user_name,
+        role="viewer",
+        is_active=bool(active),
+        is_current=False,
+    )
+    db.add(member)
+
+    _audit_scim(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="scim.user.create",
+        resource_type="tenant_member",
+        resource_id=_hash_pii(user_name),
+        http_request=http_request,
+        details={
+            "user_id_hash": _hash_pii(user_name),
+            "user_id_chars": int(len(user_name)),
+            "active": bool(active),
+        },
+    )
+
+    db.commit()
+    db.refresh(member)
+    return _scim_json(_scim_user(member), status_code=201)
+
+
+def _extract_active_patch(ops: Any) -> bool | None:
+    if not isinstance(ops, list) or not ops:
+        return None
+    desired: bool | None = None
+    for raw in ops:
+        if not isinstance(raw, dict):
+            continue
+        op = str(raw.get("op") or "").strip().lower()
+        path = str(raw.get("path") or "").strip().lower()
+        value = raw.get("value")
+
+        # Common pattern: {"op":"Replace","path":"active","value":false}
+        if path == "active":
+            if op in {"add", "replace"}:
+                desired = _coerce_bool(value)
+            elif op == "remove":
+                desired = False
+            continue
+
+        # Alternate pattern: {"op":"Replace","value":{"active":false}}
+        if not path and isinstance(value, dict) and "active" in value and op in {"add", "replace"}:
+            desired = _coerce_bool(value.get("active"))
+            continue
+
+    return desired
+
+
+@router.patch("/Users/{user_id}")
+def patch_user(
+    user_id: str,
+    payload: dict[str, Any],
+    http_request: Request,
+    tenant_id: UUID = Depends(get_tenant_id),
+    actor_id: str = Depends(_require_scim_actor),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)):
+        return _scim_error(status_code=404, detail="PATCH /Users not enabled")
+
+    member = _get_user(db, tenant_id=tenant_id, user_id=user_id)
+    if member is None:
+        return _scim_error(status_code=404, detail="User not found")
+
+    schemas = payload.get("schemas") if isinstance(payload, dict) else None
+    if not isinstance(schemas, list) or _URN_PATCH_OP not in {str(s or "") for s in schemas}:
+        return _scim_error(status_code=400, detail="Invalid SCIM PATCH payload", scim_type="invalidSyntax")
+
+    ops = payload.get("Operations") if isinstance(payload, dict) else None
+    desired = _extract_active_patch(ops)
+    if desired is None:
+        return _scim_error(status_code=400, detail="Only 'active' PATCH is supported", scim_type="invalidPath")
+
+    before = bool(getattr(member, "is_active", True))
+    after = bool(desired)
+    changed = before != after
+    member.is_active = after
+    if not after:
+        # Best-effort: inactive members should not be selected as "current".
+        with contextlib.suppress(Exception):
+            member.is_current = False
+
+    _audit_scim(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="scim.user.patch",
+        resource_type="tenant_member",
+        resource_id=_hash_pii(getattr(member, "user_id", user_id)),
+        http_request=http_request,
+        details={
+            "user_id_hash": _hash_pii(getattr(member, "user_id", user_id)),
+            "active_before": bool(before),
+            "active_after": bool(after),
+            "changed": bool(changed),
+        },
+    )
+
+    db.commit()
+    db.refresh(member)
     return _scim_json(_scim_user(member))
 
 

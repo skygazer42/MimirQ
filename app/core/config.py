@@ -7,6 +7,8 @@ Centralized settings management including:
 - RAG pipeline parameters
 - Storage backend config
 """
+import ipaddress
+import re
 import sys
 import warnings
 from pathlib import Path
@@ -470,9 +472,22 @@ class Settings(BaseSettings):
     # - guarded by static bearer token (IdP-friendly)
     # - read-only endpoints first; PATCH membership is separate opt-in
     SCIM_ENABLED: bool = False
+    # Bearer token auth for SCIM endpoints.
+    #
+    # Rotation support:
+    # - You may provide a comma/space-separated active set (e.g. "tok_v1,tok_v2")
+    # - Each token may be provided as raw or as `sha256:<hex>` (recommended)
     SCIM_BEARER_TOKEN: str = ""
     SCIM_PAGE_SIZE_MAX: int = 200
+    # Defense-in-depth: optional client IP allowlist for SCIM endpoints.
+    # Comma/space-separated CIDRs (e.g. "203.0.113.0/24,198.51.100.10/32").
+    # Fail-closed when set.
+    SCIM_IP_ALLOWLIST_CIDRS: str = ""
     SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED: bool = False
+    # Optional write endpoints (default disabled).
+    SCIM_USERS_CREATE_ENABLED: bool = False
+    SCIM_USERS_PATCH_ACTIVE_ENABLED: bool = False
+    SCIM_GROUPS_MUTATION_ENABLED: bool = False
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
 
@@ -1365,9 +1380,26 @@ class Settings(BaseSettings):
 
         # Security: SCIM provisioning auth guard (enterprise).
         if bool(getattr(self, "SCIM_ENABLED", False)):
-            token = str(getattr(self, "SCIM_BEARER_TOKEN", "") or "").strip()
-            if not token:
+            token_raw = str(getattr(self, "SCIM_BEARER_TOKEN", "") or "").strip()
+            tokens = [p.strip() for p in re.split(r"[,\\s]+", token_raw) if p.strip()]
+            if not tokens:
                 raise ValueError("SCIM_BEARER_TOKEN required when SCIM_ENABLED=true")
+            for tok in tokens:
+                if tok.lower().startswith("sha256:"):
+                    digest = tok.split(":", 1)[1].strip()
+                    if not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""):
+                        raise ValueError("SCIM_BEARER_TOKEN sha256 digest must be 64 hex chars")
+
+            allow_raw = str(getattr(self, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
+            if allow_raw:
+                cidrs = [p.strip() for p in re.split(r"[,\\s]+", allow_raw) if p.strip()]
+                if not cidrs:
+                    raise ValueError("SCIM_IP_ALLOWLIST_CIDRS must be a comma/space-separated list of CIDRs")
+                for cidr in cidrs:
+                    try:
+                        ipaddress.ip_network(cidr, strict=False)
+                    except ValueError as exc:
+                        raise ValueError(f"Invalid SCIM_IP_ALLOWLIST_CIDRS entry: {cidr}") from exc
 
         # Security: Validate SECRET_KEY (required for JWT verification)
         if auth_mode == "jwt":

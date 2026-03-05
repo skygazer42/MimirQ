@@ -14,6 +14,7 @@ class TenantMemberOut(BaseModel):
     tenant_id: UUID
     user_id: Optional[str] = None
     role: str = Field(default=UserRoles.VIEWER, description="owner|admin|auditor|editor|dataset_operator|viewer")
+    is_active: bool = True
     is_current: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -49,4 +50,3 @@ class TenantMemberUpdateRequest(BaseModel):
         if v not in allowed:
             raise ValueError(f"role must be one of: {', '.join(sorted(allowed))}")
         return v
-

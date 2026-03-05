@@ -46,12 +46,15 @@ class DatasetService:
                     tenant_id=tenant_id,
                     user_id=account_id,
                     role="owner",
+                    is_active=True,
                     is_current=True,
                 )
                 db.add(member)
                 db.commit()
                 db.refresh(member)
                 return member
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a tenant member")
+        if not bool(getattr(member, "is_active", True)):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a tenant member")
         return member
 
