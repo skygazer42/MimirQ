@@ -148,7 +148,7 @@ cp .env.example .env
 docker compose -f docker-compose.infra.yml up -d
 
 cd ..
-pip install -r requirements.txt
+pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 python main.py
 ```
 

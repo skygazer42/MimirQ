@@ -19,7 +19,7 @@ MimirQ 支持两种 Embedding 模式，对应不同的依赖需求。
 
 **安装**：
 ```bash
-pip install -r requirements.txt
+pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 ```
 
 **配置**：
@@ -51,7 +51,7 @@ EMBEDDING_API_BASE=https://api.openai.com/v1
 
 **安装**：
 ```bash
-pip install -r requirements.txt
+pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 ```
 
 **配置**：

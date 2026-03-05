@@ -98,7 +98,8 @@ make enterprise-checks
 
 ## Python Dependencies (optional)
 
-- Unified deps: `pip install -r requirements.txt`
+- Unified deps (Linux): `pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt`
+- Unified deps (Windows/macOS): `pip install -r requirements.txt`
 
 ## Health Checks
 

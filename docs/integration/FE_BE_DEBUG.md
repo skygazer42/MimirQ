@@ -12,7 +12,7 @@
 
 ### B. 本地后端 + Docker 跑依赖（开发常用）
 - 依赖：`make infra-up`
-- 本地后端：`pip install -r requirements.txt` → `python main.py`
+- 本地后端：`pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt` → `python main.py`
 - 本地前端：`cd web; pnpm dev`
 
 不同启动方式下，前端访问后端的地址不同（见下文“API URL”）。

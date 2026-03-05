@@ -13,7 +13,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt ./requirements.txt
-RUN python3 -m pip install -U pip && python3 -m pip install -r requirements.txt
+RUN python3 -m pip install -U pip && python3 -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
 COPY server.py ./server.py
 
