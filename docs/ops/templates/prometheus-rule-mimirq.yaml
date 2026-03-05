@@ -24,6 +24,22 @@ spec:
             summary: "High HTTP 5xx rate"
             description: "5xx ratio > 5% over 5m (sustained for 10m)."
 
+        - alert: MimirQHighHttp429Ratio
+          expr: |
+            (
+              sum(rate(http_requests_total{status="429"}[10m]))
+              /
+              clamp_min(sum(rate(http_requests_total[10m])), 1)
+            ) > 0.02
+            and sum(rate(http_requests_total[10m])) > 1
+          for: 15m
+          labels:
+            severity: warning
+            component: http
+          annotations:
+            summary: "High HTTP 429 ratio"
+            description: "429 ratio > 2% over 10m with overall traffic > 1 rps (sustained for 15m). Indicates rate-limit/quota saturation."
+
         - alert: MimirQHighHttpLatencyP95
           expr: |
             histogram_quantile(
@@ -175,3 +191,32 @@ spec:
           annotations:
             summary: "Queue backlog but no active workers"
             description: "task_queue_depth > 0 while task_queue_workers_active < 1 for at least 10m."
+
+    - name: mimirq.authz
+      rules:
+        - alert: MimirQAuthzGroupDenyRatioHigh
+          expr: |
+            (
+              sum by (resource, action) (rate(authz_group_permission_total{result=~"deny_.*"}[10m]))
+              /
+              clamp_min(sum by (resource, action) (rate(authz_group_permission_total[10m])), 1)
+            ) > 0.20
+            and sum by (resource, action) (rate(authz_group_permission_total[10m])) > 0.10
+          for: 20m
+          labels:
+            severity: warning
+            component: authz
+          annotations:
+            summary: "High group ACL deny ratio"
+            description: "Group-based denies > 20% over 10m (sustained for 20m). Common causes: OIDC groups claim not mapped/synced, or group allowlists misconfigured."
+
+        - alert: MimirQAuthzGroupDenySpike
+          expr: |
+            sum by (resource, action) (increase(authz_group_permission_total{result=~"deny_.*"}[5m])) > 200
+          for: 15m
+          labels:
+            severity: warning
+            component: authz
+          annotations:
+            summary: "Spike in group ACL denies"
+            description: "More than 200 group-based deny decisions in 5m (sustained for 15m). Investigate group sync and allowlist changes."

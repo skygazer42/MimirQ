@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite ps ps-lite logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify enterprise-checks parser-status compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite ps ps-lite logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -72,7 +72,9 @@ help:
 	@echo "  make audit     - run both audits"
 	@echo "  make openapi-export - write web/openapi.json"
 	@echo "  make openapi-types  - generate web/types/openapi.ts"
-	@echo "  make openapi-check  - ensure openapi types up-to-date"
+	@echo "  make openapi-validate - verify OpenAPI artifacts are present/clean"
+	@echo "  make openapi-check  - ensure OpenAPI artifacts up-to-date (regenerates)"
+	@echo "  make diagnostics - run key ops diagnostics (api-ping/api-check/openapi-validate/compose-diagnostics/doctor)"
 	@echo "  make db-upgrade - run Alembic migrations"
 	@echo "  make db-revision - create Alembic revision (m=msg)"
 	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
@@ -232,10 +234,20 @@ openapi-types:
 	@$(MAKE) openapi-export
 	cd web && pnpm run gen:api-types
 
-openapi-check:
-	@$(MAKE) openapi-types
+openapi-validate:
 	$(PY) scripts/openapi_check.py
 	node web/scripts/check-openapi-coverage.mjs
+
+openapi-check:
+	@$(MAKE) openapi-types
+	@$(MAKE) openapi-validate
+
+diagnostics:
+	@$(MAKE) api-ping
+	@$(MAKE) api-check
+	@$(MAKE) openapi-validate
+	@$(MAKE) compose-diagnostics
+	@$(MAKE) doctor
 
 db-upgrade:
 	$(PY) scripts/alembic_cli.py -c alembic.ini upgrade head
