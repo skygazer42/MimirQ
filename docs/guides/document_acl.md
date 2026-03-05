@@ -15,7 +15,9 @@
 
 - `inherit`（默认）：仅依赖数据集权限（`access_mode = NULL`）
 - `only_me`：仅 owner 可见
-- `partial_members`：owner + allowlist 可见（allowlist 在 `document_permissions` 表）
+- `partial_members`：owner + allowlist 可见（成员 allowlist + 组 allowlist）
+  - 成员 allowlist：`document_permissions`
+  - 组 allowlist：`document_group_permissions`
 - `all_team_members`：租户内成员可见（但仍受数据集权限限制）
 
 额外规则：
@@ -37,7 +39,8 @@
 ```json
 {
   "mode": "partial_members",
-  "partial_member_list": ["alice", "bob"]
+  "partial_member_list": ["alice", "bob"],
+  "partial_group_list": ["11111111-1111-1111-1111-111111111111"]
 }
 ```
 
@@ -45,6 +48,9 @@
 
 - `mode != partial_members` 时，后端会自动清空 `partial_member_list`
 - `partial_member_list` 会校验“成员必须存在于当前租户 tenant_members”
+- `mode != partial_members` 时，后端也会清空 `partial_group_list`
+- `partial_group_list` 需要是 UUID 列表，且会校验“组必须存在于当前租户 tenant_groups”
+- 组 id 可通过 `GET /api/v1/groups` 获取（返回 `id` + `name`）
 
 ## 对检索与引用的影响
 
@@ -57,4 +63,3 @@ MimirQ 的 RAG/Chat 检索侧会在“默认文档范围”与“显式 document
 
 - 文档列表不会“泄漏”不可见文档
 - 引用/切块不会跨权限返回
-
