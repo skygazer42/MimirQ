@@ -189,6 +189,7 @@ JWT_GROUPS_SYNC_TTL_SEC=60
 
 ## 🔗 相关文档
 
+- [OIDC / JWT Groups Claim 同步（Enterprise）](./oidc_groups_claim.md)
 - [OpenAI Embeddings API](https://platform.openai.com/docs/guides/embeddings)
 - [通义千问 Embeddings](https://help.aliyun.com/zh/dashscope/developer-reference/text-embedding-api-details)
 - [BGE Embedding Models](https://huggingface.co/BAAI/bge-large-zh-v1.5)
