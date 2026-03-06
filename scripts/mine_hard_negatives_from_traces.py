@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -68,16 +69,16 @@ def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
     raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
 
 
-def _iter_trace_records(path: Path, *, max_records: int = 0) -> list[dict[str, Any]]:
+def _iter_trace_records(path: Path, *, max_records: int = 0) -> Iterator[dict[str, Any]]:
     """
-    Return a list of parsed rag_trace JSON objects (best-effort).
+    Yield parsed rag_trace JSON objects (best-effort).
 
-    Note: This keeps memory bounded via max_records (0=unbounded, but not recommended).
+    Note: This keeps memory bounded (streams the file) and supports max_records.
     """
-    out: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8", errors="replace") as f:
+        emitted = 0
         for line in f:
-            if max_records and len(out) >= int(max_records):
+            if max_records and emitted >= int(max_records):
                 break
             line = (line or "").strip()
             if not line:
@@ -90,8 +91,8 @@ def _iter_trace_records(path: Path, *, max_records: int = 0) -> list[dict[str, A
                 continue
             if str(obj.get("event") or "") != "rag_trace":
                 continue
-            out.append(obj)
-    return out
+            yield obj
+            emitted += 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -101,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", required=True, help="Write mined hard negatives JSONL to this path")
 
     p.add_argument("--retrieval-config-hash", default="", help="Only use trace records matching this retrieval_config_hash (optional)")
+    p.add_argument("--tenant-id", default="", help="Only use trace records matching this tenant_id (optional)")
     p.add_argument("--max-cases", type=int, default=0, help="Limit cases processed (default: all)")
     p.add_argument("--max-traces", type=int, default=0, help="Limit trace records read (default: all)")
     p.add_argument("--max-hard-negatives", type=int, default=10, help="Hard negatives per case (default: %(default)s)")
@@ -142,13 +144,20 @@ def main(argv: list[str] | None = None) -> int:
         print("[hard-negatives] ERROR: produced zero case hashes (missing questions?)", file=sys.stderr)
         return 2
 
-    traces = _iter_trace_records(traces_path, max_records=int(args.max_traces or 0))
-
     # Index traces by question_hash (preferred) or query_hash.
     want_cfg = str(args.retrieval_config_hash or "").strip() or None
+    want_tenant = str(args.tenant_id or "").strip() or None
     trace_by_hash: dict[str, dict[str, Any]] = {}
     matched_traces = 0
-    for rec in traces:
+    traces_total = 0
+    for rec in _iter_trace_records(traces_path, max_records=int(args.max_traces or 0)):
+        traces_total += 1
+
+        if want_tenant:
+            tid = str(rec.get("tenant_id") or "").strip()
+            if not tid or tid != want_tenant:
+                continue
+
         qh = str(rec.get("question_hash") or rec.get("query_hash") or "").strip()
         if not qh or qh not in target_hashes:
             continue
@@ -197,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         f" cases_total={len(target_hashes)}"
         f" cases_used={used}"
         f" cases_skipped={skipped}"
-        f" traces_total={len(traces)}"
+        f" traces_total={traces_total}"
         f" traces_matched={matched_traces}"
         f" out={out_path}",
         file=sys.stderr,
@@ -207,4 +216,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
