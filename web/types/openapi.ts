@@ -3059,6 +3059,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evidence/suites/{suite_id}/hardcase-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evidence Suite Hardcase Candidates
+         * @description Discover PII-safe "hardcase" candidates for an EvidenceSuite from:
+         *     - negative message feedback (DB)
+         *     - recent rag_trace metrics records (JSONL)
+         *
+         *     Output is clustered/deduped by `question_hash` and does NOT include raw query text.
+         */
+        get: operations["list_evidence_suite_hardcase_candidates_api_v1_evidence_suites__suite_id__hardcase_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evidence/suites/{suite_id}/drift-audit": {
         parameters: {
             query?: never;
@@ -12021,6 +12045,90 @@ export interface components {
             reasons?: {
                 [key: string]: number;
             };
+        };
+        /**
+         * EvidenceHardcaseCandidateOut
+         * @description PII-safe hardcase candidate (clustered by question_hash).
+         *
+         *     Notes:
+         *     - `question_hash` matches metrics JSONL `question_hash` (sha256[:16] of stripped question text)
+         *     - IDs (feedback_id/request_id) are pointers for reviewers; no raw text is included.
+         */
+        EvidenceHardcaseCandidateOut: {
+            /** Question Hash */
+            question_hash: string;
+            /**
+             * Cluster Size
+             * @default 0
+             */
+            cluster_size: number;
+            /**
+             * In Suite
+             * @default false
+             */
+            in_suite: boolean;
+            /** Feedback Ids */
+            feedback_ids?: string[];
+            /** Request Ids */
+            request_ids?: string[];
+            /** Retrieval Config Hash */
+            retrieval_config_hash?: string | null;
+            /** Citations Count */
+            citations_count?: number | null;
+            /** Retrieval Error Kinds */
+            retrieval_error_kinds?: {
+                [key: string]: number;
+            };
+            /** Rag Config Template */
+            rag_config_template?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** EvidenceHardcaseDiscoveryOut */
+        EvidenceHardcaseDiscoveryOut: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Metrics Path */
+            metrics_path: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Max Bytes */
+            max_bytes: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Feedback Scanned
+             * @default 0
+             */
+            feedback_scanned: number;
+            /**
+             * Trace Index Size
+             * @default 0
+             */
+            trace_index_size: number;
+            /** Candidates */
+            candidates?: components["schemas"]["EvidenceHardcaseCandidateOut"][];
         };
         /** EvidenceItemCreateRequest */
         EvidenceItemCreateRequest: {
@@ -24859,6 +24967,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceSuiteDashboardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evidence_suite_hardcase_candidates_api_v1_evidence_suites__suite_id__hardcase_candidates_get: {
+        parameters: {
+            query?: {
+                window_minutes?: number;
+                max_bytes?: number;
+                max_feedback_rows?: number;
+                max_candidates?: number;
+                max_rating?: number;
+                include_existing?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceHardcaseDiscoveryOut"];
                 };
             };
             /** @description Validation Error */

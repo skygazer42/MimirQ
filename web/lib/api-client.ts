@@ -1997,6 +1997,25 @@ export const evidenceApi = {
     })
   },
 
+  async getSuiteHardcaseCandidates(
+    suiteId: string,
+    params?: {
+      window_minutes?: number
+      max_bytes?: number
+      max_feedback_rows?: number
+      max_candidates?: number
+      max_rating?: number
+      include_existing?: boolean
+    }
+  ): Promise<any> {
+    return openapiRequest({
+      path: '/api/v1/evidence/suites/{suite_id}/hardcase-candidates',
+      method: 'get',
+      pathParams: { suite_id: suiteId },
+      query: params,
+    })
+  },
+
   async getSuiteDriftAudit(
     suiteId: string,
     params?: {

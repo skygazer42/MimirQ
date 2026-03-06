@@ -208,3 +208,41 @@ class EvidenceSuiteDashboardOut(BaseModel):
     item_counts: Dict[str, int] = Field(default_factory=dict)
     coverage: EvidenceSuiteCoverage = Field(default_factory=EvidenceSuiteCoverage)
     throughput: EvidenceSuiteThroughput = Field(default_factory=EvidenceSuiteThroughput)
+
+
+class EvidenceHardcaseCandidateOut(BaseModel):
+    """
+    PII-safe hardcase candidate (clustered by question_hash).
+
+    Notes:
+    - `question_hash` matches metrics JSONL `question_hash` (sha256[:16] of stripped question text)
+    - IDs (feedback_id/request_id) are pointers for reviewers; no raw text is included.
+    """
+
+    question_hash: str
+    cluster_size: int = 0
+    in_suite: bool = False
+
+    feedback_ids: List[str] = Field(default_factory=list)
+    request_ids: List[str] = Field(default_factory=list)
+
+    retrieval_config_hash: Optional[str] = None
+    citations_count: Optional[int] = None
+    retrieval_error_kinds: Dict[str, int] = Field(default_factory=dict)
+    rag_config_template: Optional[Dict[str, Any]] = None
+
+
+class EvidenceHardcaseDiscoveryOut(BaseModel):
+    generated_at: datetime
+    suite_id: UUID
+    dataset_id: UUID
+
+    enabled: bool = True
+    metrics_path: str
+    window_minutes: int
+    max_bytes: int
+    truncated: bool = False
+
+    feedback_scanned: int = 0
+    trace_index_size: int = 0
+    candidates: List[EvidenceHardcaseCandidateOut] = Field(default_factory=list)
