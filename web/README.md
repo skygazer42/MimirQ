@@ -98,6 +98,16 @@ Implementation:
 - Code exchange: `POST /api/oidc/exchange` (sets refresh token in an httpOnly cookie when provided)
 - Refresh: `POST /api/oidc/refresh` (uses refresh token cookie; returns a new access token)
 
+## SAML SSO (Skeleton / Optional)
+
+Some enterprises require SAML 2.0. We keep a guarded skeleton in the Next.js server (disabled by default).
+
+- Enable switch: `SAML_ENABLED=true` (default: off)
+- SP metadata: `GET /api/saml/metadata` (returns minimal placeholder metadata)
+- ACS endpoint: `POST /api/saml/acs` (currently returns `501 saml_not_implemented`)
+
+Design notes + next steps: `docs/guides/saml_sso.md`.
+
 ## Backend Integration / Debugging
 
 - Diagnostics page: `/diagnostics` (shows backend health/ready/meta + frontend API config)
