@@ -50,14 +50,23 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                             "search_k": 10,
                             "overfetch_enabled": True,
                             "channels": {
-                                "timing": {"vector_ms": 12.3, "bm25_ms": 4.5, "fusion_ms": 1.2},
-                                "counts": {"vector_candidates": 10, "bm25_candidates": 8, "sparse_candidates": 6},
+                                "timing": {"vector_ms": 12.3, "colbert_ms": 8.7, "bm25_ms": 4.5, "fusion_ms": 1.2},
+                                "counts": {"vector_candidates": 10, "colbert_candidates": 4, "bm25_candidates": 8, "sparse_candidates": 6},
                                 "retrieval_mode": "hybrid",
                                 "fusion_strategy": "rrf",
                                 "rrf_k": 60,
                                 "fusion_weights": {"vector": 0.6, "keyword": 0.4},
                                 "vector_backend": "milvus",
                                 "vector": {"enabled": True, "candidates": 10, "filter_applied": False},
+                                "colbert_ann": {
+                                    "enabled": True,
+                                    "used": True,
+                                    "provider": "deterministic",
+                                    "candidates": 4,
+                                    "skipped_reason": "too_many_docs",
+                                    "docs_n": 1200,
+                                    "max_docs": 1000,
+                                },
                                 "bm25": {"enabled": True, "candidates": 8, "index_enabled": True, "filter_applied": True},
                                 "lexical_db": {
                                     "enabled": False,
@@ -193,7 +202,13 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     channels = item.retrieval.per_query[0].retriever_debug.get("channels")
     assert isinstance(channels, dict)
     assert (channels.get("timing") or {}).get("vector_ms") == 12.3
+    assert (channels.get("timing") or {}).get("colbert_ms") == 8.7
+    assert (channels.get("counts") or {}).get("colbert_candidates") == 4
     assert (channels.get("counts") or {}).get("bm25_candidates") == 8
+    colbert = channels.get("colbert_ann") or {}
+    assert colbert.get("provider") == "deterministic"
+    assert colbert.get("skipped_reason") == "too_many_docs"
+    assert colbert.get("max_docs") == 1000
     assert (channels.get("rerank") or {}).get("skip_reason") == "provider_disabled"
     scope = item.retrieval.per_query[0].retriever_debug.get("scope") or {}
     assert scope.get("account_id_present") is True

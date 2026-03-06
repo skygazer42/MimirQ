@@ -657,6 +657,9 @@ class Settings(BaseSettings):
     COLBERT_RETRIEVAL_DEVICE: str = "cpu"  # cpu | cuda | auto
     COLBERT_RETRIEVAL_BATCH_SIZE: int = 16
     COLBERT_RETRIEVAL_MAX_LENGTH: int = 256
+    # Safety cap: avoid building huge in-memory ANN matrices by accident.
+    # 0 disables the cap (not recommended for production).
+    COLBERT_RETRIEVAL_MAX_DOCS: int = 10_000
     # Used only by deterministic provider.
     COLBERT_RETRIEVAL_EMBED_DIM: int = 64
 

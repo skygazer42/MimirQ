@@ -527,6 +527,15 @@ class HybridRetriever(BaseRetriever):
         - Optional HF embedder (opt-in)
         - Persisted index to disk for fast cold-start in multi-process deployments
         """
+        try:
+            max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
+        except Exception:
+            max_docs = 0
+        if max_docs > 0 and len(docs or []) > max_docs:
+            # Enforce a hard memory guard: don't build large matrices by accident.
+            self._colbert_index_cache.pop(cache_key, None)
+            return
+
         from app.rag.retrieval.colbert_ann import (
             ColbertAnnIndex,
             ColbertAnnIndexStore,
@@ -610,6 +619,15 @@ class HybridRetriever(BaseRetriever):
         avoiding a full re-embed of the corpus on each chunk-level upsert.
         """
         if not upsert_docs or not corpus_docs:
+            return
+
+        try:
+            max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
+        except Exception:
+            max_docs = 0
+        if max_docs > 0 and len(corpus_docs or []) > max_docs:
+            # Keep bounded resource usage by dropping the index for oversized scopes.
+            self._colbert_index_cache.pop(cache_key, None)
             return
 
         from app.rag.retrieval.colbert_ann import (  # local import: optional deps
@@ -1588,6 +1606,31 @@ class HybridRetriever(BaseRetriever):
         if not docs:
             return []
 
+        # Resource guard: avoid accidentally building large in-memory ANN matrices.
+        # This is especially important for HF providers where dim is typically 768+.
+        try:
+            max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
+        except Exception:
+            max_docs = 0
+        if max_docs > 0 and len(docs) > max_docs:
+            try:
+                if isinstance(self._last_channel_metrics, dict):
+                    box = self._last_channel_metrics.get("colbert_ann")
+                    if not isinstance(box, dict):
+                        box = {}
+                        self._last_channel_metrics["colbert_ann"] = box
+                    box["skipped_reason"] = "too_many_docs"
+                    box["docs_n"] = int(len(docs))
+                    box["max_docs"] = int(max_docs)
+            except Exception:
+                pass
+            # Free any cached index for this scope to keep memory bounded.
+            try:
+                self._colbert_index_cache.pop(cache_key, None)
+            except Exception:
+                pass
+            return []
+
         from app.rag.retrieval.colbert_ann import (
             ColbertAnnIndexStore,
             build_colbert_provider_config,
@@ -2194,15 +2237,18 @@ class HybridRetriever(BaseRetriever):
         # Best-effort per-query debug metrics (low overhead, no external deps).
         # `_get_relevant_documents` will embed these into `_last_debug_metrics`.
         channel_metrics: Dict[str, Any] = {
-            "timing": {"vector_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0},
-            "counts": {"vector_candidates": 0, "bm25_candidates": 0},
+            "timing": {"vector_ms": 0.0, "colbert_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0},
+            "counts": {"vector_candidates": 0, "colbert_candidates": 0, "bm25_candidates": 0},
         }
         self._last_channel_metrics = channel_metrics
         # Reset per-call diversity caps meta to avoid stale fields on cache-hit/early-return paths.
         self._last_diversity_caps = {}
 
         vector_elapsed_ms = 0.0
+        colbert_elapsed_ms = 0.0
         bm25_elapsed_ms = 0.0
+        colbert_used = False
+        colbert_candidates = 0
 
         # Metadata filter strategy:
         # - BM25 sees Postgres chunk metadata (rich JSON) -> can apply most filters early.
@@ -2369,8 +2415,12 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    colbert_used = True
+                    colbert_candidates = int(len(vector_results or []))
                 finally:
-                    vector_elapsed_ms += (time.perf_counter() - t0) * 1000
+                    delta_ms = (time.perf_counter() - t0) * 1000
+                    vector_elapsed_ms += delta_ms
+                    colbert_elapsed_ms += delta_ms
             except Exception as exc:
                 logger.warning("ColBERT ANN search failed: %s", exc)
                 vector_results = []
@@ -2534,13 +2584,29 @@ class HybridRetriever(BaseRetriever):
             timing = channel_metrics.get("timing")
             if isinstance(timing, dict):
                 timing["vector_ms"] = round(float(vector_elapsed_ms), 2)
+                timing["colbert_ms"] = round(float(colbert_elapsed_ms), 2)
                 timing["bm25_ms"] = round(float(bm25_elapsed_ms), 2)
 
             counts = channel_metrics.get("counts")
             if isinstance(counts, dict):
                 counts["vector_candidates"] = int(len(vector_results or []))
+                counts["colbert_candidates"] = int(colbert_candidates or 0)
                 counts["bm25_candidates"] = int(len(bm25_results or []))
                 counts["sparse_candidates"] = int(len(sparse_results or []))
+
+            # Optional: ColBERT ANN fallback meta (PII-safe, low-cardinality).
+            colbert_box = channel_metrics.get("colbert_ann")
+            if not isinstance(colbert_box, dict):
+                colbert_box = {}
+            colbert_box.update(
+                {
+                    "enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
+                    "used": bool(colbert_used),
+                    "candidates": int(colbert_candidates or 0),
+                    "provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
+                }
+            )
+            channel_metrics["colbert_ann"] = colbert_box
 
             channel_metrics.update(
                 {
@@ -2591,10 +2657,12 @@ class HybridRetriever(BaseRetriever):
                 timing = channel_metrics.get("timing")
                 if isinstance(timing, dict):
                     timing["vector_ms"] = round(float(vector_elapsed_ms), 2)
+                    timing["colbert_ms"] = round(float(colbert_elapsed_ms), 2)
                     timing["bm25_ms"] = round(float(bm25_elapsed_ms), 2)
                 counts = channel_metrics.get("counts")
                 if isinstance(counts, dict):
                     counts["vector_candidates"] = int(len(vector_results or []))
+                    counts["colbert_candidates"] = int(colbert_candidates or 0)
                     counts["bm25_candidates"] = int(len(bm25_results or []))
                     counts["sparse_candidates"] = int(len(sparse_results or []))
             except Exception:

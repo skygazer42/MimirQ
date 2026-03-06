@@ -258,7 +258,7 @@ def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
         timing_raw = ch_raw.get("timing")
         if isinstance(timing_raw, dict) and timing_raw:
             timing: dict[str, float] = {}
-            for k in ("vector_ms", "bm25_ms", "fusion_ms"):
+            for k in ("vector_ms", "colbert_ms", "bm25_ms", "fusion_ms"):
                 v = _safe_float(timing_raw.get(k), lo=0.0, hi=1_000_000.0, digits=2)
                 if v is not None:
                     timing[k] = v
@@ -268,7 +268,7 @@ def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
         counts_raw = ch_raw.get("counts")
         if isinstance(counts_raw, dict) and counts_raw:
             counts: dict[str, int] = {}
-            for k in ("vector_candidates", "bm25_candidates", "sparse_candidates"):
+            for k in ("vector_candidates", "colbert_candidates", "bm25_candidates", "sparse_candidates"):
                 v = _safe_int(counts_raw.get(k))
                 if v is not None:
                     counts[k] = v
@@ -293,7 +293,7 @@ def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
             if not isinstance(box_raw, dict) or not box_raw:
                 return None
             box: dict[str, Any] = {}
-            for k in ("enabled", "filter_applied", "index_enabled", "trgm_enabled", "pg_trgm_available"):
+            for k in ("enabled", "used", "filter_applied", "index_enabled", "trgm_enabled", "pg_trgm_available"):
                 if k not in box_raw:
                     continue
                 b = _to_bool(box_raw.get(k))
@@ -323,9 +323,22 @@ def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
                 s = _safe_str(box_raw.get("provider"), max_len=80)
                 if s is not None:
                     box["provider"] = s
+            if kind == "colbert_ann":
+                s = _safe_str(box_raw.get("provider"), max_len=80)
+                if s is not None:
+                    box["provider"] = s
+                reason = _safe_str(box_raw.get("skipped_reason"), max_len=80)
+                if reason is not None:
+                    box["skipped_reason"] = reason
+                dn = _safe_int(box_raw.get("docs_n"))
+                if dn is not None:
+                    box["docs_n"] = dn
+                md = _safe_int(box_raw.get("max_docs"))
+                if md is not None:
+                    box["max_docs"] = md
             return box or None
 
-        for k in ("vector", "bm25", "lexical_db", "sparse"):
+        for k in ("vector", "colbert_ann", "bm25", "lexical_db", "sparse"):
             box = _safe_channel_box(ch_raw.get(k), kind=k)
             if box:
                 out_ch[k] = box

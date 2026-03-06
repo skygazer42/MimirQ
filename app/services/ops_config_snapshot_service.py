@@ -94,6 +94,9 @@ def _build_retrieval_config_for_fingerprint() -> dict[str, Any]:
         "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
         "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
         "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
+        "colbert_provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
+        "colbert_index_persist_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
+        "colbert_max_docs": int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0),
         "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
         "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "") or ""),
         "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 0) or 0),
@@ -198,4 +201,3 @@ def build_ops_config_snapshot() -> OpsConfigSnapshot:
 
 
 __all__ = ["OpsConfigSnapshot", "build_ops_config_snapshot"]
-
