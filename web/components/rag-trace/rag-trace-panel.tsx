@@ -581,7 +581,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     ) : null}
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {(['vector', 'bm25', 'lexical_db', 'sparse'] as const).map((k) => {
+                      {(['vector', 'colbert_ann', 'bm25', 'lexical_db', 'sparse'] as const).map((k) => {
                         const box = (channels as any)?.[k] as Record<string, any> | null | undefined
                         if (!box) return null
                         return (
@@ -590,9 +590,11 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                               <div className="text-xs font-semibold text-foreground">{k}</div>
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
                                 {box.enabled != null ? `enabled=${String(box.enabled)}` : null}
+                                {box.used != null ? ` · used=${String(box.used)}` : null}
                                 {box.filter_applied != null ? ` · filter=${String(box.filter_applied)}` : null}
                                 {box.index_enabled != null ? ` · index=${String(box.index_enabled)}` : null}
                                 {box.provider ? ` · provider=${String(box.provider)}` : null}
+                                {box.skipped_reason ? ` · skipped=${String(box.skipped_reason)}` : null}
                               </div>
                             </div>
                             <div className="shrink-0 text-xs font-medium text-muted-foreground">
@@ -625,6 +627,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     const bm25Score = isNonZero(c.bm25_score) ? formatScore(c.bm25_score, 3) : null
                     const lexicalScore = isNonZero(c.lexical_score) ? formatScore(c.lexical_score, 3) : null
                     const sparseScore = isNonZero(c.sparse_score) ? formatScore(c.sparse_score, 3) : null
+                    const colbertScore = isNonZero(c.colbert_score) ? formatScore(c.colbert_score, 3) : null
                     const role = c.retrieval_role ? String(c.retrieval_role) : null
                     const neighborOf = c.neighbor_of ? String(c.neighbor_of) : null
                     return (
@@ -685,6 +688,11 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                             {sparseScore ? (
                               <Badge variant="soft" className="text-[10px]">
                                 sparse={sparseScore}
+                              </Badge>
+                            ) : null}
+                            {colbertScore ? (
+                              <Badge variant="soft" className="text-[10px]">
+                                colbert={colbertScore}
                               </Badge>
                             ) : null}
                             {page ? (

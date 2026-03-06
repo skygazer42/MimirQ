@@ -10,7 +10,8 @@ describe('rag trace panel channel scores', () => {
     expect(src).toContain('bm25_score')
     expect(src).toContain('lexical_score')
     expect(src).toContain('sparse_score')
+    expect(src).toContain('colbert_score')
     expect(src).toContain('skip_reason')
+    expect(src).toContain('colbert_ann')
   })
 })
-

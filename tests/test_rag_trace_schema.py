@@ -125,6 +125,7 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                     "bm25_score": 0.456,
                     "lexical_score": 0.789,
                     "sparse_score": 0.314,
+                    "colbert_score": 0.271,
                     "retrieval_elapsed_sec": 0.12,
                     "rerank_elapsed_sec": 0.45,
                     "retrieval_role": "main",
@@ -222,6 +223,7 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     assert item.citations and item.citations[0].bm25_score == 0.456
     assert item.citations and item.citations[0].lexical_score == 0.789
     assert item.citations and item.citations[0].sparse_score == 0.314
+    assert item.citations and item.citations[0].colbert_score == 0.271
     prov = (item.citations[0] or {}).kg_path_provenance
     assert isinstance(prov, dict)
     assert prov.get("schema") == "mimirq.kg_path_provenance.v1"
