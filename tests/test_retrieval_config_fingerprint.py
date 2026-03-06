@@ -128,6 +128,18 @@ def test_orchestrator_emits_retrieval_config_fingerprint(monkeypatch: pytest.Mon
     assert isinstance(fp4, dict)
     assert fp4.get("hash") != fp1.get("hash")
 
+    # Fingerprint must change when ColBERT resource bounds change.
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 100, raising=False)
+    out5 = orch_mod.run_retrieval(dict(base_state))
+    fp5 = (out5.get("retrieval_trace") or {}).get("retrieval_config")
+    assert isinstance(fp5, dict)
+
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 10, raising=False)
+    out6 = orch_mod.run_retrieval(dict(base_state))
+    fp6 = (out6.get("retrieval_trace") or {}).get("retrieval_config")
+    assert isinstance(fp6, dict)
+    assert fp6.get("hash") != fp5.get("hash")
+
     # Convenience: surface hash in metrics as well.
     metrics1 = out1.get("metrics") or {}
     assert isinstance(metrics1, dict)

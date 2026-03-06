@@ -48,15 +48,35 @@ HF provider（可选，需显式配置模型）：
 - `COLBERT_RETRIEVAL_DEVICE=cpu|cuda|auto`
 - `COLBERT_RETRIEVAL_BATCH_SIZE=16`
 - `COLBERT_RETRIEVAL_MAX_LENGTH=256`
+- `COLBERT_RETRIEVAL_MAX_DOCS=10000`：资源上限（按 scope 的 chunk 数量），超过则跳过该通道以避免 OOM/长尾延迟
 
 Deterministic provider（单测/回归）：
 - `COLBERT_RETRIEVAL_EMBED_DIM=64`
 
 ---
 
-## 4) Tradeoffs
+## 4) 资源上限（Bounded resource use）
+
+该通道会在以下场景 **主动跳过**（返回空候选）以保证资源可控：
+
+- 当 scope 的 chunk 数量超过 `COLBERT_RETRIEVAL_MAX_DOCS` 时：
+  - 不会构建/更新 ANN matrix
+  - 会清理该 scope 的 in-memory ColBERT index cache（best-effort）
+  - 整体检索链路仍会继续（vector backend / BM25 / lexical / sparse 等不受影响）
+
+可用于灰度策略：
+- 先设置较小的 `COLBERT_RETRIEVAL_MAX_DOCS` 在预发观察成本曲线
+- 再按数据集规模逐步放开（或为大 scope 保持跳过）
+
+可观测（用于评测/诊断）：
+- `rag_trace.channels.colbert_ann.skipped_reason=too_many_docs`
+- `rag_trace.channels.timing.colbert_ms`（fallback 查询耗时）
+- `rag_trace.channels.counts.colbert_candidates`
+
+---
+
+## 5) Tradeoffs
 
 - 额外索引构建开销（CPU/GPU + 内存）
 - 多进程场景下，持久化索引可以显著降低冷启动成本（best-effort）
 - 这不是完整 ColBERT 检索：如果你需要真实 token-level ColBERT index，需要额外工程与依赖
-
