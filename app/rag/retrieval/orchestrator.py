@@ -2293,6 +2293,40 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
             },
         }
+
+        # Optional: experiment lineage for retrieval config templates.
+        #
+        # Keep stable keys only (no UUIDs) so retrieval_config_hash is comparable across environments.
+        tmpl_raw = state.get("rag_config_template")
+        if isinstance(tmpl_raw, dict) and tmpl_raw:
+            tmpl_fp: Dict[str, Any] = {}
+
+            key = str(tmpl_raw.get("template_key") or "").strip()
+            if key:
+                tmpl_fp["template_key"] = key
+
+            try:
+                version = int(tmpl_raw.get("version") or 0)
+            except Exception:
+                version = 0
+            if version > 0:
+                tmpl_fp["version"] = version
+
+            exp = str(tmpl_raw.get("ab_experiment_key") or "").strip()
+            if exp:
+                tmpl_fp["ab_experiment_key"] = exp
+
+            var = str(tmpl_raw.get("ab_variant") or "").strip()
+            if var:
+                tmpl_fp["ab_variant"] = var
+
+            ph = str(tmpl_raw.get("patch_hash") or "").strip()
+            if ph:
+                tmpl_fp["patch_hash"] = ph
+
+            if tmpl_fp:
+                retrieval_cfg["rag_config_template"] = tmpl_fp
+
         fp = build_retrieval_config_fingerprint(config=retrieval_cfg)
         retrieval_trace["retrieval_config"] = fp
         metrics["retrieval_config_hash"] = fp.get("hash")

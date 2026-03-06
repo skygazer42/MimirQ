@@ -4023,6 +4023,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rag-config-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rag Config Templates */
+        get: operations["list_rag_config_templates_api_v1_rag_config_templates_get"];
+        put?: never;
+        /** Create Rag Config Template */
+        post: operations["create_rag_config_template_api_v1_rag_config_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rag-config-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rag Config Template */
+        get: operations["get_rag_config_template_api_v1_rag_config_templates__template_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Rag Config Template */
+        patch: operations["update_rag_config_template_api_v1_rag_config_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/rag-config-templates/{template_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Rag Config Template Version */
+        post: operations["create_rag_config_template_version_api_v1_rag_config_templates__template_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/feedback/messages": {
         parameters: {
             query?: never;
@@ -6624,6 +6677,12 @@ export interface components {
             prompt_template_key?: string | null;
             /** Prompt Ab Experiment Key */
             prompt_ab_experiment_key?: string | null;
+            /** Rag Config Template Id */
+            rag_config_template_id?: string | null;
+            /** Rag Config Template Key */
+            rag_config_template_key?: string | null;
+            /** Rag Config Ab Experiment Key */
+            rag_config_ab_experiment_key?: string | null;
             rag_config?: components["schemas"]["ChatRAGConfig"];
         };
         /**
@@ -8386,6 +8445,12 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Rag Config Template Id */
+            default_rag_config_template_id?: string | null;
+            /** Default Rag Config Template Key */
+            default_rag_config_template_key?: string | null;
+            /** Default Rag Config Ab Experiment Key */
+            default_rag_config_ab_experiment_key?: string | null;
             /** Default Prompt Template Id */
             default_prompt_template_id?: string | null;
             /** Default Prompt Template Key */
@@ -8410,6 +8475,12 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Rag Config Template Id */
+            default_rag_config_template_id?: string | null;
+            /** Default Rag Config Template Key */
+            default_rag_config_template_key?: string | null;
+            /** Default Rag Config Ab Experiment Key */
+            default_rag_config_ab_experiment_key?: string | null;
             /** Default Prompt Template Id */
             default_prompt_template_id?: string | null;
             /** Default Prompt Template Key */
@@ -8468,6 +8539,12 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Rag Config Template Id */
+            default_rag_config_template_id?: string | null;
+            /** Default Rag Config Template Key */
+            default_rag_config_template_key?: string | null;
+            /** Default Rag Config Ab Experiment Key */
+            default_rag_config_ab_experiment_key?: string | null;
             /** Default Prompt Template Id */
             default_prompt_template_id?: string | null;
             /** Default Prompt Template Key */
@@ -8910,6 +8987,12 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Rag Config Template Id */
+            default_rag_config_template_id?: string | null;
+            /** Default Rag Config Template Key */
+            default_rag_config_template_key?: string | null;
+            /** Default Rag Config Ab Experiment Key */
+            default_rag_config_ab_experiment_key?: string | null;
             /** Default Prompt Template Id */
             default_prompt_template_id?: string | null;
             /** Default Prompt Template Key */
@@ -10235,6 +10318,12 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Default Rag Config Template Id */
+            default_rag_config_template_id?: string | null;
+            /** Default Rag Config Template Key */
+            default_rag_config_template_key?: string | null;
+            /** Default Rag Config Ab Experiment Key */
+            default_rag_config_ab_experiment_key?: string | null;
             /** Default Prompt Template Id */
             default_prompt_template_id?: string | null;
             /** Default Prompt Template Key */
@@ -15972,6 +16061,170 @@ export interface components {
              */
             enable_reranker: boolean;
         };
+        /** RagConfigTemplateCreate */
+        RagConfigTemplateCreate: {
+            /**
+             * Template Key
+             * @description Stable template identifier (for versioning/grouping), e.g.: retrieval_default
+             * @example retrieval_default
+             */
+            template_key?: string | null;
+            /**
+             * Name
+             * @description Human-readable name for the template
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional detailed description of the template
+             */
+            description?: string | null;
+            /** @description Partial RAG config patch (retrieval/rerank knobs). Only provided fields are applied. */
+            config_patch?: components["schemas"]["DatasetRAGDefaults"];
+            /**
+             * Is Active
+             * @description Whether this template is enabled
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Version
+             * @description Version number (increments within same template_key)
+             * @default 1
+             */
+            version: number | null;
+            /**
+             * Parent Id
+             * @description Parent version template ID (optional)
+             */
+            parent_id?: string | null;
+            /**
+             * Ab Experiment Key
+             * @description A/B experiment key (optional), e.g.: exp_2026w10_rerank
+             */
+            ab_experiment_key?: string | null;
+            /**
+             * Ab Variant
+             * @description A/B variant label (optional), e.g.: A/B
+             */
+            ab_variant?: string | null;
+            /**
+             * Ab Weight
+             * @description A/B traffic weight (optional, default 1.0)
+             * @default 1
+             */
+            ab_weight: number | null;
+        };
+        /** RagConfigTemplateList */
+        RagConfigTemplateList: {
+            /**
+             * Total
+             * @description Total number of templates matching filters
+             */
+            total: number;
+            /**
+             * Items
+             * @description List of RAG config templates
+             */
+            items: components["schemas"]["RagConfigTemplateOut"][];
+        };
+        /**
+         * RagConfigTemplateNewVersion
+         * @description Create a new version from an existing template (copy + optional overrides).
+         */
+        RagConfigTemplateNewVersion: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            config_patch?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Deactivate Previous
+             * @description Auto-deactivate previous versions for the same key
+             * @default true
+             */
+            deactivate_previous: boolean;
+            /** Ab Experiment Key */
+            ab_experiment_key?: string | null;
+            /** Ab Variant */
+            ab_variant?: string | null;
+            /**
+             * Ab Weight
+             * @default 1
+             */
+            ab_weight: number;
+        };
+        /** RagConfigTemplateOut */
+        RagConfigTemplateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Template Key */
+            template_key: string | null;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            config_patch: components["schemas"]["DatasetRAGDefaults"];
+            /** Is Active */
+            is_active: boolean;
+            /** Usage Count */
+            usage_count: number;
+            /** Version */
+            version: number;
+            /** Parent Id */
+            parent_id: string | null;
+            /** Ab Experiment Key */
+            ab_experiment_key: string | null;
+            /** Ab Variant */
+            ab_variant: string | null;
+            /** Ab Weight */
+            ab_weight: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RagConfigTemplateUpdate */
+        RagConfigTemplateUpdate: {
+            /** Template Key */
+            template_key?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            config_patch?: components["schemas"]["DatasetRAGDefaults"] | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Version */
+            version?: number | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Ab Experiment Key */
+            ab_experiment_key?: string | null;
+            /** Ab Variant */
+            ab_variant?: string | null;
+            /** Ab Weight */
+            ab_weight?: number | null;
+        };
         /** RagCostAttributionResponse */
         RagCostAttributionResponse: {
             /** Enabled */
@@ -17167,6 +17420,12 @@ export interface components {
             dataset_id?: string | null;
             /** Document Ids */
             document_ids?: string[];
+            /** Rag Config Template Id */
+            rag_config_template_id?: string | null;
+            /** Rag Config Template Key */
+            rag_config_template_key?: string | null;
+            /** Rag Config Ab Experiment Key */
+            rag_config_ab_experiment_key?: string | null;
             rag_config?: components["schemas"]["ChatRAGConfig"];
         };
         /** RetrievePreviewResponse */
@@ -26545,6 +26804,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PromptTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rag_config_templates_api_v1_rag_config_templates_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                template_key?: string | null;
+                ab_experiment_key?: string | null;
+                is_active?: boolean | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagConfigTemplateList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_rag_config_template_api_v1_rag_config_templates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RagConfigTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagConfigTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rag_config_template_api_v1_rag_config_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagConfigTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rag_config_template_api_v1_rag_config_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RagConfigTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagConfigTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_rag_config_template_version_api_v1_rag_config_templates__template_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RagConfigTemplateNewVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagConfigTemplateOut"];
                 };
             };
             /** @description Validation Error */

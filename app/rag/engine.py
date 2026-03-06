@@ -472,6 +472,7 @@ Requirements:
         prompt_template_id: Optional[UUID] = None,
         prompt_template_key: Optional[str] = None,
         prompt_ab_experiment_key: Optional[str] = None,
+        rag_config_template: Optional[Dict[str, Any]] = None,
         ab_user_key: Optional[str] = None,
         db: Optional[Any] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -1844,12 +1845,44 @@ Requirements:
                 except Exception:
                     pipe_summary = []
 
+                rag_cfg_tpl_fp: dict[str, Any] | None = None
+                tmpl_raw = rag_config_template
+                if isinstance(tmpl_raw, dict) and tmpl_raw:
+                    tmpl_fp: dict[str, Any] = {}
+
+                    key = str(tmpl_raw.get("template_key") or "").strip()
+                    if key:
+                        tmpl_fp["template_key"] = key
+
+                    try:
+                        version = int(tmpl_raw.get("version") or 0)
+                    except Exception:
+                        version = 0
+                    if version > 0:
+                        tmpl_fp["version"] = version
+
+                    exp = str(tmpl_raw.get("ab_experiment_key") or "").strip()
+                    if exp:
+                        tmpl_fp["ab_experiment_key"] = exp
+
+                    var = str(tmpl_raw.get("ab_variant") or "").strip()
+                    if var:
+                        tmpl_fp["ab_variant"] = var
+
+                    ph = str(tmpl_raw.get("patch_hash") or "").strip()
+                    if ph:
+                        tmpl_fp["patch_hash"] = ph
+
+                    if tmpl_fp:
+                        rag_cfg_tpl_fp = tmpl_fp
+
                 fp = build_retrieval_config_fingerprint(
                     config={
                         "requested_retrieval_mode": str(mode_req or ""),
                         "retrieval_mode": str(mode_used or ""),
                         "retrieval_mode_auto_routed": bool(mode_auto),
                         "retrieval_profile": profile_norm or None,
+                        "rag_config_template": rag_cfg_tpl_fp,
                         "top_k": int(top_k) if top_k is not None else None,
                         "score_threshold": float(score_threshold_used or 0.0),
                         "alpha": float(alpha_val or 0.0),
@@ -2000,6 +2033,7 @@ Requirements:
                 },
                 "tag": tag_meta,
                 "citations": citations[: min(len(citations), int(top_k or 5))],
+                "rag_config_template": rag_config_template if isinstance(rag_config_template, dict) else None,
                 "prompt": {
                     "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
                     "prompt_template_key": selected_prompt_template_key,
