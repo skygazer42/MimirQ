@@ -198,3 +198,6 @@ export type EvidenceItemImportResponse = OpenApiSchema<'EvidenceItemImportRespon
 export type EvidenceReferenceDriftAudit = OpenApiSchema<'EvidenceReferenceDriftAuditOut'>
 export type EvidenceReferenceRepairRequest = OpenApiSchema<'EvidenceReferenceRepairRequest'>
 export type EvidenceReferenceRepairResponse = OpenApiSchema<'EvidenceReferenceRepairResponse'>
+
+export type EvidenceHardcaseCandidate = OpenApiSchema<'EvidenceHardcaseCandidateOut'>
+export type EvidenceHardcaseDiscovery = OpenApiSchema<'EvidenceHardcaseDiscoveryOut'>

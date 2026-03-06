@@ -196,10 +196,48 @@ Graph UI 用于回答：
 
 ---
 
-## 6. 常见反模式（避免浪费时间）
+## 6. Workflow F：从负反馈自动发现 hardcases（PII-safe）
+
+目标：把“点踩/低分反馈”自动聚类成 **hardcase 候选**，让 reviewer 快速把它们沉淀到 EvidenceSuite（draft -> reviewed -> approved），最终进入 regression gate。
+
+前置条件：
+- `ENABLE_METRICS_LOG=true`（系统会从 metrics JSONL 的 `rag_trace` 记录里取 `question_hash` 等 PII-safe 指纹）
+- 助手消息的 `message_metadata.request_id` 存在（用于把 feedback join 到 trace）
+- suite 是 dataset-scoped；hardcase discovery 也会按 conversation.dataset_id 做隔离
+
+步骤：
+1) 获取 suite 的 hardcase candidates（PII-safe；不返回原始 query 文本）：
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/evidence/suites/<suite_id>/hardcase-candidates?max_rating=2&max_candidates=50&window_minutes=10080" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+返回里你会拿到 `candidates[]`，每个候选簇包含：
+- `question_hash`（聚类/去重 key）
+- `cluster_size`（同类负反馈数量）
+- `feedback_ids[]` / `request_ids[]`（reviewer 用来定位与转化的指针）
+- `retrieval_config_hash` / `retrieval_error_kinds` / `rag_config_template` 等 PII-safe 元信息
+
+2) reviewer 挑选一个 `feedback_id`，转成 draft EvidenceItem（进入 EvidenceSuite 的审批流）：
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/feedback/messages/<feedback_id>/to-evidence-item" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"suite_id":"<suite_id>","tags":["hardcase"],"extra":{"source":"hardcase_discovery"}}'
+```
+
+有界性说明（避免无界扫描）：
+- traces 只读 JSONL 尾部（`max_bytes`）；窗口用 `window_minutes` 限制
+- feedback 行数 `max_feedback_rows`，候选输出 `max_candidates`
+- 返回 `truncated=true` 表示由于 tail 读取导致结果可能不完整
+
+---
+
+## 7. 常见反模式（避免浪费时间）
 
 - **只看最终答案，不看 citations**：可解释性链路的入口是 evidence/citations，而不是 LLM 文本。
 - **只看单次请求，不做对比**：没有 base/target diff，很难确定“变好还是变差”。
 - **用 token-bearing URL 做缓存调优**：当 URL 上带 `?token=` 时，后端会强制 `Cache-Control: no-store`（安全设计）。
 - **混用 pipeline_hash**：对比时务必确认 scope 与版本（尤其是 KG、文档下载/预览）。
-
