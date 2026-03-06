@@ -38,6 +38,10 @@ def test_observability_config_snapshot_redacts_and_fingerprints(monkeypatch):  #
     monkeypatch.setattr(settings, "LLM_MODEL", "gpt-4o-mini", raising=False)
     monkeypatch.setattr(settings, "PROMETHEUS_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "ENABLE_METRICS_LOG", True, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic", raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 123, raising=False)
 
     tenant_id = uuid.uuid4()
 
@@ -82,3 +86,7 @@ def test_observability_config_snapshot_redacts_and_fingerprints(monkeypatch):  #
     llm = (body1.get("config") or {}).get("llm") or {}
     assert llm.get("api_key_masked") and "***" in str(llm.get("api_key_masked"))
 
+    retrieval_fp = (body1.get("config") or {}).get("retrieval_fingerprint") or {}
+    retrieval_cfg = retrieval_fp.get("config") or {}
+    assert retrieval_cfg.get("colbert_enabled") is True
+    assert retrieval_cfg.get("colbert_max_docs") == 123
