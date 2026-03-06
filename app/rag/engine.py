@@ -1152,6 +1152,7 @@ Requirements:
             retrieval_queries = self._dedup_retrieval_queries(retrieval_queries)
 
             docs_by_query: List[List[Document]] = []
+            docs_by_query_kinds: List[str] = []
             t_retrieval_start = time.time()
             retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
             retrieval_plan: List[tuple[str, str, Any]] = []
@@ -1211,6 +1212,7 @@ Requirements:
                         retrieval_errors.append(f"{kind}:{err[:160]}")
                         if kind == "main":
                             yield {"type": "error", "data": {"message": f"retrieval failed: {err}"}}
+                    docs_by_query_kinds.append(kind)
                     docs_by_query.append(self._annotate_docs_with_role(docs_i or [], kind))
             else:
                 sem = asyncio.Semaphore(retrieval_parallelism)
@@ -1237,13 +1239,89 @@ Requirements:
                         retrieval_errors.append(f"{kind}:{err[:160]}")
                         if kind == "main":
                             yield {"type": "error", "data": {"message": f"retrieval failed: {err}"}}
+                    docs_by_query_kinds.append(kind)
                     docs_by_query.append(self._annotate_docs_with_role(docs_i or [], kind))
 
             retrieval_elapsed = time.time() - t_retrieval_start
+            mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled)
+            try:
+                mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
+            except Exception:
+                mq_budget_raw = 0
+            mq_diversify_budget = max(0, min(int(mq_budget_raw or 0), int(top_k or 0)))
+            mq_diversify_used = False
+            mq_diversify_selected_mq = 0
+            mq_diversify_selected_non_mq = 0
+            mq_diversify_fill_from_fused = 0
             if len(docs_by_query) <= 1:
                 docs = docs_by_query[0] if docs_by_query else []
             else:
-                docs = self.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
+                docs_fused_all = self.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
+                if mq_diversify_enabled and mq_diversify_budget > 0:
+                    mq_lists: list[list[Document]] = []
+                    non_mq_lists: list[list[Document]] = []
+                    for kind, docs_i in zip(docs_by_query_kinds, docs_by_query, strict=False):
+                        if kind == "mq":
+                            mq_lists.append(docs_i or [])
+                        else:
+                            non_mq_lists.append(docs_i or [])
+
+                    if mq_lists and non_mq_lists:
+                        mq_diversify_used = True
+                        docs_non_mq = (
+                            self.fuse_docs_rrf(non_mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
+                            if len(non_mq_lists) > 1
+                            else (non_mq_lists[0] or [])
+                        )
+                        docs_mq = (
+                            self.fuse_docs_rrf(mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
+                            if len(mq_lists) > 1
+                            else (mq_lists[0] or [])
+                        )
+
+                        want_non_mq = max(0, int(top_k or 0) - int(mq_diversify_budget))
+                        want_mq = int(mq_diversify_budget)
+
+                        selected: list[Document] = []
+                        selected_keys: set[str] = set()
+
+                        for d in docs_non_mq:
+                            k = self._doc_key(d)
+                            if k in selected_keys:
+                                continue
+                            selected_keys.add(k)
+                            selected.append(d)
+                            if len(selected) >= want_non_mq:
+                                break
+
+                        mq_added = 0
+                        mq_diversify_selected_non_mq = int(len(selected))
+                        for d in docs_mq:
+                            if mq_added >= want_mq:
+                                break
+                            k = self._doc_key(d)
+                            if k in selected_keys:
+                                continue
+                            selected_keys.add(k)
+                            selected.append(d)
+                            mq_added += 1
+                        mq_diversify_selected_mq = int(mq_added)
+
+                        for d in docs_fused_all:
+                            if len(selected) >= int(top_k or 0):
+                                break
+                            k = self._doc_key(d)
+                            if k in selected_keys:
+                                continue
+                            selected_keys.add(k)
+                            selected.append(d)
+                            mq_diversify_fill_from_fused += 1
+
+                        docs = selected
+                    else:
+                        docs = docs_fused_all
+                else:
+                    docs = docs_fused_all
             docs = docs[: max(0, int(top_k or 0))] if docs else []
 
             # Optional: KG-assisted retrieval (inject KG-linked chunks as extra candidates).
@@ -1805,6 +1883,16 @@ Requirements:
                         "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
                         "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
                         "evidence_post_rerank_pipeline": pipe_summary,
+                        "multi_query": {
+                            "enabled": bool(mq_enabled),
+                            "count": int(mq_n or 0),
+                            "temperature": float(mq_temp or 0.0),
+                            "max_chars": int(mq_max_chars or 0),
+                            "diversify": {
+                                "enabled": bool(mq_diversify_enabled),
+                                "budget": int(mq_diversify_budget or 0) if mq_diversify_enabled else 0,
+                            },
+                        },
                         "query_rewrite": {
                             "enabled": bool(rewrite_enabled),
                             "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
@@ -1856,6 +1944,12 @@ Requirements:
                     "multi_query_max_chars": int(mq_max_chars or 0),
                     "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
                     "multi_query_parse_error": multi_query_parse_meta.get("error"),
+                    "multi_query_diversify_enabled": bool(mq_diversify_enabled),
+                    "multi_query_diversify_budget": int(mq_diversify_budget or 0) if mq_diversify_enabled else 0,
+                    "multi_query_diversify_used": bool(mq_diversify_used),
+                    "multi_query_diversify_selected_mq": int(mq_diversify_selected_mq or 0),
+                    "multi_query_diversify_selected_non_mq": int(mq_diversify_selected_non_mq or 0),
+                    "multi_query_diversify_fill_from_fused": int(mq_diversify_fill_from_fused or 0),
                     "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
                     "kg_query_expansion_used": bool(kg_query_expansion_used),
                     "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),
@@ -2295,6 +2389,12 @@ Requirements:
                         "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
                         "multi_query_parse_method": multi_query_parse_meta.get("method"),
                         "multi_query_parse_error": multi_query_parse_meta.get("error"),
+                        "multi_query_diversify_enabled": bool(mq_diversify_enabled),
+                        "multi_query_diversify_budget": int(mq_diversify_budget or 0) if mq_diversify_enabled else 0,
+                        "multi_query_diversify_used": bool(mq_diversify_used),
+                        "multi_query_diversify_selected_mq": int(mq_diversify_selected_mq or 0),
+                        "multi_query_diversify_selected_non_mq": int(mq_diversify_selected_non_mq or 0),
+                        "multi_query_diversify_fill_from_fused": int(mq_diversify_fill_from_fused or 0),
                         "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
                         "kg_query_expansion_used": bool(kg_query_expansion_used),
                         "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),

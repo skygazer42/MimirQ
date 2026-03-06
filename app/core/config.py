@@ -891,6 +891,10 @@ class Settings(BaseSettings):
     MULTI_QUERY_COUNT: int = 3
     MULTI_QUERY_TEMPERATURE: float = 0.2
     MULTI_QUERY_MAX_CHARS: int = 200
+    # Multi-query diversification: cap how many final top_k citations can come from `mq` query variants.
+    # Safe defaults: disabled (feature can be rolled back by flipping the flag).
+    MULTI_QUERY_DIVERSIFY_ENABLED: bool = False
+    MULTI_QUERY_DIVERSIFY_BUDGET: int = 0
     ENABLE_HYDE: bool = False
     HYDE_TEMPERATURE: float = 0.2
     HYDE_MAX_CHARS: int = 200
