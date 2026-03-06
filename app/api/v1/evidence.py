@@ -14,7 +14,8 @@ import io
 import json
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.evidence import (
+    EvidenceHardcaseDiscoveryOut,
     EvidenceItemCreateRequest,
     EvidenceItemImportResponse,
     EvidenceItemList,
@@ -45,18 +47,33 @@ from app.api.schemas.evidence_repair import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.chat import Conversation, Message
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
+from app.models.feedback import MessageFeedback
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
+from app.services.hardcase_discovery_service import (
+    build_rag_trace_index_from_records,
+    plan_feedback_hardcase_candidates,
+    read_jsonl_tail,
+)
 
 router = APIRouter()
 
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _hash_text_for_metrics(text: str) -> str:
+    """
+    Match metrics JSONL `question_hash` (sha256[:16]) for dedupe.
+    """
+    raw = (text or "").encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def _ensure_status(item: EvidenceItem, *, expected: str) -> None:
@@ -450,6 +467,167 @@ async def get_evidence_suite_dashboard(
         item_counts=item_counts,
         coverage=coverage,
         throughput=throughput,
+    )
+
+
+@router.get("/suites/{suite_id}/hardcase-candidates", response_model=EvidenceHardcaseDiscoveryOut)
+async def list_evidence_suite_hardcase_candidates(
+    suite_id: UUID,
+    window_minutes: int = Query(default=7 * 24 * 60, ge=1, le=60 * 24 * 30),
+    max_bytes: int = Query(default=10_000_000, ge=100_000, le=50_000_000),
+    max_feedback_rows: int = Query(default=500, ge=1, le=5000),
+    max_candidates: int = Query(default=50, ge=0, le=200),
+    max_rating: int = Query(default=2, ge=1, le=5),
+    include_existing: bool = False,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Discover PII-safe "hardcase" candidates for an EvidenceSuite from:
+    - negative message feedback (DB)
+    - recent rag_trace metrics records (JSONL)
+
+    Output is clustered/deduped by `question_hash` and does NOT include raw query text.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    if getattr(suite, "archived_at", None) is not None:
+        raise HTTPException(status_code=400, detail="Evidence suite is archived")
+
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    now = _now_utc()
+
+    if not enabled:
+        return EvidenceHardcaseDiscoveryOut(
+            generated_at=now,
+            suite_id=suite.id,
+            dataset_id=suite.dataset_id,
+            enabled=False,
+            metrics_path=path_str,
+            window_minutes=int(window_minutes),
+            max_bytes=int(max_bytes),
+            truncated=False,
+            feedback_scanned=0,
+            trace_index_size=0,
+            candidates=[],
+        )
+
+    cutoff_ms = int(now.timestamp() * 1000) - (int(window_minutes) * 60_000)
+    cutoff_dt = now - timedelta(minutes=int(window_minutes))
+
+    # 1) Load recent trace summaries (bounded).
+    raw_records, truncated_by_tail = read_jsonl_tail(Path(path_str), max_bytes=int(max_bytes or 0))
+    tenant_key = str(tenant_id)
+
+    earliest_ts_ms: int | None = None
+    for r in raw_records:
+        if str(r.get("event") or "") != "rag_trace":
+            continue
+        if str(r.get("tenant_id") or "") != tenant_key:
+            continue
+        try:
+            ts_ms = int(r.get("ts_ms") or 0)
+        except Exception:
+            ts_ms = 0
+        if not ts_ms:
+            continue
+        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
+            earliest_ts_ms = ts_ms
+    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
+
+    trace_index = build_rag_trace_index_from_records(
+        records=raw_records,
+        tenant_id=tenant_key,
+        cutoff_ms=cutoff_ms,
+    )
+
+    # 2) Compute "already in suite" fingerprints (PII-safe).
+    max_existing_items = 5000
+    existing_question_hashes: set[str] = set()
+    existing_feedback_ids: set[str] = set()
+    existing_rows = (
+        db.query(EvidenceItem.query, EvidenceItem.source_metadata)
+        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
+        .limit(max_existing_items)
+        .all()
+    )
+    for q, meta in existing_rows:
+        if isinstance(q, str) and q.strip():
+            existing_question_hashes.add(_hash_text_for_metrics(q.strip()))
+        if isinstance(meta, dict):
+            fid = str(meta.get("feedback_id") or "").strip()
+            if fid:
+                existing_feedback_ids.add(fid)
+
+    # 3) Fetch recent negative feedback (bounded).
+    # Dataset-scope by conversation.dataset_id to avoid leaking cross-dataset pointers.
+    fb_rows = (
+        db.query(MessageFeedback, Message.message_metadata)
+        .join(Message, Message.id == MessageFeedback.message_id)
+        .join(Conversation, Conversation.id == MessageFeedback.conversation_id)
+        .filter(
+            MessageFeedback.tenant_id == tenant_id,
+            Conversation.tenant_id == tenant_id,
+            Message.tenant_id == tenant_id,
+            Conversation.dataset_id == suite.dataset_id,
+            MessageFeedback.rating <= int(max_rating),
+            MessageFeedback.updated_at >= cutoff_dt,
+        )
+        .order_by(MessageFeedback.updated_at.desc())
+        .limit(int(max_feedback_rows))
+        .all()
+    )
+
+    feedback_rows: list[dict[str, Any]] = []
+    for fb, meta in fb_rows:
+        mm = meta if isinstance(meta, dict) else {}
+        request_id = str(mm.get("request_id") or "").strip()
+        if not request_id:
+            continue
+        feedback_rows.append(
+            {
+                "feedback_id": str(fb.id),
+                "conversation_id": str(fb.conversation_id),
+                "message_id": str(fb.message_id),
+                "request_id": request_id,
+                "rating": int(getattr(fb, "rating", 0) or 0),
+                "tags": list(getattr(fb, "tags", []) or []) if isinstance(getattr(fb, "tags", None), list) else [],
+            }
+        )
+
+    candidates = plan_feedback_hardcase_candidates(
+        feedback_rows=feedback_rows,
+        trace_index=trace_index,
+        existing_feedback_ids=existing_feedback_ids,
+        existing_question_hashes=existing_question_hashes,
+        max_candidates=int(max_candidates),
+        include_existing=bool(include_existing),
+    )
+
+    return EvidenceHardcaseDiscoveryOut(
+        generated_at=now,
+        suite_id=suite.id,
+        dataset_id=suite.dataset_id,
+        enabled=True,
+        metrics_path=path_str,
+        window_minutes=int(window_minutes),
+        max_bytes=int(max_bytes),
+        truncated=truncated,
+        feedback_scanned=int(len(feedback_rows)),
+        trace_index_size=int(len(trace_index)),
+        candidates=candidates,
     )
 
 
