@@ -2,10 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react'
+import { BarChart3, Copy, Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCheck, TestTube2, X } from 'lucide-react'
 
-import type { Citation, Dataset, EvidenceItem, EvidenceItemCreate, EvidenceItemStatus, EvidenceSuite, EvidenceSuiteDashboard, ReferenceSource } from '@/types'
-import { datasetApi, evidenceApi, ragApi } from '@/lib/api-client'
+import type {
+  Citation,
+  Dataset,
+  EvidenceHardcaseDiscovery,
+  EvidenceItem,
+  EvidenceItemCreate,
+  EvidenceItemStatus,
+  EvidenceSuite,
+  EvidenceSuiteDashboard,
+  ReferenceSource,
+} from '@/types'
+import { datasetApi, evidenceApi, feedbackApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { buildWhyMissedReport } from '@/lib/evidence-why-missed'
 import { extractEvidenceNeedles, rankEvidenceCitations } from '@/lib/evidence-suggestions'
@@ -167,6 +177,17 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
   const dashboardThroughput = dashboard?.throughput
   const dashboardCoverage = dashboard?.coverage
 
+  // Hardcase discovery (suite-level; PII-safe)
+  const [hardcaseOpen, setHardcaseOpen] = useState(false)
+  const [hardcaseLoading, setHardcaseLoading] = useState(false)
+  const [hardcaseError, setHardcaseError] = useState<string | null>(null)
+  const [hardcaseRes, setHardcaseRes] = useState<EvidenceHardcaseDiscovery | null>(null)
+  const [hardcaseMaxRating, setHardcaseMaxRating] = useState<number>(2)
+  const [hardcaseIncludeExisting, setHardcaseIncludeExisting] = useState(false)
+  const [hardcaseMaxCandidates, setHardcaseMaxCandidates] = useState<number>(50)
+  const [hardcaseTags, setHardcaseTags] = useState<string[]>(['hardcase'])
+  const [convertingFeedbackId, setConvertingFeedbackId] = useState<string>('')
+
   // Create suite dialog
   const [createSuiteOpen, setCreateSuiteOpen] = useState(false)
   const [suiteName, setSuiteName] = useState('')
@@ -302,6 +323,65 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     }
   }, [dashboardIncludeArchived, selectedSuiteId])
 
+  const loadHardcases = useCallback(async () => {
+    if (!selectedSuiteId) {
+      setHardcaseRes(null)
+      setHardcaseError(null)
+      return
+    }
+    setHardcaseLoading(true)
+    setHardcaseError(null)
+    try {
+      const res = await evidenceApi.getSuiteHardcaseCandidates(selectedSuiteId, {
+        max_rating: hardcaseMaxRating,
+        include_existing: hardcaseIncludeExisting,
+        max_candidates: hardcaseMaxCandidates,
+      })
+      setHardcaseRes(res)
+    } catch (e: any) {
+      setHardcaseError(formatApiError(e, '加载 Hardcase candidates 失败'))
+      setHardcaseRes(null)
+    } finally {
+      setHardcaseLoading(false)
+    }
+  }, [hardcaseIncludeExisting, hardcaseMaxCandidates, hardcaseMaxRating, selectedSuiteId])
+
+  const copyText = useCallback(async (label: string, text: string) => {
+    const value = String(text || '').trim()
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success(`${label} 已复制`)
+    } catch (e: any) {
+      toast.error(formatApiError(e, '复制失败'))
+    }
+  }, [])
+
+  const handleConvertFeedbackToEvidence = useCallback(async (feedbackId: string, questionHash?: string) => {
+    if (!selectedSuiteId) return
+    const fid = String(feedbackId || '').trim()
+    if (!fid) return
+    setConvertingFeedbackId(fid)
+    try {
+      const created = await feedbackApi.toEvidenceItem(fid, {
+        suite_id: selectedSuiteId,
+        tags: hardcaseTags,
+        extra: { source: 'hardcase_discovery', question_hash: questionHash || undefined },
+      })
+      const createdId = String(created?.id || '').trim()
+      toast.success('已创建 draft EvidenceItem')
+      await loadItems()
+      await loadHardcases()
+      if (createdId) {
+        setSelectedItemId(createdId)
+      }
+    } catch (e: any) {
+      toast.error(formatApiError(e, '转为 EvidenceItem 失败'))
+    } finally {
+      setConvertingFeedbackId('')
+    }
+  }, [hardcaseTags, loadHardcases, loadItems, selectedSuiteId])
+
   useEffect(() => {
     void loadDataset()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -319,6 +399,11 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     if (!dashboardOpen) return
     void loadDashboard()
   }, [dashboardOpen, loadDashboard])
+
+  useEffect(() => {
+    if (!hardcaseOpen) return
+    void loadHardcases()
+  }, [hardcaseOpen, loadHardcases])
 
   const resetCreateSuiteForm = useCallback(() => {
     setSuiteName('')
@@ -760,7 +845,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     } finally {
       setWhyMissedRetrieving(false)
     }
-  }, [datasetId, selectedItem?.id, selectedItem?.query, whyMissedProfile])
+  }, [datasetId, selectedItem?.query, whyMissedProfile])
 
   const whyMissedReport = useMemo(() => {
     if (!selectedItem) return null
@@ -1076,6 +1161,16 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 variant="outline"
                 size="sm"
                 className="gap-2"
+                onClick={() => setHardcaseOpen(true)}
+                disabled={!selectedSuite?.id}
+              >
+                <TestTube2 className="size-4" aria-hidden="true" />
+                Hardcases
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
                 onClick={() => setDashboardOpen(true)}
                 disabled={!selectedSuite?.id}
               >
@@ -1312,6 +1407,282 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
           )}
         </Panel>
       </div>
+
+      {/* Hardcase candidates dialog */}
+      <Dialog
+        open={hardcaseOpen}
+        onOpenChange={(open) => {
+          setHardcaseOpen(open)
+          if (!open) {
+            setHardcaseError(null)
+            setConvertingFeedbackId('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Hardcase Candidates</DialogTitle>
+            <DialogDescription className="text-pretty">
+              从低分反馈 + rag_trace 聚类得到的候选（PII-safe）。选择一个 <span className="font-mono">feedback_id</span> 转为 draft EvidenceItem。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">max rating</span>
+                <Select value={String(hardcaseMaxRating)} onValueChange={(v) => setHardcaseMaxRating(Number(v) || 2)}>
+                  <SelectTrigger className="h-8 w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">{'<= 1'}</SelectItem>
+                    <SelectItem value="2">{'<= 2'}</SelectItem>
+                    <SelectItem value="3">{'<= 3'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <label className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
+                <Checkbox
+                  checked={hardcaseIncludeExisting}
+                  onCheckedChange={(v) => setHardcaseIncludeExisting(Boolean(v))}
+                  aria-label="Include existing items"
+                />
+                include existing
+              </label>
+
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">max candidates</span>
+                <Input
+                  value={String(hardcaseMaxCandidates)}
+                  onChange={(e) => {
+                    const n = Number(e.target.value || 0) || 0
+                    setHardcaseMaxCandidates(Math.max(0, Math.min(200, Math.floor(n))))
+                  }}
+                  className="h-8 w-24 font-mono tabular-nums"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+
+            <div className="sm:ml-auto flex items-center gap-2">
+              {hardcaseRes ? (
+                <div className="text-xs text-muted-foreground font-mono tabular-nums">
+                  scanned {hardcaseRes.feedback_scanned} · candidates {hardcaseRes.candidates?.length ?? 0}
+                  {hardcaseRes.truncated ? ' · truncated' : ''}
+                </div>
+              ) : null}
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => void loadHardcases()}
+                disabled={!selectedSuiteId || hardcaseLoading}
+              >
+                <RefreshCw className={cn('size-4', hardcaseLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
+                refresh
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Convert tags</Label>
+            <TagInput value={hardcaseTags} onValueChange={setHardcaseTags} placeholder="回车添加 tag…" />
+          </div>
+
+          {hardcaseError ? <div className="text-xs text-destructive text-pretty">{hardcaseError}</div> : null}
+
+          <ScrollArea className="max-h-[70vh] pr-3">
+            {hardcaseLoading ? (
+              <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                loading…
+              </div>
+            ) : hardcaseRes ? (
+              <div className="space-y-3 py-1">
+                {!hardcaseRes.enabled ? (
+                  <Panel className="p-3">
+                    <div className="text-sm font-medium text-foreground">Metrics log disabled</div>
+                    <div className="mt-1 text-xs text-muted-foreground text-pretty">
+                      需要开启 <span className="font-mono">ENABLE_METRICS_LOG=true</span> 才能从 traces 中发现 hardcases。
+                    </div>
+                  </Panel>
+                ) : (hardcaseRes.candidates || []).length ? (
+                  (hardcaseRes.candidates || []).map((cand) => {
+                    const qh = String(cand.question_hash || '').trim()
+                    const fbIds = Array.isArray(cand.feedback_ids) ? cand.feedback_ids : []
+                    const reqIds = Array.isArray(cand.request_ids) ? cand.request_ids : []
+                    const errKinds = (cand.retrieval_error_kinds || {}) as Record<string, number>
+                    const errBadges = Object.entries(errKinds)
+                      .filter(([k, v]) => k && Number(v) > 0)
+                      .sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])))
+                      .slice(0, 4)
+
+                    const tmpl = (cand as any)?.rag_config_template || null
+                    const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : ''
+                    const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null
+                    const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : ''
+                    const tmplLabel = tmplKey ? `${tmplKey}${tmplVer !== null ? `@${tmplVer}` : ''}` : ''
+
+                    return (
+                      <Panel key={qh || JSON.stringify(cand)} className="p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[11px] text-muted-foreground">question_hash</div>
+                            <div className="mt-0.5 font-mono text-sm break-all">{qh || '(missing)'}</div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Badge variant="outline" className="font-mono tabular-nums">
+                              cluster {cand.cluster_size ?? 0}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="size-8"
+                              aria-label="复制 question_hash"
+                              onClick={() => void copyText('question_hash', qh)}
+                              disabled={!qh}
+                            >
+                              <Copy className="size-4" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground font-mono tabular-nums">
+                          {cand.retrieval_config_hash ? (
+                            <Badge variant="secondary" className="font-mono">
+                              cfg {String(cand.retrieval_config_hash).slice(0, 16)}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="font-mono">
+                              cfg -
+                            </Badge>
+                          )}
+
+                          {typeof cand.citations_count === 'number' ? (
+                            <Badge variant="outline" className="font-mono">
+                              cites {cand.citations_count}
+                            </Badge>
+                          ) : null}
+
+                          {errBadges.length ? (
+                            errBadges.map(([k, v]) => (
+                              <Badge key={k} variant="outline" className="font-mono">
+                                {k}:{v}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Badge variant="outline" className="font-mono">
+                              errors 0
+                            </Badge>
+                          )}
+
+                          {tmplLabel ? (
+                            <Badge variant="outline" className="font-mono">
+                              tmpl {tmplLabel}
+                            </Badge>
+                          ) : null}
+                          {tmplPatch ? (
+                            <Badge variant="outline" className="font-mono">
+                              patch {tmplPatch.slice(0, 10)}
+                            </Badge>
+                          ) : null}
+
+                          {hardcaseRes.truncated ? (
+                            <Badge variant="destructive" className="font-mono">
+                              truncated
+                            </Badge>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-[11px] text-muted-foreground mb-1">feedback_ids (sample)</div>
+                            <div className="flex flex-wrap gap-2">
+                              {fbIds.length ? (
+                                fbIds.slice(0, 8).map((fid) => (
+                                  <div key={fid} className="inline-flex items-center gap-1.5">
+                                    <Badge variant="outline" className="font-mono text-[10px]">
+                                      {String(fid).slice(0, 8)}
+                                    </Badge>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="size-7"
+                                      aria-label="复制 feedback_id"
+                                      onClick={() => void copyText('feedback_id', String(fid))}
+                                    >
+                                      <Copy className="size-3.5" aria-hidden="true" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2 text-xs"
+                                      onClick={() => void handleConvertFeedbackToEvidence(String(fid), qh)}
+                                      disabled={!selectedSuiteId || Boolean(convertingFeedbackId)}
+                                    >
+                                      {convertingFeedbackId === String(fid) ? (
+                                        <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none mr-1.5" aria-hidden="true" />
+                                      ) : null}
+                                      转为 draft
+                                    </Button>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-xs text-muted-foreground">-</div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] text-muted-foreground mb-1">request_ids (sample)</div>
+                            <div className="flex flex-wrap gap-2">
+                              {reqIds.length ? (
+                                reqIds.slice(0, 6).map((rid) => (
+                                  <div key={rid} className="inline-flex items-center gap-1.5">
+                                    <Badge variant="secondary" className="font-mono text-[10px]">
+                                      {String(rid).slice(0, 10)}
+                                    </Badge>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="size-7"
+                                      aria-label="复制 request_id"
+                                      onClick={() => void copyText('request_id', String(rid))}
+                                    >
+                                      <Copy className="size-3.5" aria-hidden="true" />
+                                    </Button>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-xs text-muted-foreground">-</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </Panel>
+                    )
+                  })
+                ) : (
+                  <Panel className="p-3">
+                    <div className="text-sm font-medium text-foreground">暂无候选</div>
+                    <div className="mt-1 text-xs text-muted-foreground text-pretty">
+                      你可以尝试提高 <span className="font-mono">max rating</span> 或增大窗口（后端默认 7 天）。
+                    </div>
+                  </Panel>
+                )}
+
+                <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
+                  window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground py-4">点击 refresh 加载候选。</div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
       {/* Suite dashboard dialog */}
       <Dialog

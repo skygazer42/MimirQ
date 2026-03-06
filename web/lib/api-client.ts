@@ -2911,7 +2911,7 @@ export const feedbackApi = {
   async toEvidenceItem(
     feedbackId: string,
     body: { suite_id: string; tags?: string[]; extra?: Record<string, any> }
-  ): Promise<any> {
+  ): Promise<EvidenceItem> {
     const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-evidence-item`, body)
     return data
   },
