@@ -1015,6 +1015,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     retrieval_queries = deduped_queries
 
     docs_by_query: List[List[Document]] = []
+    docs_by_query_kinds: List[str] = []
     retrieval_errors: List[str] = []
     retrieval_per_query: List[Dict[str, Any]] = []
     start = time.time()
@@ -1046,6 +1047,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             retrieval_per_query.append({"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None, "retriever_debug": dbg})
             if err:
                 retrieval_errors.append(f"{kind}:{err[:160]}")
+            docs_by_query_kinds.append(kind)
             docs_by_query.append(docs_i or [])
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=retrieval_parallelism) as pool:
@@ -1055,15 +1057,93 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 retrieval_per_query.append({"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None, "retriever_debug": dbg})
                 if err:
                     retrieval_errors.append(f"{kind}:{err[:160]}")
+                docs_by_query_kinds.append(kind)
                 docs_by_query.append(docs_i or [])
     retrieval_elapsed = time.time() - start
+
+    top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
+    mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled)
+    try:
+        mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
+    except Exception:
+        mq_budget_raw = 0
+    mq_diversify_budget = max(0, min(int(mq_budget_raw or 0), int(top_k or 0)))
+    mq_diversify_used = False
+    mq_diversify_selected_mq = 0
+    mq_diversify_selected_non_mq = 0
+    mq_diversify_fill_from_fused = 0
 
     if len(docs_by_query) <= 1:
         docs = docs_by_query[0] if docs_by_query else []
     else:
-        docs = engine.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+        docs_fused_all = engine.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+        if mq_diversify_enabled and mq_diversify_budget > 0:
+            mq_lists: list[list[Document]] = []
+            non_mq_lists: list[list[Document]] = []
+            for kind, docs_i in zip(docs_by_query_kinds, docs_by_query, strict=False):
+                if kind == "mq":
+                    mq_lists.append(docs_i or [])
+                else:
+                    non_mq_lists.append(docs_i or [])
 
-    top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
+            if mq_lists and non_mq_lists:
+                mq_diversify_used = True
+                docs_non_mq = (
+                    engine.fuse_docs_rrf(non_mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+                    if len(non_mq_lists) > 1
+                    else (non_mq_lists[0] or [])
+                )
+                docs_mq = (
+                    engine.fuse_docs_rrf(mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+                    if len(mq_lists) > 1
+                    else (mq_lists[0] or [])
+                )
+
+                want_non_mq = max(0, int(top_k) - int(mq_diversify_budget))
+                want_mq = int(mq_diversify_budget)
+
+                selected: list[Document] = []
+                selected_keys: set[str] = set()
+
+                for d in docs_non_mq:
+                    k = engine._doc_key(d)  # type: ignore[attr-defined]
+                    if k in selected_keys:
+                        continue
+                    selected_keys.add(k)
+                    selected.append(d)
+                    if len(selected) >= want_non_mq:
+                        break
+
+                mq_added = 0
+                mq_diversify_selected_non_mq = int(len(selected))
+                for d in docs_mq:
+                    if mq_added >= want_mq:
+                        break
+                    k = engine._doc_key(d)  # type: ignore[attr-defined]
+                    if k in selected_keys:
+                        continue
+                    selected_keys.add(k)
+                    selected.append(d)
+                    mq_added += 1
+                mq_diversify_selected_mq = int(mq_added)
+
+                # Fill any remaining slots from the full fused list (best-effort).
+                for d in docs_fused_all:
+                    if len(selected) >= int(top_k):
+                        break
+                    k = engine._doc_key(d)  # type: ignore[attr-defined]
+                    if k in selected_keys:
+                        continue
+                    selected_keys.add(k)
+                    selected.append(d)
+                    mq_diversify_fill_from_fused += 1
+
+                docs = selected
+            else:
+                docs = docs_fused_all
+        else:
+            docs = docs_fused_all
+
     docs = (docs or [])[: max(0, top_k)]
 
     # Optional: KG-assisted retrieval (inject KG-linked chunks as extra candidates).
@@ -1818,6 +1898,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["multi_query_parse_ok"] = bool(multi_query_parse_meta.get("ok"))
     metrics["multi_query_parse_method"] = multi_query_parse_meta.get("method")
     metrics["multi_query_parse_error"] = multi_query_parse_meta.get("error")
+    metrics["multi_query_diversify_enabled"] = bool(mq_diversify_enabled)
+    metrics["multi_query_diversify_budget"] = int(mq_diversify_budget or 0) if mq_diversify_enabled else 0
+    metrics["multi_query_diversify_used"] = bool(mq_diversify_used)
+    metrics["multi_query_diversify_selected_mq"] = int(mq_diversify_selected_mq or 0)
+    metrics["multi_query_diversify_selected_non_mq"] = int(mq_diversify_selected_non_mq or 0)
+    metrics["multi_query_diversify_fill_from_fused"] = int(mq_diversify_fill_from_fused or 0)
 
     metrics["hyde_enabled"] = bool(settings.ENABLE_HYDE)
     metrics["hyde_used"] = bool(hyde_used)
@@ -2089,6 +2175,14 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "query_variant_fusion": {
             "strategy": ("rrf" if len(docs_by_query) > 1 else "single"),
             "rrf_k": int(settings.RETRIEVAL_RRF_K or 0) if len(docs_by_query) > 1 else None,
+            "multi_query_diversify": {
+                "enabled": bool(mq_diversify_enabled),
+                "budget": int(mq_diversify_budget or 0) if mq_diversify_enabled else None,
+                "used": bool(mq_diversify_used),
+                "selected_mq": int(mq_diversify_selected_mq or 0),
+                "selected_non_mq": int(mq_diversify_selected_non_mq or 0),
+                "fill_from_fused": int(mq_diversify_fill_from_fused or 0),
+            },
         },
         "kg_chunk_injection": {
             "enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
@@ -2175,6 +2269,22 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
             "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
             "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
+            "multi_query": {
+                "enabled": bool(mq_enabled),
+                "count": int(mq_n or 0),
+                "temperature": float(mq_temp or 0.0),
+                "max_chars": int(mq_max_chars or 0),
+                "diversify": {
+                    "enabled": bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled),
+                    "budget": max(
+                        0,
+                        min(
+                            int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0),
+                            int(top_k or 0),
+                        ),
+                    ),
+                },
+            },
             "query_rewrite": {
                 "enabled": bool(rewrite_enabled),
                 "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
