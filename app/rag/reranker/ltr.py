@@ -23,8 +23,10 @@ import numpy as np
 
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
+from app.rag.core.hashing import stable_hash
 
 _MANIFEST_SCHEMA_V1 = "mimirq.ltr_model_manifest.v1"
+_FEATURE_SPEC_FINGERPRINT_SCHEMA_V1 = "mimirq.ltr_feature_spec.v1"
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,35 @@ class LTRFeatureSpec:
     def default() -> "LTRFeatureSpec":
         # Keep default pinned to v1 to preserve compatibility with existing artifacts.
         return LTRFeatureSpec.v1()
+
+
+def build_ltr_feature_spec_fingerprint(
+    *,
+    spec: LTRFeatureSpec,
+    version: int | str | None,
+    schema: str = _FEATURE_SPEC_FINGERPRINT_SCHEMA_V1,
+) -> dict[str, Any]:
+    """
+    Build a stable, versioned fingerprint for an LTR feature spec.
+
+    Why:
+    - Offline training/eval runs and model manifests should be comparable across environments.
+    - Fingerprints make it easy to detect accidental feature order/count drift.
+    """
+    try:
+        v = int(version) if version is not None else 1
+    except Exception:
+        v = 1
+
+    payload = {
+        "schema": str(schema or _FEATURE_SPEC_FINGERPRINT_SCHEMA_V1),
+        "version": int(v),
+        "feature_schema": str(getattr(spec, "schema", "") or ""),
+        "feature_names": list(getattr(spec, "feature_names", ()) or ()),
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    digest = stable_hash(raw, length=32)
+    return {**payload, "hash": digest}
 
 
 def _as_float(v: Any) -> float:
