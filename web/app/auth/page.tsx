@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi } from '@/lib/api-client'
 import { setAuthSession } from '@/lib/auth-storage'
-import { isOidcEnabled, startOidcLogin } from '@/lib/oidc'
+import { startOidcLogin } from '@/lib/oidc'
+import { getOidcPublicProvidersFromEnv } from '@/lib/oidc-providers'
 import { formatRequestId, toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { cn } from '@/lib/utils'
@@ -17,7 +18,8 @@ type Mode = 'login' | 'register'
 
 export default function AuthPage() {
     const router = useRouter()
-    const oidcEnabled = isOidcEnabled()
+    const oidcProviders = getOidcPublicProvidersFromEnv()
+    const oidcEnabled = oidcProviders.length > 0
     const [mode, setMode] = useState<Mode>('login')
     const [email, setEmail] = useState('')
     const [username, setUsername] = useState('')
@@ -25,17 +27,19 @@ export default function AuthPage() {
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const [isSsoSubmitting, setIsSsoSubmitting] = useState(false)
+    const [ssoProviderWorkingId, setSsoProviderWorkingId] = useState<string | null>(null)
     const [error, setError] = useState<ApiErrorInfo | null>(null)
 
-    const handleSso = async () => {
+    const isSsoSubmitting = ssoProviderWorkingId !== null
+
+    const handleSso = async (providerId: string) => {
         setError(null)
-        setIsSsoSubmitting(true)
+        setSsoProviderWorkingId(providerId)
         try {
-            await startOidcLogin({ returnTo: '/' })
+            await startOidcLogin({ providerId, returnTo: '/' })
         } catch (err: any) {
             setError(toApiErrorInfo(err, 'SSO login failed'))
-            setIsSsoSubmitting(false)
+            setSsoProviderWorkingId(null)
         }
     }
 
@@ -83,32 +87,60 @@ export default function AuthPage() {
                     </div>
                 </div>
 
-                <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
-                    {oidcEnabled && (
-                        <div className="mb-7 space-y-3">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                className="w-full h-11 rounded-xl"
-                                disabled={isSubmitting || isSsoSubmitting}
-                                onClick={handleSso}
-                            >
-                                {isSsoSubmitting ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                                        Signing in...
-                                    </>
-                                ) : (
-                                    <>
-                                        Continue with SSO
+	                <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
+	                    {oidcEnabled && (
+	                        <div className="mb-7 space-y-3">
+                              {oidcProviders.length > 1 ? (
+                                <div className="space-y-2">
+                                  <div className="text-xs text-muted-foreground">选择 SSO 提供方</div>
+                                  {oidcProviders.map((p) => {
+                                    const label = p.name ? `Continue with ${p.name}` : `Continue with ${p.id}`
+                                    const working = ssoProviderWorkingId === p.id
+                                    return (
+                                      <Button
+                                        key={p.id}
+                                        type="button"
+                                        variant="secondary"
+                                        className="w-full h-11 rounded-xl justify-between"
+                                        disabled={isSubmitting || isSsoSubmitting}
+                                        onClick={() => void handleSso(p.id)}
+                                      >
+                                        <span className="inline-flex items-center">
+                                          {working ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                          ) : null}
+                                          {working ? 'Signing in…' : label}
+                                        </span>
                                         <ArrowRight className="ml-2 h-4 w-4 opacity-70" aria-hidden="true" />
+                                      </Button>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  className="w-full h-11 rounded-xl"
+                                  disabled={isSubmitting || isSsoSubmitting}
+                                  onClick={() => void handleSso(oidcProviders[0]?.id || 'default')}
+                                >
+                                  {isSsoSubmitting ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                      Signing in...
                                     </>
-                                )}
-                            </Button>
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                <div className="h-px flex-1 bg-border/60" />
-                                <span>or</span>
-                                <div className="h-px flex-1 bg-border/60" />
+                                  ) : (
+                                    <>
+                                      {oidcProviders[0]?.name ? `Continue with ${oidcProviders[0]?.name}` : 'Continue with SSO'}
+                                      <ArrowRight className="ml-2 h-4 w-4 opacity-70" aria-hidden="true" />
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+	                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+	                                <div className="h-px flex-1 bg-border/60" />
+	                                <span>or</span>
+	                                <div className="h-px flex-1 bg-border/60" />
                             </div>
                         </div>
                     )}

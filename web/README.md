@@ -49,17 +49,31 @@ Frontend supports OIDC SSO via Authorization Code + PKCE.
 Frontend env vars (client-side):
 
 - `NEXT_PUBLIC_OIDC_ENABLED` (optional; set false to force-disable)
+
+Single-provider (backward compatible):
 - `NEXT_PUBLIC_OIDC_ISSUER` (e.g. `https://idp.example`)
 - `NEXT_PUBLIC_OIDC_CLIENT_ID`
 - `NEXT_PUBLIC_OIDC_SCOPES` (default: `openid profile email`)
 - `NEXT_PUBLIC_OIDC_REDIRECT_URI` (optional; default: `<origin>/auth/oidc/callback`)
 - `NEXT_PUBLIC_OIDC_AUTH_PARAMS` (optional; querystring like `audience=...&prompt=login`)
 
+Multi-provider:
+- `NEXT_PUBLIC_OIDC_PROVIDERS_JSON` (JSON array; preferred)
+  - shape: `{ id, name?, issuer, client_id, scopes?, auth_params? }`
+  - example:
+    ```json
+    [
+      { "id": "okta", "name": "Okta", "issuer": "https://idp.example/okta", "client_id": "web-okta" },
+      { "id": "google", "name": "Google", "issuer": "https://accounts.google.com", "client_id": "web-google" }
+    ]
+    ```
+  - when multiple providers are present, the login page shows a provider picker.
+
 Backend must be configured to accept IdP JWTs (example):
 
 - `AUTH_MODE=jwt`
 - `ALGORITHM=RS256`
-- `JWT_ISSUER=<same as NEXT_PUBLIC_OIDC_ISSUER>`
+- `JWT_ISSUER=<same as provider issuer>`
 - `JWT_JWKS_DISCOVERY_ENABLED=true` (or set `JWT_JWKS_URLS` directly)
 
 Notes:
@@ -69,9 +83,15 @@ Notes:
 
 Optional server-side env vars (Next.js server only):
 
+Single-provider (backward compatible):
 - `OIDC_CLIENT_SECRET` (confidential clients)
 - `OIDC_CLIENT_AUTH_METHOD` (`basic` default | `post`)
 - `OIDC_SERVER_EXCHANGE_ENABLED` (optional; set false to force-disable server exchange)
+
+Multi-provider:
+- `OIDC_PROVIDERS_JSON` (JSON array)
+  - shape: `{ id, name?, issuer, client_id, client_secret?, client_auth_method? }`
+  - note: `client_secret` is optional; when missing, the route handler still works for public clients (but refresh via httpOnly cookie may be unavailable).
 
 Implementation:
 
