@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { getOidcServerProvidersFromEnv, resolveOidcServerProvider } from '@/lib/oidc-providers'
+
 export const runtime = 'nodejs'
 
 type OidcDiscovery = {
@@ -17,6 +19,7 @@ type TokenResponse = {
 }
 
 const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
+const PROVIDER_COOKIE_NAME = 'mimirq_oidc_provider_id'
 
 function jsonNoStore(data: any, init?: { status?: number }) {
   const resp = NextResponse.json(data, init)
@@ -32,23 +35,6 @@ function readEnv(name: string): string {
 function isFalsey(value: string): boolean {
   const v = String(value || '').trim().toLowerCase()
   return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
-}
-
-function resolveIssuer(): string {
-  return (readEnv('OIDC_ISSUER') || readEnv('NEXT_PUBLIC_OIDC_ISSUER')).replace(/\/+$/, '')
-}
-
-function resolveClientId(): string {
-  return readEnv('OIDC_CLIENT_ID') || readEnv('NEXT_PUBLIC_OIDC_CLIENT_ID')
-}
-
-function resolveClientSecret(): string {
-  return readEnv('OIDC_CLIENT_SECRET')
-}
-
-function resolveClientAuthMethod(): 'basic' | 'post' {
-  const raw = (readEnv('OIDC_CLIENT_AUTH_METHOD') || '').trim().toLowerCase()
-  return raw === 'post' ? 'post' : 'basic'
 }
 
 function requireSameOrigin(req: NextRequest): boolean {
@@ -89,11 +75,17 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: 'oidc_invalid_origin' }, { status: 403 })
   }
 
-  const issuer = resolveIssuer()
-  const clientId = resolveClientId()
-  if (!issuer || !clientId) {
+  const providerId = String(req.cookies.get(PROVIDER_COOKIE_NAME)?.value || '').trim() || undefined
+  const provider = resolveOidcServerProvider(providerId)
+  if (!provider) {
+    const available = getOidcServerProvidersFromEnv()
+    if (available.length > 1) {
+      return jsonNoStore({ error: 'oidc_provider_required' }, { status: 400 })
+    }
     return jsonNoStore({ error: 'oidc_not_configured' }, { status: 400 })
   }
+  const issuer = String(provider.issuer || '').trim()
+  const clientId = String(provider.client_id || '').trim()
 
   const refreshToken = String(req.cookies.get(REFRESH_COOKIE_NAME)?.value || '').trim()
   if (!refreshToken) {
@@ -107,8 +99,8 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: String(e?.message || 'oidc_discovery_failed') }, { status: 400 })
   }
 
-  const secret = resolveClientSecret()
-  const authMethod = resolveClientAuthMethod()
+  const secret = String(provider.client_secret || '').trim()
+  const authMethod: 'basic' | 'post' = provider.client_auth_method === 'post' ? 'post' : 'basic'
 
   const form = new URLSearchParams()
   form.set('grant_type', 'refresh_token')
@@ -144,6 +136,15 @@ export async function POST(req: NextRequest) {
       path: '/api/oidc',
       maxAge: 0,
     })
+    resp.cookies.set({
+      name: PROVIDER_COOKIE_NAME,
+      value: '',
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/api/oidc',
+      maxAge: 0,
+    })
     return resp
   }
 
@@ -166,6 +167,15 @@ export async function POST(req: NextRequest) {
     resp.cookies.set({
       name: REFRESH_COOKIE_NAME,
       value: nextRefresh,
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/api/oidc',
+      maxAge: 30 * 24 * 60 * 60,
+    })
+    resp.cookies.set({
+      name: PROVIDER_COOKIE_NAME,
+      value: provider.id,
       httpOnly: true,
       secure,
       sameSite: 'lax',

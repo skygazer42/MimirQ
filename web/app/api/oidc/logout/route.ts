@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 
 const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
+const PROVIDER_COOKIE_NAME = 'mimirq_oidc_provider_id'
 
 function jsonNoStore(data: any, init?: { status?: number }) {
   const resp = NextResponse.json(data, init)
@@ -43,6 +44,15 @@ export async function POST(req: NextRequest) {
   const secure = process.env.NODE_ENV === 'production'
   resp.cookies.set({
     name: REFRESH_COOKIE_NAME,
+    value: '',
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/api/oidc',
+    maxAge: 0,
+  })
+  resp.cookies.set({
+    name: PROVIDER_COOKIE_NAME,
     value: '',
     httpOnly: true,
     secure,

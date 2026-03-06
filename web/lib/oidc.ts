@@ -3,6 +3,7 @@
 import type { AuthResponse, AuthToken, UserProfile } from '@/types'
 import { setAuthSession } from '@/lib/auth-storage'
 import { generateOauthState, generatePkceCodeVerifier, pkceChallengeFromVerifier, tryDecodeJwtPayload } from '@/lib/oidc-pkce'
+import { getOidcPublicProvidersFromEnv, resolveOidcPublicProvider } from '@/lib/oidc-providers'
 
 type OidcDiscovery = {
   authorization_endpoint: string
@@ -22,8 +23,9 @@ type OidcTokenResponse = {
 }
 
 type OidcTransaction = {
-  v: 1
+  v: 1 | 2
   created_at_ms: number
+  provider_id?: string
   issuer: string
   client_id: string
   redirect_uri: string
@@ -66,14 +68,6 @@ function resolveRedirectUri(): string {
     return '/auth/oidc/callback'
   }
   return `${window.location.origin}/auth/oidc/callback`
-}
-
-function resolveIssuer(): string {
-  return readEnv('NEXT_PUBLIC_OIDC_ISSUER').replace(/\/+$/, '')
-}
-
-function resolveClientId(): string {
-  return readEnv('NEXT_PUBLIC_OIDC_CLIENT_ID')
 }
 
 function resolveScopes(): string {
@@ -168,16 +162,30 @@ function normalizeTokenType(raw: unknown): string {
 export function isOidcEnabled(): boolean {
   const enabled = readEnv('NEXT_PUBLIC_OIDC_ENABLED')
   if (enabled && isFalsey(enabled)) return false
-  return Boolean(resolveIssuer() && resolveClientId())
+  return getOidcPublicProvidersFromEnv().length > 0
 }
 
-export async function startOidcLogin(params: { returnTo?: string } = {}): Promise<void> {
+export async function startOidcLogin(params: { providerId?: string; returnTo?: string } = {}): Promise<void> {
   if (typeof window === 'undefined') {
     throw new Error('oidc_browser_only')
   }
 
-  const issuer = resolveIssuer()
-  const clientId = resolveClientId()
+  const providers = getOidcPublicProvidersFromEnv()
+  if (providers.length === 0) {
+    throw new Error('oidc_not_configured')
+  }
+
+  const providerId = String(params.providerId || '').trim() || null
+  const provider = resolveOidcPublicProvider(providerId)
+  if (!provider) {
+    if (providerId) {
+      throw new Error('oidc_unknown_provider')
+    }
+    throw new Error(providers.length > 1 ? 'oidc_provider_required' : 'oidc_not_configured')
+  }
+
+  const issuer = String(provider.issuer || '').trim()
+  const clientId = String(provider.client_id || '').trim()
   if (!issuer || !clientId) {
     throw new Error('oidc_not_configured')
   }
@@ -190,8 +198,9 @@ export async function startOidcLogin(params: { returnTo?: string } = {}): Promis
   const codeChallenge = await pkceChallengeFromVerifier(codeVerifier)
 
   const tx: OidcTransaction = {
-    v: 1,
+    v: 2,
     created_at_ms: Date.now(),
+    provider_id: provider.id,
     issuer,
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -204,14 +213,18 @@ export async function startOidcLogin(params: { returnTo?: string } = {}): Promis
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('client_id', clientId)
   url.searchParams.set('redirect_uri', redirectUri)
-  url.searchParams.set('scope', resolveScopes())
+  url.searchParams.set('scope', String(provider.scopes || '').trim() || resolveScopes())
   url.searchParams.set('state', state)
   url.searchParams.set('code_challenge', codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
 
   const extraRaw = readEnv('NEXT_PUBLIC_OIDC_AUTH_PARAMS')
   const extra = parseAuthParams(extraRaw)
-  for (const [key, value] of Object.entries(extra)) {
+  const mergedExtra = {
+    ...extra,
+    ...(provider.auth_params || {}),
+  }
+  for (const [key, value] of Object.entries(mergedExtra)) {
     if (key) url.searchParams.set(key, String(value ?? ''))
   }
 
@@ -242,7 +255,7 @@ export async function completeOidcLogin(params: { code: string; state: string })
   } catch {
     tx = null
   }
-  if (!tx || tx.v !== 1 || !tx.issuer || !tx.client_id || !tx.redirect_uri || !tx.code_verifier) {
+  if (!tx || (tx.v !== 1 && tx.v !== 2) || !tx.issuer || !tx.client_id || !tx.redirect_uri || !tx.code_verifier) {
     throw new Error('invalid_oidc_transaction')
   }
 
@@ -270,10 +283,16 @@ export async function completeOidcLogin(params: { code: string; state: string })
     }
   } catch (err: any) {
     // Fallback: exchange server-side to avoid browser CORS/client_secret constraints.
+    const providerId = String((tx as any)?.provider_id || '').trim() || undefined
     const serverRes = await fetch('/api/oidc/exchange', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, code_verifier: tx.code_verifier, redirect_uri: tx.redirect_uri }),
+      body: JSON.stringify({
+        provider_id: providerId,
+        code,
+        code_verifier: tx.code_verifier,
+        redirect_uri: tx.redirect_uri,
+      }),
     })
     const serverData = (await serverRes.json().catch(() => null)) as any
     if (!serverRes.ok) {
