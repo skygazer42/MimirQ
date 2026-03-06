@@ -5,8 +5,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -109,4 +107,3 @@ def test_mine_hard_negatives_from_traces_filters_by_tenant_id(tmp_path: Path) ->
 
     dumped = json.dumps(rows[0], ensure_ascii=False, sort_keys=True)
     assert "reset my password" not in dumped
-
