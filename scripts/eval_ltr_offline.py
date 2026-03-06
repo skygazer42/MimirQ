@@ -16,15 +16,17 @@ Metrics (binary relevance, chunk_id match):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker
+from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker, build_ltr_feature_spec_fingerprint
 from app.rag.reranker.types import RerankCandidate
 
 
@@ -91,6 +93,90 @@ def _extract_reference_chunk_ids(item: dict[str, Any]) -> set[str]:
         if cid:
             out.add(cid)
     return out
+
+
+def _extract_pipeline_hashes(items: list[dict[str, Any]], *, max_items: int = 20) -> list[str]:
+    cap = max(0, int(max_items or 0))
+    if cap <= 0:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        refs = it.get("reference_sources") or []
+        if not isinstance(refs, list):
+            continue
+        for src in refs:
+            if not isinstance(src, dict):
+                continue
+            ph = str(src.get("pipeline_hash") or "").strip()
+            if not ph:
+                continue
+            ph = ph[:64]
+            if ph in seen:
+                continue
+            seen.add(ph)
+            out.append(ph)
+            if len(out) >= cap:
+                return out
+    return out
+
+
+def build_eval_summary(
+    *,
+    generated_at: str,
+    elapsed_sec: float,
+    dataset_id: str,
+    cases_total: int,
+    cases_used: int,
+    cases_sha256: str,
+    cases_schema: str | None,
+    pipeline_hashes: list[str] | None,
+    retrieval_config: dict[str, Any] | None,
+    model_path: str,
+    model_sha256: str,
+    spec: LTRFeatureSpec,
+    feature_spec_version: int,
+    k: int,
+    top_k: int,
+    rerank_top_n: int,
+    baseline: dict[str, float],
+    ltr: dict[str, float],
+) -> dict[str, Any]:
+    lineage: dict[str, Any] = {
+        "schema": "mimirq.ltr_run_lineage.v1",
+        "kind": "eval",
+        "dataset_id": str(dataset_id),
+        "cases_sha256": str(cases_sha256),
+        "cases_schema": (str(cases_schema) if cases_schema else None),
+        "pipeline_hashes": list(pipeline_hashes or []),
+        "retrieval_config_hash": (str(retrieval_config.get("hash")) if isinstance(retrieval_config, dict) and retrieval_config.get("hash") else None),
+        "retrieval_config": (dict(retrieval_config) if isinstance(retrieval_config, dict) else None),
+        "model_path": str(model_path),
+        "model_sha256": str(model_sha256),
+        "feature_spec_version": int(feature_spec_version or 1),
+        "feature_spec": build_ltr_feature_spec_fingerprint(spec=spec, version=int(feature_spec_version or 1)),
+    }
+    lineage = {k: v for k, v in lineage.items() if v is not None}
+
+    return {
+        "schema": "mimirq.ltr_offline_eval.v1",
+        "generated_at": str(generated_at),
+        "elapsed_sec": round(float(elapsed_sec or 0.0), 3),
+        "dataset_id": str(dataset_id),
+        "cases_total": int(cases_total or 0),
+        "cases_used": int(cases_used or 0),
+        "k": int(k or 0),
+        "top_k": int(top_k or 0),
+        "rerank_top_n": int(rerank_top_n or 0),
+        "model": str(model_path),
+        "model_sha256": str(model_sha256),
+        "spec": str(getattr(spec, "schema", "") or ""),
+        "baseline": dict(baseline or {}),
+        "ltr": dict(ltr or {}),
+        "lineage": lineage,
+    }
 
 
 def _as_float(value: Any) -> float:
@@ -170,6 +256,7 @@ def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    t0 = time.monotonic()
     p = argparse.ArgumentParser(description="Offline evaluation: baseline vs local LTR rerank (via Evidence API candidates).")
     p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
     p.add_argument("--model", required=True, help="Path to LTR model artifact (xgboost JSON/UBJ)")
@@ -204,7 +291,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        try:
+            cases_sha256 = hashlib.sha256(cases_path.read_bytes()).hexdigest()
+        except Exception:
+            cases_sha256 = ""
+
         raw_cases = _load_json(cases_path)
+        cases_schema = str(raw_cases.get("schema") or "").strip() if isinstance(raw_cases, dict) else ""
+        cases_schema = cases_schema or None
         dataset_id, items = coerce_case_bundle(raw_cases)
     except Exception as exc:  # noqa: BLE001
         print(f"[eval_ltr] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
@@ -218,23 +312,24 @@ def main(argv: list[str] | None = None) -> int:
     rerank_top_n = max(0, int(args.rerank_top_n or 0))
     rerank_top_n = min(rerank_top_n, top_k) if rerank_top_n else top_k
 
-    spec = LTRFeatureSpec.from_version(int(args.feature_spec_version or 1))
+    pipeline_hashes = _extract_pipeline_hashes(items)
+
+    try:
+        model_sha256 = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    except Exception:
+        model_sha256 = ""
+
+    feature_spec_version = int(args.feature_spec_version or 1)
+    spec = LTRFeatureSpec.from_version(feature_spec_version)
     reranker = LTRReranker(model_path=str(model_path), spec=spec)
 
     url = str(args.base_url).rstrip("/") + "/rag/retrieve"
     timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
+    retrieval_config: dict[str, Any] | None = None
 
-    summary = {
-        "cases_total": len(items),
-        "cases_used": 0,
-        "k": k,
-        "top_k": top_k,
-        "rerank_top_n": rerank_top_n,
-        "model": str(model_path),
-        "spec": getattr(spec, "schema", ""),
-        "baseline": {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0},
-        "ltr": {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0},
-    }
+    baseline_sum = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
+    ltr_sum = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
+    cases_used = 0
 
     with httpx.Client(timeout=timeout) as client:
         for item in items:
@@ -273,6 +368,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[eval_ltr] WARN: retrieve failed: {str(exc)[:200]}", file=sys.stderr)
                 continue
 
+            # Best-effort capture of the backend's versioned, PII-safe retrieval config fingerprint.
+            if retrieval_config is None and isinstance(payload, dict):
+                rt = payload.get("retrieval_trace") if isinstance(payload.get("retrieval_trace"), dict) else None
+                if isinstance(rt, dict):
+                    rcfg = rt.get("retrieval_config")
+                    if isinstance(rcfg, dict) and str(rcfg.get("schema") or "").strip() and str(rcfg.get("hash") or "").strip():
+                        retrieval_config = dict(rcfg)
+
             citations = payload.get("citations") or []
             if not isinstance(citations, list) or not citations:
                 continue
@@ -302,16 +405,36 @@ def main(argv: list[str] | None = None) -> int:
 
             ltr_metrics = _hit_mrr_recall_ndcg_at_k(ranked_ids=reranked, relevant=relevant, k=k)
 
-            summary["cases_used"] += 1
+            cases_used += 1
             for key in ("hit", "mrr", "recall", "ndcg"):
-                summary["baseline"][key] += float(base_metrics.get(key, 0.0) or 0.0)
-                summary["ltr"][key] += float(ltr_metrics.get(key, 0.0) or 0.0)
+                baseline_sum[key] += float(base_metrics.get(key, 0.0) or 0.0)
+                ltr_sum[key] += float(ltr_metrics.get(key, 0.0) or 0.0)
 
-    used = int(summary.get("cases_used") or 0)
-    if used > 0:
-        for sec in ("baseline", "ltr"):
-            for key in ("hit", "mrr", "recall", "ndcg"):
-                summary[sec][key] = round(float(summary[sec][key]) / float(used), 4)
+    if cases_used > 0:
+        for key in ("hit", "mrr", "recall", "ndcg"):
+            baseline_sum[key] = round(float(baseline_sum[key]) / float(cases_used), 4)
+            ltr_sum[key] = round(float(ltr_sum[key]) / float(cases_used), 4)
+
+    summary = build_eval_summary(
+        generated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        elapsed_sec=float(time.monotonic() - t0),
+        dataset_id=str(dataset_id),
+        cases_total=len(items),
+        cases_used=cases_used,
+        cases_sha256=cases_sha256,
+        cases_schema=cases_schema,
+        pipeline_hashes=pipeline_hashes,
+        retrieval_config=retrieval_config,
+        model_path=str(model_path),
+        model_sha256=model_sha256,
+        spec=spec,
+        feature_spec_version=feature_spec_version,
+        k=k,
+        top_k=top_k,
+        rerank_top_n=rerank_top_n,
+        baseline=baseline_sum,
+        ltr=ltr_sum,
+    )
 
     print(
         "[eval_ltr] OK"
@@ -338,4 +461,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

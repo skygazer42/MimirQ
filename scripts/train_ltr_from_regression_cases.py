@@ -28,7 +28,12 @@ from typing import Any
 import httpx
 
 from app.rag.core.hashing import stable_hash
-from app.rag.reranker.ltr import LTRFeatureSpec, extract_ltr_features, train_ltr_xgboost_model
+from app.rag.reranker.ltr import (
+    LTRFeatureSpec,
+    build_ltr_feature_spec_fingerprint,
+    extract_ltr_features,
+    train_ltr_xgboost_model,
+)
 from app.rag.reranker.types import RerankCandidate
 
 
@@ -151,6 +156,39 @@ def _extract_reference_chunk_ids(item: dict[str, Any]) -> set[str]:
     return out
 
 
+def _extract_pipeline_hashes(items: list[dict[str, Any]], *, max_items: int = 20) -> list[str]:
+    """
+    Best-effort index/pipeline version hints from regression case bundles.
+
+    This is PII-safe by construction (hash identifiers only) and bounded.
+    """
+    cap = max(0, int(max_items or 0))
+    if cap <= 0:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        refs = it.get("reference_sources") or []
+        if not isinstance(refs, list):
+            continue
+        for src in refs:
+            if not isinstance(src, dict):
+                continue
+            ph = str(src.get("pipeline_hash") or "").strip()
+            if not ph:
+                continue
+            ph = ph[:64]
+            if ph in seen:
+                continue
+            seen.add(ph)
+            out.append(ph)
+            if len(out) >= cap:
+                return out
+    return out
+
+
 def build_ltr_feature_map(*, citation: dict[str, Any], query: str, spec: LTRFeatureSpec) -> dict[str, float]:
     # Keep feature semantics aligned with app.rag.reranker.ltr.extract_ltr_features.
     meta = {
@@ -180,6 +218,101 @@ def build_ltr_feature_map(*, citation: dict[str, Any], query: str, spec: LTRFeat
         ),
     )
     return {name: float(v) for name, v in zip(spec.feature_names, values, strict=False)}
+
+
+def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
+    s = str(value or "").strip()
+    if not s:
+        return None
+    lim = max(0, int(max_len or 0))
+    if lim <= 0:
+        return s
+    return s[:lim]
+
+
+def _safe_list_str(value: Any, *, max_items: int = 20, max_len: int = 80) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for raw in value:
+        s = _safe_str(raw, max_len=max_len)
+        if not s:
+            continue
+        out.append(s)
+        if len(out) >= max(0, int(max_items or 0)):
+            break
+    return out
+
+
+def build_ltr_manifest(
+    *,
+    model_bytes: bytes,
+    created_at: str,
+    model_file: str,
+    spec: LTRFeatureSpec,
+    feature_spec_version: int | str | None,
+    objective: str,
+    num_boost_round: int,
+    seed: int,
+    training: dict[str, Any],
+    dataset_id: str,
+    cases_sha256: str,
+    cases_schema: str | None,
+    pipeline_hashes: list[str] | None,
+    retrieval_config: dict[str, Any] | None,
+    hard_negatives_sha256: str | None,
+) -> dict[str, Any]:
+    """
+    Build a versioned, PII-safe LTR model manifest.
+
+    This is a pure helper so unit tests can lock schema/lineage behavior without
+    hitting the Evidence API network path.
+    """
+    if not isinstance(model_bytes, (bytes, bytearray)) or not model_bytes:
+        raise ValueError("model_bytes is required")
+
+    created = _safe_str(created_at, max_len=40) or ""
+    model_file_clean = _safe_str(model_file, max_len=200) or ""
+    if not model_file_clean:
+        raise ValueError("model_file is required")
+
+    try:
+        v = int(feature_spec_version) if feature_spec_version is not None else 1
+    except Exception:
+        v = 1
+
+    model_sha256 = hashlib.sha256(bytes(model_bytes)).hexdigest()
+    feature_names = list(getattr(spec, "feature_names", ()) or ())
+
+    lineage: dict[str, Any] = {
+        "schema": "mimirq.ltr_run_lineage.v1",
+        "kind": "train",
+        "dataset_id": _safe_str(dataset_id, max_len=64),
+        "cases_sha256": _safe_str(cases_sha256, max_len=64),
+        "cases_schema": _safe_str(cases_schema, max_len=80),
+        "pipeline_hashes": _safe_list_str(pipeline_hashes or [], max_items=20, max_len=64) or None,
+        "retrieval_config_hash": (_safe_str(retrieval_config.get("hash"), max_len=64) if isinstance(retrieval_config, dict) else None),
+        "retrieval_config": (dict(retrieval_config) if isinstance(retrieval_config, dict) else None),
+        "hard_negatives_sha256": _safe_str(hard_negatives_sha256, max_len=64),
+    }
+    lineage = {k: v for k, v in lineage.items() if v is not None}
+
+    manifest = {
+        "schema": "mimirq.ltr_model_manifest.v1",
+        "created_at": created,
+        "model_file": model_file_clean,
+        "model_sha256": model_sha256,
+        "feature_schema": str(getattr(spec, "schema", "") or ""),
+        "feature_names": list(feature_names),
+        "feature_spec_version": int(v),
+        "feature_spec": build_ltr_feature_spec_fingerprint(spec=spec, version=v),
+        "objective": _safe_str(objective, max_len=80) or "",
+        "num_boost_round": int(num_boost_round or 0),
+        "seed": int(seed or 0),
+        "training": dict(training or {}),
+        "lineage": lineage,
+    }
+    return {k: v for k, v in manifest.items() if v is not None}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -252,7 +385,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        try:
+            cases_sha256 = hashlib.sha256(cases_path.read_bytes()).hexdigest()
+        except Exception:
+            cases_sha256 = ""
+
         raw_cases = _load_json(cases_path)
+        cases_schema = str(raw_cases.get("schema") or "").strip() if isinstance(raw_cases, dict) else ""
+        cases_schema = cases_schema or None
         dataset_id, items = coerce_case_bundle(raw_cases)
     except Exception as exc:  # noqa: BLE001
         print(f"[train_ltr] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
@@ -261,11 +401,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_cases and int(args.max_cases) > 0:
         items = list(items)[: _coerce_nonneg_int(args.max_cases)]
 
+    pipeline_hashes = _extract_pipeline_hashes(items)
+
     spec = LTRFeatureSpec.from_version(int(args.feature_spec_version or 1))
     training_rows: list[dict[str, Any]] = []
     group_sizes: list[int] = []
     objective = str(args.objective or "rank:pairwise").strip() or "rank:pairwise"
     hard_lookup: dict[str, list[str]] = {}
+    hard_negatives_sha256: str | None = None
+    if str(args.hard_negatives_jsonl or "").strip():
+        try:
+            hn_path = Path(args.hard_negatives_jsonl)
+            if hn_path.exists():
+                hard_negatives_sha256 = hashlib.sha256(hn_path.read_bytes()).hexdigest()
+        except Exception:
+            hard_negatives_sha256 = None
     if str(args.hard_negatives_jsonl or "").strip():
         try:
             from app.rag.evaluation.hard_negative_mining import load_hard_negatives_jsonl  # noqa: WPS433
@@ -286,6 +436,7 @@ def main(argv: list[str] | None = None) -> int:
 
     url = str(args.base_url).rstrip("/") + "/rag/retrieve"
     timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
+    retrieval_config: dict[str, Any] | None = None
 
     with httpx.Client(timeout=timeout) as client:
         for item in items:
@@ -326,6 +477,14 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:  # noqa: BLE001
                 print(f"[train_ltr] WARN: retrieve failed: {str(exc)[:200]}", file=sys.stderr)
                 continue
+
+            # Best-effort capture of the backend's versioned, PII-safe retrieval config fingerprint.
+            if retrieval_config is None and isinstance(payload, dict):
+                rt = payload.get("retrieval_trace") if isinstance(payload.get("retrieval_trace"), dict) else None
+                if isinstance(rt, dict):
+                    rcfg = rt.get("retrieval_config")
+                    if isinstance(rcfg, dict) and str(rcfg.get("schema") or "").strip() and str(rcfg.get("hash") or "").strip():
+                        retrieval_config = dict(rcfg)
 
             citations = payload.get("citations") or []
             if not isinstance(citations, list) or not citations:
@@ -483,28 +642,34 @@ def main(argv: list[str] | None = None) -> int:
     if not bool(args.no_manifest):
         try:
             manifest_path = Path(args.out_manifest) if str(args.out_manifest or "").strip() else out_model_path.with_suffix(".manifest.json")
-            manifest = {
-                "schema": "mimirq.ltr_model_manifest.v1",
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "model_file": out_model_path.name,
-                "model_sha256": hashlib.sha256(model_bytes).hexdigest(),
-                "feature_schema": getattr(spec, "schema", ""),
-                "feature_names": list(getattr(spec, "feature_names", ()) or ()),
-                "objective": objective,
-                "num_boost_round": int(args.num_boost_round or 0),
-                "seed": int(args.seed or 0),
-                "training": {
-                    "cases_total": int(stats.get("cases_total") or 0),
-                    "cases_used": int(stats.get("cases_used") or 0),
-                    "cases_missed": int(stats.get("cases_missed") or 0),
-                    "rows_total": int(stats.get("rows_total") or 0),
-                    "rows_pos": int(stats.get("rows_pos") or 0),
-                    "rows_neg": int(stats.get("rows_neg") or 0),
-                    "rows_hard_neg": int(stats.get("rows_hard_neg") or 0),
-                    "group_count": int(len(group_sizes) if objective.startswith("rank:") else 0),
-                    "data_hash": _training_data_hash(training_rows),
-                },
+            training_meta = {
+                "cases_total": int(stats.get("cases_total") or 0),
+                "cases_used": int(stats.get("cases_used") or 0),
+                "cases_missed": int(stats.get("cases_missed") or 0),
+                "rows_total": int(stats.get("rows_total") or 0),
+                "rows_pos": int(stats.get("rows_pos") or 0),
+                "rows_neg": int(stats.get("rows_neg") or 0),
+                "rows_hard_neg": int(stats.get("rows_hard_neg") or 0),
+                "group_count": int(len(group_sizes) if objective.startswith("rank:") else 0),
+                "data_hash": _training_data_hash(training_rows),
             }
+            manifest = build_ltr_manifest(
+                model_bytes=model_bytes,
+                created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                model_file=out_model_path.name,
+                spec=spec,
+                feature_spec_version=int(args.feature_spec_version or 1),
+                objective=objective,
+                num_boost_round=int(args.num_boost_round or 0),
+                seed=int(args.seed or 0),
+                training=training_meta,
+                dataset_id=str(dataset_id),
+                cases_sha256=cases_sha256,
+                cases_schema=cases_schema,
+                pipeline_hashes=pipeline_hashes,
+                retrieval_config=retrieval_config,
+                hard_negatives_sha256=hard_negatives_sha256,
+            )
             _write_json(manifest_path, manifest)
         except Exception as exc:  # noqa: BLE001
             print(f"[train_ltr] WARN: failed to write manifest: {str(exc)[:200]}", file=sys.stderr)
