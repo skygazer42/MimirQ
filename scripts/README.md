@@ -45,6 +45,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `mine_hard_negatives_from_traces.py`: mine PII-safe hard negatives from `event=rag_trace` metrics logs (outputs `mimirq.hard_negatives.v1` JSONL)
 - `access_graph_diff.py`: diff two access-graph exports (NDJSON/JSON) and output a bounded PII-safe change summary (for access reviews)
 - `regression_gate.py`: enforce regression thresholds from evaluation outputs
+- `release_gate.py`: combine regression gate + SLO snapshot + cost budgets into a single release gate (CI/staging)
 - `train_ltr_from_regression_cases.py`: train an xgboost LTR reranker model from regression cases via Evidence API (retrieval-only)
   - Writes a sidecar manifest by default: `<out-model>.manifest.json` (can be disabled with `--no-manifest`)
 - `eval_ltr_offline.py`: compare baseline retrieval vs local LTR rerank offline (candidates via Evidence API)

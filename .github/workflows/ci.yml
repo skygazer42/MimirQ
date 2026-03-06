@@ -132,6 +132,11 @@ jobs:
           ENABLE_RERANKER: "false"
           # Reduce noise/work in CI (lexical DB retrieval is sufficient for this gate).
           BM25_INDEX_ENABLED: "false"
+          # Enable PII-safe metrics JSONL so we can also gate SLO + cost budgets.
+          ENABLE_METRICS_LOG: "true"
+          METRICS_LOG_PATH: artifacts/rag_metrics.jsonl
+          # Avoid any external LLM calls in CI (probe traffic uses mock responses).
+          LLM_MOCK_ENABLED: "true"
         run: |
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
           echo $! > artifacts/backend.pid
@@ -164,6 +169,21 @@ jobs:
             --retrieval-mode keyword \
             --out-run-json artifacts/run.detail.json \
             --generate-thresholds-out artifacts/thresholds.generated.json
+
+      - name: Release gate (SLO + cost budgets)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+        run: |
+          python scripts/release_gate.py \
+            --base-url http://localhost:8000/api/v1 \
+            --tenant-id 00000000-0000-0000-0000-000000000000 \
+            --user-id ci-bot \
+            --budgets ci/release_gate_budgets.v1.json \
+            --cases artifacts/regression_cases.json \
+            --probe-chat-requests 4 \
+            --probe-timeout-sec 20 \
+            --skip-regression \
+            --out-report artifacts/release_gate.report.json
 
       - name: Diff thresholds (baseline vs generated)
         run: |

@@ -1,0 +1,33 @@
+{
+  "schema": "mimirq.release_gate_budgets.v1",
+  "slo": {
+    "min_rag_trace_count": 2,
+    "on_insufficient_data": "fail",
+    "windows": {
+      "60": {
+        "retrieval_p95_elapsed_sec": { "max": 5.0 },
+        "retrieval_p99_elapsed_sec": { "max": 15.0 },
+        "zero_hit_rate": { "max": 0.25 },
+        "error_rate": { "max": 0.05 }
+      },
+      "1440": {
+        "retrieval_p95_elapsed_sec": { "max": 5.0 },
+        "retrieval_p99_elapsed_sec": { "max": 15.0 },
+        "zero_hit_rate": { "max": 0.25 },
+        "error_rate": { "max": 0.05 }
+      }
+    }
+  },
+  "cost": {
+    "window_minutes": 60,
+    "min_rag_trace_count": 2,
+    "on_insufficient_data": "fail",
+    "thresholds": {
+      "llm_total_tokens_avg": { "max": 1500.0 },
+      "llm_prompt_tokens_avg": { "max": 1450.0 },
+      "embed_query_tokens_avg": { "max": 80.0 },
+      "retrieval_query_count_avg": { "max": 2.0 }
+    }
+  }
+}
+
