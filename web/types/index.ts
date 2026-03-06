@@ -2192,6 +2192,9 @@ export type EvidenceReferenceRepairRequest = import('./backend').EvidenceReferen
 export type EvidenceReferenceRepairChange = import('./backend').EvidenceReferenceRepairChange
 export type EvidenceReferenceRepairResponse = import('./backend').EvidenceReferenceRepairResponse
 
+export type EvidenceHardcaseCandidate = import('./backend').EvidenceHardcaseCandidate
+export type EvidenceHardcaseDiscovery = import('./backend').EvidenceHardcaseDiscovery
+
 export interface GeneratedQuestion {
   question: string
   expected_answer?: string

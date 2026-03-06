@@ -184,6 +184,7 @@ import type {
   EvidenceReferenceDriftAudit,
   EvidenceReferenceRepairRequest,
   EvidenceReferenceRepairResponse,
+  EvidenceHardcaseDiscovery,
   EvidenceSuite,
   EvidenceSuiteCreate,
   EvidenceSuiteExportV1,
@@ -2007,7 +2008,7 @@ export const evidenceApi = {
       max_rating?: number
       include_existing?: boolean
     }
-  ): Promise<any> {
+  ): Promise<EvidenceHardcaseDiscovery> {
     return openapiRequest({
       path: '/api/v1/evidence/suites/{suite_id}/hardcase-candidates',
       method: 'get',
