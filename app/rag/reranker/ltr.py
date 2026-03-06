@@ -21,9 +21,9 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from app.rag.core.hashing import stable_hash
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
-from app.rag.core.hashing import stable_hash
 
 _MANIFEST_SCHEMA_V1 = "mimirq.ltr_model_manifest.v1"
 _FEATURE_SPEC_FINGERPRINT_SCHEMA_V1 = "mimirq.ltr_feature_spec.v1"
