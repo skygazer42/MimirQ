@@ -81,3 +81,48 @@ SPLADE provider（可选，需显式配置模型）：
 建议：
 - 先在 retrieval-only regression gate 上评估（Recall/Hit/MRR/NDCG）
 - 用 slice（语言/文件类型/质量）观察 sparse 是否只在特定桶收益明显
+
+---
+
+## 6) 可观测性（Prometheus Metrics）
+
+当 `PROMETHEUS_ENABLED=true` 时，sparse 通道会暴露一组 **低基数、PII-safe** 的指标，便于灰度与回滚判断：
+
+检索侧：
+- `rag_sparse_search_total{provider,outcome}`
+- `rag_sparse_search_duration_seconds{provider,outcome}`
+- `rag_sparse_search_candidates_count{provider,outcome}`
+
+索引侧（持久化缓存 + 构建）：
+- `rag_sparse_index_load_total{provider,outcome}`（`hit|miss|error|skipped`）
+- `rag_sparse_index_save_total{provider,outcome}`（`ok|error|skipped`）
+- `rag_sparse_index_build_duration_seconds{provider,kind,outcome}`（`kind=full|incremental`）
+
+字段说明：
+- `provider`：`deterministic|splade|unknown`
+- `outcome`（search/build）：`ok|empty|error|skipped`
+
+> 建议关注：`outcome=error` 的比例、`duration_seconds` 的 P95/P99，以及 `index_load_total{outcome=miss}` 的变化（可能表示频繁重建/冷启动）。
+
+---
+
+## 7) 回滚（Rollback Playbook）
+
+sparse 通道设计为 **默认关闭**，且所有加载/索引持久化均为 best-effort；因此回滚通常只需配置开关：
+
+1) **最安全的回滚**：关闭 sparse 通道  
+   - `SPARSE_RETRIEVAL_ENABLED=false`
+
+2) **保留 sparse 但降级 provider**（用于排查 SPLADE 模型问题）：  
+   - `SPARSE_RETRIEVAL_PROVIDER=deterministic`（不依赖 transformers/模型下载）
+
+3) **禁用落盘索引**（用于排查磁盘占用/权限问题）：  
+   - `SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED=false`
+
+4) **清理索引目录（可选）**：  
+   - `SPARSE_RETRIEVAL_INDEX_DIR=./data/sparse_indexes` 下会按 provider 分目录写入 `index_*.json.gz`  
+   - 改 provider/config 会自动生成新的 index key；旧文件可按需清理（不影响 correctness，只影响冷启动性能）
+
+建议流程：
+- 先看 Prometheus：`rag_sparse_search_total{outcome="error"}` 是否突然升高、`rag_sparse_search_duration_seconds` 是否飙升
+- 先把 `SPARSE_RETRIEVAL_ENABLED=false`（硬回滚），然后在预发/灰度环境逐步恢复并跑 retrieval-only regression gate 验证收益

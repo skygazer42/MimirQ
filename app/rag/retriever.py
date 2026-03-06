@@ -245,76 +245,98 @@ class HybridRetriever(BaseRetriever):
 
         Indices can be persisted to disk when enabled.
         """
-        from app.rag.retrieval.sparse import (
-            SparseIndexStore,
-            build_sparse_provider_config,
-            get_sparse_encoder,
-            parse_synonyms,
-        )
-
+        build_t0 = time.perf_counter()
         provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
-        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        build_outcome = "ok"
+        save_outcome: str | None = None
+        from app.rag.retrieval.sparse_prometheus_metrics import (  # local import: optional dependency
+            observe_sparse_index_build,
+            observe_sparse_index_save,
         )
 
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        try:
+            from app.rag.retrieval.sparse import (
+                SparseIndexStore,
+                build_sparse_provider_config,
+                get_sparse_encoder,
+                parse_synonyms,
+            )
 
-        def _coerce(v: Any) -> SparseVector:
-            if isinstance(v, SparseVector):
-                return v
-            if isinstance(v, dict):
-                weights: dict[str, float] = {}
-                for k, w in v.items():
-                    if k is None or w is None:
-                        continue
-                    try:
-                        weights[str(k)] = float(w)
-                    except Exception:
-                        continue
-                return SparseVector(weights=weights)
-            return SparseVector(weights={})
+            synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+            synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
 
-        texts = [str(d.page_content or "") for d in (docs or []) if d is not None and d.id is not None]
-        vecs = encoder.encode_batch(texts)
+            provider_config = build_sparse_provider_config(
+                provider=provider,
+                synonyms_raw=synonyms_raw,
+                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+            )
 
-        out: Dict[str, SparseVector] = {}
-        idx = 0
-        for d in docs or []:
-            if d is None or d.id is None:
-                continue
-            vec = vecs[idx] if idx < len(vecs) else SparseVector(weights={})
-            out[str(d.id)] = _coerce(vec)
-            idx += 1
+            encoder = get_sparse_encoder(
+                provider=provider,
+                synonyms=synonyms,
+                synonyms_raw=synonyms_raw,
+                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+            )
 
-        self._sparse_doc_vectors[cache_key] = out
+            def _coerce(v: Any) -> SparseVector:
+                if isinstance(v, SparseVector):
+                    return v
+                if isinstance(v, dict):
+                    weights: dict[str, float] = {}
+                    for k, w in v.items():
+                        if k is None or w is None:
+                            continue
+                        try:
+                            weights[str(k)] = float(w)
+                        except Exception:
+                            continue
+                    return SparseVector(weights=weights)
+                return SparseVector(weights={})
 
-        if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
-            try:
-                fp = self._sparse_corpus_fingerprint(docs)
-                store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
-                store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=out)
-            except Exception:
-                pass
+            texts = [str(d.page_content or "") for d in (docs or []) if d is not None and d.id is not None]
+            vecs = encoder.encode_batch(texts)
+
+            out: Dict[str, SparseVector] = {}
+            idx = 0
+            for d in docs or []:
+                if d is None or d.id is None:
+                    continue
+                vec = vecs[idx] if idx < len(vecs) else SparseVector(weights={})
+                out[str(d.id)] = _coerce(vec)
+                idx += 1
+
+            self._sparse_doc_vectors[cache_key] = out
+
+            if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+                try:
+                    fp = self._sparse_corpus_fingerprint(docs)
+                    store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
+                    store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=out)
+                    save_outcome = "ok"
+                except Exception:
+                    save_outcome = "error"
+        except Exception:
+            build_outcome = "error"
+            raise
+        finally:
+            observe_sparse_index_build(
+                provider=provider,
+                kind="full",
+                outcome=build_outcome,
+                duration_sec=(time.perf_counter() - build_t0),
+            )
+            if save_outcome is not None:
+                observe_sparse_index_save(provider=provider, outcome=save_outcome)
 
     def _upsert_sparse_index_incremental(
         self,
@@ -339,101 +361,141 @@ class HybridRetriever(BaseRetriever):
         if not upsert_docs:
             return
 
-        from app.rag.retrieval.sparse import (  # local import: keep optional deps isolated
-            SparseIndexStore,
-            build_sparse_provider_config,
-            get_sparse_encoder,
-            parse_synonyms,
-        )
+        build_t0 = time.perf_counter()
+        build_outcome = "ok"
+        load_outcome: str | None = None
+        save_outcome: str | None = None
 
         provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
-        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
 
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        from app.rag.retrieval.sparse_prometheus_metrics import (  # local import: optional dependency
+            observe_sparse_index_build,
+            observe_sparse_index_load,
+            observe_sparse_index_save,
         )
 
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        try:
+            from app.rag.retrieval.sparse import (  # local import: keep optional deps isolated
+                SparseIndexStore,
+                build_sparse_provider_config,
+                get_sparse_encoder,
+                parse_synonyms,
+            )
 
-        sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+            synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+            synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
 
-        # Best-effort: load persisted index if we don't have an in-memory cache yet.
-        if (not sparse_vecs) and bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
-            try:
-                fp = self._sparse_corpus_fingerprint(corpus_docs)
-                store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
-                loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
-                if loaded:
-                    sparse_vecs = loaded
-            except Exception:
-                sparse_vecs = {}
+            provider_config = build_sparse_provider_config(
+                provider=provider,
+                synonyms_raw=synonyms_raw,
+                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+            )
 
-        # If the corpus is larger than the upsert batch and we don't have an existing index,
-        # fall back to a full rebuild for correctness.
-        if not sparse_vecs and corpus_docs and len(corpus_docs) > len(upsert_docs):
-            self._build_sparse_index(cache_key=cache_key, docs=corpus_docs)
-            return
+            encoder = get_sparse_encoder(
+                provider=provider,
+                synonyms=synonyms,
+                synonyms_raw=synonyms_raw,
+                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+            )
 
-        def _coerce(v: Any) -> SparseVector:
-            if isinstance(v, SparseVector):
-                return v
-            if isinstance(v, dict):
-                weights: dict[str, float] = {}
-                for k, w in v.items():
-                    if k is None or w is None:
-                        continue
+            sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+
+            # Best-effort: load persisted index if we don't have an in-memory cache yet.
+            if not sparse_vecs:
+                if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+                    load_outcome = "miss"
                     try:
-                        weights[str(k)] = float(w)
+                        fp = self._sparse_corpus_fingerprint(corpus_docs)
+                        store = SparseIndexStore(
+                            base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
+                        )
+                        loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
+                        if loaded:
+                            sparse_vecs = loaded
+                            load_outcome = "hit"
                     except Exception:
-                        continue
-                return SparseVector(weights=weights)
-            return SparseVector(weights={})
+                        sparse_vecs = {}
+                        load_outcome = "error"
+                else:
+                    load_outcome = "skipped"
 
-        texts: list[str] = []
-        doc_ids: list[str] = []
-        for d in upsert_docs:
-            if d is None or d.id is None:
-                continue
-            cid = str(d.id).strip()
-            if not cid:
-                continue
-            doc_ids.append(cid)
-            texts.append(str(d.page_content or ""))
+            # If the corpus is larger than the upsert batch and we don't have an existing index,
+            # fall back to a full rebuild for correctness.
+            if not sparse_vecs and corpus_docs and len(corpus_docs) > len(upsert_docs):
+                build_outcome = "skipped"
+                self._build_sparse_index(cache_key=cache_key, docs=corpus_docs)
+                return
 
-        if not doc_ids:
-            return
+            def _coerce(v: Any) -> SparseVector:
+                if isinstance(v, SparseVector):
+                    return v
+                if isinstance(v, dict):
+                    weights: dict[str, float] = {}
+                    for k, w in v.items():
+                        if k is None or w is None:
+                            continue
+                        try:
+                            weights[str(k)] = float(w)
+                        except Exception:
+                            continue
+                    return SparseVector(weights=weights)
+                return SparseVector(weights={})
 
-        vecs = encoder.encode_batch(texts)
-        for cid, vec in zip(doc_ids, vecs, strict=False):
-            sparse_vecs[cid] = _coerce(vec)
+            texts: list[str] = []
+            doc_ids: list[str] = []
+            for d in upsert_docs:
+                if d is None or d.id is None:
+                    continue
+                cid = str(d.id).strip()
+                if not cid:
+                    continue
+                doc_ids.append(cid)
+                texts.append(str(d.page_content or ""))
 
-        self._sparse_doc_vectors[cache_key] = sparse_vecs
+            if not doc_ids:
+                build_outcome = "skipped"
+                return
 
-        if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
-            try:
-                fp = self._sparse_corpus_fingerprint(corpus_docs)
-                store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
-                store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=sparse_vecs)
-            except Exception:
-                pass
+            vecs = encoder.encode_batch(texts)
+            for cid, vec in zip(doc_ids, vecs, strict=False):
+                sparse_vecs[cid] = _coerce(vec)
+
+            self._sparse_doc_vectors[cache_key] = sparse_vecs
+
+            if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+                try:
+                    fp = self._sparse_corpus_fingerprint(corpus_docs)
+                    store = SparseIndexStore(
+                        base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
+                    )
+                    store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=sparse_vecs)
+                    save_outcome = "ok"
+                except Exception:
+                    save_outcome = "error"
+        except Exception:
+            build_outcome = "error"
+            raise
+        finally:
+            observe_sparse_index_build(
+                provider=provider,
+                kind="incremental",
+                outcome=build_outcome,
+                duration_sec=(time.perf_counter() - build_t0),
+            )
+            if load_outcome is not None:
+                observe_sparse_index_load(provider=provider, outcome=load_outcome)
+            if save_outcome is not None:
+                observe_sparse_index_save(provider=provider, outcome=save_outcome)
 
     def _colbert_corpus_fingerprint(self, docs: List[Document]) -> str:
         """
@@ -1677,76 +1739,91 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             return []
 
-        dataset_scope_id: UUID | None = None
-        if self.dataset_id is not None and not (document_ids or []):
-            dataset_scope_id = self.dataset_id
-
-        # Align with BM25 scope so we reuse the same corpus and caching semantics.
-        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
-        docs = self._bm25_docs.get(cache_key) or []
-        if not docs:
-            return []
-
-        from app.rag.retrieval.sparse import (
-            SparseIndexStore,
-            build_sparse_provider_config,
-            get_sparse_encoder,
-            parse_synonyms,
-            topk_scores,
-        )
-
         provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
-        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        search_t0 = time.perf_counter()
+        outcome = "error"
+        candidates_count = 0
+
+        from app.rag.retrieval.sparse_prometheus_metrics import (  # local import: optional dependency
+            observe_sparse_index_load,
+            observe_sparse_search,
         )
 
-        # Lazy-load persisted sparse vectors if needed (best-effort; robust across restarts).
-        sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-        if len(sparse_vecs) != len(docs):
-            if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        try:
+            dataset_scope_id: UUID | None = None
+            if self.dataset_id is not None and not (document_ids or []):
+                dataset_scope_id = self.dataset_id
+
+            # Align with BM25 scope so we reuse the same corpus and caching semantics.
+            cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
+            docs = self._bm25_docs.get(cache_key) or []
+            if not docs:
+                outcome = "skipped"
+                return []
+
+            from app.rag.retrieval.sparse import (
+                SparseIndexStore,
+                build_sparse_provider_config,
+                get_sparse_encoder,
+                parse_synonyms,
+                topk_scores,
+            )
+
+            synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+            synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
+            provider_config = build_sparse_provider_config(
+                provider=provider,
+                synonyms_raw=synonyms_raw,
+                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+            )
+
+            # Lazy-load persisted sparse vectors if needed (best-effort; robust across restarts).
+            sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+            if len(sparse_vecs) != len(docs):
+                if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+                    load_outcome = "miss"
+                    try:
+                        fp = self._sparse_corpus_fingerprint(docs)
+                        store = SparseIndexStore(
+                            base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
+                        )
+                        loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
+                        if loaded:
+                            sparse_vecs = loaded
+                            self._sparse_doc_vectors[cache_key] = sparse_vecs
+                            load_outcome = "hit"
+                    except Exception:
+                        load_outcome = "error"
+                    observe_sparse_index_load(provider=provider, outcome=load_outcome)
+                else:
+                    observe_sparse_index_load(provider=provider, outcome="skipped")
+
+            if len(sparse_vecs) != len(docs):
                 try:
-                    fp = self._sparse_corpus_fingerprint(docs)
-                    store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
-                    loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
-                    if loaded:
-                        sparse_vecs = loaded
-                        self._sparse_doc_vectors[cache_key] = sparse_vecs
-                except Exception:
-                    pass
-
-        if len(sparse_vecs) != len(docs):
-            try:
-                with self._get_sparse_build_lock(cache_key):
-                    sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-                    if len(sparse_vecs) != len(docs):
-                        self._build_sparse_index(cache_key=cache_key, docs=docs)
+                    with self._get_sparse_build_lock(cache_key):
                         sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-            except Exception:
-                sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+                        if len(sparse_vecs) != len(docs):
+                            self._build_sparse_index(cache_key=cache_key, docs=docs)
+                            sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+                except Exception:
+                    sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
 
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
-        if not raw_query:
-            q_vec = SparseVector(weights={})
-        else:
+            encoder = get_sparse_encoder(
+                provider=provider,
+                synonyms=synonyms,
+                synonyms_raw=synonyms_raw,
+                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+            )
             q_raw = encoder.encode_batch([raw_query])[0]
             if isinstance(q_raw, SparseVector):
                 q_vec = q_raw
@@ -1755,47 +1832,61 @@ class HybridRetriever(BaseRetriever):
             else:
                 q_vec = SparseVector(weights={})
 
-        scored = topk_scores(query_vec=q_vec, docs=sparse_vecs, k=max(0, int(top_k or 0)))
-        if not scored:
-            return []
+            scored = topk_scores(query_vec=q_vec, docs=sparse_vecs, k=max(0, int(top_k or 0)))
+            if not scored:
+                outcome = "empty"
+                return []
 
-        doc_by_id: Dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
-        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
+            doc_by_id: Dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
+            allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
 
-        results: List[Dict[str, Any]] = []
-        for doc_id, score in scored:
-            doc = doc_by_id.get(str(doc_id))
-            if doc is None:
-                continue
-            meta = doc.metadata or {}
-            if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
-                continue
-            if metadata_filter and self.metadata_filter_enabled:
-                if not self._match_metadata_filter(meta, metadata_filter):
+            results: List[Dict[str, Any]] = []
+            for doc_id, score in scored:
+                doc = doc_by_id.get(str(doc_id))
+                if doc is None:
                     continue
-            results.append(
-                {
-                    "chunk_id": doc.id,
-                    "content": doc.page_content,
-                    "metadata": {
-                        "tenant_id": meta.get("tenant_id"),
-                        "document_id": meta.get("document_id"),
-                        "source": meta.get("source", "unknown"),
-                        "page": meta.get("page"),
-                        "chunk_index": meta.get("chunk_index"),
-                        "chunk_id": meta.get("chunk_id") or doc.id,
-                        "img_id": meta.get("img_id"),
-                        "image_id": meta.get("image_id"),
-                        "image_url": meta.get("image_url"),
-                        "sparse_score": float(score),
-                    },
-                    "score": float(score),
-                }
-            )
+                meta = doc.metadata or {}
+                if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
+                    continue
+                if metadata_filter and self.metadata_filter_enabled:
+                    if not self._match_metadata_filter(meta, metadata_filter):
+                        continue
+                results.append(
+                    {
+                        "chunk_id": doc.id,
+                        "content": doc.page_content,
+                        "metadata": {
+                            "tenant_id": meta.get("tenant_id"),
+                            "document_id": meta.get("document_id"),
+                            "source": meta.get("source", "unknown"),
+                            "page": meta.get("page"),
+                            "chunk_index": meta.get("chunk_index"),
+                            "chunk_id": meta.get("chunk_id") or doc.id,
+                            "img_id": meta.get("img_id"),
+                            "image_id": meta.get("image_id"),
+                            "image_url": meta.get("image_url"),
+                            "sparse_score": float(score),
+                        },
+                        "score": float(score),
+                    }
+                )
 
-        if not results:
-            return []
-        return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+            if not results:
+                outcome = "empty"
+                return []
+            candidates_count = len(results)
+            outcome = "ok"
+            return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+        except Exception:
+            outcome = "error"
+            raise
+        finally:
+            observe_sparse_search(
+                provider=provider,
+                outcome=outcome,
+                duration_sec=(time.perf_counter() - search_t0),
+                candidates_count=candidates_count,
+            )
 
     def _search_lexical_db(  # noqa: PLR0915
         self,
