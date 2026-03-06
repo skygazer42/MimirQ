@@ -178,6 +178,10 @@ class DatasetBase(BaseModel):
     default_chunk_strategy: Optional[str] = None
     # Dataset-level default RAG settings (applied when chat doesn't specify).
     rag_defaults: Optional[DatasetRAGDefaults] = None
+    # Dataset-level default RAG config template selectors (optional; used for safe rollout/rollback).
+    default_rag_config_template_id: Optional[UUID] = None
+    default_rag_config_template_key: Optional[str] = None
+    default_rag_config_ab_experiment_key: Optional[str] = None
     # Dataset-level default prompt settings (applied when chat doesn't specify).
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
@@ -201,6 +205,9 @@ class DatasetUpdate(BaseModel):
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
     rag_defaults: Optional[DatasetRAGDefaults] = None
+    default_rag_config_template_id: Optional[UUID] = None
+    default_rag_config_template_key: Optional[str] = None
+    default_rag_config_ab_experiment_key: Optional[str] = None
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
     default_prompt_ab_experiment_key: Optional[str] = None
@@ -220,6 +227,9 @@ class DatasetOut(OrmModel):
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
     rag_defaults: Optional[DatasetRAGDefaults] = None
+    default_rag_config_template_id: Optional[UUID] = None
+    default_rag_config_template_key: Optional[str] = None
+    default_rag_config_ab_experiment_key: Optional[str] = None
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
     default_prompt_ab_experiment_key: Optional[str] = None
@@ -255,6 +265,9 @@ class DatasetConfigBundle(BaseModel):
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
     rag_defaults: Optional[DatasetRAGDefaults] = None
+    default_rag_config_template_id: Optional[UUID] = None
+    default_rag_config_template_key: Optional[str] = None
+    default_rag_config_ab_experiment_key: Optional[str] = None
     default_prompt_template_id: Optional[UUID] = None
     default_prompt_template_key: Optional[str] = None
     default_prompt_ab_experiment_key: Optional[str] = None

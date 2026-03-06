@@ -30,6 +30,7 @@ from app.api.v1 import (
     pipeline,
     prompt_templates,
     rag,
+    rag_config_templates,
     ragviz,
     rbac,
     reports,
@@ -60,6 +61,7 @@ router.include_router(settings.router, prefix="/settings", tags=["Settings"])
 router.include_router(governance.router, prefix="/governance", tags=["Governance"])
 router.include_router(evaluations.router, prefix="/evaluations", tags=["Evaluations"])
 router.include_router(prompt_templates.router, prefix="/prompt-templates", tags=["Prompt Templates"])
+router.include_router(rag_config_templates.router, prefix="/rag-config-templates", tags=["RAG Config Templates"])
 router.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
 router.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
 router.include_router(connectors.router, prefix="/connectors", tags=["Connectors"])

@@ -23,6 +23,9 @@ from app.core.database import get_db
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
+from app.services.rag_config_template_apply import apply_rag_config_patch
+from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
+from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 
 router = APIRouter()
@@ -33,6 +36,9 @@ class RetrievePreviewRequest(BaseModel):
     history: List[HistoryMessage] = Field(default_factory=list)
     dataset_id: Optional[UUID] = None
     document_ids: List[UUID] = Field(default_factory=list)
+    rag_config_template_id: Optional[UUID] = None  # Optional: explicit RAG config template selection.
+    rag_config_template_key: Optional[str] = None  # Optional: select latest active template by key.
+    rag_config_ab_experiment_key: Optional[str] = None  # Optional: stable A/B split for templates.
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 
@@ -139,6 +145,7 @@ async def retrieve_preview(
 
     effective_rag_config = body.rag_config
     dataset_rag_defaults_applied_fields: list[str] = []
+    dataset_defaults_meta: dict | None = None
     rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
     if not rag_config_provided:
         effective_rag_config = ChatRAGConfig(retrieval_profile="recall20")
@@ -151,6 +158,7 @@ async def retrieve_preview(
             ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
         if ds_id is not None:
             ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
+            dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
             raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
             effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
                 rag_config=effective_rag_config,
@@ -159,6 +167,63 @@ async def retrieve_preview(
             )
     except Exception:
         dataset_rag_defaults_applied_fields = []
+        dataset_defaults_meta = None
+
+    # Dataset-level default RAG config template selectors + patch application (best-effort).
+    (
+        effective_rag_config_template_id,
+        effective_rag_config_template_key,
+        effective_rag_config_ab_experiment_key,
+        dataset_rag_config_template_defaults_applied_fields,
+    ) = merge_rag_config_template_defaults_with_dataset(
+        rag_config_template_id=body.rag_config_template_id,
+        rag_config_template_key=body.rag_config_template_key,
+        rag_config_ab_experiment_key=body.rag_config_ab_experiment_key,
+        request_fields_set=request_fields_set,
+        dataset_meta=dataset_defaults_meta,
+    )
+
+    rag_config_template_meta: dict[str, Any] | None = None
+    rag_config_template_patch_applied_fields: list[str] = []
+    try:
+        if (
+            effective_rag_config_template_id
+            or (effective_rag_config_template_key or "").strip()
+            or (effective_rag_config_ab_experiment_key or "").strip()
+        ):
+            chosen = resolve_rag_config_template(
+                db=db,
+                tenant_id=tenant_id,
+                rag_config_template_id=effective_rag_config_template_id,
+                template_key=effective_rag_config_template_key,
+                ab_experiment_key=effective_rag_config_ab_experiment_key,
+                ab_user_key=account_id,
+            )
+            if chosen:
+                effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+                    rag_config=effective_rag_config,
+                    patch=getattr(chosen, "config_patch", None),
+                    request_fields_set=rag_fields_set,
+                )
+                rag_config_template_meta = {
+                    "template_id": str(chosen.id),
+                    "template_key": getattr(chosen, "template_key", None),
+                    "version": int(getattr(chosen, "version", 0) or 0),
+                    "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
+                    "ab_variant": getattr(chosen, "ab_variant", None),
+                    "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
+                    "patch_applied_fields": rag_config_template_patch_applied_fields,
+                }
+
+                # Analytics only; never fail preview due to counter updates.
+                try:
+                    chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
+                    db.commit()
+                except Exception:
+                    db.rollback()
+    except Exception:
+        rag_config_template_meta = None
+        rag_config_template_patch_applied_fields = []
 
     state = build_rag_state(
         question=body.query,
@@ -195,6 +260,8 @@ async def retrieve_preview(
         ab_user_key=account_id,
         db=db,
     )
+    if rag_config_template_meta:
+        state["rag_config_template"] = rag_config_template_meta
     # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
     state["db"] = db
 
@@ -211,6 +278,14 @@ async def retrieve_preview(
     if dataset_rag_defaults_applied_fields:
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+    if dataset_rag_config_template_defaults_applied_fields:
+        metrics.setdefault("dataset_rag_config_template_defaults_applied", True)
+        metrics.setdefault(
+            "dataset_rag_config_template_defaults_fields",
+            dataset_rag_config_template_defaults_applied_fields,
+        )
+    if rag_config_template_meta:
+        metrics.setdefault("rag_config_template", rag_config_template_meta)
 
     return RetrievePreviewResponse(
         query_for_retrieval=query_for_retrieval,

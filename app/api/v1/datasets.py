@@ -128,6 +128,28 @@ def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
     return parsed
 
 
+def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None, None, None
+
+    raw_id = meta.get("default_rag_config_template_id")
+    template_id: UUID | None = None
+    if isinstance(raw_id, str) and raw_id.strip():
+        try:
+            template_id = UUID(raw_id.strip())
+        except Exception:
+            template_id = None
+
+    raw_key = meta.get("default_rag_config_template_key")
+    template_key = str(raw_key).strip() if isinstance(raw_key, str) and raw_key.strip() else None
+
+    raw_ab = meta.get("default_rag_config_ab_experiment_key")
+    ab_key = str(raw_ab).strip() if isinstance(raw_ab, str) and raw_ab.strip() else None
+
+    return template_id, template_key, ab_key
+
+
 def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
     meta = getattr(ds, "dataset_metadata", None)
     if not isinstance(meta, dict):
@@ -321,7 +343,26 @@ def create_dataset(
             meta.pop("rag_defaults", None)
         changed = True
 
-    # 4) Prompt defaults (prompt template + optional A/B experiment key).
+    # 4) RAG config template defaults (optional; for safe rollout/rollback of retrieval/rerank knobs).
+    if payload.default_rag_config_template_id is not None:
+        meta["default_rag_config_template_id"] = str(payload.default_rag_config_template_id)
+        changed = True
+    if payload.default_rag_config_template_key is not None:
+        val = str(payload.default_rag_config_template_key or "").strip().lower()
+        if val:
+            meta["default_rag_config_template_key"] = val
+        else:
+            meta.pop("default_rag_config_template_key", None)
+        changed = True
+    if payload.default_rag_config_ab_experiment_key is not None:
+        val = str(payload.default_rag_config_ab_experiment_key or "").strip()
+        if val:
+            meta["default_rag_config_ab_experiment_key"] = val
+        else:
+            meta.pop("default_rag_config_ab_experiment_key", None)
+        changed = True
+
+    # 5) Prompt defaults (prompt template + optional A/B experiment key).
     if payload.default_prompt_template_id is not None:
         meta["default_prompt_template_id"] = str(payload.default_prompt_template_id)
         changed = True
@@ -340,7 +381,7 @@ def create_dataset(
             meta.pop("default_prompt_ab_experiment_key", None)
         changed = True
 
-    # 5) Chunk target spec (best-effort; used by profiling/auto-tune).
+    # 6) Chunk target spec (best-effort; used by profiling/auto-tune).
     if payload.chunk_targets_v2 is not None:
         data = payload.chunk_targets_v2.model_dump(exclude_none=True)
         if data:
@@ -361,6 +402,11 @@ def create_dataset(
         partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, dataset.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
+    (
+        rag_config_template_id,
+        rag_config_template_key,
+        rag_config_ab_experiment_key,
+    ) = _dataset_rag_config_template_defaults_out(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
 
@@ -394,6 +440,9 @@ def create_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(dataset),
+        default_rag_config_template_id=rag_config_template_id,
+        default_rag_config_template_key=rag_config_template_key,
+        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
@@ -485,6 +534,11 @@ def list_datasets(
             partial_list = partial_member_map.get(ds.id, [])
             partial_groups = partial_group_map.get(ds.id, [])
         default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
+        (
+            rag_config_template_id,
+            rag_config_template_key,
+            rag_config_ab_experiment_key,
+        ) = _dataset_rag_config_template_defaults_out(ds)
         prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
         chunk_targets_v2 = _dataset_chunk_targets_v2_out(ds)
         results.append(DatasetOut(
@@ -499,6 +553,9 @@ def list_datasets(
             default_parser_backend=default_parser_backend,
             default_chunk_strategy=default_chunk_strategy,
             rag_defaults=_dataset_rag_defaults_out(ds),
+            default_rag_config_template_id=rag_config_template_id,
+            default_rag_config_template_key=rag_config_template_key,
+            default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
             default_prompt_template_id=prompt_template_id,
             default_prompt_template_key=prompt_template_key,
             default_prompt_ab_experiment_key=prompt_ab_experiment_key,
@@ -523,6 +580,11 @@ def get_dataset(
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
         partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, dataset_id)
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
+    (
+        rag_config_template_id,
+        rag_config_template_key,
+        rag_config_ab_experiment_key,
+    ) = _dataset_rag_config_template_defaults_out(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
     return DatasetOut(
@@ -537,6 +599,9 @@ def get_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(dataset),
+        default_rag_config_template_id=rag_config_template_id,
+        default_rag_config_template_key=rag_config_template_key,
+        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
@@ -628,6 +693,30 @@ def update_dataset(
             meta.pop("rag_defaults", None)
         changed = True
 
+    # RAG config template defaults allow explicit clearing via `null` (need fields_set checks).
+    if "default_rag_config_template_id" in payload.model_fields_set:
+        if payload.default_rag_config_template_id is not None:
+            meta["default_rag_config_template_id"] = str(payload.default_rag_config_template_id)
+        else:
+            meta.pop("default_rag_config_template_id", None)
+        changed = True
+
+    if "default_rag_config_template_key" in payload.model_fields_set:
+        val = str(payload.default_rag_config_template_key or "").strip().lower()
+        if val:
+            meta["default_rag_config_template_key"] = val
+        else:
+            meta.pop("default_rag_config_template_key", None)
+        changed = True
+
+    if "default_rag_config_ab_experiment_key" in payload.model_fields_set:
+        val = str(payload.default_rag_config_ab_experiment_key or "").strip()
+        if val:
+            meta["default_rag_config_ab_experiment_key"] = val
+        else:
+            meta.pop("default_rag_config_ab_experiment_key", None)
+        changed = True
+
     # Prompt defaults allow explicit clearing via `null` (need fields_set checks).
     if "default_prompt_template_id" in payload.model_fields_set:
         if payload.default_prompt_template_id is not None:
@@ -672,6 +761,11 @@ def update_dataset(
         partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, updated.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(updated)
+    (
+        rag_config_template_id,
+        rag_config_template_key,
+        rag_config_ab_experiment_key,
+    ) = _dataset_rag_config_template_defaults_out(updated)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(updated)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(updated)
 
@@ -705,6 +799,9 @@ def update_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(updated),
+        default_rag_config_template_id=rag_config_template_id,
+        default_rag_config_template_key=rag_config_template_key,
+        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
@@ -718,6 +815,11 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
     meta_dict = meta if isinstance(meta, dict) else {}
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
+    (
+        rag_config_template_id,
+        rag_config_template_key,
+        rag_config_ab_experiment_key,
+    ) = _dataset_rag_config_template_defaults_out(ds)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
 
     ingestion_policy = None
@@ -732,6 +834,9 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(ds),
+        default_rag_config_template_id=rag_config_template_id,
+        default_rag_config_template_key=rag_config_template_key,
+        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
@@ -822,6 +927,30 @@ def import_dataset_config(
             meta.pop("rag_defaults", None)
         changed = True
 
+    # RAG config template defaults
+    if replace or cfg.default_rag_config_template_id is not None:
+        if cfg.default_rag_config_template_id is not None:
+            meta["default_rag_config_template_id"] = str(cfg.default_rag_config_template_id)
+        else:
+            meta.pop("default_rag_config_template_id", None)
+        changed = True
+
+    if replace or cfg.default_rag_config_template_key is not None:
+        val = str(cfg.default_rag_config_template_key or "").strip().lower()
+        if val:
+            meta["default_rag_config_template_key"] = val
+        else:
+            meta.pop("default_rag_config_template_key", None)
+        changed = True
+
+    if replace or cfg.default_rag_config_ab_experiment_key is not None:
+        val = str(cfg.default_rag_config_ab_experiment_key or "").strip()
+        if val:
+            meta["default_rag_config_ab_experiment_key"] = val
+        else:
+            meta.pop("default_rag_config_ab_experiment_key", None)
+        changed = True
+
     # Prompt defaults
     if replace or cfg.default_prompt_template_id is not None:
         if cfg.default_prompt_template_id is not None:
@@ -899,6 +1028,11 @@ def import_dataset_config(
         partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, ds.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
+    (
+        rag_config_template_id,
+        rag_config_template_key,
+        rag_config_ab_experiment_key,
+    ) = _dataset_rag_config_template_defaults_out(ds)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(ds)
 
@@ -914,6 +1048,9 @@ def import_dataset_config(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(ds),
+        default_rag_config_template_id=rag_config_template_id,
+        default_rag_config_template_key=rag_config_template_key,
+        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
@@ -977,6 +1114,11 @@ def clone_dataset(
         partial_groups_out = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, created.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(created)
+    (
+        rag_config_template_id,
+        rag_config_template_key,
+        rag_config_ab_experiment_key,
+    ) = _dataset_rag_config_template_defaults_out(created)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(created)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(created)
 
@@ -992,6 +1134,9 @@ def clone_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(created),
+        default_rag_config_template_id=rag_config_template_id,
+        default_rag_config_template_key=rag_config_template_key,
+        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
         default_prompt_template_id=prompt_template_id,
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,

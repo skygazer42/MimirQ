@@ -357,6 +357,9 @@ class ChatRequest(BaseModel):
     prompt_template_id: Optional[UUID] = None  # Custom prompt template ID.
     prompt_template_key: Optional[str] = None  # Select latest version by key (optional).
     prompt_ab_experiment_key: Optional[str] = None  # A/B experiment key (optional, stable per-user split).
+    rag_config_template_id: Optional[UUID] = None  # RAG config template ID (optional; retrieval/rerank knobs).
+    rag_config_template_key: Optional[str] = None  # Select latest RAG config template by key (optional).
+    rag_config_ab_experiment_key: Optional[str] = None  # A/B experiment key for RAG config templates (optional).
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 

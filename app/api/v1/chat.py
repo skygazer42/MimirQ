@@ -59,6 +59,9 @@ from app.services.document_access import (
 from app.services.metrics_logger import log_metrics, set_metrics_context
 from app.services.prompt_defaults import merge_prompt_defaults_with_dataset
 from app.services.quota_service import check_chat_assistant_token_quota
+from app.services.rag_config_template_apply import apply_rag_config_patch
+from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
+from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.rag_trace_service import list_rag_traces
 
@@ -570,6 +573,63 @@ async def chat(
         dataset_meta=dataset_defaults_meta,
     )
 
+    # Dataset-level default RAG config template selectors + patch application (best-effort).
+    (
+        effective_rag_config_template_id,
+        effective_rag_config_template_key,
+        effective_rag_config_ab_experiment_key,
+        dataset_rag_config_template_defaults_applied_fields,
+    ) = merge_rag_config_template_defaults_with_dataset(
+        rag_config_template_id=request.rag_config_template_id,
+        rag_config_template_key=request.rag_config_template_key,
+        rag_config_ab_experiment_key=request.rag_config_ab_experiment_key,
+        request_fields_set=req_fields,
+        dataset_meta=dataset_defaults_meta,
+    )
+
+    rag_config_template_meta: dict[str, Any] | None = None
+    rag_config_template_patch_applied_fields: list[str] = []
+    try:
+        if (
+            effective_rag_config_template_id
+            or (effective_rag_config_template_key or "").strip()
+            or (effective_rag_config_ab_experiment_key or "").strip()
+        ):
+            chosen = resolve_rag_config_template(
+                db=db,
+                tenant_id=tenant_id,
+                rag_config_template_id=effective_rag_config_template_id,
+                template_key=effective_rag_config_template_key,
+                ab_experiment_key=effective_rag_config_ab_experiment_key,
+                ab_user_key=account_id,
+            )
+            if chosen:
+                effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+                    rag_config=effective_rag_config,
+                    patch=getattr(chosen, "config_patch", None),
+                    request_fields_set=rag_fields_set,
+                )
+                rag_config_template_meta = {
+                    "template_id": str(chosen.id),
+                    "template_key": getattr(chosen, "template_key", None),
+                    "version": int(getattr(chosen, "version", 0) or 0),
+                    "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
+                    "ab_variant": getattr(chosen, "ab_variant", None),
+                    "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
+                    "patch_applied_fields": rag_config_template_patch_applied_fields,
+                }
+
+                # Analytics only; never fail chat due to counter updates.
+                try:
+                    chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
+                    db.commit()
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        db.rollback()
+    except Exception:
+        rag_config_template_meta = None
+        rag_config_template_patch_applied_fields = []
+
     # Optional: persistent summary memory injection.
     history_for_llm = [m.model_dump() for m in request.history] + long_term_messages
     if bool(getattr(request, "enable_summary_memory", False)) and conversation_id:
@@ -681,6 +741,8 @@ async def chat(
                     ab_user_key=account_id,
                     db=db,
                 )
+                if rag_config_template_meta:
+                    state["rag_config_template"] = rag_config_template_meta
 
                 # Optional: Multi-modal routing (deterministic) + context injection.
                 #
@@ -814,6 +876,7 @@ async def chat(
                     prompt_template_id=effective_prompt_template_id,
                     prompt_template_key=effective_prompt_template_key,
                     prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                    rag_config_template=rag_config_template_meta,
                     ab_user_key=account_id,
                     db=db,
                     request_id=str(request_id),
@@ -842,6 +905,14 @@ async def chat(
         if dataset_rag_defaults_applied_fields:
             metrics_data.setdefault("dataset_rag_defaults_applied", True)
             metrics_data.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+        if dataset_rag_config_template_defaults_applied_fields:
+            metrics_data.setdefault("dataset_rag_config_template_defaults_applied", True)
+            metrics_data.setdefault(
+                "dataset_rag_config_template_defaults_fields",
+                dataset_rag_config_template_defaults_applied_fields,
+            )
+        if rag_config_template_meta:
+            metrics_data.setdefault("rag_config_template", rag_config_template_meta)
         if dataset_prompt_defaults_applied_fields:
             metrics_data.setdefault("dataset_prompt_defaults_applied", True)
             metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
@@ -1220,6 +1291,63 @@ async def stream_chat(
             dataset_meta=dataset_defaults_meta,
         )
 
+        # Dataset-level default RAG config template selectors + patch application (best-effort).
+        (
+            effective_rag_config_template_id,
+            effective_rag_config_template_key,
+            effective_rag_config_ab_experiment_key,
+            dataset_rag_config_template_defaults_applied_fields,
+        ) = merge_rag_config_template_defaults_with_dataset(
+            rag_config_template_id=request.rag_config_template_id,
+            rag_config_template_key=request.rag_config_template_key,
+            rag_config_ab_experiment_key=request.rag_config_ab_experiment_key,
+            request_fields_set=req_fields,
+            dataset_meta=dataset_defaults_meta,
+        )
+
+        rag_config_template_meta: dict[str, Any] | None = None
+        rag_config_template_patch_applied_fields: list[str] = []
+        try:
+            if (
+                effective_rag_config_template_id
+                or (effective_rag_config_template_key or "").strip()
+                or (effective_rag_config_ab_experiment_key or "").strip()
+            ):
+                chosen = resolve_rag_config_template(
+                    db=db,
+                    tenant_id=tenant_id,
+                    rag_config_template_id=effective_rag_config_template_id,
+                    template_key=effective_rag_config_template_key,
+                    ab_experiment_key=effective_rag_config_ab_experiment_key,
+                    ab_user_key=account_id,
+                )
+                if chosen:
+                    effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+                        rag_config=effective_rag_config,
+                        patch=getattr(chosen, "config_patch", None),
+                        request_fields_set=rag_fields_set,
+                    )
+                    rag_config_template_meta = {
+                        "template_id": str(chosen.id),
+                        "template_key": getattr(chosen, "template_key", None),
+                        "version": int(getattr(chosen, "version", 0) or 0),
+                        "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
+                        "ab_variant": getattr(chosen, "ab_variant", None),
+                        "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
+                        "patch_applied_fields": rag_config_template_patch_applied_fields,
+                    }
+
+                    # Analytics only; never fail chat due to counter updates.
+                    try:
+                        chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
+                        db.commit()
+                    except Exception:
+                        with contextlib.suppress(Exception):
+                            db.rollback()
+        except Exception:
+            rag_config_template_meta = None
+            rag_config_template_patch_applied_fields = []
+
         history_for_llm = [m.model_dump() for m in request.history] + long_term_messages
         if bool(getattr(request, "enable_summary_memory", False)) and conversation_id:
             try:
@@ -1293,6 +1421,28 @@ async def stream_chat(
                             return
                 token_chunk = answer_text[i : i + chunk_size]
                 yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
+
+            # Ensure lineage/default metadata is present even for cached responses.
+            if dataset_id_used is not None:
+                metrics_data.setdefault("dataset_id", str(dataset_id_used))
+            if dataset_rag_defaults_applied_fields:
+                metrics_data.setdefault("dataset_rag_defaults_applied", True)
+                metrics_data.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+            if dataset_rag_config_template_defaults_applied_fields:
+                metrics_data.setdefault("dataset_rag_config_template_defaults_applied", True)
+                metrics_data.setdefault(
+                    "dataset_rag_config_template_defaults_fields",
+                    dataset_rag_config_template_defaults_applied_fields,
+                )
+            if rag_config_template_meta:
+                metrics_data.setdefault("rag_config_template", rag_config_template_meta)
+            if dataset_prompt_defaults_applied_fields:
+                metrics_data.setdefault("dataset_prompt_defaults_applied", True)
+                metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
+            if tenant_qps_meta.get("enabled"):
+                metrics_data.setdefault("tenant_qps_quota", tenant_qps_meta)
+            if quota_meta.get("enabled"):
+                metrics_data.setdefault("quota", quota_meta)
 
             retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
             vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
@@ -1459,6 +1609,8 @@ async def stream_chat(
                     ab_user_key=account_id,
                     db=db,
                 )
+                if rag_config_template_meta:
+                    state["rag_config_template"] = rag_config_template_meta
 
                 # Optional: Chat -> TAG injection for LangGraph path (streaming).
                 try:
@@ -1539,6 +1691,14 @@ async def stream_chat(
                 if dataset_rag_defaults_applied_fields:
                     metrics_data.setdefault("dataset_rag_defaults_applied", True)
                     metrics_data.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+                if dataset_rag_config_template_defaults_applied_fields:
+                    metrics_data.setdefault("dataset_rag_config_template_defaults_applied", True)
+                    metrics_data.setdefault(
+                        "dataset_rag_config_template_defaults_fields",
+                        dataset_rag_config_template_defaults_applied_fields,
+                    )
+                if rag_config_template_meta:
+                    metrics_data.setdefault("rag_config_template", rag_config_template_meta)
 
                 if dataset_prompt_defaults_applied_fields:
                     metrics_data.setdefault("dataset_prompt_defaults_applied", True)
@@ -1743,6 +1903,7 @@ async def stream_chat(
                         prompt_template_id=effective_prompt_template_id,
                         prompt_template_key=effective_prompt_template_key,
                         prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                        rag_config_template=rag_config_template_meta,
                         ab_user_key=account_id,
                         db=db,
                         request_id=str(request_id),
@@ -1827,6 +1988,32 @@ async def stream_chat(
                                 event["data"]["metrics"].setdefault(
                                     "dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields
                                 )
+                        except Exception:
+                            pass
+
+                    if dataset_rag_config_template_defaults_applied_fields:
+                        try:
+                            if isinstance(metrics_data, dict):
+                                metrics_data.setdefault("dataset_rag_config_template_defaults_applied", True)
+                                metrics_data.setdefault(
+                                    "dataset_rag_config_template_defaults_fields",
+                                    dataset_rag_config_template_defaults_applied_fields,
+                                )
+                            if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
+                                event["data"]["metrics"].setdefault("dataset_rag_config_template_defaults_applied", True)
+                                event["data"]["metrics"].setdefault(
+                                    "dataset_rag_config_template_defaults_fields",
+                                    dataset_rag_config_template_defaults_applied_fields,
+                                )
+                        except Exception:
+                            pass
+
+                    if rag_config_template_meta:
+                        try:
+                            if isinstance(metrics_data, dict):
+                                metrics_data.setdefault("rag_config_template", rag_config_template_meta)
+                            if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
+                                event["data"]["metrics"].setdefault("rag_config_template", rag_config_template_meta)
                         except Exception:
                             pass
 

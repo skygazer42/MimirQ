@@ -66,6 +66,9 @@ import app.models.feedback  # noqa: F401
 # Ensure ingestion run manifest models are registered for metadata creation
 import app.models.ingestion_run  # noqa: F401
 
+# Ensure RAG config template models are registered for metadata creation
+import app.models.rag_config_template  # noqa: F401
+
 # Ensure user models are registered for metadata creation
 import app.models.user  # noqa: F401
 
