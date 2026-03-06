@@ -26,6 +26,10 @@ from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.rag.core.query_rewrite_strategy import (
+    build_query_rewrite_strategy_spec,
+    get_query_rewrite_prompt_template,
+)
 from app.rag.core.text import (
     build_abstain_followup,
     extract_evidence_text,
@@ -583,20 +587,40 @@ Requirements:
             rewrite_elapsed = 0.0
             rewrite_used = False
             rewrite_model_used = None
+            rewrite_strategy_id: str | None = None
+            rewrite_strategy_hash: str | None = None
+            rewrite_temperature: float | None = None
+            rewrite_max_chars: int | None = None
+
+            rewrite_enabled = bool(settings.ENABLE_QUERY_REWRITE)
+            if rewrite_enabled:
+                spec = build_query_rewrite_strategy_spec(getattr(settings, "QUERY_REWRITE_STRATEGY", None))
+                rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
+                rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
+                try:
+                    rewrite_temperature = float(settings.QUERY_REWRITE_TEMPERATURE or 0.0)
+                except Exception:
+                    rewrite_temperature = 0.0
+                try:
+                    rewrite_max_chars = int(settings.QUERY_REWRITE_MAX_CHARS or 0)
+                except Exception:
+                    rewrite_max_chars = 0
 
             # Step 0: Query Rewrite (optional).
             if (
-                settings.ENABLE_QUERY_REWRITE
+                rewrite_enabled
                 and history_text != "(No conversation history)"
-                and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
+                and len(question) <= int(rewrite_max_chars or 0)
                 and should_rewrite_query(question)
             ):
                 rewrite_llm = self.models.get("fast") or llm
                 rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
                 try:
+                    prompt_template = get_query_rewrite_prompt_template(rewrite_strategy_id)
+                    rewrite_prompt = ChatPromptTemplate.from_template(prompt_template)
                     rewrite_chain = (
-                        self.rewrite_prompt
-                        | rewrite_llm.bind(temperature=settings.QUERY_REWRITE_TEMPERATURE)
+                        rewrite_prompt
+                        | rewrite_llm.bind(temperature=rewrite_temperature)
                         | StrOutputParser()
                     )
                     rw_start = time.time()
@@ -618,6 +642,8 @@ Requirements:
                         "used": rewrite_used,
                         "elapsed_sec": round(rewrite_elapsed, 3),
                         "model_used": rewrite_model_used,
+                        "strategy_id": rewrite_strategy_id,
+                        "strategy_hash": rewrite_strategy_hash,
                     },
                 }
 
@@ -1779,6 +1805,13 @@ Requirements:
                         "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
                         "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
                         "evidence_post_rerank_pipeline": pipe_summary,
+                        "query_rewrite": {
+                            "enabled": bool(rewrite_enabled),
+                            "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
+                            "strategy_hash": rewrite_strategy_hash if rewrite_enabled else None,
+                            "temperature": rewrite_temperature if rewrite_enabled else None,
+                            "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
+                        },
                     }
                 )
                 retrieval_config_hash = str(fp.get("hash") or "").strip() or None

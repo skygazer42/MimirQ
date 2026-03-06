@@ -21,6 +21,7 @@ from uuid import UUID
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 
 from app.core.config import settings
 from app.core.utils import parse_csv
@@ -28,6 +29,10 @@ from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
 from app.rag.core.hashing import stable_hash
+from app.rag.core.query_rewrite_strategy import (
+    build_query_rewrite_strategy_spec,
+    get_query_rewrite_prompt_template,
+)
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 from app.rag.core.text import (
     build_abstain_followup,
@@ -503,23 +508,43 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     rewrite_elapsed = 0.0
     rewrite_used = False
     rewrite_model_used = None
+    rewrite_strategy_id: str | None = None
+    rewrite_strategy_hash: str | None = None
+    rewrite_temperature: float | None = None
+    rewrite_max_chars: int | None = None
 
     # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
     kg_result_cached: dict[str, Any] | None = None
     intent_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
 
+    rewrite_enabled = bool(settings.ENABLE_QUERY_REWRITE)
+    if rewrite_enabled:
+        spec = build_query_rewrite_strategy_spec(getattr(settings, "QUERY_REWRITE_STRATEGY", None))
+        rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
+        rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
+        try:
+            rewrite_temperature = float(settings.QUERY_REWRITE_TEMPERATURE or 0.0)
+        except Exception:
+            rewrite_temperature = 0.0
+        try:
+            rewrite_max_chars = int(settings.QUERY_REWRITE_MAX_CHARS or 0)
+        except Exception:
+            rewrite_max_chars = 0
+
     if (
-        bool(settings.ENABLE_QUERY_REWRITE)
+        bool(rewrite_enabled)
         and history_text != "(No conversation history)"
-        and len(question) <= int(settings.QUERY_REWRITE_MAX_CHARS or 0)
+        and len(question) <= int(rewrite_max_chars or 0)
         and should_rewrite_query(question)
     ):
         rewrite_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
         try:
+            prompt_template = get_query_rewrite_prompt_template(rewrite_strategy_id)
+            rewrite_prompt = ChatPromptTemplate.from_template(prompt_template)
             rewrite_chain = (
-                engine.rewrite_prompt  # type: ignore[attr-defined]
-                | rewrite_llm.bind(temperature=settings.QUERY_REWRITE_TEMPERATURE)
+                rewrite_prompt
+                | rewrite_llm.bind(temperature=rewrite_temperature)
                 | StrOutputParser()
             )
             rw_start = time.time()
@@ -1756,6 +1781,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["evidence_post_rerank_pipeline_stages"] = post_rerank_pipeline_stages[:4]
 
     metrics["query_rewrite_enabled"] = settings.ENABLE_QUERY_REWRITE
+    metrics["query_rewrite_strategy_id"] = rewrite_strategy_id
+    metrics["query_rewrite_strategy_hash"] = rewrite_strategy_hash
     metrics["rewrite_used"] = bool(rewrite_used)
     metrics["rewrite_elapsed_sec"] = round(rewrite_elapsed, 3)
     metrics["rewrite_model_used"] = rewrite_model_used
@@ -1978,7 +2005,11 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         ),
         "intent_router": intent_router_meta,
         "rewrite": {
-            "enabled": bool(settings.ENABLE_QUERY_REWRITE),
+            "enabled": bool(rewrite_enabled),
+            "strategy_id": rewrite_strategy_id,
+            "strategy_hash": rewrite_strategy_hash,
+            "temperature": rewrite_temperature if rewrite_enabled else None,
+            "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
             "used": bool(rewrite_used),
             "elapsed_sec": round(float(rewrite_elapsed or 0.0), 3),
             "model_used": rewrite_model_used,
@@ -2144,6 +2175,13 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
             "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
             "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
+            "query_rewrite": {
+                "enabled": bool(rewrite_enabled),
+                "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
+                "strategy_hash": rewrite_strategy_hash if rewrite_enabled else None,
+                "temperature": rewrite_temperature if rewrite_enabled else None,
+                "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
+            },
         }
         fp = build_retrieval_config_fingerprint(config=retrieval_cfg)
         retrieval_trace["retrieval_config"] = fp

@@ -12,6 +12,7 @@ import json
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.core.config import settings
+from app.rag.core.query_rewrite_strategy import build_query_rewrite_strategy_spec
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 
 
@@ -67,6 +68,24 @@ def _build_run_retrieval_config_hash(*, rag_params: Dict[str, Any]) -> Optional[
     rp = _safe_dict(rag_params)
     mode = str(rp.get("retrieval_mode") or "").strip().lower() or "hybrid"
 
+    rewrite_enabled = bool(getattr(settings, "ENABLE_QUERY_REWRITE", False))
+    rewrite_strategy_id: str | None = None
+    rewrite_strategy_hash: str | None = None
+    rewrite_temp: float | None = None
+    rewrite_max_chars: int | None = None
+    if rewrite_enabled:
+        spec = build_query_rewrite_strategy_spec(getattr(settings, "QUERY_REWRITE_STRATEGY", None))
+        rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
+        rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
+        try:
+            rewrite_temp = float(getattr(settings, "QUERY_REWRITE_TEMPERATURE", 0.0) or 0.0)
+        except Exception:
+            rewrite_temp = 0.0
+        try:
+            rewrite_max_chars = int(getattr(settings, "QUERY_REWRITE_MAX_CHARS", 0) or 0)
+        except Exception:
+            rewrite_max_chars = 0
+
     fp = build_retrieval_config_fingerprint(
         config={
             "requested_retrieval_mode": mode,
@@ -106,6 +125,13 @@ def _build_run_retrieval_config_hash(*, rag_params: Dict[str, Any]) -> Optional[
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
             "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
             "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
+            "query_rewrite": {
+                "enabled": bool(rewrite_enabled),
+                "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
+                "strategy_hash": rewrite_strategy_hash if rewrite_enabled else None,
+                "temperature": rewrite_temp if rewrite_enabled else None,
+                "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
+            },
         }
     )
     out = str(fp.get("hash") or "").strip()
