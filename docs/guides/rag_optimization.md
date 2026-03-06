@@ -93,6 +93,7 @@ Guides:
 
 These are off by default and can improve recall on ambiguous or short queries:
 - `ENABLE_QUERY_REWRITE` (rewrite follow-ups into standalone queries)
+  - `QUERY_REWRITE_STRATEGY` (versioned rewrite strategy id, e.g. `kb_followup.v1`; used for evaluation gating/rollback)
 - `ENABLE_MULTI_QUERY` (generate multiple query variants for recall)
 - `ENABLE_HYDE` (generate a hypothetical passage to improve vector recall)
 - `ENABLE_QUERY_DECOMPOSITION` (split complex questions into sub-questions)

@@ -882,6 +882,9 @@ class Settings(BaseSettings):
     OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD: float = 3.0
     OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD: float = 3.0
     ENABLE_QUERY_REWRITE: bool = False
+    # Versioned query rewrite strategy id (used for evaluation gating / rollback).
+    # The strategy identifier is intentionally low-cardinality and should not contain raw prompt text.
+    QUERY_REWRITE_STRATEGY: str = "kb_followup.v1"
     QUERY_REWRITE_TEMPERATURE: float = 0.2
     QUERY_REWRITE_MAX_CHARS: int = 120
     ENABLE_MULTI_QUERY: bool = False
