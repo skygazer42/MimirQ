@@ -1486,6 +1486,7 @@ export interface RagTraceCitation {
   bm25_score?: number | null
   lexical_score?: number | null
   sparse_score?: number | null
+  colbert_score?: number | null
   keyword_score?: number | null
   rerank_score?: number | null
   retrieval_score?: number | null

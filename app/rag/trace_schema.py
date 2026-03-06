@@ -38,6 +38,7 @@ class RagTraceCitation(BaseModel):
     bm25_score: Optional[float] = None
     lexical_score: Optional[float] = None
     sparse_score: Optional[float] = None
+    colbert_score: Optional[float] = None
     keyword_score: Optional[float] = None
     rerank_score: Optional[float] = None
     retrieval_score: Optional[float] = None

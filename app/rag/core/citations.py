@@ -326,6 +326,7 @@ def build_citations_from_docs(
         b_score_raw = float(meta.get("bm25_score", 0.0) or 0.0)
         l_score_raw = float(meta.get("lexical_score", 0.0) or 0.0)
         s_score_raw = float(meta.get("sparse_score", 0.0) or 0.0)
+        c_score_raw = float(meta.get("colbert_score", 0.0) or 0.0)
         rerank_score = meta.get("rerank_score")
         retrieval_score = meta.get("retrieval_score")
 
@@ -352,6 +353,8 @@ def build_citations_from_docs(
             hit_type = "image"
         elif retrieval_mode == "mmr":
             hit_type = "mmr"
+        elif c_score_raw > max(v_score_raw, b_score_raw, l_score_raw, s_score_raw):
+            hit_type = "colbert_ann"
         elif v_score_raw > b_score_raw:
             hit_type = "vector"
         elif b_score_raw > v_score_raw:
@@ -447,6 +450,7 @@ def build_citations_from_docs(
             "bm25_score": round(b_score_raw, 3),
             "lexical_score": round(l_score_raw, 3),
             "sparse_score": round(s_score_raw, 3),
+            "colbert_score": round(c_score_raw, 3),
             "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
             # KG ranking features (optional; low-cardinality).
             # These fields stay numeric/boolean and do not include scope identifiers.
