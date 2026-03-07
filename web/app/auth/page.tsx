@@ -144,6 +144,9 @@ export default function AuthPage() {
                             </div>
                         </div>
                     )}
+                    <p className="mb-6 text-xs leading-5 text-muted-foreground">
+                      Enterprise SSO supports OIDC here and IdP-initiated SAML when configured by your administrator.
+                    </p>
                     {/* Tab Switcher */}
                     <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
                         <button

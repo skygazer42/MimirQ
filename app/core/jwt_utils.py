@@ -2,7 +2,7 @@
 JWT helpers for issuing access tokens.
 """
 from datetime import datetime, timedelta, timezone
-from typing import Tuple
+from typing import Any, Tuple
 
 from jose import jwt
 
@@ -14,6 +14,7 @@ def create_access_token(
     *,
     expires_minutes: int | None = None,
     tenant_id: str | None = None,
+    extra_claims: dict[str, Any] | None = None,
 ) -> Tuple[str, int]:
     """
     Create a signed JWT access token.
@@ -28,6 +29,12 @@ def create_access_token(
         "exp": expire_at,
         "iat": datetime.now(timezone.utc),
     }
+    if extra_claims:
+        for key, value in dict(extra_claims).items():
+            k = str(key or "").strip()
+            if not k or k in payload:
+                continue
+            payload[k] = value
     issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
     if issuer:
         payload["iss"] = issuer

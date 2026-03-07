@@ -40,3 +40,14 @@ class TokenResponse(BaseModel):
 class AuthResponse(BaseModel):
     user: UserPublic
     token: TokenResponse
+
+
+class SamlExchangeRequest(BaseModel):
+    provider_id: Optional[str] = None
+    saml_response: str
+    relay_state: Optional[str] = None
+    acs_url: Optional[str] = None
+
+
+class SamlExchangeResponse(AuthResponse):
+    return_to: str = "/"
