@@ -36,6 +36,7 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
         "ConnectorValidateResponse",
         "DriveFilesConnectorConfig",
         "GitHubRepoConnectorConfig",
+        "JiraProjectConnectorConfig",
         "MinioBucketConnectorConfig",
         "MySQLCatalogConnectorConfig",
         "SQLServerCatalogConnectorConfig",
@@ -212,6 +213,117 @@ def test_confluence_attachment_connector_metadata_contains_required_fields():  #
     assert out.get("attachment_id") == "att-1"
     assert out.get("filename") == "file.pdf"
     assert out.get("download_url") == "https://example.atlassian.net/wiki/download/attachments/12345/file.pdf"
+
+
+def test_jira_api_base_url_normalizes_rest_api_suffix():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._jira_api_base_url("https://example.atlassian.net") == "https://example.atlassian.net/rest/api/3"
+    assert connectors._jira_api_base_url("https://example.atlassian.net/") == "https://example.atlassian.net/rest/api/3"
+    assert connectors._jira_api_base_url("https://example.atlassian.net/rest/api/3") == "https://example.atlassian.net/rest/api/3"
+
+
+def test_jira_extract_issue_updated_prefers_fields_updated():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    issue = {
+        "updated": "2026-03-01T00:00:00.000+0000",
+        "fields": {
+            "updated": "2026-03-02T12:34:56.000+0000",
+        },
+    }
+
+    assert connectors._jira_extract_issue_updated(issue) == "2026-03-02T12:34:56.000+0000"
+
+
+def test_jira_issue_acl_principal_keys_collects_security_and_comment_visibility():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    issue = {
+        "fields": {
+            "security": {"id": "10001", "name": "Executives"},
+            "comment": {
+                "comments": [
+                    {"visibility": {"type": "group", "value": "jira-software-users"}},
+                    {"visibility": {"type": "role", "value": "Developers"}},
+                    {"visibility": {"type": "group", "value": "jira-software-users"}},
+                ]
+            },
+        }
+    }
+
+    restricted, keys = connectors._jira_issue_acl_principal_keys(issue, include_comments=True, max_comments=20)
+    assert restricted is True
+    assert keys == [
+        "jira:group:jira-software-users",
+        "jira:policy:security-level/10001",
+        "jira:role:developers",
+    ]
+
+
+def test_jira_issue_acl_principal_keys_respects_zero_comment_limit():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    issue = {
+        "fields": {
+            "security": {"id": "10001"},
+            "comment": {
+                "comments": [
+                    {"visibility": {"type": "role", "value": "Developers"}},
+                ]
+            },
+        }
+    }
+
+    restricted, keys = connectors._jira_issue_acl_principal_keys(issue, include_comments=True, max_comments=0)
+    assert restricted is True
+    assert keys == ["jira:policy:security-level/10001"]
+
+
+def test_jira_render_issue_html_contains_ticket_sections():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    issue = {
+        "id": "10000",
+        "key": "PLAT-42",
+        "fields": {
+            "summary": "Sync ACL drift to search index",
+            "description": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Description body"}]}]},
+            "updated": "2026-03-02T12:34:56.000+0000",
+            "issuetype": {"name": "Bug"},
+            "priority": {"name": "High"},
+            "status": {"name": "In Progress"},
+            "labels": ["acl", "search"],
+            "comment": {
+                "comments": [
+                    {
+                        "author": {"displayName": "Ada"},
+                        "created": "2026-03-02T13:00:00.000+0000",
+                        "body": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Comment body"}]}]},
+                    }
+                ]
+            },
+        },
+        "renderedFields": {
+            "description": "<p>Description body</p>",
+            "comment": {"comments": [{"body": "<p>Comment body</p>"}]},
+        },
+    }
+
+    html = connectors._jira_render_issue_html(
+        base_url="https://example.atlassian.net",
+        issue=issue,
+        include_comments=True,
+        max_comments=20,
+    )
+
+    assert "PLAT-42" in html
+    assert "Summary" in html
+    assert "Description" in html
+    assert "Comments" in html
+    assert "Sync ACL drift to search index" in html
+    assert "Description body" in html
+    assert "Comment body" in html
 
 
 def test_sync_connector_config_from_run_persists_last_modified():  # noqa: ANN001

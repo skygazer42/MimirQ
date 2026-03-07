@@ -55,6 +55,7 @@ def test_connectors_list_contains_url_batch():  # noqa: ANN001
     assert any(item.get("id") == "url_batch" for item in items)
     assert any(item.get("id") == "web_crawl" for item in items)
     assert any(item.get("id") == "confluence_space" for item in items)
+    assert any(item.get("id") == "jira_project" for item in items)
 
 
 def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
@@ -78,6 +79,8 @@ def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
     assert items["minio_bucket"]["supports_resume"] is True
     assert items["confluence_space"]["supports_incremental"] is True
     assert items["confluence_space"]["supports_resume"] is False
+    assert items["jira_project"]["supports_incremental"] is True
+    assert items["jira_project"]["supports_resume"] is False
 
 
 def test_connectors_create_run_requires_url_ingest_enabled(monkeypatch):  # noqa: ANN001
@@ -408,6 +411,56 @@ def test_connectors_create_confluence_run_supports_include_attachments(monkeypat
     cfg = body.get("config") or {}
     assert cfg.get("auth", {}).get("token") == "<redacted>"
     assert cfg.get("include_attachments") is True
+
+
+def test_connectors_create_jira_run_redacts_auth_and_defaults_chunking(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+    from app.api.v1.connectors import create_connector_run
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self, dataset_id: uuid.UUID):  # noqa: ANN001
+            self.id = dataset_id
+
+    monkeypatch.setattr(
+        connectors_module,
+        "_resolve_writable_dataset",
+        lambda *_a, **_k: _Dataset(dataset_id),
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/runs", status_code=201, response_model=ConnectorRunOut)(create_connector_run)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/runs",
+        json={
+            "connector_id": "jira_project",
+            "dataset_id": str(dataset_id),
+            "config": {
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "auth": {"type": "basic", "username": "bot@example.com", "password": "secret-token"},
+                "max_issues": 1,
+            },
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    cfg = body.get("config") or {}
+    assert body.get("connector_id") == "jira_project"
+    assert cfg.get("auth", {}).get("password") == "<redacted>"
+    assert cfg.get("chunk_strategy") == "jira_ticket"
+    assert cfg.get("sync_mode") == "auto"
 
 
 def test_connectors_accept_mysql_catalog_config(monkeypatch):  # noqa: ANN001

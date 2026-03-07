@@ -357,6 +357,49 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
         return self
 
 
+class JiraProjectConnectorConfig(BaseModel):
+    """Config for `jira_project` connector (list issues in a Jira project -> ingest rendered issue HTML)."""
+
+    base_url: str = Field(..., max_length=2000, description="Jira base URL. Example: https://<site>.atlassian.net")
+    project_key: str = Field(..., max_length=255, description="Jira project key")
+    jql: Optional[str] = Field(default=None, max_length=2000, description="Optional extra JQL filter appended to the project query.")
+
+    auth: Optional[WebCrawlAuthConfig] = None
+
+    sync_mode: Literal["auto", "full", "incremental"] = Field(
+        default="auto",
+        description="auto: incremental if state.last_modified exists else full",
+    )
+    max_issues: int = Field(default=50, ge=1, le=500)
+    page_size: int = Field(default=25, ge=1, le=100)
+    include_comments: bool = Field(default=True, description="If true, include issue comments in the rendered HTML document.")
+    max_comments_per_issue: int = Field(default=20, ge=0, le=200)
+
+    user_agent: Optional[str] = Field(default=None, max_length=200)
+
+    parser_backend: str = Field(default="auto")
+    chunk_strategy: str = Field(default="jira_ticket")
+    pipeline: Optional[DocumentPipelineOptions] = None
+    access: Optional[DocumentAccessUpdateRequest] = None
+    source_acl: Optional[ConnectorSourceAclConfig] = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "JiraProjectConnectorConfig":
+        self.base_url = str(self.base_url or "").strip().rstrip("/")
+        self.project_key = str(self.project_key or "").strip().upper()
+        if self.jql is not None:
+            jql = str(self.jql or "").strip()
+            self.jql = jql or None
+
+        if not self.base_url:
+            raise ValueError("base_url is required")
+        if not (self.base_url.startswith("http://") or self.base_url.startswith("https://")):
+            raise ValueError("base_url must start with http:// or https://")
+        if not self.project_key:
+            raise ValueError("project_key is required")
+        return self
+
+
 class MySQLCatalogConnectorConfig(BaseModel):
     """Config for `mysql_catalog` connector (ingest schema/table/column catalog + safe profiling)."""
 

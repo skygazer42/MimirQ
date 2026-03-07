@@ -19,8 +19,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.api.schemas.document import DocumentAccessMode
 
-SourceSystem = Literal["github", "confluence", "drive", "generic"]
-SourcePrincipalKind = Literal["user", "group", "team", "domain", "anyone"]
+SourceSystem = Literal["github", "confluence", "jira", "drive", "generic"]
+SourcePrincipalKind = Literal["user", "group", "team", "role", "policy", "domain", "anyone"]
 
 
 class SourcePrincipal(BaseModel):
@@ -30,6 +30,8 @@ class SourcePrincipal(BaseModel):
     Examples:
     - {"system":"github","kind":"team","id":"myorg/platform"}
     - {"system":"confluence","kind":"group","id":"confluence-users"}
+    - {"system":"jira","kind":"role","id":"developers"}
+    - {"system":"jira","kind":"policy","id":"security-level/10001"}
     - {"system":"drive","kind":"domain","id":"example.com"}
     - {"system":"drive","kind":"anyone","id":""}
     """
@@ -154,4 +156,3 @@ class ConnectorSourceAclConfig(BaseModel):
                 break
         self.group_mappings = cleaned
         return self
-

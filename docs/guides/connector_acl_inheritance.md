@@ -1,6 +1,6 @@
 # Connector ACL 继承（Source ACL → Document ACL）运维指南
 
-本指南面向运维/管理员，说明如何让连接器在导入时**继承源系统权限**（GitHub/Confluence/Drive 等），并将其映射到 MimirQ 的**文档级 ACL（Security Trimming）**。
+本指南面向运维/管理员，说明如何让连接器在导入时**继承源系统权限**（GitHub/Confluence/Jira/Drive 等），并将其映射到 MimirQ 的**文档级 ACL（Security Trimming）**。
 
 > 前置知识：文档级 ACL 本质上只会“收紧权限”，不会“放宽权限”。详情见：[docs/guides/document_acl.md](./document_acl.md)。
 
@@ -168,6 +168,44 @@ curl -X POST "http://localhost:8000/api/v1/groups" \
 **常见坑**
 - Drive 权限需要通过 Google Drive API 拉取，通常需要 token 具备 `drive.readonly` 类 scope；没有 token 或 scope 不足时，会触发 fail-closed（owner-only）。
 
+### 5.4 Jira Project（`jira_project`）
+
+**Key 格式**
+- Jira issue security level → `jira:policy:security-level/<security_level_id>`
+- Jira comment group visibility → `jira:group:<group_name>`
+- Jira comment role visibility → `jira:role:<role_name>`
+
+示例：
+- `jira:policy:security-level/10001`
+- `jira:group:jira-software-users`
+- `jira:role:developers`
+
+**权限继承范围**
+- 当前实现是 **best-effort fail-closed**
+  - issue 没有 security level，且没有 comment visibility：不额外收紧（保持 `access=inherit` 语义）
+  - issue 有 security level 或 comments 带 group/role visibility：会生成对应 source principal key，并尝试映射到 tenant groups
+  - 若存在限制信号但没有任何映射命中：按 `fallback_mode` 收紧，默认 owner-only
+
+**连接器配置示例**
+
+```json
+{
+  "connector_id": "jira_project",
+  "dataset_id": "00000000-0000-0000-0000-000000000000",
+  "config": {
+    "base_url": "https://example.atlassian.net",
+    "project_key": "PLAT",
+    "auth": { "type": "basic", "username": "bot@example.com", "password": "jira_api_token" },
+    "include_comments": true,
+    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }
+  }
+}
+```
+
+**常见坑**
+- Jira security level / role 本身不是用户组；你需要在 MimirQ 侧手动准备语义对应的 tenant group，并把它的 `external_id` 设成上述 key
+- 如果 token 只能读取 issue 本体、不能看到 comments visibility / security 元数据，系统会倾向于 fail-closed，而不是放宽权限
+
 ---
 
 ## 6) 观测与排障
@@ -196,4 +234,3 @@ curl -X POST "http://localhost:8000/api/v1/groups" \
 **现象：文档可见范围过大**
 - 检查是否在 `access` 中误设了 `all_team_members` 或 `inherit`
 - 强烈建议：在启用 `source_acl` 时，保持数据集权限为最小集合，并让 doc ACL 只做收紧
-
