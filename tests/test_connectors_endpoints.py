@@ -57,6 +57,28 @@ def test_connectors_list_contains_url_batch():  # noqa: ANN001
     assert any(item.get("id") == "confluence_space" for item in items)
 
 
+def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
+    from app.api.v1.connectors import list_connectors
+
+    app = FastAPI()
+    app.get("/api/v1/connectors", response_model=list[ConnectorInfo])(list_connectors)
+    client = TestClient(app)
+
+    res = client.get("/api/v1/connectors")
+    assert res.status_code == 200, res.text
+
+    items = {item.get("id"): item for item in res.json()}
+    assert items["url_batch"]["supports_incremental"] is True
+    assert items["url_batch"]["supports_resume"] is True
+    assert items["web_crawl"]["supports_incremental"] is False
+    assert items["web_crawl"]["supports_resume"] is True
+    assert items["github_repo"]["supports_resume"] is True
+    assert items["drive_files"]["supports_resume"] is True
+    assert items["minio_bucket"]["supports_resume"] is True
+    assert items["confluence_space"]["supports_incremental"] is True
+    assert items["confluence_space"]["supports_resume"] is False
+
+
 def test_connectors_create_run_requires_url_ingest_enabled(monkeypatch):  # noqa: ANN001
     from app.api.v1.connectors import create_connector_run
     from app.core.config import settings

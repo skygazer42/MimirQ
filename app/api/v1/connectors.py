@@ -65,8 +65,9 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
-from app.services.dataset_service import DatasetService
+from app.services.connector_registry import get_connector_definition, list_connector_definitions
 from app.services.connector_sync_state import build_persisted_state, get_resume_cursor, slice_items_from_cursor
+from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
 from app.services.web_crawler import crawl_site
@@ -529,56 +530,16 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
 
 @router.get("", response_model=list[ConnectorInfo])
 def list_connectors() -> list[ConnectorInfo]:
-    """List available connectors (static registry)."""
+    """List available connectors from the shared registry."""
     return [
         ConnectorInfo(
-            id="url_batch",
-            name="URL 批量导入",
-            description="从多个 http(s) URL 拉取内容并入库（支持 URL_INGEST_* 安全开关）",
-            supports_incremental=True,
-        ),
-        ConnectorInfo(
-            id="web_crawl",
-            name="网站抓取（站点级）",
-            description="从站点种子 URL 开始抓取链接并批量入库（支持 Cookie/Bearer/Basic 登录态；配置中的密钥会被加密存储并在响应中脱敏）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="github_repo",
-            name="GitHub Repo 导入",
-            description="从 GitHub 仓库列出文件并通过 raw.githubusercontent.com 拉取入库（可选 Bearer token；用于私有仓库/更高 API 限额）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="drive_files",
-            name="Google Drive 文件导入（链接）",
-            description="从 Google Drive 文件分享链接解析 file_id 并构造直链下载入库（仅文件；不支持文件夹）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="minio_bucket",
-            name="MinIO/S3 Bucket 导入",
-            description="列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；URL_INGEST 需允许访问 MinIO 端点）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="confluence_space",
-            name="Confluence Space 导入",
-            description="从 Confluence Space 列出页面并入库（支持增量 cursor；配置中的 Cookie/Token/Password 会被加密存储并在响应中脱敏）",
-            supports_incremental=True,
-        ),
-        ConnectorInfo(
-            id="sqlserver_catalog",
-            name="SQLServer Catalog 导入",
-            description="从 SQLServer 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
-            supports_incremental=True,
-        ),
-        ConnectorInfo(
-            id="mysql_catalog",
-            name="MySQL Catalog 导入",
-            description="从 MySQL 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
-            supports_incremental=True,
-        ),
+            id=definition.connector_id,
+            name=definition.name,
+            description=definition.description,
+            supports_incremental=definition.supports_incremental,
+            supports_resume=definition.supports_resume,
+        )
+        for definition in list_connector_definitions()
     ]
 
 
@@ -2307,7 +2268,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
 
                 # Delta sync: update existing connector-managed docs for this URL so ACL changes
                 # in the source system can revoke access (idempotent; fail-closed).
-                if effective_access is source_acl_access:
+                if effective_access is source_acl_access and isinstance(source_acl_access, dict):
                     updated_existing = _delta_sync_connector_documents_acl_by_source_url(
                         db,
                         tenant_id=tenant_id,
@@ -4279,33 +4240,59 @@ async def resume_connector_run(
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
     connector_id = str(run.connector_id or "").strip()
-    if connector_id != "url_batch":
-        raise HTTPException(status_code=400, detail="Resume is only supported for url_batch")
-
-    stats = dict(run.stats or {})
-    cursor_raw = stats.get("cursor", stats.get("processed_urls", 0))
-    try:
-        cursor = max(0, int(cursor_raw or 0))
-    except Exception:
-        cursor = 0
+    connector_definition = get_connector_definition(connector_id)
+    if connector_definition is None or not connector_definition.supports_resume:
+        raise HTTPException(status_code=400, detail=f"Resume is not supported for {connector_id or 'this connector'}")
 
     base_cfg = dict(run.config or {})
-    urls = base_cfg.get("urls") if isinstance(base_cfg.get("urls"), list) else []
-    urls = [str(u or "").strip() for u in urls if str(u or "").strip()]
-    remaining = urls[cursor:] if cursor < len(urls) else []
-    if not remaining:
-        raise HTTPException(status_code=400, detail="No remaining URLs to resume")
-
+    stats = dict(run.stats or {})
     new_cfg = dict(base_cfg)
-    new_cfg["urls"] = remaining
+    resume_stats: dict[str, Any] = {"resume_of": str(run.id)}
+
+    if connector_id == "url_batch":
+        cursor_raw = stats.get("cursor", stats.get("processed_urls", 0))
+        try:
+            cursor = max(0, int(cursor_raw or 0))
+        except Exception:
+            cursor = 0
+
+        urls = base_cfg.get("urls") if isinstance(base_cfg.get("urls"), list) else []
+        urls = [str(u or "").strip() for u in urls if str(u or "").strip()]
+        remaining = urls[cursor:] if cursor < len(urls) else []
+        if not remaining:
+            raise HTTPException(status_code=400, detail="No remaining URLs to resume")
+        new_cfg["urls"] = remaining
+        resume_stats["resume_cursor"] = int(cursor)
+    else:
+        existing_state = base_cfg.get("_state") if isinstance(base_cfg.get("_state"), dict) else {}
+        resume_state = build_persisted_state(
+            connector_id=connector_id,
+            existing_state=dict(existing_state or {}),
+            stats=stats,
+            run_id=run.id,
+        )
+        cursor = get_resume_cursor(resume_state)
+        total_key = next((key for key in connector_definition.state_keys if key != "cursor"), None)
+        if total_key:
+            try:
+                total_items = max(0, int(stats.get(total_key) or 0))
+            except Exception:
+                total_items = 0
+            if total_items > 0 and cursor >= total_items:
+                raise HTTPException(status_code=400, detail="No remaining items to resume")
+        if not resume_state:
+            raise HTTPException(status_code=400, detail="No saved resume state found")
+        new_cfg["_state"] = resume_state
+        resume_stats["resume_cursor"] = int(cursor)
+
     new_run = ConnectorRun(
         tenant_id=tenant_id,
         dataset_id=run.dataset_id,
-        connector_id="url_batch",
+        connector_id=connector_id,
         requested_by=account_id,
         status="pending",
         config=new_cfg,
-        stats={"resume_of": str(run.id), "resume_cursor": int(cursor)},
+        stats=resume_stats,
     )
     db.add(new_run)
     db.commit()
@@ -4324,7 +4311,18 @@ async def resume_connector_run(
             db.refresh(new_run)
             return _run_out(new_run)
 
-    background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    if connector_id == "url_batch":
+        background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "web_crawl":
+        background_tasks.add_task(_execute_web_crawl_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "github_repo":
+        background_tasks.add_task(_execute_github_repo_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "drive_files":
+        background_tasks.add_task(_execute_drive_files_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "minio_bucket":
+        background_tasks.add_task(_execute_minio_bucket_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported connector_id")
     return _run_out(new_run)
 
 

@@ -34,6 +34,7 @@ export interface ConnectorInfo {
   name: string
   description?: string
   supports_incremental?: boolean
+  supports_resume?: boolean
 }
 
 export interface UrlBatchConnectorConfig {
