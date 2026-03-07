@@ -267,6 +267,191 @@ async def test_execute_github_repo_run_resumes_from_saved_state_cursor(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_execute_github_repo_run_incremental_skips_unchanged_blob_shas(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="github_repo",
+        config={
+            "repo": "acme/docs",
+            "branch": "main",
+            "max_files": 4,
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": "sha-a", "b.md": "sha-b-old"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _FakeGitHubResponse:
+        status_code = 200
+
+        def json(self):  # noqa: ANN201
+            return {
+                "tree": [
+                    {"type": "blob", "path": "a.md", "sha": "sha-a"},
+                    {"type": "blob", "path": "b.md", "sha": "sha-b-new"},
+                    {"type": "blob", "path": "c.md", "sha": "sha-c"},
+                ]
+            }
+
+    class _FakeGitHubClient:
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def get(self, *_a, **_k):  # noqa: ANN202
+            return _FakeGitHubResponse()
+
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == [
+        "https://raw.githubusercontent.com/acme/docs/main/b.md",
+        "https://raw.githubusercontent.com/acme/docs/main/c.md",
+    ]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_files") or 0) == 2
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 1
+    assert int((run.stats or {}).get("processed_files") or 0) == 3
+    assert (run.stats or {}).get("source_manifest") == {"a.md": "sha-a", "b.md": "sha-b-new", "c.md": "sha-c"}
+
+
+@pytest.mark.asyncio
+async def test_execute_github_repo_run_incremental_noop_when_manifest_matches(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="github_repo",
+        config={
+            "repo": "acme/docs",
+            "branch": "main",
+            "max_files": 4,
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": "sha-a", "b.md": "sha-b"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _FakeGitHubResponse:
+        status_code = 200
+
+        def json(self):  # noqa: ANN201
+            return {
+                "tree": [
+                    {"type": "blob", "path": "a.md", "sha": "sha-a"},
+                    {"type": "blob", "path": "b.md", "sha": "sha-b"},
+                ]
+            }
+
+    class _FakeGitHubClient:
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def get(self, *_a, **_k):  # noqa: ANN202
+            return _FakeGitHubResponse()
+
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == []
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_files") or 0) == 0
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 2
+    assert int((run.stats or {}).get("created") or 0) == 0
+    assert (run.stats or {}).get("source_manifest") == {"a.md": "sha-a", "b.md": "sha-b"}
+
+
+@pytest.mark.asyncio
+async def test_execute_github_repo_run_incremental_partial_failure_only_advances_successful_manifest(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="github_repo",
+        config={
+            "repo": "acme/docs",
+            "branch": "main",
+            "max_files": 4,
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": "sha-a-old"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _FakeGitHubResponse:
+        status_code = 200
+
+        def json(self):  # noqa: ANN201
+            return {
+                "tree": [
+                    {"type": "blob", "path": "a.md", "sha": "sha-a-new"},
+                    {"type": "blob", "path": "b.md", "sha": "sha-b"},
+                ]
+            }
+
+    class _FakeGitHubClient:
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def get(self, *_a, **_k):  # noqa: ANN202
+            return _FakeGitHubResponse()
+
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        url = str(getattr(body, "url", ""))
+        ingested_urls.append(url)
+        if url.endswith("/a.md"):
+            raise RuntimeError("boom")
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == [
+        "https://raw.githubusercontent.com/acme/docs/main/a.md",
+        "https://raw.githubusercontent.com/acme/docs/main/b.md",
+    ]
+    assert int((run.stats or {}).get("created") or 0) == 1
+    assert int((run.stats or {}).get("failed") or 0) == 1
+    assert (run.stats or {}).get("source_manifest") == {"a.md": "sha-a-old", "b.md": "sha-b"}
+
+
+@pytest.mark.asyncio
 async def test_execute_drive_files_run_resumes_from_saved_state_cursor(monkeypatch):  # noqa: ANN001
     connectors = _import_connectors_with_lightweight_stubs()
 

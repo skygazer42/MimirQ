@@ -12,6 +12,13 @@ from pydantic import BaseModel
 
 def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
     module_name = "test_support_connectors_module"
+    sentinel = object()
+    replaced: dict[str, object] = {}
+
+    def _swap(name: str, module: types.ModuleType) -> None:
+        replaced[name] = sys.modules.get(name, sentinel)
+        sys.modules[name] = module
+
     sys.modules.pop(module_name, None)
 
     connector_schemas = types.ModuleType("app.api.schemas.connector")
@@ -36,7 +43,7 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
         "WebCrawlConnectorConfig",
     ]:
         setattr(connector_schemas, name, type(name, (BaseModel,), {}))
-    sys.modules["app.api.schemas.connector"] = connector_schemas
+    _swap("app.api.schemas.connector", connector_schemas)
 
     documents = types.ModuleType("app.api.v1.documents")
 
@@ -53,24 +60,32 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
     documents._ingest_url_upload_request = _noop_async
     documents._normalize_datetime_utc_iso = lambda *_a, **_k: None
     documents._resolve_writable_dataset = lambda *_a, **_k: None
-    sys.modules["app.api.v1.documents"] = documents
+    _swap("app.api.v1.documents", documents)
 
     web_crawler = types.ModuleType("app.services.web_crawler")
     web_crawler.crawl_site = _noop_async
-    sys.modules["app.services.web_crawler"] = web_crawler
+    _swap("app.services.web_crawler", web_crawler)
 
     queue_mod = types.ModuleType("app.tasks.queue")
     queue_mod.enqueue_connector_run = lambda *_a, **_k: None
     queue_mod.get_queue = lambda *_a, **_k: None
-    sys.modules["app.tasks.queue"] = queue_mod
+    _swap("app.tasks.queue", queue_mod)
 
     module_path = Path(__file__).resolve().parents[1] / "app" / "api" / "v1" / "connectors.py"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
+    try:
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.modules.pop(module_name, None)
+        for name, previous in replaced.items():
+            if previous is sentinel:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous
 
 
 def test_confluence_join_webui_preserves_context_path():  # noqa: ANN001
@@ -304,3 +319,88 @@ def test_sync_connector_config_from_run_persists_cursor_for_github_repo():  # no
     assert cfg.state.get("keep") == "me"
     assert cfg.state.get("cursor") == 12
     assert cfg.state.get("last_run_id") == str(run.id)
+
+
+def test_sync_connector_config_from_run_versions_state_and_emits_audit(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+    import app.services.audit_log_service as audit_log_service
+
+    cfg_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    class _Cfg:
+        def __init__(self):  # noqa: ANN001
+            self.id = cfg_id
+            self.tenant_id = tenant_id
+            self.state = {
+                "source_manifest": {"a.md": "sha-a"},
+                "state_schema_version": 1,
+                "state_revision": 1,
+                "state_audit": {"history": [{"revision": 1, "run_id": "prev", "updated_keys": ["cursor"]}]},
+            }
+            self.last_error = "prev"
+            self.last_run_at = None
+
+    cfg = _Cfg()
+
+    class _DummyQuery:
+        def __init__(self, obj):  # noqa: ANN001
+            self._obj = obj
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def first(self):  # noqa: ANN201
+            return self._obj
+
+    class _DummyDB:
+        def query(self, _model):  # noqa: ANN001
+            return _DummyQuery(cfg)
+
+        def commit(self) -> None:
+            return None
+
+    def _capture_audit(_db, **kwargs):  # noqa: ANN001
+        seen.update(kwargs)
+
+    monkeypatch.setattr(audit_log_service, "audit_log_event", _capture_audit, raising=True)
+
+    finished_at = datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc)
+    run = type(
+        "_Run",
+        (),
+        {
+            "id": uuid.uuid4(),
+            "tenant_id": tenant_id,
+            "connector_id": "github_repo",
+            "status": "completed",
+            "error_message": None,
+            "started_at": finished_at,
+            "finished_at": finished_at,
+            "stats": {
+                "config_id": str(cfg_id),
+                "cursor": 12,
+                "total_files": 12,
+                "source_manifest": {"a.md": "sha-a", "b.md": "sha-b"},
+            },
+        },
+    )()
+
+    connectors._sync_connector_config_from_run(_DummyDB(), run=run)
+
+    assert cfg.state.get("state_schema_version") == 1
+    assert cfg.state.get("state_revision") == 2
+    assert cfg.state.get("state_recorded_at") == "2026-03-07T12:00:00Z"
+    assert cfg.state.get("source_manifest") == {"a.md": "sha-a", "b.md": "sha-b"}
+    assert (cfg.state.get("state_audit") or {}).get("last_status") == "completed"
+
+    assert seen.get("action") == "connector_config.state.sync"
+    assert seen.get("resource_type") == "connector_config"
+    assert seen.get("resource_id") == str(cfg_id)
+    details = dict(seen.get("details") or {})
+    assert details.get("connector_id") == "github_repo"
+    assert details.get("config_id") == str(cfg_id)
+    assert details.get("run_id") == str(run.id)
+    assert details.get("revision") == 2
+    assert details.get("updated_keys") == ["cursor", "last_run_id", "source_manifest", "total_files"]

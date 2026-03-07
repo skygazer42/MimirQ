@@ -66,7 +66,13 @@ from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
 from app.services.connector_registry import get_connector_definition, list_connector_definitions
-from app.services.connector_sync_state import build_persisted_state, get_resume_cursor, slice_items_from_cursor
+from app.services.connector_sync_state import (
+    build_persisted_state,
+    build_saved_state_snapshot,
+    get_resume_cursor,
+    normalize_source_manifest,
+    slice_items_from_cursor,
+)
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
@@ -518,12 +524,37 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
     cfg.last_run_at = (getattr(run, "started_at", None) or getattr(run, "finished_at", None) or _now())  # type: ignore[assignment]
 
     connector_id = str(getattr(run, "connector_id", "") or "").strip()
-    cfg.state = build_persisted_state(  # type: ignore[assignment]
+    cfg.state = build_saved_state_snapshot(  # type: ignore[assignment]
         connector_id=connector_id,
         existing_state=dict(getattr(cfg, "state", None) or {}),
         stats=stats,
         run_id=run.id,
+        run_status=status,
+        recorded_at=(getattr(run, "finished_at", None) or getattr(run, "started_at", None) or _now()),
     )
+
+    with contextlib.suppress(Exception):
+        from app.services.audit_log_service import audit_log_event
+
+        state = dict(getattr(cfg, "state", None) or {})
+        state_audit = state.get("state_audit") if isinstance(state.get("state_audit"), dict) else {}
+        audit_log_event(
+            db,
+            tenant_id=cfg.tenant_id,
+            actor_id=(getattr(run, "requested_by", None) or None),
+            action="connector_config.state.sync",
+            resource_type="connector_config",
+            resource_id=str(cfg.id),
+            details={
+                "config_id": str(cfg.id),
+                "connector_id": connector_id,
+                "run_id": str(run.id),
+                "status": status,
+                "schema_version": int(state.get("state_schema_version") or 0),
+                "revision": int(state.get("state_revision") or 0),
+                "updated_keys": list(state_audit.get("updated_keys") or []),
+            },
+        )
 
     db.commit()
 
@@ -2215,7 +2246,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
 
         tree = data.get("tree")
         items = tree if isinstance(tree, list) else []
-        paths: list[str] = []
+        files: list[tuple[str, str]] = []
         for it in items:
             if not isinstance(it, dict):
                 continue
@@ -2224,35 +2255,56 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
             p = str(it.get("path") or "").strip()
             if not p:
                 continue
+            sha = str(it.get("sha") or "").strip()
             ext = Path(p).suffix.lower()
             if ext and ext not in include_set:
                 continue
             if ext and ext in include_set:
-                paths.append(p)
+                files.append((p, sha))
             elif not ext and "" in include_set:
-                paths.append(p)
-            if len(paths) >= max(1, min(max_files, 200)):
+                files.append((p, sha))
+            if len(files) >= max(1, min(max_files, 200)):
                 break
 
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        paths_to_process, cursor_in = slice_items_from_cursor(paths, cursor=get_resume_cursor(state))
+        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+        resume_cursor_raw = get_resume_cursor(state)
+        is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+        effective_mode = "incremental" if existing_manifest else "full"
+        delta_files: list[tuple[str, str]] = []
+        skipped_unchanged = 0
+        for path, blob_sha in files:
+            if (not enable_source_acl) and effective_mode == "incremental" and existing_manifest.get(path) == blob_sha:
+                skipped_unchanged += 1
+                continue
+            delta_files.append((path, blob_sha))
+
+        resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
+        files_to_process, cursor_in = slice_items_from_cursor(delta_files, cursor=resume_cursor)
+        source_manifest_state = dict(existing_manifest)
+        processed_visible = skipped_unchanged + cursor_in
         stats0 = dict(run.stats or {})
         stats0.update(
             {
-                "total_files": int(len(paths)),
-                "processed_files": int(cursor_in),
+                "mode": effective_mode,
+                "total_files": int(len(files)),
+                "delta_files": int(len(delta_files)),
+                "skipped_unchanged": int(skipped_unchanged),
+                "processed_files": int(processed_visible),
                 "cursor": int(cursor_in),
                 "created": 0,
                 "failed": 0,
                 "failed_paths": [],
                 "cursor_in": int(cursor_in),
-                "resumed_from_state": bool(cursor_in > 0),
+                "resumed_from_state": bool(is_resume_run and ((effective_mode == "incremental") or cursor_in > 0)),
+                "source_manifest": dict(source_manifest_state),
             }
         )
         run.stats = stats0
         db.commit()
 
-        for idx, path in enumerate(paths_to_process):
+        for idx, item in enumerate(files_to_process):
+            path, blob_sha = item if isinstance(item, tuple) else (str(item or ""), "")
             try:
                 db.refresh(run)
             except Exception:
@@ -2327,6 +2379,8 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 )
                 created += 1
                 created_doc_ids.append(doc.id)
+                if path and blob_sha:
+                    source_manifest_state[path] = blob_sha
             except Exception as exc:  # noqa: BLE001
                 failed += 1
                 stats = dict(run.stats or {})
@@ -2334,17 +2388,22 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 run.stats = stats
             finally:
                 processed = cursor_in + idx + 1
+                processed_visible = skipped_unchanged + processed
                 stats = dict(run.stats or {})
                 stats.update(
                     {
-                        "total_files": int(len(paths)),
-                        "processed_files": int(processed),
+                        "mode": effective_mode,
+                        "total_files": int(len(files)),
+                        "delta_files": int(len(delta_files)),
+                        "skipped_unchanged": int(skipped_unchanged),
+                        "processed_files": int(processed_visible),
                         "cursor": int(processed),
                         "created": int(created),
                         "failed": int(failed),
                         "document_ids": [str(d) for d in created_doc_ids],
                         "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                         "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                        "source_manifest": dict(source_manifest_state),
                     }
                 )
                 run.stats = _finalize_connector_stats(stats)
@@ -2366,9 +2425,13 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         stats = dict(run.stats or {})
         stats.update(
             {
+                "mode": effective_mode,
+                "delta_files": int(len(delta_files)),
+                "skipped_unchanged": int(skipped_unchanged),
                 "document_ids": [str(d) for d in created_doc_ids],
                 "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                 "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                "source_manifest": dict(source_manifest_state),
             }
         )
         run.stats = _finalize_connector_stats(stats)
@@ -4273,7 +4336,8 @@ async def resume_connector_run(
         )
         cursor = get_resume_cursor(resume_state)
         total_key = next((key for key in connector_definition.state_keys if key != "cursor"), None)
-        if total_key:
+        has_incremental_manifest = bool(normalize_source_manifest(resume_state.get("source_manifest")))
+        if total_key and not has_incremental_manifest:
             try:
                 total_items = max(0, int(stats.get(total_key) or 0))
             except Exception:
@@ -4548,8 +4612,9 @@ async def run_connector_config(
         raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
 
     run_cfg = dict(cfg.config or {})
-    # Attach connector config state for incremental connectors (best-effort; executor may ignore).
-    run_cfg["_state"] = dict(cfg.state or {})
+    connector_definition = get_connector_definition(connector_id)
+    if connector_definition is not None and connector_definition.supports_incremental:
+        run_cfg["_state"] = dict(cfg.state or {})
 
     run = ConnectorRun(
         tenant_id=tenant_id,
@@ -4635,7 +4700,9 @@ async def scheduled_tick(
         # Create run and enqueue execution.
         connector_id = str(cfg.connector_id or "").strip()
         run_cfg = dict(cfg.config or {})
-        run_cfg["_state"] = dict(cfg.state or {})
+        connector_definition = get_connector_definition(connector_id)
+        if connector_definition is not None and connector_definition.supports_incremental:
+            run_cfg["_state"] = dict(cfg.state or {})
 
         run = ConnectorRun(
             tenant_id=tenant_id,

@@ -33,8 +33,9 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
         connector_id="github_repo",
         name="GitHub Repo 导入",
         description="从 GitHub 仓库列出文件并通过 raw.githubusercontent.com 拉取入库（可选 Bearer token；用于私有仓库/更高 API 限额）",
+        supports_incremental=True,
         supports_resume=True,
-        state_keys=("cursor", "total_files"),
+        state_keys=("cursor", "total_files", "source_manifest"),
     ),
     "drive_files": ConnectorDefinition(
         connector_id="drive_files",
