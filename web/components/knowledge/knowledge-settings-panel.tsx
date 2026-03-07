@@ -141,6 +141,16 @@ function getConnectorRunProgress(stats: Record<string, unknown>): { total: numbe
   }
 }
 
+function formatConnectorSyncCapabilities(info: ConnectorInfo | undefined): string | null {
+  if (!info) return null
+  const supportsIncremental = Boolean(info.supports_incremental)
+  const supportsResume = Boolean(info.supports_resume)
+  if (supportsIncremental && supportsResume) return '源增量 + 续跑'
+  if (supportsIncremental) return '源增量'
+  if (supportsResume) return '仅续跑'
+  return '全量'
+}
+
 export function KnowledgeSettingsPanel({
   selectedDatasetId,
   connectorRuns,
@@ -532,6 +542,7 @@ export function KnowledgeSettingsPanel({
                   const isActive = status === 'pending' || status === 'running'
                   const canRetryFailed = !isActive && failed > 0
                   const connectorInfo = connectorInfoById[String(run.connector_id || '').toLowerCase()]
+                  const syncCapabilities = formatConnectorSyncCapabilities(connectorInfo)
                   const supportsResume = Boolean(connectorInfo?.supports_resume)
                   const hasRemainingResumeWork =
                     totalItems > 0 ? totalItems > processedItems : processedItems > 0
@@ -588,6 +599,12 @@ export function KnowledgeSettingsPanel({
                             created <span className="font-mono">{created}</span> · failed{' '}
                             <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
                           </div>
+
+                          {syncCapabilities ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              sync <span className="font-mono">{syncCapabilities}</span>
+                            </div>
+                          ) : null}
 
                           {aclModeLabel && aclDocsTotal > 0 ? (
                             <div className="mt-1 text-xs text-muted-foreground">

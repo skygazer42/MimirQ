@@ -27,7 +27,40 @@
 返回的是静态 registry（后端内置），包含：
 
 - `id`：连接器标识（创建 run 时使用）
-- `supports_incremental`：是否支持增量（通常意味着有 cursor/state）
+- `supports_incremental`：是否支持真正的源增量（后续 run 会基于源侧 cursor/hash/更新时间只处理 changed/new 项）
+- `supports_resume`：是否支持对失败/取消 run 做 best-effort 续跑（checkpoint resume，不等价于源增量）
+
+### 2.1.1 `supports_resume` vs `supports_incremental`
+
+这两个能力要分开理解：
+
+- `supports_resume=true`：表示可以对某个失败/取消的 run 调用 `POST /api/v1/connectors/runs/{run_id}/resume`，从上次 checkpoint 继续做完剩余工作。它解决的是“这个 run 还没做完”。
+- `supports_incremental=true`：表示保存的 connector state 可以跨 run 表达“源系统已经同步到了哪里”，后续 run 会自动只处理 changed/new 源项，甚至可能出现 **no-op rerun**（源侧没有变化，run 很快完成且不重复入库）。
+
+当前内置 connector 的同步语义：
+
+- `url_batch`：支持 `supports_resume`，并利用 URL 列表去重做轻量增量保护。
+- `github_repo`：支持 `supports_incremental + supports_resume`；后续 run 会用 Git blob SHA manifest 跳过未变化文件。
+- `confluence_space`：支持 `supports_incremental`；后续 run 会基于 `last_modified` cursor 拉取更新页面。
+- `web_crawl` / `drive_files` / `minio_bucket`：当前仍以 `supports_resume` 为主，解决中断续跑，不把它们宣称为真正源增量。
+
+### 2.1.2 Saved State Contract
+
+`connector_configs.state` 现在不仅保存 connector-specific cursor，还会保存一个稳定、可审计的 envelope：
+
+- `state_schema_version`：state schema 版本号
+- `state_revision`：每次 state 持久化递增的 revision
+- `state_recorded_at`：最近一次写入 state 的 UTC 时间
+- `state_audit`：一个有界历史（默认保留最近 10 次），记录 revision、run_id、status 和被更新的 state keys
+
+同时继续保留 connector-specific 顶层字段，便于执行器直接读取，例如：
+
+- `cursor`
+- `last_modified`
+- `source_manifest`
+- `total_files` / `total_urls` / `total_objects`
+
+这让执行器不需要解析深层 envelope，同时运维侧仍然可以审计 state 演进。
 
 ### 2.2 校验配置（预检）
 

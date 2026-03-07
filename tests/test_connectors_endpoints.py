@@ -72,6 +72,7 @@ def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
     assert items["url_batch"]["supports_resume"] is True
     assert items["web_crawl"]["supports_incremental"] is False
     assert items["web_crawl"]["supports_resume"] is True
+    assert items["github_repo"]["supports_incremental"] is True
     assert items["github_repo"]["supports_resume"] is True
     assert items["drive_files"]["supports_resume"] is True
     assert items["minio_bucket"]["supports_resume"] is True
