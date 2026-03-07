@@ -750,6 +750,7 @@ class Settings(BaseSettings):
     # Optional: short TTL in-memory rerank result cache for Evidence API post-rerank.
     # PII-safe by construction: cache key is a stable hash; values store only ids + numeric scores.
     EVIDENCE_POST_RERANK_CACHE_ENABLED: bool = False
+    EVIDENCE_POST_RERANK_CACHE_BACKEND: str = "memory"  # memory | redis
     EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES: int = 1024
     EVIDENCE_POST_RERANK_CACHE_TTL_SEC: int = 30
     EVIDENCE_POST_RERANK_CACHE_PREFIX: str = "eprr"
@@ -1619,6 +1620,25 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
         if self.RETRIEVAL_CANDIDATE_CACHE_PREFIX != cand_prefix:
             self.RETRIEVAL_CANDIDATE_CACHE_PREFIX = cand_prefix
+
+        if int(getattr(self, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0) < 0:
+            raise ValueError("EVIDENCE_POST_RERANK_CACHE_TTL_SEC must be >= 0")
+        if int(getattr(self, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 0) or 0) < 0:
+            raise ValueError("EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES must be >= 0")
+        post_rerank_cache_backend = (
+            str(getattr(self, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "memory") or "memory").strip().lower()
+        )
+        if post_rerank_cache_backend not in {"memory", "redis"}:
+            raise ValueError("EVIDENCE_POST_RERANK_CACHE_BACKEND must be one of: memory, redis")
+        if self.EVIDENCE_POST_RERANK_CACHE_BACKEND != post_rerank_cache_backend:
+            self.EVIDENCE_POST_RERANK_CACHE_BACKEND = post_rerank_cache_backend
+        post_rerank_cache_prefix = (getattr(self, "EVIDENCE_POST_RERANK_CACHE_PREFIX", "") or "").strip()
+        if not post_rerank_cache_prefix:
+            raise ValueError("EVIDENCE_POST_RERANK_CACHE_PREFIX must be non-empty")
+        if any(ch.isspace() for ch in post_rerank_cache_prefix):
+            raise ValueError("EVIDENCE_POST_RERANK_CACHE_PREFIX must not contain whitespace")
+        if self.EVIDENCE_POST_RERANK_CACHE_PREFIX != post_rerank_cache_prefix:
+            self.EVIDENCE_POST_RERANK_CACHE_PREFIX = post_rerank_cache_prefix
 
         if int(getattr(self, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("KG_SEARCH_CACHE_TTL_SEC must be >= 0")

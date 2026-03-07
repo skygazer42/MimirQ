@@ -27,6 +27,7 @@ def test_retrieval_candidate_cache_key_changes_with_scope() -> None:
         account_id="acct-1",
         dataset_id="ds-1",
         pipeline_key="pipe-a",
+        corpus_cache_token="corp-a",
         query="hello world",
         top_k=10,
         score_threshold=0.5,
@@ -42,3 +43,4 @@ def test_retrieval_candidate_cache_key_changes_with_scope() -> None:
     assert build(**{**base, "account_id": "acct-2"}) != k0
     assert build(**{**base, "dataset_id": "ds-2"}) != k0
     assert build(**{**base, "pipeline_key": "pipe-b"}) != k0
+    assert build(**{**base, "corpus_cache_token": "corp-b"}) != k0

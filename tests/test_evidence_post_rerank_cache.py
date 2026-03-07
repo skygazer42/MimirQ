@@ -11,6 +11,18 @@ from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.store: dict[str, bytes] = {}
+
+    def get(self, key: str):  # noqa: ANN001
+        return self.store.get(key)
+
+    def set(self, key: str, value: bytes, ex: int | None = None):  # noqa: ANN001, ARG002
+        self.store[key] = value
+        return True
+
+
 @dataclass
 class _CountingReranker(BaseReranker):
     calls: list[int]
@@ -56,6 +68,7 @@ def test_evidence_post_rerank_cache_hits_avoid_duplicate_rerank_calls(monkeypatc
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "stub", raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 10, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "memory", raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 128, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 60, raising=False)
 
@@ -101,4 +114,42 @@ def test_evidence_post_rerank_cache_hits_avoid_duplicate_rerank_calls(monkeypatc
     trace2 = out2.get("retrieval_trace") or {}
     dumped = str(trace2)
     assert "should-not-leak" not in dumped
+    assert (out2.get("metrics") or {}).get("evidence_post_rerank_cache_backend") == "memory"
+    assert ((trace2.get("post_rerank") or {}).get("cache") or {}).get("backend") == "memory"
 
+
+def test_evidence_post_rerank_cache_roundtrips_via_redis_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.rerank_result_cache as cache_mod
+
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "redis", raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 60, raising=False)
+
+    fake_redis = _FakeRedis()
+    monkeypatch.setattr(cache_mod, "_get_redis_client", lambda: fake_redis, raising=True)
+    cache_mod.clear_evidence_post_rerank_cache_for_tests()
+
+    key = cache_mod.build_evidence_post_rerank_cache_key(
+        tenant_id="t",
+        account_id="u",
+        provider="stub",
+        top_n=2,
+        query="hello",
+        candidates_fingerprint="cand-fp",
+    )
+    rr = RerankResult(
+        ordered_ids=["b", "a"],
+        score_map={"b": 2.0, "a": 1.0},
+        provider="stub",
+        model_used="stub",
+    )
+
+    assert cache_mod.get_evidence_post_rerank_cache_backend() == "redis"
+    assert cache_mod.set_cached_evidence_post_rerank_result(key, rr) is True
+
+    out = cache_mod.get_cached_evidence_post_rerank_result(key)
+    assert out is not None
+    assert out.ordered_ids == ["b", "a"]
+    assert out.score_map == {"b": 2.0, "a": 1.0}
