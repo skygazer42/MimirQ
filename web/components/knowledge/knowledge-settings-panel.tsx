@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import type { ConnectorRunOut } from '@/types'
+import type { ConnectorInfo, ConnectorRunOut } from '@/types'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { datasetApi } from '@/lib/api-client'
+import { connectorApi, datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate } from '@/lib/utils'
 
@@ -120,6 +120,27 @@ function formatAclModeBreakdown(counts: Record<string, number> | null | undefine
   return parts.length ? parts.join(' · ') : null
 }
 
+function getConnectorRunProgress(stats: Record<string, unknown>): { total: number; processed: number } {
+  const total = Number(
+    stats.total_urls ??
+      stats.total_files ??
+      stats.total_objects ??
+      stats.discovered ??
+      0
+  )
+  const processed = Number(
+    stats.processed_urls ??
+      stats.processed_files ??
+      stats.processed_objects ??
+      stats.cursor ??
+      0
+  )
+  return {
+    total: Number.isFinite(total) ? total : 0,
+    processed: Number.isFinite(processed) ? processed : 0,
+  }
+}
+
 export function KnowledgeSettingsPanel({
   selectedDatasetId,
   connectorRuns,
@@ -139,10 +160,32 @@ export function KnowledgeSettingsPanel({
   const [purgeMaxDelete, setPurgeMaxDelete] = useState(1000)
   const [purgePreview, setPurgePreview] = useState<any | null>(null)
   const [purgeError, setPurgeError] = useState<string | null>(null)
+  const [connectorInfoById, setConnectorInfoById] = useState<Record<string, ConnectorInfo>>({})
 
   const runsUpdatedAtLabel = connectorRunsUpdatedAt
     ? new Date(connectorRunsUpdatedAt).toLocaleTimeString()
     : '—'
+
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const items = await connectorApi.listConnectors()
+        if (cancelled) return
+        const next = Object.fromEntries(
+          (items || []).map((item) => [String(item.id || '').toLowerCase(), item])
+        )
+        setConnectorInfoById(next)
+      } catch (err) {
+        console.warn('Load connector capabilities failed:', err)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const copyText = async (text: string, okMsg: string) => {
     try {
@@ -471,8 +514,9 @@ export function KnowledgeSettingsPanel({
                   const stats = (run.stats || {}) as any
                   const created = Number(stats.created || 0)
                   const failed = Number(stats.failed || 0)
-                  const totalUrls = Number(stats.total_urls || stats.discovered || 0)
-                  const processedUrls = Number(stats.processed_urls || stats.cursor || 0)
+                  const progress = getConnectorRunProgress(stats)
+                  const totalItems = progress.total
+                  const processedItems = progress.processed
                   const durationStartAt = run.started_at ?? run.created_at
                   const durationEndAt = run.finished_at ? run.finished_at : new Date().toISOString()
                   const durationStartMs = Number.isFinite(Date.parse(durationStartAt)) ? Date.parse(durationStartAt) : null
@@ -482,16 +526,20 @@ export function KnowledgeSettingsPanel({
                       ? formatDurationMs(durationEndMs - durationStartMs)
                       : null
                   const progressPct =
-                    totalUrls > 0 ? Math.max(0, Math.min(100, Math.round((processedUrls / totalUrls) * 100))) : 0
+                    totalItems > 0 ? Math.max(0, Math.min(100, Math.round((processedItems / totalItems) * 100))) : 0
                   const errors: any[] = Array.isArray(stats.errors) ? stats.errors : []
                   const errorGroups: any[] = Array.isArray(stats.error_groups) ? stats.error_groups : []
                   const isActive = status === 'pending' || status === 'running'
                   const canRetryFailed = !isActive && failed > 0
+                  const connectorInfo = connectorInfoById[String(run.connector_id || '').toLowerCase()]
+                  const supportsResume = Boolean(connectorInfo?.supports_resume)
+                  const hasRemainingResumeWork =
+                    totalItems > 0 ? totalItems > processedItems : processedItems > 0
                   const canResume =
                     !isActive &&
-                    String(run.connector_id || '').toLowerCase() === 'url_batch' &&
-                    status === 'cancelled' &&
-                    totalUrls > processedUrls
+                    supportsResume &&
+                    (status === 'cancelled' || status === 'failed') &&
+                    hasRemainingResumeWork
 
                   const hasDocs = Array.isArray(run.documents) && run.documents.length > 0
                   const acl = run.acl_summary
@@ -574,12 +622,12 @@ export function KnowledgeSettingsPanel({
                             </Button>
                           </div>
 
-                          {totalUrls > 0 ? (
+                          {totalItems > 0 ? (
                             <div className="mt-2">
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <span>progress</span>
                                 <span className="font-mono">
-                                  {processedUrls}/{totalUrls} ({progressPct}%)
+                                  {processedItems}/{totalItems} ({progressPct}%)
                                 </span>
                               </div>
                               <div className="mt-1 h-2 w-full rounded-full bg-muted/60 overflow-hidden">

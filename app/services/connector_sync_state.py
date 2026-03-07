@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence, TypeVar
 from uuid import UUID
 
+from app.services.connector_registry import CONNECTOR_REGISTRY
+
 T = TypeVar("T")
 
 
@@ -14,14 +16,8 @@ class ConnectorSyncPolicy:
 
 
 CONNECTOR_SYNC_POLICIES: dict[str, ConnectorSyncPolicy] = {
-    "url_batch": ConnectorSyncPolicy(connector_id="url_batch", state_keys=("cursor", "total_urls")),
-    "web_crawl": ConnectorSyncPolicy(connector_id="web_crawl", state_keys=("cursor", "total_urls")),
-    "github_repo": ConnectorSyncPolicy(connector_id="github_repo", state_keys=("cursor", "total_files")),
-    "drive_files": ConnectorSyncPolicy(connector_id="drive_files", state_keys=("cursor", "total_urls")),
-    "minio_bucket": ConnectorSyncPolicy(connector_id="minio_bucket", state_keys=("cursor", "total_objects")),
-    "confluence_space": ConnectorSyncPolicy(connector_id="confluence_space", state_keys=("last_modified",)),
-    "mysql_catalog": ConnectorSyncPolicy(connector_id="mysql_catalog"),
-    "sqlserver_catalog": ConnectorSyncPolicy(connector_id="sqlserver_catalog"),
+    connector_id: ConnectorSyncPolicy(connector_id=connector_id, state_keys=definition.state_keys)
+    for connector_id, definition in CONNECTOR_REGISTRY.items()
 }
 
 

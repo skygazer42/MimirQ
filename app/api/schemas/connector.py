@@ -24,6 +24,7 @@ class ConnectorInfo(BaseModel):
     name: str
     description: str = ""
     supports_incremental: bool = False
+    supports_resume: bool = False
 
 
 class WebCrawlAuthConfig(BaseModel):
