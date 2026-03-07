@@ -26,6 +26,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from datetime import datetime, timezone
@@ -34,7 +35,11 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.tenant import Tenant
-from app.services.retention_jobs import run_audit_log_retention, run_regression_run_retention
+from app.services.retention_jobs import (
+    run_audit_log_retention,
+    run_knowledge_asset_retention,
+    run_regression_run_retention,
+)
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -48,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run MimirQ retention jobs (bounded, auditable).")
     p.add_argument("--audit-logs", action="store_true", help="Run audit log retention")
     p.add_argument("--regression-runs", action="store_true", help="Run regression run retention")
+    p.add_argument("--knowledge-assets", action="store_true", help="Run archived/disabled knowledge asset retention")
 
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID to operate on")
@@ -59,11 +65,18 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--retention-days", type=int, default=90, help="Retention window in days (default: 90)")
     p.add_argument("--max-delete", type=int, default=100_000, help="Max rows to delete per tenant (default: 100000)")
+    p.add_argument("--dataset-id", type=_parse_uuid, default=None, help="Optional dataset UUID filter for knowledge assets")
+    p.add_argument(
+        "--lifecycle-state",
+        choices=["archived", "disabled", "either"],
+        default="either",
+        help="Lifecycle state to purge for knowledge assets (default: either)",
+    )
 
     args = p.parse_args(argv)
 
-    if (not bool(args.audit_logs)) and (not bool(args.regression_runs)):
-        print("No job selected. Use --audit-logs and/or --regression-runs.", file=sys.stderr)
+    if (not bool(args.audit_logs)) and (not bool(args.regression_runs)) and (not bool(args.knowledge_assets)):
+        print("No job selected. Use --audit-logs, --regression-runs, and/or --knowledge-assets.", file=sys.stderr)
         return 2
 
     dry_run = True
@@ -110,6 +123,21 @@ def main(argv: list[str] | None = None) -> int:
                     dry_run=bool(dry_run),
                     actor_id="system:retention",
                     now=ran_at,
+                )
+                results.append(res)
+            if bool(args.knowledge_assets):
+                res = asyncio.run(
+                    run_knowledge_asset_retention(
+                        db,
+                        tenant_id=tid,
+                        retention_days=int(args.retention_days or 0),
+                        max_delete=int(args.max_delete or 0),
+                        dry_run=bool(dry_run),
+                        dataset_id=args.dataset_id,
+                        lifecycle_state=str(args.lifecycle_state or "either"),
+                        actor_id="system:retention",
+                        now=ran_at,
+                    )
                 )
                 results.append(res)
         finally:

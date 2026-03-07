@@ -195,6 +195,7 @@ Labels（低基数、默认安全）：
 - 审计日志 NDJSON 导出（SIEM 友好）
 - 审计日志按 retention purge（bounded delete）
 - 审计日志 retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --audit-logs --dry-run`
+- Knowledge assets retention runner（按 archived/disabled 文档做 bounded purge，并委托 document delete lifecycle 清理 chunks/KG/vector/object assets）：`python scripts/run_retention_jobs.py --knowledge-assets --dry-run`
 - Dataset 文档清单 NDJSON 导出（默认脱敏，支持 cursor + gzip）：`GET /api/v1/datasets/{dataset_id}/documents/export`
 - Dataset bundle ZIP 导出（包含 dataset/config/docs 清单，默认脱敏）：`GET /api/v1/datasets/{dataset_id}/export`
 - Dataset purge（删除 dataset 内 documents/chunks/KG 衍生物；bounded，默认 dry-run）：`POST /api/v1/datasets/{dataset_id}/purge`
@@ -210,17 +211,25 @@ Labels（低基数、默认安全）：
 - Evidence drift repair enqueue（适合队列；bounded）：`POST /api/v1/evidence/suites/{suite_id}/repair-reference-sources?async_mode=true`（需要 `TASK_QUEUE_ENABLED=true`；返回 202 + `X-Task-Id`）
 - Runbook 内容治理 SOP（作者/审核/更新/废弃）：`docs/deployment/content_governance_sop.md`
 
+知识资产 retention 运维建议：
+- 先 dry-run：`python scripts/run_retention_jobs.py --knowledge-assets --tenant-id <uuid> --dry-run --retention-days 90 --max-delete 100`
+- 再 execute：`python scripts/run_retention_jobs.py --knowledge-assets --tenant-id <uuid> --execute --retention-days 90 --max-delete 100`
+- 可按 dataset 缩小范围：追加 `--dataset-id <uuid>`
+- 可只清某一类生命周期状态：追加 `--lifecycle-state archived|disabled|either`
+- 若结果里的 `conflicts` 或 `errors` 非 0，先排查该租户是否仍有扫描/队列任务、对象存储异常或向量库删除失败，再重试；不要直接放大 `max-delete`
+- 若启用了 `TASK_QUEUE_ENABLED=true`，document delete lifecycle 会先 best-effort 终止关联 document 任务，再删除资产；因此 CronJob/脚本是推荐入口，不建议手工直接删底表
+
 审计日志检索（用于 SIEM / 巡检）：
 - Index audit daily action：`observability.index_audit.daily`
 - Evidence drift audit daily action：`evidence.drift_audit.daily`
 - Access review daily action：`compliance.access_review.daily`
 - Evidence repair enqueue action：`evidence.reference_sources.repair.enqueue`
 - Evidence repair job action：`evidence.reference_sources.repair.job`
+- Knowledge asset retention action：`knowledge.assets.retention`
 
 后续将补齐：
 
 - dataset/document 的合规 bundle 导出（含向量/KG/对象存储引用）
-- retention job（定时执行 + 可观测 + 可审计；覆盖更多数据类型）
 
 ---
 

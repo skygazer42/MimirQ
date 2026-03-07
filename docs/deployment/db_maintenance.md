@@ -2,6 +2,10 @@
 
 本指南面向运维自动化：提供一个 **统一入口** 来跑数据库维护（Postgres VACUUM/ANALYZE）与现有的 retention jobs（审计日志 / regression runs）。
 
+说明：
+- 知识资产 retention（documents/chunks/KG/vector/object assets）使用单独的 `scripts/run_retention_jobs.py --knowledge-assets ...`
+- 原因：它会委托 document delete lifecycle，除了 DB 行以外还会触发对象存储 / 向量 / KG 清理，不适合混进纯 DB maintenance runner
+
 目标：
 
 - **可重复执行（idempotent）**：脚本可安全重复跑
@@ -18,6 +22,13 @@
 
 - Postgres：`VACUUM` / `ANALYZE`（可组合为 `VACUUM (ANALYZE)`）
 - retention：审计日志 / regression runs（按 tenant 维度，bounded delete）
+
+知识资产 retention 示例（单独 runner）：
+
+```bash
+python scripts/run_retention_jobs.py --knowledge-assets --tenant-id <uuid> --dry-run --retention-days 90 --max-delete 100
+python scripts/run_retention_jobs.py --knowledge-assets --tenant-id <uuid> --execute --retention-days 90 --max-delete 100
+```
 
 ### 1.1) Dry-run（推荐先跑）
 
@@ -109,6 +120,8 @@ cronjobs:
 - retention jobs 会写 audit log（best-effort）：
   - `audit.logs.retention`
   - `evaluations.regression_runs.retention`
+- 知识资产 retention 会写：
+  - `knowledge.assets.retention`
 - CronJob 输出 JSON 适合直接被日志采集系统收集（ELK / Loki / Cloud Logging）。
 
 ---
@@ -122,4 +135,3 @@ cronjobs:
 ### 4.2) VACUUM 为什么需要 AUTOCOMMIT？
 
 Postgres 的 `VACUUM` 不能在事务里执行。实现里通过 SQLAlchemy connection 使用 `AUTOCOMMIT` 来保证兼容性。
-
