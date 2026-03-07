@@ -512,22 +512,39 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     rewrite_strategy_hash: str | None = None
     rewrite_temperature: float | None = None
     rewrite_max_chars: int | None = None
+    sparse_enabled_override = state.get("sparse_retrieval_enabled")
+    sparse_enabled = (
+        bool(sparse_enabled_override)
+        if sparse_enabled_override is not None
+        else bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
+    )
+    sparse_provider_raw = state.get("sparse_retrieval_provider")
+    sparse_provider = str(
+        sparse_provider_raw
+        if sparse_provider_raw is not None
+        else (getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic")
+    ).strip().lower() or "deterministic"
 
     # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
     kg_result_cached: dict[str, Any] | None = None
     intent_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
 
-    rewrite_enabled = bool(settings.ENABLE_QUERY_REWRITE)
+    rewrite_enabled_req = state.get("enable_query_rewrite")
+    rewrite_enabled = bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
     if rewrite_enabled:
-        spec = build_query_rewrite_strategy_spec(getattr(settings, "QUERY_REWRITE_STRATEGY", None))
+        spec = build_query_rewrite_strategy_spec(state.get("query_rewrite_strategy") or getattr(settings, "QUERY_REWRITE_STRATEGY", None))
         rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
         rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
         try:
-            rewrite_temperature = float(settings.QUERY_REWRITE_TEMPERATURE or 0.0)
+            rewrite_temperature = float(
+                (settings.QUERY_REWRITE_TEMPERATURE if state.get("query_rewrite_temperature") is None else state.get("query_rewrite_temperature")) or 0.0
+            )
         except Exception:
             rewrite_temperature = 0.0
         try:
-            rewrite_max_chars = int(settings.QUERY_REWRITE_MAX_CHARS or 0)
+            rewrite_max_chars = int(
+                (settings.QUERY_REWRITE_MAX_CHARS if state.get("query_rewrite_max_chars") is None else state.get("query_rewrite_max_chars")) or 0
+            )
         except Exception:
             rewrite_max_chars = 0
 
@@ -636,6 +653,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "enable_reranker": state.get("enable_reranker", settings.ENABLE_RERANKER),
         "reranker_provider": state.get("reranker_provider", settings.RERANKER_PROVIDER),
         "reranker_top_n": state.get("reranker_top_n", settings.RERANKER_TOP_N),
+        "sparse_enabled": sparse_enabled,
+        "sparse_provider": sparse_provider,
         "tenant_id": state.get("tenant_id"),
         "account_id": state.get("account_id"),
         "dataset_id": state.get("dataset_id"),
@@ -1860,7 +1879,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["evidence_post_rerank_pipeline_used"] = bool(post_rerank_pipeline_used)
     metrics["evidence_post_rerank_pipeline_stages"] = post_rerank_pipeline_stages[:4]
 
-    metrics["query_rewrite_enabled"] = settings.ENABLE_QUERY_REWRITE
+    metrics["query_rewrite_enabled"] = bool(rewrite_enabled)
     metrics["query_rewrite_strategy_id"] = rewrite_strategy_id
     metrics["query_rewrite_strategy_hash"] = rewrite_strategy_hash
     metrics["rewrite_used"] = bool(rewrite_used)
@@ -2253,8 +2272,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
             "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
             "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
-            "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
-            "sparse_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
+            "sparse_enabled": bool(sparse_enabled),
+            "sparse_provider": sparse_provider,
             "sparse_index_persist_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
             "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
             "colbert_provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),

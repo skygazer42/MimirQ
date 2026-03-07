@@ -111,7 +111,63 @@ LTR_MODEL_PATH=./artifacts/ltr.json
 
 ---
 
-## 5) 生产化差距（需要额外工程）
+## 5) 有界 rollout workflow（evidence / feedback -> train -> eval -> compare）
+
+脚本：`scripts/prepare_ltr_rollout.py`
+
+这个脚本把原来分散的几步串成一个 **不自动激活** 的受控工作流：
+1. 从一个 `EvidenceSuite` 的 `approved` items 和/或一组 `feedback_id` 物化出 `mimirq.regression_cases.v1` bundle
+2. 调用 `train_ltr_from_regression_cases.py` 训练 candidate 模型
+3. 调用 `eval_ltr_offline.py` 跑 candidate 离线评估
+4. 如果当前已有 active LTR model，再对 active model 跑同一份离线评估
+5. 生成 candidate-vs-baseline comparison artifact
+6. 可选地把 candidate 注册进本地 LTR registry，但 **不会 activation**
+
+示例：
+
+```bash
+python scripts/prepare_ltr_rollout.py \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id test-admin \
+  --suite-id 11111111-1111-1111-1111-111111111111 \
+  --feedback-id 22222222-2222-2222-2222-222222222222 \
+  --feedback-id 33333333-3333-3333-3333-333333333333 \
+  --base-url http://localhost:8000/api/v1
+```
+
+默认产物会写到 `UPLOAD_DIR/.ltr_rollouts/<timestamp>/`，关键文件包括：
+- `cases.bundle.json`: 物化后的 regression case bundle
+- `candidate.model.json`: 训练出的 candidate 模型
+- `candidate.manifest.json`: candidate 训练 lineage
+- `candidate.eval.json`: candidate 的离线评估摘要
+- `baseline.eval.json`: 当前 active model 的离线评估摘要（如果存在）
+- `comparison.json`: candidate-vs-baseline 对比结果
+- `workflow.json`: 整个 workflow 的索引、sha256 和人工激活状态
+
+`comparison.json` 的 baseline 规则：
+- 有 active model 时，对比 `candidate.ltr` vs `active_model.ltr`
+- 没有 active model 时，对比 `candidate.ltr` vs retrieval baseline
+
+激活与回滚仍然单独控制：
+
+```bash
+# 查看注册过的 candidate
+curl http://localhost:8000/api/v1/ltr/models
+
+# 人工激活
+curl -X POST http://localhost:8000/api/v1/ltr/models/activate \
+  -H 'Content-Type: application/json' \
+  -d '{"model_id":"<candidate_model_id>"}'
+
+# 一步回滚
+curl -X POST http://localhost:8000/api/v1/ltr/models/rollback
+```
+
+如果你只想准备工件、不注册 candidate，可加 `--skip-register`。
+
+---
+
+## 6) 生产化差距（需要额外工程）
 
 训练脚本默认支持 **按 query 分组** 的 ranking objective（例如 `rank:pairwise` / `rank:ndcg`），并提供
 hard negative（near-miss）采样能力。
@@ -138,7 +194,7 @@ python scripts/eval_ltr_offline.py \
 
 仍然存在的生产化差距（需要额外工程）：
 - 更强的 hard negative mining（跨 run、跨版本、从 trace/feedback 自动挖掘）
-- 模型与特征版本治理（artifact 元信息、强一致 spec/version 绑定）
-- A/B 与回归门禁策略
+- 更细粒度的 rollout guardrail（例如自动 gate / 自动 canary / 人工审批队列）
+- A/B 分流与线上指标回写
 
 详见差距快照：`docs/plans/2026-02-24-retrieval-only-rag-gap-snapshot.md`。

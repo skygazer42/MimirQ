@@ -9,7 +9,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.core.config import settings
+from app.rag.core.text import normalize_retrieval_mode
 
 from .base import OrmModel
 
@@ -149,6 +152,25 @@ class RagasRegressionRunCreateRequest(BaseModel):
     max_cases: int = Field(default=50, ge=1, le=500, description="Max cases to run (default: 50)")
 
     # Retrieval config (aligned with chat.rag_config for comparisons).
+    retrieval_profile: Optional[str] = Field(
+        default=None,
+        description="Optional retrieval preset: recall20 | recall50 | coverage80",
+    )
+    enable_query_alias_expansion: Optional[bool] = Field(
+        default=None,
+        description="Enable bounded alias expansion when dataset/query aliases exist",
+    )
+    query_alias_max_queries: Optional[int] = Field(default=None, ge=0, le=20)
+    enable_multi_query: Optional[bool] = Field(default=None, description="Enable bounded LLM multi-query expansion")
+    multi_query_count: Optional[int] = Field(default=None, ge=1, le=8)
+    multi_query_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    multi_query_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
+    enable_query_rewrite: Optional[bool] = Field(default=None, description="Enable bounded query rewrite before retrieval")
+    query_rewrite_strategy: Optional[str] = Field(default=None, description="Override query rewrite strategy id")
+    query_rewrite_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    query_rewrite_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
+    sparse_retrieval_enabled: Optional[bool] = Field(default=None, description="Enable sparse retrieval channel")
+    sparse_retrieval_provider: Optional[str] = Field(default=None, description="Sparse provider: deterministic | splade")
     # NOTE: default to 20 so retrieval-only gates can enforce Recall@20/Hit@20 without
     # requiring callers (CI scripts) to pass explicit rag_params.
     top_k: int = Field(default=20, ge=1, le=50)
@@ -157,18 +179,111 @@ class RagasRegressionRunCreateRequest(BaseModel):
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
     retrieval_mode: str = Field(default="hybrid", description="hybrid | vector | keyword | mmr")
     alpha: float = Field(default=0.6, ge=0.0, le=1.0)
+    fusion_strategy: Optional[str] = Field(default=None, description="linear | rrf | budgeted_rrf | weighted")
+    fusion_budgets: Optional[Dict[str, int]] = Field(default=None)
+    fusion_min_scores: Optional[Dict[str, float]] = Field(default=None)
+    fusion_weights: Optional[Dict[str, float]] = Field(default=None)
     enable_weight_rerank: bool = Field(default=True)
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
     keyword_weight: float = Field(default=0.4, ge=0.0, le=1.0)
     mmr_lambda: float = Field(default=0.7, ge=0.0, le=1.0)
-    enable_reranker: bool = Field(default=False, description="Enable LLM reranker for re-ranking")
-    reranker_provider: str = Field(default="llm", description="Reranker provider: llm | pc | none")
-    reranker_top_n: int = Field(default=20, ge=1, le=200, description="Rerank candidate count (higher is slower)")
+    # Default to the server runtime so regression gates can mirror the real retrieval path
+    # without requiring every caller to restate reranker flags explicitly.
+    enable_reranker: bool = Field(
+        default_factory=lambda: settings.ENABLE_RERANKER,
+        description="Enable reranker for re-ranking",
+    )
+    reranker_provider: str = Field(
+        default_factory=lambda: settings.RERANKER_PROVIDER,
+        description="Reranker provider: llm | pc | ltr | colbert | cross_encoder | none",
+    )
+    reranker_top_n: int = Field(
+        default_factory=lambda: settings.RERANKER_TOP_N,
+        ge=1,
+        le=200,
+        description="Rerank candidate count (higher is slower)",
+    )
 
     # PromptTemplate selection (optional; for version/A-B comparison).
     prompt_template_id: Optional[UUID] = None
     prompt_template_key: Optional[str] = None
     prompt_ab_experiment_key: Optional[str] = None
+
+    @field_validator("retrieval_mode", mode="before")
+    @classmethod
+    def _normalize_retrieval_mode(cls, v: Any) -> str:
+        return normalize_retrieval_mode(str(v) if v is not None else None)
+
+    @field_validator("fusion_strategy", mode="before")
+    @classmethod
+    def _normalize_fusion_strategy(cls, v: Any) -> Optional[str]:
+        raw = str(v or "").strip().lower()
+        if not raw:
+            return None
+        if raw in {"reciprocal_rank_fusion", "rrf"}:
+            return "rrf"
+        if raw in {"budget_rrf", "budgeted_rrf"}:
+            return "budgeted_rrf"
+        if raw in {"weighted", "weighted_linear", "weighted_sum"}:
+            return "weighted"
+        if raw == "linear":
+            return "linear"
+        raise ValueError("fusion_strategy must be one of: linear, rrf, budgeted_rrf, weighted")
+
+    @field_validator("query_rewrite_strategy", mode="before")
+    @classmethod
+    def _normalize_query_rewrite_strategy(cls, v: Any) -> Optional[str]:
+        raw = str(v or "").strip()
+        return raw or None
+
+    @field_validator("sparse_retrieval_provider", mode="before")
+    @classmethod
+    def _normalize_sparse_retrieval_provider(cls, v: Any) -> Optional[str]:
+        raw = str(v or "").strip().lower()
+        if not raw:
+            return None
+        if raw not in {"deterministic", "splade"}:
+            raise ValueError("sparse_retrieval_provider must be one of: deterministic, splade")
+        return raw
+
+    @model_validator(mode="after")
+    def _validate_fusion_overrides(self):
+        allowed = {"vector", "bm25", "lexical", "sparse"}
+
+        if self.fusion_budgets is not None:
+            if not isinstance(self.fusion_budgets, dict):
+                raise ValueError("fusion_budgets must be an object")
+            bad = [str(k) for k in self.fusion_budgets.keys() if str(k) not in allowed]
+            if bad:
+                raise ValueError(f"fusion_budgets keys must be among: {sorted(allowed)}")
+            for value in self.fusion_budgets.values():
+                iv = int(value)
+                if iv < 0 or iv > 1000:
+                    raise ValueError("fusion_budgets values must be in [0,1000]")
+
+        if self.fusion_min_scores is not None:
+            if not isinstance(self.fusion_min_scores, dict):
+                raise ValueError("fusion_min_scores must be an object")
+            bad = [str(k) for k in self.fusion_min_scores.keys() if str(k) not in allowed]
+            if bad:
+                raise ValueError(f"fusion_min_scores keys must be among: {sorted(allowed)}")
+            for value in self.fusion_min_scores.values():
+                fv = float(value)
+                if fv < 0.0 or fv > 1.0:
+                    raise ValueError("fusion_min_scores values must be in [0,1]")
+
+        if self.fusion_weights is not None:
+            if not isinstance(self.fusion_weights, dict):
+                raise ValueError("fusion_weights must be an object")
+            bad = [str(k) for k in self.fusion_weights.keys() if str(k) not in allowed]
+            if bad:
+                raise ValueError(f"fusion_weights keys must be among: {sorted(allowed)}")
+            for value in self.fusion_weights.values():
+                fv = float(value)
+                if fv < 0.0 or fv > 10.0:
+                    raise ValueError("fusion_weights values must be in [0,10]")
+
+        return self
 
 
 class RagasRegressionRunSchema(OrmModel):

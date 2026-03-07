@@ -1,6 +1,6 @@
 # 检索参数消融评测（Retrieval Ablation / Leaderboard / Diff）
 
-当你已经有一套**可回归的 ground-truth 用例集**（RAGAS regression cases / Evidence Pack 转换而来），并且希望系统性地对比不同检索参数（top_k / threshold / hybrid 权重等）对检索指标的影响时，可以使用这个离线脚本做消融矩阵评测。
+当你已经有一套**可回归的 ground-truth 用例集**（RAGAS regression cases / Evidence Pack 转换而来），并且希望系统性地对比不同检索参数（`retrieval_profile` / top_k / threshold / fusion / multi-query / reranker 等）对检索指标的影响时，可以使用这个离线脚本做消融矩阵评测。
 
 脚本：`scripts/retrieval_ablation.py`
 
@@ -21,6 +21,7 @@
       "top_k": 20,
       "score_threshold": 0.0,
       "retrieval_mode": "hybrid",
+      "retrieval_profile": "recall20",
       "enable_weight_rerank": true,
       "vector_weight": 0.6,
       "keyword_weight": 0.4
@@ -28,10 +29,26 @@
   },
   "variants": [
     { "label": "k50", "rag_params": { "top_k": 50 } },
-    { "label": "vector_only", "rag_params": { "retrieval_mode": "vector" } }
+    {
+      "label": "weighted_recall50",
+      "rag_params": {
+        "retrieval_profile": "recall50",
+        "fusion_strategy": "weighted",
+        "fusion_weights": { "vector": 0.7, "bm25": 0.3 }
+      }
+    },
+    {
+      "label": "hybrid_rerank",
+      "rag_params": {
+        "enable_reranker": true,
+        "reranker_provider": "llm",
+        "reranker_top_n": 20
+      }
+    }
   ],
   "grid": {
-    "score_threshold": [0.0, 0.1]
+    "enable_multi_query": [false, true],
+    "multi_query_count": [3]
   }
 }
 ```
@@ -58,6 +75,48 @@ python scripts/retrieval_ablation.py \
   - 显式 `variants` 先跑（保持文件顺序）
   - `grid` 后跑（按 JSON key 顺序展开笛卡尔积，最后一个 key 变化最快）
 
+## 当前支持的 `rag_params` key
+
+脚本会把下列 runtime knobs 透传给 regression run API：
+
+- `retrieval_profile`
+- `enable_query_alias_expansion`
+- `query_alias_max_queries`
+- `enable_multi_query`
+- `multi_query_count`
+- `multi_query_temperature`
+- `multi_query_max_chars`
+- `enable_query_rewrite`
+- `query_rewrite_strategy`
+- `query_rewrite_temperature`
+- `query_rewrite_max_chars`
+- `top_k`
+- `score_threshold`
+- `retrieval_mode`
+- `alpha`
+- `sparse_retrieval_enabled`
+- `sparse_retrieval_provider`
+- `fusion_strategy`
+- `fusion_budgets`
+- `fusion_min_scores`
+- `fusion_weights`
+- `enable_weight_rerank`
+- `vector_weight`
+- `keyword_weight`
+- `mmr_lambda`
+- `enable_reranker`
+- `reranker_provider`
+- `reranker_top_n`
+- `prompt_template_id`
+- `prompt_template_key`
+- `prompt_ab_experiment_key`
+
+说明：
+
+- `fusion_budgets` / `fusion_min_scores` / `fusion_weights` 允许使用 `vector|bm25|lexical|sparse` 这些 channel key。
+- `enable_query_rewrite` / `query_rewrite_*` 与 `sparse_retrieval_*` 现在都支持 per-run override，适合直接进 ablation matrix。
+- 更底层的进程级开关（例如 sparse index persistence、query rewrite 的全局 rollout）仍然建议按环境快照管理。
+
 ## 输出物（CI 友好）
 
 在 `--out-dir` 下会产出：
@@ -75,5 +134,5 @@ python scripts/retrieval_ablation.py \
 
 - 先用较小矩阵跑通流程（例如只改 `top_k`），再逐步扩大 grid。
 - 每次只改变 1-2 个维度，避免笛卡尔积爆炸。
+- Nightly 默认组合已经包含一个受限的 `hybrid_rerank` 变体，适合作为“真实 runtime 路径”的基线烟雾测试。
 - 如果你需要对比 KG/lexical/fusion 等更复杂的策略，建议先确认这些参数在回归 run API 中已支持（否则会被脚本提示为 ignored）。
-
