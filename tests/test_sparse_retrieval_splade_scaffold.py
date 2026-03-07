@@ -90,3 +90,55 @@ def test_sparse_retrieval_channel_scores_synonym_match(monkeypatch: pytest.Monke
     assert float(meta_1.get("sparse_score", 0.0) or 0.0) > 0.0
     assert float(meta_2.get("sparse_score", 0.0) or 0.0) == 0.0
 
+
+def test_sparse_retrieval_can_be_enabled_per_retriever_instance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic", raising=False)
+    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "kubernetes:k8s", raising=False)
+
+    tenant_id = _mk_uuid("tenant:sparse-instance")
+    dataset_id = _mk_uuid("dataset:sparse-instance")
+    doc_id = _mk_uuid("doc:sparse-instance")
+    chunk_id = _mk_uuid("chunk:sparse-instance")
+
+    docs = [
+        Document(
+            page_content="k8s",
+            id=str(chunk_id),
+            metadata={
+                "tenant_id": str(tenant_id),
+                "dataset_id": str(dataset_id),
+                "document_id": str(doc_id),
+                "chunk_index": 0,
+                "chunk_id": str(chunk_id),
+                "doc_pipeline_key": f"{doc_id}:h",
+                "pipeline_hash": "h",
+                "source": "sparse.md",
+            },
+        )
+    ]
+
+    retriever = HybridRetriever(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        sparse_enabled=True,
+        sparse_provider="deterministic",
+    )
+    retriever.upsert_bm25_documents(docs, tenant_id=tenant_id)
+
+    results = retriever._hybrid_search(
+        query="kubernetes",
+        top_k=5,
+        score_threshold=0.0,
+        document_ids=None,
+        tenant_id=tenant_id,
+        retrieval_mode="keyword",
+        metadata_filter=None,
+    )
+
+    by_id = {str(r.get("chunk_id")): r for r in results}
+    assert str(chunk_id) in by_id
+    assert float(((by_id[str(chunk_id)].get("metadata") or {}).get("sparse_score") or 0.0)) > 0.0

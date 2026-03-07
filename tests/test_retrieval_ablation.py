@@ -96,3 +96,44 @@ def test_safe_artifact_name_is_path_safe() -> None:
 
     assert mod.safe_artifact_name("k50") == "k50"  # type: ignore[attr-defined]
     assert mod.safe_artifact_name("a/b c") == "a_b_c"  # type: ignore[attr-defined]
+
+
+def test_select_run_params_keeps_extended_runtime_fields() -> None:
+    mod = _load_module()
+
+    selected, ignored = mod._select_run_params(  # type: ignore[attr-defined]
+        {
+            "retrieval_profile": "recall50",
+            "enable_query_alias_expansion": True,
+            "enable_multi_query": True,
+            "multi_query_count": 3,
+            "enable_query_rewrite": True,
+            "query_rewrite_strategy": "kb_followup.v2",
+            "query_rewrite_temperature": 0.3,
+            "query_rewrite_max_chars": 180,
+            "sparse_retrieval_enabled": True,
+            "sparse_retrieval_provider": "splade",
+            "fusion_strategy": "weighted",
+            "fusion_budgets": {"vector": 20, "bm25": 10, "lexical": 10},
+            "fusion_min_scores": {"vector": 0.2},
+            "fusion_weights": {"vector": 0.6, "bm25": 0.2, "lexical": 0.2},
+        }
+    )
+
+    assert ignored == []
+    assert selected == {
+        "retrieval_profile": "recall50",
+        "enable_query_alias_expansion": True,
+        "enable_multi_query": True,
+        "multi_query_count": 3,
+        "enable_query_rewrite": True,
+        "query_rewrite_strategy": "kb_followup.v2",
+        "query_rewrite_temperature": 0.3,
+        "query_rewrite_max_chars": 180,
+        "sparse_retrieval_enabled": True,
+        "sparse_retrieval_provider": "splade",
+        "fusion_strategy": "weighted",
+        "fusion_budgets": {"vector": 20, "bm25": 10, "lexical": 10},
+        "fusion_min_scores": {"vector": 0.2},
+        "fusion_weights": {"vector": 0.6, "bm25": 0.2, "lexical": 0.2},
+    }

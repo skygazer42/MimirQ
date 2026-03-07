@@ -80,6 +80,12 @@ class RAGState(TypedDict, total=False):
     multi_query_count: Optional[int]
     multi_query_temperature: Optional[float]
     multi_query_max_chars: Optional[int]
+    enable_query_rewrite: Optional[bool]
+    query_rewrite_strategy: Optional[str]
+    query_rewrite_temperature: Optional[float]
+    query_rewrite_max_chars: Optional[int]
+    sparse_retrieval_enabled: Optional[bool]
+    sparse_retrieval_provider: Optional[str]
     alpha: float
     enable_weight_rerank: bool
     fusion_strategy: Optional[str]
@@ -167,6 +173,10 @@ def _retrieve_cache_key(state: Dict[str, Any]) -> str:
         "multi_query_count": state.get("multi_query_count"),
         "multi_query_temperature": state.get("multi_query_temperature"),
         "multi_query_max_chars": state.get("multi_query_max_chars"),
+        "enable_query_rewrite": state.get("enable_query_rewrite"),
+        "query_rewrite_strategy": state.get("query_rewrite_strategy"),
+        "query_rewrite_temperature": state.get("query_rewrite_temperature"),
+        "query_rewrite_max_chars": state.get("query_rewrite_max_chars"),
         "alpha": float(0.6 if state.get("alpha") is None else state.get("alpha")),
         "enable_weight_rerank": bool(True if state.get("enable_weight_rerank") is None else state.get("enable_weight_rerank")),
         "vector_weight": float(0.6 if state.get("vector_weight") is None else state.get("vector_weight")),
@@ -179,6 +189,8 @@ def _retrieve_cache_key(state: Dict[str, Any]) -> str:
         "reranker_top_n": int(
             settings.RERANKER_TOP_N if state.get("reranker_top_n") is None else state.get("reranker_top_n")
         ),
+        "sparse_retrieval_enabled": state.get("sparse_retrieval_enabled"),
+        "sparse_retrieval_provider": state.get("sparse_retrieval_provider"),
         "metadata_filter": state.get("metadata_filter") or None,
     }
     return json.dumps(key_obj, ensure_ascii=False, sort_keys=True, default=str)
@@ -871,6 +883,12 @@ def build_rag_state(
     multi_query_count: Optional[int] = None,
     multi_query_temperature: Optional[float] = None,
     multi_query_max_chars: Optional[int] = None,
+    enable_query_rewrite: Optional[bool] = None,
+    query_rewrite_strategy: Optional[str] = None,
+    query_rewrite_temperature: Optional[float] = None,
+    query_rewrite_max_chars: Optional[int] = None,
+    sparse_retrieval_enabled: Optional[bool] = None,
+    sparse_retrieval_provider: Optional[str] = None,
     alpha: float = 0.6,
     fusion_strategy: Optional[str] = None,
     fusion_budgets: Optional[Dict[str, int]] = None,
@@ -1001,6 +1019,10 @@ def build_rag_state(
         "multi_query_count": multi_query_count,
         "multi_query_temperature": multi_query_temperature,
         "multi_query_max_chars": multi_query_max_chars,
+        "enable_query_rewrite": enable_query_rewrite,
+        "query_rewrite_strategy": query_rewrite_strategy,
+        "query_rewrite_temperature": query_rewrite_temperature,
+        "query_rewrite_max_chars": query_rewrite_max_chars,
         "alpha": alpha,
         "fusion_strategy": fusion_strategy,
         "fusion_budgets": fusion_budgets,
@@ -1013,6 +1035,8 @@ def build_rag_state(
         "enable_reranker": enable_reranker,
         "reranker_provider": reranker_provider,
         "reranker_top_n": reranker_top_n,
+        "sparse_retrieval_enabled": sparse_retrieval_enabled,
+        "sparse_retrieval_provider": sparse_retrieval_provider,
         "metadata_filter": metadata_filter,
         "format_instructions": format_instructions,
         "structured_output": bool(structured_output),

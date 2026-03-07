@@ -57,6 +57,47 @@ def test_build_run_create_request_payload_omits_none_overrides() -> None:
     assert "score_threshold" not in payload
 
 
+def test_build_run_create_request_payload_includes_extended_runtime_overrides() -> None:
+    mod = _load_module()
+
+    payload = mod.build_run_create_request_payload(  # type: ignore[attr-defined]
+        case_ids=["a"],
+        dataset_id="d",
+        metrics=[],
+        max_cases=1,
+        retrieval_overrides={
+            "retrieval_profile": "recall50",
+            "enable_query_alias_expansion": True,
+            "enable_multi_query": True,
+            "multi_query_count": 4,
+            "enable_query_rewrite": True,
+            "query_rewrite_strategy": "kb_followup.v2",
+            "query_rewrite_temperature": 0.3,
+            "query_rewrite_max_chars": 180,
+            "sparse_retrieval_enabled": True,
+            "sparse_retrieval_provider": "splade",
+            "fusion_strategy": "weighted",
+            "fusion_budgets": {"vector": 20, "bm25": 10},
+            "fusion_min_scores": {"vector": 0.2},
+            "fusion_weights": {"vector": 0.7, "bm25": 0.3},
+        },
+    )
+    assert payload["retrieval_profile"] == "recall50"
+    assert payload["enable_query_alias_expansion"] is True
+    assert payload["enable_multi_query"] is True
+    assert payload["multi_query_count"] == 4
+    assert payload["enable_query_rewrite"] is True
+    assert payload["query_rewrite_strategy"] == "kb_followup.v2"
+    assert payload["query_rewrite_temperature"] == 0.3
+    assert payload["query_rewrite_max_chars"] == 180
+    assert payload["sparse_retrieval_enabled"] is True
+    assert payload["sparse_retrieval_provider"] == "splade"
+    assert payload["fusion_strategy"] == "weighted"
+    assert payload["fusion_budgets"] == {"vector": 20, "bm25": 10}
+    assert payload["fusion_min_scores"] == {"vector": 0.2}
+    assert payload["fusion_weights"] == {"vector": 0.7, "bm25": 0.3}
+
+
 def test_write_json_file_writes_trailing_newline(tmp_path: Path) -> None:
     mod = _load_module()
 
@@ -64,4 +105,3 @@ def test_write_json_file_writes_trailing_newline(tmp_path: Path) -> None:
     mod.write_json_file(out, {"a": 1})  # type: ignore[attr-defined]
     data = out.read_text(encoding="utf-8")
     assert data.endswith("\n")
-

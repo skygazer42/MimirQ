@@ -132,6 +132,25 @@ def _default_ablations() -> list[dict]:
                 "prompt_ab_experiment_key": None,
             },
         },
+        {
+            "ablation_key": "hybrid_rerank",
+            "rag_params": {
+                "top_k": 20,
+                "score_threshold": 0.0,
+                "retrieval_mode": "hybrid",
+                "alpha": 0.6,
+                "enable_weight_rerank": True,
+                "vector_weight": 0.6,
+                "keyword_weight": 0.4,
+                "mmr_lambda": 0.7,
+                "enable_reranker": True,
+                "reranker_provider": settings.RERANKER_PROVIDER,
+                "reranker_top_n": min(20, int(settings.RERANKER_TOP_N or 20)),
+                "prompt_template_id": None,
+                "prompt_template_key": None,
+                "prompt_ab_experiment_key": None,
+            },
+        },
     ]
 
 

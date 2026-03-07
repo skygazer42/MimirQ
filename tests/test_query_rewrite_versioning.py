@@ -10,9 +10,18 @@ class _FakeRetriever:
     def __init__(self, *, docs: list[Document]) -> None:
         self._docs = list(docs)
         self._last_debug_metrics: dict = {}
+        self.last_update: dict = {}
+        self.sparse_enabled = False
+        self.sparse_provider = "deterministic"
 
-    def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
-        return self
+    def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        clone = _FakeRetriever(docs=self._docs)
+        clone._last_debug_metrics = dict(self._last_debug_metrics)
+        update = dict(kwargs.get("update") or {})
+        clone.last_update = update
+        for key, value in update.items():
+            setattr(clone, key, value)
+        return clone
 
     def invoke(self, _q: str):  # noqa: ANN001
         return list(self._docs)
@@ -184,3 +193,71 @@ def test_regression_leaderboard_config_hash_includes_query_rewrite_strategy(monk
     assert isinstance(h2, str) and len(h2) >= 16
     assert h2 != h1
 
+
+def test_run_retrieval_honors_runtime_query_rewrite_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    _patch_orchestrator_deterministic(monkeypatch)
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "QUERY_REWRITE_STRATEGY", "kb_followup.v1", raising=False)
+
+    base_state = {
+        "question": "q",
+        "history": [],
+        "tenant_id": str(uuid.uuid4()),
+        "account_id": "u",
+        "dataset_id": None,
+        "document_ids": [str(uuid.uuid4())],
+        "top_k": 5,
+        "score_threshold": 0.0,
+        "retrieval_mode": "vector",
+        "metrics": {},
+    }
+
+    out_disabled = orch_mod.run_retrieval(dict(base_state))
+    assert (out_disabled.get("metrics") or {}).get("query_rewrite_enabled") is False
+
+    out_enabled = orch_mod.run_retrieval(
+        {
+            **base_state,
+            "enable_query_rewrite": True,
+            "query_rewrite_strategy": "kb_followup.v2",
+            "query_rewrite_temperature": 0.3,
+            "query_rewrite_max_chars": 180,
+        }
+    )
+
+    assert (out_enabled.get("metrics") or {}).get("query_rewrite_enabled") is True
+    assert ((out_enabled.get("retrieval_trace") or {}).get("rewrite") or {}).get("strategy_id") == "kb_followup.v2"
+    assert (out_enabled.get("metrics") or {}).get("retrieval_config_hash") != (
+        out_disabled.get("metrics") or {}
+    ).get("retrieval_config_hash")
+
+
+def test_run_retrieval_passes_sparse_runtime_overrides_to_retriever(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
+
+    _patch_orchestrator_deterministic(monkeypatch)
+
+    out = orch_mod.run_retrieval(
+        {
+            "question": "q",
+            "history": [],
+            "tenant_id": str(uuid.uuid4()),
+            "account_id": "u",
+            "dataset_id": None,
+            "document_ids": [str(uuid.uuid4())],
+            "top_k": 5,
+            "score_threshold": 0.0,
+            "retrieval_mode": "vector",
+            "sparse_retrieval_enabled": True,
+            "sparse_retrieval_provider": "splade",
+            "metrics": {},
+        }
+    )
+
+    cfg = (((out.get("retrieval_trace") or {}).get("retrieval_config") or {}).get("config") or {})
+    assert cfg.get("sparse_enabled") is True
+    assert cfg.get("sparse_provider") == "splade"
