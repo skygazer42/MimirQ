@@ -197,7 +197,16 @@ Environment variables:
 - `EVIDENCE_POST_RERANK_ENABLED=true|false`
 - `EVIDENCE_POST_RERANK_PROVIDER=ltr|colbert|...`
 - `EVIDENCE_POST_RERANK_TOP_N=30`
+- `EVIDENCE_POST_RERANK_CACHE_ENABLED=true|false`
+- `EVIDENCE_POST_RERANK_CACHE_BACKEND=memory|redis`
+- `EVIDENCE_POST_RERANK_CACHE_TTL_SEC=30`
+- `EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES=1024` (`memory` backend only)
 
 When enabled, the orchestrator will rerank the top-N candidates and annotate:
 - `citations[*].reranker_provider`, `citations[*].rerank_score`, `citations[*].retrieval_score` (best-effort)
 - `metrics.evidence_post_rerank_*` (used, elapsed, provider, error, etc)
+
+Cache notes:
+- `memory` keeps the post-rerank cache process-local and is suitable for single-replica deployments.
+- `redis` uses the shared Redis cluster configured by `REDIS_URL`, which keeps cache hits valid across API replicas.
+- Cache keys are PII-safe stable hashes; values store only ordered chunk ids plus numeric scores.

@@ -43,7 +43,11 @@ from app.rag.engine import get_rag_engine
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.trace_schema import RagTraceListResponse
 from app.services.audit_log_service import audit_log_event, build_chat_audit_details
-from app.services.chat_response_cache import build_chat_cache_key, get_cached_chat_response, set_cached_chat_response
+from app.services.chat_response_cache import (
+    get_cached_chat_response,
+    resolve_chat_response_cache_key,
+    set_cached_chat_response,
+)
 from app.services.conversation_summary_service import (
     clear_conversation_summary,
     get_conversation_summary,
@@ -68,6 +72,67 @@ from app.services.rag_trace_service import list_rag_traces
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _annotate_chat_cache_metrics(
+    metrics: dict[str, Any] | None,
+    *,
+    enabled: bool,
+    hit: bool,
+    skip_reason: str | None,
+) -> dict[str, Any]:
+    out = dict(metrics or {})
+    out["chat_cache_enabled"] = bool(enabled)
+    out["chat_cache_hit"] = bool(hit)
+    if skip_reason:
+        out["chat_cache_skip_reason"] = str(skip_reason)
+    else:
+        out.pop("chat_cache_skip_reason", None)
+    return out
+
+
+def _prepare_chat_cache_lookup(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+    document_ids: list[UUID],
+    history: list[Any],
+    enable_long_term_memory: bool,
+    long_term_messages: list[dict],
+    question: str,
+    rag_config: dict[str, Any],
+    prompt_config: dict[str, Any],
+    structured_output: bool,
+    structured_preset: str | None,
+    use_graph: bool,
+) -> tuple[bool, str | None, str | None]:
+    cache_enabled = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
+    if not cache_enabled:
+        return False, None, None
+    if not document_ids and dataset_id is None:
+        return True, None, "missing_scope"
+    if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
+        if history or enable_long_term_memory or long_term_messages:
+            return True, None, "history_not_empty"
+    try:
+        cache_key, skip_reason = resolve_chat_response_cache_key(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            document_ids=document_ids,
+            question=question,
+            rag_config=rag_config,
+            prompt_config=prompt_config,
+            structured_output=structured_output,
+            structured_preset=structured_preset,
+            use_graph=use_graph,
+        )
+    except Exception:
+        return True, None, "lookup_error"
+    return True, cache_key, skip_reason
 
 async def _auto_update_summary_background(*, tenant_id: UUID, conversation_id: UUID) -> None:
     """
@@ -646,45 +711,42 @@ async def chat(
     # Optional chat response cache (best-effort).
     cache_key: str | None = None
     cache_hit = False
-    cache_eligible = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
-    if cache_eligible:
-        if not doc_ids_to_use:
-            cache_eligible = False
-        if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
-            if request.history or request.enable_long_term_memory or long_term_messages:
-                cache_eligible = False
-
-    if cache_eligible:
-        try:
-            rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
-            prompt_cfg = {
-                "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
-                "prompt_template_key": (effective_prompt_template_key or None),
-                "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
-            }
-            cache_key = build_chat_cache_key(
-                tenant_id=str(tenant_id),
-                account_id=str(account_id or ""),
-                dataset_id=str(dataset_id_used) if dataset_id_used is not None else None,
-                document_ids=[str(d) for d in doc_ids_to_use],
-                question=request.message,
-                rag_config=rag_cfg,
-                prompt_config=prompt_cfg,
-                structured_output=bool(request.structured_output),
-                structured_preset=request.structured_preset,
-                use_graph=bool(effective_rag_config.use_graph),
-            )
-            cached = get_cached_chat_response(cache_key) if cache_key else None
-        except Exception:
-            cached = None
-
-        if isinstance(cached, dict):
-            full_response = str(cached.get("content") or "")
-            citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
-            metrics_data = dict(cached.get("metrics") or {})
-            metrics_data["chat_cache_hit"] = True
-            structured_data = cached.get("structured_data")
-            cache_hit = True
+    cache_scope_dataset_id = dataset_id_used or scope_dataset_id
+    rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
+    prompt_cfg = {
+        "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
+        "prompt_template_key": (effective_prompt_template_key or None),
+        "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
+    }
+    cache_feature_enabled, cache_key, cache_skip_reason = _prepare_chat_cache_lookup(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=str(account_id or ""),
+        dataset_id=cache_scope_dataset_id,
+        document_ids=doc_ids_to_use,
+        history=request.history,
+        enable_long_term_memory=bool(request.enable_long_term_memory),
+        long_term_messages=long_term_messages,
+        question=request.message,
+        rag_config=rag_cfg,
+        prompt_config=prompt_cfg,
+        structured_output=bool(request.structured_output),
+        structured_preset=request.structured_preset,
+        use_graph=bool(effective_rag_config.use_graph),
+    )
+    cache_eligible = bool(cache_key)
+    cached = get_cached_chat_response(cache_key) if cache_key else None
+    if isinstance(cached, dict):
+        full_response = str(cached.get("content") or "")
+        citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
+        metrics_data = _annotate_chat_cache_metrics(
+            dict(cached.get("metrics") or {}),
+            enabled=cache_feature_enabled,
+            hit=True,
+            skip_reason=None,
+        )
+        structured_data = cached.get("structured_data")
+        cache_hit = True
 
     try:
         if not cache_hit:
@@ -897,6 +959,13 @@ async def chat(
                 if isinstance(done_data, dict):
                     metrics_data = dict(done_data.get("metrics") or {})
                     structured_data = done_data.get("structured_data")
+
+        metrics_data = _annotate_chat_cache_metrics(
+            metrics_data,
+            enabled=cache_feature_enabled,
+            hit=cache_hit,
+            skip_reason=None if cache_hit else cache_skip_reason,
+        )
 
         # 3) Persist assistant response.
         # Persist dataset-level default metadata into the stored message for later analytics/debugging.
@@ -1360,46 +1429,43 @@ async def stream_chat(
         # Optional: chat response cache (Redis, best-effort).
         cache_key: str | None = None
         cache_hit = False
-        cache_eligible = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
-        if cache_eligible:
-            if not doc_ids_to_use:
-                cache_eligible = False
-            if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
-                if request.history or request.enable_long_term_memory or long_term_messages:
-                    cache_eligible = False
+        cache_scope_dataset_id = dataset_id_used or scope_dataset_id
+        rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
+        prompt_cfg = {
+            "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
+            "prompt_template_key": (effective_prompt_template_key or None),
+            "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
+        }
+        cache_feature_enabled, cache_key, cache_skip_reason = _prepare_chat_cache_lookup(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=str(account_id or ""),
+            dataset_id=cache_scope_dataset_id,
+            document_ids=doc_ids_to_use,
+            history=request.history,
+            enable_long_term_memory=bool(request.enable_long_term_memory),
+            long_term_messages=long_term_messages,
+            question=request.message,
+            rag_config=rag_cfg,
+            prompt_config=prompt_cfg,
+            structured_output=bool(request.structured_output),
+            structured_preset=request.structured_preset,
+            use_graph=bool(effective_rag_config.use_graph),
+        )
+        cache_eligible = bool(cache_key)
+        cached = get_cached_chat_response(cache_key) if cache_key else None
 
-        if cache_eligible:
-            cached = None
-            try:
-                rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
-                prompt_cfg = {
-                    "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
-                    "prompt_template_key": (effective_prompt_template_key or None),
-                    "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
-                }
-                cache_key = build_chat_cache_key(
-                    tenant_id=str(tenant_id),
-                    account_id=str(account_id or ""),
-                    dataset_id=str(dataset_id_used) if dataset_id_used is not None else None,
-                    document_ids=[str(d) for d in doc_ids_to_use],
-                    question=request.message,
-                    rag_config=rag_cfg,
-                    prompt_config=prompt_cfg,
-                    structured_output=bool(request.structured_output),
-                    structured_preset=request.structured_preset,
-                    use_graph=bool(effective_rag_config.use_graph),
-                )
-                cached = get_cached_chat_response(cache_key) if cache_key else None
-            except Exception:
-                cached = None
-
-            if isinstance(cached, dict):
-                full_response = str(cached.get("content") or "")
-                citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
-                metrics_data = dict(cached.get("metrics") or {})
-                metrics_data["chat_cache_hit"] = True
-                structured_data = cached.get("structured_data")
-                cache_hit = True
+        if isinstance(cached, dict):
+            full_response = str(cached.get("content") or "")
+            citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
+            metrics_data = _annotate_chat_cache_metrics(
+                dict(cached.get("metrics") or {}),
+                enabled=cache_feature_enabled,
+                hit=True,
+                skip_reason=None,
+            )
+            structured_data = cached.get("structured_data")
+            cache_hit = True
 
         if cache_hit:
             # Stream cached content as token chunks so the frontend can reuse the same SSE handler.
@@ -1686,6 +1752,12 @@ async def stream_chat(
                     "elapsed_sec": None,
                 }
                 metrics_data = dict(metrics_data or {})
+                metrics_data = _annotate_chat_cache_metrics(
+                    metrics_data,
+                    enabled=cache_feature_enabled,
+                    hit=cache_hit,
+                    skip_reason=None if cache_hit else cache_skip_reason,
+                )
                 if dataset_id_used is not None:
                     metrics_data.setdefault("dataset_id", str(dataset_id_used))
                 if dataset_rag_defaults_applied_fields:
@@ -1950,6 +2022,22 @@ async def stream_chat(
                         structured_data = event["data"].get("structured_data")
                     else:
                         metrics_data = {}  # type: ignore[assignment]
+                    if isinstance(metrics_data, dict):
+                        metrics_data = _annotate_chat_cache_metrics(
+                            metrics_data,
+                            enabled=cache_feature_enabled,
+                            hit=cache_hit,
+                            skip_reason=None if cache_hit else cache_skip_reason,
+                        )
+                    else:
+                        metrics_data = _annotate_chat_cache_metrics(
+                            {},
+                            enabled=cache_feature_enabled,
+                            hit=cache_hit,
+                            skip_reason=None if cache_hit else cache_skip_reason,
+                        )
+                    if isinstance(event.get("data"), dict):
+                        event["data"]["metrics"] = metrics_data
 
                     if dataset_id_used is not None:
                         try:
@@ -2052,6 +2140,20 @@ async def stream_chat(
                 raise producer_exc
 
             full_response = "".join(response_parts)
+            if isinstance(metrics_data, dict):
+                metrics_data = _annotate_chat_cache_metrics(
+                    metrics_data,
+                    enabled=cache_feature_enabled,
+                    hit=cache_hit,
+                    skip_reason=None if cache_hit else cache_skip_reason,
+                )
+            else:
+                metrics_data = _annotate_chat_cache_metrics(
+                    {},
+                    enabled=cache_feature_enabled,
+                    hit=cache_hit,
+                    skip_reason=None if cache_hit else cache_skip_reason,
+                )
 
             # Optional: store response in Redis cache after streaming (best-effort).
             if cache_eligible and (not cache_hit) and cache_key and full_response.strip():

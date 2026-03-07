@@ -21,7 +21,10 @@ from typing import Any, Optional, Sequence
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.rag.reranker.types import RerankCandidate, RerankResult
+
+logger = get_logger("rag.evidence_rerank_cache")
 
 _META_ALLOWLIST = {
     # Scores / channel signals (numeric)
@@ -42,6 +45,7 @@ _META_ALLOWLIST = {
     "kg_edge_conf_mid",
     "kg_edge_conf_high",
 }
+_redis_client: Any | None = None
 
 
 def _normalize_meta_value(value: Any) -> Any:
@@ -180,8 +184,87 @@ class _TTLCache:
 _CACHE = _TTLCache()
 
 
+def get_evidence_post_rerank_cache_backend() -> str:
+    backend = str(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "memory") or "memory").strip().lower()
+    if backend not in {"memory", "redis"}:
+        return "memory"
+    return backend
+
+
+def _get_redis_client():  # noqa: ANN202
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        import redis  # type: ignore
+
+        _redis_client = redis.Redis.from_url(
+            settings.REDIS_URL,
+            socket_timeout=1,
+            socket_connect_timeout=1,
+            decode_responses=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Evidence post-rerank cache redis backend unavailable: %s", str(exc)[:200])
+        _redis_client = None
+    return _redis_client
+
+
+def _invalidate_redis_client() -> None:
+    global _redis_client
+    _redis_client = None
+
+
+def _get_cached_payload_from_redis(key: str) -> Optional[dict[str, Any]]:
+    if not key or not bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)):
+        return None
+    client = _get_redis_client()
+    if client is None:
+        return None
+    try:
+        raw = client.get(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Evidence post-rerank cache read failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return None
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _set_cached_payload_to_redis(key: str, payload: dict[str, Any]) -> bool:
+    if not key or not bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)):
+        return False
+    client = _get_redis_client()
+    if client is None:
+        return False
+    ttl = int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0)
+    try:
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        if ttl > 0:
+            client.set(key, raw, ex=ttl)
+        else:
+            client.set(key, raw)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Evidence post-rerank cache write failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return False
+
+
 def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
-    payload = _CACHE.get(key)
+    backend = get_evidence_post_rerank_cache_backend()
+    if backend == "redis":
+        payload = _get_cached_payload_from_redis(key)
+    else:
+        payload = _CACHE.get(key)
     if not isinstance(payload, dict):
         return None
 
@@ -227,18 +310,22 @@ def set_cached_evidence_post_rerank_result(key: str, result: RerankResult) -> bo
         "model_used": result.model_used,
         "schema": "mimirq.rerank_result_cache_item.v1",
     }
+    backend = get_evidence_post_rerank_cache_backend()
+    if backend == "redis":
+        return bool(_set_cached_payload_to_redis(key, payload))
     return bool(_CACHE.set(key, payload))
 
 
 def clear_evidence_post_rerank_cache_for_tests() -> None:
     _CACHE.clear()
+    _invalidate_redis_client()
 
 
 __all__ = [
     "build_evidence_post_rerank_cache_key",
     "fingerprint_rerank_candidates",
+    "get_evidence_post_rerank_cache_backend",
     "get_cached_evidence_post_rerank_result",
     "set_cached_evidence_post_rerank_result",
     "clear_evidence_post_rerank_cache_for_tests",
 ]
-
