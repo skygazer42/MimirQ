@@ -1,0 +1,318 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Sequence
+from uuid import UUID
+
+from app.models.chat import Conversation, Message
+from app.models.evidence import EvidenceItem, EvidenceSuite
+from app.models.feedback import MessageFeedback
+
+
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_uuid_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return str(UUID(text))
+    except Exception:
+        return None
+
+
+def _safe_text(value: Any, *, max_len: int = 2000) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return text[: max(1, int(max_len or 1))]
+
+
+def _safe_int(value: Any, *, min_value: int | None = None) -> int | None:
+    try:
+        if value is None:
+            return None
+        out = int(value)
+    except Exception:
+        return None
+    if min_value is not None and out < min_value:
+        return None
+    return out
+
+
+def _normalize_tags(values: Sequence[Any] | None, *, prefixes: Sequence[str] | None = None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in list(prefixes or []) + list(values or []):
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text[:64])
+        if len(out) >= 30:
+            break
+    return out
+
+
+def normalize_reference_sources(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        document_id = _safe_uuid_text(item.get("document_id"))
+        chunk_id = _safe_uuid_text(item.get("chunk_id"))
+        if not document_id or not chunk_id:
+            continue
+        key = (document_id, chunk_id)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        payload: dict[str, Any] = {
+            "document_id": document_id,
+            "chunk_id": chunk_id,
+        }
+        for field_name, min_value in (
+            ("page_number", 1),
+            ("start_char", 0),
+            ("end_char", 0),
+            ("chunk_index", 0),
+        ):
+            value_int = _safe_int(item.get(field_name), min_value=min_value)
+            if value_int is not None:
+                payload[field_name] = value_int
+        for field_name, max_len in (
+            ("doc_pipeline_key", 128),
+            ("pipeline_hash", 128),
+            ("quote", 2000),
+            ("label", 128),
+        ):
+            text = _safe_text(item.get(field_name), max_len=max_len)
+            if text:
+                payload[field_name] = text
+        out.append(payload)
+        if len(out) >= 100:
+            break
+    return out
+
+
+@dataclass(frozen=True)
+class FeedbackCaseMaterialization:
+    feedback_id: str
+    dataset_id: str | None
+    question: str
+    expected_answer: str | None
+    reference_sources: list[dict[str, Any]]
+    tags: list[str]
+    extra: dict[str, Any]
+
+
+def materialize_feedback_case(
+    *,
+    feedback: MessageFeedback,
+    assistant: Message,
+    conversation: Conversation,
+    user_message: Message | None,
+    trace_payload: dict[str, Any] | None = None,
+) -> FeedbackCaseMaterialization:
+    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
+    dataset_id = _safe_uuid_text(meta.get("dataset_id")) or _safe_uuid_text(getattr(conversation, "dataset_id", None))
+    request_id = str(meta.get("request_id") or "").strip()
+
+    question = str(getattr(user_message, "content", "") or "").strip() or "(missing user question)"
+    reference_sources = normalize_reference_sources(getattr(assistant, "citations", None))
+    if not reference_sources and isinstance(trace_payload, dict):
+        reference_sources = normalize_reference_sources(trace_payload.get("citations"))
+
+    tags = _normalize_tags(getattr(feedback, "tags", None))
+    extra = dict(getattr(feedback, "extra", {}) or {})
+    extra.setdefault("source", "feedback")
+    extra.setdefault("feedback_id", str(feedback.id))
+    extra.setdefault("message_id", str(feedback.message_id))
+    extra.setdefault("rating", int(getattr(feedback, "rating", 0) or 0))
+    if request_id:
+        extra["retrieval_trace_request_id"] = request_id
+    if isinstance(trace_payload, dict) and trace_payload:
+        extra["retrieval_trace"] = dict(trace_payload)
+
+    return FeedbackCaseMaterialization(
+        feedback_id=str(feedback.id),
+        dataset_id=dataset_id,
+        question=question,
+        expected_answer=_safe_text(getattr(feedback, "expected_answer", None), max_len=20_000),
+        reference_sources=reference_sources,
+        tags=tags,
+        extra=extra,
+    )
+
+
+def _dataset_text(value: UUID | str | None) -> str:
+    if value is None:
+        raise ValueError("dataset_id is required")
+    return str(value)
+
+
+def build_rollout_regression_bundle(
+    *,
+    dataset_id: UUID | str,
+    suite: EvidenceSuite | None,
+    evidence_items: Sequence[EvidenceItem] | None,
+    feedback_cases: Sequence[FeedbackCaseMaterialization] | None,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    dataset_text = _dataset_text(dataset_id)
+    if suite is not None and str(suite.dataset_id) != dataset_text:
+        raise ValueError("dataset_id mismatch between suite and workflow request")
+
+    items_out: list[dict[str, Any]] = []
+    approved_evidence_items = 0
+    selected_feedback_cases = 0
+
+    for item in list(evidence_items or []):
+        if str(getattr(item, "status", "") or "").strip().lower() != "approved":
+            continue
+        if str(getattr(item, "dataset_id", "") or "") != dataset_text:
+            raise ValueError("dataset_id mismatch for evidence item")
+        refs = normalize_reference_sources(getattr(item, "reference_sources", None))
+        if not refs:
+            continue
+        approved_evidence_items += 1
+        items_out.append(
+            {
+                "question": str(getattr(item, "query", "") or "").strip(),
+                "expected_answer": getattr(item, "expected_answer", None),
+                "reference_sources": refs,
+                "tags": _normalize_tags(
+                    getattr(item, "tags", None),
+                    prefixes=[
+                        "evidence_suite",
+                        f"evidence_suite:{str(suite.id)}" if suite is not None else "evidence_suite",
+                    ],
+                ),
+                "extra": {
+                    "source": "evidence_suite",
+                    "evidence_suite_id": str(suite.id) if suite is not None else None,
+                    "evidence_item_id": str(item.id),
+                    "status": "approved",
+                },
+            }
+        )
+
+    for case in list(feedback_cases or []):
+        if case.dataset_id and case.dataset_id != dataset_text:
+            raise ValueError("dataset_id mismatch for feedback case")
+        refs = normalize_reference_sources(case.reference_sources)
+        if not refs:
+            continue
+        selected_feedback_cases += 1
+        extra = dict(case.extra or {})
+        extra.setdefault("source", "feedback")
+        extra.setdefault("feedback_id", str(case.feedback_id))
+        items_out.append(
+            {
+                "question": str(case.question or "").strip(),
+                "expected_answer": case.expected_answer,
+                "reference_sources": refs,
+                "tags": _normalize_tags(case.tags, prefixes=["feedback", f"feedback:{str(case.feedback_id)}"]),
+                "extra": extra,
+            }
+        )
+
+    if not items_out:
+        raise ValueError("no rollout cases could be materialized")
+
+    return {
+        "schema": "mimirq.regression_cases.v1",
+        "dataset_id": dataset_text,
+        "generated_at": generated_at or _now_utc_iso(),
+        "source_summary": {
+            "approved_evidence_items": int(approved_evidence_items),
+            "selected_feedback_cases": int(selected_feedback_cases),
+            "total_items": int(len(items_out)),
+        },
+        "items": items_out,
+    }
+
+
+def _metric_map(raw: Any) -> dict[str, float]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, value in raw.items():
+        try:
+            out[str(key)] = round(float(value), 4)
+        except Exception:
+            continue
+    return out
+
+
+def build_rollout_comparison(
+    *,
+    generated_at: str | None,
+    candidate_eval: dict[str, Any],
+    baseline_eval: dict[str, Any] | None,
+    active_model_id: str | None,
+    candidate_model_id: str | None,
+) -> dict[str, Any]:
+    retrieval_baseline_metrics = _metric_map(candidate_eval.get("baseline"))
+    candidate_metrics = _metric_map(candidate_eval.get("ltr"))
+    if baseline_eval is not None and isinstance(baseline_eval.get("ltr"), dict):
+        baseline_source = "active_ltr_model"
+        baseline_metrics = _metric_map(baseline_eval.get("ltr"))
+    else:
+        baseline_source = "retrieval_baseline"
+        baseline_metrics = dict(retrieval_baseline_metrics)
+
+    deltas: dict[str, float] = {}
+    for key in sorted(set(candidate_metrics) | set(baseline_metrics)):
+        deltas[key] = round(float(candidate_metrics.get(key, 0.0)) - float(baseline_metrics.get(key, 0.0)), 4)
+
+    return {
+        "schema": "mimirq.ltr_rollout_comparison.v1",
+        "generated_at": generated_at or _now_utc_iso(),
+        "baseline_source": baseline_source,
+        "active_model_id": active_model_id,
+        "candidate_model_id": candidate_model_id,
+        "retrieval_baseline_metrics": retrieval_baseline_metrics,
+        "baseline_metrics": baseline_metrics,
+        "candidate_metrics": candidate_metrics,
+        "deltas": deltas,
+        "activation": {
+            "performed": False,
+            "status": "manual_review_required",
+        },
+    }
+
+
+def write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+__all__ = [
+    "FeedbackCaseMaterialization",
+    "build_rollout_comparison",
+    "build_rollout_regression_bundle",
+    "materialize_feedback_case",
+    "normalize_reference_sources",
+    "sha256_file",
+    "write_json",
+]
