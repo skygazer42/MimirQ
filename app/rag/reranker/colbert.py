@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+import threading
+import time
 from typing import Protocol, Sequence
 
 import numpy as np
@@ -61,6 +63,139 @@ class _DeterministicHashEmbedder(TokenEmbedder):
         return np.stack(rows, axis=0).astype(np.float32, copy=False)
 
 
+class _HFTokenEmbedder(TokenEmbedder):
+    def __init__(
+        self,
+        *,
+        model_name: str,
+        device: str = "cpu",
+        batch_size: int = 16,
+        max_length: int = 256,
+    ) -> None:
+        self._model_name = str(model_name or "").strip()
+        if not self._model_name:
+            raise ValueError("HF ColBERT reranker requires model_name")
+
+        dev = str(device or "cpu").strip().lower() or "cpu"
+        if dev not in {"cpu", "cuda", "auto"}:
+            dev = "cpu"
+
+        self._device = dev
+        self._batch_size = max(1, int(batch_size or 0))
+        self._max_length = max(8, int(max_length or 0))
+        self._lock = threading.Lock()
+        self._tokenizer = None
+        self._model = None
+        self._torch_device = None
+
+    def _ensure_loaded(self) -> None:
+        if self._tokenizer is not None and self._model is not None:
+            return
+
+        with self._lock:
+            if self._tokenizer is not None and self._model is not None:
+                return
+
+            import torch
+            from transformers import AutoModel, AutoTokenizer
+
+            device = self._device
+            if device == "auto":
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+
+            tokenizer = AutoTokenizer.from_pretrained(self._model_name)
+            model = AutoModel.from_pretrained(self._model_name)
+            model.eval()
+            model.to(device)
+
+            self._tokenizer = tokenizer
+            self._model = model
+            self._torch_device = device
+
+    def encode(self, tokens: list[str]) -> np.ndarray:
+        raw = [str(t or "") for t in (tokens or []) if str(t or "").strip()]
+        if not raw:
+            return np.zeros((0, 1), dtype=np.float32)
+
+        self._ensure_loaded()
+        tokenizer = self._tokenizer
+        model = self._model
+        device = self._torch_device
+        if tokenizer is None or model is None or device is None:
+            return np.zeros((len(raw), 1), dtype=np.float32)
+
+        import torch
+
+        rows: list[np.ndarray] = []
+        for i in range(0, len(raw), self._batch_size):
+            batch_tokens = raw[i : i + self._batch_size]
+            enc = tokenizer(
+                batch_tokens,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self._max_length,
+            )
+            enc = {k: v.to(device) for k, v in enc.items() if hasattr(v, "to")}
+            attn = enc.get("attention_mask")
+            with torch.no_grad():
+                out = model(**enc)
+                last = getattr(out, "last_hidden_state", None)
+                if last is None:
+                    pooled = torch.zeros((len(batch_tokens), 1), dtype=torch.float32, device=device)
+                elif attn is None:
+                    pooled = torch.mean(last, dim=1)
+                else:
+                    mask = attn.unsqueeze(-1).to(last.dtype)
+                    denom = torch.clamp(mask.sum(dim=1), min=1.0)
+                    pooled = (last * mask).sum(dim=1) / denom
+            rows.append(pooled.detach().cpu().numpy().astype(np.float32, copy=False))
+
+        return np.concatenate(rows, axis=0) if rows else np.zeros((len(raw), 1), dtype=np.float32)
+
+
+_EMBEDDER_LOCK = threading.Lock()
+_EMBEDDER_CACHE: dict[str, TokenEmbedder] = {}
+
+
+def get_token_embedder(
+    *,
+    provider_name: str,
+    model_name: str = "",
+    device: str = "cpu",
+    batch_size: int = 16,
+    max_length: int = 256,
+    deterministic_dim: int = 16,
+) -> TokenEmbedder:
+    provider = str(provider_name or "").strip().lower() or "deterministic"
+    if provider not in {"deterministic", "hf"}:
+        provider = "deterministic"
+
+    if provider == "deterministic":
+        key = f"deterministic:{int(deterministic_dim or 0)}"
+        with _EMBEDDER_LOCK:
+            cached = _EMBEDDER_CACHE.get(key)
+            if cached is not None:
+                return cached
+            inst = _DeterministicHashEmbedder(dim=deterministic_dim)
+            _EMBEDDER_CACHE[key] = inst
+            return inst
+
+    key = f"hf:{model_name}:{device}:{batch_size}:{max_length}"
+    with _EMBEDDER_LOCK:
+        cached = _EMBEDDER_CACHE.get(key)
+        if cached is not None:
+            return cached
+        inst = _HFTokenEmbedder(
+            model_name=model_name,
+            device=device,
+            batch_size=batch_size,
+            max_length=max_length,
+        )
+        _EMBEDDER_CACHE[key] = inst
+        return inst
+
+
 def _l2_normalize(x: np.ndarray) -> np.ndarray:
     if x.size == 0:
         return x
@@ -94,17 +229,65 @@ class ColBERTReranker(BaseReranker):
     Provider id: "colbert" (see app.rag.reranker.factory.get_reranker)
     """
 
-    def __init__(self, *, embedder: TokenEmbedder | None = None) -> None:
-        self._embedder = embedder or _DeterministicHashEmbedder(dim=16)
+    def __init__(
+        self,
+        *,
+        provider_name: str = "deterministic",
+        model_name: str = "",
+        device: str = "cpu",
+        batch_size: int = 16,
+        max_length: int = 256,
+        deterministic_dim: int = 16,
+        embedder: TokenEmbedder | None = None,
+    ) -> None:
+        provider = str(provider_name or "").strip().lower() or "deterministic"
+        if provider not in {"deterministic", "hf"}:
+            provider = "deterministic"
+
+        self.provider_name = provider
+        self.model_name = str(model_name or "").strip()
+        self.device = str(device or "cpu").strip() or "cpu"
+        self.batch_size = max(1, int(batch_size or 0))
+        self.max_length = max(8, int(max_length or 0))
+        self.deterministic_dim = max(2, int(deterministic_dim or 0))
+        self._embedder = embedder or get_token_embedder(
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            device=self.device,
+            batch_size=self.batch_size,
+            max_length=self.max_length,
+            deterministic_dim=self.deterministic_dim,
+        )
 
     def rerank(
         self,
         query: str,
         candidates: Sequence[RerankCandidate],
-        **_kwargs,
+        **kwargs,
     ) -> RerankResult:
+        start = time.time()
+        top_n_raw = kwargs.get("top_n")
+        try:
+            top_n = int(top_n_raw) if top_n_raw is not None else None
+        except Exception:
+            top_n = None
+        if top_n is not None:
+            top_n = max(0, top_n)
+
         if not candidates:
-            return RerankResult(ordered_ids=[], score_map={}, provider="colbert")
+            return RerankResult(
+                ordered_ids=[],
+                score_map={},
+                provider="colbert",
+                model_used=self.model_name or "deterministic_hash",
+                stats={
+                    "embedder_provider": self.provider_name,
+                    "late_interaction": True,
+                    "batch_size": int(self.batch_size),
+                    "max_length": int(self.max_length),
+                },
+                elapsed_sec=0.0,
+            )
 
         q_tokens = _tokenize(query)
         q_emb = self._embedder.encode(q_tokens)
@@ -122,10 +305,21 @@ class ColBERTReranker(BaseReranker):
         scores.sort(key=lambda x: (-x[1], x[0]))
         ordered_ids = [cid for cid, _s in scores]
         score_map = {cid: float(s) for cid, s in scores}
+        if top_n:
+            ordered_ids = ordered_ids[: int(top_n)]
+            score_map = {cid: score_map[cid] for cid in ordered_ids if cid in score_map}
         return RerankResult(
             ordered_ids=ordered_ids,
             score_map=score_map,
             provider="colbert",
-            model_used="deterministic_hash",
+            model_used=self.model_name or "deterministic_hash",
+            stats={
+                "embedder_provider": self.provider_name,
+                "late_interaction": True,
+                "query_tokens": len(q_tokens),
+                "docs": len(score_map),
+                "batch_size": int(self.batch_size),
+                "max_length": int(self.max_length),
+            },
+            elapsed_sec=float(time.time() - start),
         )
-

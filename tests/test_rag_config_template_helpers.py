@@ -54,10 +54,34 @@ def test_apply_rag_config_patch_does_not_override_explicit_request_fields_and_no
     assert set(applied) == {"retrieval_mode"}
 
 
+def test_apply_rag_config_patch_preserves_intent_router_policy() -> None:
+    base = ChatRAGConfig(top_k=5, retrieval_mode="hybrid")
+    patched, applied = apply_rag_config_patch(
+        rag_config=base,
+        patch={
+            "intent_router": True,
+            "intent_router_policy": {
+                "schema": "mimirq.intent_router_policy.v1",
+                "rules": [
+                    {
+                        "rule_id": "comparison_rerank",
+                        "match_any": ["benchmark"],
+                        "overrides": {"enable_reranker": True, "reranker_provider": "colbert"},
+                    }
+                ],
+            },
+        },
+        request_fields_set=set(),
+    )
+    assert patched.intent_router is True
+    assert isinstance(patched.intent_router_policy, dict)
+    assert patched.intent_router_policy.get("schema") == "mimirq.intent_router_policy.v1"
+    assert set(applied) == {"intent_router", "intent_router_policy"}
+
+
 def test_build_rag_config_patch_hash_is_stable_and_ignores_nulls() -> None:
     h1 = build_rag_config_patch_hash({"top_k": 10, "score_threshold": None})
     h2 = build_rag_config_patch_hash({"score_threshold": None, "top_k": 10})
     assert h1 == h2
     assert isinstance(h1, str)
     assert len(h1) == 16
-

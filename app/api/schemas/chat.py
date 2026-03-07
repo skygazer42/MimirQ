@@ -123,6 +123,9 @@ class ChatRAGConfig(BaseModel):
     #
     # None means "use server default" (settings.RAG_INTENT_ROUTER_ENABLED).
     intent_router: Optional[bool] = None
+    # Optional tenant/dataset policy overlay for the deterministic intent router.
+    # This is transport-only here; runtime validation stays inside app.rag.policy.intent_router.
+    intent_router_policy: Optional[Dict[str, Any]] = None
 
     # Controlled query expansion for recall (optional).
     # - query_aliases: dataset-scoped alias/synonym dictionary.

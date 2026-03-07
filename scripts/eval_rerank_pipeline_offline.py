@@ -28,9 +28,13 @@ from typing import Any
 
 import httpx
 
-from app.rag.reranker.colbert import ColBERTReranker
-from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker
-from app.rag.reranker.types import RerankCandidate
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.rag.reranker.colbert import ColBERTReranker  # noqa: E402
+from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker  # noqa: E402
+from app.rag.reranker.types import RerankCandidate  # noqa: E402
 
 
 def _load_json(path: Path) -> Any:
@@ -175,6 +179,66 @@ def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
     )
 
 
+def build_colbert_reranker(args: argparse.Namespace) -> ColBERTReranker:
+    return ColBERTReranker(
+        provider_name=str(getattr(args, "colbert_provider", "deterministic") or "deterministic"),
+        model_name=str(getattr(args, "colbert_model_name", "") or ""),
+        device=str(getattr(args, "colbert_device", "cpu") or "cpu"),
+        batch_size=max(1, int(getattr(args, "colbert_batch_size", 16) or 16)),
+        max_length=max(8, int(getattr(args, "colbert_max_length", 256) or 256)),
+        deterministic_dim=max(2, int(getattr(args, "colbert_deterministic_dim", 64) or 64)),
+    )
+
+
+def build_pipeline_summary(
+    *,
+    cases_total: int,
+    cases_used: int,
+    k: int,
+    top_k: int,
+    pipeline: list[dict[str, Any]],
+    baseline: dict[str, float],
+    pipeline_metrics: dict[str, float],
+    case_metrics: list[dict[str, Any]],
+) -> dict[str, Any]:
+    metric_keys = ("hit", "mrr", "recall", "ndcg")
+    baseline_out = {key: round(_as_float(baseline.get(key)), 4) for key in metric_keys}
+    pipeline_out = {key: round(_as_float(pipeline_metrics.get(key)), 4) for key in metric_keys}
+    delta_metrics = {
+        key: round(pipeline_out.get(key, 0.0) - baseline_out.get(key, 0.0), 4)
+        for key in metric_keys
+    }
+
+    delta_counts: dict[str, dict[str, int]] = {}
+    for key in metric_keys:
+        wins = 0
+        losses = 0
+        ties = 0
+        for item in case_metrics or []:
+            base_case = _as_float((item.get("baseline") or {}).get(key))
+            pipe_case = _as_float((item.get("pipeline") or {}).get(key))
+            if pipe_case > base_case:
+                wins += 1
+            elif pipe_case < base_case:
+                losses += 1
+            else:
+                ties += 1
+        delta_counts[key] = {"wins": wins, "losses": losses, "ties": ties}
+
+    return {
+        "schema": "mimirq.rerank_pipeline_eval.v1",
+        "cases_total": int(cases_total or 0),
+        "cases_used": int(cases_used or 0),
+        "k": int(k or 0),
+        "top_k": int(top_k or 0),
+        "pipeline": list(pipeline or []),
+        "baseline": baseline_out,
+        "pipeline_metrics": pipeline_out,
+        "delta_metrics": delta_metrics,
+        "delta_counts": delta_counts,
+    }
+
+
 def _parse_pipeline(raw: str) -> list[dict[str, Any]]:
     text = str(raw or "").strip()
     if not text:
@@ -257,6 +321,17 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--ltr-model", default="", help="Path to LTR model artifact (required if pipeline includes 'ltr')")
     p.add_argument("--ltr-feature-spec-version", type=int, default=1, help="LTR feature spec version (default: %(default)s)")
+    p.add_argument("--colbert-provider", default="deterministic", help="deterministic|hf (default: %(default)s)")
+    p.add_argument("--colbert-model-name", default="", help="HF model name for provider=hf")
+    p.add_argument("--colbert-device", default="cpu", help="cpu|cuda|auto (default: %(default)s)")
+    p.add_argument("--colbert-batch-size", type=int, default=16, help="ColBERT token batch size (default: %(default)s)")
+    p.add_argument("--colbert-max-length", type=int, default=256, help="Max token length for HF provider (default: %(default)s)")
+    p.add_argument(
+        "--colbert-deterministic-dim",
+        type=int,
+        default=64,
+        help="Deterministic provider embedding dimension (default: %(default)s)",
+    )
 
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base URL (default: %(default)s)")
     p.add_argument("--tenant-id", default="", help="Tenant id (X-Tenant-ID header)")
@@ -300,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
 
     colbert: ColBERTReranker | None = None
     if any(str(st.get("provider") or "").strip().lower() in {"colbert", "late_interaction"} for st in pipeline):
-        colbert = ColBERTReranker()
+        colbert = build_colbert_reranker(args)
 
     try:
         raw_cases = _load_json(cases_path)
@@ -318,16 +393,10 @@ def main(argv: list[str] | None = None) -> int:
     url = str(args.base_url).rstrip("/") + "/rag/retrieve"
     timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
 
-    summary = {
-        "schema": "mimirq.rerank_pipeline_eval.v1",
-        "cases_total": len(items),
-        "cases_used": 0,
-        "k": k,
-        "top_k": top_k,
-        "pipeline": pipeline,
-        "baseline": {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0},
-        "pipeline_metrics": {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0},
-    }
+    baseline_totals = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
+    pipeline_totals = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
+    case_metrics: list[dict[str, Any]] = []
+    cases_used = 0
 
     with httpx.Client(timeout=timeout) as client:
         for item in items:
@@ -395,16 +464,30 @@ def main(argv: list[str] | None = None) -> int:
             )
             pipe_metrics = _hit_mrr_recall_ndcg_at_k(ranked_ids=piped, relevant=relevant, k=k)
 
-            summary["cases_used"] += 1
+            cases_used += 1
+            case_metrics.append({"baseline": base_metrics, "pipeline": pipe_metrics})
             for key in ("hit", "mrr", "recall", "ndcg"):
-                summary["baseline"][key] += float(base_metrics.get(key, 0.0) or 0.0)
-                summary["pipeline_metrics"][key] += float(pipe_metrics.get(key, 0.0) or 0.0)
+                baseline_totals[key] += float(base_metrics.get(key, 0.0) or 0.0)
+                pipeline_totals[key] += float(pipe_metrics.get(key, 0.0) or 0.0)
 
-    used = int(summary.get("cases_used") or 0)
+    used = int(cases_used or 0)
+    baseline_avg = dict(baseline_totals)
+    pipeline_avg = dict(pipeline_totals)
     if used > 0:
-        for sec in ("baseline", "pipeline_metrics"):
-            for key in ("hit", "mrr", "recall", "ndcg"):
-                summary[sec][key] = round(float(summary[sec][key]) / float(used), 4)
+        for key in ("hit", "mrr", "recall", "ndcg"):
+            baseline_avg[key] = round(float(baseline_totals[key]) / float(used), 4)
+            pipeline_avg[key] = round(float(pipeline_totals[key]) / float(used), 4)
+
+    summary = build_pipeline_summary(
+        cases_total=len(items),
+        cases_used=cases_used,
+        k=k,
+        top_k=top_k,
+        pipeline=pipeline,
+        baseline=baseline_avg,
+        pipeline_metrics=pipeline_avg,
+        case_metrics=case_metrics,
+    )
 
     print(
         "[pipeline-eval] OK"
@@ -417,6 +500,8 @@ def main(argv: list[str] | None = None) -> int:
         f" pipe_mrr={summary['pipeline_metrics']['mrr']}"
         f" baseline_ndcg={summary['baseline']['ndcg']}"
         f" pipe_ndcg={summary['pipeline_metrics']['ndcg']}"
+        f" mrr_wins={summary['delta_counts']['mrr']['wins']}"
+        f" mrr_losses={summary['delta_counts']['mrr']['losses']}"
     )
 
     if args.out_json:
@@ -429,4 +514,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

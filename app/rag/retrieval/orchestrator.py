@@ -613,6 +613,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 enable_query_alias_expansion=(
                     state.get("enable_query_alias_expansion") if "enable_query_alias_expansion" in state else None
                 ),
+                intent_router_policy=(state.get("intent_router_policy") if "intent_router_policy" in state else None),
             )
             for k, v in (overrides or {}).items():
                 state[k] = v
