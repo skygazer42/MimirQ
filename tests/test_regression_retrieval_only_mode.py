@@ -140,3 +140,87 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
     assert run.summary.get("retrieval_hit_at_10") == 1.0
     assert run.summary.get("retrieval_hit_at_20") == 1.0
     assert (run.params or {}).get("mode") == "retrieval_only"
+
+
+def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.evaluation import ragas as mod
+
+    run = _FakeRun()
+    case = _FakeCase(case_id=uuid4(), question="What is MimirQ?")
+    fake_db = _FakeDB(run=run, cases=[case])
+
+    monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+
+    dataset_id = uuid4()
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["ctx"])
+    monkeypatch.setattr(
+        mod,
+        "build_regression_sample",
+        lambda _case, _eval_item: ({}, {"retrieval_recall": 1.0, "retrieval_hit_at_20": True, "abstain_triggered": False}),
+    )
+
+    import app.rag.graph as rag_graph
+
+    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
+
+    import app.rag.pipelines.langgraph as langgraph
+
+    captured: list[dict] = []
+
+    def _build_rag_state(**kwargs):  # noqa: ANN003
+        captured.append(dict(kwargs))
+        return {"question": kwargs.get("question", "")}
+
+    monkeypatch.setattr(langgraph, "build_rag_state", _build_rag_state)
+    monkeypatch.setattr(langgraph, "_retrieve_node", lambda _state: {"citations": [{"chunk_id": str(uuid4())}], "metrics": {}})
+
+    mod.run_regression_ragas_evaluation(
+        run_id=uuid4(),
+        tenant_id=uuid4(),
+        account_id="acct",
+        case_ids=[case.id],
+        dataset_id=dataset_id,
+        metric_names=[],
+        skip_empty_contexts=False,
+        max_cases=10,
+        rag_params={
+            "retrieval_profile": "recall50",
+            "enable_query_alias_expansion": True,
+            "query_alias_max_queries": 5,
+            "enable_multi_query": True,
+            "multi_query_count": 3,
+            "multi_query_temperature": 0.2,
+            "multi_query_max_chars": 256,
+            "enable_query_rewrite": True,
+            "query_rewrite_strategy": "kb_followup.v2",
+            "query_rewrite_temperature": 0.3,
+            "query_rewrite_max_chars": 180,
+            "sparse_retrieval_enabled": True,
+            "sparse_retrieval_provider": "splade",
+            "fusion_strategy": "weighted",
+            "fusion_budgets": {"vector": 20, "bm25": 10},
+            "fusion_min_scores": {"vector": 0.2},
+            "fusion_weights": {"vector": 0.7, "bm25": 0.3},
+        },
+    )
+
+    assert len(captured) == 1
+    assert captured[0]["retrieval_profile"] == "recall50"
+    assert captured[0]["enable_query_alias_expansion"] is True
+    assert captured[0]["query_alias_max_queries"] == 5
+    assert captured[0]["enable_multi_query"] is True
+    assert captured[0]["multi_query_count"] == 3
+    assert captured[0]["multi_query_temperature"] == 0.2
+    assert captured[0]["multi_query_max_chars"] == 256
+    assert captured[0]["enable_query_rewrite"] is True
+    assert captured[0]["query_rewrite_strategy"] == "kb_followup.v2"
+    assert captured[0]["query_rewrite_temperature"] == 0.3
+    assert captured[0]["query_rewrite_max_chars"] == 180
+    assert captured[0]["sparse_retrieval_enabled"] is True
+    assert captured[0]["sparse_retrieval_provider"] == "splade"
+    assert captured[0]["fusion_strategy"] == "weighted"
+    assert captured[0]["fusion_budgets"] == {"vector": 20, "bm25": 10}
+    assert captured[0]["fusion_min_scores"] == {"vector": 0.2}
+    assert captured[0]["fusion_weights"] == {"vector": 0.7, "bm25": 0.3}

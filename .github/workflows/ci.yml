@@ -128,10 +128,11 @@ jobs:
           MINIO_ENABLED: "false"
           # Keep lexical retrieval deterministic (no pg_trgm dependency in CI).
           LEXICAL_DB_TRGM_ENABLED: "false"
-          # Avoid LLM reranker usage.
-          ENABLE_RERANKER: "false"
-          # Reduce noise/work in CI (lexical DB retrieval is sufficient for this gate).
-          BM25_INDEX_ENABLED: "false"
+          # Exercise the real bounded hybrid stack in CI without external providers.
+          ENABLE_RERANKER: "true"
+          RERANKER_PROVIDER: "llm"
+          RERANKER_TOP_N: "20"
+          BM25_INDEX_ENABLED: "true"
           # Enable PII-safe metrics JSONL so we can also gate SLO + cost budgets.
           ENABLE_METRICS_LOG: "true"
           METRICS_LOG_PATH: artifacts/rag_metrics.jsonl
@@ -166,7 +167,7 @@ jobs:
             --cases artifacts/regression_cases.json \
             --metrics "" \
             --thresholds ci/retrieval_thresholds.v2.json \
-            --retrieval-mode keyword \
+            --retrieval-mode hybrid \
             --out-run-json artifacts/run.detail.json \
             --generate-thresholds-out artifacts/thresholds.generated.json
 

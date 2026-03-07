@@ -44,11 +44,16 @@ python scripts/regression_gate.py \
 
 ### 常用参数：检索配置覆盖（retrieval-only/CI 友好）
 
-回归 run 支持覆盖检索参数（用于 CI 里强制走 keyword/固定 top_k 等）：
+回归 run 支持覆盖一小组常用检索参数（用于 CI 里强制走某个 retrieval_mode / 固定 top_k 等）：
 
 - `--retrieval-mode`：`hybrid|vector|keyword|mmr`
 - `--top-k`：覆盖 `top_k`
 - `--score-threshold`：覆盖 `score_threshold`
+
+如果你需要 sweep 更深的 runtime knobs（例如 `retrieval_profile` / fusion weights / multi-query / query rewrite / sparse / reranker 组合）：
+
+- 推荐用 `scripts/retrieval_ablation.py` 的矩阵模式
+- 或者直接调用 `POST /api/v1/evaluations/ragas/regression/runs`
 
 另外，CI 里常需要把 run 的详细 JSON 作为 artifact 保存，可用：
 
@@ -88,6 +93,8 @@ python scripts/regression_gate.py \
 ```
 
 > 说明：回归 run 的默认 top_k/threshold 等参数会跟随 **regression run 的默认值**（可在 run 请求里显式覆盖）。
+>
+> 另外，`enable_reranker` / `reranker_provider` / `reranker_top_n` 现在默认跟随服务端运行时 settings；这让 CI / staging 可以直接用环境变量切换到真实 rerank 路径，而不必为每个 gate 单独拼 payload。
 >
 > 新增可选指标（run summary 里可见，也可写进 thresholds 里 gate）：
 > - `retrieval_recall`: [0,1]，证据召回率（人工标注 evidence chunk_id 与检索 citations.chunk_id 的重合比例，越高越好）
@@ -188,7 +195,7 @@ python scripts/seed_ci_retrieval_regression.py \
 # 3) 启动后端（禁用外部依赖；使用 faiss 让 /health/ready 通过）
 ENV=ci AUTH_MODE=header DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000 \
 VECTOR_BACKEND=faiss TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
-LEXICAL_DB_TRGM_ENABLED=false ENABLE_RERANKER=false BM25_INDEX_ENABLED=false \
+LEXICAL_DB_TRGM_ENABLED=false LLM_MOCK_ENABLED=true ENABLE_RERANKER=true RERANKER_PROVIDER=llm BM25_INDEX_ENABLED=true \
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # 4) 运行 gate（写出 run detail + 生成候选阈值）
@@ -199,7 +206,7 @@ python scripts/regression_gate.py \
   --cases artifacts/regression_cases.json \
   --metrics "" \
   --thresholds ci/retrieval_thresholds.v2.json \
-  --retrieval-mode keyword \
+  --retrieval-mode hybrid \
   --out-run-json artifacts/run.detail.json \
   --generate-thresholds-out artifacts/thresholds.generated.json
 ```

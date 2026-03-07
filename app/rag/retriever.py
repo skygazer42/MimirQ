@@ -18,7 +18,7 @@ from langchain_community.retrievers.bm25 import BM25Retriever
 from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from pydantic import ConfigDict, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 from sqlalchemy import func, text, tuple_
 from sqlalchemy.orm import Session
 
@@ -68,6 +68,8 @@ class HybridRetriever(BaseRetriever):
     fusion_min_scores: Optional[Dict[str, float]] = None
     # Only used when fusion_strategy="weighted".
     fusion_weights: Optional[Dict[str, float]] = None
+    sparse_enabled: bool = Field(default_factory=lambda: settings.SPARSE_RETRIEVAL_ENABLED)
+    sparse_provider: str = Field(default_factory=lambda: settings.SPARSE_RETRIEVAL_PROVIDER)
     dedup_enabled: bool = settings.RETRIEVAL_DEDUP_ENABLED
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
     dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
@@ -246,7 +248,7 @@ class HybridRetriever(BaseRetriever):
         Indices can be persisted to disk when enabled.
         """
         build_t0 = time.perf_counter()
-        provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        provider = str(self.sparse_provider or "deterministic").strip().lower()
         build_outcome = "ok"
         save_outcome: str | None = None
         from app.rag.retrieval.sparse_prometheus_metrics import (  # local import: optional dependency
@@ -366,7 +368,7 @@ class HybridRetriever(BaseRetriever):
         load_outcome: str | None = None
         save_outcome: str | None = None
 
-        provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        provider = str(self.sparse_provider or "deterministic").strip().lower()
 
         from app.rag.retrieval.sparse_prometheus_metrics import (  # local import: optional dependency
             observe_sparse_index_build,
@@ -1288,7 +1290,7 @@ class HybridRetriever(BaseRetriever):
         logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs), cache_key)
 
         # Optional: keep sparse retrieval index in sync with the BM25 scope docs.
-        if bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)):
+        if bool(self.sparse_enabled):
             try:
                 with self._get_sparse_build_lock(cache_key):
                     self._upsert_sparse_index_incremental(
@@ -1406,7 +1408,7 @@ class HybridRetriever(BaseRetriever):
 
             if removed_ids:
                 # Best-effort: update sparse index by removing vectors for deleted chunks.
-                if bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)):
+                if bool(self.sparse_enabled):
                     try:
                         with self._get_sparse_build_lock(scope_key):
                             vecs = self._sparse_doc_vectors.get(scope_key) or {}
@@ -1770,7 +1772,7 @@ class HybridRetriever(BaseRetriever):
         raw_query = str(query or "").strip()
         if not raw_query:
             return []
-        if not bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)):
+        if not bool(self.sparse_enabled):
             return []
 
         tenant_uuid: Optional[UUID] = tenant_id
@@ -1782,7 +1784,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             return []
 
-        provider = str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        provider = str(self.sparse_provider or "deterministic").strip().lower()
         search_t0 = time.perf_counter()
         outcome = "error"
         candidates_count = 0
@@ -2311,9 +2313,7 @@ class HybridRetriever(BaseRetriever):
         # Persistent lexical DB search is an additional sparse channel that does not depend on the in-memory BM25 flag.
         want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr")
         # Optional sparse retrieval (SPLADE-style scaffolding) is an additional sparse channel.
-        want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and bool(
-            getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)
-        )
+        want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and bool(self.sparse_enabled)
         if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             # Enforce the global flag even if a BM25 cache exists.
             #
@@ -2647,7 +2647,7 @@ class HybridRetriever(BaseRetriever):
                     "sparse": {
                         "enabled": bool(want_sparse),
                         "candidates": len(sparse_results or []),
-                        "provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
+                        "provider": str(self.sparse_provider or ""),
                     },
                 }
             )

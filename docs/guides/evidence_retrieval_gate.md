@@ -61,7 +61,7 @@ pytest -q tests/test_evidence_api_offline_regression_gate.py
 
 ## 3.5) Nightly：持续跑一组 ablation（cron/K8s CronJob）
 
-如果你希望每天固定跑一组“检索配置消融”（top_k / retrieval_mode / channel weight 等），建议用仓库内置的 CLI：
+如果你希望每天固定跑一组“检索配置消融”（`retrieval_profile` / retrieval_mode / fusion / reranker 等），建议用仓库内置的 CLI：
 
 ```bash
 # Dry-run：只输出计划（不写 DB）
@@ -81,7 +81,8 @@ python scripts/run_nightly_ablations.py \
 - 脚本会为每个 ablation 创建一条 regression run，并在 `run.params` 写入：
   - `nightly: true`
   - `job_run_id: <timestamp>`
-  - `ablation_key: baseline|topk50|keyword_only|vector_only`
+  - `ablation_key: baseline|topk50|keyword_only|vector_only|hybrid_rerank`
+- 默认 nightly 集合里包含一个受限的 `hybrid_rerank` 变体，用来持续覆盖真实 runtime 的 hybrid + BM25 + rerank 路径。
 - 结果可以直接在前端的 “检索消融” 页面查看 leaderboard/diff。
 
 ## 4) 常见调参建议（retrieval-only）
@@ -95,3 +96,9 @@ python scripts/run_nightly_ablations.py \
 5. **KG 是否引入噪声**：
    - query expansion 是否漂移（实体类型过滤、min_weight）
    - chunk injection 是否过多（max_chunks）
+
+补充：
+
+- retrieval-only regression run 的 reranker 默认值现在会跟随服务端运行时设置。
+- 这意味着 CI/预发如果把 `ENABLE_RERANKER=true`、`BM25_INDEX_ENABLED=true` 打开，gate 会默认覆盖到真实 hybrid runtime，而不需要单独修改 run payload。
+- 如果你想在 nightly/离线矩阵里单独比较 query rewrite 或 sparse channel，现在也可以通过 regression run 的 per-run overrides 直接传入，而不是只能切整台服务的 env。
