@@ -100,6 +100,7 @@ roman-numbers==1.0.2
 # Authentication
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
+signxml==4.4.0
 
 # Utilities
 # LangChain 1.x
