@@ -3,7 +3,7 @@ Dataset-related Pydantic schemas.
 Defines data models for dataset creation, update, and query endpoints.
 """
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -60,6 +60,9 @@ class DatasetRAGDefaults(BaseModel):
 
     # Optional retrieval preset (applied by ChatRAGConfig validator when merged).
     retrieval_profile: Optional[str] = None
+    # Optional deterministic intent router toggle + policy overlay.
+    intent_router: Optional[bool] = None
+    intent_router_policy: Optional[Dict[str, Any]] = None
 
     # Controlled query expansion for recall (optional).
     enable_query_alias_expansion: Optional[bool] = None

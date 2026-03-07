@@ -50,6 +50,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Writes a sidecar manifest by default: `<out-model>.manifest.json` (can be disabled with `--no-manifest`)
 - `eval_ltr_offline.py`: compare baseline retrieval vs local LTR rerank offline (candidates via Evidence API)
 - `eval_rerank_pipeline_offline.py`: compare baseline retrieval vs a local multi-stage rerank pipeline (LTR/ColBERT), offline
+  - Supports `--colbert-provider deterministic|hf` plus model/device/batch flags
+  - Summary JSON includes per-metric `wins/losses/ties` so you can see when the stronger path helps or hurts
 - `eval_retrieval_fusion_offline.py`: compare fusion strategy variants offline via Evidence API (retrieval-only)
 
 ## Exit Codes

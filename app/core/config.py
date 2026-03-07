@@ -662,6 +662,18 @@ class Settings(BaseSettings):
     COLBERT_RETRIEVAL_MAX_DOCS: int = 10_000
     # Used only by deterministic provider.
     COLBERT_RETRIEVAL_EMBED_DIM: int = 64
+    # Optional ColBERT-style reranker provider.
+    #
+    # Notes:
+    # - Disabled by default via provider=deterministic to preserve existing behavior.
+    # - The HF provider is opt-in and requires a local/HF transformer model.
+    COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic | hf
+    COLBERT_RERANK_MODEL_NAME: str = ""
+    COLBERT_RERANK_DEVICE: str = "cpu"  # cpu | cuda | auto
+    COLBERT_RERANK_BATCH_SIZE: int = 16
+    COLBERT_RERANK_MAX_LENGTH: int = 256
+    # Used only by deterministic provider.
+    COLBERT_RERANK_EMBED_DIM: int = 64
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
