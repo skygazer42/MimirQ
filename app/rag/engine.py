@@ -450,6 +450,7 @@ Requirements:
         retrieval_mode: str = "hybrid",
         retrieval_profile: Optional[str] = None,
         intent_router: Optional[bool] = None,
+        intent_router_policy: Optional[Dict[str, Any]] = None,
         enable_query_alias_expansion: Optional[bool] = None,
         query_aliases: Optional[Dict[str, List[str]]] = None,
         query_alias_max_queries: Optional[int] = None,
@@ -689,6 +690,7 @@ Requirements:
                         enable_weight_rerank=bool(enable_weight_rerank),
                         enable_multi_query=enable_multi_query,
                         enable_query_alias_expansion=enable_query_alias_expansion,
+                        intent_router_policy=intent_router_policy,
                     )
                     if isinstance(overrides, dict):
                         if overrides.get("retrieval_mode") is not None:
@@ -701,6 +703,10 @@ Requirements:
                             score_threshold = float(overrides.get("score_threshold") or 0.0)
                         if overrides.get("enable_reranker") is not None:
                             enable_reranker = bool(overrides.get("enable_reranker"))
+                        if overrides.get("reranker_provider") is not None:
+                            reranker_provider = str(overrides.get("reranker_provider") or "").strip() or reranker_provider
+                        if overrides.get("reranker_top_n") is not None:
+                            reranker_top_n = int(overrides.get("reranker_top_n") or 0)
                         if overrides.get("enable_weight_rerank") is not None:
                             enable_weight_rerank = bool(overrides.get("enable_weight_rerank"))
                         if overrides.get("enable_multi_query") is not None:
