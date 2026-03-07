@@ -34,6 +34,7 @@ export interface ConnectorInfo {
   name: string
   description?: string
   supports_incremental?: boolean
+  supports_resume?: boolean
 }
 
 export interface UrlBatchConnectorConfig {
@@ -102,6 +103,24 @@ export interface SQLServerCatalogConnectorConfig {
   profile_enabled?: boolean
 }
 
+export interface JiraProjectConnectorConfig {
+  [key: string]: unknown
+  base_url: string
+  project_key: string
+  jql?: string | null
+  auth?: WebCrawlAuthConfig | null
+  sync_mode?: 'auto' | 'full' | 'incremental'
+  max_issues?: number
+  page_size?: number
+  include_comments?: boolean
+  max_comments_per_issue?: number
+  user_agent?: string | null
+  parser_backend?: string
+  chunk_strategy?: string
+  pipeline?: DocumentPipelineOptions
+  access?: DocumentAccessUpdateRequest | null
+}
+
 export type ConnectorRunCreateRequest =
   | {
       connector_id: 'url_batch'
@@ -112,6 +131,11 @@ export type ConnectorRunCreateRequest =
       connector_id: 'web_crawl'
       dataset_id?: string | null
       config: WebCrawlConnectorConfig
+    }
+  | {
+      connector_id: 'jira_project'
+      dataset_id?: string | null
+      config: JiraProjectConnectorConfig
     }
   | {
       connector_id: 'mysql_catalog'
