@@ -98,15 +98,32 @@ Implementation:
 - Code exchange: `POST /api/oidc/exchange` (sets refresh token in an httpOnly cookie when provided)
 - Refresh: `POST /api/oidc/refresh` (uses refresh token cookie; returns a new access token)
 
-## SAML SSO (Skeleton / Optional)
+## SAML SSO (Optional)
 
-Some enterprises require SAML 2.0. We keep a guarded skeleton in the Next.js server (disabled by default).
+MimirQ supports IdP-initiated SAML 2.0 behind a guarded Next.js ACS route plus backend assertion exchange.
 
 - Enable switch: `SAML_ENABLED=true` (default: off)
-- SP metadata: `GET /api/saml/metadata` (returns minimal placeholder metadata)
-- ACS endpoint: `POST /api/saml/acs` (currently returns `501 saml_not_implemented`)
+- SP metadata: `GET /api/saml/metadata`
+- ACS endpoint: `POST /api/saml/acs`
+- Frontend callback: `GET /auth/saml/callback`
+- Backend exchange: `POST /api/v1/auth/saml/exchange`
 
-Design notes + next steps: `docs/guides/saml_sso.md`.
+Required backend/server env vars:
+
+- `SAML_PROVIDERS_JSON` (JSON array)
+  - shape: `{ id, issuer, audience, acs_url, idp_cert_pem, email_attribute?, groups_attribute? }`
+- `SAML_ALLOWED_CLOCK_SKEW_SEC` (default: `60`)
+- `SAML_REPLAY_TTL_SEC` (default: `300`)
+- `SAML_REPLAY_REDIS_ENABLED` (optional; default: `false`)
+
+Behavior:
+
+- The Next.js ACS route accepts the IdP POST and forwards the raw assertion to the backend exchange endpoint.
+- The backend validates signature, issuer, audience, destination, recipient, time window, and replay state.
+- On success, the backend maps `NameID`/email to an existing MimirQ user and issues a normal app JWT session.
+- The frontend callback stores that session through the existing `setAuthSession(...)` path.
+
+Implementation details: `docs/guides/saml_sso.md`.
 
 ## Backend Integration / Debugging
 

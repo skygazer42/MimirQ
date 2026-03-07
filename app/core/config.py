@@ -468,6 +468,19 @@ class Settings(BaseSettings):
     # verified JWT tenant claim is present. Safe default: disabled.
     JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED: bool = False
 
+    # SAML assertion exchange (enterprise; backend validation + app JWT issuance).
+    # JSON list, for example:
+    # [{"id":"default","issuer":"https://idp.example.com","audience":"https://app.example.com/api/saml/metadata","acs_url":"https://app.example.com/api/saml/acs","idp_cert_pem":"-----BEGIN CERTIFICATE-----..."}]
+    SAML_PROVIDERS_JSON: str = ""
+    # Allow small clock drift between IdP and SP.
+    SAML_ALLOWED_CLOCK_SKEW_SEC: int = 60
+    # Replay-protection retention window for assertion IDs.
+    SAML_REPLAY_TTL_SEC: int = 300
+    # Optional Redis-backed replay cache. When disabled, fall back to in-process memory.
+    SAML_REPLAY_REDIS_ENABLED: bool = False
+    # Defense-in-depth size limit for inbound base64 SAMLResponse payloads.
+    SAML_MAX_RESPONSE_BYTES: int = 500_000
+
     # SCIM v2 provisioning (enterprise; opt-in).
     #
     # Design:

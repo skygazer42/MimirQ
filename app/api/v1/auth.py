@@ -6,10 +6,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
-from app.api.schemas.auth import AuthResponse, LoginRequest, RegisterRequest, TokenResponse, UserPublic
+from app.api.schemas.auth import (
+    AuthResponse,
+    LoginRequest,
+    RegisterRequest,
+    SamlExchangeRequest,
+    SamlExchangeResponse,
+    TokenResponse,
+    UserPublic,
+)
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.jwt_utils import create_access_token
+from app.services.saml_service import exchange_saml_response
 from app.services.user_service import UserService
 
 router = APIRouter()
@@ -58,3 +67,14 @@ def get_me(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+@router.post("/saml/exchange", response_model=SamlExchangeResponse)
+def saml_exchange(payload: SamlExchangeRequest, db: Session = Depends(get_db)) -> SamlExchangeResponse:
+    return exchange_saml_response(
+        db=db,
+        provider_id=payload.provider_id,
+        saml_response=payload.saml_response,
+        relay_state=payload.relay_state,
+        acs_url=payload.acs_url,
+    )
