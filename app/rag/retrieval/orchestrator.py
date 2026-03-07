@@ -50,6 +50,7 @@ from app.rag.rerank_result_cache import (
     build_evidence_post_rerank_cache_key,
     fingerprint_rerank_candidates,
     get_cached_evidence_post_rerank_result,
+    get_evidence_post_rerank_cache_backend,
     set_cached_evidence_post_rerank_result,
 )
 from app.rag.reranker.factory import get_reranker
@@ -1550,6 +1551,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     post_rerank_candidates_n = 0
     post_rerank_skip_reason: str | None = None
     post_rerank_cache_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False))
+    post_rerank_cache_backend = get_evidence_post_rerank_cache_backend()
     post_rerank_cache_hits = 0
     post_rerank_cache_misses = 0
 
@@ -1874,6 +1876,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["evidence_post_rerank_error"] = post_rerank_error
     metrics["evidence_post_rerank_skip_reason"] = post_rerank_skip_reason
     metrics["evidence_post_rerank_cache_enabled"] = bool(post_rerank_cache_enabled)
+    metrics["evidence_post_rerank_cache_backend"] = post_rerank_cache_backend
     metrics["evidence_post_rerank_cache_hits"] = int(post_rerank_cache_hits or 0)
     metrics["evidence_post_rerank_cache_misses"] = int(post_rerank_cache_misses or 0)
     metrics["evidence_post_rerank_pipeline_enabled"] = bool(post_rerank_pipeline_enabled)
@@ -2216,6 +2219,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "skip_reason": post_rerank_skip_reason,
             "cache": {
                 "enabled": bool(post_rerank_cache_enabled),
+                "backend": post_rerank_cache_backend,
                 "hits": int(post_rerank_cache_hits or 0),
                 "misses": int(post_rerank_cache_misses or 0),
             },

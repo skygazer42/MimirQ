@@ -40,6 +40,7 @@ from app.rag.retrieval_candidate_cache import (
     get_cached_retrieval_candidates,
     set_cached_retrieval_candidates,
 )
+from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 from app.storage.vector.factory import get_vector_store
 
 logger = get_logger("rag.retriever")
@@ -236,6 +237,32 @@ class HybridRetriever(BaseRetriever):
             lock = threading.Lock()
             self._colbert_build_locks[cache_key] = lock
         return lock
+
+    def _resolve_candidate_cache_corpus_token(
+        self,
+        *,
+        tenant_id: Optional[UUID],
+        document_ids: Optional[List[UUID]],
+    ) -> str | None:
+        tenant_uuid = tenant_id or self.tenant_id
+        if tenant_uuid is None:
+            return None
+
+        db = SessionLocal()
+        try:
+            return resolve_corpus_cache_token(
+                db,
+                tenant_id=tenant_uuid,
+                dataset_id=self.dataset_id,
+                document_ids=document_ids or [],
+            )
+        except Exception:
+            return None
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
 
     def _build_sparse_index(self, *, cache_key: str, docs: List[Document]) -> None:
         """
@@ -2323,19 +2350,35 @@ class HybridRetriever(BaseRetriever):
 
         # Optional: retrieval candidate short TTL cache (Redis, best-effort).
         cache_key: str | None = None
+        cached = None
         cache_hit = False
         cache_eligible = bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False))
+        cache_meta: Dict[str, Any] = {
+            "enabled": bool(cache_eligible),
+            "backend": "redis",
+            "hit": False,
+        }
+        if isinstance(self._last_channel_metrics, dict):
+            self._last_channel_metrics["cache"] = cache_meta
         if cache_eligible:
             ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
             if ttl <= 0:
                 cache_eligible = False
+                cache_meta["skip_reason"] = "ttl_zero"
 
             tenant_uuid = tenant_id or self.tenant_id
             account_id0 = (self.account_id or "").strip()
             # Fail closed on ambiguous scope: only cache when we can bind to a strict tenant+account
             # and a dataset/document scope boundary.
-            if tenant_uuid is None or not account_id0 or (not document_ids and self.dataset_id is None):
+            if tenant_uuid is None:
                 cache_eligible = False
+                cache_meta["skip_reason"] = "missing_tenant"
+            elif not account_id0:
+                cache_eligible = False
+                cache_meta["skip_reason"] = "missing_account"
+            elif not document_ids and self.dataset_id is None:
+                cache_eligible = False
+                cache_meta["skip_reason"] = "missing_scope"
 
         if cache_eligible:
             try:
@@ -2344,33 +2387,46 @@ class HybridRetriever(BaseRetriever):
                 dataset_id0 = str(self.dataset_id) if self.dataset_id is not None else None
                 pipeline_key = str(current_embedding_space_hash() or "") or None
                 doc_ids = [str(d) for d in (document_ids or [])]
-
-                cache_key = build_retrieval_candidate_cache_key(
-                    tenant_id=str(tenant_uuid),
-                    account_id=account_id0,
-                    dataset_id=dataset_id0,
-                    pipeline_key=pipeline_key,
-                    query=query,
-                    top_k=int(top_k or 0),
-                    score_threshold=float(score_threshold or 0.0),
-                    retrieval_mode=retrieval_mode,
-                    metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
-                    document_ids=doc_ids,
+                corpus_cache_token = self._resolve_candidate_cache_corpus_token(
+                    tenant_id=tenant_uuid,
+                    document_ids=document_ids,
                 )
+                if not corpus_cache_token:
+                    cache_eligible = False
+                    cache_meta["skip_reason"] = "missing_corpus_cache_token"
+                else:
+                    cache_key = build_retrieval_candidate_cache_key(
+                        tenant_id=str(tenant_uuid),
+                        account_id=account_id0,
+                        dataset_id=dataset_id0,
+                        pipeline_key=pipeline_key,
+                        corpus_cache_token=corpus_cache_token,
+                        query=query,
+                        top_k=int(top_k or 0),
+                        score_threshold=float(score_threshold or 0.0),
+                        retrieval_mode=retrieval_mode,
+                        metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
+                        document_ids=doc_ids,
+                    )
 
-                cached = get_cached_retrieval_candidates(cache_key) if cache_key else None
+                    cached = get_cached_retrieval_candidates(cache_key) if cache_key else None
             except Exception:
                 cached = None
+                cache_eligible = False
+                cache_meta["skip_reason"] = "lookup_error"
+        else:
+            cached = None
 
-            if cached:
-                cache_hit = True
-                try:
-                    if isinstance(self._last_channel_metrics, dict):
-                        self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
-                        self._last_channel_metrics["cache"]["hit"] = True
-                except Exception:
-                    pass
-                return cached[:top_k]
+        if cached:
+            cache_hit = True
+            try:
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
+                    self._last_channel_metrics["cache"]["hit"] = True
+                    self._last_channel_metrics["cache"].pop("skip_reason", None)
+            except Exception:
+                pass
+            return cached[:top_k]
 
         # MMR mode needs more candidates for diversity selection
         fetch_k = top_k * 2

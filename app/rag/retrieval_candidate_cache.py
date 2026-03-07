@@ -61,6 +61,7 @@ def build_retrieval_candidate_cache_key(
     account_id: str,
     dataset_id: str | None,
     pipeline_key: str | None,
+    corpus_cache_token: str | None = None,
     query: str,
     top_k: int,
     score_threshold: float,
@@ -82,6 +83,7 @@ def build_retrieval_candidate_cache_key(
         "account_id": str(account_id or ""),
         "dataset_id": str(dataset_id or "") or None,
         "pipeline_key": str(pipeline_key or "") or None,
+        "corpus_cache_token": str(corpus_cache_token or "") or None,
         "doc_scope": _hash_doc_scope(document_ids),
         "doc_count": int(len([d for d in document_ids if d])),
         "query": (query or "").strip(),
@@ -164,4 +166,3 @@ __all__ = [
     "get_cached_retrieval_candidates",
     "set_cached_retrieval_candidates",
 ]
-

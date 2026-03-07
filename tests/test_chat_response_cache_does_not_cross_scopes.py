@@ -62,3 +62,27 @@ def test_chat_cache_key_differs_across_embedding_space(monkeypatch) -> None:
 
     assert key_a != key_b
 
+
+def test_chat_cache_key_differs_across_corpus_cache_token(monkeypatch) -> None:
+    if not _supports_dataset_id_param():
+        return
+
+    monkeypatch.setattr("app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False)
+
+    base = dict(
+        tenant_id="t1",
+        account_id="acct-1",
+        dataset_id="ds-a",
+        document_ids=["doc-a", "doc-b"],
+        question="What is the policy?",
+        rag_config={"top_k": 5, "retrieval_mode": "hybrid"},
+        prompt_config={"prompt_template_id": None},
+        structured_output=False,
+        structured_preset=None,
+        use_graph=False,
+        corpus_cache_token="corp-a",
+    )
+
+    key_a = build_chat_cache_key(**base)
+    key_b = build_chat_cache_key(**{**base, "corpus_cache_token": "corp-b"})
+    assert key_a != key_b
