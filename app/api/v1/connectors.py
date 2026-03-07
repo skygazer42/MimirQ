@@ -66,6 +66,7 @@ from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
 from app.services.dataset_service import DatasetService
+from app.services.connector_sync_state import build_persisted_state, get_resume_cursor, slice_items_from_cursor
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
 from app.services.web_crawler import crawl_site
@@ -516,21 +517,12 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
     cfg.last_run_at = (getattr(run, "started_at", None) or getattr(run, "finished_at", None) or _now())  # type: ignore[assignment]
 
     connector_id = str(getattr(run, "connector_id", "") or "").strip()
-    if connector_id == "url_batch":
-        state = dict(getattr(cfg, "state", None) or {})
-        with contextlib.suppress(Exception):
-            state["cursor"] = int(stats.get("cursor", 0) or 0)
-            state["total_urls"] = int(stats.get("total_urls", 0) or 0)
-            state["last_run_id"] = str(run.id)
-        cfg.state = state  # type: ignore[assignment]
-    elif connector_id == "confluence_space":
-        state = dict(getattr(cfg, "state", None) or {})
-        with contextlib.suppress(Exception):
-            last_modified = str(stats.get("last_modified") or "").strip()
-            if last_modified:
-                state["last_modified"] = last_modified
-            state["last_run_id"] = str(run.id)
-        cfg.state = state  # type: ignore[assignment]
+    cfg.state = build_persisted_state(  # type: ignore[assignment]
+        connector_id=connector_id,
+        existing_state=dict(getattr(cfg, "state", None) or {}),
+        stats=stats,
+        run_id=run.id,
+    )
 
     db.commit()
 
@@ -1737,6 +1729,8 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         created = 0
         failed = 0
         created_doc_ids: list[UUID] = []
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        crawl_urls, cursor_in = slice_items_from_cursor(crawl.urls, cursor=get_resume_cursor(state))
 
         stats = dict(run.stats or {})
         stats.update(
@@ -1745,13 +1739,15 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 "queued": int(crawl.queued),
                 "discovered": int(len(crawl.urls)),
                 "total_urls": int(len(crawl.urls)),
-                "processed_urls": 0,
-                "cursor": 0,
+                "processed_urls": int(cursor_in),
+                "cursor": int(cursor_in),
                 "created": 0,
                 "failed": 0,
                 "failed_urls": [],
                 "errors": [],
                 "error_groups": [],
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(cursor_in > 0),
             }
         )
         if crawl.errors:
@@ -1759,7 +1755,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         run.stats = _finalize_connector_stats(stats)
         db.commit()
 
-        for idx, url in enumerate(crawl.urls):
+        for idx, url in enumerate(crawl_urls):
             # Observe cancellation from another DB session (best-effort).
             try:
                 db.refresh(run)
@@ -1817,7 +1813,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 stats = _append_connector_error(stats, url=url, exc=exc)
                 run.stats = stats
             finally:
-                processed = idx + 1
+                processed = cursor_in + idx + 1
                 stats = dict(run.stats or {})
                 stats.update(
                     {
@@ -2277,12 +2273,25 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
             if len(paths) >= max(1, min(max_files, 200)):
                 break
 
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        paths_to_process, cursor_in = slice_items_from_cursor(paths, cursor=get_resume_cursor(state))
         stats0 = dict(run.stats or {})
-        stats0.update({"total_files": int(len(paths)), "processed_files": 0, "cursor": 0, "created": 0, "failed": 0, "failed_paths": []})
+        stats0.update(
+            {
+                "total_files": int(len(paths)),
+                "processed_files": int(cursor_in),
+                "cursor": int(cursor_in),
+                "created": 0,
+                "failed": 0,
+                "failed_paths": [],
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(cursor_in > 0),
+            }
+        )
         run.stats = stats0
         db.commit()
 
-        for idx, path in enumerate(paths):
+        for idx, path in enumerate(paths_to_process):
             try:
                 db.refresh(run)
             except Exception:
@@ -2363,7 +2372,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 stats = _append_connector_error(stats, url=path, exc=exc)
                 run.stats = stats
             finally:
-                processed = idx + 1
+                processed = cursor_in + idx + 1
                 stats = dict(run.stats or {})
                 stats.update(
                     {
@@ -2489,8 +2498,21 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         delta_acl_docs_updated = 0
         delta_acl_sources_updated = 0
 
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        urls_to_process, cursor_in = slice_items_from_cursor(urls, cursor=get_resume_cursor(state))
         stats0 = dict(run.stats or {})
-        stats0.update({"total_urls": int(len(urls)), "processed_urls": 0, "cursor": 0, "created": 0, "failed": 0, "failed_urls": []})
+        stats0.update(
+            {
+                "total_urls": int(len(urls)),
+                "processed_urls": int(cursor_in),
+                "cursor": int(cursor_in),
+                "created": 0,
+                "failed": 0,
+                "failed_urls": [],
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(cursor_in > 0),
+            }
+        )
         run.stats = stats0
         db.commit()
 
@@ -2507,7 +2529,7 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
             drive_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
 
         try:
-            for idx, url in enumerate(urls):
+            for idx, url in enumerate(urls_to_process):
                 try:
                     db.refresh(run)
                 except Exception:
@@ -2653,7 +2675,7 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     stats = _append_connector_error(stats, url=url, exc=exc)
                     run.stats = stats
                 finally:
-                    processed = idx + 1
+                    processed = cursor_in + idx + 1
                     stats = dict(run.stats or {})
                     stats.update(
                         {
@@ -2801,13 +2823,25 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
         created = 0
         failed = 0
         created_doc_ids: list[UUID] = []
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        object_names_to_process, cursor_in = slice_items_from_cursor(object_names, cursor=get_resume_cursor(state))
 
         stats0 = dict(run.stats or {})
-        stats0.update({"total_objects": int(len(object_names)), "processed_objects": 0, "cursor": 0, "created": 0, "failed": 0})
+        stats0.update(
+            {
+                "total_objects": int(len(object_names)),
+                "processed_objects": int(cursor_in),
+                "cursor": int(cursor_in),
+                "created": 0,
+                "failed": 0,
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(cursor_in > 0),
+            }
+        )
         run.stats = stats0
         db.commit()
 
-        for idx, object_name in enumerate(object_names):
+        for idx, object_name in enumerate(object_names_to_process):
             try:
                 db.refresh(run)
             except Exception:
@@ -2857,7 +2891,7 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
                 stats = _append_connector_error(stats, url=object_name, exc=exc)
                 run.stats = stats
             finally:
-                processed = idx + 1
+                processed = cursor_in + idx + 1
                 stats = dict(run.stats or {})
                 stats.update(
                     {
