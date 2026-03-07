@@ -6,6 +6,7 @@
 
 - 批量导入多个 URL / 站点抓取（web crawl）
 - 导入 GitHub Repo 内的文档文件（README/markdown/pdf 等）
+- 导入 Jira Cloud 项目中的 issues / comments（企业知识库常见高价值源）
 - 导入 Google Drive 分享链接指向的文件
 - 从 MinIO/S3 Bucket 批量导入对象文件
 - 从 MySQL / SQLServer 同步 schema/table/column 目录（Catalog）与安全画像（仅聚合统计，不外发原始行）
@@ -27,7 +28,41 @@
 返回的是静态 registry（后端内置），包含：
 
 - `id`：连接器标识（创建 run 时使用）
-- `supports_incremental`：是否支持增量（通常意味着有 cursor/state）
+- `supports_incremental`：是否支持真正的源增量（后续 run 会基于源侧 cursor/hash/更新时间只处理 changed/new 项）
+- `supports_resume`：是否支持对失败/取消 run 做 best-effort 续跑（checkpoint resume，不等价于源增量）
+
+### 2.1.1 `supports_resume` vs `supports_incremental`
+
+这两个能力要分开理解：
+
+- `supports_resume=true`：表示可以对某个失败/取消的 run 调用 `POST /api/v1/connectors/runs/{run_id}/resume`，从上次 checkpoint 继续做完剩余工作。它解决的是“这个 run 还没做完”。
+- `supports_incremental=true`：表示保存的 connector state 可以跨 run 表达“源系统已经同步到了哪里”，后续 run 会自动只处理 changed/new 源项，甚至可能出现 **no-op rerun**（源侧没有变化，run 很快完成且不重复入库）。
+
+当前内置 connector 的同步语义：
+
+- `url_batch`：支持 `supports_resume`，并利用 URL 列表去重做轻量增量保护。
+- `github_repo`：支持 `supports_incremental + supports_resume`；后续 run 会用 Git blob SHA manifest 跳过未变化文件，并在检测到 tracked path 已从仓库消失时剪掉 stale manifest entry。
+- `confluence_space`：支持 `supports_incremental`；后续 run 会基于 `last_modified` cursor 拉取更新页面。
+- `jira_project`：支持 `supports_incremental`；后续 run 会基于 issue `updated` cursor 只拉取新变更 issue，并默认使用 `jira_ticket` chunker。
+- `web_crawl` / `drive_files` / `minio_bucket`：当前仍以 `supports_resume` 为主，解决中断续跑，不把它们宣称为真正源增量。
+
+### 2.1.2 Saved State Contract
+
+`connector_configs.state` 现在不仅保存 connector-specific cursor，还会保存一个稳定、可审计的 envelope：
+
+- `state_schema_version`：state schema 版本号
+- `state_revision`：每次 state 持久化递增的 revision
+- `state_recorded_at`：最近一次写入 state 的 UTC 时间
+- `state_audit`：一个有界历史（默认保留最近 10 次），记录 revision、run_id、status 和被更新的 state keys
+
+同时继续保留 connector-specific 顶层字段，便于执行器直接读取，例如：
+
+- `cursor`
+- `last_modified`
+- `source_manifest`
+- `total_files` / `total_urls` / `total_objects`
+
+这让执行器不需要解析深层 envelope，同时运维侧仍然可以审计 state 演进。
 
 ### 2.2 校验配置（预检）
 
@@ -144,6 +179,13 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 
 用途：通过 GitHub API 列出仓库文件，再用 `raw.githubusercontent.com` 拉取内容入库。
 
+增量同步行为补充：
+
+- `source_manifest` 会保存已成功处理的 `path -> blob_sha` 映射，后续 run 用它跳过未变化文件。
+- 如果某个 tracked path 已不再出现在当前仓库树中，run stats 和保存的 state 会把该 path 从 manifest 中剪掉。
+- 对于这类 removed path，系统会按 `doc_metadata.source_url` 对应的 connector-managed 文档做 **soft-disable**，而不是 hard delete。
+- 删除对账只作用于由同一个 `github_repo` connector 创建过的文档，不会误伤手工上传或其他 connector 写入的文档。
+
 示例（私有仓库/提高限额可用 Bearer token）：
 
 ```json
@@ -207,7 +249,52 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 }
 ```
 
-### 5.6 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
+### 5.6 `jira_project`：Jira Cloud Project 导入
+
+用途：从 Jira Cloud 项目按 issue 粒度同步工单，并把 issue 描述、关键字段、评论渲染成结构化 HTML 文档入库。
+
+为什么优先补 Jira：
+
+- 在企业知识库场景里，Jira 通常比 Notion/Slack/SharePoint 更直接承载“需求、缺陷、决策、交付状态”等高价值知识
+- 当前系统已经内置 `jira_ticket` chunker，因此首个企业 SaaS connector 做 Jira 的实现成本和检索质量都更优
+
+当前范围与边界：
+
+- 聚焦 **Jira Cloud 项目 issue 同步**，不是完整 Jira 平台镜像
+- 支持 `sync_mode=auto|full|incremental`
+- 默认 `chunk_strategy="jira_ticket"`，以更好地按 Summary / Description / Comments 等段落切分
+- 可选拉取 comments；ACL 继承基于 issue security level 与 comment visibility 的 best-effort 外部映射
+
+示例：
+
+```json
+{
+  "connector_id": "jira_project",
+  "dataset_id": "00000000-0000-0000-0000-000000000000",
+  "config": {
+    "base_url": "https://example.atlassian.net",
+    "project_key": "PLAT",
+    "jql": "statusCategory != Done",
+    "auth": { "type": "basic", "username": "bot@example.com", "password": "jira_api_token" },
+    "sync_mode": "auto",
+    "max_issues": 200,
+    "page_size": 50,
+    "include_comments": true,
+    "max_comments_per_issue": 20,
+    "parser_backend": "auto",
+    "chunk_strategy": "jira_ticket",
+    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }
+  }
+}
+```
+
+运维提示：
+
+- `base_url` 应填站点根 URL，例如 `https://<site>.atlassian.net`
+- `basic` 模式通常使用 Atlassian 账号邮箱 + API token
+- 若启用 `source_acl`，建议先准备好与 Jira security level / role / group 对应的 `tenant_groups.external_id`
+
+### 5.7 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
 
 用途：同步 schema/table/column 的目录信息，并可选做 **安全画像**（聚合统计）用于治理与检索侧“理解数据形态”。
 

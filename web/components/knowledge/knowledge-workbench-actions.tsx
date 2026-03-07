@@ -6,6 +6,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 
 import { KnowledgeImportMenu } from '@/components/knowledge/import/knowledge-import-menu'
+import { KnowledgeJiraProjectDialog } from '@/components/knowledge/import/knowledge-jira-project-dialog'
 import { KnowledgePipelineConfigDialog } from '@/components/knowledge/import/knowledge-pipeline-config-dialog'
 import { KnowledgeUrlBatchDialog } from '@/components/knowledge/import/knowledge-url-batch-dialog'
 import { KnowledgeUrlImportDialog } from '@/components/knowledge/import/knowledge-url-import-dialog'
@@ -48,6 +49,7 @@ export function KnowledgeWorkbenchActions({
   const [urlImportOpen, setUrlImportOpen] = useState(false)
   const [urlBatchOpen, setUrlBatchOpen] = useState(false)
   const [webCrawlOpen, setWebCrawlOpen] = useState(false)
+  const [jiraProjectOpen, setJiraProjectOpen] = useState(false)
 
   const handleOpenFilePicker = useCallback(() => {
     fileInputRef.current?.click()
@@ -77,6 +79,7 @@ export function KnowledgeWorkbenchActions({
             onOpenUrlImport={() => setUrlImportOpen(true)}
             onOpenUrlBatch={() => setUrlBatchOpen(true)}
             onOpenWebCrawl={() => setWebCrawlOpen(true)}
+            onOpenJiraProject={() => setJiraProjectOpen(true)}
             onOpenPipelineConfig={() => setPipelineConfigOpen(true)}
           />
         </DropdownMenuContent>
@@ -110,6 +113,18 @@ export function KnowledgeWorkbenchActions({
       <KnowledgeWebCrawlDialog
         open={webCrawlOpen}
         onOpenChange={setWebCrawlOpen}
+        datasets={datasets}
+        datasetsLoading={datasetsLoading}
+        selectedDatasetId={selectedDatasetId}
+        datasetDefaultValue={datasetDefaultValue}
+        loadDocuments={loadDocuments}
+        loadConnectorRuns={loadConnectorRuns}
+        onRunCreated={onConnectorRunCreated}
+      />
+
+      <KnowledgeJiraProjectDialog
+        open={jiraProjectOpen}
+        onOpenChange={setJiraProjectOpen}
         datasets={datasets}
         datasetsLoading={datasetsLoading}
         selectedDatasetId={selectedDatasetId}

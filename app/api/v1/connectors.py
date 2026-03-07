@@ -40,6 +40,7 @@ from app.api.schemas.connector import (
     ConnectorValidateResponse,
     DriveFilesConnectorConfig,
     GitHubRepoConnectorConfig,
+    JiraProjectConnectorConfig,
     MinioBucketConnectorConfig,
     MySQLCatalogConnectorConfig,
     SQLServerCatalogConnectorConfig,
@@ -65,6 +66,14 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
+from app.services.connector_registry import get_connector_definition, list_connector_definitions
+from app.services.connector_sync_state import (
+    build_persisted_state,
+    build_saved_state_snapshot,
+    get_resume_cursor,
+    normalize_source_manifest,
+    slice_items_from_cursor,
+)
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
@@ -516,77 +525,53 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
     cfg.last_run_at = (getattr(run, "started_at", None) or getattr(run, "finished_at", None) or _now())  # type: ignore[assignment]
 
     connector_id = str(getattr(run, "connector_id", "") or "").strip()
-    if connector_id == "url_batch":
+    cfg.state = build_saved_state_snapshot(  # type: ignore[assignment]
+        connector_id=connector_id,
+        existing_state=dict(getattr(cfg, "state", None) or {}),
+        stats=stats,
+        run_id=run.id,
+        run_status=status,
+        recorded_at=(getattr(run, "finished_at", None) or getattr(run, "started_at", None) or _now()),
+    )
+
+    with contextlib.suppress(Exception):
+        from app.services.audit_log_service import audit_log_event
+
         state = dict(getattr(cfg, "state", None) or {})
-        with contextlib.suppress(Exception):
-            state["cursor"] = int(stats.get("cursor", 0) or 0)
-            state["total_urls"] = int(stats.get("total_urls", 0) or 0)
-            state["last_run_id"] = str(run.id)
-        cfg.state = state  # type: ignore[assignment]
-    elif connector_id == "confluence_space":
-        state = dict(getattr(cfg, "state", None) or {})
-        with contextlib.suppress(Exception):
-            last_modified = str(stats.get("last_modified") or "").strip()
-            if last_modified:
-                state["last_modified"] = last_modified
-            state["last_run_id"] = str(run.id)
-        cfg.state = state  # type: ignore[assignment]
+        state_audit = state.get("state_audit") if isinstance(state.get("state_audit"), dict) else {}
+        audit_log_event(
+            db,
+            tenant_id=cfg.tenant_id,
+            actor_id=(getattr(run, "requested_by", None) or None),
+            action="connector_config.state.sync",
+            resource_type="connector_config",
+            resource_id=str(cfg.id),
+            details={
+                "config_id": str(cfg.id),
+                "connector_id": connector_id,
+                "run_id": str(run.id),
+                "status": status,
+                "schema_version": int(state.get("state_schema_version") or 0),
+                "revision": int(state.get("state_revision") or 0),
+                "updated_keys": list(state_audit.get("updated_keys") or []),
+            },
+        )
 
     db.commit()
 
 
 @router.get("", response_model=list[ConnectorInfo])
 def list_connectors() -> list[ConnectorInfo]:
-    """List available connectors (static registry)."""
+    """List available connectors from the shared registry."""
     return [
         ConnectorInfo(
-            id="url_batch",
-            name="URL 批量导入",
-            description="从多个 http(s) URL 拉取内容并入库（支持 URL_INGEST_* 安全开关）",
-            supports_incremental=True,
-        ),
-        ConnectorInfo(
-            id="web_crawl",
-            name="网站抓取（站点级）",
-            description="从站点种子 URL 开始抓取链接并批量入库（支持 Cookie/Bearer/Basic 登录态；配置中的密钥会被加密存储并在响应中脱敏）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="github_repo",
-            name="GitHub Repo 导入",
-            description="从 GitHub 仓库列出文件并通过 raw.githubusercontent.com 拉取入库（可选 Bearer token；用于私有仓库/更高 API 限额）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="drive_files",
-            name="Google Drive 文件导入（链接）",
-            description="从 Google Drive 文件分享链接解析 file_id 并构造直链下载入库（仅文件；不支持文件夹）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="minio_bucket",
-            name="MinIO/S3 Bucket 导入",
-            description="列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；URL_INGEST 需允许访问 MinIO 端点）",
-            supports_incremental=False,
-        ),
-        ConnectorInfo(
-            id="confluence_space",
-            name="Confluence Space 导入",
-            description="从 Confluence Space 列出页面并入库（支持增量 cursor；配置中的 Cookie/Token/Password 会被加密存储并在响应中脱敏）",
-            supports_incremental=True,
-        ),
-        ConnectorInfo(
-            id="sqlserver_catalog",
-            name="SQLServer Catalog 导入",
-            description="从 SQLServer 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
-            supports_incremental=True,
-        ),
-        ConnectorInfo(
-            id="mysql_catalog",
-            name="MySQL Catalog 导入",
-            description="从 MySQL 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
-            supports_incremental=True,
-        ),
+            id=definition.connector_id,
+            name=definition.name,
+            description=definition.description,
+            supports_incremental=definition.supports_incremental,
+            supports_resume=definition.supports_resume,
+        )
+        for definition in list_connector_definitions()
     ]
 
 
@@ -623,6 +608,8 @@ def _validate_connector_schema(connector_id: str, config: dict[str, Any]) -> tup
         cfg_obj = MinioBucketConnectorConfig.model_validate(config or {})
     elif connector_id == "confluence_space":
         cfg_obj = ConfluenceSpaceConnectorConfig.model_validate(config or {})
+    elif connector_id == "jira_project":
+        cfg_obj = JiraProjectConnectorConfig.model_validate(config or {})
     elif connector_id == "mysql_catalog":
         cfg_obj = MySQLCatalogConnectorConfig.model_validate(config or {})
     elif connector_id == "sqlserver_catalog":
@@ -687,6 +674,13 @@ async def _best_effort_connectivity_checks(*, connector_id: str, cfg: Any) -> tu
                 checked.append({"url": url, "ok": False, "error": _safe_error_str(exc)})
                 warnings.append({"code": "start_url_check_error", "url": url, "error": _safe_error_str(exc)})
         checks["url_ingest"] = {"checked": checked, "ok": ok == len(checked) if checked else True}
+
+    elif cid == "jira_project":
+        checks["jira_project"] = {
+            "ok": bool(str(getattr(cfg, "base_url", "") or "").strip() and str(getattr(cfg, "project_key", "") or "").strip()),
+            "base_url": str(getattr(cfg, "base_url", "") or "").strip(),
+            "project_key": str(getattr(cfg, "project_key", "") or "").strip(),
+        }
 
     elif cid in _DB_CONNECTOR_IDS:
         # Patchable helper for unit tests; best-effort, fail-open warnings.
@@ -1737,6 +1731,8 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         created = 0
         failed = 0
         created_doc_ids: list[UUID] = []
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        crawl_urls, cursor_in = slice_items_from_cursor(crawl.urls, cursor=get_resume_cursor(state))
 
         stats = dict(run.stats or {})
         stats.update(
@@ -1745,13 +1741,15 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 "queued": int(crawl.queued),
                 "discovered": int(len(crawl.urls)),
                 "total_urls": int(len(crawl.urls)),
-                "processed_urls": 0,
-                "cursor": 0,
+                "processed_urls": int(cursor_in),
+                "cursor": int(cursor_in),
                 "created": 0,
                 "failed": 0,
                 "failed_urls": [],
                 "errors": [],
                 "error_groups": [],
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(cursor_in > 0),
             }
         )
         if crawl.errors:
@@ -1759,7 +1757,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         run.stats = _finalize_connector_stats(stats)
         db.commit()
 
-        for idx, url in enumerate(crawl.urls):
+        for idx, url in enumerate(crawl_urls):
             # Observe cancellation from another DB session (best-effort).
             try:
                 db.refresh(run)
@@ -1817,7 +1815,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 stats = _append_connector_error(stats, url=url, exc=exc)
                 run.stats = stats
             finally:
-                processed = idx + 1
+                processed = cursor_in + idx + 1
                 stats = dict(run.stats or {})
                 stats.update(
                     {
@@ -2001,6 +1999,59 @@ def _delta_sync_connector_documents_acl_by_source_url(
     return int(updated)
 
 
+def _soft_disable_connector_documents_by_source_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    connector_id: str,
+    source_url: str,
+    max_docs: int = 50_000,
+) -> int:
+    """
+    Best-effort soft-disable for connector-managed documents matching a source URL.
+
+    This intentionally mirrors the scope guard used by ACL delta sync so we only
+    touch documents previously created by the same connector.
+    """
+    if dataset_id is None:
+        return 0
+    source_url = str(source_url or "").strip()
+    if not source_url:
+        return 0
+
+    q = (
+        db.query(DBDocument)
+        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
+        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+            ConnectorRun.tenant_id == tenant_id,
+            ConnectorRun.dataset_id == dataset_id,
+            ConnectorRun.connector_id == str(connector_id or "").strip(),
+        )
+        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)  # type: ignore[attr-defined]
+        .distinct()
+        .order_by(DBDocument.created_at.desc())
+    )
+
+    max_docs = max(0, int(max_docs or 0))
+    if max_docs:
+        q = q.limit(max_docs)
+
+    now = _now()
+    disabled = 0
+    for doc in q.yield_per(200):
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+
+    return int(disabled)
+
+
 def _delta_sync_confluence_documents_acl_by_page_id(
     db: Session,
     *,
@@ -2179,6 +2230,8 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         created_doc_ids: list[UUID] = []
         delta_acl_docs_updated = 0
         delta_acl_sources_updated = 0
+        removed_documents_disabled = 0
+        removed_paths_reconciled = 0
 
         # Optional: source ACL inheritance (org teams -> tenant groups by external_id).
         source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
@@ -2256,9 +2309,16 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     fallback_used=not bool(mapped_group_ids),
                 )
 
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+        tracked_paths = set(existing_manifest)
+        resume_cursor_raw = get_resume_cursor(state)
+
         tree = data.get("tree")
         items = tree if isinstance(tree, list) else []
-        paths: list[str] = []
+        files: list[tuple[str, str]] = []
+        observed_tracked_paths: set[str] = set()
+        max_files_bound = max(1, min(max_files, 200))
         for it in items:
             if not isinstance(it, dict):
                 continue
@@ -2267,22 +2327,57 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
             p = str(it.get("path") or "").strip()
             if not p:
                 continue
+            sha = str(it.get("sha") or "").strip()
+            if p in tracked_paths:
+                observed_tracked_paths.add(p)
             ext = Path(p).suffix.lower()
             if ext and ext not in include_set:
                 continue
-            if ext and ext in include_set:
-                paths.append(p)
-            elif not ext and "" in include_set:
-                paths.append(p)
-            if len(paths) >= max(1, min(max_files, 200)):
-                break
+            if not ext and "" not in include_set:
+                continue
+            if len(files) < max_files_bound:
+                files.append((p, sha))
 
+        is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+        effective_mode = "incremental" if existing_manifest else "full"
+        delta_files: list[tuple[str, str]] = []
+        skipped_unchanged = 0
+        for path, blob_sha in files:
+            if (not enable_source_acl) and effective_mode == "incremental" and existing_manifest.get(path) == blob_sha:
+                skipped_unchanged += 1
+                continue
+            delta_files.append((path, blob_sha))
+
+        removed_paths = sorted(tracked_paths - observed_tracked_paths) if effective_mode == "incremental" else []
+        resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
+        files_to_process, cursor_in = slice_items_from_cursor(delta_files, cursor=resume_cursor)
+        source_manifest_state = {path: sha for path, sha in existing_manifest.items() if path not in removed_paths}
+        processed_visible = skipped_unchanged + cursor_in
         stats0 = dict(run.stats or {})
-        stats0.update({"total_files": int(len(paths)), "processed_files": 0, "cursor": 0, "created": 0, "failed": 0, "failed_paths": []})
+        stats0.update(
+            {
+                "mode": effective_mode,
+                "total_files": int(len(files)),
+                "delta_files": int(len(delta_files)),
+                "skipped_unchanged": int(skipped_unchanged),
+                "processed_files": int(processed_visible),
+                "cursor": int(cursor_in),
+                "created": 0,
+                "failed": 0,
+                "failed_paths": [],
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(is_resume_run and ((effective_mode == "incremental") or cursor_in > 0)),
+                "removed_paths": int(len(removed_paths)),
+                "removed_paths_reconciled": int(removed_paths_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
+                "source_manifest": dict(source_manifest_state),
+            }
+        )
         run.stats = stats0
         db.commit()
 
-        for idx, path in enumerate(paths):
+        for idx, item in enumerate(files_to_process):
+            path, blob_sha = item if isinstance(item, tuple) else (str(item or ""), "")
             try:
                 db.refresh(run)
             except Exception:
@@ -2298,7 +2393,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
 
                 # Delta sync: update existing connector-managed docs for this URL so ACL changes
                 # in the source system can revoke access (idempotent; fail-closed).
-                if effective_access is source_acl_access:
+                if effective_access is source_acl_access and isinstance(source_acl_access, dict):
                     updated_existing = _delta_sync_connector_documents_acl_by_source_url(
                         db,
                         tenant_id=tenant_id,
@@ -2357,24 +2452,34 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 )
                 created += 1
                 created_doc_ids.append(doc.id)
+                if path and blob_sha:
+                    source_manifest_state[path] = blob_sha
             except Exception as exc:  # noqa: BLE001
                 failed += 1
                 stats = dict(run.stats or {})
                 stats = _append_connector_error(stats, url=path, exc=exc)
                 run.stats = stats
             finally:
-                processed = idx + 1
+                processed = cursor_in + idx + 1
+                processed_visible = skipped_unchanged + processed
                 stats = dict(run.stats or {})
                 stats.update(
                     {
-                        "total_files": int(len(paths)),
-                        "processed_files": int(processed),
+                        "mode": effective_mode,
+                        "total_files": int(len(files)),
+                        "delta_files": int(len(delta_files)),
+                        "skipped_unchanged": int(skipped_unchanged),
+                        "processed_files": int(processed_visible),
                         "cursor": int(processed),
                         "created": int(created),
                         "failed": int(failed),
                         "document_ids": [str(d) for d in created_doc_ids],
                         "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                         "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                        "removed_paths": int(len(removed_paths)),
+                        "removed_paths_reconciled": int(removed_paths_reconciled),
+                        "removed_documents_disabled": int(removed_documents_disabled),
+                        "source_manifest": dict(source_manifest_state),
                     }
                 )
                 run.stats = _finalize_connector_stats(stats)
@@ -2393,12 +2498,40 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 _sync_connector_config_from_run(db, run=run)
             return
 
+        if effective_mode == "incremental" and removed_paths:
+            for path in removed_paths:
+                raw_url = _github_raw_url(owner=owner, repo=repo_name, branch=branch, path=path)
+                try:
+                    disabled = _soft_disable_connector_documents_by_source_url(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=run.dataset_id,
+                        connector_id="github_repo",
+                        source_url=raw_url,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=path, exc=exc)
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    continue
+                removed_documents_disabled += int(disabled)
+                if disabled:
+                    removed_paths_reconciled += 1
+
         stats = dict(run.stats or {})
         stats.update(
             {
+                "mode": effective_mode,
+                "delta_files": int(len(delta_files)),
+                "skipped_unchanged": int(skipped_unchanged),
                 "document_ids": [str(d) for d in created_doc_ids],
                 "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                 "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                "removed_paths": int(len(removed_paths)),
+                "removed_paths_reconciled": int(removed_paths_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
+                "source_manifest": dict(source_manifest_state),
             }
         )
         run.stats = _finalize_connector_stats(stats)
@@ -2489,8 +2622,21 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         delta_acl_docs_updated = 0
         delta_acl_sources_updated = 0
 
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        urls_to_process, cursor_in = slice_items_from_cursor(urls, cursor=get_resume_cursor(state))
         stats0 = dict(run.stats or {})
-        stats0.update({"total_urls": int(len(urls)), "processed_urls": 0, "cursor": 0, "created": 0, "failed": 0, "failed_urls": []})
+        stats0.update(
+            {
+                "total_urls": int(len(urls)),
+                "processed_urls": int(cursor_in),
+                "cursor": int(cursor_in),
+                "created": 0,
+                "failed": 0,
+                "failed_urls": [],
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(cursor_in > 0),
+            }
+        )
         run.stats = stats0
         db.commit()
 
@@ -2507,7 +2653,7 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
             drive_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
 
         try:
-            for idx, url in enumerate(urls):
+            for idx, url in enumerate(urls_to_process):
                 try:
                     db.refresh(run)
                 except Exception:
@@ -2653,7 +2799,7 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     stats = _append_connector_error(stats, url=url, exc=exc)
                     run.stats = stats
                 finally:
-                    processed = idx + 1
+                    processed = cursor_in + idx + 1
                     stats = dict(run.stats or {})
                     stats.update(
                         {
@@ -2801,13 +2947,25 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
         created = 0
         failed = 0
         created_doc_ids: list[UUID] = []
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        object_names_to_process, cursor_in = slice_items_from_cursor(object_names, cursor=get_resume_cursor(state))
 
         stats0 = dict(run.stats or {})
-        stats0.update({"total_objects": int(len(object_names)), "processed_objects": 0, "cursor": 0, "created": 0, "failed": 0})
+        stats0.update(
+            {
+                "total_objects": int(len(object_names)),
+                "processed_objects": int(cursor_in),
+                "cursor": int(cursor_in),
+                "created": 0,
+                "failed": 0,
+                "cursor_in": int(cursor_in),
+                "resumed_from_state": bool(cursor_in > 0),
+            }
+        )
         run.stats = stats0
         db.commit()
 
-        for idx, object_name in enumerate(object_names):
+        for idx, object_name in enumerate(object_names_to_process):
             try:
                 db.refresh(run)
             except Exception:
@@ -2857,7 +3015,7 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
                 stats = _append_connector_error(stats, url=object_name, exc=exc)
                 run.stats = stats
             finally:
-                processed = idx + 1
+                processed = cursor_in + idx + 1
                 stats = dict(run.stats or {})
                 stats.update(
                     {
@@ -3177,6 +3335,267 @@ def _confluence_attachment_connector_metadata(
         "mode": str(mode or "").strip(),
         "ingest_method": str(ingest_method or "").strip(),
     }
+
+
+def _jira_api_base_url(base_url: str) -> str:
+    """
+    Normalize a Jira base URL to the Jira Cloud REST v3 API base.
+
+    Examples:
+    - https://<site>.atlassian.net -> https://<site>.atlassian.net/rest/api/3
+    - https://<site>.atlassian.net/rest/api/3 -> unchanged
+    """
+    base = str(base_url or "").strip().rstrip("/")
+    if base.endswith("/rest/api/3"):
+        return base
+    if base.endswith("/rest/api"):
+        return f"{base}/3"
+    if "/rest/api/" in base:
+        prefix = base.split("/rest/api/", 1)[0].rstrip("/")
+        return f"{prefix}/rest/api/3"
+    return f"{base}/rest/api/3"
+
+
+async def _jira_request(pool, method: str, url: str, **kwargs):  # noqa: ANN001, ANN201
+    """
+    Jira API requests are always third-party outbound HTTP calls.
+    """
+    return await pool.request_with_retry(method, url, use_external_client=True, **kwargs)
+
+
+def _jira_extract_issue_updated(issue: dict) -> str | None:
+    """
+    Best-effort extraction of the Jira issue updated timestamp for incremental cursoring.
+    """
+    if not isinstance(issue, dict):
+        return None
+    fields = issue.get("fields")
+    if isinstance(fields, dict):
+        updated = str(fields.get("updated") or "").strip()
+        if updated:
+            return updated
+    updated = str(issue.get("updated") or "").strip()
+    return updated or None
+
+
+def _jira_principal_value(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    value = re.sub(r"\s+", "-", value)
+    return value[:255]
+
+
+def _jira_group_principal_key(group_name: str) -> str:
+    name = _jira_principal_value(group_name)
+    return f"jira:group:{name}"[:255] if name else ""
+
+
+def _jira_role_principal_key(role_name: str) -> str:
+    name = _jira_principal_value(role_name)
+    return f"jira:role:{name}"[:255] if name else ""
+
+
+def _jira_security_level_principal_key(security: object) -> str:
+    if not isinstance(security, dict):
+        return ""
+    level_id = str(security.get("id") or "").strip()
+    if level_id:
+        return f"jira:policy:security-level/{level_id}"[:255]
+    name = _jira_principal_value(security.get("name"))
+    if not name:
+        return ""
+    return f"jira:policy:security-level/{name}"[:255]
+
+
+def _jira_issue_acl_principal_keys(issue: dict, *, include_comments: bool, max_comments: int) -> tuple[bool, list[str]]:
+    """
+    Collect best-effort Jira visibility/security handles for source ACL inheritance.
+
+    We do not attempt to resolve Jira memberships here. Instead we expose stable external ids
+    that operators can map onto tenant groups via `tenant_groups.external_id`.
+    """
+    if not isinstance(issue, dict):
+        return False, []
+
+    fields = issue.get("fields")
+    if not isinstance(fields, dict):
+        return False, []
+
+    keys: set[str] = set()
+
+    security_key = _jira_security_level_principal_key(fields.get("security"))
+    if security_key:
+        keys.add(security_key)
+
+    if include_comments:
+        lim = max(0, int(max_comments or 0))
+        comments_obj = fields.get("comment")
+        comments = comments_obj.get("comments") if isinstance(comments_obj, dict) else None
+        items = comments if isinstance(comments, list) else []
+        for comment in items[:lim]:
+            if not isinstance(comment, dict):
+                continue
+            visibility = comment.get("visibility")
+            if not isinstance(visibility, dict):
+                continue
+            vis_type = str(visibility.get("type") or "").strip().lower()
+            vis_value = visibility.get("value") or visibility.get("identifier") or visibility.get("name")
+            if vis_type == "group":
+                key = _jira_group_principal_key(str(vis_value or ""))
+            elif vis_type == "role":
+                key = _jira_role_principal_key(str(vis_value or ""))
+            else:
+                key = ""
+            if key:
+                keys.add(key)
+
+    ordered = sorted(keys)
+    return bool(ordered), ordered
+
+
+def _jira_adf_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(_jira_adf_to_text(item) for item in value)
+    if not isinstance(value, dict):
+        return str(value)
+
+    node_type = str(value.get("type") or "").strip().lower()
+    if node_type == "text":
+        return str(value.get("text") or "")
+    if node_type == "hardbreak":
+        return "\n"
+
+    content = value.get("content")
+    child_items = content if isinstance(content, list) else []
+    text = "".join(_jira_adf_to_text(item) for item in child_items)
+    if node_type in {"paragraph", "heading", "listitem", "blockquote", "tablecell", "tableheader"} and text and not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def _jira_html_from_field(*, rendered: object, raw: object) -> str:
+    rendered_text = str(rendered or "").strip() if isinstance(rendered, str) else ""
+    if rendered_text:
+        return rendered_text
+
+    plain = _jira_adf_to_text(raw).strip()
+    if not plain:
+        return ""
+    lines = [line.strip() for line in plain.splitlines() if line.strip()]
+    return "\n".join(f"<p>{html.escape(line)}</p>" for line in lines)
+
+
+def _jira_issue_url(*, base_url: str, issue_key: str) -> str:
+    base = str(base_url or "").strip().rstrip("/")
+    key = str(issue_key or "").strip()
+    if not base or not key:
+        return ""
+    return f"{base}/browse/{quote(key, safe='')}"
+
+
+def _jira_jql_updated_after(raw: str | None) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    normalized = _normalize_datetime_utc_iso(text)
+    if not normalized:
+        return text
+    dt = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: bool, max_comments: int) -> str:
+    """
+    Render a Jira issue into a stable HTML document shape that works with `jira_ticket`.
+    """
+    issue = issue if isinstance(issue, dict) else {}
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    rendered = issue.get("renderedFields") if isinstance(issue.get("renderedFields"), dict) else {}
+
+    issue_key = str(issue.get("key") or "").strip()
+    summary = str(fields.get("summary") or issue_key or "Jira issue").strip()
+    issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
+    updated = _jira_extract_issue_updated(issue) or ""
+
+    issue_type = str((fields.get("issuetype") or {}).get("name") or "").strip() if isinstance(fields.get("issuetype"), dict) else ""
+    priority = str((fields.get("priority") or {}).get("name") or "").strip() if isinstance(fields.get("priority"), dict) else ""
+    status = str((fields.get("status") or {}).get("name") or "").strip() if isinstance(fields.get("status"), dict) else ""
+    labels = fields.get("labels") if isinstance(fields.get("labels"), list) else []
+    label_text = ", ".join(str(label or "").strip() for label in labels if str(label or "").strip())
+
+    description_html = _jira_html_from_field(
+        rendered=rendered.get("description"),
+        raw=fields.get("description"),
+    )
+
+    comments_html: list[str] = []
+    if include_comments:
+        comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
+        comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
+        rendered_comments_obj = rendered.get("comment") if isinstance(rendered.get("comment"), dict) else {}
+        rendered_comment_items = rendered_comments_obj.get("comments") if isinstance(rendered_comments_obj.get("comments"), list) else []
+
+        lim = max(0, int(max_comments or 0))
+        for idx, comment in enumerate(comment_items[:lim], start=1):
+            if not isinstance(comment, dict):
+                continue
+            rendered_comment = rendered_comment_items[idx - 1] if idx - 1 < len(rendered_comment_items) and isinstance(rendered_comment_items[idx - 1], dict) else {}
+            author = str((comment.get("author") or {}).get("displayName") or "").strip() if isinstance(comment.get("author"), dict) else ""
+            created = str(comment.get("created") or "").strip()
+            body_html = _jira_html_from_field(
+                rendered=rendered_comment.get("body"),
+                raw=comment.get("body"),
+            )
+            meta_bits = [bit for bit in [author, created] if bit]
+            meta_html = ""
+            if meta_bits:
+                meta_html = f"<p><strong>Meta:</strong> {html.escape(' | '.join(meta_bits))}</p>"
+            comments_html.append(
+                "<article>"
+                f"<h3>Comment {idx}</h3>"
+                f"{meta_html}"
+                f"{body_html}"
+                "</article>"
+            )
+
+    parts = [
+        "<!doctype html>",
+        "<html>",
+        "<head>",
+        '  <meta charset="utf-8" />',
+        f"  <title>{html.escape(issue_key or summary)}</title>",
+        f'  <base href="{html.escape(issue_url or str(base_url or ""))}" />' if (issue_url or base_url) else "",
+        "</head>",
+        "<body>",
+        f"  <h1>{html.escape(issue_key or 'Jira Issue')}</h1>",
+        "  <h2>Summary</h2>",
+        f"  <p>{html.escape(summary)}</p>",
+    ]
+
+    if issue_url:
+        parts.append(f'  <p><strong>Issue URL:</strong> <a href="{html.escape(issue_url)}">{html.escape(issue_url)}</a></p>')
+    if issue_type:
+        parts.append(f"  <p><strong>Issue Type:</strong> {html.escape(issue_type)}</p>")
+    if priority:
+        parts.append(f"  <p><strong>Priority:</strong> {html.escape(priority)}</p>")
+    if status:
+        parts.append(f"  <p><strong>Status:</strong> {html.escape(status)}</p>")
+    if updated:
+        parts.append(f"  <p><strong>Updated:</strong> {html.escape(updated)}</p>")
+    if label_text:
+        parts.append(f"  <p><strong>Labels:</strong> {html.escape(label_text)}</p>")
+
+    if description_html:
+        parts.extend(["  <h2>Description</h2>", description_html])
+
+    if comments_html:
+        parts.extend(["  <h2>Comments</h2>", *comments_html])
+
+    parts.extend(["</body>", "</html>"])
+    return "\n".join(part for part in parts if part)
 
 
 async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -3922,6 +4341,412 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         db.close()
 
 
+async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution for jira_project connector.
+
+    Flow:
+    - List issues in a Jira project (full or incremental based on state/sync_mode)
+    - Render each issue into a structured local HTML document
+    - Apply best-effort Jira source ACL inheritance from security level / comment visibility
+    """
+    db = SessionLocal()
+    try:
+        run = (
+            db.query(ConnectorRun)
+            .options(selectinload(ConnectorRun.documents))
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if not run:
+            return
+        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+            return
+
+        run.status = "running"
+        run.started_at = _now()
+        run.error_message = None
+        run.stats = dict(run.stats or {})
+        db.commit()
+        db.refresh(run)
+
+        cfg_raw = dict(run.config or {})
+        cfg = decrypt_connector_config_secrets(cfg_raw)
+
+        base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
+        project_key = str(cfg.get("project_key") or "").strip().upper()
+        if not base_url or not project_key:
+            raise ValueError("base_url and project_key are required")
+
+        sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
+        if sync_mode not in {"auto", "full", "incremental"}:
+            sync_mode = "auto"
+
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
+
+        effective_mode = sync_mode
+        if effective_mode == "auto":
+            effective_mode = "incremental" if cursor_last_modified else "full"
+        if effective_mode == "incremental" and not cursor_last_modified:
+            effective_mode = "full"
+
+        max_issues = int(cfg.get("max_issues") or 50)
+        max_issues = max(1, min(max_issues, 500))
+        page_size = int(cfg.get("page_size") or 25)
+        page_size = max(1, min(page_size, 100))
+        include_comments = bool(cfg.get("include_comments", True))
+        max_comments_per_issue = int(cfg.get("max_comments_per_issue") or 20)
+        max_comments_per_issue = max(0, min(max_comments_per_issue, 200))
+
+        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
+        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "jira_ticket"
+        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
+        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+        source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
+        extra_jql = str(cfg.get("jql") or "").strip()
+
+        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+        auth_headers = _build_auth_headers(cfg)
+
+        api_base = _jira_api_base_url(base_url)
+        search_url = f"{api_base}/search"
+
+        headers: dict[str, str] = {
+            "Accept": "application/json",
+            "User-Agent": (user_agent or "MimirQ/1.0 (+jira_project)"),
+        }
+        headers.update(auth_headers)
+
+        jql_parts = [f'project = "{project_key}"']
+        if extra_jql:
+            jql_parts.append(f"({extra_jql})")
+        if effective_mode == "incremental" and cursor_last_modified:
+            after = _jira_jql_updated_after(cursor_last_modified)
+            if after:
+                jql_parts.append(f'updated > "{after}"')
+        jql = " AND ".join(jql_parts) + " ORDER BY updated ASC"
+
+        created = 0
+        failed = 0
+        processed = 0
+        created_doc_ids: list[UUID] = []
+        delta_acl_docs_updated = 0
+        delta_acl_sources_updated = 0
+        last_modified_seen: str | None = None
+
+        stats0 = dict(run.stats or {})
+        stats0.update(
+            {
+                "mode": effective_mode,
+                "project_key": project_key,
+                "base_url": base_url,
+                "max_issues": int(max_issues),
+                "page_size": int(page_size),
+                "include_comments": bool(include_comments),
+                "max_comments_per_issue": int(max_comments_per_issue),
+                "processed_issues": 0,
+                "cursor": 0,
+                "created": 0,
+                "failed": 0,
+                "failed_urls": [],
+                "errors": [],
+                "error_groups": [],
+            }
+        )
+        if cursor_last_modified:
+            stats0["cursor_in"] = cursor_last_modified
+        run.stats = _finalize_connector_stats(stats0)
+        db.commit()
+
+        source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+        source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
+        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+        enable_source_acl = bool(source_acl_mode == "inherit" and not has_manual_access_override)
+
+        pool = get_http_client_pool()
+        start_at = 0
+
+        while processed < max_issues:
+            try:
+                db.refresh(run)
+            except Exception:
+                pass
+            if str(run.status or "").lower() == "cancelled":
+                break
+
+            params = {
+                "jql": jql,
+                "startAt": int(start_at),
+                "maxResults": int(min(page_size, max_issues - processed)),
+                "fields": "summary,description,updated,issuetype,priority,status,labels,comment,security",
+                "expand": "renderedFields",
+            }
+            resp = await _jira_request(pool, "GET", search_url, params=params, headers=headers)
+            data = resp.json() if resp is not None else {}
+            issues = data.get("issues") if isinstance(data, dict) and isinstance(data.get("issues"), list) else []
+            if not issues:
+                break
+
+            for issue in issues:
+                if processed >= max_issues:
+                    break
+
+                try:
+                    db.refresh(run)
+                except Exception:
+                    pass
+                if str(run.status or "").lower() == "cancelled":
+                    break
+
+                issue_key = str((issue or {}).get("key") or "").strip() if isinstance(issue, dict) else ""
+                issue_id = str((issue or {}).get("id") or "").strip() if isinstance(issue, dict) else ""
+                issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
+                updated = _jira_extract_issue_updated(issue if isinstance(issue, dict) else {})
+                if updated:
+                    last_modified_seen = updated
+
+                if not issue_url:
+                    failed += 1
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=(issue_key or issue_id or "jira_issue"), exc=ValueError("missing issue url"))
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    processed += 1
+                    continue
+
+                try:
+                    effective_access = access
+                    acl_provenance: dict | None = None
+
+                    if enable_source_acl:
+                        ext_ids: list[str] = []
+                        gids: set[UUID] = set()
+                        restricted, ext_ids = _jira_issue_acl_principal_keys(
+                            issue if isinstance(issue, dict) else {},
+                            include_comments=include_comments,
+                            max_comments=max_comments_per_issue,
+                        )
+                        fallback_used = False
+
+                        if restricted:
+                            try:
+                                gids = _resolve_tenant_group_ids_by_external_id(
+                                    db,
+                                    tenant_id=tenant_id,
+                                    external_ids=ext_ids,
+                                )
+                                if gids:
+                                    ordered = sorted(gids, key=lambda v: str(v))
+                                    effective_access = {
+                                        "mode": "partial_members",
+                                        "partial_group_list": [str(gid) for gid in ordered],
+                                    }
+                                else:
+                                    effective_access = {"mode": source_acl_fallback_mode}
+                                    fallback_used = True
+                            except Exception:
+                                effective_access = {"mode": source_acl_fallback_mode}
+                                fallback_used = True
+
+                            with contextlib.suppress(Exception):
+                                from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+                                acl_provenance = build_document_acl_provenance(
+                                    connector_id="jira_project",
+                                    connector_run_id=str(run_id),
+                                    effective_access=effective_access,
+                                    source_acl_mode=source_acl_mode,
+                                    source_acl_fallback_mode=source_acl_fallback_mode,
+                                    source_principal_external_ids=ext_ids,
+                                    mapped_group_ids=gids,
+                                    fallback_used=fallback_used,
+                                    restricted=restricted,
+                                )
+
+                            updated_existing = _delta_sync_connector_documents_acl_by_source_url(
+                                db,
+                                tenant_id=tenant_id,
+                                dataset_id=run.dataset_id,
+                                connector_id="jira_project",
+                                source_url=issue_url,
+                                requested_by=requested_by,
+                                access=effective_access,
+                                acl_provenance=acl_provenance,
+                            )
+                            delta_acl_docs_updated += int(updated_existing)
+                            if updated_existing:
+                                delta_acl_sources_updated += 1
+
+                    filename = f"{issue_key}.html" if issue_key else "jira-issue.html"
+                    issue_html = _jira_render_issue_html(
+                        base_url=base_url,
+                        issue=issue if isinstance(issue, dict) else {},
+                        include_comments=include_comments,
+                        max_comments=max_comments_per_issue,
+                    )
+                    if not issue_html.strip():
+                        raise ValueError("missing rendered issue html")
+
+                    html_body = LocalHtmlIngestRequest(
+                        html=issue_html,
+                        source_url=issue_url,
+                        dataset_id=run.dataset_id,
+                        filename=filename,
+                        parser_backend=str(parser_backend),
+                        chunk_strategy=str(chunk_strategy),
+                        pipeline=pipeline,  # type: ignore[arg-type]
+                    )
+                    doc = await _ingest_local_html_request(
+                        background_tasks=None,
+                        body=html_body,
+                        tenant_id=tenant_id,
+                        account_id=requested_by,
+                        db=db,
+                        ingestion_kind="upload_url",
+                    )
+
+                    _apply_document_access_from_config(
+                        db,
+                        tenant_id=tenant_id,
+                        requested_by=requested_by,
+                        doc=doc,
+                        access=effective_access,
+                        connector_id="jira_project",
+                    )
+
+                    try:
+                        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                        if updated:
+                            lm_iso = _normalize_datetime_utc_iso(updated) or updated
+                            meta0["source_last_modified_at"] = lm_iso
+                            meta0["source_last_modified_source"] = "connector:jira:updated"
+                            meta0["source_last_modified_raw"] = meta0.get("source_last_modified_raw") or updated
+                        if isinstance(acl_provenance, dict):
+                            meta0["acl_provenance"] = dict(acl_provenance)
+                        meta0["connector"] = {
+                            "connector_id": "jira_project",
+                            "base_url": base_url,
+                            "project_key": project_key,
+                            "issue_id": (issue_id or None),
+                            "issue_key": (issue_key or None),
+                            "issue_url": issue_url,
+                            "last_modified": (updated or None),
+                            "run_id": str(run.id),
+                            "mode": effective_mode,
+                        }
+                        doc.doc_metadata = meta0
+                        db.commit()
+                    except Exception:
+                        pass
+
+                    db.add(
+                        ConnectorRunDocument(
+                            tenant_id=tenant_id,
+                            run_id=run.id,
+                            document_id=doc.id,
+                            source_ref=(issue_key or issue_id or issue_url)[:1000] or None,
+                            status="created",
+                        )
+                    )
+                    created += 1
+                    created_doc_ids.append(doc.id)
+                except Exception as exc:  # noqa: BLE001
+                    failed += 1
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=(issue_url or issue_key or issue_id or "jira_issue"), exc=exc)
+                    run.stats = _finalize_connector_stats(stats)
+                finally:
+                    processed += 1
+                    stats = dict(run.stats or {})
+                    stats.update(
+                        {
+                            "processed_issues": int(processed),
+                            "cursor": int(processed),
+                            "created": int(created),
+                            "failed": int(failed),
+                            "document_ids": [str(d) for d in created_doc_ids],
+                            "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                            "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                        }
+                    )
+                    if last_modified_seen:
+                        stats["last_modified"] = last_modified_seen
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+
+            start_at += int(len(issues))
+            if len(issues) < page_size:
+                break
+
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        if str(run.status or "").lower() == "cancelled":
+            if run.finished_at is None:
+                run.finished_at = _now()
+            run.stats = _finalize_connector_stats(dict(run.stats or {}))
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+            return
+
+        stats = dict(run.stats or {})
+        stats.update(
+            {
+                "document_ids": [str(d) for d in created_doc_ids],
+                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+                "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+            }
+        )
+        run.stats = _finalize_connector_stats(stats)
+        run.finished_at = _now()
+        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        if enable_source_acl:
+            with contextlib.suppress(Exception):
+                from app.services.audit_log_service import audit_log_event
+
+                audit_log_event(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=requested_by,
+                    action="jira_project.source_acl.delta_sync",
+                    resource_type="connector_run",
+                    resource_id=str(run_id),
+                    details={
+                        "dataset_id": str(run.dataset_id),
+                        "connector_id": "jira_project",
+                        "base_url": base_url,
+                        "project_key": project_key,
+                        "mode": effective_mode,
+                        "updated_documents": int(delta_acl_docs_updated),
+                        "updated_sources": int(delta_acl_sources_updated),
+                        "fallback_mode": source_acl_fallback_mode,
+                    },
+                )
+        db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
+    except Exception as exc:  # noqa: BLE001
+        with contextlib.suppress(Exception):
+            run = (
+                db.query(ConnectorRun)
+                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+                .first()
+            )
+            if run is not None:
+                run.status = "failed"
+                run.finished_at = _now()
+                run.error_message = str(exc)[:200]
+                db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
+    finally:
+        db.close()
+
+
 @router.post("/runs", response_model=ConnectorRunOut, status_code=201)
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
@@ -3936,7 +4761,7 @@ async def create_connector_run(
     Requires dataset write permission.
     """
     connector_id = str(payload.connector_id or "").strip()
-    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space"}
+    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space", "jira_project"}
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
 
     if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
@@ -3964,6 +4789,9 @@ async def create_connector_run(
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "confluence_space":
         cfg = ConfluenceSpaceConnectorConfig.model_validate(payload.config or {})
+        cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
+    elif connector_id == "jira_project":
+        cfg = JiraProjectConnectorConfig.model_validate(payload.config or {})
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     elif connector_id == "mysql_catalog":
         cfg = MySQLCatalogConnectorConfig.model_validate(payload.config or {})
@@ -4029,6 +4857,8 @@ async def create_connector_run(
         background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "confluence_space":
         background_tasks.add_task(_execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "jira_project":
+        background_tasks.add_task(_execute_jira_project_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
         background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
@@ -4245,33 +5075,60 @@ async def resume_connector_run(
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
     connector_id = str(run.connector_id or "").strip()
-    if connector_id != "url_batch":
-        raise HTTPException(status_code=400, detail="Resume is only supported for url_batch")
-
-    stats = dict(run.stats or {})
-    cursor_raw = stats.get("cursor", stats.get("processed_urls", 0))
-    try:
-        cursor = max(0, int(cursor_raw or 0))
-    except Exception:
-        cursor = 0
+    connector_definition = get_connector_definition(connector_id)
+    if connector_definition is None or not connector_definition.supports_resume:
+        raise HTTPException(status_code=400, detail=f"Resume is not supported for {connector_id or 'this connector'}")
 
     base_cfg = dict(run.config or {})
-    urls = base_cfg.get("urls") if isinstance(base_cfg.get("urls"), list) else []
-    urls = [str(u or "").strip() for u in urls if str(u or "").strip()]
-    remaining = urls[cursor:] if cursor < len(urls) else []
-    if not remaining:
-        raise HTTPException(status_code=400, detail="No remaining URLs to resume")
-
+    stats = dict(run.stats or {})
     new_cfg = dict(base_cfg)
-    new_cfg["urls"] = remaining
+    resume_stats: dict[str, Any] = {"resume_of": str(run.id)}
+
+    if connector_id == "url_batch":
+        cursor_raw = stats.get("cursor", stats.get("processed_urls", 0))
+        try:
+            cursor = max(0, int(cursor_raw or 0))
+        except Exception:
+            cursor = 0
+
+        urls = base_cfg.get("urls") if isinstance(base_cfg.get("urls"), list) else []
+        urls = [str(u or "").strip() for u in urls if str(u or "").strip()]
+        remaining = urls[cursor:] if cursor < len(urls) else []
+        if not remaining:
+            raise HTTPException(status_code=400, detail="No remaining URLs to resume")
+        new_cfg["urls"] = remaining
+        resume_stats["resume_cursor"] = int(cursor)
+    else:
+        existing_state = base_cfg.get("_state") if isinstance(base_cfg.get("_state"), dict) else {}
+        resume_state = build_persisted_state(
+            connector_id=connector_id,
+            existing_state=dict(existing_state or {}),
+            stats=stats,
+            run_id=run.id,
+        )
+        cursor = get_resume_cursor(resume_state)
+        total_key = next((key for key in connector_definition.state_keys if key != "cursor"), None)
+        has_incremental_manifest = bool(normalize_source_manifest(resume_state.get("source_manifest")))
+        if total_key and not has_incremental_manifest:
+            try:
+                total_items = max(0, int(stats.get(total_key) or 0))
+            except Exception:
+                total_items = 0
+            if total_items > 0 and cursor >= total_items:
+                raise HTTPException(status_code=400, detail="No remaining items to resume")
+        if not resume_state:
+            raise HTTPException(status_code=400, detail="No saved resume state found")
+        new_cfg["_state"] = resume_state
+        resume_stats["resume_cursor"] = int(cursor)
+
     new_run = ConnectorRun(
         tenant_id=tenant_id,
         dataset_id=run.dataset_id,
-        connector_id="url_batch",
+        connector_id=connector_id,
         requested_by=account_id,
         status="pending",
         config=new_cfg,
-        stats={"resume_of": str(run.id), "resume_cursor": int(cursor)},
+        stats=resume_stats,
     )
     db.add(new_run)
     db.commit()
@@ -4290,7 +5147,18 @@ async def resume_connector_run(
             db.refresh(new_run)
             return _run_out(new_run)
 
-    background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    if connector_id == "url_batch":
+        background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "web_crawl":
+        background_tasks.add_task(_execute_web_crawl_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "github_repo":
+        background_tasks.add_task(_execute_github_repo_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "drive_files":
+        background_tasks.add_task(_execute_drive_files_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "minio_bucket":
+        background_tasks.add_task(_execute_minio_bucket_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported connector_id")
     return _run_out(new_run)
 
 
@@ -4508,7 +5376,7 @@ async def run_connector_config(
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
     connector_id = str(cfg.connector_id or "").strip()
-    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space"}
+    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space", "jira_project"}
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
     if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
@@ -4516,8 +5384,9 @@ async def run_connector_config(
         raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
 
     run_cfg = dict(cfg.config or {})
-    # Attach connector config state for incremental connectors (best-effort; executor may ignore).
-    run_cfg["_state"] = dict(cfg.state or {})
+    connector_definition = get_connector_definition(connector_id)
+    if connector_definition is not None and connector_definition.supports_incremental:
+        run_cfg["_state"] = dict(cfg.state or {})
 
     run = ConnectorRun(
         tenant_id=tenant_id,
@@ -4547,6 +5416,8 @@ async def run_connector_config(
         background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id == "confluence_space":
         background_tasks.add_task(_execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+    elif connector_id == "jira_project":
+        background_tasks.add_task(_execute_jira_project_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
         background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
@@ -4603,7 +5474,9 @@ async def scheduled_tick(
         # Create run and enqueue execution.
         connector_id = str(cfg.connector_id or "").strip()
         run_cfg = dict(cfg.config or {})
-        run_cfg["_state"] = dict(cfg.state or {})
+        connector_definition = get_connector_definition(connector_id)
+        if connector_definition is not None and connector_definition.supports_incremental:
+            run_cfg["_state"] = dict(cfg.state or {})
 
         run = ConnectorRun(
             tenant_id=tenant_id,
@@ -4620,7 +5493,7 @@ async def scheduled_tick(
         db.commit()
         db.refresh(run)
 
-        url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space"}
+        url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space", "jira_project"}
         db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
 
         if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
@@ -4652,6 +5525,8 @@ async def scheduled_tick(
             background_tasks.add_task(_execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         elif connector_id == "confluence_space":
             background_tasks.add_task(_execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
+        elif connector_id == "jira_project":
+            background_tasks.add_task(_execute_jira_project_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
             background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
         else:

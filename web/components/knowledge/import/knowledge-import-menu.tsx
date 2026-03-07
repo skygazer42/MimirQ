@@ -1,6 +1,6 @@
 'use client'
 
-import { Globe, Link2, SlidersHorizontal, Upload, Zap } from 'lucide-react'
+import { Bug, Globe, Link2, SlidersHorizontal, Upload, Zap } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
@@ -10,6 +10,7 @@ type KnowledgeImportMenuProps = {
   onOpenUrlImport: () => void
   onOpenUrlBatch: () => void
   onOpenWebCrawl: () => void
+  onOpenJiraProject: () => void
   onOpenPipelineConfig: () => void
 
   className?: string
@@ -20,6 +21,7 @@ export function KnowledgeImportMenu({
   onOpenUrlImport,
   onOpenUrlBatch,
   onOpenWebCrawl,
+  onOpenJiraProject,
   onOpenPipelineConfig,
   className,
 }: KnowledgeImportMenuProps) {
@@ -46,6 +48,10 @@ export function KnowledgeImportMenu({
         <Globe className="size-4 text-muted-foreground" />
         Website Crawl
       </DropdownMenuItem>
+      <DropdownMenuItem onSelect={onOpenJiraProject} className="gap-2">
+        <Bug className="size-4 text-muted-foreground" />
+        Jira Project
+      </DropdownMenuItem>
 
       <DropdownMenuSeparator />
       <DropdownMenuLabel className="text-xs text-muted-foreground">配置</DropdownMenuLabel>
@@ -56,4 +62,3 @@ export function KnowledgeImportMenu({
     </div>
   )
 }
-
