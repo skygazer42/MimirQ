@@ -1999,6 +1999,59 @@ def _delta_sync_connector_documents_acl_by_source_url(
     return int(updated)
 
 
+def _soft_disable_connector_documents_by_source_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    connector_id: str,
+    source_url: str,
+    max_docs: int = 50_000,
+) -> int:
+    """
+    Best-effort soft-disable for connector-managed documents matching a source URL.
+
+    This intentionally mirrors the scope guard used by ACL delta sync so we only
+    touch documents previously created by the same connector.
+    """
+    if dataset_id is None:
+        return 0
+    source_url = str(source_url or "").strip()
+    if not source_url:
+        return 0
+
+    q = (
+        db.query(DBDocument)
+        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
+        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+            ConnectorRun.tenant_id == tenant_id,
+            ConnectorRun.dataset_id == dataset_id,
+            ConnectorRun.connector_id == str(connector_id or "").strip(),
+        )
+        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)  # type: ignore[attr-defined]
+        .distinct()
+        .order_by(DBDocument.created_at.desc())
+    )
+
+    max_docs = max(0, int(max_docs or 0))
+    if max_docs:
+        q = q.limit(max_docs)
+
+    now = _now()
+    disabled = 0
+    for doc in q.yield_per(200):
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+
+    return int(disabled)
+
+
 def _delta_sync_confluence_documents_acl_by_page_id(
     db: Session,
     *,
@@ -2177,6 +2230,8 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         created_doc_ids: list[UUID] = []
         delta_acl_docs_updated = 0
         delta_acl_sources_updated = 0
+        removed_documents_disabled = 0
+        removed_paths_reconciled = 0
 
         # Optional: source ACL inheritance (org teams -> tenant groups by external_id).
         source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
@@ -2254,9 +2309,16 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                     fallback_used=not bool(mapped_group_ids),
                 )
 
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+        tracked_paths = set(existing_manifest)
+        resume_cursor_raw = get_resume_cursor(state)
+
         tree = data.get("tree")
         items = tree if isinstance(tree, list) else []
         files: list[tuple[str, str]] = []
+        observed_tracked_paths: set[str] = set()
+        max_files_bound = max(1, min(max_files, 200))
         for it in items:
             if not isinstance(it, dict):
                 continue
@@ -2266,19 +2328,16 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
             if not p:
                 continue
             sha = str(it.get("sha") or "").strip()
+            if p in tracked_paths:
+                observed_tracked_paths.add(p)
             ext = Path(p).suffix.lower()
             if ext and ext not in include_set:
                 continue
-            if ext and ext in include_set:
+            if not ext and "" not in include_set:
+                continue
+            if len(files) < max_files_bound:
                 files.append((p, sha))
-            elif not ext and "" in include_set:
-                files.append((p, sha))
-            if len(files) >= max(1, min(max_files, 200)):
-                break
 
-        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
-        resume_cursor_raw = get_resume_cursor(state)
         is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
         effective_mode = "incremental" if existing_manifest else "full"
         delta_files: list[tuple[str, str]] = []
@@ -2289,9 +2348,10 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 continue
             delta_files.append((path, blob_sha))
 
+        removed_paths = sorted(tracked_paths - observed_tracked_paths) if effective_mode == "incremental" else []
         resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
         files_to_process, cursor_in = slice_items_from_cursor(delta_files, cursor=resume_cursor)
-        source_manifest_state = dict(existing_manifest)
+        source_manifest_state = {path: sha for path, sha in existing_manifest.items() if path not in removed_paths}
         processed_visible = skipped_unchanged + cursor_in
         stats0 = dict(run.stats or {})
         stats0.update(
@@ -2307,6 +2367,9 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 "failed_paths": [],
                 "cursor_in": int(cursor_in),
                 "resumed_from_state": bool(is_resume_run and ((effective_mode == "incremental") or cursor_in > 0)),
+                "removed_paths": int(len(removed_paths)),
+                "removed_paths_reconciled": int(removed_paths_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
                 "source_manifest": dict(source_manifest_state),
             }
         )
@@ -2413,6 +2476,9 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                         "document_ids": [str(d) for d in created_doc_ids],
                         "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                         "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                        "removed_paths": int(len(removed_paths)),
+                        "removed_paths_reconciled": int(removed_paths_reconciled),
+                        "removed_documents_disabled": int(removed_documents_disabled),
                         "source_manifest": dict(source_manifest_state),
                     }
                 )
@@ -2432,6 +2498,27 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 _sync_connector_config_from_run(db, run=run)
             return
 
+        if effective_mode == "incremental" and removed_paths:
+            for path in removed_paths:
+                raw_url = _github_raw_url(owner=owner, repo=repo_name, branch=branch, path=path)
+                try:
+                    disabled = _soft_disable_connector_documents_by_source_url(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=run.dataset_id,
+                        connector_id="github_repo",
+                        source_url=raw_url,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=path, exc=exc)
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    continue
+                removed_documents_disabled += int(disabled)
+                if disabled:
+                    removed_paths_reconciled += 1
+
         stats = dict(run.stats or {})
         stats.update(
             {
@@ -2441,6 +2528,9 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 "document_ids": [str(d) for d in created_doc_ids],
                 "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                 "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                "removed_paths": int(len(removed_paths)),
+                "removed_paths_reconciled": int(removed_paths_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
                 "source_manifest": dict(source_manifest_state),
             }
         )

@@ -78,6 +78,23 @@ def test_build_persisted_state_ignores_unknown_connector() -> None:
     assert state == {"keep": "me"}
 
 
+def test_build_persisted_state_overwrites_previous_manifest_with_explicit_empty_manifest() -> None:
+    from app.services.connector_sync_state import build_persisted_state
+
+    run_id = uuid.uuid4()
+
+    state = build_persisted_state(
+        connector_id="github_repo",
+        existing_state={"source_manifest": {"obsolete.md": "sha-old"}, "keep": "me"},
+        stats={"cursor": 0, "total_files": 0, "source_manifest": {}},
+        run_id=run_id,
+    )
+
+    assert state["keep"] == "me"
+    assert state["last_run_id"] == str(run_id)
+    assert state["source_manifest"] == {}
+
+
 def test_build_saved_state_snapshot_adds_revision_and_bounded_audit_history() -> None:
     from app.services.connector_sync_state import build_saved_state_snapshot
 

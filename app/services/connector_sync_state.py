@@ -88,9 +88,8 @@ def build_persisted_state(
             state["cursor"] = get_resume_cursor(stats_map)
             continue
         if key == "source_manifest":
-            manifest = normalize_source_manifest(stats_map.get("source_manifest"))
-            if manifest:
-                state["source_manifest"] = manifest
+            if "source_manifest" in stats_map:
+                state["source_manifest"] = normalize_source_manifest(stats_map.get("source_manifest"))
             continue
         value = stats_map.get(key)
         if value is None:
