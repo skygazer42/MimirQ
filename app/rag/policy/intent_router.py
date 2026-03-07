@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.rag.core.text import normalize_retrieval_mode
 
+_INTENT_ROUTER_POLICY_SCHEMA_V1 = "mimirq.intent_router_policy.v1"
+
 _INTENT_LOG_RE = re.compile(
     r"(traceback|stack\s*trace|exception|segfault|panic|fatal|caused\s+by|"
     r"\bSIG(?:SEGV|ABRT|BUS)\b|"
@@ -48,6 +50,22 @@ _INTENT_FAQ_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+_POLICY_ALLOWED_OVERRIDES = {
+    "retrieval_mode",
+    "retrieval_profile",
+    "top_k",
+    "score_threshold",
+    "enable_reranker",
+    "reranker_provider",
+    "reranker_top_n",
+    "enable_weight_rerank",
+    "enable_multi_query",
+    "enable_query_alias_expansion",
+    "vector_weight",
+    "keyword_weight",
+    "mmr_lambda",
+}
+
 
 def _bounded_reason_codes(reasons: List[str], *, max_items: int = 6) -> List[str]:
     out: List[str] = []
@@ -63,6 +81,167 @@ def _bounded_reason_codes(reasons: List[str], *, max_items: int = 6) -> List[str
         if len(out) >= max_items:
             break
     return out
+
+
+def _normalize_match_terms(raw: Any, *, max_items: int = 8) -> List[str]:
+    if not isinstance(raw, list):
+        return []
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        term = " ".join(str(item or "").strip().split())
+        if not term:
+            continue
+        key = term.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(term[:40])
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _coerce_policy_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    if text in {"true", "1", "yes", "on"}:
+        return True
+    if text in {"false", "0", "no", "off"}:
+        return False
+    return None
+
+
+def _coerce_policy_int(value: Any, *, minimum: int, maximum: int) -> int | None:
+    try:
+        iv = int(value) if value is not None else None
+    except Exception:
+        return None
+    if iv is None:
+        return None
+    return max(minimum, min(maximum, iv))
+
+
+def _coerce_policy_float(value: Any, *, minimum: float, maximum: float) -> float | None:
+    try:
+        fv = float(value) if value is not None else None
+    except Exception:
+        return None
+    if fv is None:
+        return None
+    return max(minimum, min(maximum, fv))
+
+
+def _sanitize_policy_overrides(raw: Any) -> Dict[str, Any]:
+    payload = raw if isinstance(raw, dict) else {}
+    out: Dict[str, Any] = {}
+    for key, value in payload.items():
+        name = str(key or "").strip()
+        if not name or name not in _POLICY_ALLOWED_OVERRIDES:
+            continue
+
+        if name == "retrieval_mode":
+            mode = normalize_retrieval_mode(value if value is not None else None)
+            if mode:
+                out[name] = mode
+            continue
+
+        if name == "retrieval_profile":
+            profile = str(value or "").strip().lower()
+            if profile in {"recall20", "recall50", "coverage80"}:
+                out[name] = profile
+            continue
+
+        if name == "top_k":
+            iv = _coerce_policy_int(value, minimum=1, maximum=200)
+            if iv is not None:
+                out[name] = iv
+            continue
+
+        if name == "reranker_top_n":
+            iv = _coerce_policy_int(value, minimum=1, maximum=200)
+            if iv is not None:
+                out[name] = iv
+            continue
+
+        if name in {"score_threshold", "vector_weight", "keyword_weight", "mmr_lambda"}:
+            fv = _coerce_policy_float(value, minimum=0.0, maximum=1.0)
+            if fv is not None:
+                out[name] = fv
+            continue
+
+        if name in {
+            "enable_reranker",
+            "enable_weight_rerank",
+            "enable_multi_query",
+            "enable_query_alias_expansion",
+        }:
+            bv = _coerce_policy_bool(value)
+            if bv is not None:
+                out[name] = bv
+            continue
+
+        if name == "reranker_provider":
+            provider = str(value or "").strip().lower()
+            if provider:
+                out[name] = provider[:40]
+
+    return out
+
+
+def normalize_intent_router_policy(policy: Any) -> Dict[str, Any] | None:
+    payload = policy if isinstance(policy, dict) else {}
+    schema = str(payload.get("schema") or "").strip()
+    if schema != _INTENT_ROUTER_POLICY_SCHEMA_V1:
+        return None
+
+    rules_raw = payload.get("rules")
+    if not isinstance(rules_raw, list):
+        return None
+
+    rules: List[Dict[str, Any]] = []
+    for item in rules_raw[:20]:
+        if not isinstance(item, dict):
+            continue
+        rule_id = str(item.get("rule_id") or "").strip()[:40]
+        if not rule_id:
+            continue
+        match_any = _normalize_match_terms(item.get("match_any"))
+        match_all = _normalize_match_terms(item.get("match_all"))
+        if not match_any and not match_all:
+            continue
+        overrides = _sanitize_policy_overrides(item.get("overrides"))
+        if not overrides:
+            continue
+        rules.append(
+            {
+                "rule_id": rule_id,
+                "match_any": match_any,
+                "match_all": match_all,
+                "overrides": overrides,
+            }
+        )
+
+    if not rules:
+        return None
+
+    return {"schema": _INTENT_ROUTER_POLICY_SCHEMA_V1, "rules": rules}
+
+
+def _query_matches_policy_rule(query: str, rule: Dict[str, Any]) -> bool:
+    q = str(query or "").casefold()
+    if not q:
+        return False
+
+    match_any = [str(x).casefold() for x in (rule.get("match_any") or []) if str(x or "").strip()]
+    match_all = [str(x).casefold() for x in (rule.get("match_all") or []) if str(x or "").strip()]
+
+    any_ok = True if not match_any else any(term in q for term in match_any)
+    all_ok = all(term in q for term in match_all)
+    return bool(any_ok and all_ok)
 
 
 def classify_query_intent(query: str) -> Tuple[str, List[str]]:
@@ -132,6 +311,7 @@ def route_retrieval_preset(
     enable_weight_rerank: bool,
     enable_multi_query: Optional[bool],
     enable_query_alias_expansion: Optional[bool],
+    intent_router_policy: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Return (overrides, meta) for intent-based retrieval routing.
@@ -169,6 +349,17 @@ def route_retrieval_preset(
         if not profile_norm:
             overrides["retrieval_profile"] = "recall50"
 
+    policy_rule_ids: List[str] = []
+    policy = normalize_intent_router_policy(intent_router_policy)
+    for rule in (policy or {}).get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+        if not _query_matches_policy_rule(query, rule):
+            continue
+        policy_rule_ids.append(str(rule.get("rule_id") or "")[:40])
+        for key, value in dict(rule.get("overrides") or {}).items():
+            overrides[str(key)] = value
+
     # Apply top_k/threshold contract when we changed (or already had) a supported profile.
     profile_effective = str(overrides.get("retrieval_profile") or profile_norm or "").strip().lower()
     if profile_effective in {"recall20", "recall50", "coverage80"}:
@@ -188,7 +379,8 @@ def route_retrieval_preset(
         "used": bool(overrides),
         "intent": intent,
         "reasons": reasons,
+        "policy_used": bool(policy_rule_ids),
+        "policy_rule_ids": policy_rule_ids,
         "overrides": sorted(list(overrides.keys())),
     }
     return overrides, meta
-

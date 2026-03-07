@@ -6,9 +6,8 @@ This module is the canonical home for the non-streaming LangGraph-based runner.
 
 Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decorators.
 """
-
-
 import concurrent.futures
+import hashlib
 import json
 import logging
 import time
@@ -73,6 +72,7 @@ class RAGState(TypedDict, total=False):
     retrieval_mode: str
     retrieval_profile: Optional[str]
     intent_router: Optional[bool]
+    intent_router_policy: Optional[Dict[str, Any]]
     enable_query_alias_expansion: Optional[bool]
     query_aliases: Optional[Dict[str, List[str]]]
     query_alias_max_queries: Optional[int]
@@ -150,6 +150,14 @@ def _retrieve_cache_key(state: Dict[str, Any]) -> str:
         embedding_space = current_embedding_space_hash()
     except Exception:
         embedding_space = ""
+    policy_json = ""
+    raw_policy = state.get("intent_router_policy")
+    if raw_policy is not None:
+        try:
+            policy_json = json.dumps(raw_policy, ensure_ascii=False, sort_keys=True, default=str)
+        except Exception:
+            policy_json = str(raw_policy)
+    policy_hash = hashlib.sha256(policy_json.encode("utf-8", errors="ignore")).hexdigest()[:16] if policy_json else ""
     key_obj = {
         "question": (state.get("question") or "")[:800],
         "history": history_text,
@@ -165,6 +173,8 @@ def _retrieve_cache_key(state: Dict[str, Any]) -> str:
         ),
         "retrieval_mode": str(state.get("retrieval_mode") or "hybrid"),
         "retrieval_profile": str(state.get("retrieval_profile") or ""),
+        "intent_router": state.get("intent_router"),
+        "intent_router_policy_hash": policy_hash,
         # Query expansion knobs affect retrieval results; include them to avoid cache collisions.
         "enable_query_alias_expansion": state.get("enable_query_alias_expansion"),
         "query_alias_max_queries": state.get("query_alias_max_queries"),
@@ -876,6 +886,7 @@ def build_rag_state(
     retrieval_mode: str = "hybrid",
     retrieval_profile: Optional[str] = None,
     intent_router: Optional[bool] = None,
+    intent_router_policy: Optional[Dict[str, Any]] = None,
     enable_query_alias_expansion: Optional[bool] = None,
     query_aliases: Optional[Dict[str, List[str]]] = None,
     query_alias_max_queries: Optional[int] = None,
@@ -914,6 +925,13 @@ def build_rag_state(
     """Build initial RAG graph state shared by run/stream entrypoints."""
 
     engine = get_rag_engine()
+    try:
+        from app.rag.policy.intent_router import normalize_intent_router_policy
+
+        intent_router_policy = normalize_intent_router_policy(intent_router_policy)
+    except Exception:
+        intent_router_policy = None
+
     preset_key = (structured_preset or "").lower()
     format_instructions = ""
     if structured_output:
@@ -1012,6 +1030,7 @@ def build_rag_state(
         "retrieval_mode": retrieval_mode,
         "retrieval_profile": retrieval_profile,
         "intent_router": intent_router,
+        "intent_router_policy": intent_router_policy,
         "enable_query_alias_expansion": enable_query_alias_expansion,
         "query_aliases": query_aliases,
         "query_alias_max_queries": query_alias_max_queries,

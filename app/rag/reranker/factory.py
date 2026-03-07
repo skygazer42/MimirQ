@@ -137,7 +137,64 @@ def get_reranker(
     elif provider in ("colbert", "late_interaction"):
         from app.rag.reranker.colbert import ColBERTReranker
 
-        return ColBERTReranker()
+        embedder = kwargs.get("embedder")
+        provider_name = str(
+            kwargs.get("provider_name")
+            or getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic")
+            or "deterministic"
+        ).strip().lower()
+        if provider_name not in {"deterministic", "hf"}:
+            provider_name = "deterministic"
+        resolved_model_name = str(
+            kwargs.get("colbert_model_name")
+            or model_name
+            or getattr(settings, "COLBERT_RERANK_MODEL_NAME", "")
+            or ""
+        ).strip()
+        device = str(kwargs.get("device") or getattr(settings, "COLBERT_RERANK_DEVICE", "cpu") or "cpu").strip() or "cpu"
+        batch_size = max(1, int(kwargs.get("batch_size") or getattr(settings, "COLBERT_RERANK_BATCH_SIZE", 16) or 16))
+        max_length = max(8, int(kwargs.get("max_length") or getattr(settings, "COLBERT_RERANK_MAX_LENGTH", 256) or 256))
+        deterministic_dim = max(
+            2,
+            int(kwargs.get("deterministic_dim") or getattr(settings, "COLBERT_RERANK_EMBED_DIM", 64) or 64),
+        )
+
+        if embedder is not None:
+            return ColBERTReranker(
+                provider_name=provider_name,
+                model_name=resolved_model_name,
+                device=device,
+                batch_size=batch_size,
+                max_length=max_length,
+                deterministic_dim=deterministic_dim,
+                embedder=embedder,
+            )
+
+        cache_key = _local_cache_key(
+            "colbert",
+            [
+                provider_name,
+                resolved_model_name,
+                device,
+                str(batch_size),
+                str(max_length),
+                str(deterministic_dim),
+            ],
+        )
+        with _local_reranker_lock:
+            cached = _local_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = ColBERTReranker(
+                provider_name=provider_name,
+                model_name=resolved_model_name,
+                device=device,
+                batch_size=batch_size,
+                max_length=max_length,
+                deterministic_dim=deterministic_dim,
+            )
+            _local_reranker_cache[cache_key] = inst
+            return inst
 
     # Learning-to-Rank reranker (local xgboost model).
     elif provider in ("ltr", "xgboost_ltr"):
