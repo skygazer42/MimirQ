@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import uuid
 
 
@@ -164,3 +165,65 @@ def test_delta_sync_confluence_documents_acl_by_page_id_fallback_scan_filters_do
     assert doc_match_attachment.doc_metadata.get("acl_provenance") == prov
     assert doc_other.doc_metadata.get("acl_provenance") is None
 
+
+def test_soft_disable_connector_documents_by_source_url_marks_docs_disabled(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    class _Doc:
+        def __init__(self, idx: int) -> None:
+            self.id = uuid.uuid4()
+            self.doc_metadata = {"idx": idx}
+            self.disabled_at = None
+
+    docs = [_Doc(1), _Doc(2)]
+
+    class _DummyQuery:
+        def __init__(self, docs_in):  # noqa: ANN001
+            self._docs = list(docs_in or [])
+            self._limit: int | None = None
+
+        def join(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def distinct(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def order_by(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def limit(self, n: int):  # noqa: ANN001
+            self._limit = int(n)
+            return self
+
+        def yield_per(self, _n: int):  # noqa: ANN001, ANN201
+            if self._limit is not None and self._limit > 0:
+                return list(self._docs)[: self._limit]
+            return list(self._docs)
+
+    class _DummyDB:
+        def __init__(self, docs_in):  # noqa: ANN001
+            self._docs = list(docs_in or [])
+
+        def query(self, _model):  # noqa: ANN001
+            return _DummyQuery(self._docs)
+
+    now = datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc)
+    dummy_db = _DummyDB(docs)
+    monkeypatch.setattr(connectors, "_now", lambda: now, raising=True)
+
+    updated = connectors._soft_disable_connector_documents_by_source_url(
+        dummy_db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        connector_id="github_repo",
+        source_url="https://raw.githubusercontent.com/acme/docs/main/obsolete.md",
+    )
+
+    assert updated == 2
+    assert all(doc.disabled_at == now for doc in docs)

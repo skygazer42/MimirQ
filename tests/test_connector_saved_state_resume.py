@@ -34,6 +34,7 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
         "ConnectorValidateResponse",
         "DriveFilesConnectorConfig",
         "GitHubRepoConnectorConfig",
+        "JiraProjectConnectorConfig",
         "MinioBucketConnectorConfig",
         "MySQLCatalogConnectorConfig",
         "SQLServerCatalogConnectorConfig",
@@ -449,6 +450,215 @@ async def test_execute_github_repo_run_incremental_partial_failure_only_advances
     assert int((run.stats or {}).get("created") or 0) == 1
     assert int((run.stats or {}).get("failed") or 0) == 1
     assert (run.stats or {}).get("source_manifest") == {"a.md": "sha-a-old", "b.md": "sha-b"}
+
+
+@pytest.mark.asyncio
+async def test_execute_github_repo_run_incremental_prunes_removed_paths_and_soft_disables_documents(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="github_repo",
+        config={
+            "repo": "acme/docs",
+            "branch": "main",
+            "max_files": 4,
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": "sha-a", "obsolete.md": "sha-obsolete"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _FakeGitHubResponse:
+        status_code = 200
+
+        def json(self):  # noqa: ANN201
+            return {
+                "tree": [
+                    {"type": "blob", "path": "a.md", "sha": "sha-a"},
+                    {"type": "blob", "path": "b.md", "sha": "sha-b"},
+                ]
+            }
+
+    class _FakeGitHubClient:
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def get(self, *_a, **_k):  # noqa: ANN202
+            return _FakeGitHubResponse()
+
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    removed_sources: list[str] = []
+
+    def _fake_soft_disable(_db, *, source_url: str, **_k):  # noqa: ANN001
+        removed_sources.append(source_url)
+        return 2
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_connector_documents_by_source_url",
+        _fake_soft_disable,
+        raising=False,
+    )
+
+    await connectors._execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://raw.githubusercontent.com/acme/docs/main/b.md"]
+    assert removed_sources == ["https://raw.githubusercontent.com/acme/docs/main/obsolete.md"]
+    assert int((run.stats or {}).get("removed_paths") or 0) == 1
+    assert int((run.stats or {}).get("removed_documents_disabled") or 0) == 2
+    assert int((run.stats or {}).get("removed_paths_reconciled") or 0) == 1
+    assert (run.stats or {}).get("source_manifest") == {"a.md": "sha-a", "b.md": "sha-b"}
+
+
+@pytest.mark.asyncio
+async def test_execute_github_repo_run_does_not_mark_tracked_paths_removed_when_now_filtered_by_extension(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="github_repo",
+        config={
+            "repo": "acme/docs",
+            "branch": "main",
+            "max_files": 4,
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"legacy.txt": "sha-legacy"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _FakeGitHubResponse:
+        status_code = 200
+
+        def json(self):  # noqa: ANN201
+            return {
+                "tree": [
+                    {"type": "blob", "path": "legacy.txt", "sha": "sha-legacy"},
+                    {"type": "blob", "path": "fresh.md", "sha": "sha-fresh"},
+                ]
+            }
+
+    class _FakeGitHubClient:
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def get(self, *_a, **_k):  # noqa: ANN202
+            return _FakeGitHubResponse()
+
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    removed_sources: list[str] = []
+
+    def _fake_soft_disable(_db, *, source_url: str, **_k):  # noqa: ANN001
+        removed_sources.append(source_url)
+        return 1
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_connector_documents_by_source_url",
+        _fake_soft_disable,
+        raising=False,
+    )
+
+    await connectors._execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://raw.githubusercontent.com/acme/docs/main/fresh.md"]
+    assert removed_sources == []
+    assert int((run.stats or {}).get("removed_paths") or 0) == 0
+    assert (run.stats or {}).get("source_manifest") == {"fresh.md": "sha-fresh", "legacy.txt": "sha-legacy"}
+
+
+@pytest.mark.asyncio
+async def test_execute_github_repo_run_does_not_mark_tracked_paths_removed_when_outside_max_files_window(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="github_repo",
+        config={
+            "repo": "acme/docs",
+            "branch": "main",
+            "max_files": 1,
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"z.md": "sha-z"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _FakeGitHubResponse:
+        status_code = 200
+
+        def json(self):  # noqa: ANN201
+            return {
+                "tree": [
+                    {"type": "blob", "path": "a.md", "sha": "sha-a"},
+                    {"type": "blob", "path": "z.md", "sha": "sha-z"},
+                ]
+            }
+
+    class _FakeGitHubClient:
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def get(self, *_a, **_k):  # noqa: ANN202
+            return _FakeGitHubResponse()
+
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    removed_sources: list[str] = []
+
+    def _fake_soft_disable(_db, *, source_url: str, **_k):  # noqa: ANN001
+        removed_sources.append(source_url)
+        return 1
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_connector_documents_by_source_url",
+        _fake_soft_disable,
+        raising=False,
+    )
+
+    await connectors._execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://raw.githubusercontent.com/acme/docs/main/a.md"]
+    assert removed_sources == []
+    assert int((run.stats or {}).get("removed_paths") or 0) == 0
+    assert (run.stats or {}).get("source_manifest") == {"a.md": "sha-a", "z.md": "sha-z"}
 
 
 @pytest.mark.asyncio

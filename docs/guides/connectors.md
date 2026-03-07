@@ -41,7 +41,7 @@
 当前内置 connector 的同步语义：
 
 - `url_batch`：支持 `supports_resume`，并利用 URL 列表去重做轻量增量保护。
-- `github_repo`：支持 `supports_incremental + supports_resume`；后续 run 会用 Git blob SHA manifest 跳过未变化文件。
+- `github_repo`：支持 `supports_incremental + supports_resume`；后续 run 会用 Git blob SHA manifest 跳过未变化文件，并在检测到 tracked path 已从仓库消失时剪掉 stale manifest entry。
 - `confluence_space`：支持 `supports_incremental`；后续 run 会基于 `last_modified` cursor 拉取更新页面。
 - `jira_project`：支持 `supports_incremental`；后续 run 会基于 issue `updated` cursor 只拉取新变更 issue，并默认使用 `jira_ticket` chunker。
 - `web_crawl` / `drive_files` / `minio_bucket`：当前仍以 `supports_resume` 为主，解决中断续跑，不把它们宣称为真正源增量。
@@ -178,6 +178,13 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 ### 5.3 `github_repo`：GitHub Repo 导入
 
 用途：通过 GitHub API 列出仓库文件，再用 `raw.githubusercontent.com` 拉取内容入库。
+
+增量同步行为补充：
+
+- `source_manifest` 会保存已成功处理的 `path -> blob_sha` 映射，后续 run 用它跳过未变化文件。
+- 如果某个 tracked path 已不再出现在当前仓库树中，run stats 和保存的 state 会把该 path 从 manifest 中剪掉。
+- 对于这类 removed path，系统会按 `doc_metadata.source_url` 对应的 connector-managed 文档做 **soft-disable**，而不是 hard delete。
+- 删除对账只作用于由同一个 `github_repo` connector 创建过的文档，不会误伤手工上传或其他 connector 写入的文档。
 
 示例（私有仓库/提高限额可用 Bearer token）：
 
