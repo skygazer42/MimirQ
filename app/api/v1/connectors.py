@@ -3496,6 +3496,96 @@ def _jira_issue_url(*, base_url: str, issue_key: str) -> str:
     return f"{base}/browse/{quote(key, safe='')}"
 
 
+def _soft_disable_jira_documents_missing_from_full_sync(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    seen_issue_urls: set[str],
+    connector_id: str = "jira_project",
+    max_docs_scan: int = 5000,
+) -> tuple[int, int]:
+    """
+    Best-effort soft-disable for Jira issue documents missing from a complete full sync.
+
+    Scope is limited to connector-managed Jira docs for the same tenant/dataset/base URL/project.
+    """
+    if dataset_id is None:
+        return 0, 0
+
+    base_url = str(base_url or "").strip().rstrip("/")
+    project_key = str(project_key or "").strip().upper()
+    connector_id = str(connector_id or "jira_project").strip() or "jira_project"
+    seen_urls = {
+        str(url or "").strip()
+        for url in (seen_issue_urls or set())
+        if str(url or "").strip()
+    }
+    if not base_url or not project_key:
+        return 0, 0
+
+    docs: list[Any]
+    try:
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == connector_id)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
+            .order_by(DBDocument.created_at.desc())
+            .all()
+        )
+    except Exception:
+        max_docs_scan = max(0, int(max_docs_scan or 0))
+        if max_docs_scan <= 0:
+            max_docs_scan = 5000
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .order_by(DBDocument.created_at.desc())
+            .limit(max_docs_scan)
+            .all()
+        )
+
+    now = _now()
+    disabled = 0
+    reconciled_issue_urls: set[str] = set()
+    for doc in docs or []:
+        if getattr(doc, "archived_at", None) is not None:
+            continue
+        meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+        conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+        if str(conn.get("connector_id") or "") != connector_id:
+            continue
+        if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+            continue
+        if str(conn.get("project_key") or "").strip().upper() != project_key:
+            continue
+
+        issue_url = str(conn.get("issue_url") or meta.get("source_url") or "").strip()
+        if not issue_url or issue_url in seen_urls:
+            continue
+
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            reconciled_issue_urls.add(issue_url)
+            disabled += 1
+
+    return len(reconciled_issue_urls), int(disabled)
+
+
 def _jira_jql_updated_after(raw: str | None) -> str:
     text = str(raw or "").strip()
     if not text:
@@ -4434,6 +4524,11 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         delta_acl_docs_updated = 0
         delta_acl_sources_updated = 0
         last_modified_seen: str | None = None
+        observed_issue_urls: set[str] = set()
+        removed_issues_reconciled = 0
+        removed_documents_disabled = 0
+        listing_complete = False
+        total_issues_available: int | None = None
 
         stats0 = dict(run.stats or {})
         stats0.update(
@@ -4452,6 +4547,8 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 "failed_urls": [],
                 "errors": [],
                 "error_groups": [],
+                "removed_issues_reconciled": 0,
+                "removed_documents_disabled": 0,
             }
         )
         if cursor_last_modified:
@@ -4476,17 +4573,23 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
             if str(run.status or "").lower() == "cancelled":
                 break
 
+            page_request_size = int(min(page_size, max_issues - processed))
             params = {
                 "jql": jql,
                 "startAt": int(start_at),
-                "maxResults": int(min(page_size, max_issues - processed)),
+                "maxResults": page_request_size,
                 "fields": "summary,description,updated,issuetype,priority,status,labels,comment,security",
                 "expand": "renderedFields",
             }
             resp = await _jira_request(pool, "GET", search_url, params=params, headers=headers)
             data = resp.json() if resp is not None else {}
+            total_raw = data.get("total") if isinstance(data, dict) else None
+            if isinstance(total_raw, (int, float)) and not isinstance(total_raw, bool):
+                total_issues_available = max(0, int(total_raw))
             issues = data.get("issues") if isinstance(data, dict) and isinstance(data.get("issues"), list) else []
             if not issues:
+                if total_issues_available is None or start_at >= total_issues_available:
+                    listing_complete = True
                 break
 
             for issue in issues:
@@ -4515,6 +4618,8 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                     db.commit()
                     processed += 1
                     continue
+
+                observed_issue_urls.add(issue_url)
 
                 try:
                     effective_access = access
@@ -4669,6 +4774,8 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                             "document_ids": [str(d) for d in created_doc_ids],
                             "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                             "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                            "removed_issues_reconciled": int(removed_issues_reconciled),
+                            "removed_documents_disabled": int(removed_documents_disabled),
                         }
                     )
                     if last_modified_seen:
@@ -4677,7 +4784,10 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                     db.commit()
 
             start_at += int(len(issues))
-            if len(issues) < page_size:
+            if total_issues_available is not None and start_at >= total_issues_available:
+                listing_complete = True
+            if len(issues) < page_request_size:
+                listing_complete = True
                 break
 
         try:
@@ -4693,12 +4803,30 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 _sync_connector_config_from_run(db, run=run)
             return
 
+        if effective_mode == "full" and run.dataset_id and listing_complete:
+            try:
+                removed_issues_reconciled, removed_documents_disabled = _soft_disable_jira_documents_missing_from_full_sync(
+                    db,
+                    tenant_id=tenant_id,
+                    dataset_id=run.dataset_id,
+                    base_url=base_url,
+                    project_key=project_key,
+                    seen_issue_urls=observed_issue_urls,
+                )
+            except Exception as exc:  # noqa: BLE001
+                stats = dict(run.stats or {})
+                stats = _append_connector_error(stats, url=f"jira://{project_key}", exc=exc)
+                run.stats = _finalize_connector_stats(stats)
+                db.commit()
+
         stats = dict(run.stats or {})
         stats.update(
             {
                 "document_ids": [str(d) for d in created_doc_ids],
                 "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                 "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                "removed_issues_reconciled": int(removed_issues_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
             }
         )
         run.stats = _finalize_connector_stats(stats)
