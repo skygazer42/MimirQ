@@ -98,6 +98,48 @@ def test_connectors_validate_redacts_password(monkeypatch):  # noqa: ANN001
     assert (body.get("config") or {}).get("password") == "<redacted>"
 
 
+def test_connectors_validate_accepts_jira_config_and_redacts_password(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors_module, "_unknown_tenant_groups", lambda *_a, **_k: [], raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/validate")(connectors_module.validate_connector_config)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/validate",
+        json={
+            "connector_id": "jira_project",
+            "config": {
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "auth": {"type": "basic", "username": "bot@example.com", "password": "secret"},
+                "source_acl": {
+                    "mode": "inherit",
+                    "group_mappings": [
+                        {
+                            "source": {"system": "jira", "kind": "policy", "id": "security-level/10001"},
+                            "group_id": str(uuid.uuid4()),
+                        }
+                    ],
+                },
+            },
+            "check_connectivity": True,
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("ok") is True
+    assert (body.get("config") or {}).get("auth", {}).get("password") == "<redacted>"
+    assert (body.get("config") or {}).get("chunk_strategy") == "jira_ticket"
+    assert (body.get("checks") or {}).get("jira_project", {}).get("project_key") == "PLAT"
+
+
 def test_connectors_validate_rejects_unknown_source_acl_groups(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors_module
 

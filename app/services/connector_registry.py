@@ -58,6 +58,13 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
         supports_incremental=True,
         state_keys=("last_modified",),
     ),
+    "jira_project": ConnectorDefinition(
+        connector_id="jira_project",
+        name="Jira Project 导入",
+        description="从 Jira Cloud 项目拉取 issue 并入库（支持增量 updated cursor；配置中的 Token/Password 会被加密存储并在响应中脱敏）",
+        supports_incremental=True,
+        state_keys=("last_modified",),
+    ),
     "sqlserver_catalog": ConnectorDefinition(
         connector_id="sqlserver_catalog",
         name="SQLServer Catalog 导入",

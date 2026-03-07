@@ -6,6 +6,7 @@
 
 - 批量导入多个 URL / 站点抓取（web crawl）
 - 导入 GitHub Repo 内的文档文件（README/markdown/pdf 等）
+- 导入 Jira Cloud 项目中的 issues / comments（企业知识库常见高价值源）
 - 导入 Google Drive 分享链接指向的文件
 - 从 MinIO/S3 Bucket 批量导入对象文件
 - 从 MySQL / SQLServer 同步 schema/table/column 目录（Catalog）与安全画像（仅聚合统计，不外发原始行）
@@ -42,6 +43,7 @@
 - `url_batch`：支持 `supports_resume`，并利用 URL 列表去重做轻量增量保护。
 - `github_repo`：支持 `supports_incremental + supports_resume`；后续 run 会用 Git blob SHA manifest 跳过未变化文件。
 - `confluence_space`：支持 `supports_incremental`；后续 run 会基于 `last_modified` cursor 拉取更新页面。
+- `jira_project`：支持 `supports_incremental`；后续 run 会基于 issue `updated` cursor 只拉取新变更 issue，并默认使用 `jira_ticket` chunker。
 - `web_crawl` / `drive_files` / `minio_bucket`：当前仍以 `supports_resume` 为主，解决中断续跑，不把它们宣称为真正源增量。
 
 ### 2.1.2 Saved State Contract
@@ -240,7 +242,52 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 }
 ```
 
-### 5.6 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
+### 5.6 `jira_project`：Jira Cloud Project 导入
+
+用途：从 Jira Cloud 项目按 issue 粒度同步工单，并把 issue 描述、关键字段、评论渲染成结构化 HTML 文档入库。
+
+为什么优先补 Jira：
+
+- 在企业知识库场景里，Jira 通常比 Notion/Slack/SharePoint 更直接承载“需求、缺陷、决策、交付状态”等高价值知识
+- 当前系统已经内置 `jira_ticket` chunker，因此首个企业 SaaS connector 做 Jira 的实现成本和检索质量都更优
+
+当前范围与边界：
+
+- 聚焦 **Jira Cloud 项目 issue 同步**，不是完整 Jira 平台镜像
+- 支持 `sync_mode=auto|full|incremental`
+- 默认 `chunk_strategy="jira_ticket"`，以更好地按 Summary / Description / Comments 等段落切分
+- 可选拉取 comments；ACL 继承基于 issue security level 与 comment visibility 的 best-effort 外部映射
+
+示例：
+
+```json
+{
+  "connector_id": "jira_project",
+  "dataset_id": "00000000-0000-0000-0000-000000000000",
+  "config": {
+    "base_url": "https://example.atlassian.net",
+    "project_key": "PLAT",
+    "jql": "statusCategory != Done",
+    "auth": { "type": "basic", "username": "bot@example.com", "password": "jira_api_token" },
+    "sync_mode": "auto",
+    "max_issues": 200,
+    "page_size": 50,
+    "include_comments": true,
+    "max_comments_per_issue": 20,
+    "parser_backend": "auto",
+    "chunk_strategy": "jira_ticket",
+    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }
+  }
+}
+```
+
+运维提示：
+
+- `base_url` 应填站点根 URL，例如 `https://<site>.atlassian.net`
+- `basic` 模式通常使用 Atlassian 账号邮箱 + API token
+- 若启用 `source_acl`，建议先准备好与 Jira security level / role / group 对应的 `tenant_groups.external_id`
+
+### 5.7 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
 
 用途：同步 schema/table/column 的目录信息，并可选做 **安全画像**（聚合统计）用于治理与检索侧“理解数据形态”。
 
