@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from typing import Any, Optional
+from uuid import UUID
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
+from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 
 logger = get_logger("chat.cache")
 
@@ -67,6 +70,7 @@ def build_chat_cache_key(
     structured_output: bool,
     structured_preset: str | None,
     use_graph: bool,
+    corpus_cache_token: str | None = None,
 ) -> str:
     """
     Build a stable Redis key for a chat request.
@@ -84,6 +88,7 @@ def build_chat_cache_key(
         # Bind to the current embedding "space" (provider/model/base_url) so a model
         # change can't serve stale cached responses.
         "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
+        "corpus_cache_token": str(corpus_cache_token or "") or None,
         "doc_scope": _hash_doc_scope(document_ids),
         "doc_count": len([d for d in document_ids if d]),
         "question": (question or "").strip(),
@@ -97,6 +102,54 @@ def build_chat_cache_key(
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     digest = hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
     return f"{prefix}:{tenant_id}:{digest}"
+
+
+def resolve_chat_response_cache_key(
+    *,
+    db: Any,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+    document_ids: Sequence[UUID] | None,
+    question: str,
+    rag_config: dict[str, Any],
+    prompt_config: dict[str, Any],
+    structured_output: bool,
+    structured_preset: str | None,
+    use_graph: bool,
+) -> tuple[str | None, str | None]:
+    doc_ids = [doc_id for doc_id in (document_ids or []) if doc_id is not None]
+    scope_dataset_id = dataset_id if dataset_id is not None else None
+    if not doc_ids and scope_dataset_id is None:
+        return None, "missing_scope"
+
+    corpus_cache_token = resolve_corpus_cache_token(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=scope_dataset_id,
+        document_ids=doc_ids,
+    )
+    if not corpus_cache_token:
+        return None, "missing_corpus_cache_token"
+
+    try:
+        key = build_chat_cache_key(
+            tenant_id=str(tenant_id),
+            account_id=str(account_id or ""),
+            dataset_id=str(scope_dataset_id) if scope_dataset_id is not None else None,
+            document_ids=[str(doc_id) for doc_id in doc_ids],
+            question=question,
+            rag_config=rag_config,
+            prompt_config=prompt_config,
+            structured_output=bool(structured_output),
+            structured_preset=structured_preset,
+            use_graph=bool(use_graph),
+            corpus_cache_token=corpus_cache_token,
+        )
+    except Exception:
+        return None, "build_error"
+
+    return key, None
 
 
 def get_cached_chat_response(key: str) -> Optional[dict[str, Any]]:
