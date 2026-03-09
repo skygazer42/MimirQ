@@ -271,7 +271,7 @@ type ApiRequestOptions = {
   signal?: AbortSignal
 }
 
-const apiClient = axios.create({
+export const apiClient = axios.create({
   baseURL: API_V1_BASE_URL,
   timeout: API_TIMEOUT_MS,
 })
