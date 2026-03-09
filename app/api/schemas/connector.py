@@ -4,6 +4,7 @@ Connector-related Pydantic schemas.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
@@ -376,6 +377,10 @@ class JiraProjectConnectorConfig(BaseModel):
     page_size: int = Field(default=25, ge=1, le=100)
     include_comments: bool = Field(default=True, description="If true, include issue comments in the rendered HTML document.")
     max_comments_per_issue: int = Field(default=20, ge=0, le=200)
+    custom_fields: List[str] = Field(
+        default_factory=list,
+        description="Optional: allowlist additional Jira custom fields to fetch and include in the rendered issue document. Example: customfield_10016",
+    )
     include_attachments: bool = Field(default=False, description="If true, list and ingest issue attachments (bounded).")
     max_attachments_per_issue: int = Field(default=10, ge=1, le=50, description="Max attachments ingested per issue (bounded).")
     max_total_attachments: int = Field(default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded).")
@@ -395,6 +400,28 @@ class JiraProjectConnectorConfig(BaseModel):
         if self.jql is not None:
             jql = str(self.jql or "").strip()
             self.jql = jql or None
+        if self.custom_fields is None:
+            self.custom_fields = []
+
+        cf_seen: set[str] = set()
+        cf_norm: list[str] = []
+        for raw in self.custom_fields or []:
+            if raw is None:
+                continue
+            key = str(raw or "").strip().lower()
+            if not key:
+                continue
+            if len(key) > 80:
+                continue
+            if not re.fullmatch(r"customfield_\d+", key):
+                continue
+            if key in cf_seen:
+                continue
+            cf_seen.add(key)
+            cf_norm.append(key)
+            if len(cf_norm) >= 30:
+                break
+        self.custom_fields = cf_norm
 
         if not self.base_url:
             raise ValueError("base_url is required")

@@ -404,6 +404,109 @@ def test_jira_render_issue_html_contains_ticket_sections():  # noqa: ANN001
     assert "Comment body" in html
 
 
+def test_jira_render_issue_html_falls_back_to_rich_adf_rendering():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    issue = {
+        "id": "10000",
+        "key": "PLAT-99",
+        "fields": {
+            "summary": "ADF rendering smoke test",
+            "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": "See "},
+                            {
+                                "type": "text",
+                                "text": "docs",
+                                "marks": [{"type": "link", "attrs": {"href": "https://example.com/docs"}}],
+                            },
+                            {"type": "text", "text": " for details."},
+                        ],
+                    },
+                    {
+                        "type": "bulletList",
+                        "content": [
+                            {
+                                "type": "listItem",
+                                "content": [
+                                    {"type": "paragraph", "content": [{"type": "text", "text": "First item"}]}
+                                ],
+                            },
+                            {
+                                "type": "listItem",
+                                "content": [
+                                    {"type": "paragraph", "content": [{"type": "text", "text": "Second item"}]}
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+            "updated": "2026-03-02T12:34:56.000+0000",
+            "issuetype": {"name": "Task"},
+            "priority": {"name": "Medium"},
+            "status": {"name": "Open"},
+            "labels": [],
+            "comment": {"comments": []},
+        },
+        # Intentionally omit renderedFields so description must use the ADF fallback.
+    }
+
+    html = connectors._jira_render_issue_html(
+        base_url="https://example.atlassian.net",
+        issue=issue,
+        include_comments=False,
+        max_comments=0,
+    )
+
+    assert 'href="https://example.com/docs"' in html
+    assert "<ul>" in html
+    assert "First item" in html
+    assert "Second item" in html
+
+
+def test_jira_render_issue_html_includes_selected_custom_fields():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    issue = {
+        "id": "10000",
+        "key": "PLAT-123",
+        "fields": {
+            "summary": "Render custom fields",
+            "description": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Body"}]}]},
+            "updated": "2026-03-02T12:34:56.000+0000",
+            "issuetype": {"name": "Task"},
+            "priority": {"name": "Medium"},
+            "status": {"name": "Open"},
+            "labels": [],
+            "comment": {"comments": []},
+            # Custom fields are only present when explicitly fetched via the Jira fields=... allowlist.
+            "customfield_10016": {"value": "Customer impact: high"},
+            "customfield_10017": ["alpha", "beta"],
+        },
+        "renderedFields": {},
+    }
+
+    html = connectors._jira_render_issue_html(
+        base_url="https://example.atlassian.net",
+        issue=issue,
+        include_comments=False,
+        max_comments=0,
+    )
+
+    assert "Custom Fields" in html
+    assert "customfield_10016" in html
+    assert "Customer impact: high" in html
+    assert "customfield_10017" in html
+    assert "alpha" in html
+    assert "beta" in html
+
+
 def test_sync_connector_config_from_run_persists_last_modified():  # noqa: ANN001
     connectors = _import_connectors_with_lightweight_stubs()
 

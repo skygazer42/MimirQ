@@ -3888,16 +3888,217 @@ def _jira_adf_to_text(value: object) -> str:
     return text
 
 
+def _jira_adf_is_doc(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return str(value.get("type") or "").strip().lower() == "doc" and isinstance(value.get("content"), list)
+
+
+def _jira_adf_text_node_html(value: dict) -> str:
+    text = html.escape(str(value.get("text") or ""))
+
+    marks = value.get("marks") if isinstance(value.get("marks"), list) else []
+    for mark in marks:
+        if not isinstance(mark, dict):
+            continue
+        mtype = str(mark.get("type") or "").strip().lower()
+        if mtype == "link":
+            attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
+            href = str(attrs.get("href") or "").strip()
+            if href.startswith(("http://", "https://", "mailto:")):
+                text = f'<a href="{html.escape(href)}">{text}</a>'
+            continue
+        if mtype == "strong":
+            text = f"<strong>{text}</strong>"
+            continue
+        if mtype == "em":
+            text = f"<em>{text}</em>"
+            continue
+        if mtype == "code":
+            text = f"<code>{text}</code>"
+            continue
+        if mtype in {"strike", "strikethrough"}:
+            text = f"<s>{text}</s>"
+            continue
+
+    return text
+
+
+def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
+    if depth > 50:
+        return ""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return html.escape(value)
+    if isinstance(value, list):
+        return "\n".join(
+            part for part in (_jira_adf_node_to_html(item, depth=depth + 1) for item in value) if part
+        )
+    if not isinstance(value, dict):
+        return html.escape(str(value))
+
+    node_type = str(value.get("type") or "").strip().lower()
+    content = value.get("content")
+    child_items = content if isinstance(content, list) else []
+
+    if node_type == "text":
+        return _jira_adf_text_node_html(value)
+    if node_type == "hardbreak":
+        return "<br />"
+
+    if node_type == "paragraph":
+        inner = "".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        return f"<p>{inner}</p>"
+
+    if node_type == "heading":
+        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+        try:
+            level = int(attrs.get("level") or 3)
+        except Exception:
+            level = 3
+        level = max(1, min(level, 6))
+        inner = "".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        # Keep ADF headings slightly lower in the document hierarchy to avoid competing with issue-level headings.
+        safe_level = min(6, max(3, level + 1))
+        return f"<h{safe_level}>{inner}</h{safe_level}>"
+
+    if node_type == "blockquote":
+        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        return f"<blockquote>{inner}</blockquote>"
+
+    if node_type == "rule":
+        return "<hr />"
+
+    if node_type in {"bulletlist", "orderedlist"}:
+        tag = "ul" if node_type == "bulletlist" else "ol"
+        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        return f"<{tag}>{inner}</{tag}>"
+
+    if node_type == "listitem":
+        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        return f"<li>{inner}</li>"
+
+    if node_type == "codeblock":
+        # Render as plain escaped text to preserve code fidelity.
+        code_text = _jira_adf_to_text(value).strip("\n")
+        if not code_text.strip():
+            return ""
+        return f"<pre><code>{html.escape(code_text)}</code></pre>"
+
+    if node_type == "table":
+        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        return f"<table><tbody>{inner}</tbody></table>"
+
+    if node_type == "tablerow":
+        inner = "".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        return f"<tr>{inner}</tr>"
+
+    if node_type in {"tablecell", "tableheader"}:
+        tag = "th" if node_type == "tableheader" else "td"
+        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+        if not inner:
+            return ""
+        return f"<{tag}>{inner}</{tag}>"
+
+    if node_type == "inlinecard":
+        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+        url = str(attrs.get("url") or "").strip()
+        if url.startswith(("http://", "https://")):
+            esc = html.escape(url)
+            return f'<a href="{esc}">{esc}</a>'
+        return html.escape(url) if url else ""
+
+    if node_type == "mention":
+        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+        text = str(attrs.get("text") or attrs.get("displayName") or "").strip()
+        if text:
+            return html.escape(text)
+        return ""
+
+    if node_type == "emoji":
+        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+        text = str(attrs.get("text") or attrs.get("shortName") or "").strip()
+        if text:
+            return html.escape(text)
+        return ""
+
+    # Fallback: render children.
+    return "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+
+
+def _jira_adf_to_html(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return "\n".join(f"<p>{html.escape(line.strip())}</p>" for line in value.splitlines() if line.strip())
+    if isinstance(value, dict) and not _jira_adf_is_doc(value):
+        # Accept rendering of a node (not only doc root) as a best-effort helper.
+        return _jira_adf_node_to_html(value)
+    return _jira_adf_node_to_html(value)
+
+
+def _jira_value_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if _jira_adf_is_doc(value):
+        return _jira_adf_to_text(value)
+    if isinstance(value, list):
+        parts = [(_jira_value_to_text(item) or "").strip() for item in value]
+        parts = [p for p in parts if p]
+        return ", ".join(parts)
+    if isinstance(value, dict):
+        for k in ("displayName", "name", "value", "key", "title", "summary"):
+            raw = value.get(k)
+            if raw is None:
+                continue
+            if isinstance(raw, (str, int, float, bool)):
+                text = str(raw).strip()
+                if text:
+                    return text
+        return ""
+    return str(value).strip()
+
+
+def _jira_html_from_value(raw: object) -> str:
+    if raw is None:
+        return ""
+    if _jira_adf_is_doc(raw):
+        return _jira_adf_to_html(raw)
+    text = _jira_value_to_text(raw).strip()
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(f"<p>{html.escape(line)}</p>" for line in lines)
+
+
 def _jira_html_from_field(*, rendered: object, raw: object) -> str:
     rendered_text = str(rendered or "").strip() if isinstance(rendered, str) else ""
     if rendered_text:
         return rendered_text
 
-    plain = _jira_adf_to_text(raw).strip()
-    if not plain:
-        return ""
-    lines = [line.strip() for line in plain.splitlines() if line.strip()]
-    return "\n".join(f"<p>{html.escape(line)}</p>" for line in lines)
+    if _jira_adf_is_doc(raw):
+        return _jira_adf_to_html(raw)
+
+    return _jira_html_from_value(raw)
 
 
 def _jira_issue_url(*, base_url: str, issue_key: str) -> str:
@@ -4089,6 +4290,32 @@ def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: boo
         parts.append(f"  <p><strong>Updated:</strong> {html.escape(updated)}</p>")
     if label_text:
         parts.append(f"  <p><strong>Labels:</strong> {html.escape(label_text)}</p>")
+
+    custom_fields: list[tuple[str, object]] = []
+    for k, v in (fields or {}).items():
+        key = str(k or "").strip()
+        if not key.startswith("customfield_"):
+            continue
+        custom_fields.append((key, v))
+    custom_fields.sort(key=lambda item: item[0])
+
+    custom_field_sections: list[str] = []
+    for key, raw_value in custom_fields:
+        value_html = _jira_html_from_field(
+            rendered=rendered.get(key),
+            raw=raw_value,
+        )
+        if not value_html:
+            continue
+        custom_field_sections.append(
+            "<article>"
+            f"<h3>{html.escape(key)}</h3>"
+            f"{value_html}"
+            "</article>"
+        )
+
+    if custom_field_sections:
+        parts.extend(["  <h2>Custom Fields</h2>", *custom_field_sections])
 
     if description_html:
         parts.extend(["  <h2>Description</h2>", description_html])
@@ -4928,6 +5155,24 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         include_comments = bool(cfg.get("include_comments", True))
         max_comments_per_issue = int(cfg.get("max_comments_per_issue") or 20)
         max_comments_per_issue = max(0, min(max_comments_per_issue, 200))
+        custom_fields_raw = cfg.get("custom_fields")
+        custom_fields_in = custom_fields_raw if isinstance(custom_fields_raw, list) else []
+        custom_fields: list[str] = []
+        custom_fields_seen: set[str] = set()
+        for raw in custom_fields_in:
+            key = str(raw or "").strip().lower()
+            if not key:
+                continue
+            if len(key) > 80:
+                continue
+            if not re.fullmatch(r"customfield_\d+", key):
+                continue
+            if key in custom_fields_seen:
+                continue
+            custom_fields_seen.add(key)
+            custom_fields.append(key)
+            if len(custom_fields) >= 30:
+                break
         include_attachments, max_attachments_per_issue, max_total_attachments = _jira_attachment_limits(cfg)
 
         parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
@@ -5031,7 +5276,21 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 "jql": jql,
                 "startAt": int(start_at),
                 "maxResults": page_request_size,
-                "fields": "summary,description,updated,issuetype,priority,status,labels,comment,security,attachment",
+                "fields": ",".join(
+                    [
+                        "summary",
+                        "description",
+                        "updated",
+                        "issuetype",
+                        "priority",
+                        "status",
+                        "labels",
+                        "comment",
+                        "security",
+                        "attachment",
+                        *custom_fields,
+                    ]
+                ),
                 "expand": "renderedFields",
             }
             resp = await _jira_request(pool, "GET", search_url, params=params, headers=headers)
