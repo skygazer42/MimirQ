@@ -2436,6 +2436,96 @@ def _soft_disable_jira_attachment_documents_missing_from_issue(
     return int(disabled)
 
 
+def _soft_disable_jira_linked_artifact_documents_missing_from_issue(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    seen_link_urls: set[str],
+    max_docs_scan: int = 5000,
+) -> int:
+    """
+    Best-effort soft-disable for Jira linked-artifact docs missing from a processed issue.
+    """
+    if dataset_id is None:
+        return 0
+
+    base_url = str(base_url or "").strip().rstrip("/")
+    project_key = str(project_key or "").strip().upper()
+    issue_url = str(issue_url or "").strip()
+    seen_urls = {
+        str(url or "").strip()
+        for url in (seen_link_urls or set())
+        if str(url or "").strip()
+    }
+    if not base_url or not project_key or not issue_url:
+        return 0
+
+    docs: list[Any]
+    try:
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "jira_project")  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["doc_kind"].astext == "linked_artifact")  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["issue_url"].astext == issue_url)  # type: ignore[attr-defined]
+            .order_by(DBDocument.created_at.desc())
+            .all()
+        )
+    except Exception:
+        max_docs_scan = max(0, int(max_docs_scan or 0))
+        if max_docs_scan <= 0:
+            max_docs_scan = 5000
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .order_by(DBDocument.created_at.desc())
+            .limit(max_docs_scan)
+            .all()
+        )
+
+    now = _now()
+    disabled = 0
+    for doc in docs or []:
+        meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+        conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+        if str(conn.get("connector_id") or "") != "jira_project":
+            continue
+        if str(conn.get("doc_kind") or "") != "linked_artifact":
+            continue
+        if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+            continue
+        if str(conn.get("project_key") or "").strip().upper() != project_key:
+            continue
+        if str(conn.get("issue_url") or "").strip() != issue_url:
+            continue
+
+        link_url = str(conn.get("link_url") or meta.get("source_url") or "").strip()
+        if not link_url or link_url in seen_urls:
+            continue
+
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+
+    return int(disabled)
+
+
 async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for github_repo connector.
@@ -3668,6 +3758,24 @@ def _jira_attachment_limits(cfg: dict) -> tuple[bool, int, int]:
     return include, per_issue, total
 
 
+def _jira_linked_artifact_limits(cfg: dict) -> tuple[bool, int, int]:
+    """
+    Parse and clamp Jira linked-artifact ingestion limits from a raw config dict.
+
+    Linked artifacts are URL-like resources referenced by an issue (e.g. Confluence pages, PRs).
+    """
+    raw = cfg if isinstance(cfg, dict) else {}
+    include = bool(raw.get("include_linked_artifacts", False))
+
+    per_issue = int(raw.get("max_linked_artifacts_per_issue") or 10)
+    per_issue = max(1, min(per_issue, 50))
+
+    total = int(raw.get("max_total_linked_artifacts") or 200)
+    total = max(1, min(total, 2000))
+
+    return include, per_issue, total
+
+
 def _jira_extract_attachments(issue: dict, *, limit: int) -> list[dict[str, str]]:
     """
     Extract Jira issue attachment refs from the issue payload.
@@ -3717,6 +3825,144 @@ def _jira_extract_attachments(issue: dict, *, limit: int) -> list[dict[str, str]
     return out
 
 
+def _jira_extract_urls_from_text(value: object, *, limit: int) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+
+    lim = int(limit or 0)
+    if lim <= 0:
+        lim = 10_000
+
+    # Simple URL matcher: good enough for connector-side enrichment (ingest pipeline still validates).
+    url_re = re.compile(r"https?://[^\s<>\")\]]+", flags=re.IGNORECASE)
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in url_re.finditer(text):
+        url = str(m.group(0) or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append(url)
+        if len(out) >= lim:
+            break
+    return out
+
+
+def _jira_extract_urls_from_adf(value: object, *, limit: int) -> list[str]:
+    lim = int(limit or 0)
+    if lim <= 0:
+        lim = 10_000
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _push(raw: object) -> None:
+        if len(out) >= lim:
+            return
+        url = str(raw or "").strip()
+        if not url:
+            return
+        if not url.lower().startswith(("http://", "https://")):
+            return
+        if url in seen:
+            return
+        seen.add(url)
+        out.append(url)
+
+    def _walk(node: object, *, depth: int = 0) -> None:
+        if len(out) >= lim or depth > 60:
+            return
+        if node is None:
+            return
+        if isinstance(node, str):
+            for u in _jira_extract_urls_from_text(node, limit=lim - len(out)):
+                _push(u)
+            return
+        if isinstance(node, list):
+            for item in node:
+                _walk(item, depth=depth + 1)
+            return
+        if not isinstance(node, dict):
+            return
+
+        node_type = str(node.get("type") or "").strip().lower()
+        if node_type == "text":
+            marks = node.get("marks") if isinstance(node.get("marks"), list) else []
+            for mark in marks:
+                if not isinstance(mark, dict):
+                    continue
+                if str(mark.get("type") or "").strip().lower() != "link":
+                    continue
+                attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
+                _push(attrs.get("href"))
+        elif node_type == "inlinecard":
+            attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+            _push(attrs.get("url"))
+
+        content = node.get("content")
+        items = content if isinstance(content, list) else []
+        for item in items:
+            _walk(item, depth=depth + 1)
+
+    _walk(value)
+    return out
+
+
+def _jira_extract_linked_artifact_urls(issue: dict, *, include_comments: bool, max_comments: int, limit: int) -> list[str]:
+    """
+    Extract linked artifact URLs referenced by the issue payload.
+
+    This is best-effort and intentionally bounded/deterministic.
+    """
+    if not isinstance(issue, dict):
+        return []
+
+    lim = int(limit or 0)
+    if lim <= 0:
+        lim = 10_000
+
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _extend(urls: list[str]) -> None:
+        nonlocal out
+        for url in urls:
+            if len(out) >= lim:
+                return
+            u = str(url or "").strip()
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            out.append(u)
+
+    desc = fields.get("description")
+    if _jira_adf_is_doc(desc):
+        _extend(_jira_extract_urls_from_adf(desc, limit=lim - len(out)))
+    else:
+        _extend(_jira_extract_urls_from_text(desc, limit=lim - len(out)))
+
+    if include_comments:
+        comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
+        comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
+        lim_comments = max(0, int(max_comments or 0))
+        for comment in comment_items[:lim_comments]:
+            if len(out) >= lim:
+                break
+            if not isinstance(comment, dict):
+                continue
+            body = comment.get("body")
+            if _jira_adf_is_doc(body):
+                _extend(_jira_extract_urls_from_adf(body, limit=lim - len(out)))
+            else:
+                _extend(_jira_extract_urls_from_text(body, limit=lim - len(out)))
+
+    # Stable/deterministic ordering: sort for reconciliation + ingestion reproducibility.
+    out_sorted = sorted(out)
+    return out_sorted[:lim]
+
+
 def _jira_attachment_connector_metadata(
     *,
     base_url: str,
@@ -3748,6 +3994,58 @@ def _jira_attachment_connector_metadata(
         "mode": str(mode or "").strip(),
     }
 
+
+def _jira_linked_artifact_connector_metadata(
+    *,
+    base_url: str,
+    project_key: str,
+    issue_id: str | None,
+    issue_key: str | None,
+    issue_url: str,
+    link_url: str,
+    run_id: str,
+    mode: str,
+) -> dict[str, Any]:
+    """
+    Build doc_metadata.connector for a Jira linked-artifact document.
+
+    Linked artifacts are URL-derived child documents that inherit issue-scoped ACL.
+    """
+    return {
+        "connector_id": "jira_project",
+        "doc_kind": "linked_artifact",
+        "base_url": str(base_url or "").strip(),
+        "project_key": str(project_key or "").strip().upper(),
+        "issue_id": (str(issue_id or "").strip() or None),
+        "issue_key": (str(issue_key or "").strip() or None),
+        "issue_url": str(issue_url or "").strip(),
+        "link_url": str(link_url or "").strip(),
+        "run_id": str(run_id or "").strip(),
+        "mode": str(mode or "").strip(),
+    }
+
+
+def _jira_should_send_auth_headers(*, base_url: str, url: str) -> bool:
+    """
+    Decide whether it's safe to attach Jira auth headers when fetching `url`.
+
+    We only send headers to the same origin as the Jira base URL to avoid leaking
+    credentials to third-party sites.
+    """
+    base = str(base_url or "").strip()
+    target = str(url or "").strip()
+    if not base or not target:
+        return False
+    try:
+        b = urlparse(base)
+        u = urlparse(target)
+    except Exception:
+        return False
+    if not b.scheme or not b.netloc or not u.scheme or not u.netloc:
+        return False
+    if str(u.scheme or "").lower() not in {"http", "https"}:
+        return False
+    return str(b.netloc).lower() == str(u.netloc).lower()
 
 def _jira_api_base_url(base_url: str) -> str:
     """
@@ -5174,6 +5472,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
             if len(custom_fields) >= 30:
                 break
         include_attachments, max_attachments_per_issue, max_total_attachments = _jira_attachment_limits(cfg)
+        include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _jira_linked_artifact_limits(cfg)
 
         parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
         chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "jira_ticket"
@@ -5217,6 +5516,9 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         attachments_processed = 0
         attachments_created = 0
         removed_attachment_documents_disabled = 0
+        linked_artifacts_processed = 0
+        linked_artifacts_created = 0
+        removed_linked_artifact_documents_disabled = 0
         skipped_boundary_duplicates = 0
         listing_complete = False
         total_issues_available: int | None = None
@@ -5234,11 +5536,17 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 "include_attachments": bool(include_attachments),
                 "max_attachments_per_issue": int(max_attachments_per_issue),
                 "max_total_attachments": int(max_total_attachments),
+                "include_linked_artifacts": bool(include_linked_artifacts),
+                "max_linked_artifacts_per_issue": int(max_linked_artifacts_per_issue),
+                "max_total_linked_artifacts": int(max_total_linked_artifacts),
                 "processed_issues": 0,
                 "processed_attachments": 0,
                 "cursor": 0,
                 "created": 0,
                 "created_attachments": 0,
+                "processed_linked_artifacts": 0,
+                "created_linked_artifacts": 0,
+                "removed_linked_artifact_documents_disabled": 0,
                 "failed": 0,
                 "skipped_boundary_duplicates": 0,
                 "failed_urls": [],
@@ -5491,6 +5799,136 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                     created_doc_ids.append(doc.id)
 
                     if (
+                        include_linked_artifacts
+                        and issue_url
+                        and linked_artifacts_processed < max_total_linked_artifacts
+                        and str(run.status or "").lower() != "cancelled"
+                    ):
+                        remaining_total = int(max_total_linked_artifacts) - int(linked_artifacts_processed)
+                        per_issue_limit_eff = int(min(int(max_linked_artifacts_per_issue), max(0, remaining_total)))
+                        linked_listing_complete = False
+                        seen_link_urls: set[str] = set()
+
+                        if per_issue_limit_eff > 0:
+                            # Extract one extra URL to detect truncation (listing completeness).
+                            extract_limit = per_issue_limit_eff + 1
+                            urls = _jira_extract_linked_artifact_urls(
+                                issue if isinstance(issue, dict) else {},
+                                include_comments=include_comments,
+                                max_comments=max_comments_per_issue,
+                                limit=extract_limit,
+                            )
+                            linked_listing_complete = bool(len(urls) <= per_issue_limit_eff)
+                            urls = urls[:per_issue_limit_eff]
+
+                            for link_url in urls:
+                                if linked_artifacts_processed >= max_total_linked_artifacts:
+                                    linked_listing_complete = False
+                                    break
+
+                                try:
+                                    db.refresh(run)
+                                except Exception:
+                                    pass
+                                if str(run.status or "").lower() == "cancelled":
+                                    linked_listing_complete = False
+                                    break
+
+                                link_url = str(link_url or "").strip()
+                                if not link_url:
+                                    continue
+                                if link_url == issue_url:
+                                    continue
+                                if not link_url.lower().startswith(("http://", "https://")):
+                                    continue
+                                seen_link_urls.add(link_url)
+                                linked_artifacts_processed += 1
+
+                                # Avoid leaking Jira credentials to third-party domains.
+                                fetch_headers = auth_headers if (_jira_should_send_auth_headers(base_url=base_url, url=link_url) and auth_headers) else None
+
+                                try:
+                                    link_body = UrlUploadRequest(
+                                        url=link_url,
+                                        dataset_id=run.dataset_id,
+                                        filename=None,
+                                        fetch_headers=fetch_headers,
+                                        user_agent=user_agent,
+                                        parser_backend=str(parser_backend),
+                                        chunk_strategy=str(chunk_strategy),
+                                        pipeline=pipeline,  # type: ignore[arg-type]
+                                    )
+                                    link_doc = await _ingest_url_upload_request(
+                                        background_tasks=None,
+                                        body=link_body,
+                                        tenant_id=tenant_id,
+                                        account_id=requested_by,
+                                        db=db,
+                                    )
+
+                                    _apply_document_access_from_config(
+                                        db,
+                                        tenant_id=tenant_id,
+                                        requested_by=requested_by,
+                                        doc=link_doc,
+                                        access=effective_access,
+                                        connector_id="jira_project",
+                                    )
+
+                                    try:
+                                        meta_link = dict(getattr(link_doc, "doc_metadata", None) or {})
+                                        if updated:
+                                            lm_iso = _normalize_datetime_utc_iso(updated) or updated
+                                            meta_link["source_last_modified_at"] = lm_iso
+                                            meta_link["source_last_modified_source"] = "connector:jira:updated"
+                                            meta_link["source_last_modified_raw"] = meta_link.get("source_last_modified_raw") or updated
+                                        if isinstance(acl_provenance, dict):
+                                            meta_link["acl_provenance"] = dict(acl_provenance)
+                                        meta_link["connector"] = _jira_linked_artifact_connector_metadata(
+                                            base_url=base_url,
+                                            project_key=project_key,
+                                            issue_id=(issue_id or None),
+                                            issue_key=(issue_key or None),
+                                            issue_url=issue_url,
+                                            link_url=link_url,
+                                            run_id=str(run.id),
+                                            mode=effective_mode,
+                                        )
+                                        link_doc.doc_metadata = meta_link
+                                        db.commit()
+                                    except Exception:
+                                        pass
+
+                                    db.add(
+                                        ConnectorRunDocument(
+                                            tenant_id=tenant_id,
+                                            run_id=run.id,
+                                            document_id=link_doc.id,
+                                            source_ref=link_url[:1000] or None,
+                                            status="created",
+                                        )
+                                    )
+                                    created += 1
+                                    created_doc_ids.append(link_doc.id)
+                                    linked_artifacts_created += 1
+                                except Exception as exc:  # noqa: BLE001
+                                    failed += 1
+                                    stats = dict(run.stats or {})
+                                    stats = _append_connector_error(stats, url=(link_url or "jira_linked_artifact"), exc=exc)
+                                    run.stats = _finalize_connector_stats(stats)
+
+                        if linked_listing_complete:
+                            removed_linked_artifact_documents_disabled += _soft_disable_jira_linked_artifact_documents_missing_from_issue(
+                                db,
+                                tenant_id=tenant_id,
+                                dataset_id=run.dataset_id,
+                                base_url=base_url,
+                                project_key=project_key,
+                                issue_url=issue_url,
+                                seen_link_urls=seen_link_urls,
+                            )
+
+                    if (
                         include_attachments
                         and issue_url
                         and attachments_processed < max_total_attachments
@@ -5625,9 +6063,11 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                         {
                             "processed_issues": int(processed),
                             "processed_attachments": int(attachments_processed),
+                            "processed_linked_artifacts": int(linked_artifacts_processed),
                             "cursor": int(processed),
                             "created": int(created),
                             "created_attachments": int(attachments_created),
+                            "created_linked_artifacts": int(linked_artifacts_created),
                             "failed": int(failed),
                             "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
                             "document_ids": [str(d) for d in created_doc_ids],
@@ -5636,6 +6076,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                             "removed_issues_reconciled": int(removed_issues_reconciled),
                             "removed_documents_disabled": int(removed_documents_disabled),
                             "removed_attachment_documents_disabled": int(removed_attachment_documents_disabled),
+                            "removed_linked_artifact_documents_disabled": int(removed_linked_artifact_documents_disabled),
                         }
                     )
                     if last_modified_seen:
@@ -5682,18 +6123,21 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
 
         stats = dict(run.stats or {})
         stats.update(
-            {
-                "document_ids": [str(d) for d in created_doc_ids],
-                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
-                "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
-                "removed_issues_reconciled": int(removed_issues_reconciled),
-                "removed_documents_disabled": int(removed_documents_disabled),
-                "processed_attachments": int(attachments_processed),
-                "created_attachments": int(attachments_created),
-                "removed_attachment_documents_disabled": int(removed_attachment_documents_disabled),
-                "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
-            }
-        )
+	            {
+	                "document_ids": [str(d) for d in created_doc_ids],
+	                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+	                "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+	                "removed_issues_reconciled": int(removed_issues_reconciled),
+	                "removed_documents_disabled": int(removed_documents_disabled),
+	                "processed_attachments": int(attachments_processed),
+	                "created_attachments": int(attachments_created),
+	                "removed_attachment_documents_disabled": int(removed_attachment_documents_disabled),
+	                "processed_linked_artifacts": int(linked_artifacts_processed),
+	                "created_linked_artifacts": int(linked_artifacts_created),
+	                "removed_linked_artifact_documents_disabled": int(removed_linked_artifact_documents_disabled),
+	                "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
+	            }
+	        )
         if last_modified_seen:
             stats["last_modified"] = last_modified_seen
             stats["last_modified_ids"] = sorted(last_modified_ids_seen)

@@ -265,6 +265,7 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 - 默认 `chunk_strategy="jira_ticket"`，以更好地按 Summary / Description / Comments 等段落切分
 - 可选拉取 comments；ACL 继承基于 issue security level 与 comment visibility 的 best-effort 外部映射
 - 可选 `custom_fields`：显式 allowlist 额外拉取并渲染到文档里的自定义字段（例如 `customfield_10016`）
+- 可选 `include_linked_artifacts`：从 issue 描述/评论里提取 URL 并作为子文档入库（受 `max_*_linked_artifacts` 限制；默认关闭）
 
 示例：
 
@@ -283,6 +284,9 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 	    "include_comments": true,
 	    "max_comments_per_issue": 20,
 	    "custom_fields": ["customfield_10016"],
+	    "include_linked_artifacts": false,
+	    "max_linked_artifacts_per_issue": 10,
+	    "max_total_linked_artifacts": 200,
 	    "parser_backend": "auto",
 	    "chunk_strategy": "jira_ticket",
 	    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }

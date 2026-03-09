@@ -5,6 +5,9 @@ def test_jira_project_connector_config_supports_custom_fields_allowlist():  # no
     from app.api.schemas.connector import JiraProjectConnectorConfig
 
     assert "custom_fields" in JiraProjectConnectorConfig.model_fields
+    assert "include_linked_artifacts" in JiraProjectConnectorConfig.model_fields
+    assert "max_linked_artifacts_per_issue" in JiraProjectConnectorConfig.model_fields
+    assert "max_total_linked_artifacts" in JiraProjectConnectorConfig.model_fields
 
     cfg = JiraProjectConnectorConfig(
         base_url="https://example.atlassian.net",
@@ -16,6 +19,9 @@ def test_jira_project_connector_config_supports_custom_fields_allowlist():  # no
             "not_a_field",
             "",
         ],
+        include_linked_artifacts=True,
+        max_linked_artifacts_per_issue=10,
+        max_total_linked_artifacts=20,
     )
 
     assert cfg.custom_fields == [
