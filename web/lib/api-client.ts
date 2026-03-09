@@ -1387,6 +1387,15 @@ export const authApi = {
   async me(): Promise<UserProfile> {
     return openapiRequest({ path: '/api/v1/auth/me', method: 'get' })
   },
+  async samlExchange(body: {
+    provider_id?: string | null
+    saml_response: string
+    relay_state?: string | null
+    acs_url?: string | null
+  }) {
+    const { data } = await apiClient.post('/auth/saml/exchange', body)
+    return data
+  },
 }
 
 // ==================== 解析/治理流水线 API ====================

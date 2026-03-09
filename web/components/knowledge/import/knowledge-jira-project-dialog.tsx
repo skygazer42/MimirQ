@@ -86,6 +86,8 @@ export function KnowledgeJiraProjectDialog({
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
   const [accessMembers, setAccessMembers] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
+  const [sourceAclEnabled, setSourceAclEnabled] = useState(false)
+  const [sourceAclFallbackMode, setSourceAclFallbackMode] = useState<'only_me' | 'partial_members'>('partial_members')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -94,6 +96,7 @@ export function KnowledgeJiraProjectDialog({
   }, [datasetDefaultValue, open, selectedDatasetId])
 
   const effectiveChunkStrategy = chunkStrategy === 'langchain_recursive' ? 'jira_ticket' : chunkStrategy
+  const hasManualAccessOverride = accessMode !== 'inherit'
 
   const handleSubmit = useCallback(async () => {
     const trimmedBaseUrl = baseUrl.trim().replace(/\/+$/, '')
@@ -141,6 +144,13 @@ export function KnowledgeJiraProjectDialog({
             partial_member_list: accessMode === 'partial_members' ? parseAccessMembers(accessMembers) : null,
             partial_group_list: accessMode === 'partial_members' ? accessGroupIds : null,
           }
+    const sourceAcl =
+      sourceAclEnabled && !hasManualAccessOverride
+        ? {
+            mode: 'inherit' as const,
+            fallback_mode: sourceAclFallbackMode,
+          }
+        : undefined
 
     setSubmitting(true)
     try {
@@ -162,6 +172,7 @@ export function KnowledgeJiraProjectDialog({
           chunk_strategy: effectiveChunkStrategy,
           pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
           access,
+          source_acl: sourceAcl,
         },
       })
 
@@ -190,6 +201,8 @@ export function KnowledgeJiraProjectDialog({
       setAccessMode('inherit')
       setAccessMembers('')
       setAccessGroupIds([])
+      setSourceAclEnabled(false)
+      setSourceAclFallbackMode('partial_members')
       void loadConnectorRuns({ datasetId: selectedDatasetId })
       void loadDocuments()
     } catch (err: any) {
@@ -210,6 +223,7 @@ export function KnowledgeJiraProjectDialog({
     datasetDefaultValue,
     datasetId,
     effectiveChunkStrategy,
+    hasManualAccessOverride,
     includeComments,
     jql,
     loadConnectorRuns,
@@ -224,6 +238,8 @@ export function KnowledgeJiraProjectDialog({
     pipelineOverridesEnabled,
     projectKey,
     selectedDatasetId,
+    sourceAclEnabled,
+    sourceAclFallbackMode,
     syncMode,
     userAgent,
   ])
@@ -296,6 +312,13 @@ export function KnowledgeJiraProjectDialog({
             </div>
           </div>
 
+          <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-3 text-xs text-muted-foreground">
+            <div className="font-medium text-foreground/80">同步模式说明</div>
+            <div className="mt-1">Auto 会在首次运行做全量同步，之后复用 `last_modified` 游标做增量。</div>
+            <div className="mt-1">Full 会重新枚举项目 issue，并尽力对账已删除或已不可见的 Jira issue。</div>
+            <div className="mt-1">Incremental 更快，但不会回收本次列表中未出现的旧 issue 文档。</div>
+          </div>
+
           <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
             <div className="flex items-center gap-3">
               <Checkbox checked={includeComments} onCheckedChange={(v) => setIncludeComments(v === true)} />
@@ -324,6 +347,75 @@ export function KnowledgeJiraProjectDialog({
                   <SelectItem value="basic">Basic</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-4 space-y-4">
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-foreground/90">Source ACL（高级）</div>
+              <div className="text-xs text-muted-foreground">
+                启用后，Jira connector 会尝试继承 issue 的安全级别、角色和 comment 可见性，并按
+                {' '}
+                <code>tenant_groups.external_id</code>
+                {' '}
+                进行组匹配，例如
+                {' '}
+                <code>jira:policy:security-level/10001</code>
+                、
+                {' '}
+                <code>jira:role:developers</code>
+                {' '}
+                或
+                {' '}
+                <code>jira:group:jira-software-users</code>
+                。
+              </div>
+              <div className="text-xs text-muted-foreground">
+                为避免误开放访问，当前 UI 只暴露可解释的继承模式和回退策略；更危险的手工映射规则仍保持隐藏。
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border/60 bg-background/70 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  checked={sourceAclEnabled}
+                  onCheckedChange={(v) => setSourceAclEnabled(v === true)}
+                  disabled={hasManualAccessOverride}
+                />
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-foreground/90">继承 Jira 可见性</div>
+                  <div className="text-xs text-muted-foreground">
+                    仅在“文档访问控制”保持“继承数据集”时生效；这样不会和手工访问控制发生冲突。
+                  </div>
+                  {hasManualAccessOverride ? (
+                    <div className="text-xs text-amber-700 dark:text-amber-300">
+                      当前选择了手工文档访问控制，运行时会忽略 Source ACL。
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-foreground/80">未映射 Jira ACL 时</div>
+                <Select
+                  value={sourceAclFallbackMode}
+                  onValueChange={(v) => setSourceAclFallbackMode(v as 'only_me' | 'partial_members')}
+                  disabled={!sourceAclEnabled || hasManualAccessOverride}
+                >
+                  <SelectTrigger className="h-10 bg-background">
+                    <SelectValue placeholder="选择回退策略" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="partial_members">失败关闭（仅映射出的成员/组）</SelectItem>
+                    <SelectItem value="only_me">仅同步执行者可见</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="text-xs text-muted-foreground">
+                  推荐保持“失败关闭”。如果 Jira ACL 无法映射到租户组，文档不会自动向更大范围开放。
+                </div>
+              </div>
             </div>
           </div>
 
