@@ -19,8 +19,12 @@ ColBERT（late-interaction）是一类用于 **证据精排** 的 reranker：它
 - `app/rag/reranker/factory.py`（provider wiring）
 
 说明：
+- 当前 provider tier：
+  - `colbert + deterministic`：`offline_only`
+  - `colbert + hf`：`experimental`
 - `hf` 路径是 reranker 级别的真实模型接入，不是完整 ColBERT 训练/索引体系
 - 如果你要做全量生产级 ColBERT 召回，仍然需要单独建设索引、部署和容量策略
+- 当前建议的 production baseline 不是 ColBERT，而是 `retrieval_profile=hybrid_ce`
 
 另：仓库还提供一个可选的候选召回通道脚手架（ANN + 持久化索引），见：
 - `docs/guides/colbert_ann_retrieval.md`

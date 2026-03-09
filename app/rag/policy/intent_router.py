@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.core.text import normalize_retrieval_mode
 
 _INTENT_ROUTER_POLICY_SCHEMA_V1 = "mimirq.intent_router_policy.v1"
@@ -151,7 +152,7 @@ def _sanitize_policy_overrides(raw: Any) -> Dict[str, Any]:
 
         if name == "retrieval_profile":
             profile = str(value or "").strip().lower()
-            if profile in {"recall20", "recall50", "coverage80"}:
+            if profile in {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}:
                 out[name] = profile
             continue
 
@@ -297,6 +298,8 @@ def _apply_profile_contract(*, profile: str, top_k: int, score_threshold: float)
         return max(int(top_k or 0), 50), 0.0
     if p == "coverage80":
         return max(int(top_k or 0), 80), 0.0
+    if p == PRODUCTION_RETRIEVAL_PROFILE:
+        return max(int(top_k or 0), 20), 0.0
     return int(top_k or 0), float(score_threshold or 0.0)
 
 
@@ -362,7 +365,7 @@ def route_retrieval_preset(
 
     # Apply top_k/threshold contract when we changed (or already had) a supported profile.
     profile_effective = str(overrides.get("retrieval_profile") or profile_norm or "").strip().lower()
-    if profile_effective in {"recall20", "recall50", "coverage80"}:
+    if profile_effective in {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}:
         top_k2, thr2 = _apply_profile_contract(
             profile=profile_effective,
             top_k=int(overrides.get("top_k") or top_k),

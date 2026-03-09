@@ -33,6 +33,7 @@ from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
+from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 from app.rag.core.text import (
     extract_evidence_text,
     is_claim_supported,
@@ -999,24 +1000,28 @@ def build_rag_state(
         except Exception:
             pass
 
-    # Retrieval profiles (runtime presets). Allowed to override caller-provided values.
-    profile_norm = str(retrieval_profile or "").strip().lower()
-    if profile_norm == "recall20":
-        top_k = max(int(top_k or 0), 20)
-        score_threshold = 0.0
-        retrieval_profile = "recall20"
-    elif profile_norm == "recall50":
-        top_k = max(int(top_k or 0), 50)
-        score_threshold = 0.0
-        retrieval_profile = "recall50"
-    elif profile_norm == "coverage80":
-        top_k = max(int(top_k or 0), 80)
-        score_threshold = 0.0
-        retrieval_profile = "coverage80"
-    elif not profile_norm:
-        retrieval_profile = None
-    else:
-        retrieval_profile = profile_norm
+    profile_applied = apply_retrieval_profile_overrides(
+        profile=retrieval_profile,
+        top_k=int(top_k or 0),
+        score_threshold=float(score_threshold or 0.0),
+        retrieval_mode=retrieval_mode,
+        enable_reranker=enable_reranker,
+        reranker_provider=reranker_provider,
+        reranker_top_n=reranker_top_n,
+        enable_weight_rerank=enable_weight_rerank,
+    )
+    retrieval_profile = profile_applied.get("retrieval_profile")
+    top_k = int(profile_applied.get("top_k") or 0)
+    score_threshold = float(profile_applied.get("score_threshold") or 0.0)
+    retrieval_mode = str(profile_applied.get("retrieval_mode") or retrieval_mode)
+    if profile_applied.get("enable_reranker") is not None:
+        enable_reranker = bool(profile_applied.get("enable_reranker"))
+    if profile_applied.get("reranker_provider"):
+        reranker_provider = str(profile_applied.get("reranker_provider") or reranker_provider)
+    if profile_applied.get("reranker_top_n") is not None:
+        reranker_top_n = int(profile_applied.get("reranker_top_n") or reranker_top_n or 0)
+    if profile_applied.get("enable_weight_rerank") is not None:
+        enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
 
     return {
         "question": question,

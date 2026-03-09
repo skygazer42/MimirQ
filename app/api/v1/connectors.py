@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import html
 import re
 from datetime import datetime, timezone
@@ -71,6 +72,7 @@ from app.services.connector_sync_state import (
     build_persisted_state,
     build_saved_state_snapshot,
     get_resume_cursor,
+    normalize_boundary_ids,
     normalize_source_manifest,
     slice_items_from_cursor,
 )
@@ -185,6 +187,16 @@ def _finalize_connector_stats(stats: dict) -> dict:
         # Keep `key` for stable grouping across incremental updates, but it is optional for the UI.
         stats["error_groups"] = groups_sorted
     return stats
+
+
+def _web_crawl_source_manifest(urls: list[str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for raw in urls or []:
+        url = str(raw or "").strip()
+        if not url or url in out:
+            continue
+        out[url] = hashlib.sha256(url.encode("utf-8", "ignore")).hexdigest()
+    return out
 
 
 def _unknown_tenant_groups(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> list[str]:
@@ -570,6 +582,8 @@ def list_connectors() -> list[ConnectorInfo]:
             description=definition.description,
             supports_incremental=definition.supports_incremental,
             supports_resume=definition.supports_resume,
+            supports_full_reconcile=definition.supports_full_reconcile,
+            sync_cursor_kind=definition.sync_cursor_kind,
         )
         for definition in list_connector_definitions()
     ]
@@ -1732,16 +1746,33 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         failed = 0
         created_doc_ids: list[UUID] = []
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        crawl_urls, cursor_in = slice_items_from_cursor(crawl.urls, cursor=get_resume_cursor(state))
+        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+        discovered_manifest = _web_crawl_source_manifest([str(url or "").strip() for url in (crawl.urls or []) if str(url or "").strip()])
+        discovered_urls = list(discovered_manifest.keys())
+        resume_cursor_raw = get_resume_cursor(state)
+        is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+        effective_mode = "incremental" if existing_manifest else "full"
+        delta_urls = [url for url in discovered_urls if url not in existing_manifest]
+        removed_urls = sorted(set(existing_manifest) - set(discovered_manifest)) if effective_mode == "incremental" else []
+        resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
+        crawl_urls, cursor_in = slice_items_from_cursor(delta_urls, cursor=resume_cursor)
+        source_manifest_state = {url: token for url, token in existing_manifest.items() if url in discovered_manifest}
+        skipped_unchanged = max(0, int(len(discovered_urls) - len(delta_urls)))
+        processed_visible = skipped_unchanged + cursor_in
+        removed_urls_reconciled = 0
+        removed_documents_disabled = 0
 
         stats = dict(run.stats or {})
         stats.update(
             {
+                "mode": effective_mode,
                 "visited": int(crawl.visited),
                 "queued": int(crawl.queued),
-                "discovered": int(len(crawl.urls)),
-                "total_urls": int(len(crawl.urls)),
-                "processed_urls": int(cursor_in),
+                "discovered": int(len(discovered_urls)),
+                "total_urls": int(len(discovered_urls)),
+                "delta_urls": int(len(delta_urls)),
+                "skipped_unchanged": int(skipped_unchanged),
+                "processed_urls": int(processed_visible),
                 "cursor": int(cursor_in),
                 "created": 0,
                 "failed": 0,
@@ -1749,7 +1780,11 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 "errors": [],
                 "error_groups": [],
                 "cursor_in": int(cursor_in),
-                "resumed_from_state": bool(cursor_in > 0),
+                "resumed_from_state": bool(is_resume_run and ((effective_mode == "incremental") or cursor_in > 0)),
+                "removed_paths": int(len(removed_urls)),
+                "removed_paths_reconciled": 0,
+                "removed_documents_disabled": 0,
+                "source_manifest": dict(source_manifest_state),
             }
         )
         if crawl.errors:
@@ -1766,6 +1801,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
             if str(run.status or "").lower() == "cancelled":
                 break
 
+            succeeded = False
             try:
                 body = UrlUploadRequest(
                     url=url,
@@ -1809,6 +1845,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 )
                 created += 1
                 created_doc_ids.append(doc.id)
+                succeeded = True
             except Exception as exc:  # noqa: BLE001
                 failed += 1
                 stats = dict(run.stats or {})
@@ -1816,14 +1853,24 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 run.stats = stats
             finally:
                 processed = cursor_in + idx + 1
+                processed_visible = skipped_unchanged + processed
+                if succeeded and url and url in discovered_manifest:
+                    source_manifest_state[url] = discovered_manifest[url]
                 stats = dict(run.stats or {})
                 stats.update(
                     {
-                        "total_urls": int(len(crawl.urls)),
-                        "processed_urls": int(processed),
+                        "mode": effective_mode,
+                        "total_urls": int(len(discovered_urls)),
+                        "delta_urls": int(len(delta_urls)),
+                        "skipped_unchanged": int(skipped_unchanged),
+                        "processed_urls": int(processed_visible),
                         "cursor": int(processed),
                         "created": int(created),
                         "failed": int(failed),
+                        "removed_paths": int(len(removed_urls)),
+                        "removed_paths_reconciled": int(removed_urls_reconciled),
+                        "removed_documents_disabled": int(removed_documents_disabled),
+                        "source_manifest": dict(source_manifest_state),
                         "document_ids": [str(d) for d in created_doc_ids],
                     }
                 )
@@ -1844,8 +1891,39 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 _sync_connector_config_from_run(db, run=run)
             return
 
+        if effective_mode == "incremental" and removed_urls:
+            for source_url in removed_urls:
+                try:
+                    disabled = _soft_disable_connector_documents_by_source_url(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=run.dataset_id,
+                        connector_id="web_crawl",
+                        source_url=source_url,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=source_url, exc=exc)
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    continue
+                removed_documents_disabled += int(disabled)
+                if disabled:
+                    removed_urls_reconciled += 1
+
         stats = dict(run.stats or {})
-        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        stats.update(
+            {
+                "mode": effective_mode,
+                "delta_urls": int(len(delta_urls)),
+                "skipped_unchanged": int(skipped_unchanged),
+                "removed_paths": int(len(removed_urls)),
+                "removed_paths_reconciled": int(removed_urls_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
+                "source_manifest": dict(source_manifest_state),
+                "document_ids": [str(d) for d in created_doc_ids],
+            }
+        )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
@@ -2158,6 +2236,204 @@ def _delta_sync_confluence_documents_acl_by_page_id(
             updated += 1
 
     return int(updated)
+
+
+def _delta_sync_jira_documents_acl_by_issue_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    requested_by: str,
+    access: dict | None,
+    acl_provenance: dict | None,
+    max_docs_scan: int = 5000,
+) -> int:
+    """
+    ACL delta sync for Jira documents by `(base_url, project_key, issue_url)`.
+
+    This updates both the issue doc and any attachment docs for the same issue
+    because attachments inherit the same effective access.
+    """
+    if dataset_id is None:
+        return 0
+
+    base_url = str(base_url or "").strip().rstrip("/")
+    project_key = str(project_key or "").strip().upper()
+    issue_url = str(issue_url or "").strip()
+    if not base_url or not project_key or not issue_url:
+        return 0
+
+    updated = 0
+    try:
+        q = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "jira_project")  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["issue_url"].astext == issue_url)  # type: ignore[attr-defined]
+            .order_by(DBDocument.created_at.desc())
+        )
+        for doc in q.yield_per(200):
+            _apply_document_access_from_config(
+                db,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                doc=doc,
+                access=access,
+                connector_id="jira_project",
+            )
+            if isinstance(acl_provenance, dict):
+                try:
+                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                    meta0["acl_provenance"] = dict(acl_provenance)
+                    doc.doc_metadata = meta0
+                except Exception:
+                    pass
+            updated += 1
+    except Exception:
+        max_docs_scan = max(0, int(max_docs_scan or 0))
+        if max_docs_scan <= 0:
+            max_docs_scan = 5000
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .order_by(DBDocument.created_at.desc())
+            .limit(max_docs_scan)
+            .all()
+        )
+        for doc in docs or []:
+            meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+            conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+            if str(conn.get("connector_id") or "") != "jira_project":
+                continue
+            if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+                continue
+            if str(conn.get("project_key") or "").strip().upper() != project_key:
+                continue
+            if str(conn.get("issue_url") or "").strip() != issue_url:
+                continue
+            _apply_document_access_from_config(
+                db,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                doc=doc,
+                access=access,
+                connector_id="jira_project",
+            )
+            if isinstance(acl_provenance, dict):
+                try:
+                    meta0 = dict(meta or {})
+                    meta0["acl_provenance"] = dict(acl_provenance)
+                    doc.doc_metadata = meta0
+                except Exception:
+                    pass
+            updated += 1
+
+    return int(updated)
+
+
+def _soft_disable_jira_attachment_documents_missing_from_issue(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    seen_attachment_urls: set[str],
+    max_docs_scan: int = 5000,
+) -> int:
+    """
+    Best-effort soft-disable for Jira attachment docs missing from a processed issue.
+    """
+    if dataset_id is None:
+        return 0
+
+    base_url = str(base_url or "").strip().rstrip("/")
+    project_key = str(project_key or "").strip().upper()
+    issue_url = str(issue_url or "").strip()
+    seen_urls = {
+        str(url or "").strip()
+        for url in (seen_attachment_urls or set())
+        if str(url or "").strip()
+    }
+    if not base_url or not project_key or not issue_url:
+        return 0
+
+    docs: list[Any]
+    try:
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "jira_project")  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["doc_kind"].astext == "attachment")  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["issue_url"].astext == issue_url)  # type: ignore[attr-defined]
+            .order_by(DBDocument.created_at.desc())
+            .all()
+        )
+    except Exception:
+        max_docs_scan = max(0, int(max_docs_scan or 0))
+        if max_docs_scan <= 0:
+            max_docs_scan = 5000
+        docs = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .order_by(DBDocument.created_at.desc())
+            .limit(max_docs_scan)
+            .all()
+        )
+
+    now = _now()
+    disabled = 0
+    for doc in docs or []:
+        meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+        conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+        if str(conn.get("connector_id") or "") != "jira_project":
+            continue
+        if str(conn.get("doc_kind") or "") != "attachment":
+            continue
+        if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+            continue
+        if str(conn.get("project_key") or "").strip().upper() != project_key:
+            continue
+        if str(conn.get("issue_url") or "").strip() != issue_url:
+            continue
+
+        download_url = str(conn.get("download_url") or meta.get("source_url") or "").strip()
+        if not download_url or download_url in seen_urls:
+            continue
+
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+
+    return int(disabled)
 
 
 async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -3135,6 +3411,45 @@ def _confluence_extract_last_modified(page: dict) -> str | None:
     return None
 
 
+def _should_skip_timestamp_boundary_item(
+    *,
+    item_id: str,
+    item_timestamp: str | None,
+    cursor_timestamp: str | None,
+    boundary_ids: set[str],
+) -> bool:
+    candidate_id = str(item_id or "").strip()
+    candidate_ts = str(item_timestamp or "").strip()
+    cursor_ts = str(cursor_timestamp or "").strip()
+    if not candidate_id or not candidate_ts or not cursor_ts or not boundary_ids:
+        return False
+    return candidate_ts == cursor_ts and candidate_id in boundary_ids
+
+
+def _advance_timestamp_boundary(
+    *,
+    last_timestamp: str | None,
+    boundary_ids: set[str],
+    item_timestamp: str | None,
+    item_id: str,
+) -> tuple[str | None, set[str]]:
+    current_ts = str(item_timestamp or "").strip() or None
+    current_id = str(item_id or "").strip()
+    if not current_ts:
+        return last_timestamp, set(boundary_ids or set())
+
+    if current_ts != str(last_timestamp or "").strip():
+        next_ids: set[str] = set()
+        if current_id:
+            next_ids.add(current_id)
+        return current_ts, next_ids
+
+    next_ids = set(boundary_ids or set())
+    if current_id:
+        next_ids.add(current_id)
+    return current_ts, next_ids
+
+
 def _confluence_group_principal_key(group_name: str) -> str:
     """
     Build a stable source principal key for a Confluence group name.
@@ -3334,6 +3649,103 @@ def _confluence_attachment_connector_metadata(
         "run_id": str(run_id or "").strip(),
         "mode": str(mode or "").strip(),
         "ingest_method": str(ingest_method or "").strip(),
+    }
+
+
+def _jira_attachment_limits(cfg: dict) -> tuple[bool, int, int]:
+    """
+    Parse and clamp Jira attachments ingestion limits from a raw config dict.
+    """
+    raw = cfg if isinstance(cfg, dict) else {}
+    include = bool(raw.get("include_attachments", False))
+
+    per_issue = int(raw.get("max_attachments_per_issue") or 10)
+    per_issue = max(1, min(per_issue, 50))
+
+    total = int(raw.get("max_total_attachments") or 200)
+    total = max(1, min(total, 2000))
+
+    return include, per_issue, total
+
+
+def _jira_extract_attachments(issue: dict, *, limit: int) -> list[dict[str, str]]:
+    """
+    Extract Jira issue attachment refs from the issue payload.
+
+    Returns a bounded list of dicts with:
+    - attachment_id
+    - filename
+    - download_url
+    """
+    if not isinstance(issue, dict):
+        return []
+
+    lim = int(limit or 0)
+    if lim <= 0:
+        lim = 10_000
+
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    items = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
+    out: list[dict[str, str]] = []
+
+    for raw in items:
+        if len(out) >= lim:
+            break
+        if not isinstance(raw, dict):
+            continue
+
+        attachment_id = str(raw.get("id") or "").strip()
+        if not attachment_id:
+            continue
+
+        filename = str(raw.get("filename") or raw.get("title") or raw.get("name") or "").strip()
+        if not filename:
+            filename = f"jira-attachment-{attachment_id}"
+
+        download_url = str(raw.get("content") or raw.get("downloadUrl") or raw.get("download_url") or "").strip()
+        if not download_url:
+            continue
+
+        out.append(
+            {
+                "attachment_id": attachment_id,
+                "filename": filename,
+                "download_url": download_url,
+            }
+        )
+
+    return out
+
+
+def _jira_attachment_connector_metadata(
+    *,
+    base_url: str,
+    project_key: str,
+    issue_id: str | None,
+    issue_key: str | None,
+    issue_url: str,
+    attachment_id: str,
+    filename: str,
+    download_url: str,
+    run_id: str,
+    mode: str,
+) -> dict[str, Any]:
+    """
+    Build doc_metadata.connector for a Jira attachment document.
+    """
+    return {
+        "connector_id": "jira_project",
+        "doc_kind": "attachment",
+        "base_url": str(base_url or "").strip(),
+        "project_key": str(project_key or "").strip().upper(),
+        "issue_id": (str(issue_id or "").strip() or None),
+        "issue_key": (str(issue_key or "").strip() or None),
+        "issue_url": str(issue_url or "").strip(),
+        "attachment_id": str(attachment_id or "").strip(),
+        "filename": str(filename or "").strip(),
+        "download_url": str(download_url or "").strip(),
+        "run_id": str(run_id or "").strip(),
+        "mode": str(mode or "").strip(),
     }
 
 
@@ -3730,6 +4142,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
 
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
         cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
+        cursor_last_modified_ids = set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
 
         effective_mode = sync_mode
         if effective_mode == "auto":
@@ -3769,7 +4182,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         # CQL: keep it simple and stable. Prefer ordering to make cursor updates monotonic.
         cql = f'space="{space_key}" and type=page and status=current'
         if effective_mode == "incremental" and cursor_last_modified:
-            cql += f' and lastmodified > "{cursor_last_modified}"'
+            cql += f' and lastmodified >= "{cursor_last_modified}"'
         cql += " ORDER BY lastmodified ASC"
 
         created = 0
@@ -3784,6 +4197,8 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         delta_acl_pages_updated = 0
         observed_page_ids: set[str] = set()
         last_modified_seen: str | None = None
+        last_modified_ids_seen: set[str] = set()
+        skipped_boundary_duplicates = 0
 
         stats0 = dict(run.stats or {})
         stats0.update(
@@ -3805,6 +4220,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                 "created_attachments": 0,
                 "failed_attachments": 0,
                 "skipped_attachments": 0,
+                "skipped_boundary_duplicates": 0,
                 "failed_urls": [],
                 "errors": [],
                 "error_groups": [],
@@ -3869,9 +4285,29 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                 page_id = str((page or {}).get("id") or "").strip() if isinstance(page, dict) else ""
                 title = str((page or {}).get("title") or "").strip() if isinstance(page, dict) else ""
                 lm = _confluence_extract_last_modified(page if isinstance(page, dict) else {})
+
+                if effective_mode == "incremental" and _should_skip_timestamp_boundary_item(
+                    item_id=page_id,
+                    item_timestamp=lm,
+                    cursor_timestamp=cursor_last_modified,
+                    boundary_ids=cursor_last_modified_ids,
+                ):
+                    skipped_boundary_duplicates += 1
+                    stats = dict(run.stats or {})
+                    stats["skipped_boundary_duplicates"] = int(skipped_boundary_duplicates)
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    continue
+
                 if lm:
-                    # Results are ordered by lastmodified ASC; the latest processed timestamp is the cursor.
-                    last_modified_seen = lm
+                    # Results are ordered by lastmodified ASC; track the latest processed
+                    # timestamp plus the ids seen at that boundary to avoid equal-timestamp loss.
+                    last_modified_seen, last_modified_ids_seen = _advance_timestamp_boundary(
+                        last_timestamp=last_modified_seen,
+                        boundary_ids=last_modified_ids_seen,
+                        item_timestamp=lm,
+                        item_id=page_id,
+                    )
 
                 page_links = page.get("_links") if isinstance(page, dict) else None
                 webui = str(page_links.get("webui") or "").strip() if isinstance(page_links, dict) else ""
@@ -4258,6 +4694,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             "created_attachments": int(attachments_created),
                             "failed_attachments": int(attachments_failed),
                             "skipped_attachments": int(attachments_skipped),
+                            "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
                             "document_ids": [str(d) for d in created_doc_ids],
                             "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                             "acl_delta_sync_updated_sources": int(delta_acl_pages_updated),
@@ -4265,6 +4702,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                     )
                     if last_modified_seen:
                         stats["last_modified"] = last_modified_seen
+                        stats["last_modified_ids"] = sorted(last_modified_ids_seen)
                     run.stats = _finalize_connector_stats(stats)
                     db.commit()
 
@@ -4383,6 +4821,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                 "document_ids": [str(d) for d in created_doc_ids],
                 "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                 "acl_delta_sync_updated_sources": int(delta_acl_pages_updated),
+                "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
             }
         )
         run.stats = _finalize_connector_stats(stats)
@@ -4474,6 +4913,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
 
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
         cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
+        cursor_last_modified_ids = set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
 
         effective_mode = sync_mode
         if effective_mode == "auto":
@@ -4488,6 +4928,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         include_comments = bool(cfg.get("include_comments", True))
         max_comments_per_issue = int(cfg.get("max_comments_per_issue") or 20)
         max_comments_per_issue = max(0, min(max_comments_per_issue, 200))
+        include_attachments, max_attachments_per_issue, max_total_attachments = _jira_attachment_limits(cfg)
 
         parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
         chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "jira_ticket"
@@ -4514,7 +4955,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         if effective_mode == "incremental" and cursor_last_modified:
             after = _jira_jql_updated_after(cursor_last_modified)
             if after:
-                jql_parts.append(f'updated > "{after}"')
+                jql_parts.append(f'updated >= "{after}"')
         jql = " AND ".join(jql_parts) + " ORDER BY updated ASC"
 
         created = 0
@@ -4524,9 +4965,14 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         delta_acl_docs_updated = 0
         delta_acl_sources_updated = 0
         last_modified_seen: str | None = None
+        last_modified_ids_seen: set[str] = set()
         observed_issue_urls: set[str] = set()
         removed_issues_reconciled = 0
         removed_documents_disabled = 0
+        attachments_processed = 0
+        attachments_created = 0
+        removed_attachment_documents_disabled = 0
+        skipped_boundary_duplicates = 0
         listing_complete = False
         total_issues_available: int | None = None
 
@@ -4540,15 +4986,22 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 "page_size": int(page_size),
                 "include_comments": bool(include_comments),
                 "max_comments_per_issue": int(max_comments_per_issue),
+                "include_attachments": bool(include_attachments),
+                "max_attachments_per_issue": int(max_attachments_per_issue),
+                "max_total_attachments": int(max_total_attachments),
                 "processed_issues": 0,
+                "processed_attachments": 0,
                 "cursor": 0,
                 "created": 0,
+                "created_attachments": 0,
                 "failed": 0,
+                "skipped_boundary_duplicates": 0,
                 "failed_urls": [],
                 "errors": [],
                 "error_groups": [],
                 "removed_issues_reconciled": 0,
                 "removed_documents_disabled": 0,
+                "removed_attachment_documents_disabled": 0,
             }
         )
         if cursor_last_modified:
@@ -4578,7 +5031,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 "jql": jql,
                 "startAt": int(start_at),
                 "maxResults": page_request_size,
-                "fields": "summary,description,updated,issuetype,priority,status,labels,comment,security",
+                "fields": "summary,description,updated,issuetype,priority,status,labels,comment,security,attachment",
                 "expand": "renderedFields",
             }
             resp = await _jira_request(pool, "GET", search_url, params=params, headers=headers)
@@ -4607,8 +5060,27 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 issue_id = str((issue or {}).get("id") or "").strip() if isinstance(issue, dict) else ""
                 issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
                 updated = _jira_extract_issue_updated(issue if isinstance(issue, dict) else {})
+
+                if effective_mode == "incremental" and _should_skip_timestamp_boundary_item(
+                    item_id=issue_id,
+                    item_timestamp=updated,
+                    cursor_timestamp=cursor_last_modified,
+                    boundary_ids=cursor_last_modified_ids,
+                ):
+                    skipped_boundary_duplicates += 1
+                    stats = dict(run.stats or {})
+                    stats["skipped_boundary_duplicates"] = int(skipped_boundary_duplicates)
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    continue
+
                 if updated:
-                    last_modified_seen = updated
+                    last_modified_seen, last_modified_ids_seen = _advance_timestamp_boundary(
+                        last_timestamp=last_modified_seen,
+                        boundary_ids=last_modified_ids_seen,
+                        item_timestamp=updated,
+                        item_id=issue_id,
+                    )
 
                 if not issue_url:
                     failed += 1
@@ -4670,12 +5142,13 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                                     restricted=restricted,
                                 )
 
-                            updated_existing = _delta_sync_connector_documents_acl_by_source_url(
+                            updated_existing = _delta_sync_jira_documents_acl_by_issue_url(
                                 db,
                                 tenant_id=tenant_id,
                                 dataset_id=run.dataset_id,
-                                connector_id="jira_project",
-                                source_url=issue_url,
+                                base_url=base_url,
+                                project_key=project_key,
+                                issue_url=issue_url,
                                 requested_by=requested_by,
                                 access=effective_access,
                                 acl_provenance=acl_provenance,
@@ -4757,6 +5230,130 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                     )
                     created += 1
                     created_doc_ids.append(doc.id)
+
+                    if (
+                        include_attachments
+                        and issue_url
+                        and attachments_processed < max_total_attachments
+                        and str(run.status or "").lower() != "cancelled"
+                    ):
+                        remaining_total = int(max_total_attachments) - int(attachments_processed)
+                        per_issue_limit_eff = int(min(int(max_attachments_per_issue), max(0, remaining_total)))
+                        fields = issue.get("fields") if isinstance(issue, dict) and isinstance(issue.get("fields"), dict) else {}
+                        raw_attachments = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
+                        attachment_listing_complete = bool(per_issue_limit_eff >= len(raw_attachments))
+                        seen_attachment_urls: set[str] = set()
+
+                        if per_issue_limit_eff > 0:
+                            attachment_refs = _jira_extract_attachments(issue if isinstance(issue, dict) else {}, limit=per_issue_limit_eff)
+                            for aref in attachment_refs:
+                                if attachments_processed >= max_total_attachments:
+                                    attachment_listing_complete = False
+                                    break
+
+                                try:
+                                    db.refresh(run)
+                                except Exception:
+                                    pass
+                                if str(run.status or "").lower() == "cancelled":
+                                    attachment_listing_complete = False
+                                    break
+
+                                attachment_id = str(aref.get("attachment_id") or "").strip()
+                                filename_att = str(aref.get("filename") or "").strip()
+                                download_url = str(aref.get("download_url") or "").strip()
+                                attachments_processed += 1
+
+                                if not attachment_id or not download_url:
+                                    continue
+                                seen_attachment_urls.add(download_url)
+
+                                ext = Path(filename_att).suffix.lower()
+                                if ext and ext not in settings.allowed_extensions_list:
+                                    continue
+
+                                try:
+                                    att_body = UrlUploadRequest(
+                                        url=download_url,
+                                        dataset_id=run.dataset_id,
+                                        filename=filename_att,
+                                        fetch_headers=auth_headers or None,
+                                        user_agent=user_agent,
+                                        parser_backend=str(parser_backend),
+                                        chunk_strategy=str(chunk_strategy),
+                                        pipeline=pipeline,  # type: ignore[arg-type]
+                                    )
+                                    att_doc = await _ingest_url_upload_request(
+                                        background_tasks=None,
+                                        body=att_body,
+                                        tenant_id=tenant_id,
+                                        account_id=requested_by,
+                                        db=db,
+                                    )
+
+                                    _apply_document_access_from_config(
+                                        db,
+                                        tenant_id=tenant_id,
+                                        requested_by=requested_by,
+                                        doc=att_doc,
+                                        access=effective_access,
+                                        connector_id="jira_project",
+                                    )
+
+                                    try:
+                                        meta_att = dict(getattr(att_doc, "doc_metadata", None) or {})
+                                        if updated:
+                                            lm_iso = _normalize_datetime_utc_iso(updated) or updated
+                                            meta_att["source_last_modified_at"] = lm_iso
+                                            meta_att["source_last_modified_source"] = "connector:jira:updated"
+                                            meta_att["source_last_modified_raw"] = meta_att.get("source_last_modified_raw") or updated
+                                        if isinstance(acl_provenance, dict):
+                                            meta_att["acl_provenance"] = dict(acl_provenance)
+                                        meta_att["connector"] = _jira_attachment_connector_metadata(
+                                            base_url=base_url,
+                                            project_key=project_key,
+                                            issue_id=(issue_id or None),
+                                            issue_key=(issue_key or None),
+                                            issue_url=issue_url,
+                                            attachment_id=attachment_id,
+                                            filename=filename_att,
+                                            download_url=download_url,
+                                            run_id=str(run.id),
+                                            mode=effective_mode,
+                                        )
+                                        att_doc.doc_metadata = meta_att
+                                        db.commit()
+                                    except Exception:
+                                        pass
+
+                                    db.add(
+                                        ConnectorRunDocument(
+                                            tenant_id=tenant_id,
+                                            run_id=run.id,
+                                            document_id=att_doc.id,
+                                            source_ref=(attachment_id or download_url)[:1000] or None,
+                                            status="created",
+                                        )
+                                    )
+                                    created += 1
+                                    created_doc_ids.append(att_doc.id)
+                                    attachments_created += 1
+                                except Exception as exc:  # noqa: BLE001
+                                    failed += 1
+                                    stats = dict(run.stats or {})
+                                    stats = _append_connector_error(stats, url=(download_url or attachment_id), exc=exc)
+                                    run.stats = _finalize_connector_stats(stats)
+
+                        if attachment_listing_complete:
+                            removed_attachment_documents_disabled += _soft_disable_jira_attachment_documents_missing_from_issue(
+                                db,
+                                tenant_id=tenant_id,
+                                dataset_id=run.dataset_id,
+                                base_url=base_url,
+                                project_key=project_key,
+                                issue_url=issue_url,
+                                seen_attachment_urls=seen_attachment_urls,
+                            )
                 except Exception as exc:  # noqa: BLE001
                     failed += 1
                     stats = dict(run.stats or {})
@@ -4768,18 +5365,23 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                     stats.update(
                         {
                             "processed_issues": int(processed),
+                            "processed_attachments": int(attachments_processed),
                             "cursor": int(processed),
                             "created": int(created),
+                            "created_attachments": int(attachments_created),
                             "failed": int(failed),
+                            "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
                             "document_ids": [str(d) for d in created_doc_ids],
                             "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                             "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
                             "removed_issues_reconciled": int(removed_issues_reconciled),
                             "removed_documents_disabled": int(removed_documents_disabled),
+                            "removed_attachment_documents_disabled": int(removed_attachment_documents_disabled),
                         }
                     )
                     if last_modified_seen:
                         stats["last_modified"] = last_modified_seen
+                        stats["last_modified_ids"] = sorted(last_modified_ids_seen)
                     run.stats = _finalize_connector_stats(stats)
                     db.commit()
 
@@ -4827,8 +5429,15 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
                 "removed_issues_reconciled": int(removed_issues_reconciled),
                 "removed_documents_disabled": int(removed_documents_disabled),
+                "processed_attachments": int(attachments_processed),
+                "created_attachments": int(attachments_created),
+                "removed_attachment_documents_disabled": int(removed_attachment_documents_disabled),
+                "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
             }
         )
+        if last_modified_seen:
+            stats["last_modified"] = last_modified_seen
+            stats["last_modified_ids"] = sorted(last_modified_ids_seen)
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")

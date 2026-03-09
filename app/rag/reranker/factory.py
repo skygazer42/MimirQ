@@ -17,6 +17,34 @@ _local_reranker_lock = threading.Lock()
 _local_reranker_cache: dict[str, BaseReranker] = {}
 
 
+def describe_reranker_provider(provider: str | None, **kwargs: Any) -> dict[str, Any]:
+    normalized = str(provider or "").strip().lower() or "openai"
+    provider_name = str(kwargs.get("provider_name") or "").strip().lower() or None
+
+    if normalized in {"none", "off", "false", "0"}:
+        return {"provider": "none", "tier": "disabled"}
+
+    if normalized in {"cross_encoder", "cross-encoder", "sentence_transformers", "sentence-transformers"}:
+        return {"provider": "cross_encoder", "tier": "prod"}
+
+    if normalized in {"ltr", "xgboost_ltr"}:
+        return {"provider": "ltr", "tier": "prod"}
+
+    if normalized in {"weighted", "parent_child", "pc", "kg_pagerank", "kg_rrf"}:
+        return {"provider": normalized, "tier": "prod"}
+
+    if normalized in {"llm", "openai", "dashscope", "aliyun"}:
+        return {"provider": normalized, "tier": "experimental"}
+
+    if normalized in {"colbert", "late_interaction"}:
+        mode = provider_name or str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        if mode == "deterministic":
+            return {"provider": "colbert", "tier": "offline_only", "mode": "deterministic"}
+        return {"provider": "colbert", "tier": "experimental", "mode": mode}
+
+    return {"provider": normalized, "tier": "experimental"}
+
+
 def _api_cache_key(provider: str, *, model: str, base_url: str, api_key: str) -> str:
     key_hash = hashlib.sha256((api_key or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
     return f"{provider}:{model}:{base_url}:{key_hash}"

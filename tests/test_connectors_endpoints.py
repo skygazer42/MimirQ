@@ -71,16 +71,32 @@ def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
     items = {item.get("id"): item for item in res.json()}
     assert items["url_batch"]["supports_incremental"] is True
     assert items["url_batch"]["supports_resume"] is True
-    assert items["web_crawl"]["supports_incremental"] is False
+    assert items["url_batch"]["supports_full_reconcile"] is False
+    assert items["url_batch"]["sync_cursor_kind"] == "offset"
+    assert items["web_crawl"]["supports_incremental"] is True
     assert items["web_crawl"]["supports_resume"] is True
+    assert items["web_crawl"]["supports_full_reconcile"] is True
+    assert items["web_crawl"]["sync_cursor_kind"] == "offset"
     assert items["github_repo"]["supports_incremental"] is True
     assert items["github_repo"]["supports_resume"] is True
+    assert items["github_repo"]["supports_full_reconcile"] is True
+    assert items["github_repo"]["sync_cursor_kind"] == "offset"
     assert items["drive_files"]["supports_resume"] is True
+    assert items["drive_files"]["supports_incremental"] is False
+    assert items["drive_files"]["supports_full_reconcile"] is False
+    assert items["drive_files"]["sync_cursor_kind"] == "offset"
     assert items["minio_bucket"]["supports_resume"] is True
+    assert items["minio_bucket"]["supports_incremental"] is False
+    assert items["minio_bucket"]["supports_full_reconcile"] is False
+    assert items["minio_bucket"]["sync_cursor_kind"] == "offset"
     assert items["confluence_space"]["supports_incremental"] is True
     assert items["confluence_space"]["supports_resume"] is False
+    assert items["confluence_space"]["supports_full_reconcile"] is True
+    assert items["confluence_space"]["sync_cursor_kind"] == "timestamp"
     assert items["jira_project"]["supports_incremental"] is True
     assert items["jira_project"]["supports_resume"] is False
+    assert items["jira_project"]["supports_full_reconcile"] is True
+    assert items["jira_project"]["sync_cursor_kind"] == "timestamp"
 
 
 def test_connectors_create_run_requires_url_ingest_enabled(monkeypatch):  # noqa: ANN001
@@ -461,6 +477,57 @@ def test_connectors_create_jira_run_redacts_auth_and_defaults_chunking(monkeypat
     assert cfg.get("auth", {}).get("password") == "<redacted>"
     assert cfg.get("chunk_strategy") == "jira_ticket"
     assert cfg.get("sync_mode") == "auto"
+
+
+def test_connectors_create_jira_run_supports_attachment_options(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+    from app.api.v1.connectors import create_connector_run
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self, dataset_id: uuid.UUID):  # noqa: ANN001
+            self.id = dataset_id
+
+    monkeypatch.setattr(
+        connectors_module,
+        "_resolve_writable_dataset",
+        lambda *_a, **_k: _Dataset(dataset_id),
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/runs", status_code=201, response_model=ConnectorRunOut)(create_connector_run)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/runs",
+        json={
+            "connector_id": "jira_project",
+            "dataset_id": str(dataset_id),
+            "config": {
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "include_attachments": True,
+                "max_attachments_per_issue": 3,
+                "max_total_attachments": 12,
+            },
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    cfg = body.get("config") or {}
+    assert body.get("connector_id") == "jira_project"
+    assert cfg.get("include_attachments") is True
+    assert cfg.get("max_attachments_per_issue") == 3
+    assert cfg.get("max_total_attachments") == 12
 
 
 def test_connectors_accept_mysql_catalog_config(monkeypatch):  # noqa: ANN001

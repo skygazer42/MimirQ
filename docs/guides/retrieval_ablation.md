@@ -2,6 +2,10 @@
 
 当你已经有一套**可回归的 ground-truth 用例集**（RAGAS regression cases / Evidence Pack 转换而来），并且希望系统性地对比不同检索参数（`retrieval_profile` / top_k / threshold / fusion / multi-query / reranker 等）对检索指标的影响时，可以使用这个离线脚本做消融矩阵评测。
 
+当前建议：
+- `recall20/recall50/coverage80`：偏召回型 profile，用来观察 Recall/Hit 的上限
+- `hybrid_ce`：当前显式 production baseline，用来观察“hybrid recall + cross_encoder rerank”相对默认路径的收益
+
 脚本：`scripts/retrieval_ablation.py`
 
 ## 快速开始
@@ -44,6 +48,12 @@
         "reranker_provider": "llm",
         "reranker_top_n": 20
       }
+    },
+    {
+      "label": "hybrid_ce_baseline",
+      "rag_params": {
+        "retrieval_profile": "hybrid_ce"
+      }
     }
   ],
   "grid": {
@@ -80,6 +90,7 @@ python scripts/retrieval_ablation.py \
 脚本会把下列 runtime knobs 透传给 regression run API：
 
 - `retrieval_profile`
+- `hybrid_ce` 也作为合法 profile 透传
 - `enable_query_alias_expansion`
 - `query_alias_max_queries`
 - `enable_multi_query`

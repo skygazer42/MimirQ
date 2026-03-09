@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import settings
+from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 from app.rag.core.text import normalize_retrieval_mode
 
 from .base import OrmModel
@@ -117,6 +118,7 @@ class ChatRAGConfig(BaseModel):
     # - "recall20": maximize chunk-level Hit@20 (top_k>=20, score_threshold=0.0)
     # - "recall50": recall-first for larger corpora (top_k>=50, score_threshold=0.0)
     # - "coverage80": aggressive recall/coverage preset (top_k>=80, score_threshold=0.0)
+    # - "hybrid_ce": explicit production baseline (hybrid recall + cross-encoder rerank)
     retrieval_profile: Optional[str] = None
     # Optional intent router: when enabled, the system may override retrieval knobs based on
     # query intent (faq/howto/api/log). This is deterministic and PII-safe (no raw query in outputs).
@@ -323,26 +325,30 @@ class ChatRAGConfig(BaseModel):
             self.retrieval_profile = None
             return self
 
-        if p == "recall20":
-            # Guarantee: at least 20 candidates returned and no similarity threshold filtering.
-            self.top_k = max(int(self.top_k or 0), 20)
-            self.score_threshold = 0.0
-            self.retrieval_profile = "recall20"
-            return self
-
-        if p == "recall50":
-            self.top_k = max(int(self.top_k or 0), 50)
-            self.score_threshold = 0.0
-            self.retrieval_profile = "recall50"
-            return self
-
-        if p == "coverage80":
-            self.top_k = max(int(self.top_k or 0), 80)
-            self.score_threshold = 0.0
-            self.retrieval_profile = "coverage80"
-            return self
-
-        raise ValueError("retrieval_profile must be one of: recall20, recall50, coverage80")
+        applied = apply_retrieval_profile_overrides(
+            profile=p,
+            top_k=int(self.top_k or 0),
+            score_threshold=float(self.score_threshold or 0.0),
+            retrieval_mode=self.retrieval_mode,
+            enable_reranker=self.enable_reranker,
+            reranker_provider=self.reranker_provider,
+            reranker_top_n=int(self.reranker_top_n or 0),
+            enable_weight_rerank=self.enable_weight_rerank,
+        )
+        self.retrieval_profile = applied["retrieval_profile"]
+        self.top_k = int(applied["top_k"])
+        self.score_threshold = float(applied["score_threshold"])
+        if applied.get("retrieval_mode"):
+            self.retrieval_mode = str(applied["retrieval_mode"])
+        if applied.get("enable_reranker") is not None:
+            self.enable_reranker = bool(applied["enable_reranker"])
+        if applied.get("reranker_provider"):
+            self.reranker_provider = str(applied["reranker_provider"])
+        if applied.get("reranker_top_n") is not None:
+            self.reranker_top_n = int(applied["reranker_top_n"])
+        if applied.get("enable_weight_rerank") is not None:
+            self.enable_weight_rerank = bool(applied["enable_weight_rerank"])
+        return self
 
 class ChatRequest(BaseModel):
     """Chat request."""

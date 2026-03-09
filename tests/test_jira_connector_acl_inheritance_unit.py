@@ -181,10 +181,10 @@ async def test_jira_connector_ingests_issue_and_applies_source_acl(monkeypatch):
     monkeypatch.setattr(connectors, "_resolve_tenant_group_ids_by_external_id", _fake_resolve_groups, raising=True)
 
     def _delta_stub(*_a, **_k):  # noqa: ANN001
-        seen["delta_source_url"] = _k.get("source_url")
+        seen["delta_issue_url"] = _k.get("issue_url")
         return 2
 
-    monkeypatch.setattr(connectors, "_delta_sync_connector_documents_acl_by_source_url", _delta_stub, raising=True)
+    monkeypatch.setattr(connectors, "_delta_sync_jira_documents_acl_by_issue_url", _delta_stub, raising=False)
 
     await connectors._execute_jira_project_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
 
@@ -199,7 +199,7 @@ async def test_jira_connector_ingests_issue_and_applies_source_acl(monkeypatch):
         "jira:role:developers",
     }
     assert set(seen.get("group_ids") or []) == {str(mapped_group_id)}
-    assert seen.get("delta_source_url") == "https://example.atlassian.net/browse/PLAT-42"
+    assert seen.get("delta_issue_url") == "https://example.atlassian.net/browse/PLAT-42"
     assert (run.stats or {}).get("acl_delta_sync_updated_documents") == 2
     assert (run.stats or {}).get("acl_delta_sync_updated_sources") == 1
     assert (run.stats or {}).get("last_modified") == "2026-03-02T12:34:56.000+0000"
@@ -227,3 +227,194 @@ async def test_jira_connector_ingests_issue_and_applies_source_acl(monkeypatch):
     assert (meta.get("connector") or {}).get("connector_id") == "jira_project"
     assert (meta.get("connector") or {}).get("project_key") == "PLAT"
     assert (meta.get("connector") or {}).get("issue_key") == "PLAT-42"
+
+
+@pytest.mark.asyncio
+async def test_jira_connector_ingests_attachments_with_issue_acl(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors
+    from app.models.connector import ConnectorRun
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    requested_by = "test-account"
+
+    run = type(
+        "_Run",
+        (),
+        {
+            "id": run_id,
+            "tenant_id": tenant_id,
+            "dataset_id": dataset_id,
+            "connector_id": "jira_project",
+            "requested_by": requested_by,
+            "status": "pending",
+            "config": {
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "max_issues": 1,
+                "page_size": 1,
+                "chunk_strategy": "jira_ticket",
+                "include_comments": False,
+                "include_attachments": True,
+                "max_attachments_per_issue": 2,
+                "max_total_attachments": 5,
+                "source_acl": {"mode": "inherit"},
+            },
+            "stats": {},
+            "error_message": None,
+            "task_id": None,
+            "started_at": None,
+            "finished_at": None,
+            "documents": [],
+        },
+    )()
+
+    class _DummyQuery:
+        def __init__(self, model):  # noqa: ANN001
+            self.model = model
+
+        def options(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def first(self):  # noqa: ANN201
+            if self.model is ConnectorRun:
+                return run
+            return None
+
+    class _DummyDB:
+        def query(self, model):  # noqa: ANN001
+            return _DummyQuery(model)
+
+        def add(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            return None
+
+        def refresh(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: _DummyDB(), raising=True)
+
+    issue = {
+        "id": "10000",
+        "key": "PLAT-42",
+        "fields": {
+            "summary": "Sync ACL drift to search index",
+            "description": {
+                "type": "doc",
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Description body"}]}],
+            },
+            "updated": "2026-03-02T12:34:56.000+0000",
+            "issuetype": {"name": "Bug"},
+            "priority": {"name": "High"},
+            "status": {"name": "In Progress"},
+            "security": {"id": "10001", "name": "Executives"},
+            "comment": {"comments": []},
+            "attachment": [
+                {
+                    "id": "2001",
+                    "filename": "design.pdf",
+                    "content": "https://example.atlassian.net/secure/attachment/2001/design.pdf",
+                }
+            ],
+        },
+        "renderedFields": {
+            "description": "<p>Description body</p>",
+            "comment": {"comments": []},
+        },
+    }
+
+    class _FakePool:
+        async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
+            params = kwargs.get("params") or {}
+            start_at = int(params.get("startAt", 0) or 0)
+            if url.endswith("/rest/api/3/search") and start_at == 0:
+                payload = {"startAt": 0, "maxResults": 1, "total": 1, "issues": [issue]}
+                return httpx.Response(200, json=payload, request=httpx.Request(method, url))
+            if url.endswith("/rest/api/3/search"):
+                payload = {"startAt": start_at, "maxResults": 1, "total": 1, "issues": []}
+                return httpx.Response(200, json=payload, request=httpx.Request(method, url))
+            raise AssertionError(f"unexpected jira url: {url}")
+
+    monkeypatch.setattr(connectors, "get_http_client_pool", lambda: _FakePool(), raising=True)
+
+    issue_doc_id = uuid.uuid4()
+    attachment_doc_id = uuid.uuid4()
+
+    class _Doc:
+        def __init__(self, doc_id: uuid.UUID) -> None:
+            self.id = doc_id
+            self.access_mode = None
+            self.owner_id = None
+            self.doc_metadata = {}
+
+    issue_doc = _Doc(issue_doc_id)
+    attachment_doc = _Doc(attachment_doc_id)
+    seen: dict[str, object] = {}
+
+    async def _fake_ingest_issue(*_a, **_k):  # noqa: ANN001, ANN201
+        seen["issue_html_source_url"] = getattr(_k.get("body"), "source_url", None)
+        return issue_doc
+
+    async def _fake_ingest_attachment(*_a, **_k):  # noqa: ANN001, ANN201
+        body = _k.get("body")
+        seen["attachment_url"] = getattr(body, "url", None)
+        seen["attachment_filename"] = getattr(body, "filename", None)
+        seen["attachment_fetch_headers"] = getattr(body, "fetch_headers", None)
+        return attachment_doc
+
+    monkeypatch.setattr(connectors, "_ingest_local_html_request", _fake_ingest_issue, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_attachment, raising=True)
+
+    monkeypatch.setattr(connectors.DocumentPermissionService, "update_partial_member_list", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors.DocumentPermissionService, "clear_partial_member_list", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors.DocumentGroupPermissionService, "clear_partial_group_list", lambda *_a, **_k: None, raising=True)
+
+    mapped_group_id = uuid.uuid4()
+
+    def _upd_groups(_db, _tenant_id, doc_id, group_ids, **_k):  # noqa: ANN001
+        seen.setdefault("group_updates", []).append((doc_id, list(group_ids)))
+
+    monkeypatch.setattr(connectors.DocumentGroupPermissionService, "update_partial_group_list", _upd_groups, raising=True)
+    monkeypatch.setattr(
+        connectors,
+        "_resolve_tenant_group_ids_by_external_id",
+        lambda *_a, **_k: {mapped_group_id},
+        raising=True,
+    )
+
+    def _delta_issue_acl_stub(*_a, **_k):  # noqa: ANN001
+        seen["delta_issue_url"] = _k.get("issue_url")
+        return 2
+
+    def _disable_missing_attachments_stub(*_a, **_k):  # noqa: ANN001
+        seen["attachment_reconcile_issue_url"] = _k.get("issue_url")
+        seen["seen_attachment_urls"] = sorted(_k.get("seen_attachment_urls") or [])
+        return 1
+
+    monkeypatch.setattr(connectors, "_delta_sync_jira_documents_acl_by_issue_url", _delta_issue_acl_stub, raising=False)
+    monkeypatch.setattr(connectors, "_soft_disable_jira_attachment_documents_missing_from_issue", _disable_missing_attachments_stub, raising=False)
+
+    await connectors._execute_jira_project_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+
+    assert run.status == "completed"
+    assert seen.get("issue_html_source_url") == "https://example.atlassian.net/browse/PLAT-42"
+    assert seen.get("attachment_url") == "https://example.atlassian.net/secure/attachment/2001/design.pdf"
+    assert seen.get("attachment_filename") == "design.pdf"
+    assert seen.get("delta_issue_url") == "https://example.atlassian.net/browse/PLAT-42"
+    assert seen.get("attachment_reconcile_issue_url") == "https://example.atlassian.net/browse/PLAT-42"
+    assert seen.get("seen_attachment_urls") == ["https://example.atlassian.net/secure/attachment/2001/design.pdf"]
+    assert (attachment_doc.doc_metadata.get("connector") or {}).get("doc_kind") == "attachment"
+    assert (attachment_doc.doc_metadata.get("connector") or {}).get("issue_key") == "PLAT-42"
+    assert (attachment_doc.doc_metadata.get("connector") or {}).get("attachment_id") == "2001"
+    assert len(seen.get("group_updates") or []) == 2
+    assert (run.stats or {}).get("created_attachments") == 1
+    assert (run.stats or {}).get("processed_attachments") == 1

@@ -236,6 +236,84 @@ def test_jira_extract_issue_updated_prefers_fields_updated():  # noqa: ANN001
     assert connectors._jira_extract_issue_updated(issue) == "2026-03-02T12:34:56.000+0000"
 
 
+def test_jira_attachment_limits_defaults_and_clamps():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    include, per_issue, total = connectors._jira_attachment_limits({})
+    assert include is False
+    assert per_issue == 10
+    assert total == 200
+
+    include, per_issue, total = connectors._jira_attachment_limits(
+        {
+            "include_attachments": True,
+            "max_attachments_per_issue": 999,
+            "max_total_attachments": 9999,
+        }
+    )
+    assert include is True
+    assert per_issue == 50
+    assert total == 2000
+
+
+def test_jira_extract_attachments_builds_refs_and_bounds():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    issue = {
+        "fields": {
+            "attachment": [
+                {
+                    "id": "2001",
+                    "filename": "design.pdf",
+                    "content": "https://example.atlassian.net/secure/attachment/2001/design.pdf",
+                },
+                {
+                    "id": "",
+                    "filename": "skip.pdf",
+                    "content": "https://example.atlassian.net/secure/attachment/2002/skip.pdf",
+                },
+                {
+                    "id": "2003",
+                    "filename": "notes.txt",
+                    "content": "https://example.atlassian.net/secure/attachment/2003/notes.txt",
+                },
+            ]
+        }
+    }
+
+    out = connectors._jira_extract_attachments(issue, limit=1)
+    assert out == [
+        {
+            "attachment_id": "2001",
+            "filename": "design.pdf",
+            "download_url": "https://example.atlassian.net/secure/attachment/2001/design.pdf",
+        }
+    ]
+
+
+def test_jira_attachment_connector_metadata_contains_required_fields():  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    out = connectors._jira_attachment_connector_metadata(
+        base_url="https://example.atlassian.net",
+        project_key="PLAT",
+        issue_id="10000",
+        issue_key="PLAT-42",
+        issue_url="https://example.atlassian.net/browse/PLAT-42",
+        attachment_id="2001",
+        filename="design.pdf",
+        download_url="https://example.atlassian.net/secure/attachment/2001/design.pdf",
+        run_id="run-123",
+        mode="incremental",
+    )
+
+    assert out.get("connector_id") == "jira_project"
+    assert out.get("doc_kind") == "attachment"
+    assert out.get("issue_key") == "PLAT-42"
+    assert out.get("attachment_id") == "2001"
+    assert out.get("download_url") == "https://example.atlassian.net/secure/attachment/2001/design.pdf"
+
+
 def test_jira_issue_acl_principal_keys_collects_security_and_comment_visibility():  # noqa: ANN001
     connectors = _import_connectors_with_lightweight_stubs()
 
@@ -501,7 +579,7 @@ def test_sync_connector_config_from_run_versions_state_and_emits_audit(monkeypat
 
     connectors._sync_connector_config_from_run(_DummyDB(), run=run)
 
-    assert cfg.state.get("state_schema_version") == 1
+    assert cfg.state.get("state_schema_version") == 2
     assert cfg.state.get("state_revision") == 2
     assert cfg.state.get("state_recorded_at") == "2026-03-07T12:00:00Z"
     assert cfg.state.get("source_manifest") == {"a.md": "sha-a", "b.md": "sha-b"}

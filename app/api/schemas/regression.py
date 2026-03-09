@@ -154,7 +154,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     # Retrieval config (aligned with chat.rag_config for comparisons).
     retrieval_profile: Optional[str] = Field(
         default=None,
-        description="Optional retrieval preset: recall20 | recall50 | coverage80",
+        description="Optional retrieval preset: recall20 | recall50 | coverage80 | hybrid_ce",
     )
     enable_query_alias_expansion: Optional[bool] = Field(
         default=None,

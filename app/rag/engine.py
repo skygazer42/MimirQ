@@ -30,6 +30,7 @@ from app.rag.core.query_rewrite_strategy import (
     build_query_rewrite_strategy_spec,
     get_query_rewrite_prompt_template,
 )
+from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, is_recall_first_profile
 from app.rag.core.text import (
     build_abstain_followup,
     extract_evidence_text,
@@ -46,6 +47,7 @@ from app.rag.kg.pipeline import kg_search
 from app.rag.policy.intent_router import route_retrieval_preset
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
+from app.rag.reranker.factory import describe_reranker_provider
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from app.services.prompt_resolver import resolve_prompt_template
@@ -761,24 +763,29 @@ Requirements:
                     vec_w = 0.5
                     kw_w = 0.5
 
-            # Retrieval profiles (runtime presets). These are allowed to override caller-provided values.
-            profile_norm = str(retrieval_profile or "").strip().lower()
-            if profile_norm == "recall20":
-                top_k = max(int(top_k or 0), 20)
-                score_threshold_used = 0.0
-                retrieval_profile = "recall20"
-            elif profile_norm == "recall50":
-                top_k = max(int(top_k or 0), 50)
-                score_threshold_used = 0.0
-                retrieval_profile = "recall50"
-            elif profile_norm == "coverage80":
-                top_k = max(int(top_k or 0), 80)
-                score_threshold_used = 0.0
-                retrieval_profile = "coverage80"
-            elif not profile_norm:
-                retrieval_profile = None
-            else:
-                retrieval_profile = profile_norm
+            profile_applied = apply_retrieval_profile_overrides(
+                profile=retrieval_profile,
+                top_k=int(top_k or 0),
+                score_threshold=float(score_threshold_used or 0.0),
+                retrieval_mode=mode_used,
+                enable_reranker=rerank_on,
+                reranker_provider=rerank_provider,
+                reranker_top_n=rerank_top_n,
+                enable_weight_rerank=enable_weight_rerank,
+            )
+            profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
+            retrieval_profile = profile_applied.get("retrieval_profile")
+            top_k = int(profile_applied.get("top_k") or 0)
+            score_threshold_used = float(profile_applied.get("score_threshold") or 0.0)
+            mode_used = str(profile_applied.get("retrieval_mode") or mode_used)
+            if profile_applied.get("enable_reranker") is not None:
+                rerank_on = bool(profile_applied.get("enable_reranker"))
+            if profile_applied.get("reranker_provider"):
+                rerank_provider = str(profile_applied.get("reranker_provider") or rerank_provider)
+            if profile_applied.get("reranker_top_n") is not None:
+                rerank_top_n = int(profile_applied.get("reranker_top_n") or rerank_top_n or 0)
+            if profile_applied.get("enable_weight_rerank") is not None:
+                enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
 
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             alias_elapsed = 0.0
@@ -1123,7 +1130,7 @@ Requirements:
                 "reranker_provider": rerank_provider,
                 "reranker_top_n": rerank_top_n,
             }
-            if profile_norm in {"recall20", "recall50", "coverage80"}:
+            if is_recall_first_profile(profile_norm):
                 # Recall-first profiles: do not drop candidates due to dedup/diversity heuristics.
                 retriever_update.update(
                     {
@@ -1901,6 +1908,10 @@ Requirements:
                         "mmr_lambda": float(mmr_lambda_val or 0.0),
                         "enable_reranker": bool(rerank_on),
                         "reranker_provider": str(rerank_provider or ""),
+                        "reranker_tier": describe_reranker_provider(
+                            str(rerank_provider or ""),
+                            provider_name=str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"),
+                        ).get("tier"),
                         "reranker_top_n": int(rerank_top_n) if rerank_top_n is not None else 0,
                         "visible_evidence_only": bool(visible_evidence_only),
                         "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),

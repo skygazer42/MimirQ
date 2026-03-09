@@ -144,6 +144,11 @@ class RagMetricsSummary:
     retriever_overfetch_count: int
     retriever_overfetch_avg_ratio: float | None
     retriever_filtered_acl_total: int
+    retrieval_candidate_cache_hit_count: int
+    retrieval_candidate_cache_store_ok_count: int
+    retrieval_candidate_cache_backend_counts: dict[str, int]
+    retrieval_candidate_cache_skip_reason_counts: dict[str, int]
+    retrieval_rerank_skip_reason_counts: dict[str, int]
     retrieval_mode_counts: dict[str, int]
     hit_type_counts: dict[str, int]
     error_counts: dict[str, int]
@@ -206,6 +211,11 @@ def summarize_rag_metrics(
     overfetch_ratios: list[float] = []
     overfetch_count = 0
     filtered_acl_total = 0
+    retrieval_candidate_cache_hit_count = 0
+    retrieval_candidate_cache_store_ok_count = 0
+    retrieval_candidate_cache_backend_counts: dict[str, int] = defaultdict(int)
+    retrieval_candidate_cache_skip_reason_counts: dict[str, int] = defaultdict(int)
+    retrieval_rerank_skip_reason_counts: dict[str, int] = defaultdict(int)
 
     # Simple minute-bucket time series.
     bucket: dict[int, dict[str, Any]] = {}
@@ -254,6 +264,27 @@ def summarize_rag_metrics(
                             filtered_acl_total += int(enrich1.get("filtered_acl") or 0)
                         except Exception:
                             pass
+
+                    channels = dbg.get("channels")
+                    if isinstance(channels, dict):
+                        cache_meta = channels.get("cache")
+                        if isinstance(cache_meta, dict):
+                            if bool(cache_meta.get("hit")):
+                                retrieval_candidate_cache_hit_count += 1
+                            if bool(cache_meta.get("store_ok")):
+                                retrieval_candidate_cache_store_ok_count += 1
+                            backend = str(cache_meta.get("backend") or "").strip().lower()
+                            if backend:
+                                retrieval_candidate_cache_backend_counts[backend] += 1
+                            skip_reason = str(cache_meta.get("skip_reason") or "").strip()
+                            if skip_reason:
+                                retrieval_candidate_cache_skip_reason_counts[skip_reason[:80]] += 1
+
+                        rerank_meta = channels.get("rerank")
+                        if isinstance(rerank_meta, dict):
+                            skip_reason = str(rerank_meta.get("skip_reason") or "").strip()
+                            if skip_reason:
+                                retrieval_rerank_skip_reason_counts[skip_reason[:80]] += 1
 
             # Citations are already structured for UI; ignore text, only aggregate numeric fields.
             citations = r.get("citations") or []
@@ -327,6 +358,11 @@ def summarize_rag_metrics(
         retriever_overfetch_count=int(overfetch_count),
         retriever_overfetch_avg_ratio=_mean(overfetch_ratios),
         retriever_filtered_acl_total=int(filtered_acl_total),
+        retrieval_candidate_cache_hit_count=int(retrieval_candidate_cache_hit_count),
+        retrieval_candidate_cache_store_ok_count=int(retrieval_candidate_cache_store_ok_count),
+        retrieval_candidate_cache_backend_counts=dict(retrieval_candidate_cache_backend_counts),
+        retrieval_candidate_cache_skip_reason_counts=dict(retrieval_candidate_cache_skip_reason_counts),
+        retrieval_rerank_skip_reason_counts=dict(retrieval_rerank_skip_reason_counts),
         retrieval_mode_counts=dict(retrieval_mode_counts),
         hit_type_counts=dict(hit_type_counts),
         error_counts=dict(error_counts),
