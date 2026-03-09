@@ -20,24 +20,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api-client'
-
-function parseAccessMembers(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 200) break
-  }
-
-  return out
-}
+import { buildJiraProjectRunPayload } from './knowledge-jira-project-dialog.payload'
 
 type KnowledgeJiraProjectDialogProps = {
   open: boolean
@@ -136,45 +119,32 @@ export function KnowledgeJiraProjectDialog({
       auth = { type: 'basic', username, password }
     }
 
-    const access =
-      accessMode === 'inherit'
-        ? null
-        : {
-            mode: accessMode,
-            partial_member_list: accessMode === 'partial_members' ? parseAccessMembers(accessMembers) : null,
-            partial_group_list: accessMode === 'partial_members' ? accessGroupIds : null,
-          }
-    const sourceAcl =
-      sourceAclEnabled && !hasManualAccessOverride
-        ? {
-            mode: 'inherit' as const,
-            fallback_mode: sourceAclFallbackMode,
-          }
-        : undefined
-
     setSubmitting(true)
     try {
-      const run = await connectorApi.createRun({
-        connector_id: 'jira_project',
-        dataset_id: datasetId === datasetDefaultValue ? undefined : datasetId,
-        config: {
-          base_url: trimmedBaseUrl,
-          project_key: trimmedProjectKey,
-          jql: jql.trim() || undefined,
+      const run = await connectorApi.createRun(
+        buildJiraProjectRunPayload({
+          datasetId: datasetId,
+          datasetDefaultValue,
+          baseUrl: trimmedBaseUrl,
+          projectKey: trimmedProjectKey,
+          jql,
           auth,
-          sync_mode: syncMode,
-          max_issues: Number.isFinite(maxIssues) ? Math.trunc(maxIssues) : 50,
-          page_size: Number.isFinite(pageSize) ? Math.trunc(pageSize) : 25,
-          include_comments: Boolean(includeComments),
-          max_comments_per_issue: Number.isFinite(maxCommentsPerIssue) ? Math.trunc(maxCommentsPerIssue) : 20,
-          user_agent: userAgent.trim() || undefined,
-          parser_backend: parserBackend,
-          chunk_strategy: effectiveChunkStrategy,
+          syncMode,
+          maxIssues,
+          pageSize,
+          includeComments,
+          maxCommentsPerIssue,
+          userAgent,
+          parserBackend,
+          chunkStrategy: effectiveChunkStrategy,
           pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-          access,
-          source_acl: sourceAcl,
-        },
-      })
+          accessMode,
+          accessMembers,
+          accessGroupIds,
+          sourceAclEnabled,
+          sourceAclFallbackMode,
+        })
+      )
 
       toast.success(`已创建 Jira 导入任务：${run.id.slice(0, 8)}`, {
         action: onRunCreated
@@ -223,7 +193,6 @@ export function KnowledgeJiraProjectDialog({
     datasetDefaultValue,
     datasetId,
     effectiveChunkStrategy,
-    hasManualAccessOverride,
     includeComments,
     jql,
     loadConnectorRuns,

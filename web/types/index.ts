@@ -55,6 +55,25 @@ export interface WebCrawlAuthConfig {
   password?: string | null
 }
 
+export interface SourcePrincipal {
+  system: 'github' | 'confluence' | 'jira' | 'drive' | 'generic'
+  kind: 'user' | 'group' | 'team' | 'role' | 'policy' | 'domain' | 'anyone'
+  id: string
+  display?: string | null
+}
+
+export interface ConnectorSourceAclGroupMappingRule {
+  source: SourcePrincipal
+  group_id: string
+}
+
+export interface ConnectorSourceAclConfig {
+  mode?: 'disabled' | 'inherit'
+  group_mappings?: ConnectorSourceAclGroupMappingRule[]
+  allow_anyone?: boolean
+  fallback_mode?: DocumentAccessMode
+}
+
 export interface WebCrawlConnectorConfig {
   [key: string]: unknown
   start_urls: string[]
@@ -119,6 +138,7 @@ export interface JiraProjectConnectorConfig {
   chunk_strategy?: string
   pipeline?: DocumentPipelineOptions
   access?: DocumentAccessUpdateRequest | null
+  source_acl?: ConnectorSourceAclConfig | null
 }
 
 export type ConnectorRunCreateRequest =
