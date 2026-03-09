@@ -264,6 +264,7 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 - 支持 `sync_mode=auto|full|incremental`
 - 默认 `chunk_strategy="jira_ticket"`，以更好地按 Summary / Description / Comments 等段落切分
 - 可选拉取 comments；ACL 继承基于 issue security level 与 comment visibility 的 best-effort 外部映射
+- 可选 `custom_fields`：显式 allowlist 额外拉取并渲染到文档里的自定义字段（例如 `customfield_10016`）
 
 示例：
 
@@ -271,27 +272,29 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 {
   "connector_id": "jira_project",
   "dataset_id": "00000000-0000-0000-0000-000000000000",
-  "config": {
-    "base_url": "https://example.atlassian.net",
-    "project_key": "PLAT",
-    "jql": "statusCategory != Done",
-    "auth": { "type": "basic", "username": "bot@example.com", "password": "jira_api_token" },
-    "sync_mode": "auto",
-    "max_issues": 200,
-    "page_size": 50,
-    "include_comments": true,
-    "max_comments_per_issue": 20,
-    "parser_backend": "auto",
-    "chunk_strategy": "jira_ticket",
-    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }
-  }
-}
-```
+	  "config": {
+	    "base_url": "https://example.atlassian.net",
+	    "project_key": "PLAT",
+	    "jql": "statusCategory != Done",
+	    "auth": { "type": "basic", "username": "bot@example.com", "password": "jira_api_token" },
+	    "sync_mode": "auto",
+	    "max_issues": 200,
+	    "page_size": 50,
+	    "include_comments": true,
+	    "max_comments_per_issue": 20,
+	    "custom_fields": ["customfield_10016"],
+	    "parser_backend": "auto",
+	    "chunk_strategy": "jira_ticket",
+	    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }
+	  }
+	}
+	```
 
 运维提示：
 
 - `base_url` 应填站点根 URL，例如 `https://<site>.atlassian.net`
 - `basic` 模式通常使用 Atlassian 账号邮箱 + API token
+- `customfield_XXXXX` 的 ID 通常可通过 Jira 管理后台字段配置或 `GET /rest/api/3/field` 查到（仅需把需要的字段加入 allowlist）
 - 若启用 `source_acl`，建议先准备好与 Jira security level / role / group 对应的 `tenant_groups.external_id`
 
 ### 5.7 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
