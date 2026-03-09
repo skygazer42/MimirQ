@@ -153,3 +153,28 @@ def test_evidence_post_rerank_cache_roundtrips_via_redis_backend(
     assert out is not None
     assert out.ordered_ids == ["b", "a"]
     assert out.score_map == {"b": 2.0, "a": 1.0}
+
+
+def test_evidence_post_rerank_cache_key_changes_with_corpus_cache_token() -> None:
+    import app.rag.rerank_result_cache as cache_mod
+
+    key_a = cache_mod.build_evidence_post_rerank_cache_key(
+        tenant_id="t",
+        account_id="u",
+        provider="stub",
+        top_n=2,
+        query="hello",
+        candidates_fingerprint="cand-fp",
+        corpus_cache_token="corp-a",
+    )
+    key_b = cache_mod.build_evidence_post_rerank_cache_key(
+        tenant_id="t",
+        account_id="u",
+        provider="stub",
+        top_n=2,
+        query="hello",
+        candidates_fingerprint="cand-fp",
+        corpus_cache_token="corp-b",
+    )
+
+    assert key_a != key_b

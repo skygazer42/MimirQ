@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -281,6 +281,144 @@ async def test_execute_jira_project_run_does_not_reconcile_missing_issues_during
     assert int((run.stats or {}).get("removed_documents_disabled") or 0) == 0
 
 
+@pytest.mark.asyncio
+async def test_execute_jira_project_run_reconciles_missing_attachments_during_incremental_sync(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        config={
+            "base_url": "https://example.atlassian.net",
+            "project_key": "PLAT",
+            "sync_mode": "incremental",
+            "_state": {"last_modified": "2026-03-06T00:00:00.000+0000"},
+            "max_issues": 10,
+            "page_size": 2,
+            "include_comments": False,
+            "include_attachments": True,
+            "max_attachments_per_issue": 5,
+            "max_total_attachments": 20,
+        }
+    )
+    dummy_db = _RunDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        connectors,
+        "_ingest_local_html_request",
+        _fake_ingest_local_html_request,
+        raising=True,
+    )
+
+    issue = _jira_issue("10001", "PLAT-2", "2026-03-07T04:05:06.000+0000")
+    issue_fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    issue_fields["attachment"] = []
+
+    monkeypatch.setattr(
+        connectors,
+        "get_http_client_pool",
+        lambda: _FakePool(
+            [
+                {"startAt": 0, "maxResults": 1, "total": 1, "issues": [issue]},
+                {"startAt": 1, "maxResults": 1, "total": 1, "issues": []},
+            ]
+        ),
+        raising=True,
+    )
+
+    calls: list[dict[str, object]] = []
+
+    def _attachment_reconcile_stub(_db, **kwargs):  # noqa: ANN001
+        calls.append(dict(kwargs))
+        return 1
+
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_jira_attachment_documents_missing_from_issue",
+        _attachment_reconcile_stub,
+        raising=False,
+    )
+
+    await connectors._execute_jira_project_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert run.status == "completed"
+    assert len(calls) == 1
+    assert calls[0].get("issue_url") == "https://example.atlassian.net/browse/PLAT-2"
+    assert calls[0].get("seen_attachment_urls") == set()
+    assert int((run.stats or {}).get("removed_attachment_documents_disabled") or 0) == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_jira_project_run_replays_boundary_timestamp_and_skips_seen_issue_ids(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        config={
+            "base_url": "https://example.atlassian.net",
+            "project_key": "PLAT",
+            "sync_mode": "incremental",
+            "max_issues": 5,
+            "page_size": 5,
+            "include_comments": False,
+            "_state": {
+                "last_modified": "2026-03-06T00:00:00.000+0000",
+                "last_modified_ids": ["10000"],
+            },
+        }
+    )
+    dummy_db = _RunDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    seen: dict[str, object] = {"created_issue_keys": []}
+
+    async def _fake_ingest_local_html_request(*_a, **_k):  # noqa: ANN001, ANN202
+        body = _k.get("body")
+        source_url = getattr(body, "source_url", None)
+        if source_url and source_url.endswith("/PLAT-1"):
+            seen.setdefault("created_issue_keys", []).append("PLAT-1")
+        if source_url and source_url.endswith("/PLAT-2"):
+            seen.setdefault("created_issue_keys", []).append("PLAT-2")
+        return _CreatedDoc()
+
+    monkeypatch.setattr(connectors, "_ingest_local_html_request", _fake_ingest_local_html_request, raising=True)
+
+    class _RecordingPool:
+        def __init__(self) -> None:
+            self.jqls: list[str] = []
+
+        async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
+            if not url.endswith("/rest/api/3/search"):
+                raise AssertionError(f"unexpected jira url: {url}")
+            params = kwargs.get("params") or {}
+            self.jqls.append(str(params.get("jql") or ""))
+            start_at = int(params.get("startAt", 0) or 0)
+            if start_at > 0:
+                payload = {"startAt": start_at, "maxResults": 5, "total": 2, "issues": []}
+                return httpx.Response(200, json=payload, request=httpx.Request(method, url))
+            payload = {
+                "startAt": 0,
+                "maxResults": 5,
+                "total": 2,
+                "issues": [
+                    _jira_issue("10000", "PLAT-1", "2026-03-06T00:00:00.000+0000"),
+                    _jira_issue("10001", "PLAT-2", "2026-03-06T00:00:00.000+0000"),
+                ],
+            }
+            return httpx.Response(200, json=payload, request=httpx.Request(method, url))
+
+    pool = _RecordingPool()
+    monkeypatch.setattr(connectors, "get_http_client_pool", lambda: pool, raising=True)
+
+    await connectors._execute_jira_project_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert run.status == "completed"
+    assert pool.jqls
+    assert 'updated >= "2026-03-06T00:00:00.000+0000"' in pool.jqls[0]
+    assert seen.get("created_issue_keys") == ["PLAT-2"]
+    assert int((run.stats or {}).get("skipped_boundary_duplicates") or 0) == 1
+    assert (run.stats or {}).get("last_modified_ids") == ["10001"]
+
+
 def test_soft_disable_jira_documents_missing_from_full_sync_marks_docs_disabled(monkeypatch):  # noqa: ANN001
     connectors = _import_connectors_with_lightweight_stubs()
 
@@ -359,3 +497,76 @@ def test_soft_disable_jira_documents_missing_from_full_sync_marks_docs_disabled(
     assert active_seen.disabled_at is None
     assert already_disabled.disabled_at == now
     assert other_project.disabled_at is None
+
+
+def test_soft_disable_jira_attachment_documents_missing_from_issue_marks_only_missing_attachments_disabled(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    now = datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc)
+    base_url = "https://example.atlassian.net"
+    project_key = "PLAT"
+    issue_url = f"{base_url}/browse/PLAT-1"
+
+    class _Doc:
+        def __init__(self, attachment_id: str, download_url: str, *, issue: str = issue_url) -> None:  # noqa: ANN001
+            self.id = uuid.uuid4()
+            self.archived_at = None
+            self.disabled_at = None
+            self.doc_metadata = {
+                "connector": {
+                    "connector_id": "jira_project",
+                    "doc_kind": "attachment",
+                    "base_url": base_url,
+                    "project_key": project_key,
+                    "issue_url": issue,
+                    "attachment_id": attachment_id,
+                    "download_url": download_url,
+                }
+            }
+
+    active_missing = _Doc("2001", "https://example.atlassian.net/secure/attachment/2001/missing.pdf")
+    active_seen = _Doc("2002", "https://example.atlassian.net/secure/attachment/2002/seen.pdf")
+    other_issue = _Doc("2003", "https://example.atlassian.net/secure/attachment/2003/other.pdf", issue=f"{base_url}/browse/PLAT-2")
+    docs = [active_missing, active_seen, other_issue]
+
+    class _DocQuery:
+        def __init__(self, docs_in):  # noqa: ANN001
+            self._docs = list(docs_in or [])
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def order_by(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def limit(self, _n: int):  # noqa: ANN001
+            return self
+
+        def all(self):  # noqa: ANN201
+            return list(self._docs)
+
+    class _DocDB:
+        def __init__(self, docs_in):  # noqa: ANN001
+            self._docs = list(docs_in or [])
+
+        def query(self, _model):  # noqa: ANN001
+            return _DocQuery(self._docs)
+
+    monkeypatch.setattr(connectors, "_now", lambda: now, raising=True)
+
+    disabled = connectors._soft_disable_jira_attachment_documents_missing_from_issue(
+        _DocDB(docs),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        seen_attachment_urls={"https://example.atlassian.net/secure/attachment/2002/seen.pdf"},
+    )
+
+    assert disabled == 1
+    assert active_missing.disabled_at == now
+    assert active_seen.disabled_at is None
+    assert other_issue.disabled_at is None

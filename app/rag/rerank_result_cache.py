@@ -99,6 +99,7 @@ def build_evidence_post_rerank_cache_key(
     top_n: int,
     query: str,
     candidates_fingerprint: str,
+    corpus_cache_token: str | None = None,
     schema: str = "mimirq.evidence_post_rerank_cache.v1",
 ) -> str:
     """
@@ -114,6 +115,7 @@ def build_evidence_post_rerank_cache_key(
         "top_n": int(top_n or 0),
         "query_hash": stable_hash((query or "").strip(), length=16),
         "candidates": str(candidates_fingerprint or ""),
+        "corpus_cache_token": str(corpus_cache_token or "") or None,
         "tenant_hash": stable_hash(str(tenant_id or ""), length=16),
         "account_hash": stable_hash(str(account_id or ""), length=16),
         # Include low-cardinality config knobs so cache doesn't cross incompatible deployments.

@@ -207,6 +207,132 @@ async def test_execute_web_crawl_run_resumes_from_saved_state_cursor(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_execute_web_crawl_run_incremental_skips_unchanged_urls(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="web_crawl",
+        config={
+            "start_urls": ["https://example.com/docs"],
+            "max_pages": 4,
+            "_state": {
+                "source_manifest": {
+                    "https://example.com/docs/a": "sha-a",
+                    "https://example.com/docs/b": "sha-b",
+                }
+            },
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    crawl = types.SimpleNamespace(
+        urls=[
+            "https://example.com/docs/a",
+            "https://example.com/docs/b",
+            "https://example.com/docs/c",
+        ],
+        visited=3,
+        queued=3,
+        errors=[],
+    )
+
+    async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        return crawl
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "crawl_site", _fake_crawl_site, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_web_crawl_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://example.com/docs/c"]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_urls") or 0) == 1
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 2
+    assert int((run.stats or {}).get("processed_urls") or 0) == 3
+    assert set(((run.stats or {}).get("source_manifest") or {}).keys()) == {
+        "https://example.com/docs/a",
+        "https://example.com/docs/b",
+        "https://example.com/docs/c",
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_web_crawl_run_incremental_prunes_removed_urls_and_soft_disables_documents(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="web_crawl",
+        config={
+            "start_urls": ["https://example.com/docs"],
+            "max_pages": 4,
+            "_state": {
+                "source_manifest": {
+                    "https://example.com/docs/a": "sha-a",
+                    "https://example.com/docs/obsolete": "sha-obsolete",
+                }
+            },
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    crawl = types.SimpleNamespace(
+        urls=[
+            "https://example.com/docs/a",
+            "https://example.com/docs/b",
+        ],
+        visited=2,
+        queued=2,
+        errors=[],
+    )
+
+    async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        return crawl
+
+    ingested_urls: list[str] = []
+    disabled_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    def _fake_soft_disable(_db, *, source_url: str, **_k):  # noqa: ANN001
+        disabled_urls.append(source_url)
+        return 1
+
+    monkeypatch.setattr(connectors, "crawl_site", _fake_crawl_site, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_connector_documents_by_source_url",
+        _fake_soft_disable,
+        raising=True,
+    )
+
+    await connectors._execute_web_crawl_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://example.com/docs/b"]
+    assert disabled_urls == ["https://example.com/docs/obsolete"]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("removed_paths") or 0) == 1
+    assert int((run.stats or {}).get("removed_paths_reconciled") or 0) == 1
+    assert int((run.stats or {}).get("removed_documents_disabled") or 0) == 1
+    assert set(((run.stats or {}).get("source_manifest") or {}).keys()) == {
+        "https://example.com/docs/a",
+        "https://example.com/docs/b",
+    }
+
+
+@pytest.mark.asyncio
 async def test_execute_github_repo_run_resumes_from_saved_state_cursor(monkeypatch):  # noqa: ANN001
     connectors = _import_connectors_with_lightweight_stubs()
 

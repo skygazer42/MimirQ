@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
 
 def test_delta_sync_connector_documents_acl_by_source_url_updates_docs_and_provenance(monkeypatch):  # noqa: ANN001

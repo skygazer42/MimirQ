@@ -19,7 +19,7 @@ def _ensure_pkg_resources_available() -> None:
         import pkg_resources  # type: ignore  # noqa: F401
 
         return
-    except Exception:
+    except ImportError:
         pass
 
     # Minimal shim for libraries that only need:
@@ -28,21 +28,21 @@ def _ensure_pkg_resources_available() -> None:
     try:
         from importlib import metadata as _metadata
         from types import ModuleType, SimpleNamespace
-    except Exception:
+    except ImportError:
         return
 
-    class DistributionNotFound(Exception):
+    class DistributionNotFoundError(Exception):
         pass
 
     def get_distribution(dist_name: str) -> SimpleNamespace:
         try:
             v = _metadata.version(dist_name)
         except _metadata.PackageNotFoundError as e:
-            raise DistributionNotFound(dist_name) from e
+            raise DistributionNotFoundError(dist_name) from e
         return SimpleNamespace(version=v)
 
     shim = ModuleType("pkg_resources")
-    shim.DistributionNotFound = DistributionNotFound  # type: ignore[attr-defined]
+    shim.DistributionNotFound = DistributionNotFoundError  # type: ignore[attr-defined]
     shim.get_distribution = get_distribution  # type: ignore[attr-defined]
     sys.modules.setdefault("pkg_resources", shim)
 

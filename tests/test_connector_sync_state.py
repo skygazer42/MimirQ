@@ -125,10 +125,32 @@ def test_build_saved_state_snapshot_adds_revision_and_bounded_audit_history() ->
 
     assert state["keep"] == "me"
     assert state["last_run_id"] == str(run_id)
-    assert state["state_schema_version"] == 1
+    assert state["state_schema_version"] == 2
     assert state["state_revision"] == 11
     assert state["state_recorded_at"] == "2026-03-07T12:00:00Z"
     assert state["source_manifest"] == {"a.md": "sha-a", "b.md": "sha-b"}
+    assert state["state_last_successful_run_id"] == str(run_id)
+    assert state["state_last_successful_recorded_at"] == "2026-03-07T12:00:00Z"
+
+    sync_state = state["state_sync"]
+    assert sync_state["schema"] == "mimirq.connector_sync_state.v2"
+    assert sync_state["connector_id"] == "github_repo"
+    assert sync_state["supports_incremental"] is True
+    assert sync_state["supports_resume"] is True
+    assert sync_state["supports_full_reconcile"] is True
+    assert sync_state["cursor"] == {"kind": "offset", "field": "cursor", "value": 2}
+    assert sync_state["manifest"] == {
+        "kind": "source_manifest",
+        "field": "source_manifest",
+        "count": 2,
+        "entries": {"a.md": "sha-a", "b.md": "sha-b"},
+    }
+    assert sync_state["watermark"] is None
+    assert sync_state["totals"] == {"total_files": 3}
+    assert sync_state["reconcile"] == {
+        "last_successful_run_id": str(run_id),
+        "last_successful_recorded_at": "2026-03-07T12:00:00Z",
+    }
 
     audit = state["state_audit"]
     assert audit["last_status"] == "completed"
@@ -138,3 +160,66 @@ def test_build_saved_state_snapshot_adds_revision_and_bounded_audit_history() ->
     assert audit["history"][-1]["run_id"] == str(run_id)
     assert audit["history"][-1]["recorded_at"] == "2026-03-07T12:00:00Z"
     assert audit["history"][-1]["updated_keys"] == ["cursor", "last_run_id", "source_manifest", "total_files"]
+
+
+def test_build_saved_state_snapshot_preserves_last_successful_marker_when_run_fails() -> None:
+    from app.services.connector_sync_state import build_saved_state_snapshot
+
+    previous_run_id = uuid.uuid4()
+    current_run_id = uuid.uuid4()
+
+    state = build_saved_state_snapshot(
+        connector_id="confluence_space",
+        existing_state={
+            "last_modified": "2026-03-06T08:00:00Z",
+            "state_last_successful_run_id": str(previous_run_id),
+            "state_last_successful_recorded_at": "2026-03-06T08:30:00Z",
+            "state_schema_version": 1,
+            "state_revision": 4,
+        },
+        stats={"last_modified": "2026-03-07T12:34:56Z"},
+        run_id=current_run_id,
+        run_status="failed",
+        recorded_at="2026-03-07T12:40:00Z",
+    )
+
+    assert state["state_schema_version"] == 2
+    assert state["state_last_successful_run_id"] == str(previous_run_id)
+    assert state["state_last_successful_recorded_at"] == "2026-03-06T08:30:00Z"
+    assert state["state_sync"]["cursor"] is None
+    assert state["state_sync"]["manifest"] is None
+    assert state["state_sync"]["watermark"] == {
+        "kind": "timestamp",
+        "field": "last_modified",
+        "value": "2026-03-07T12:34:56Z",
+    }
+    assert state["state_sync"]["reconcile"] == {
+        "last_successful_run_id": str(previous_run_id),
+        "last_successful_recorded_at": "2026-03-06T08:30:00Z",
+    }
+
+
+def test_build_persisted_state_normalizes_timestamp_boundary_ids() -> None:
+    from app.services.connector_sync_state import build_persisted_state
+
+    run_id = uuid.uuid4()
+
+    state = build_persisted_state(
+        connector_id="jira_project",
+        existing_state={"keep": "me"},
+        stats={
+            "last_modified": "2026-03-07T12:34:56Z",
+            "last_modified_ids": ["ISSUE-2", "ISSUE-1", "ISSUE-2", "", None],
+        },
+        run_id=run_id,
+    )
+
+    assert state["keep"] == "me"
+    assert state["last_run_id"] == str(run_id)
+    assert state["last_modified_ids"] == ["ISSUE-1", "ISSUE-2"]
+    assert state["state_sync"]["watermark"] == {
+        "kind": "timestamp",
+        "field": "last_modified",
+        "value": "2026-03-07T12:34:56Z",
+        "seen_ids": ["ISSUE-1", "ISSUE-2"],
+    }

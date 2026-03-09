@@ -52,6 +52,20 @@ def test_observability_rag_metrics_summary(monkeypatch, tmp_path):  # noqa: ANN0
                             "search_k": 20,
                             "overfetch_enabled": True,
                             "enrich_pass1": {"filtered_acl": 2, "output_results": 7},
+                            "channels": {
+                                "cache": {
+                                    "enabled": True,
+                                    "backend": "redis",
+                                    "hit": False,
+                                    "skip_reason": "missing_corpus_cache_token",
+                                    "store_ok": False,
+                                },
+                                "rerank": {
+                                    "enabled": True,
+                                    "provider": "cross_encoder",
+                                    "skip_reason": "provider_off",
+                                },
+                            },
                         },
                     }
                 ],
@@ -110,3 +124,7 @@ def test_observability_rag_metrics_summary(monkeypatch, tmp_path):  # noqa: ANN0
     assert body.get("retriever_overfetch_count") == 1
     assert body.get("retriever_overfetch_avg_ratio") == 4.0
     assert body.get("retriever_filtered_acl_total") == 2
+    assert body.get("retrieval_candidate_cache_hit_count") == 0
+    assert (body.get("retrieval_candidate_cache_skip_reason_counts") or {}).get("missing_corpus_cache_token") == 1
+    assert (body.get("retrieval_candidate_cache_backend_counts") or {}).get("redis") == 1
+    assert (body.get("retrieval_rerank_skip_reason_counts") or {}).get("provider_off") == 1

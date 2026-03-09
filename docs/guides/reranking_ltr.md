@@ -6,6 +6,11 @@ LTR（Learning-to-Rank）用于把多个检索信号（dense/bm25/lexical/sparse
 - deterministic tests 可跑通
 - 生产默认不启用（必须显式配置 model path）
 
+当前 provider tier：
+- `ltr`：`prod`
+- 推荐用途：在你已经有稳定训练数据和 registry/rollback 流程之后，作为生产精排路径
+- 如果你只是想先建立一个明确的 production baseline，请先用 `retrieval_profile=hybrid_ce`
+
 代码位置：
 - `app/rag/reranker/ltr.py`
 - `app/rag/reranker/factory.py`（provider wiring）

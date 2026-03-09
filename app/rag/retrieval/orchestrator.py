@@ -34,6 +34,7 @@ from app.rag.core.query_rewrite_strategy import (
     get_query_rewrite_prompt_template,
 )
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, is_recall_first_profile
 from app.rag.core.text import (
     build_abstain_followup,
     guess_retrieval_mode,
@@ -53,9 +54,10 @@ from app.rag.rerank_result_cache import (
     get_evidence_post_rerank_cache_backend,
     set_cached_evidence_post_rerank_result,
 )
-from app.rag.reranker.factory import get_reranker
+from app.rag.reranker.factory import describe_reranker_provider, get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retriever import hybrid_retriever
+from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 
 
 def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
@@ -249,8 +251,7 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
 
 
 def _is_recall_profile(profile: str | None) -> bool:
-    p = str(profile or "").strip().lower()
-    return p in {"recall20", "recall50", "coverage80"}
+    return is_recall_first_profile(profile)
 
 
 def _coverage_proxy_from_citations(citations: Any) -> dict[str, Any] | None:
@@ -440,6 +441,7 @@ def _fetch_document_chunks_for_kg_injection(
     """
     if not chunk_ids:
         return []
+
     if db is None or tenant_id is None:
         return []
 
@@ -486,6 +488,43 @@ def _fetch_document_chunks_for_kg_injection(
         )
     except Exception:
         return []
+
+
+def _resolve_post_rerank_corpus_cache_token(state: Dict[str, Any]) -> str | None:
+    db = state.get("db")
+    tenant_id = state.get("tenant_id")
+    if db is None or tenant_id is None:
+        return None
+    try:
+        tenant_uuid = UUID(str(tenant_id))
+    except Exception:
+        return None
+
+    dataset_id_raw = state.get("dataset_id")
+    dataset_uuid: UUID | None = None
+    if dataset_id_raw is not None:
+        try:
+            dataset_uuid = UUID(str(dataset_id_raw))
+        except Exception:
+            dataset_uuid = None
+
+    document_ids_raw = state.get("document_ids") or []
+    document_ids: list[UUID] = []
+    for raw in list(document_ids_raw):
+        try:
+            document_ids.append(UUID(str(raw)))
+        except Exception:
+            continue
+
+    try:
+        return resolve_corpus_cache_token(
+            db,
+            tenant_id=tenant_uuid,
+            dataset_id=dataset_uuid,
+            document_ids=document_ids,
+        )
+    except Exception:
+        return None
 
 
 def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -637,24 +676,54 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         request_retrieval_mode = "hybrid"
         mode_norm = "hybrid"
 
-    profile_norm = str(state.get("retrieval_profile") or "").strip().lower()
+    profile_applied = apply_retrieval_profile_overrides(
+        profile=state.get("retrieval_profile"),
+        top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
+        score_threshold=float(
+            state.get("score_threshold", settings.SIMILARITY_THRESHOLD)
+            if state.get("score_threshold", settings.SIMILARITY_THRESHOLD) is not None
+            else (settings.SIMILARITY_THRESHOLD or 0.0)
+        ),
+        retrieval_mode=request_retrieval_mode,
+        enable_reranker=bool(state.get("enable_reranker", settings.ENABLE_RERANKER)),
+        reranker_provider=str(state.get("reranker_provider", settings.RERANKER_PROVIDER) or ""),
+        reranker_top_n=int(state.get("reranker_top_n", settings.RERANKER_TOP_N) or settings.RERANKER_TOP_N or 20),
+        enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
+    )
+    profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
     retriever_update: Dict[str, Any] = {
-        "k": state.get("top_k", settings.RETRIEVAL_TOP_K),
-        "score_threshold": state.get("score_threshold", settings.SIMILARITY_THRESHOLD),
+        "k": int(profile_applied.get("top_k") or settings.RETRIEVAL_TOP_K),
+        "score_threshold": float(profile_applied.get("score_threshold") or 0.0),
         "alpha": state.get("alpha", 0.6),
         # Optional: channel fusion override (used by Evidence API ablations / retrieval-only tuning).
         "fusion_strategy": state.get("fusion_strategy") or settings.RETRIEVAL_FUSION_STRATEGY,
         "fusion_budgets": state.get("fusion_budgets"),
         "fusion_min_scores": state.get("fusion_min_scores"),
         "fusion_weights": state.get("fusion_weights"),
-        "retrieval_mode": request_retrieval_mode,
-        "enable_weight_rerank": state.get("enable_weight_rerank", True),
+        "retrieval_mode": str(profile_applied.get("retrieval_mode") or request_retrieval_mode),
+        "enable_weight_rerank": (
+            profile_applied.get("enable_weight_rerank")
+            if profile_applied.get("enable_weight_rerank") is not None
+            else state.get("enable_weight_rerank", True)
+        ),
         "vector_weight": state.get("vector_weight", 0.6),
         "keyword_weight": state.get("keyword_weight", 0.4),
         "mmr_lambda": state.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA),
-        "enable_reranker": state.get("enable_reranker", settings.ENABLE_RERANKER),
-        "reranker_provider": state.get("reranker_provider", settings.RERANKER_PROVIDER),
-        "reranker_top_n": state.get("reranker_top_n", settings.RERANKER_TOP_N),
+        "enable_reranker": (
+            profile_applied.get("enable_reranker")
+            if profile_applied.get("enable_reranker") is not None
+            else state.get("enable_reranker", settings.ENABLE_RERANKER)
+        ),
+        "reranker_provider": str(
+            profile_applied.get("reranker_provider")
+            or state.get("reranker_provider", settings.RERANKER_PROVIDER)
+            or settings.RERANKER_PROVIDER
+        ),
+        "reranker_top_n": int(
+            profile_applied.get("reranker_top_n")
+            if profile_applied.get("reranker_top_n") is not None
+            else state.get("reranker_top_n", settings.RERANKER_TOP_N)
+        ),
         "sparse_enabled": sparse_enabled,
         "sparse_provider": sparse_provider,
         "tenant_id": state.get("tenant_id"),
@@ -663,18 +732,6 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "document_ids": state.get("document_ids"),
         "metadata_filter": state.get("metadata_filter"),
     }
-
-    # Retrieval profile contract (defense-in-depth): ensure the profile behavior holds even
-    # when callers bypass ChatRAGConfig validation.
-    if profile_norm == "recall20":
-        retriever_update["k"] = max(int(retriever_update.get("k") or 0), 20)
-        retriever_update["score_threshold"] = 0.0
-    elif profile_norm == "recall50":
-        retriever_update["k"] = max(int(retriever_update.get("k") or 0), 50)
-        retriever_update["score_threshold"] = 0.0
-    elif profile_norm == "coverage80":
-        retriever_update["k"] = max(int(retriever_update.get("k") or 0), 80)
-        retriever_update["score_threshold"] = 0.0
 
     # Recall-first profiles: do not drop candidates due to dedup/diversity heuristics.
     if _is_recall_profile(profile_norm):
@@ -1082,7 +1139,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 docs_by_query.append(docs_i or [])
     retrieval_elapsed = time.time() - start
 
-    top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
+    top_k = int(retriever_update.get("k") or state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
     mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled)
     try:
         mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
@@ -1554,6 +1611,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     post_rerank_cache_backend = get_evidence_post_rerank_cache_backend()
     post_rerank_cache_hits = 0
     post_rerank_cache_misses = 0
+    post_rerank_corpus_cache_token = _resolve_post_rerank_corpus_cache_token(state)
 
     try:
         if post_rerank_enabled and not (docs or []):
@@ -1627,6 +1685,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                                     top_n=st_n,
                                     query=query_for_retrieval,
                                     candidates_fingerprint=cand_fp,
+                                    corpus_cache_token=post_rerank_corpus_cache_token,
                                 )
                                 rr = get_cached_evidence_post_rerank_result(cache_key)
                                 if rr is not None:
@@ -1771,6 +1830,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                                     top_n=post_rerank_candidates_n,
                                     query=query_for_retrieval,
                                     candidates_fingerprint=cand_fp,
+                                    corpus_cache_token=post_rerank_corpus_cache_token,
                                 )
                                 rr = get_cached_evidence_post_rerank_result(cache_key)
                                 if rr is not None:
@@ -2271,6 +2331,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "mmr_lambda": float(retriever_update.get("mmr_lambda") or 0.0),
             "enable_reranker": bool(retriever_update.get("enable_reranker", False)),
             "reranker_provider": str(retriever_update.get("reranker_provider") or ""),
+            "reranker_tier": describe_reranker_provider(
+                str(retriever_update.get("reranker_provider") or ""),
+                provider_name=str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"),
+            ).get("tier"),
             "reranker_top_n": int(retriever_update.get("reranker_top_n") or 0),
             "visible_evidence_only": bool(state.get("visible_evidence_only") or False),
             # Global retrieval channel toggles (low-cardinality).

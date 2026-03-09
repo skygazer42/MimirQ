@@ -57,6 +57,11 @@ class RagMetricsSummaryResponse(BaseModel):
     retriever_overfetch_count: int = 0
     retriever_overfetch_avg_ratio: float | None = None
     retriever_filtered_acl_total: int = 0
+    retrieval_candidate_cache_hit_count: int = 0
+    retrieval_candidate_cache_store_ok_count: int = 0
+    retrieval_candidate_cache_backend_counts: Dict[str, int] = {}
+    retrieval_candidate_cache_skip_reason_counts: Dict[str, int] = {}
+    retrieval_rerank_skip_reason_counts: Dict[str, int] = {}
     retrieval_mode_counts: Dict[str, int] = {}
     hit_type_counts: Dict[str, int] = {}
     error_counts: Dict[str, int] = {}

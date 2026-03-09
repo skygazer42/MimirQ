@@ -5,7 +5,6 @@ import json
 import uuid
 from base64 import b64decode, b64encode
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 import pytest
 from cryptography import x509
@@ -20,7 +19,6 @@ from signxml import XMLSigner, methods
 from app.core.config import settings
 from app.models.user import User
 from app.services.user_service import UserService
-
 
 NSMAP = {
     "samlp": "urn:oasis:names:tc:SAML:2.0:protocol",

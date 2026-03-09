@@ -25,6 +25,8 @@ class ConnectorInfo(BaseModel):
     description: str = ""
     supports_incremental: bool = False
     supports_resume: bool = False
+    supports_full_reconcile: bool = False
+    sync_cursor_kind: str = "none"
 
 
 class WebCrawlAuthConfig(BaseModel):
@@ -374,6 +376,9 @@ class JiraProjectConnectorConfig(BaseModel):
     page_size: int = Field(default=25, ge=1, le=100)
     include_comments: bool = Field(default=True, description="If true, include issue comments in the rendered HTML document.")
     max_comments_per_issue: int = Field(default=20, ge=0, le=200)
+    include_attachments: bool = Field(default=False, description="If true, list and ingest issue attachments (bounded).")
+    max_attachments_per_issue: int = Field(default=10, ge=1, le=50, description="Max attachments ingested per issue (bounded).")
+    max_total_attachments: int = Field(default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded).")
 
     user_agent: Optional[str] = Field(default=None, max_length=200)
 

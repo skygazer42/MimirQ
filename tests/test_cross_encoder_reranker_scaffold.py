@@ -46,3 +46,13 @@ def test_factory_resolves_cross_encoder_provider() -> None:
     inst = get_reranker("cross_encoder")
     assert inst.__class__.__name__.lower().startswith("crossencoder")
 
+
+def test_describe_reranker_provider_classifies_tiers() -> None:
+    from app.rag.reranker.factory import describe_reranker_provider
+
+    assert describe_reranker_provider("cross_encoder")["tier"] == "prod"
+    assert describe_reranker_provider("ltr")["tier"] == "prod"
+    assert describe_reranker_provider("llm")["tier"] == "experimental"
+    assert describe_reranker_provider("none")["tier"] == "disabled"
+    assert describe_reranker_provider("colbert", provider_name="deterministic")["tier"] == "offline_only"
+    assert describe_reranker_provider("colbert", provider_name="hf")["tier"] == "experimental"
