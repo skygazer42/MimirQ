@@ -118,6 +118,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/saml/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Saml Exchange */
+        post: operations["saml_exchange_api_v1_auth_saml_exchange_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/upload": {
         parameters: {
             query?: never;
@@ -4586,7 +4603,7 @@ export interface paths {
         };
         /**
          * List Connectors
-         * @description List available connectors (static registry).
+         * @description List available connectors from the shared registry.
          */
         get: operations["list_connectors_api_v1_connectors_get"];
         put?: never;
@@ -6571,6 +6588,10 @@ export interface components {
             retrieval_profile?: string | null;
             /** Intent Router */
             intent_router?: boolean | null;
+            /** Intent Router Policy */
+            intent_router_policy?: {
+                [key: string]: unknown;
+            } | null;
             /** Enable Query Alias Expansion */
             enable_query_alias_expansion?: boolean | null;
             /** Query Aliases */
@@ -7929,6 +7950,21 @@ export interface components {
              * @default false
              */
             supports_incremental: boolean;
+            /**
+             * Supports Resume
+             * @default false
+             */
+            supports_resume: boolean;
+            /**
+             * Supports Full Reconcile
+             * @default false
+             */
+            supports_full_reconcile: boolean;
+            /**
+             * Sync Cursor Kind
+             * @default none
+             */
+            sync_cursor_kind: string;
         };
         /**
          * ConnectorRunAclSummaryOut
@@ -10192,6 +10228,12 @@ export interface components {
         DatasetRAGDefaults: {
             /** Retrieval Profile */
             retrieval_profile?: string | null;
+            /** Intent Router */
+            intent_router?: boolean | null;
+            /** Intent Router Policy */
+            intent_router_policy?: {
+                [key: string]: unknown;
+            } | null;
             /** Enable Query Alias Expansion */
             enable_query_alias_expansion?: boolean | null;
             /** Query Aliases */
@@ -16448,6 +16490,37 @@ export interface components {
              */
             retriever_filtered_acl_total: number;
             /**
+             * Retrieval Candidate Cache Hit Count
+             * @default 0
+             */
+            retrieval_candidate_cache_hit_count: number;
+            /**
+             * Retrieval Candidate Cache Store Ok Count
+             * @default 0
+             */
+            retrieval_candidate_cache_store_ok_count: number;
+            /**
+             * Retrieval Candidate Cache Backend Counts
+             * @default {}
+             */
+            retrieval_candidate_cache_backend_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Retrieval Candidate Cache Skip Reason Counts
+             * @default {}
+             */
+            retrieval_candidate_cache_skip_reason_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Retrieval Rerank Skip Reason Counts
+             * @default {}
+             */
+            retrieval_rerank_skip_reason_counts: {
+                [key: string]: number;
+            };
+            /**
              * Retrieval Mode Counts
              * @default {}
              */
@@ -17068,6 +17141,53 @@ export interface components {
              */
             max_cases: number;
             /**
+             * Retrieval Profile
+             * @description Optional retrieval preset: recall20 | recall50 | coverage80 | hybrid_ce
+             */
+            retrieval_profile?: string | null;
+            /**
+             * Enable Query Alias Expansion
+             * @description Enable bounded alias expansion when dataset/query aliases exist
+             */
+            enable_query_alias_expansion?: boolean | null;
+            /** Query Alias Max Queries */
+            query_alias_max_queries?: number | null;
+            /**
+             * Enable Multi Query
+             * @description Enable bounded LLM multi-query expansion
+             */
+            enable_multi_query?: boolean | null;
+            /** Multi Query Count */
+            multi_query_count?: number | null;
+            /** Multi Query Temperature */
+            multi_query_temperature?: number | null;
+            /** Multi Query Max Chars */
+            multi_query_max_chars?: number | null;
+            /**
+             * Enable Query Rewrite
+             * @description Enable bounded query rewrite before retrieval
+             */
+            enable_query_rewrite?: boolean | null;
+            /**
+             * Query Rewrite Strategy
+             * @description Override query rewrite strategy id
+             */
+            query_rewrite_strategy?: string | null;
+            /** Query Rewrite Temperature */
+            query_rewrite_temperature?: number | null;
+            /** Query Rewrite Max Chars */
+            query_rewrite_max_chars?: number | null;
+            /**
+             * Sparse Retrieval Enabled
+             * @description Enable sparse retrieval channel
+             */
+            sparse_retrieval_enabled?: boolean | null;
+            /**
+             * Sparse Retrieval Provider
+             * @description Sparse provider: deterministic | splade
+             */
+            sparse_retrieval_provider?: string | null;
+            /**
              * Top K
              * @default 20
              */
@@ -17088,6 +17208,23 @@ export interface components {
              * @default 0.6
              */
             alpha: number;
+            /**
+             * Fusion Strategy
+             * @description linear | rrf | budgeted_rrf | weighted
+             */
+            fusion_strategy?: string | null;
+            /** Fusion Budgets */
+            fusion_budgets?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Min Scores */
+            fusion_min_scores?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Weights */
+            fusion_weights?: {
+                [key: string]: number;
+            } | null;
             /**
              * Enable Weight Rerank
              * @default true
@@ -17110,22 +17247,19 @@ export interface components {
             mmr_lambda: number;
             /**
              * Enable Reranker
-             * @description Enable LLM reranker for re-ranking
-             * @default false
+             * @description Enable reranker for re-ranking
              */
-            enable_reranker: boolean;
+            enable_reranker?: boolean;
             /**
              * Reranker Provider
-             * @description Reranker provider: llm | pc | none
-             * @default llm
+             * @description Reranker provider: llm | pc | ltr | colbert | cross_encoder | none
              */
-            reranker_provider: string;
+            reranker_provider?: string;
             /**
              * Reranker Top N
              * @description Rerank candidate count (higher is slower)
-             * @default 20
              */
-            reranker_top_n: number;
+            reranker_top_n?: number;
             /** Prompt Template Id */
             prompt_template_id?: string | null;
             /** Prompt Template Key */
@@ -17576,6 +17710,27 @@ export interface components {
              * @default 128
              */
             pii_stream_holdback_chars: number;
+        };
+        /** SamlExchangeRequest */
+        SamlExchangeRequest: {
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Saml Response */
+            saml_response: string;
+            /** Relay State */
+            relay_state?: string | null;
+            /** Acs Url */
+            acs_url?: string | null;
+        };
+        /** SamlExchangeResponse */
+        SamlExchangeResponse: {
+            user: components["schemas"]["UserPublic"];
+            token: components["schemas"]["TokenResponse"];
+            /**
+             * Return To
+             * @default /
+             */
+            return_to: string;
         };
         /** SimilarityCalculateResponse */
         SimilarityCalculateResponse: {
@@ -18655,6 +18810,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    saml_exchange_api_v1_auth_saml_exchange_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SamlExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlExchangeResponse"];
                 };
             };
             /** @description Validation Error */
