@@ -1,52 +1,58 @@
-# Lexical Fallback (Postgres FTS + pg_trgm)
+# Lexical Retrieval for Keyword Mode
 
-MimirQ 的检索链路除了向量检索与内存 BM25 外，还提供一个 **持久化的 lexical fallback 通道**：
+MimirQ exposes a persisted lexical retrieval channel backed by Postgres full-text search and `pg_trgm`.
+It is intended to catch the kinds of exact-ish queries that vector retrieval often misses:
 
-- **Postgres FTS**：`websearch_to_tsquery` + `ts_rank_cd`
-- **pg_trgm**：`similarity()` + `%` 操作符（短查询 / code-like 查询兜底）
+- version numbers such as `v1.2.3`
+- numeric formats such as `1,234`
+- paths, headers, identifiers, and API names such as `/api/v1/rag/retrieve`
 
-目标是把企业知识库里常见的“召回假阴性”降到最低，尤其是：
+## Keyword-mode behavior
 
-- 版本号 / 编译号（`v1.2.3`、`3.10.0`）
-- 数字与格式（`1,234`、`12_345`）
-- 路径 / API / 标识符（`/api/v1/rag/retrieve`、`X-Request-ID`、`ChatRAGConfig`）
+`HybridRetriever._hybrid_search()` now treats lexical DB as the primary keyword channel when
+`retrieval_mode="keyword"`:
 
-> 注意：这是 **检索系统优化**，不依赖 LLM 生成，适合做 retrieval-only 回归门禁与证据闭环。
+- `LEXICAL_DB_ENABLED=true` and `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED=false`
+  - run lexical DB only
+  - skip in-memory BM25
+- `LEXICAL_DB_ENABLED=true` and `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED=true`
+  - run lexical DB first
+  - run BM25 as a secondary keyword channel
+- `LEXICAL_DB_ENABLED=false`
+  - fall back to BM25 for keyword mode
 
----
+Hybrid/MMR retrieval modes still treat lexical DB as an additional sparse candidate source.
 
-## 1) 什么时候会触发？
+## Settings
 
-在 `app/rag/retriever.py` 的 `HybridRetriever._hybrid_search()` 中：
+Relevant backend settings in `app/core/config.py`:
 
-- `retrieval_mode in ("hybrid", "keyword", "mmr")` 时，会尝试 `LEXICAL_DB` 通道
-- `retrieval_mode="vector"` 时，如果向量通道完全失败，会 fallback 到 BM25 + lexical DB
+- `LEXICAL_DB_ENABLED`
+- `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED`
+- `LEXICAL_DB_FTS_CONFIG`
+- `LEXICAL_DB_FETCH_MULTIPLIER`
+- `LEXICAL_DB_MAX_CANDIDATES`
+- `LEXICAL_DB_TRGM_ENABLED`
+- `LEXICAL_DB_TRGM_MIN_QUERY_CHARS`
 
-lexical DB 通道不会替代 BM25 / 向量，而是作为一个 **额外的 sparse candidate source**，再通过融合策略（RRF/linear merge + rerank）进入最终候选。
+## Query debug attribution
 
----
+`query_debug.channels` includes per-channel attribution for lexical DB, BM25, vector, and sparse
+retrieval. In keyword mode it also includes a `keyword_strategy` block so it is explicit whether
+the request ran:
 
-## 2) 配置项（Settings）
+- lexical only
+- lexical + BM25 secondary
+- BM25 fallback because lexical DB is disabled
 
-后端配置（见 `app/core/config.py`）：
+## Database prerequisites
 
-- `LEXICAL_DB_ENABLED`：是否启用 lexical DB 通道
-- `LEXICAL_DB_FTS_CONFIG`：FTS config（默认 `simple`）
-- `LEXICAL_DB_FETCH_MULTIPLIER`：候选 overfetch 倍数（默认 4）
-- `LEXICAL_DB_MAX_CANDIDATES`：候选上限（默认 200）
-- `LEXICAL_DB_TRGM_ENABLED`：是否启用 trigram fallback（默认 true）
-- `LEXICAL_DB_TRGM_MIN_QUERY_CHARS`：触发 trigram 的最短 query 长度（默认 3）
+The lexical channel depends on:
 
----
+- the Postgres `pg_trgm` extension
+- GIN indexes for `document_chunks.content`
 
-## 3) 数据库依赖与索引
-
-lexical fallback 依赖：
-
-- Postgres 扩展：`pg_trgm`
-- `document_chunks.content` 的 FTS / trigram 索引（GIN）
-
-项目在启动时会 best-effort 执行运行时 migration（见 `app/core/migrations.py`），包含：
+Typical runtime migration SQL looks like:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -60,19 +66,13 @@ ON document_chunks USING GIN (content gin_trgm_ops)
 WHERE disabled_at IS NULL;
 ```
 
-> 在部分云数据库（托管 Postgres）上，创建 extension 可能需要更高权限；此时请由 DBA 手动创建 `pg_trgm`。
+## Validation
 
----
-
-## 4) 如何验证是否生效？
-
-### 4.1 检查扩展
+Useful checks after enabling lexical retrieval:
 
 ```sql
 SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm';
 ```
-
-### 4.2 检查索引
 
 ```sql
 SELECT indexname, indexdef
@@ -83,17 +83,3 @@ WHERE tablename = 'document_chunks'
     'ix_document_chunks_content_trgm_active'
   );
 ```
-
----
-
-## 5) 可观测性（per-query attribution）
-
-Evidence / 诊断链路会返回 `query_debug.channels`（best-effort），包含：
-
-- vector/bm25/lexical_db 各通道是否启用
-- 各通道候选数（candidates）
-- lexical_db 的方法分布（fts vs trgm）
-- 融合/去重/多文档多样性（diversity）导致的候选变化
-
-这用于回答：**“本次召回到底靠的是哪个通道？”**，从而指导进一步的索引/配置/分词调优。
-

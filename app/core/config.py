@@ -635,6 +635,9 @@ class Settings(BaseSettings):
     # Persistent lexical fallback (Postgres FTS / pg_trgm).
     # Helps reduce false negatives for numbers, codes, and exact phrases.
     LEXICAL_DB_ENABLED: bool = True
+    # In keyword-only mode, lexical DB is the primary keyword channel by default.
+    # BM25 stays available as an opt-in secondary channel for recall comparison/back-compat.
+    RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED: bool = False
     LEXICAL_DB_FTS_CONFIG: str = "simple"
     LEXICAL_DB_TRGM_ENABLED: bool = True
     # Candidate overfetch inside the lexical channel (applied before metadata trimming).
