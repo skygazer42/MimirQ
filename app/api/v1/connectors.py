@@ -68,6 +68,10 @@ from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
 from app.services.connector_registry import get_connector_definition, list_connector_definitions
+from app.services.connector_reconcile_service import (
+    plan_connector_reconcile,
+    resolve_connector_reconcile_source_refs,
+)
 from app.services.connector_sync_state import (
     build_persisted_state,
     build_saved_state_snapshot,
@@ -76,6 +80,7 @@ from app.services.connector_sync_state import (
     normalize_source_manifest,
     slice_items_from_cursor,
 )
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
@@ -187,6 +192,46 @@ def _finalize_connector_stats(stats: dict) -> dict:
         # Keep `key` for stable grouping across incremental updates, but it is optional for the UI.
         stats["error_groups"] = groups_sorted
     return stats
+
+
+def _connector_config_id_from_run(run: ConnectorRun) -> str | None:
+    stats = dict(getattr(run, "stats", {}) or {})
+    text = str(stats.get("config_id") or "").strip()
+    return text or None
+
+
+def _apply_connector_identity_metadata(
+    *,
+    doc: Any,
+    run: ConnectorRun,
+    connector_id: str,
+    source_ref: str | None,
+    source_id: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+    connector_meta = dict(meta0.get("connector") or {})
+    if isinstance(extra, dict):
+        connector_meta.update({key: value for key, value in extra.items() if value is not None})
+
+    connector_meta["connector_id"] = str(connector_id or "").strip()
+    connector_meta["run_id"] = str(run.id)
+    if getattr(run, "dataset_id", None) is not None:
+        connector_meta["dataset_id"] = str(run.dataset_id)
+
+    config_id = _connector_config_id_from_run(run)
+    if config_id:
+        connector_meta["config_id"] = config_id
+
+    source_ref_norm = str(source_ref or "").strip()[:1000] or None
+    source_id_norm = str(source_id or source_ref_norm or "").strip()[:1000] or None
+    if source_ref_norm is not None:
+        connector_meta["source_ref"] = source_ref_norm
+    if source_id_norm is not None:
+        connector_meta["source_id"] = source_id_norm
+
+    meta0["connector"] = connector_meta
+    doc.doc_metadata = meta0
 
 
 def _web_crawl_source_manifest(urls: list[str]) -> dict[str, str]:
@@ -1319,6 +1364,13 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                     },
                     connector_id="url_batch",
                 )
+                _apply_connector_identity_metadata(
+                    doc=doc,
+                    run=run,
+                    connector_id="url_batch",
+                    source_ref=url,
+                    source_id=url,
+                )
 
                 db.add(
                     ConnectorRunDocument(
@@ -1832,6 +1884,13 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                         "partial_group_list": list(access_groups),
                     },
                     connector_id="web_crawl",
+                )
+                _apply_connector_identity_metadata(
+                    doc=doc,
+                    run=run,
+                    connector_id="web_crawl",
+                    source_ref=url,
+                    source_id=url,
                 )
 
                 db.add(
@@ -2868,6 +2927,13 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
                         from app.services.document_acl_provenance_service import apply_document_acl_provenance
 
                         apply_document_acl_provenance(doc, provenance=source_acl_provenance)
+                _apply_connector_identity_metadata(
+                    doc=doc,
+                    run=run,
+                    connector_id="github_repo",
+                    source_ref=path,
+                    source_id=path,
+                )
 
                 db.add(
                     ConnectorRunDocument(
@@ -3210,6 +3276,13 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                             from app.services.document_acl_provenance_service import apply_document_acl_provenance
 
                             apply_document_acl_provenance(doc, provenance=acl_provenance)
+                    _apply_connector_identity_metadata(
+                        doc=doc,
+                        run=run,
+                        connector_id="drive_files",
+                        source_ref=url,
+                        source_id=url,
+                    )
                     db.add(
                         ConnectorRunDocument(
                             tenant_id=tenant_id,
@@ -3523,6 +3596,13 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
                     doc=doc,
                     access=access,
                     connector_id="minio_bucket",
+                )
+                _apply_connector_identity_metadata(
+                    doc=doc,
+                    run=run,
+                    connector_id="minio_bucket",
+                    source_ref=object_name,
+                    source_id=object_name,
                 )
                 db.add(
                     ConnectorRunDocument(
@@ -5269,6 +5349,13 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                             "ingest_method": ingest_method,
                         }
                         doc.doc_metadata = meta0
+                        _apply_connector_identity_metadata(
+                            doc=doc,
+                            run=run,
+                            connector_id="confluence_space",
+                            source_ref=(page_id or page_url),
+                            source_id=(page_id or page_url),
+                        )
                         db.commit()
                     except Exception:
                         # Best-effort: never fail the run due to metadata patching.
@@ -5395,6 +5482,13 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                                                 ingest_method=ingest_method,
                                             )
                                             att_doc.doc_metadata = meta_att
+                                            _apply_connector_identity_metadata(
+                                                doc=att_doc,
+                                                run=run,
+                                                connector_id="confluence_space",
+                                                source_ref=(attachment_id or download_url),
+                                                source_id=(attachment_id or download_url),
+                                            )
                                         except Exception:
                                             # Best-effort: never fail the run due to metadata patching.
                                             pass
@@ -5998,6 +6092,13 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                             "mode": effective_mode,
                         }
                         doc.doc_metadata = meta0
+                        _apply_connector_identity_metadata(
+                            doc=doc,
+                            run=run,
+                            connector_id="jira_project",
+                            source_ref=(issue_key or issue_id or issue_url),
+                            source_id=(issue_id or issue_key or issue_url),
+                        )
                         db.commit()
                     except Exception:
                         pass
@@ -6111,6 +6212,13 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                                             mode=effective_mode,
                                         )
                                         link_doc.doc_metadata = meta_link
+                                        _apply_connector_identity_metadata(
+                                            doc=link_doc,
+                                            run=run,
+                                            connector_id="jira_project",
+                                            source_ref=link_url,
+                                            source_id=link_url,
+                                        )
                                         db.commit()
                                     except Exception:
                                         pass
@@ -6235,6 +6343,13 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                                             mode=effective_mode,
                                         )
                                         att_doc.doc_metadata = meta_att
+                                        _apply_connector_identity_metadata(
+                                            doc=att_doc,
+                                            run=run,
+                                            connector_id="jira_project",
+                                            source_ref=(attachment_id or download_url),
+                                            source_id=(attachment_id or download_url),
+                                        )
                                         db.commit()
                                     except Exception:
                                         pass
@@ -7080,6 +7195,87 @@ async def run_connector_config(
         raise HTTPException(status_code=400, detail="Unsupported connector_id")
 
     return _run_out(run)
+
+
+@router.post("/configs/{config_id}/reconcile")
+def reconcile_connector_config(
+    config_id: UUID,
+    apply: bool = Query(default=False, description="Apply the reconcile plan; default is dry-run"),
+    sample_limit: int = Query(default=20, ge=1, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Reconcile connector-managed documents for a saved config using the last known local source set.
+
+    Single-node scope:
+    - dry-run: show stale / disabled / missing refs
+    - apply: disable stale docs and re-enable matching disabled docs
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+        .first()
+    )
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Connector config not found")
+
+    ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    desired_refs = resolve_connector_reconcile_source_refs(
+        connector_id=str(cfg.connector_id or "").strip(),
+        config=dict(cfg.config or {}),
+        state=dict(cfg.state or {}),
+    )
+    if not desired_refs:
+        raise HTTPException(
+            status_code=400,
+            detail="No reconcile source manifest available for this connector config",
+        )
+
+    docs = (
+        db.query(DBDocument)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == cfg.dataset_id)
+        .all()
+    )
+    report = plan_connector_reconcile(
+        connector_id=str(cfg.connector_id or "").strip(),
+        config_id=str(cfg.id),
+        dataset_id=str(cfg.dataset_id),
+        documents=docs,
+        desired_source_refs=desired_refs,
+        apply=bool(apply),
+        now=_now(),
+        sample_limit=int(sample_limit),
+    )
+
+    if apply:
+        db.commit()
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="connectors.reconcile.apply" if apply else "connectors.reconcile.dry_run",
+        resource_type="connector_config",
+        resource_id=str(cfg.id),
+        details={
+            "connector_id": str(cfg.connector_id or ""),
+            "dataset_id": str(cfg.dataset_id),
+            "desired_source_refs": int(report.get("desired_source_refs") or 0),
+            "stale_source_refs": int(report.get("stale_source_refs") or 0),
+            "reenable_source_refs": int(report.get("reenable_source_refs") or 0),
+            "missing_source_refs": int(report.get("missing_source_refs") or 0),
+            "disabled_documents": int(report.get("disabled_documents") or 0),
+            "reenabled_documents": int(report.get("reenabled_documents") or 0),
+        },
+    )
+    db.commit()
+    return report
 
 
 @router.post("/scheduled/tick")
