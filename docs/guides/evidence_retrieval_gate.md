@@ -74,6 +74,7 @@ python scripts/run_nightly_ablations.py \
 python scripts/run_nightly_ablations.py \
   --tenant-id 00000000-0000-0000-0000-000000000000 \
   --dataset-id <dataset_uuid> \
+  --cases ./regression_cases.json \
   --execute
 ```
 
@@ -84,6 +85,7 @@ python scripts/run_nightly_ablations.py \
   - `ablation_key: baseline|topk50|keyword_only|vector_only|hybrid_rerank`
 - 默认 nightly 集合里包含一个受限的 `hybrid_rerank` 变体，用来持续覆盖真实 runtime 的 hybrid + BM25 + rerank 路径。
 - 结果可以直接在前端的 “检索消融” 页面查看 leaderboard/diff。
+- `--cases` 会锁定 suite（避免按 `updated_at` 取“最新 case”带来的漂移）；但它不会自动导入用例，需确保该 bundle 已经被导入到 DB（UI 或 `scripts/regression_gate.py`）。
 
 ## 4) 常见调参建议（retrieval-only）
 
