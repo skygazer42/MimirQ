@@ -57,9 +57,11 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
         connector_id="minio_bucket",
         name="MinIO/S3 Bucket 导入",
         description="列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；URL_INGEST 需允许访问 MinIO 端点）",
+        supports_incremental=True,
         supports_resume=True,
+        supports_full_reconcile=True,
         sync_cursor_kind="offset",
-        state_keys=("cursor", "total_objects"),
+        state_keys=("cursor", "total_objects", "source_manifest", "source_scope_hash"),
     ),
     "confluence_space": ConnectorDefinition(
         connector_id="confluence_space",

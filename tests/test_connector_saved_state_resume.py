@@ -4,6 +4,7 @@ import importlib.util
 import sys
 import types
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -868,3 +869,245 @@ async def test_execute_minio_bucket_run_resumes_from_saved_state_cursor(monkeypa
     assert int((run.stats or {}).get("processed_objects") or 0) == 3
     assert int((run.stats or {}).get("cursor") or 0) == 3
     assert bool((run.stats or {}).get("resumed_from_state")) is True
+
+
+@pytest.mark.asyncio
+async def test_execute_minio_bucket_run_incremental_noop_does_not_reingest(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    token_a = "etag:etag-a|last_modified:2026-03-10T00:00:00Z"
+    token_b = "etag:etag-b|last_modified:2026-03-10T00:00:00Z"
+    run, run_id, tenant_id = _make_run(
+        connector_id="minio_bucket",
+        config={
+            "bucket": "docs",
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": token_a, "b.md": token_b}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _MinioClient:
+        def list_objects(self, **_kwargs):  # noqa: ANN001
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+
+        def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
+            return f"https://minio.local/{object_name}"
+
+    minio_module = types.ModuleType("app.storage.object.minio")
+    minio_module.minio_service = types.SimpleNamespace(_get_client=lambda: _MinioClient(), _bucket_name="docs")
+    monkeypatch.setitem(sys.modules, "app.storage.object.minio", minio_module)
+
+    async def _fail_if_called(*_a, **_k):  # noqa: ANN202
+        raise AssertionError("ingest should not be called for noop incremental run")
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fail_if_called, raising=True)
+
+    await connectors._execute_minio_bucket_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_objects") or 0) == 0
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 2
+    assert int((run.stats or {}).get("created") or 0) == 0
+    assert (run.stats or {}).get("source_manifest") == {"a.md": token_a, "b.md": token_b}
+
+
+@pytest.mark.asyncio
+async def test_execute_minio_bucket_run_incremental_skips_unchanged_objects(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    token_a = "etag:etag-a|last_modified:2026-03-10T00:00:00Z"
+    token_b = "etag:etag-b|last_modified:2026-03-10T00:00:00Z"
+    token_c = "etag:etag-c|last_modified:2026-03-10T00:00:00Z"
+    run, run_id, tenant_id = _make_run(
+        connector_id="minio_bucket",
+        config={
+            "bucket": "docs",
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": token_a, "b.md": token_b}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _MinioClient:
+        def list_objects(self, **_kwargs):  # noqa: ANN001
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="c.md", etag="etag-c", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+
+        def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
+            return f"https://minio.local/{object_name}"
+
+    minio_module = types.ModuleType("app.storage.object.minio")
+    minio_module.minio_service = types.SimpleNamespace(_get_client=lambda: _MinioClient(), _bucket_name="docs")
+    monkeypatch.setitem(sys.modules, "app.storage.object.minio", minio_module)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    def _noop_soft_disable(_db, *, source_ref: str, **_k):  # noqa: ANN001
+        assert source_ref
+        return 0
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+    monkeypatch.setattr(connectors, "_soft_disable_connector_documents_by_source_ref", _noop_soft_disable, raising=True)
+
+    await connectors._execute_minio_bucket_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://minio.local/c.md"]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_objects") or 0) == 1
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 2
+    assert int((run.stats or {}).get("processed_objects") or 0) == 3
+    assert int((run.stats or {}).get("created") or 0) == 1
+    assert set(((run.stats or {}).get("source_manifest") or {}).keys()) == {"a.md", "b.md", "c.md"}
+    assert (run.stats or {}).get("source_manifest") == {"a.md": token_a, "b.md": token_b, "c.md": token_c}
+
+
+@pytest.mark.asyncio
+async def test_execute_minio_bucket_run_incremental_prunes_removed_paths_and_soft_disables_documents(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    token_a = "etag:etag-a|last_modified:2026-03-10T00:00:00Z"
+    token_b = "etag:etag-b|last_modified:2026-03-10T00:00:00Z"
+    token_obsolete = "etag:etag-old|last_modified:2026-03-09T00:00:00Z"
+    run, run_id, tenant_id = _make_run(
+        connector_id="minio_bucket",
+        config={
+            "bucket": "docs",
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": token_a, "obsolete.md": token_obsolete}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    class _MinioClient:
+        def list_objects(self, **_kwargs):  # noqa: ANN001
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+
+        def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
+            return f"https://minio.local/{object_name}"
+
+    minio_module = types.ModuleType("app.storage.object.minio")
+    minio_module.minio_service = types.SimpleNamespace(_get_client=lambda: _MinioClient(), _bucket_name="docs")
+    monkeypatch.setitem(sys.modules, "app.storage.object.minio", minio_module)
+
+    ingested_urls: list[str] = []
+    disabled_refs: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    def _fake_soft_disable(_db, *, source_ref: str, **_k):  # noqa: ANN001
+        disabled_refs.append(source_ref)
+        return 2
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+    monkeypatch.setattr(connectors, "_soft_disable_connector_documents_by_source_ref", _fake_soft_disable, raising=True)
+
+    await connectors._execute_minio_bucket_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://minio.local/b.md"]
+    assert disabled_refs == ["obsolete.md"]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("removed_paths") or 0) == 1
+    assert int((run.stats or {}).get("removed_paths_reconciled") or 0) == 1
+    assert int((run.stats or {}).get("removed_documents_disabled") or 0) == 2
+    assert (run.stats or {}).get("source_manifest") == {"a.md": token_a, "b.md": token_b}
+
+
+@pytest.mark.asyncio
+async def test_execute_minio_bucket_run_incremental_partial_failure_resumed_run_retries_failed_and_skips_success(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    token_a_old = "etag:etag-a-old|last_modified:2026-03-09T00:00:00Z"
+    token_a_new = "etag:etag-a-new|last_modified:2026-03-10T00:00:00Z"
+    token_b = "etag:etag-b|last_modified:2026-03-10T00:00:00Z"
+
+    class _MinioClient:
+        def list_objects(self, **_kwargs):  # noqa: ANN001
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a-new", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+
+        def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
+            return f"https://minio.local/{object_name}"
+
+    minio_module = types.ModuleType("app.storage.object.minio")
+    minio_module.minio_service = types.SimpleNamespace(_get_client=lambda: _MinioClient(), _bucket_name="docs")
+    monkeypatch.setitem(sys.modules, "app.storage.object.minio", minio_module)
+
+    run1, run_id1, tenant_id = _make_run(
+        connector_id="minio_bucket",
+        config={
+            "bucket": "docs",
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": {"a.md": token_a_old}},
+        },
+    )
+    dummy_db1 = _DummyDB(run1)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db1, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    ingested_urls_1: list[str] = []
+
+    async def _fake_ingest_url_upload_request_1(*, body, **_k):  # noqa: ANN202
+        url = str(getattr(body, "url", ""))
+        ingested_urls_1.append(url)
+        if url.endswith("/a.md"):
+            raise RuntimeError("boom")
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request_1, raising=True)
+
+    await connectors._execute_minio_bucket_run(run_id=run_id1, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls_1 == [
+        "https://minio.local/a.md",
+        "https://minio.local/b.md",
+    ]
+    assert int((run1.stats or {}).get("created") or 0) == 1
+    assert int((run1.stats or {}).get("failed") or 0) == 1
+    assert (run1.stats or {}).get("source_manifest") == {"a.md": token_a_old, "b.md": token_b}
+
+    run2, run_id2, _tenant_id2 = _make_run(
+        connector_id="minio_bucket",
+        config={
+            "bucket": "docs",
+            "include_extensions": [".md"],
+            "_state": {"source_manifest": dict((run1.stats or {}).get("source_manifest") or {})},
+        },
+    )
+    dummy_db2 = _DummyDB(run2)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db2, raising=True)
+
+    ingested_urls_2: list[str] = []
+
+    async def _fake_ingest_url_upload_request_2(*, body, **_k):  # noqa: ANN202
+        ingested_urls_2.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    def _noop_soft_disable(_db, *, source_ref: str, **_k):  # noqa: ANN001
+        assert source_ref
+        return 0
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request_2, raising=True)
+    monkeypatch.setattr(connectors, "_soft_disable_connector_documents_by_source_ref", _noop_soft_disable, raising=True)
+
+    await connectors._execute_minio_bucket_run(run_id=run_id2, tenant_id=_tenant_id2, requested_by="tester")
+
+    assert ingested_urls_2 == ["https://minio.local/a.md"]
+    assert int((run2.stats or {}).get("created") or 0) == 1
+    assert int((run2.stats or {}).get("failed") or 0) == 0
+    assert (run2.stats or {}).get("source_manifest") == {"a.md": token_a_new, "b.md": token_b}
