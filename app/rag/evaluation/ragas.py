@@ -775,8 +775,31 @@ def run_regression_ragas_evaluation(
         if dataset_id:
             q = q.filter(RagasRegressionCase.dataset_id == dataset_id)
         if case_ids:
-            q = q.filter(RagasRegressionCase.id.in_(case_ids))
-        cases = q.order_by(RagasRegressionCase.updated_at.desc()).limit(max_cases).all()
+            # Determinism: explicit case_ids must be evaluated exactly, without updated_at-based
+            # reordering or max_cases truncation.
+            normalized_case_ids: list[UUID] = []
+            seen: set[UUID] = set()
+            for cid in case_ids:
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                normalized_case_ids.append(cid)
+
+            q = q.filter(RagasRegressionCase.id.in_(normalized_case_ids))
+            fetched = q.all()
+            case_by_id = {c.id: c for c in fetched if getattr(c, "id", None)}
+
+            missing = [cid for cid in normalized_case_ids if cid not in case_by_id]
+            if missing:
+                run.status = "failed"
+                run.error_message = f"Missing regression cases: {len(missing)}"
+                run.finished_at = datetime.utcnow()
+                db.commit()
+                return
+
+            cases = [case_by_id[cid] for cid in normalized_case_ids]
+        else:
+            cases = q.order_by(RagasRegressionCase.updated_at.desc()).limit(max_cases).all()
         if not cases:
             run.status = "failed"
             run.error_message = "No regression cases found"

@@ -8,18 +8,49 @@ import pytest
 class _FakeQuery:
     def __init__(self, result):
         self._result = result
+        self._limit = None
+        self._order_by = []
 
     def filter(self, *args, **kwargs):  # noqa: ANN002, ANN003
         return self
 
     def order_by(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        self._order_by = [str(a) for a in args]
         return self
 
     def limit(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        if args:
+            try:
+                self._limit = int(args[0])
+            except Exception:
+                self._limit = None
         return self
 
     def all(self):
-        return list(self._result) if isinstance(self._result, list) else []
+        if not isinstance(self._result, list):
+            return []
+
+        items = list(self._result)
+        lowered = " ".join([str(x).lower() for x in (self._order_by or [])])
+        if "updated_at" in lowered:
+            def _ts(obj) -> float:
+                raw = getattr(obj, "updated_at", None)
+                if raw is None:
+                    return 0.0
+                if isinstance(raw, (int, float)):
+                    return float(raw)
+                try:
+                    return float(raw.timestamp())
+                except Exception:
+                    return 0.0
+
+            items.sort(key=_ts, reverse=True)
+        elif ".id" in lowered or " id " in lowered:
+            items.sort(key=lambda x: str(getattr(x, "id", "")))
+
+        if self._limit is not None:
+            items = items[: max(0, int(self._limit))]
+        return items
 
     def first(self):
         if isinstance(self._result, list):
@@ -224,3 +255,105 @@ def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkey
     assert captured[0]["fusion_budgets"] == {"vector": 20, "bm25": 10}
     assert captured[0]["fusion_min_scores"] == {"vector": 0.2}
     assert captured[0]["fusion_weights"] == {"vector": 0.7, "bm25": 0.3}
+
+
+def test_regression_eval_does_not_truncate_explicit_case_ids_and_orders_stably(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.evaluation import ragas as mod
+
+    run = _FakeRun()
+    # Intentionally pick UUIDs where lexicographic id order != caller-provided case_ids order.
+    # The evaluator must preserve the explicit case_ids order to stay deterministic for CI/hourly runs.
+    case_a = _FakeCase(case_id=UUID("00000000-0000-0000-0000-000000000002"), question="Case A")
+    case_b = _FakeCase(case_id=UUID("00000000-0000-0000-0000-000000000001"), question="Case B")
+
+    # Make updated_at ordering disagree with id ordering.
+    case_a.updated_at = 1
+    case_b.updated_at = 2
+
+    # Intentionally provide cases in a non-id order; the evaluator must still preserve the
+    # explicit case_ids order (not updated_at and not id sorting).
+    fake_db = _FakeDB(run=run, cases=[case_b, case_a])
+    monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+
+    dataset_id = uuid4()
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["ctx"])
+
+    captured_case_ids: list[UUID] = []
+
+    def _fake_build_regression_sample(_case, _eval_item):  # noqa: ANN001
+        captured_case_ids.append(_case.id)
+        return {}, {"retrieval_recall": 1.0, "retrieval_hit_at_20": True, "abstain_triggered": False}
+
+    monkeypatch.setattr(mod, "build_regression_sample", _fake_build_regression_sample)
+
+    import app.rag.graph as rag_graph
+
+    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
+
+    import app.rag.pipelines.langgraph as langgraph
+
+    monkeypatch.setattr(langgraph, "build_rag_state", lambda **kwargs: {"question": kwargs.get("question", "")})
+    monkeypatch.setattr(langgraph, "_retrieve_node", lambda _state: {"citations": [{"chunk_id": str(uuid4())}], "metrics": {}})
+
+    mod.run_regression_ragas_evaluation(
+        run_id=uuid4(),
+        tenant_id=uuid4(),
+        account_id="acct",
+        case_ids=[case_a.id, case_b.id],
+        dataset_id=dataset_id,
+        metric_names=[],  # retrieval-only
+        skip_empty_contexts=False,
+        max_cases=1,  # must not truncate explicit case_ids
+        rag_params={},
+    )
+
+    assert run.status == "completed"
+    assert captured_case_ids == [case_a.id, case_b.id]
+
+
+def test_regression_eval_fails_when_explicit_case_ids_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    If callers provide explicit case_ids, the run must evaluate exactly that set.
+    Missing ids should fail fast instead of silently evaluating a partial subset.
+    """
+
+    from app.rag.evaluation import ragas as mod
+
+    run = _FakeRun()
+    existing = _FakeCase(case_id=uuid4(), question="Existing case")
+    missing = uuid4()
+
+    fake_db = _FakeDB(run=run, cases=[existing])
+    monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+
+    dataset_id = uuid4()
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["ctx"])
+    monkeypatch.setattr(
+        mod,
+        "build_regression_sample",
+        lambda _case, _eval_item: ({}, {"retrieval_recall": 1.0, "retrieval_hit_at_20": True, "abstain_triggered": False}),
+    )
+
+    import app.rag.pipelines.langgraph as langgraph
+
+    monkeypatch.setattr(langgraph, "build_rag_state", lambda **kwargs: {"question": kwargs.get("question", "")})
+    monkeypatch.setattr(langgraph, "_retrieve_node", lambda _state: {"citations": [{"chunk_id": str(uuid4())}], "metrics": {}})
+
+    mod.run_regression_ragas_evaluation(
+        run_id=uuid4(),
+        tenant_id=uuid4(),
+        account_id="acct",
+        case_ids=[existing.id, missing],
+        dataset_id=dataset_id,
+        metric_names=[],
+        skip_empty_contexts=False,
+        max_cases=100,
+        rag_params={},
+    )
+
+    assert run.status == "failed"
+    assert run.error_message
