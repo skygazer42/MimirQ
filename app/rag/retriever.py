@@ -1214,13 +1214,41 @@ class HybridRetriever(BaseRetriever):
         db: Session,
         *,
         tenant_id: UUID,
+        dataset_id: Optional[UUID] = None,
         document_ids: Optional[List[UUID]] = None,
         max_chunks: int = 0,
         batch_size: int = 2000,
     ) -> int:
+        docs = self._load_retrieval_docs_from_db(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_ids=document_ids,
+            max_chunks=max_chunks,
+            batch_size=batch_size,
+        )
+        cache_key = self._bm25_scope_key(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id if not document_ids else None,
+            document_ids=document_ids,
+        )
+        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id, cache_key=cache_key)
+        return len(docs)
+
+    def _load_retrieval_docs_from_db(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        dataset_id: Optional[UUID] = None,
+        document_ids: Optional[List[UUID]] = None,
+        max_chunks: int = 0,
+        batch_size: int = 2000,
+    ) -> List[Document]:
         """
-        Build BM25 from DB with streaming to avoid memory spikes from large ORM list via `.all()`.
-        Still holds BM25 docs in memory (BM25 itself requires this), but avoids ORM object overhead.
+        Load retrieval documents from DB with streaming to avoid large ORM materialization spikes.
+
+        This corpus is reused by BM25, sparse, and ColBERT rebuild paths.
         """
         q = (
             db.query(
@@ -1240,6 +1268,8 @@ class HybridRetriever(BaseRetriever):
             .enable_eagerloads(False)
             .execution_options(stream_results=True)
         )
+        if dataset_id is not None:
+            q = q.filter(DBDocument.dataset_id == dataset_id)
         if document_ids:
             q = q.filter(DocumentChunk.document_id.in_(document_ids))
         if max_chunks and int(max_chunks) > 0:
@@ -1266,9 +1296,57 @@ class HybridRetriever(BaseRetriever):
             meta.setdefault("image_id", meta.get("image_id"))
             meta.setdefault("image_url", meta.get("image_url"))
             docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
+        return docs
 
-        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id)
-        return len(docs)
+    def rebuild_persisted_retrieval_indexes(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        dataset_id: Optional[UUID] = None,
+        batch_size: int = 2000,
+    ) -> Dict[str, Any]:
+        """
+        Rebuild persisted retrieval artifacts for a tenant/dataset scope.
+
+        This is the single-node operational entry point for sparse / ColBERT index rebuilds.
+        It refreshes the shared retrieval corpus from Postgres and writes persisted index artifacts
+        for the active retrieval channels.
+        """
+        docs = self._load_retrieval_docs_from_db(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_ids=None,
+            max_chunks=0,
+            batch_size=batch_size,
+        )
+        cache_key = self._bm25_scope_key(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_ids=None,
+        )
+        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id, cache_key=cache_key)
+
+        sparse_rebuilt = False
+        if bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)) and docs:
+            self._build_sparse_index(cache_key=cache_key, docs=docs)
+            sparse_rebuilt = bool(self._sparse_doc_vectors.get(cache_key))
+
+        colbert_rebuilt = False
+        if bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)) and docs:
+            self._build_colbert_index(cache_key=cache_key, docs=docs)
+            colbert_rebuilt = bool(self._colbert_index_cache.get(cache_key) is not None)
+
+        return {
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id) if dataset_id is not None else None,
+            "cache_key": cache_key,
+            "doc_count": len(docs),
+            "bm25_rebuilt": bool(docs),
+            "sparse_rebuilt": sparse_rebuilt,
+            "colbert_rebuilt": colbert_rebuilt,
+        }
 
     def upsert_bm25_documents(self, docs: List[Document], tenant_id: Optional[UUID] = None):
         """
