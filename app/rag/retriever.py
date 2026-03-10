@@ -2315,6 +2315,7 @@ class HybridRetriever(BaseRetriever):
                 "tenant_id",
                 "dataset_id",
                 "document_id",
+                "embedding_space_hash",
                 "chunk_id",
                 "chunk_index",
                 "pipeline_hash",
@@ -2340,6 +2341,15 @@ class HybridRetriever(BaseRetriever):
                     continue
                 if k in vector_allowed:
                     vf[k] = v
+
+            # Embedding space guard pushdown (backward compatible): include both the current
+            # embedding space and the empty-string legacy value.
+            try:
+                space = str(current_embedding_space_hash() or "").strip()
+            except Exception:
+                space = ""
+            if space and "embedding_space_hash" not in vf:
+                vf["embedding_space_hash"] = {"$in": [space, ""]}
             vector_filter = vf or None
 
         want_vector = retrieval_mode in ("hybrid", "vector", "mmr")

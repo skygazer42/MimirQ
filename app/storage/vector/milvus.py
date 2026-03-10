@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 _MILVUS_MAX_VARCHAR_BYTES = 65_535
 _MILVUS_EXPR_MAX_CHARS = 8000
 _MILVUS_FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_MILVUS_WARNED_WRITE_COMPAT_FALLBACK = False
+_MILVUS_WARNED_SEARCH_EXPR_FALLBACK = False
 
 # Safe allowlist for metadata expr pushdown (must exist in collection schema).
 _MILVUS_NUMERIC_FIELDS = frozenset({"chunk_index", "page_number"})
@@ -29,6 +31,7 @@ _MILVUS_STRING_FIELDS = frozenset(
         "tenant_id",
         "dataset_id",
         "document_id",
+        "embedding_space_hash",
         "chunk_id",
         # Versioning / rollback (stable composite key).
         "pipeline_hash",
@@ -54,6 +57,7 @@ _DOC_VECTOR_METADATA_FIELDS = frozenset(
         "tenant_id",
         "dataset_id",
         "document_id",
+        "embedding_space_hash",
         "chunk_index",
         "chunk_id",
         "pipeline_hash",
@@ -690,9 +694,22 @@ class MilvusVectorStore:
             metadatas_norm = _normalize_milvus_metadata_batch(metadatas)
             try:
                 pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
-            except Exception:
+            except Exception as exc:
                 # Backward compatibility: older collections might not have new scalar fields.
                 # Retry once with new optional fields dropped (safe, does not change retrieval semantics).
+                global _MILVUS_WARNED_WRITE_COMPAT_FALLBACK
+                if not _MILVUS_WARNED_WRITE_COMPAT_FALLBACK:
+                    logger.warning(
+                        "Milvus add_texts failed; retrying without dataset_id/embedding_space_hash (schema fallback). err=%s",
+                        str(exc)[:200],
+                    )
+                    _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = True
+                try:
+                    from app.storage.vector.milvus_prometheus_metrics import observe_milvus_write_compat_fallback
+
+                    observe_milvus_write_compat_fallback(dropped_fields="dataset_id_embedding_space_hash")
+                except Exception:
+                    pass
                 for m in metadatas_norm:
                     m.pop("dataset_id", None)
                     m.pop("embedding_space_hash", None)
@@ -782,8 +799,24 @@ class MilvusVectorStore:
 
         try:
             results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=combined_expr)
-        except Exception:
+        except Exception as exc:
             # Fallback for legacy collections / unsupported expr clauses.
+            global _MILVUS_WARNED_SEARCH_EXPR_FALLBACK
+            if not _MILVUS_WARNED_SEARCH_EXPR_FALLBACK:
+                logger.warning(
+                    "Milvus search expr failed; retrying without metadata expr pushdown. err=%s",
+                    str(exc)[:200],
+                )
+                _MILVUS_WARNED_SEARCH_EXPR_FALLBACK = True
+            try:
+                from app.storage.vector.milvus_prometheus_metrics import observe_milvus_search_expr_fallback
+
+                observe_milvus_search_expr_fallback(
+                    has_metadata_expr=bool(metadata_expr),
+                    has_base_expr=bool(base_expr),
+                )
+            except Exception:
+                pass
             results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=base_expr)
 
         formatted: List[Dict[str, Any]] = []
