@@ -22,6 +22,7 @@ from typing import Any, Optional, Sequence
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
 logger = get_logger("rag.evidence_rerank_cache")
@@ -116,6 +117,7 @@ def build_evidence_post_rerank_cache_key(
         "query_hash": stable_hash((query or "").strip(), length=16),
         "candidates": str(candidates_fingerprint or ""),
         "corpus_cache_token": str(corpus_cache_token or "") or None,
+        "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
         "tenant_hash": stable_hash(str(tenant_id or ""), length=16),
         "account_hash": stable_hash(str(account_id or ""), length=16),
         # Include low-cardinality config knobs so cache doesn't cross incompatible deployments.
@@ -323,11 +325,17 @@ def clear_evidence_post_rerank_cache_for_tests() -> None:
     _invalidate_redis_client()
 
 
+def clear_evidence_post_rerank_cache() -> bool:
+    _CACHE.clear()
+    return True
+
+
 __all__ = [
     "build_evidence_post_rerank_cache_key",
     "fingerprint_rerank_candidates",
     "get_evidence_post_rerank_cache_backend",
     "get_cached_evidence_post_rerank_result",
     "set_cached_evidence_post_rerank_result",
+    "clear_evidence_post_rerank_cache",
     "clear_evidence_post_rerank_cache_for_tests",
 ]

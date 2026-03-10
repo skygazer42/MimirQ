@@ -178,3 +178,30 @@ def test_evidence_post_rerank_cache_key_changes_with_corpus_cache_token() -> Non
     )
 
     assert key_a != key_b
+
+
+def test_evidence_post_rerank_cache_key_changes_with_embedding_space(monkeypatch) -> None:  # noqa: ANN001
+    import app.rag.rerank_result_cache as cache_mod
+
+    monkeypatch.setattr(cache_mod, "current_embedding_space_hash", lambda: "emb-a", raising=True)
+    key_a = cache_mod.build_evidence_post_rerank_cache_key(
+        tenant_id="t",
+        account_id="u",
+        provider="stub",
+        top_n=2,
+        query="hello",
+        candidates_fingerprint="cand-fp",
+        corpus_cache_token="corp-a",
+    )
+    monkeypatch.setattr(cache_mod, "current_embedding_space_hash", lambda: "emb-b", raising=True)
+    key_b = cache_mod.build_evidence_post_rerank_cache_key(
+        tenant_id="t",
+        account_id="u",
+        provider="stub",
+        top_n=2,
+        query="hello",
+        candidates_fingerprint="cand-fp",
+        corpus_cache_token="corp-a",
+    )
+
+    assert key_a != key_b
