@@ -14,6 +14,7 @@ import io
 import json
 import re
 import zipfile
+import csv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -60,6 +61,7 @@ from app.services.hardcase_discovery_service import (
     plan_feedback_hardcase_candidates,
     read_jsonl_tail,
 )
+from app.services.ltr_rollout_workflow import materialize_feedback_case, normalize_reference_sources
 
 router = APIRouter()
 
@@ -111,6 +113,179 @@ def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dic
         for k in ("draft", "reviewed", "approved", "archived"):
             m.setdefault(k, 0)
     return out
+
+
+def _feedback_training_export_row(
+    *,
+    feedback: MessageFeedback,
+    assistant: Message,
+    conversation: Conversation,
+    trace_payload: dict[str, Any] | None,
+    question: str,
+    reference_sources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    extra = dict(getattr(feedback, "extra", {}) or {})
+    return {
+        "schema": "mimirq.training_export_row.v1",
+        "source_type": "feedback",
+        "source_id": str(feedback.id),
+        "dataset_id": str(getattr(conversation, "dataset_id", "") or "") or None,
+        "status": "feedback",
+        "question": str(question or "").strip(),
+        "expected_answer": getattr(feedback, "expected_answer", None),
+        "tags": list(getattr(feedback, "tags", []) or []),
+        "reference_sources": normalize_reference_sources(reference_sources),
+        "trace_snapshot": dict(trace_payload or {}),
+        "rag_config_snapshot": dict(extra.get("rag_config_snapshot") or {}),
+        "source_metadata": {
+            "conversation_id": str(conversation.id),
+            "message_id": str(assistant.id),
+            "rating": int(getattr(feedback, "rating", 0) or 0),
+            "reason": str(getattr(feedback, "reason", "") or "") or None,
+        },
+        "created_at": feedback.created_at.isoformat() if getattr(feedback, "created_at", None) else None,
+        "updated_at": feedback.updated_at.isoformat() if getattr(feedback, "updated_at", None) else None,
+    }
+
+
+def _evidence_training_export_row(item: EvidenceItem) -> dict[str, Any]:
+    source_metadata = dict(getattr(item, "source_metadata", {}) or {})
+    source_metadata.setdefault("suite_id", str(getattr(item, "suite_id", "") or ""))
+    return {
+        "schema": "mimirq.training_export_row.v1",
+        "source_type": "evidence_item",
+        "source_id": str(item.id),
+        "dataset_id": str(getattr(item, "dataset_id", "") or "") or None,
+        "status": str(getattr(item, "status", "") or "").strip().lower() or None,
+        "question": str(getattr(item, "query", "") or "").strip(),
+        "expected_answer": getattr(item, "expected_answer", None),
+        "tags": list(getattr(item, "tags", []) or []),
+        "reference_sources": normalize_reference_sources(getattr(item, "reference_sources", None)),
+        "trace_snapshot": dict(getattr(item, "retrieval_snapshot", {}) or {}),
+        "rag_config_snapshot": dict(getattr(item, "rag_config_snapshot", {}) or {}),
+        "source_metadata": source_metadata,
+        "created_at": item.created_at.isoformat() if getattr(item, "created_at", None) else None,
+        "updated_at": item.updated_at.isoformat() if getattr(item, "updated_at", None) else None,
+    }
+
+
+def _collect_feedback_training_export_rows(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    limit: int,
+) -> list[dict[str, Any]]:
+    rows = (
+        db.query(MessageFeedback, Message, Conversation)
+        .join(Message, Message.id == MessageFeedback.message_id)
+        .join(Conversation, Conversation.id == MessageFeedback.conversation_id)
+        .filter(
+            MessageFeedback.tenant_id == tenant_id,
+            Message.tenant_id == tenant_id,
+            Conversation.tenant_id == tenant_id,
+            Conversation.dataset_id == dataset_id,
+            Message.role == "assistant",
+        )
+        .order_by(MessageFeedback.updated_at.desc())
+        .limit(int(limit or 0))
+        .all()
+    )
+
+    out: list[dict[str, Any]] = []
+    for feedback, assistant, conversation in rows:
+        user_message = (
+            db.query(Message)
+            .filter(
+                Message.tenant_id == tenant_id,
+                Message.conversation_id == conversation.id,
+                Message.role == "user",
+                Message.created_at <= assistant.created_at,
+            )
+            .order_by(Message.created_at.desc())
+            .first()
+        )
+        extra = dict(getattr(feedback, "extra", {}) or {})
+        trace_payload = extra.get("retrieval_trace") if isinstance(extra.get("retrieval_trace"), dict) else None
+        materialized = materialize_feedback_case(
+            feedback=feedback,
+            assistant=assistant,
+            conversation=conversation,
+            user_message=user_message,
+            trace_payload=trace_payload,
+        )
+        out.append(
+            _feedback_training_export_row(
+                feedback=feedback,
+                assistant=assistant,
+                conversation=conversation,
+                trace_payload=trace_payload,
+                question=materialized.question,
+                reference_sources=materialized.reference_sources,
+            )
+        )
+    return out
+
+
+def _collect_evidence_training_export_rows(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    include_archived: bool,
+    limit: int,
+) -> list[dict[str, Any]]:
+    q = (
+        db.query(EvidenceItem)
+        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.dataset_id == dataset_id)
+        .order_by(EvidenceItem.updated_at.desc())
+        .limit(int(limit or 0))
+    )
+    if not include_archived:
+        q = q.filter(EvidenceItem.status != "archived")
+    return [_evidence_training_export_row(item) for item in q.all()]
+
+
+def _render_training_export_csv(rows: list[dict[str, Any]]) -> str:
+    buf = io.StringIO()
+    fieldnames = [
+        "schema",
+        "source_type",
+        "source_id",
+        "dataset_id",
+        "status",
+        "question",
+        "expected_answer",
+        "tags_json",
+        "reference_sources_json",
+        "trace_snapshot_json",
+        "rag_config_snapshot_json",
+        "source_metadata_json",
+        "created_at",
+        "updated_at",
+    ]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in list(rows or []):
+        writer.writerow(
+            {
+                "schema": row.get("schema"),
+                "source_type": row.get("source_type"),
+                "source_id": row.get("source_id"),
+                "dataset_id": row.get("dataset_id"),
+                "status": row.get("status"),
+                "question": row.get("question"),
+                "expected_answer": row.get("expected_answer"),
+                "tags_json": json.dumps(row.get("tags") or [], ensure_ascii=False, separators=(",", ":")),
+                "reference_sources_json": json.dumps(row.get("reference_sources") or [], ensure_ascii=False, separators=(",", ":"), default=str),
+                "trace_snapshot_json": json.dumps(row.get("trace_snapshot") or {}, ensure_ascii=False, separators=(",", ":"), default=str),
+                "rag_config_snapshot_json": json.dumps(row.get("rag_config_snapshot") or {}, ensure_ascii=False, separators=(",", ":"), default=str),
+                "source_metadata_json": json.dumps(row.get("source_metadata") or {}, ensure_ascii=False, separators=(",", ":"), default=str),
+                "created_at": row.get("created_at"),
+                "updated_at": row.get("updated_at"),
+            }
+        )
+    return buf.getvalue()
 
 
 def _audit_reference_sources_drift(
@@ -1352,6 +1527,85 @@ async def export_evidence_suite(
         dataset_id=suite.dataset_id,
         suite=suite_payload,
         items=items_payload,
+    )
+
+
+@router.get("/training-export")
+async def export_training_dataset(
+    dataset_id: UUID = Query(..., description="Dataset id to export"),
+    format: str = Query(default="jsonl", description="jsonl or csv"),
+    include_feedback: bool = Query(default=True),
+    include_evidence: bool = Query(default=True),
+    include_archived_evidence: bool = Query(default=False),
+    max_rows_per_source: int = Query(default=2000, ge=1, le=10_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export a dataset-scoped training dataset assembled from feedback + evidence.
+
+    Output format:
+    - `jsonl`: one stable row per feedback/evidence record
+    - `csv`: flattened export with nested JSON columns
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    fmt = str(format or "jsonl").strip().lower() or "jsonl"
+    if fmt not in {"jsonl", "csv"}:
+        raise HTTPException(status_code=400, detail="format must be one of: jsonl, csv")
+    if not include_feedback and not include_evidence:
+        raise HTTPException(status_code=400, detail="at least one of include_feedback/include_evidence must be true")
+
+    rows: list[dict[str, Any]] = []
+    if include_feedback:
+        rows.extend(
+            _collect_feedback_training_export_rows(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                limit=max_rows_per_source,
+            )
+        )
+    if include_evidence:
+        rows.extend(
+            _collect_evidence_training_export_rows(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                include_archived=bool(include_archived_evidence),
+                limit=max_rows_per_source,
+            )
+        )
+
+    rows.sort(
+        key=lambda row: (
+            str(row.get("created_at") or ""),
+            str(row.get("source_type") or ""),
+            str(row.get("source_id") or ""),
+        )
+    )
+
+    if fmt == "csv":
+        content = _render_training_export_csv(rows)
+        filename = f"dataset_{dataset_id}.training_export.csv"
+        media_type = "text/csv"
+    else:
+        content = "\n".join(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str) for row in rows)
+        if content:
+            content += "\n"
+        filename = f"dataset_{dataset_id}.training_export.jsonl"
+        media_type = "application/x-ndjson"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
     )
 
 
