@@ -306,6 +306,7 @@ def create_langchain_embeddings_from_config(
     """
     from app.rag.embedding.providers import (
         DashScopeEmbedding,
+        OllamaEmbedding,
         OpenAICompatibleEmbedding,
         SentenceTransformerEmbedding,
     )
@@ -323,6 +324,10 @@ def create_langchain_embeddings_from_config(
         )
     elif provider == "dashscope":
         embedding_model = DashScopeEmbedding(
+            model=model, dimension=dimension, base_url=base_url, api_key=api_key
+        )
+    elif provider == "ollama":
+        embedding_model = OllamaEmbedding(
             model=model, dimension=dimension, base_url=base_url, api_key=api_key
         )
     else:  # openai_compatible, openai, etc.
