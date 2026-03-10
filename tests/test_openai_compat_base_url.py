@@ -32,3 +32,17 @@ def test_create_langchain_embeddings_from_config_appends_embeddings_when_base_is
     assert model is not None
     assert str(getattr(model, "base_url", "")).rstrip("/") == "http://localhost:8000/v1/embeddings"
 
+
+def test_create_langchain_embeddings_from_config_supports_ollama() -> None:
+    emb = create_langchain_embeddings_from_config(
+        provider="ollama",
+        model="bge-m3",
+        api_key="no_api_key",
+        base_url="",
+        dimension=1024,
+    )
+
+    model = getattr(emb, "_model", None)
+    assert model is not None
+    assert model.__class__.__name__ == "OllamaEmbedding"
+    assert str(getattr(model, "base_url", "")).rstrip("/").endswith("/api/embed")
