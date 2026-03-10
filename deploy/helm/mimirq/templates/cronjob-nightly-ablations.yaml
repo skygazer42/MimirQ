@@ -1,0 +1,118 @@
+{{- if .Values.cronjobs.nightlyAblations.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "mimirq.fullname" . }}-nightly-ablations
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronjobs.nightlyAblations.schedule | quote }}
+  {{- if .Values.cronjobs.nightlyAblations.timeZone }}
+  timeZone: {{ .Values.cronjobs.nightlyAblations.timeZone | quote }}
+  {{- end }}
+  suspend: {{ .Values.cronjobs.nightlyAblations.suspend }}
+  concurrencyPolicy: {{ .Values.cronjobs.nightlyAblations.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronjobs.nightlyAblations.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjobs.nightlyAblations.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "mimirq.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cronjob-nightly-ablations
+          annotations:
+            {{- if not .Values.existingSecretName }}
+            checksum/env: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+            {{- end }}
+            {{- with .Values.cronjobs.nightlyAblations.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: Never
+          {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.nightlyAblations.podSecurityContext) | nindent 10 }}
+          {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.nightlyAblations.automountServiceAccountToken) | nindent 10 }}
+          {{- include "mimirq.serviceAccountNameBlock" . | nindent 10 }}
+          {{- include "mimirq.imagePullSecretsBlock" . | nindent 10 }}
+          {{- if .Values.cronjobs.nightlyAblations.priorityClassName }}
+          priorityClassName: {{ .Values.cronjobs.nightlyAblations.priorityClassName | quote }}
+          {{- end }}
+          {{- if .Values.cronjobs.nightlyAblations.terminationGracePeriodSeconds }}
+          terminationGracePeriodSeconds: {{ .Values.cronjobs.nightlyAblations.terminationGracePeriodSeconds }}
+          {{- end }}
+          containers:
+            - name: nightly-ablations
+              image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python
+                - scripts/run_nightly_ablations.py
+                {{- if .Values.cronjobs.nightlyAblations.tenantId }}
+                - --tenant-id
+                - {{ .Values.cronjobs.nightlyAblations.tenantId | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.nightlyAblations.allDatasets }}
+                - --all-datasets
+                - --max-datasets
+                - {{ .Values.cronjobs.nightlyAblations.maxDatasets | quote }}
+                {{- else }}
+                - --dataset-id
+                - {{ required "cronjobs.nightlyAblations.datasetId is required when allDatasets=false" .Values.cronjobs.nightlyAblations.datasetId | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.nightlyAblations.execute }}
+                - --execute
+                {{- else }}
+                - --dry-run
+                {{- end }}
+                - --max-cases
+                - {{ .Values.cronjobs.nightlyAblations.maxCases | quote }}
+                {{- if .Values.cronjobs.nightlyAblations.cases }}
+                - --cases
+                - {{ .Values.cronjobs.nightlyAblations.cases | quote }}
+                {{- end }}
+                - --metrics
+                - {{ default "" .Values.cronjobs.nightlyAblations.metrics | quote }}
+                {{- range .Values.cronjobs.nightlyAblations.extraArgs }}
+                - {{ . | quote }}
+                {{- end }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "mimirq.secretName" . }}
+              {{- with .Values.cronjobs.nightlyAblations.extraEnv }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.cronjobs.nightlyAblations.securityContext) | nindent 14 }}
+              {{- if .Values.security.tmpEmptyDir.enabled }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: {{ default "/tmp" .Values.security.tmpEmptyDir.mountPath | quote }}
+              {{- end }}
+              {{- with .Values.cronjobs.nightlyAblations.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- if .Values.security.tmpEmptyDir.enabled }}
+          volumes:
+            - name: tmp
+              {{- if .Values.security.tmpEmptyDir.sizeLimit }}
+              emptyDir:
+                sizeLimit: {{ .Values.security.tmpEmptyDir.sizeLimit | quote }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+          {{- end }}
+          {{- with .Values.cronjobs.nightlyAblations.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.nightlyAblations.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.nightlyAblations.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+

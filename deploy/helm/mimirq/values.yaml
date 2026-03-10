@@ -422,3 +422,55 @@ cronjobs:
     tolerations: []
     affinity: {}
     extraEnv: []
+
+  # Nightly retrieval ablations (regression runs) via scripts/run_nightly_ablations.py.
+  #
+  # Notes:
+  # - Schedules are evaluated by the Kubernetes control-plane timezone (often UTC).
+  # - If your cluster supports CronJob `timeZone`, you can set it here; leave empty to omit.
+  # - Keep bounds small for safety; increase gradually after validating runtime/cost.
+  nightlyAblations:
+    enabled: false
+    schedule: "0 2 * * *"
+    timeZone: ""
+    suspend: false
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 3
+
+    # Tenant scope (optional; defaults to DEFAULT_TENANT_ID when empty):
+    tenantId: ""
+
+    # Dataset scope (mutually exclusive):
+    # - allDatasets=true   -> pass --all-datasets
+    # - datasetId="<uuid>" -> pass --dataset-id (required when allDatasets=false)
+    allDatasets: false
+    datasetId: ""
+    maxDatasets: 10
+
+    # Script mode: when true, writes regression runs + executes them synchronously.
+    execute: true
+
+    # Bounds
+    maxCases: 50
+
+    # Empty string means retrieval-only (no RAGAS, no LLM) - recommended default for ops CronJobs.
+    metrics: ""
+
+    # Optional: pass a deterministic regression cases bundle file path (must exist in the container).
+    cases: ""
+
+    # Optional additional args (each item becomes one CLI arg).
+    extraArgs: []
+
+    terminationGracePeriodSeconds: null
+    priorityClassName: ""
+    resources: {}
+    podSecurityContext: {}
+    securityContext: {}
+    automountServiceAccountToken: null
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    extraEnv: []
