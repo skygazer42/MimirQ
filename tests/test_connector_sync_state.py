@@ -39,7 +39,21 @@ def test_slice_items_from_cursor_returns_tail_and_normalized_cursor() -> None:
         ),
         ("jira_project", {"last_modified": "2026-03-02T12:34:56.000+0000"}, {"last_modified": "2026-03-02T12:34:56.000+0000"}),
         ("drive_files", {"cursor": 1, "total_urls": 3}, {"cursor": 1, "total_urls": 3}),
-        ("minio_bucket", {"cursor": 3, "total_objects": 7}, {"cursor": 3, "total_objects": 7}),
+        (
+            "minio_bucket",
+            {
+                "cursor": 3,
+                "total_objects": 7,
+                "source_scope_hash": "scope123",
+                "source_manifest": {"a.md": "etag:a|last_modified:2026-03-10T00:00:00Z"},
+            },
+            {
+                "cursor": 3,
+                "total_objects": 7,
+                "source_scope_hash": "scope123",
+                "source_manifest": {"a.md": "etag:a|last_modified:2026-03-10T00:00:00Z"},
+            },
+        ),
         ("confluence_space", {"last_modified": "2026-02-14T00:00:00.000Z"}, {"last_modified": "2026-02-14T00:00:00.000Z"}),
     ],
 )

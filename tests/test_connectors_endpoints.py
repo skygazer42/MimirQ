@@ -86,8 +86,8 @@ def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
     assert items["drive_files"]["supports_full_reconcile"] is False
     assert items["drive_files"]["sync_cursor_kind"] == "offset"
     assert items["minio_bucket"]["supports_resume"] is True
-    assert items["minio_bucket"]["supports_incremental"] is False
-    assert items["minio_bucket"]["supports_full_reconcile"] is False
+    assert items["minio_bucket"]["supports_incremental"] is True
+    assert items["minio_bucket"]["supports_full_reconcile"] is True
     assert items["minio_bucket"]["sync_cursor_kind"] == "offset"
     assert items["confluence_space"]["supports_incremental"] is True
     assert items["confluence_space"]["supports_resume"] is False

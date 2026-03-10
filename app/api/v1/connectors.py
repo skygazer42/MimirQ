@@ -2084,6 +2084,7 @@ def _soft_disable_connector_documents_by_source_url(
     dataset_id: UUID | None,
     connector_id: str,
     source_url: str,
+    connector_config_id: UUID | None = None,
     max_docs: int = 50_000,
 ) -> int:
     """
@@ -2115,6 +2116,67 @@ def _soft_disable_connector_documents_by_source_url(
         .distinct()
         .order_by(DBDocument.created_at.desc())
     )
+    if connector_config_id is not None:
+        q = q.filter(ConnectorRun.stats["config_id"].astext == str(connector_config_id))  # type: ignore[attr-defined]
+
+    max_docs = max(0, int(max_docs or 0))
+    if max_docs:
+        q = q.limit(max_docs)
+
+    now = _now()
+    disabled = 0
+    for doc in q.yield_per(200):
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+
+    return int(disabled)
+
+
+def _soft_disable_connector_documents_by_source_ref(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    connector_id: str,
+    source_ref: str,
+    connector_config_id: UUID | None = None,
+    exclude_document_id: UUID | None = None,
+    max_docs: int = 50_000,
+) -> int:
+    """
+    Best-effort soft-disable for connector-managed documents matching a connector-run `source_ref`.
+
+    This is useful when the underlying ingest pipeline does not persist a stable `doc_metadata.source_url`
+    across runs (e.g. presigned URLs).
+    """
+    if dataset_id is None:
+        return 0
+    source_ref = str(source_ref or "").strip()
+    if not source_ref:
+        return 0
+
+    q = (
+        db.query(DBDocument)
+        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
+        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+            ConnectorRun.tenant_id == tenant_id,
+            ConnectorRun.dataset_id == dataset_id,
+            ConnectorRun.connector_id == str(connector_id or "").strip(),
+            ConnectorRunDocument.source_ref == source_ref,
+        )
+        .distinct()
+        .order_by(DBDocument.created_at.desc())
+    )
+    if connector_config_id is not None:
+        q = q.filter(ConnectorRun.stats["config_id"].astext == str(connector_config_id))  # type: ignore[attr-defined]
+    if exclude_document_id is not None:
+        q = q.filter(DBDocument.id != exclude_document_id)
 
     max_docs = max(0, int(max_docs or 0))
     if max_docs:
@@ -3298,40 +3360,138 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
         if not bucket_name:
             raise RuntimeError("minio bucket is required")
 
-        object_names: list[str] = []
-        for obj in client.list_objects(bucket_name=bucket_name, prefix=(prefix or None), recursive=True):
-            name = str(getattr(obj, "object_name", "") or "").strip()
-            if not name:
-                continue
-            ext = Path(name).suffix.lower()
-            if ext and ext not in include_set:
-                continue
-            object_names.append(name)
-            if len(object_names) >= max(1, min(max_objects, 200)):
-                break
-
         created = 0
         failed = 0
         created_doc_ids: list[UUID] = []
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        object_names_to_process, cursor_in = slice_items_from_cursor(object_names, cursor=get_resume_cursor(state))
+        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+
+        # If a run is associated with a saved connector config, use it as a scoping guard for
+        # soft-delete operations so multiple configs of the same connector do not interfere.
+        stats = dict(run.stats or {})
+        cfg_id = stats.get("config_id")
+        connector_config_id: UUID | None = None
+        try:
+            if cfg_id:
+                connector_config_id = UUID(str(cfg_id))
+        except Exception:
+            connector_config_id = None
+
+        scope_parts = [
+            f"bucket={bucket_name}",
+            f"prefix={str(prefix or '').strip()}",
+            f"include={','.join(sorted(include_set))}",
+        ]
+        scope_hash = hashlib.sha256("|".join(scope_parts).encode("utf-8")).hexdigest()[:16]
+        existing_scope_hash = str(state.get("source_scope_hash") or "").strip()
+        if existing_scope_hash and existing_scope_hash != scope_hash:
+            existing_manifest = {}
+
+        tracked_keys = set(existing_manifest)
+        observed_tracked_keys: set[str] = set()
+
+        def _minio_object_token(obj) -> str:  # noqa: ANN001
+            etag = str(getattr(obj, "etag", "") or "").strip()
+
+            last_modified_raw = getattr(obj, "last_modified", None)
+            if isinstance(last_modified_raw, datetime):
+                last_modified = (
+                    last_modified_raw.astimezone(timezone.utc)
+                    .replace(microsecond=0)
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
+            else:
+                last_modified = str(last_modified_raw or "").strip()
+
+            parts: list[str] = []
+            if etag:
+                parts.append(f"etag:{etag}")
+            if last_modified:
+                parts.append(f"last_modified:{last_modified}")
+
+            # Some SDKs expose size; include it as a best-effort extra staleness signal.
+            size_raw = getattr(obj, "size", None)
+            with contextlib.suppress(Exception):
+                size = int(size_raw or 0) if size_raw is not None else 0
+                if size:
+                    parts.append(f"size:{size}")
+
+            return "|".join(parts) or "unknown"
+
+        resume_cursor_raw = get_resume_cursor(state)
+        is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+        effective_mode = "incremental" if existing_manifest else "full"
+        resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
+
+        total_objects = 0
+        delta_objects_total = 0
+        skipped_unchanged = 0
+        max_objects_bound = max(1, min(int(max_objects or 0), 200))
+        objects_to_process: list[tuple[str, str]] = []
+        for obj in client.list_objects(bucket_name=bucket_name, prefix=(prefix or None), recursive=True):
+            name = str(getattr(obj, "object_name", "") or "").strip()
+            if not name:
+                continue
+
+            if name in tracked_keys:
+                observed_tracked_keys.add(name)
+
+            ext = Path(name).suffix.lower()
+            if ext:
+                if ext not in include_set:
+                    continue
+            else:
+                if "" not in include_set:
+                    continue
+
+            total_objects += 1
+            token = _minio_object_token(obj)
+
+            if effective_mode == "incremental" and existing_manifest.get(name) == token:
+                skipped_unchanged += 1
+                continue
+
+            delta_objects_total += 1
+            if effective_mode == "full" and delta_objects_total <= resume_cursor:
+                continue
+
+            if len(objects_to_process) < max_objects_bound:
+                objects_to_process.append((name, token))
+
+        cursor_in = min(max(0, int(resume_cursor or 0)), int(delta_objects_total))
+        removed_paths = sorted(tracked_keys - observed_tracked_keys) if effective_mode == "incremental" else []
+        source_manifest_state = {path: sha for path, sha in existing_manifest.items() if path not in removed_paths}
+        processed_visible = skipped_unchanged + cursor_in
+        removed_paths_reconciled = 0
+        removed_documents_disabled = 0
+        updated_documents_disabled = 0
 
         stats0 = dict(run.stats or {})
         stats0.update(
             {
-                "total_objects": int(len(object_names)),
-                "processed_objects": int(cursor_in),
+                "mode": effective_mode,
+                "total_objects": int(total_objects),
+                "delta_objects": int(delta_objects_total),
+                "skipped_unchanged": int(skipped_unchanged),
+                "processed_objects": int(processed_visible),
                 "cursor": int(cursor_in),
                 "created": 0,
                 "failed": 0,
                 "cursor_in": int(cursor_in),
                 "resumed_from_state": bool(cursor_in > 0),
+                "removed_paths": int(len(removed_paths)),
+                "removed_paths_reconciled": int(removed_paths_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
+                "updated_documents_disabled": int(updated_documents_disabled),
+                "source_manifest": dict(source_manifest_state),
+                "source_scope_hash": str(scope_hash),
             }
         )
         run.stats = stats0
         db.commit()
 
-        for idx, object_name in enumerate(object_names_to_process):
+        for idx, (object_name, object_token) in enumerate(objects_to_process):
             try:
                 db.refresh(run)
             except Exception:
@@ -3373,8 +3533,20 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
                         status="created",
                     )
                 )
+                if effective_mode == "incremental" and object_name in source_manifest_state:
+                    with contextlib.suppress(Exception):
+                        updated_documents_disabled += _soft_disable_connector_documents_by_source_ref(
+                            db,
+                            tenant_id=tenant_id,
+                            dataset_id=run.dataset_id,
+                            connector_id="minio_bucket",
+                            source_ref=object_name,
+                            connector_config_id=connector_config_id,
+                            exclude_document_id=doc.id,
+                        )
                 created += 1
                 created_doc_ids.append(doc.id)
+                source_manifest_state[object_name] = object_token
             except Exception as exc:  # noqa: BLE001
                 failed += 1
                 stats = dict(run.stats or {})
@@ -3385,11 +3557,20 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
                 stats = dict(run.stats or {})
                 stats.update(
                     {
-                        "total_objects": int(len(object_names)),
-                        "processed_objects": int(processed),
+                        "mode": effective_mode,
+                        "total_objects": int(total_objects),
+                        "delta_objects": int(delta_objects_total),
+                        "skipped_unchanged": int(skipped_unchanged),
+                        "processed_objects": int(skipped_unchanged + processed),
                         "cursor": int(processed),
                         "created": int(created),
                         "failed": int(failed),
+                        "removed_paths": int(len(removed_paths)),
+                        "removed_paths_reconciled": int(removed_paths_reconciled),
+                        "removed_documents_disabled": int(removed_documents_disabled),
+                        "updated_documents_disabled": int(updated_documents_disabled),
+                        "source_manifest": dict(source_manifest_state),
+                        "source_scope_hash": str(scope_hash),
                         "document_ids": [str(d) for d in created_doc_ids],
                     }
                 )
@@ -3409,8 +3590,43 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
                 _sync_connector_config_from_run(db, run=run)
             return
 
+        if effective_mode == "incremental" and removed_paths:
+            for source_ref in removed_paths:
+                try:
+                    disabled = _soft_disable_connector_documents_by_source_ref(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=run.dataset_id,
+                        connector_id="minio_bucket",
+                        source_ref=source_ref,
+                        connector_config_id=connector_config_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=source_ref, exc=exc)
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    continue
+
+                removed_documents_disabled += int(disabled)
+                if disabled:
+                    removed_paths_reconciled += 1
+
         stats = dict(run.stats or {})
-        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
+        stats.update(
+            {
+                "mode": effective_mode,
+                "delta_objects": int(delta_objects_total),
+                "skipped_unchanged": int(skipped_unchanged),
+                "removed_paths": int(len(removed_paths)),
+                "removed_paths_reconciled": int(removed_paths_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
+                "updated_documents_disabled": int(updated_documents_disabled),
+                "source_manifest": dict(source_manifest_state),
+                "source_scope_hash": str(scope_hash),
+                "document_ids": [str(d) for d in created_doc_ids],
+            }
+        )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
         run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
