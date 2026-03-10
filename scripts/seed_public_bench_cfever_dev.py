@@ -31,6 +31,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 from uuid import UUID, uuid5
@@ -41,6 +42,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.migrations import apply_runtime_migrations
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
 from app.services.indexer import Indexer
 from app.types.indexing import ChunkInput
 
@@ -49,6 +51,13 @@ REPO_ID = "IKMLab-team/cfever"
 
 SPLIT = "dev"
 LANG = "zh"
+
+MANIFEST_SCHEMA = "mimirq.public_bench_manifest.v1"
+
+
+def write_json_file(path: Path, obj: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -67,15 +76,15 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return out
 
 
-def _list_wiki_files() -> list[str]:
+def _list_wiki_files(*, revision: str | None = None) -> list[str]:
     api = HfApi()
-    files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset")
-    wiki = [f for f in files if re.fullmatch(r"wiki-\\d{3}\\.jsonl", f)]
+    files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", revision=revision)
+    wiki = [f for f in files if re.fullmatch(r"wiki-\d{3}\.jsonl", f)]
     return sorted(wiki)
 
 
-def _download_file(filename: str) -> Path:
-    return Path(hf_hub_download(repo_id=REPO_ID, repo_type="dataset", filename=filename))
+def _download_file(filename: str, *, revision: str | None = None) -> Path:
+    return Path(hf_hub_download(repo_id=REPO_ID, repo_type="dataset", filename=filename, revision=revision))
 
 
 def _ensure_schema() -> None:
@@ -174,8 +183,14 @@ def _select_evidence_set(raw: Any) -> list[tuple[str, int]]:
     return []
 
 
-def build_dev_cases(*, include_nei: bool, max_cases: int, max_refs_per_case: int) -> list[DevCase]:
-    path = _download_file(f"{SPLIT}.jsonl")
+def build_dev_cases(
+    *,
+    include_nei: bool,
+    max_cases: int,
+    max_refs_per_case: int,
+    revision: str | None = None,
+) -> list[DevCase]:
+    path = _download_file(f"{SPLIT}.jsonl", revision=revision)
     rows = _load_jsonl(path)
 
     out: list[DevCase] = []
@@ -350,8 +365,9 @@ def seed_wiki_subset(
     max_pages: int,
     overwrite: bool,
     dry_run: bool,
+    revision: str | None = None,
 ) -> dict[str, Any]:
-    wiki_files = _list_wiki_files()
+    wiki_files = _list_wiki_files(revision=revision)
     if not wiki_files:
         raise RuntimeError("CFEVER wiki files not found (repo layout may have changed)")
 
@@ -361,6 +377,9 @@ def seed_wiki_subset(
         required = {k: required[k] for k in titles if k in required}
 
     plan = {
+        "repo_id": REPO_ID,
+        "repo_type": "dataset",
+        "revision": revision,
         "wiki_files": list(wiki_files),
         "required_pages": int(len(required)),
         "max_pages": int(max_pages or 0),
@@ -376,7 +395,7 @@ def seed_wiki_subset(
     else:
         wipe = None
 
-    paths = [_download_file(fn) for fn in wiki_files]
+    paths = [_download_file(fn, revision=revision) for fn in wiki_files]
 
     db = SessionLocal()
     try:
@@ -504,9 +523,80 @@ def seed_wiki_subset(
         db.close()
 
 
+def _iter_reference_chunk_ids(*, dataset_id: UUID, cases: Iterable[DevCase]) -> list[UUID]:
+    """
+    Return all unique chunk UUIDs referenced by exported cases (deterministic).
+    """
+    out: set[UUID] = set()
+    for c in cases or []:
+        for title, sid in (c.evidence or ()):
+            out.add(_uuid_for_sentence(dataset_id=dataset_id, page_title=title, sentence_id=sid))
+    return sorted(out, key=lambda x: str(x))
+
+
+def verify_reference_integrity(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    cases: list[DevCase],
+    batch_size: int = 500,
+) -> dict[str, Any]:
+    """
+    Verify that every reference chunk_id in exported cases exists in DB for this dataset.
+
+    This catches upstream dataset drift (when HF revisions aren't pinned) and partial/incomplete seeding.
+    """
+    want = _iter_reference_chunk_ids(dataset_id=dataset_id, cases=cases)
+    if not want:
+        return {"ok": True, "checked": 0, "missing": 0, "missing_sample": []}
+
+    bs = max(1, min(2000, int(batch_size or 0)))
+    db = SessionLocal()
+    try:
+        found: set[UUID] = set()
+        for i in range(0, len(want), bs):
+            batch = want[i : i + bs]
+            rows = (
+                db.query(DocumentChunk.id)
+                .join(DBDocument, DBDocument.id == DocumentChunk.document_id)
+                .filter(
+                    DocumentChunk.tenant_id == tenant_id,
+                    DocumentChunk.id.in_(batch),
+                    DBDocument.tenant_id == tenant_id,
+                    DBDocument.dataset_id == dataset_id,
+                )
+                .all()
+            )
+            for r in rows:
+                cid = r[0] if isinstance(r, tuple) else r
+                if cid is None:
+                    continue
+                try:
+                    found.add(UUID(str(cid)))
+                except Exception:
+                    continue
+
+        missing = [cid for cid in want if cid not in found]
+        return {
+            "ok": len(missing) == 0,
+            "checked": int(len(want)),
+            "missing": int(len(missing)),
+            "missing_sample": [str(x) for x in missing[:20]],
+        }
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Seed CFEVER dev evidence benchmark (DB + Milvus) and export cases bundle.")
     p.add_argument("--tenant-id", type=str, default="", help="Tenant UUID (default: settings.DEFAULT_TENANT_ID)")
+
+    p.add_argument(
+        "--hf-revision",
+        type=str,
+        default="",
+        help="Pin HuggingFace dataset revision/tag/commit for IKMLab-team/cfever (optional; recommended for reproducibility).",
+    )
 
     p.add_argument("--include-nei", action="store_true", help="Include NOT ENOUGH INFO cases in exported cases bundle")
     p.add_argument("--max-cases", type=int, default=0, help="Max cases to export (0=all)")
@@ -515,6 +605,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-pages", type=int, default=0, help="Max wiki pages to seed (0=all required)")
     p.add_argument("--overwrite", action="store_true", help="Delete existing documents for this dataset before seeding")
     p.add_argument("--out-cases", type=str, default="", help="Write regression case bundle JSON to this path (optional)")
+    p.add_argument("--out-manifest", type=str, default="", help="Write seed manifest JSON to this path (optional)")
 
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Plan only (no DB writes). Default.")
@@ -524,6 +615,12 @@ def main(argv: list[str] | None = None) -> int:
     dry_run = not bool(args.execute)
 
     from app.core.config import settings
+    hf_revision = str(args.hf_revision or "").strip() or None
+    if not hf_revision:
+        print(
+            "[cfever_seed] WARN: --hf-revision not set; upstream dataset changes may break reproducibility",
+            file=sys.stderr,
+        )
 
     try:
         tenant_id = UUID(str(args.tenant_id or settings.DEFAULT_TENANT_ID))
@@ -544,6 +641,7 @@ def main(argv: list[str] | None = None) -> int:
         include_nei=bool(args.include_nei),
         max_cases=int(args.max_cases or 0),
         max_refs_per_case=int(args.max_refs_per_case or 0),
+        revision=hf_revision,
     )
     if not cases:
         print("[cfever_seed] ERROR: zero cases built", file=sys.stderr)
@@ -584,7 +682,56 @@ def main(argv: list[str] | None = None) -> int:
         max_pages=int(args.max_pages or 0),
         overwrite=bool(args.overwrite),
         dry_run=bool(dry_run),
+        revision=hf_revision,
     )
+
+    integrity: dict[str, Any] | None = None
+    if not dry_run:
+        integrity = verify_reference_integrity(tenant_id=tenant_id, dataset_id=dataset_id, cases=cases)
+
+    if str(args.out_manifest or "").strip():
+        seeded = res.get("seeded") if isinstance(res, dict) else None
+        manifest = {
+            "schema": MANIFEST_SCHEMA,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "bench_key": BENCH_KEY,
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "hf": {
+                "repo_id": REPO_ID,
+                "repo_type": "dataset",
+                "revision": hf_revision,
+                "files": {
+                    "cases_split": f"{SPLIT}.jsonl",
+                    "wiki_files": list((res.get("plan") or {}).get("wiki_files") or []) if isinstance(res, dict) else [],
+                },
+            },
+            "params": {
+                "include_nei": bool(args.include_nei),
+                "max_cases": int(args.max_cases or 0),
+                "max_refs_per_case": int(args.max_refs_per_case or 0),
+                "max_pages": int(args.max_pages or 0),
+                "overwrite": bool(args.overwrite),
+                "dry_run": bool(dry_run),
+            },
+            "counts": {
+                "cases": int(len(cases)),
+                "required_pages": int(len(required)),
+                "seeded_pages": int((seeded or {}).get("pages") or 0) if not dry_run else None,
+                "seeded_chunks": int((seeded or {}).get("sentences") or 0) if not dry_run else None,
+            },
+            "reference_integrity": integrity,
+        }
+        write_json_file(Path(str(args.out_manifest)), manifest)
+        print(f"[cfever_seed] wrote manifest: {args.out_manifest}", file=sys.stderr)
+
+    if integrity and not bool(integrity.get("ok")):
+        sample = ", ".join((integrity.get("missing_sample") or [])[:5])
+        print(
+            f"[cfever_seed] ERROR: reference integrity check failed: missing={integrity.get('missing')} (e.g. {sample})",
+            file=sys.stderr,
+        )
+        return 2
 
     print(
         json.dumps(
@@ -607,4 +754,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -50,9 +50,21 @@ python scripts/regression_gate.py \
 - `--top-k`：覆盖 `top_k`
 - `--score-threshold`：覆盖 `score_threshold`
 
-如果你需要 sweep 更深的 runtime knobs（例如 `retrieval_profile` / fusion weights / multi-query / query rewrite / sparse / reranker 组合）：
+也支持一组更贴近生产的 runtime knobs（用于 hourly/nightly 对齐生产配置）：
+
+- `--retrieval-profile`：覆盖 `retrieval_profile`（例如 `recall20|recall50|coverage80`）
+- `--fusion-strategy`：覆盖 `fusion_strategy`（例如 `linear|rrf|budgeted_rrf|weighted`）
+- `--enable-sparse-retrieval` / `--disable-sparse-retrieval`：覆盖 `sparse_retrieval_enabled`
+- `--sparse-retrieval-provider`：覆盖 `sparse_retrieval_provider`（例如 `deterministic|splade`）
+- `--enable-query-rewrite` / `--disable-query-rewrite`：覆盖 `enable_query_rewrite`
+- `--enable-multi-query` / `--disable-multi-query`：覆盖 `enable_multi_query`
+- `--enable-reranker` / `--disable-reranker`：覆盖 `enable_reranker`
+- `--reranker-provider` / `--reranker-top-n`：覆盖 reranker provider/top_n
+
+如果你需要 sweep 更深/更多的 knobs：
 
 - 推荐用 `scripts/retrieval_ablation.py` 的矩阵模式
+- 或用 `--run-overrides-json path.json` 直接传一份 JSON 覆盖（键名对齐 `RagasRegressionRunCreateRequest`；CLI flags 优先生效）
 - 或者直接调用 `POST /api/v1/evaluations/ragas/regression/runs`
 
 另外，CI 里常需要把 run 的详细 JSON 作为 artifact 保存，可用：

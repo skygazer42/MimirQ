@@ -497,7 +497,29 @@ def _require(cond: bool, msg: str) -> None:
     sys.exit(2)
 
 
-def main() -> int:
+def _add_tristate_flag(
+    p: argparse.ArgumentParser,
+    *,
+    enable_flag: str,
+    disable_flag: str,
+    dest: str,
+    help: str,
+) -> None:
+    """
+    Add a tri-state boolean flag (True/False/None) using two mutually exclusive flags.
+
+    Example:
+      --enable-query-rewrite  => args.enable_query_rewrite = True
+      --disable-query-rewrite => args.enable_query_rewrite = False
+      (default)               => args.enable_query_rewrite = None
+    """
+    g = p.add_mutually_exclusive_group()
+    g.add_argument(enable_flag, dest=dest, action="store_true", help=f"Enable {help} (optional)")
+    g.add_argument(disable_flag, dest=dest, action="store_false", help=f"Disable {help} (optional)")
+    p.set_defaults(**{dest: None})
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Run regression suite and gate on thresholds.")
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base url (default: %(default)s)")
     p.add_argument("--tenant-id", default="", help="X-Tenant-ID header (optional in non-prod)")
@@ -533,6 +555,47 @@ def main() -> int:
         help="Override retrieval_mode for this run: hybrid|vector|keyword|mmr (optional)",
     )
 
+    # Optional: broaden runtime knob coverage (aligned with RagasRegressionRunCreateRequest).
+    p.add_argument("--retrieval-profile", type=str, default="", help="Override retrieval_profile preset (optional)")
+    p.add_argument("--fusion-strategy", type=str, default="", help="Override fusion_strategy (optional)")
+    p.add_argument(
+        "--run-overrides-json",
+        type=str,
+        default="",
+        help="JSON file of run overrides (subset of RagasRegressionRunCreateRequest fields). Merged with CLI flags; CLI wins (optional).",
+    )
+    _add_tristate_flag(
+        p,
+        enable_flag="--enable-sparse-retrieval",
+        disable_flag="--disable-sparse-retrieval",
+        dest="sparse_retrieval_enabled",
+        help="sparse retrieval channel",
+    )
+    p.add_argument("--sparse-retrieval-provider", type=str, default="", help="Override sparse_retrieval_provider (optional)")
+    _add_tristate_flag(
+        p,
+        enable_flag="--enable-query-rewrite",
+        disable_flag="--disable-query-rewrite",
+        dest="enable_query_rewrite",
+        help="query rewrite",
+    )
+    _add_tristate_flag(
+        p,
+        enable_flag="--enable-multi-query",
+        disable_flag="--disable-multi-query",
+        dest="enable_multi_query",
+        help="multi-query expansion",
+    )
+    _add_tristate_flag(
+        p,
+        enable_flag="--enable-reranker",
+        disable_flag="--disable-reranker",
+        dest="enable_reranker",
+        help="reranker",
+    )
+    p.add_argument("--reranker-provider", type=str, default="", help="Override reranker_provider (optional)")
+    p.add_argument("--reranker-top-n", type=int, default=None, help="Override reranker_top_n (optional)")
+
     # Optional: persist run detail JSON for CI artifacts.
     p.add_argument(
         "--out-run-json",
@@ -566,6 +629,70 @@ def main() -> int:
     p.add_argument("--gen-min-slice-items", type=int, default=5, help="Min items per slice bucket (default: %(default)s)")
     p.add_argument("--gen-force", action="store_true", help="Overwrite --generate-thresholds-out if it exists")
 
+    return p
+
+
+def build_retrieval_overrides_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+
+    if args.top_k is not None:
+        overrides["top_k"] = int(args.top_k)
+    if args.score_threshold is not None:
+        overrides["score_threshold"] = float(args.score_threshold)
+    if str(args.retrieval_mode or "").strip():
+        overrides["retrieval_mode"] = str(args.retrieval_mode).strip()
+
+    if str(getattr(args, "retrieval_profile", "") or "").strip():
+        overrides["retrieval_profile"] = str(args.retrieval_profile).strip()
+    if str(getattr(args, "fusion_strategy", "") or "").strip():
+        overrides["fusion_strategy"] = str(args.fusion_strategy).strip()
+
+    if getattr(args, "sparse_retrieval_enabled", None) is not None:
+        overrides["sparse_retrieval_enabled"] = bool(args.sparse_retrieval_enabled)
+    if str(getattr(args, "sparse_retrieval_provider", "") or "").strip():
+        overrides["sparse_retrieval_provider"] = str(args.sparse_retrieval_provider).strip()
+
+    if getattr(args, "enable_query_rewrite", None) is not None:
+        overrides["enable_query_rewrite"] = bool(args.enable_query_rewrite)
+    if getattr(args, "enable_multi_query", None) is not None:
+        overrides["enable_multi_query"] = bool(args.enable_multi_query)
+
+    if getattr(args, "enable_reranker", None) is not None:
+        overrides["enable_reranker"] = bool(args.enable_reranker)
+    if str(getattr(args, "reranker_provider", "") or "").strip():
+        overrides["reranker_provider"] = str(args.reranker_provider).strip()
+    if getattr(args, "reranker_top_n", None) is not None:
+        overrides["reranker_top_n"] = int(args.reranker_top_n)
+
+    return overrides
+
+
+def normalize_run_overrides(raw: Any) -> dict[str, Any]:
+    """
+    Validate/normalize a run overrides JSON object.
+
+    We keep this intentionally strict (unknown keys are rejected) so hourly/nightly
+    jobs don't silently "think" they set a knob while the server ignores it.
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("run overrides must be a JSON object")
+
+    unknown = [str(k) for k in raw.keys() if str(k) not in _RUN_OVERRIDE_KEYS]
+    if unknown:
+        sample = ", ".join(sorted(unknown)[:10])
+        raise ValueError(f"unknown run override key(s): {sample}")
+
+    out: dict[str, Any] = {}
+    for k in _RUN_OVERRIDE_KEYS:
+        if k in raw and raw.get(k) is not None:
+            out[k] = raw.get(k)
+    return out
+
+
+def main() -> int:
+    p = build_arg_parser()
     args = p.parse_args()
 
     cases_path = Path(args.cases)
@@ -658,13 +785,18 @@ def main() -> int:
         _require(len(matched_ids) > 0, "no matching cases found after import/list")
         print(f"[regression_gate] matched cases: {len(matched_ids)}/{len(want_keys)}")
 
-        overrides: dict[str, Any] = {}
-        if args.top_k is not None:
-            overrides["top_k"] = int(args.top_k)
-        if args.score_threshold is not None:
-            overrides["score_threshold"] = float(args.score_threshold)
-        if str(args.retrieval_mode or "").strip():
-            overrides["retrieval_mode"] = str(args.retrieval_mode).strip()
+        file_overrides: dict[str, Any] = {}
+        if str(args.run_overrides_json or "").strip():
+            ov_path = Path(str(args.run_overrides_json)).expanduser()
+            _require(ov_path.exists(), f"run overrides file not found: {ov_path}")
+            raw_ov = _load_json(ov_path)
+            try:
+                file_overrides = normalize_run_overrides(raw_ov)
+            except Exception as exc:
+                _require(False, f"invalid --run-overrides-json: {exc}")
+
+        cli_overrides = build_retrieval_overrides_from_args(args)
+        overrides = {**file_overrides, **cli_overrides}
 
         # Start regression run (defaults follow API schema unless explicitly overridden).
         run_payload = build_run_create_request_payload(

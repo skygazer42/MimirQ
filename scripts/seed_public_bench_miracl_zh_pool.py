@@ -31,6 +31,7 @@ import math
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 from uuid import UUID, uuid5
@@ -41,6 +42,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.migrations import apply_runtime_migrations
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
+from app.models.document import DocumentChunk
 from app.services.indexer import Indexer
 from app.types.indexing import ChunkInput
 
@@ -48,6 +50,13 @@ BENCH_KEY = "public_bench.miracl_zh_pool.v1"
 MIRACL_DATASET_REPO = "miracl/miracl"
 MIRACL_CORPUS_REPO = "miracl/miracl-corpus"
 LANG = "zh"
+
+MANIFEST_SCHEMA = "mimirq.public_bench_manifest.v1"
+
+
+def write_json_file(path: Path, obj: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _load_tsv_2col(path: Path) -> list[tuple[str, str]]:
@@ -133,28 +142,28 @@ def _stable_sample_threshold(*, rate: float) -> int:
     return int(r * float(1 << 64))
 
 
-def _download_topics(*, split: str) -> Path:
+def _download_topics(*, split: str, revision: str | None = None) -> Path:
     filename = f"miracl-v1.0-{LANG}/topics/topics.miracl-v1.0-{LANG}-{split}.tsv"
-    return Path(hf_hub_download(repo_id=MIRACL_DATASET_REPO, repo_type="dataset", filename=filename))
+    return Path(hf_hub_download(repo_id=MIRACL_DATASET_REPO, repo_type="dataset", filename=filename, revision=revision))
 
 
-def _download_qrels(*, split: str) -> Path:
+def _download_qrels(*, split: str, revision: str | None = None) -> Path:
     filename = f"miracl-v1.0-{LANG}/qrels/qrels.miracl-v1.0-{LANG}-{split}.tsv"
-    return Path(hf_hub_download(repo_id=MIRACL_DATASET_REPO, repo_type="dataset", filename=filename))
+    return Path(hf_hub_download(repo_id=MIRACL_DATASET_REPO, repo_type="dataset", filename=filename, revision=revision))
 
 
-def _list_corpus_files() -> list[str]:
+def _list_corpus_files(*, revision: str | None = None) -> list[str]:
     api = HfApi()
-    files = api.list_repo_files(repo_id=MIRACL_CORPUS_REPO, repo_type="dataset")
+    files = api.list_repo_files(repo_id=MIRACL_CORPUS_REPO, repo_type="dataset", revision=revision)
     prefix = f"miracl-corpus-v1.0-{LANG}/docs-"
     corpus = [f for f in files if f.startswith(prefix) and f.endswith(".jsonl.gz")]
     return sorted(corpus)
 
 
-def _download_corpus_files(filenames: list[str]) -> list[Path]:
+def _download_corpus_files(filenames: list[str], *, revision: str | None = None) -> list[Path]:
     out: list[Path] = []
     for fn in filenames:
-        p = hf_hub_download(repo_id=MIRACL_CORPUS_REPO, repo_type="dataset", filename=fn)
+        p = hf_hub_download(repo_id=MIRACL_CORPUS_REPO, repo_type="dataset", filename=fn, revision=revision)
         out.append(Path(p))
     return out
 
@@ -172,6 +181,7 @@ def build_case_items(
     splits: list[str],
     max_cases: int,
     max_refs_per_case: int,
+    revision: str | None = None,
 ) -> list[CaseItem]:
     """
     Build a deterministic list of MIRACL cases from topics+qrels.
@@ -185,8 +195,8 @@ def build_case_items(
 
     items: list[CaseItem] = []
     for split in splits_norm:
-        topics_path = _download_topics(split=split)
-        qrels_path = _download_qrels(split=split)
+        topics_path = _download_topics(split=split, revision=revision)
+        qrels_path = _download_qrels(split=split, revision=revision)
 
         topics = _load_tsv_2col(topics_path)
         qrels = _load_qrels_positive_docids(qrels_path)
@@ -354,6 +364,7 @@ def seed_pool_corpus(
     chunks_per_document: int,
     overwrite: bool,
     dry_run: bool,
+    revision: str | None = None,
 ) -> dict[str, Any]:
     """
     Stream the MIRACL corpus and seed a fixed-size "pool" dataset.
@@ -372,7 +383,7 @@ def seed_pool_corpus(
         target = pos_cnt
     neg_target = max(0, target - pos_cnt)
 
-    corpus_filenames = _list_corpus_files()
+    corpus_filenames = _list_corpus_files(revision=revision)
     if not corpus_filenames:
         raise RuntimeError("No MIRACL corpus files found for zh (repo layout may have changed)")
 
@@ -396,7 +407,7 @@ def seed_pool_corpus(
             "seeded": None,
         }
 
-    corpus_paths = _download_corpus_files(corpus_filenames)
+    corpus_paths = _download_corpus_files(corpus_filenames, revision=revision)
 
     t0 = time.time()
     total_docs = _count_corpus_docs(corpus_paths)
@@ -557,9 +568,86 @@ def seed_pool_corpus(
         db.close()
 
 
+def _iter_reference_chunk_ids(*, dataset_id: UUID, case_items: Iterable[CaseItem]) -> list[UUID]:
+    """
+    Return all unique chunk UUIDs referenced by exported cases (deterministic).
+    """
+    out: set[UUID] = set()
+    for it in case_items or []:
+        for docid in (it.positive_docids or ()):
+            out.add(_uuid_for_chunk(dataset_id=dataset_id, docid=str(docid)))
+    return sorted(out, key=lambda x: str(x))
+
+
+def verify_reference_integrity(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    case_items: list[CaseItem],
+    batch_size: int = 500,
+) -> dict[str, Any]:
+    """
+    Verify that every reference chunk_id in exported cases exists in DB for this dataset.
+
+    This catches upstream dataset drift (when HF revisions aren't pinned) and partial/incomplete seeding.
+    """
+    want = _iter_reference_chunk_ids(dataset_id=dataset_id, case_items=case_items)
+    if not want:
+        return {"ok": True, "checked": 0, "missing": 0, "missing_sample": []}
+
+    bs = max(1, min(2000, int(batch_size or 0)))
+    db = SessionLocal()
+    try:
+        found: set[UUID] = set()
+        for i in range(0, len(want), bs):
+            batch = want[i : i + bs]
+            rows = (
+                db.query(DocumentChunk.id)
+                .join(DBDocument, DBDocument.id == DocumentChunk.document_id)
+                .filter(
+                    DocumentChunk.tenant_id == tenant_id,
+                    DocumentChunk.id.in_(batch),
+                    DBDocument.tenant_id == tenant_id,
+                    DBDocument.dataset_id == dataset_id,
+                )
+                .all()
+            )
+            for r in rows:
+                cid = r[0] if isinstance(r, tuple) else r
+                if cid is None:
+                    continue
+                try:
+                    found.add(UUID(str(cid)))
+                except Exception:
+                    continue
+
+        missing = [cid for cid in want if cid not in found]
+        return {
+            "ok": len(missing) == 0,
+            "checked": int(len(want)),
+            "missing": int(len(missing)),
+            "missing_sample": [str(x) for x in missing[:20]],
+        }
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Seed MIRACL zh pool public benchmark (DB + Milvus) and export cases bundle.")
     p.add_argument("--tenant-id", type=str, default="", help="Tenant UUID (default: settings.DEFAULT_TENANT_ID)")
+
+    p.add_argument(
+        "--hf-revision",
+        type=str,
+        default="",
+        help="Pin HuggingFace dataset revision/tag/commit for miracl/miracl (topics/qrels) (optional; recommended for reproducibility).",
+    )
+    p.add_argument(
+        "--hf-revision-corpus",
+        type=str,
+        default="",
+        help="Pin HuggingFace dataset revision/tag/commit for miracl/miracl-corpus (optional; recommended for reproducibility).",
+    )
 
     p.add_argument("--splits", type=str, default="train,dev", help="Comma-separated MIRACL splits: train,dev (default: %(default)s)")
     p.add_argument("--max-cases", type=int, default=0, help="Max cases to export (0 = all; keep <= 2000 for import)")
@@ -570,6 +658,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--overwrite", action="store_true", help="Delete existing documents for this dataset before seeding")
 
     p.add_argument("--out-cases", type=str, default="", help="Write regression case bundle JSON to this path (optional)")
+    p.add_argument("--out-manifest", type=str, default="", help="Write seed manifest JSON to this path (optional)")
 
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Plan only (no DB writes). Default.")
@@ -579,6 +668,19 @@ def main(argv: list[str] | None = None) -> int:
     dry_run = not bool(args.execute)
 
     from app.core.config import settings
+
+    hf_revision = str(args.hf_revision or "").strip() or None
+    hf_revision_corpus = str(args.hf_revision_corpus or "").strip() or None
+    if not hf_revision:
+        print(
+            "[public_bench] WARN: --hf-revision not set; upstream dataset changes may break reproducibility",
+            file=sys.stderr,
+        )
+    if not hf_revision_corpus:
+        print(
+            "[public_bench] WARN: --hf-revision-corpus not set; upstream dataset changes may break reproducibility",
+            file=sys.stderr,
+        )
 
     try:
         tenant_id = UUID(str(args.tenant_id or settings.DEFAULT_TENANT_ID))
@@ -595,11 +697,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     owner_id = "public-bench-bot"
 
-    splits = [s.strip() for s in str(args.splits or "").split(",") if s.strip()]
+    splits_raw = [s.strip() for s in str(args.splits or "").split(",") if s.strip()]
+    splits_norm = [str(s).strip().lower() for s in splits_raw if str(s).strip()]
+    if not splits_norm:
+        splits_norm = ["train", "dev"]
     case_items = build_case_items(
-        splits=splits,
+        splits=splits_norm,
         max_cases=int(args.max_cases or 0),
         max_refs_per_case=int(args.max_refs_per_case or 0),
+        revision=hf_revision,
     )
     if not case_items:
         print("[public_bench] ERROR: zero cases built (splits/qrels mismatch?)", file=sys.stderr)
@@ -628,7 +734,7 @@ def main(argv: list[str] | None = None) -> int:
                     "key": BENCH_KEY,
                     "source": "MIRACL",
                     "lang": LANG,
-                    "splits": splits,
+                    "splits": splits_norm,
                     "target_passages": int(args.target_passages or 0),
                     "chunks_per_document": int(args.chunks_per_document or 0),
                     "max_refs_per_case": int(args.max_refs_per_case or 0),
@@ -636,6 +742,7 @@ def main(argv: list[str] | None = None) -> int:
             },
         )
 
+    t0 = time.time()
     res = seed_pool_corpus(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -644,7 +751,69 @@ def main(argv: list[str] | None = None) -> int:
         chunks_per_document=int(args.chunks_per_document or 0),
         overwrite=bool(args.overwrite),
         dry_run=bool(dry_run),
+        revision=hf_revision_corpus,
     )
+
+    integrity: dict[str, Any] | None = None
+    if not dry_run:
+        integrity = verify_reference_integrity(tenant_id=tenant_id, dataset_id=dataset_id, case_items=case_items)
+
+    if str(args.out_manifest or "").strip():
+        seeded = res.get("seeded") if isinstance(res, dict) else None
+        plan = res.get("plan") if isinstance(res, dict) else None
+        topics_files = [f"miracl-v1.0-{LANG}/topics/topics.miracl-v1.0-{LANG}-{s}.tsv" for s in splits_norm]
+        qrels_files = [f"miracl-v1.0-{LANG}/qrels/qrels.miracl-v1.0-{LANG}-{s}.tsv" for s in splits_norm]
+        manifest = {
+            "schema": MANIFEST_SCHEMA,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "bench_key": BENCH_KEY,
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "hf": {
+                "miracl": {
+                    "repo_id": MIRACL_DATASET_REPO,
+                    "repo_type": "dataset",
+                    "revision": hf_revision,
+                    "files": {
+                        "topics": topics_files,
+                        "qrels": qrels_files,
+                    },
+                },
+                "miracl_corpus": {
+                    "repo_id": MIRACL_CORPUS_REPO,
+                    "repo_type": "dataset",
+                    "revision": hf_revision_corpus,
+                    "files": {
+                        "corpus_files": list((plan or {}).get("corpus_files") or []) if isinstance(plan, dict) else [],
+                    },
+                },
+            },
+            "params": {
+                "splits": splits_norm,
+                "max_cases": int(args.max_cases or 0),
+                "max_refs_per_case": int(args.max_refs_per_case or 0),
+                "target_passages": int(args.target_passages or 0),
+                "chunks_per_document": int(args.chunks_per_document or 0),
+                "overwrite": bool(args.overwrite),
+                "dry_run": bool(dry_run),
+            },
+            "counts": {
+                "cases": int(len(case_items)),
+                "seeded_passages": int((seeded or {}).get("passages") or 0) if not dry_run else None,
+            },
+            "plan": plan,
+            "reference_integrity": integrity,
+        }
+        write_json_file(Path(str(args.out_manifest)), manifest)
+        print(f"[public_bench] wrote manifest: {args.out_manifest}", file=sys.stderr)
+
+    if integrity and not bool(integrity.get("ok")):
+        sample = ", ".join((integrity.get("missing_sample") or [])[:5])
+        print(
+            f"[public_bench] ERROR: reference integrity check failed: missing={integrity.get('missing')} (e.g. {sample})",
+            file=sys.stderr,
+        )
+        return 2
 
     print(
         json.dumps(
@@ -655,6 +824,7 @@ def main(argv: list[str] | None = None) -> int:
                 "dataset_id": str(dataset_id),
                 "dry_run": bool(dry_run),
                 "cases": int(len(case_items)),
+                "elapsed_sec": round(float(time.time() - t0), 2),
                 "result": res,
             },
             ensure_ascii=False,
