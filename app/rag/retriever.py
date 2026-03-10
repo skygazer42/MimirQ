@@ -69,7 +69,9 @@ class HybridRetriever(BaseRetriever):
     fusion_min_scores: Optional[Dict[str, float]] = None
     # Only used when fusion_strategy="weighted".
     fusion_weights: Optional[Dict[str, float]] = None
-    sparse_enabled: bool = Field(default_factory=lambda: settings.SPARSE_RETRIEVAL_ENABLED)
+    # Optional: when None, follow settings.SPARSE_RETRIEVAL_ENABLED dynamically (useful for tests / hot reload).
+    # When set, acts as an explicit per-retriever override.
+    sparse_enabled: Optional[bool] = None
     sparse_provider: str = Field(default_factory=lambda: settings.SPARSE_RETRIEVAL_PROVIDER)
     dedup_enabled: bool = settings.RETRIEVAL_DEDUP_ENABLED
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
@@ -118,6 +120,11 @@ class HybridRetriever(BaseRetriever):
     # These are used only when settings.COLBERT_RETRIEVAL_ENABLED=true.
     _colbert_index_cache: Dict[str, Any] = PrivateAttr(default_factory=dict)
     _colbert_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+
+    def _effective_sparse_enabled(self) -> bool:
+        if self.sparse_enabled is not None:
+            return bool(self.sparse_enabled)
+        return bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
 
     def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
         if not docs:
@@ -1317,7 +1324,7 @@ class HybridRetriever(BaseRetriever):
         logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs), cache_key)
 
         # Optional: keep sparse retrieval index in sync with the BM25 scope docs.
-        if bool(self.sparse_enabled):
+        if self._effective_sparse_enabled():
             try:
                 with self._get_sparse_build_lock(cache_key):
                     self._upsert_sparse_index_incremental(
@@ -1435,7 +1442,7 @@ class HybridRetriever(BaseRetriever):
 
             if removed_ids:
                 # Best-effort: update sparse index by removing vectors for deleted chunks.
-                if bool(self.sparse_enabled):
+                if self._effective_sparse_enabled():
                     try:
                         with self._get_sparse_build_lock(scope_key):
                             vecs = self._sparse_doc_vectors.get(scope_key) or {}
@@ -1799,7 +1806,7 @@ class HybridRetriever(BaseRetriever):
         raw_query = str(query or "").strip()
         if not raw_query:
             return []
-        if not bool(self.sparse_enabled):
+        if not self._effective_sparse_enabled():
             return []
 
         tenant_uuid: Optional[UUID] = tenant_id
@@ -2340,7 +2347,7 @@ class HybridRetriever(BaseRetriever):
         # Persistent lexical DB search is an additional sparse channel that does not depend on the in-memory BM25 flag.
         want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr")
         # Optional sparse retrieval (SPLADE-style scaffolding) is an additional sparse channel.
-        want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and bool(self.sparse_enabled)
+        want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and self._effective_sparse_enabled()
         if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             # Enforce the global flag even if a BM25 cache exists.
             #
