@@ -12,6 +12,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -44,11 +45,71 @@ from app.tasks.locks import (
 )
 
 logger = get_logger("tasks.jobs")
+TASK_JOB_RESULT_SCHEMA_V1 = "mimirq.task_job_result.v1"
+
+
+def _job_progress(*, stage: str, done: int | None = None, total: int | None = None, **extra: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"stage": str(stage or "").strip() or "unknown"}
+    if done is not None:
+        payload["done"] = max(0, int(done))
+    if total is not None:
+        payload["total"] = max(0, int(total))
+    for key, value in extra.items():
+        if value is not None:
+            payload[key] = value
+    return payload
+
+
+async def _record_job_outcome(ctx, payload: dict[str, Any]) -> None:  # noqa: ANN001
+    try:
+        redis = ctx.get("redis") if isinstance(ctx, dict) else None
+    except Exception:  # noqa: BLE001
+        redis = None
+    if redis is None:
+        return
+
+    try:
+        from app.services.task_queue_observability_service import observe_task_job_outcome
+
+        await observe_task_job_outcome(
+            redis=redis,
+            queue_name=str(getattr(settings, "TASK_QUEUE_NAME", "") or "mimirq"),
+            outcome=payload,
+        )
+    except Exception:  # noqa: BLE001
+        return
+
+
+async def _job_result(
+    ctx,  # noqa: ANN001
+    *,
+    job_name: str,
+    ok: bool,
+    started_at: float,
+    reason: str | None = None,
+    progress: dict[str, Any] | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": TASK_JOB_RESULT_SCHEMA_V1,
+        "job_name": str(job_name or "").strip() or "unknown_job",
+        "ok": bool(ok),
+        "reason": str(reason).strip() if reason is not None else None,
+        "elapsed_sec": round(max(0.0, float(time.perf_counter() - started_at)), 3),
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "progress": progress or _job_progress(stage="completed" if ok else "failed", done=1 if ok else 0, total=1),
+    }
+    for key, value in fields.items():
+        if value is not None:
+            payload[key] = value
+    await _record_job_outcome(ctx, payload)
+    return payload
 
 
 async def ping_job(ctx) -> dict:  # noqa: ANN001
     """Queue healthcheck job (for E2E benchmark)."""
-    return {"ok": True}
+    t0 = time.perf_counter()
+    return await _job_result(ctx, job_name="ping_job", ok=True, started_at=t0)
 
 
 async def evidence_reference_sources_repair_job(  # noqa: ANN001
@@ -100,7 +161,17 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip evidence repair job due to active lock: %s", lock_key)
-                return {"ok": True, "skipped": "locked", "tenant_id": tenant_id, "suite_id": suite_id}
+                return await _job_result(
+                    ctx,
+                    job_name="evidence_reference_sources_repair_job",
+                    ok=True,
+                    started_at=t0,
+                    reason="locked",
+                    progress=_job_progress(stage="locked", done=0, total=1),
+                    skipped="locked",
+                    tenant_id=tenant_id,
+                    suite_id=suite_id,
+                )
 
         try:
             result = repair_evidence_suite_reference_sources(
@@ -116,7 +187,16 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
                 actor_id=requested_by,
             )
         except EvidenceSuiteNotFoundError:
-            return {"ok": False, "reason": "suite_not_found", "tenant_id": tenant_id, "suite_id": suite_id}
+            return await _job_result(
+                ctx,
+                job_name="evidence_reference_sources_repair_job",
+                ok=False,
+                started_at=t0,
+                reason="suite_not_found",
+                progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                suite_id=suite_id,
+            )
 
         # Best-effort job-level audit summary (PII-safe; no raw evidence content).
         try:
@@ -147,8 +227,20 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
             with contextlib.suppress(Exception):  # noqa: BLE001
                 db.rollback()
 
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
+        return await _job_result(
+            ctx,
+            job_name="evidence_reference_sources_repair_job",
+            ok=True,
+            started_at=t0,
+            progress=_job_progress(
+                stage="completed",
+                done=int(result.get("scanned_items") or 0),
+                total=int(result.get("scanned_items") or 0),
+            ),
+            tenant_id=tenant_id,
+            suite_id=suite_id,
+            result=result,
+        )
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
@@ -178,7 +270,16 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
             .first()
         )
         if not run:
-            return {"ok": False, "reason": "run_not_found", "tenant_id": tenant_id, "run_id": run_id}
+            return await _job_result(
+                ctx,
+                job_name="connector_run_job",
+                ok=False,
+                started_at=t0,
+                reason="run_not_found",
+                progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                run_id=run_id,
+            )
 
         connector_id = str(getattr(run, "connector_id", "") or "").strip()
 
@@ -202,7 +303,17 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip connector job due to active lock: %s", lock_key)
-                return {"ok": True, "skipped": "locked", "tenant_id": tenant_id, "run_id": run_id}
+                return await _job_result(
+                    ctx,
+                    job_name="connector_run_job",
+                    ok=True,
+                    started_at=t0,
+                    reason="locked",
+                    progress=_job_progress(stage="locked", done=0, total=1),
+                    skipped="locked",
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                )
 
         # Worker side dispatch: reuse existing executors.
         import app.api.v1.connectors as connectors_module
@@ -224,16 +335,27 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
         elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
             await connectors_module._execute_db_catalog_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
         else:
-            return {
-                "ok": False,
-                "reason": "unsupported_connector_id",
-                "tenant_id": tenant_id,
-                "run_id": run_id,
-                "connector_id": connector_id,
-            }
+            return await _job_result(
+                ctx,
+                job_name="connector_run_job",
+                ok=False,
+                started_at=t0,
+                reason="unsupported_connector_id",
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                run_id=run_id,
+                connector_id=connector_id,
+            )
 
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "connector_id": connector_id, "elapsed_sec": round(elapsed, 3)}
+        return await _job_result(
+            ctx,
+            job_name="connector_run_job",
+            ok=True,
+            started_at=t0,
+            connector_id=connector_id,
+            tenant_id=tenant_id,
+            run_id=run_id,
+        )
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
@@ -271,7 +393,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         )
         if not doc:
             # Task can be considered complete (target missing).
-            return {"ok": False, "reason": "document_not_found", "tenant_id": tenant_id, "document_id": document_id}
+            return await _job_result(
+                ctx,
+                job_name="process_document_job",
+                ok=False,
+                started_at=t0,
+                reason="document_not_found",
+                progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+            )
 
         meta0 = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
         pipeline_hash = meta0.get("pipeline_hash") or "unknown"
@@ -309,13 +440,18 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip document job due to active lock: %s", lock_key)
-                return {
-                    "ok": True,
-                    "skipped": "locked",
-                    "tenant_id": tenant_id,
-                    "document_id": document_id,
-                    "pipeline_hash": pipeline_hash,
-                }
+                return await _job_result(
+                    ctx,
+                    job_name="process_document_job",
+                    ok=True,
+                    started_at=t0,
+                    reason="locked",
+                    progress=_job_progress(stage="locked", done=0, total=1),
+                    skipped="locked",
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    pipeline_hash=pipeline_hash,
+                )
 
         # Validation passed: execute document processing.
         parser_backend = (doc.doc_metadata or {}).get("parser_backend")
@@ -335,7 +471,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 "failed",
                 error_message="document_file_not_available",
             )
-            return {"ok": False, "reason": "document_file_not_available", "tenant_id": tenant_id, "document_id": document_id}
+            return await _job_result(
+                ctx,
+                job_name="process_document_job",
+                ok=False,
+                started_at=t0,
+                reason="document_file_not_available",
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+            )
 
         if is_minio_uri(raw_path):
             if not bool(getattr(settings, "MINIO_ENABLED", False)):
@@ -348,7 +493,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     error_message="object_storage_disabled",
                 )
-                return {"ok": False, "reason": "object_storage_disabled", "tenant_id": tenant_id, "document_id": document_id}
+                return await _job_result(
+                    ctx,
+                    job_name="process_document_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="object_storage_disabled",
+                    progress=_job_progress(stage="failed", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                )
             try:
                 ref = parse_minio_uri(raw_path)
             except ValueError:
@@ -361,7 +515,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     error_message="invalid_object_path",
                 )
-                return {"ok": False, "reason": "invalid_object_path", "tenant_id": tenant_id, "document_id": document_id}
+                return await _job_result(
+                    ctx,
+                    job_name="process_document_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="invalid_object_path",
+                    progress=_job_progress(stage="failed", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                )
 
             if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
                 await document_processor._update_status(
@@ -373,7 +536,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     error_message="object_bucket_denied",
                 )
-                return {"ok": False, "reason": "object_bucket_denied", "tenant_id": tenant_id, "document_id": document_id}
+                return await _job_result(
+                    ctx,
+                    job_name="process_document_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="object_bucket_denied",
+                    progress=_job_progress(stage="failed", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                )
 
             dataset_id = str(doc.dataset_id) if doc.dataset_id else str(tid)
             expected_object = minio_service.build_document_object_name(
@@ -392,7 +564,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     error_message="object_key_denied",
                 )
-                return {"ok": False, "reason": "object_key_denied", "tenant_id": tenant_id, "document_id": document_id}
+                return await _job_result(
+                    ctx,
+                    job_name="process_document_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="object_key_denied",
+                    progress=_job_progress(stage="failed", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                )
 
             temp_dir = (Path(settings.UPLOAD_DIR) / str(tid) / ".tmp").resolve(strict=False)
             suffix = f".{(doc.file_type or '').lower()}"
@@ -416,7 +597,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     error_message=str(exc)[:200],
                 )
-                return {"ok": False, "reason": "download_failed", "tenant_id": tenant_id, "document_id": document_id}
+                return await _job_result(
+                    ctx,
+                    job_name="process_document_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="download_failed",
+                    progress=_job_progress(stage="failed", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                )
             file_path = temp_path
         else:
             file_path = Path(raw_path)
@@ -430,7 +620,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     error_message="document_file_not_found",
                 )
-                return {"ok": False, "reason": "document_file_not_found", "tenant_id": tenant_id, "document_id": document_id}
+                return await _job_result(
+                    ctx,
+                    job_name="process_document_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="document_file_not_found",
+                    progress=_job_progress(stage="missing", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                )
 
         logger.info(
             "Processing document job: tenant_id=%s document_id=%s requested_by=%s",
@@ -452,8 +651,17 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             if temp_path is not None:
                 with contextlib.suppress(Exception):
                     temp_path.unlink(missing_ok=True)
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
+        return await _job_result(
+            ctx,
+            job_name="process_document_job",
+            ok=True,
+            started_at=t0,
+            progress=_job_progress(stage="completed", done=1, total=1),
+            tenant_id=tenant_id,
+            document_id=document_id,
+            pipeline_hash=pipeline_hash,
+            result=result,
+        )
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
@@ -496,7 +704,17 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
             .first()
         )
         if run is None:
-            return {"ok": False, "reason": "scan_run_not_found", "tenant_id": tenant_id, "dataset_id": dataset_id, "scan_run_id": scan_run_id}
+            return await _job_result(
+                ctx,
+                job_name="dataset_profile_scan_job",
+                ok=False,
+                started_at=t0,
+                reason="scan_run_not_found",
+                progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
 
         # Idempotent lock: avoid concurrent scans per dataset.
         try:
@@ -519,13 +737,18 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip dataset scan job due to active lock: %s", lock_key)
-                return {
-                    "ok": True,
-                    "skipped": "locked",
-                    "tenant_id": tenant_id,
-                    "dataset_id": dataset_id,
-                    "scan_run_id": scan_run_id,
-                }
+                return await _job_result(
+                    ctx,
+                    job_name="dataset_profile_scan_job",
+                    ok=True,
+                    started_at=t0,
+                    reason="locked",
+                    progress=_job_progress(stage="locked", done=0, total=1),
+                    skipped="locked",
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    scan_run_id=scan_run_id,
+                )
 
         # Execute deep scan (sync, best-effort).
         try:
@@ -557,8 +780,16 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                 pass
             raise
 
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
+        return await _job_result(
+            ctx,
+            job_name="dataset_profile_scan_job",
+            ok=True,
+            started_at=t0,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            scan_run_id=scan_run_id,
+            result=result,
+        )
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
@@ -597,13 +828,17 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
             .first()
         )
         if run is None:
-            return {
-                "ok": False,
-                "reason": "scan_run_not_found",
-                "tenant_id": tenant_id,
-                "dataset_id": dataset_id,
-                "scan_run_id": scan_run_id,
-            }
+            return await _job_result(
+                ctx,
+                job_name="dataset_precheck_scan_job",
+                ok=False,
+                started_at=t0,
+                reason="scan_run_not_found",
+                progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
 
         try:
             redis = ctx.get("redis") if isinstance(ctx, dict) else None
@@ -625,13 +860,18 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip dataset precheck scan job due to active lock: %s", lock_key)
-                return {
-                    "ok": True,
-                    "skipped": "locked",
-                    "tenant_id": tenant_id,
-                    "dataset_id": dataset_id,
-                    "scan_run_id": scan_run_id,
-                }
+                return await _job_result(
+                    ctx,
+                    job_name="dataset_precheck_scan_job",
+                    ok=True,
+                    started_at=t0,
+                    reason="locked",
+                    progress=_job_progress(stage="locked", done=0, total=1),
+                    skipped="locked",
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    scan_run_id=scan_run_id,
+                )
 
         try:
             result = run_dataset_precheck_scan(
@@ -660,8 +900,16 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 pass
             raise
 
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
+        return await _job_result(
+            ctx,
+            job_name="dataset_precheck_scan_job",
+            ok=True,
+            started_at=t0,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            scan_run_id=scan_run_id,
+            result=result,
+        )
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
@@ -715,13 +963,32 @@ async def extract_kg_job(
 
         doc = db.query(DBDocument).filter(DBDocument.id == did, DBDocument.tenant_id == tid).first()
         if not doc:
-            return {"ok": False, "reason": "document_not_found", "tenant_id": tenant_id, "document_id": document_id}
+            return await _job_result(
+                ctx,
+                job_name="extract_kg_job",
+                ok=False,
+                started_at=t0,
+                reason="document_not_found",
+                progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+            )
         if (doc.status or "").lower() != "completed":
             # If not completed, retry later (ingest likely still running).
             retry_cls = get_retry_exc()
             if retry_cls:
                 raise retry_cls(defer=5)
-            return {"ok": False, "reason": "document_not_completed", "status": doc.status}
+            return await _job_result(
+                ctx,
+                job_name="extract_kg_job",
+                ok=False,
+                started_at=t0,
+                reason="document_not_completed",
+                progress=_job_progress(stage="waiting", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                status=doc.status,
+            )
 
         if redis is not None:
             dataset_sem_key = await dataset_acquire(
@@ -755,13 +1022,18 @@ async def extract_kg_job(
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip KG job due to active lock: %s", lock_key)
-                return {
-                    "ok": True,
-                    "skipped": "locked",
-                    "tenant_id": tenant_id,
-                    "document_id": document_id,
-                    "pipeline_hash": selected_ph,
-                }
+                return await _job_result(
+                    ctx,
+                    job_name="extract_kg_job",
+                    ok=True,
+                    started_at=t0,
+                    reason="locked",
+                    progress=_job_progress(stage="locked", done=0, total=1),
+                    skipped="locked",
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    pipeline_hash=selected_ph,
+                )
 
         chunks = (
             db.query(DocumentChunk)
@@ -770,7 +1042,17 @@ async def extract_kg_job(
             .all()
         )
         if not chunks:
-            return {"ok": False, "reason": "no_chunks", "tenant_id": tenant_id, "document_id": document_id}
+            return await _job_result(
+                ctx,
+                job_name="extract_kg_job",
+                ok=False,
+                started_at=t0,
+                reason="no_chunks",
+                progress=_job_progress(stage="empty", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                pipeline_hash=selected_ph,
+            )
 
         # Versioning: keep only chunks that belong to the selected pipeline hash.
         scoped_ph = str(selected_ph or "").strip() or None
@@ -815,8 +1097,17 @@ async def extract_kg_job(
             replace_existing=replace_existing,
             prune_orphan_entities=prune_orphan_entities,
         )
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "event_count": len(events), "elapsed_sec": round(elapsed, 3)}
+        return await _job_result(
+            ctx,
+            job_name="extract_kg_job",
+            ok=True,
+            started_at=t0,
+            progress=_job_progress(stage="completed", done=len(events), total=len(events)),
+            tenant_id=tenant_id,
+            document_id=document_id,
+            pipeline_hash=selected_ph,
+            event_count=len(events),
+        )
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)
@@ -861,11 +1152,25 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip rebuild job due to active lock: %s", lock_key)
-                return {"ok": True, "skipped": "locked", "tenant_id": tenant_id}
+                return await _job_result(
+                    ctx,
+                    job_name="rebuild_indexes_job",
+                    ok=True,
+                    started_at=t0,
+                    reason="locked",
+                    progress=_job_progress(stage="locked", done=0, total=1),
+                    skipped="locked",
+                    tenant_id=tenant_id,
+                )
 
         Indexer(db).rebuild_tenant(tenant_id=tid, kinds=[IndexKind.CHUNK])
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "elapsed_sec": round(elapsed, 3)}
+        return await _job_result(
+            ctx,
+            job_name="rebuild_indexes_job",
+            ok=True,
+            started_at=t0,
+            tenant_id=tenant_id,
+        )
     finally:
         if redis is not None and lock_key and lock_val:
             await release_lock(redis, key=lock_key, value=lock_val)

@@ -201,6 +201,7 @@ class TaskQueueObservabilitySnapshotResponse(BaseModel):
     heartbeat_interval_sec: float = 0.0
     heartbeat_ttl_sec: int = 0
     poll_interval_sec: float = 0.0
+    recent_job_outcomes: List[Dict[str, Any]] = Field(default_factory=list)
 
     error: str | None = None
 
@@ -516,6 +517,7 @@ async def get_task_queue_observability_snapshot(
     - Broker health (ping)
     - Queue depth
     - Active worker count (heartbeat-based, aggregated)
+    - Recent standardized job outcomes (best-effort)
     """
     _ensure_admin(db, tenant_id, account_id)
 
