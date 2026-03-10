@@ -106,6 +106,8 @@ class Settings(BaseSettings):
     # API-side queue observability poll interval (seconds).
     # Used only when PROMETHEUS_ENABLED=true to keep gauges fresh for scraping.
     TASK_QUEUE_OBSERVABILITY_POLL_INTERVAL_SEC: float = 10.0
+    # Number of recent task job outcomes kept for the admin observability snapshot.
+    TASK_QUEUE_RECENT_JOB_OUTCOMES_LIMIT: int = 20
 
     # Subprocess worker guardrails (parsing backends).
     # 0 disables.

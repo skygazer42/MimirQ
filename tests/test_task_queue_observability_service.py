@@ -11,6 +11,7 @@ class _FakeRedis:
     def __init__(self) -> None:
         self._sorted_sets: dict[str, dict[str, float]] = {}
         self._expires: dict[str, int] = {}
+        self._lists: dict[str, list[str]] = {}
 
     async def ping(self):  # noqa: ANN001, ANN202
         return True
@@ -41,6 +42,29 @@ class _FakeRedis:
         for m in to_delete:
             z.pop(m, None)
         return len(to_delete)
+
+    async def lpush(self, key, value):  # noqa: ANN001, ANN202
+        k = str(key)
+        bucket = self._lists.setdefault(k, [])
+        bucket.insert(0, str(value))
+        return len(bucket)
+
+    async def ltrim(self, key, start, stop):  # noqa: ANN001, ANN202
+        k = str(key)
+        bucket = self._lists.get(k, [])
+        if not bucket:
+            return True
+        if int(stop) < 0:
+            bucket[:] = bucket[int(start) :]
+            return True
+        bucket[:] = bucket[int(start) : int(stop) + 1]
+        return True
+
+    async def lrange(self, key, start, stop):  # noqa: ANN001, ANN202
+        bucket = list(self._lists.get(str(key), []))
+        if int(stop) < 0:
+            return bucket[int(start) :]
+        return bucket[int(start) : int(stop) + 1]
 
 
 @pytest.mark.asyncio
@@ -111,3 +135,43 @@ async def test_poller_start_stop_is_best_effort(monkeypatch: pytest.MonkeyPatch)
 
     svc.start_task_queue_observability_poller()
     await svc.stop_task_queue_observability_poller()
+
+
+@pytest.mark.asyncio
+async def test_refresh_snapshot_includes_recent_job_outcomes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.task_queue_observability_service as svc
+    from app.core.config import settings
+
+    fake = _FakeRedis()
+    queue_name = "mimirq"
+
+    monkeypatch.setattr(settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TASK_QUEUE_RECENT_JOB_OUTCOMES_LIMIT", 5, raising=False)
+
+    async def _fake_get_arq_redis():  # noqa: ANN202
+        return fake
+
+    monkeypatch.setattr(svc, "_get_arq_redis", _fake_get_arq_redis, raising=True)
+
+    await svc.observe_task_job_outcome(
+        redis=fake,
+        queue_name=queue_name,
+        outcome={
+            "schema": "mimirq.task_job_result.v1",
+            "job_name": "process_document_job",
+            "ok": True,
+            "reason": None,
+            "elapsed_sec": 1.25,
+            "progress": {"stage": "completed", "done": 1, "total": 1},
+            "tenant_id": "t-1",
+            "document_id": "doc-1",
+            "finished_at": "2026-03-10T10:00:00+00:00",
+        },
+    )
+
+    snap = await svc.refresh_task_queue_observability_snapshot(source="test")
+
+    assert snap.recent_job_outcomes
+    assert snap.recent_job_outcomes[0]["job_name"] == "process_document_job"
+    assert snap.recent_job_outcomes[0]["progress"]["stage"] == "completed"
+    assert snap.recent_job_outcomes[0]["document_id"] == "doc-1"

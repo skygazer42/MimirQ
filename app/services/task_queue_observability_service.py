@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -89,9 +90,56 @@ def _poll_interval_sec() -> float:
         return 10.0
 
 
+def _recent_job_outcomes_limit() -> int:
+    try:
+        return max(1, min(200, int(getattr(settings, "TASK_QUEUE_RECENT_JOB_OUTCOMES_LIMIT", 20) or 20)))
+    except Exception:
+        return 20
+
+
 def _workers_registry_key(queue_name: str) -> str:
     q = str(queue_name or "").strip() or "mimirq"
     return f"ops:task_queue:workers:{q}"
+
+
+def _recent_jobs_key(queue_name: str) -> str:
+    q = str(queue_name or "").strip() or "mimirq"
+    return f"ops:task_queue:recent_jobs:{q}"
+
+
+def _sanitize_recent_job_outcome(outcome: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(outcome, dict):
+        return None
+
+    job_name = str(outcome.get("job_name") or "").strip()
+    if not job_name:
+        return None
+
+    payload: dict[str, Any] = {
+        "schema": str(outcome.get("schema") or "").strip() or "mimirq.task_job_result.v1",
+        "job_name": job_name,
+        "ok": bool(outcome.get("ok", False)),
+        "reason": str(outcome.get("reason")).strip()[:200] if outcome.get("reason") is not None else None,
+        "elapsed_sec": float(outcome.get("elapsed_sec") or 0.0),
+        "finished_at": str(outcome.get("finished_at") or "").strip() or _now_utc().isoformat(),
+    }
+    progress = outcome.get("progress")
+    if isinstance(progress, dict) and progress:
+        payload["progress"] = dict(progress)
+    for key in (
+        "tenant_id",
+        "dataset_id",
+        "document_id",
+        "run_id",
+        "scan_run_id",
+        "suite_id",
+        "connector_id",
+        "skipped",
+    ):
+        value = outcome.get(key)
+        if value is not None:
+            payload[key] = value
+    return payload
 
 
 async def observe_task_worker_heartbeat(*, redis: Any, queue_name: str, worker_id: str) -> None:
@@ -127,6 +175,30 @@ async def observe_task_worker_heartbeat(*, redis: Any, queue_name: str, worker_i
         return
 
 
+async def observe_task_job_outcome(*, redis: Any, queue_name: str, outcome: dict[str, Any]) -> None:
+    """
+    Best-effort recent job outcome registry for admin observability snapshots.
+    """
+    if redis is None:
+        return
+
+    payload = _sanitize_recent_job_outcome(outcome)
+    if payload is None:
+        return
+
+    q = str(queue_name or "").strip() or _queue_name()
+    key = _recent_jobs_key(q)
+    ttl = max(300, int(_heartbeat_ttl_sec()) * 10)
+    limit = _recent_job_outcomes_limit()
+
+    try:
+        await redis.lpush(key, json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str))
+        await redis.ltrim(key, 0, int(limit) - 1)
+        await redis.expire(key, int(ttl))
+    except Exception:
+        return
+
+
 async def _get_arq_redis() -> Any | None:
     """
     Return arq Redis pool when task queue is enabled; otherwise None.
@@ -150,10 +222,10 @@ async def _get_arq_redis() -> Any | None:
 
 async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int | None, int | None, str | None]:
     """
-    Return (broker_up, depth, workers_active, error).
+    Return (broker_up, depth, workers_active, recent_job_outcomes, error).
     """
     if redis is None:
-        return False, None, None, "redis_unavailable"
+        return False, None, None, [], "redis_unavailable"
 
     q = str(queue_name or "").strip() or _queue_name()
 
@@ -162,7 +234,7 @@ async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int
         pong = await redis.ping()
         broker_up = bool(pong)
     except Exception:
-        return False, None, None, "redis_ping_failed"
+        return False, None, None, [], "redis_ping_failed"
 
     depth: int | None = None
     try:
@@ -187,7 +259,24 @@ async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int
     except Exception:
         workers_active = None
 
-    return broker_up, depth, workers_active, None
+    recent_job_outcomes: list[dict[str, Any]] = []
+    try:
+        raw_items = await redis.lrange(_recent_jobs_key(q), 0, int(_recent_job_outcomes_limit()) - 1)
+        for raw in raw_items or []:
+            text = raw.decode("utf-8", "ignore") if isinstance(raw, (bytes, bytearray)) else str(raw or "")
+            text = text.strip()
+            if not text:
+                continue
+            try:
+                item = json.loads(text)
+            except Exception:
+                continue
+            if isinstance(item, dict):
+                recent_job_outcomes.append(item)
+    except Exception:
+        recent_job_outcomes = []
+
+    return broker_up, depth, workers_active, recent_job_outcomes, None
 
 
 @dataclass(frozen=True)
@@ -206,6 +295,7 @@ class TaskQueueObservabilitySnapshot:
     heartbeat_interval_sec: float = 0.0
     heartbeat_ttl_sec: int = 0
     poll_interval_sec: float = 0.0
+    recent_job_outcomes: list[dict[str, Any]] = field(default_factory=list)
 
     error: str | None = None
 
@@ -234,13 +324,14 @@ async def refresh_task_queue_observability_snapshot(*, source: str) -> TaskQueue
     broker_up = False
     depth: int | None = None
     workers_active: int | None = None
+    recent_job_outcomes: list[dict[str, Any]] = []
     err: str | None = None
 
     if enabled:
         redis = await _get_arq_redis()
-        broker_up, depth, workers_active, err = await _refresh_from_redis(redis=redis, queue_name=q)
+        broker_up, depth, workers_active, recent_job_outcomes, err = await _refresh_from_redis(redis=redis, queue_name=q)
     else:
-        broker_up, depth, workers_active, err = False, 0, 0, None
+        broker_up, depth, workers_active, recent_job_outcomes, err = False, 0, 0, [], None
 
     snap = TaskQueueObservabilitySnapshot(
         schema=TASK_QUEUE_OBSERVABILITY_SCHEMA_V1,
@@ -254,6 +345,7 @@ async def refresh_task_queue_observability_snapshot(*, source: str) -> TaskQueue
         heartbeat_interval_sec=float(hb_int),
         heartbeat_ttl_sec=int(hb_ttl),
         poll_interval_sec=float(poll_int),
+        recent_job_outcomes=list(recent_job_outcomes or []),
         error=err,
     )
 
@@ -349,6 +441,7 @@ async def stop_task_queue_observability_poller() -> None:
 __all__ = [
     "TASK_QUEUE_OBSERVABILITY_SCHEMA_V1",
     "TaskQueueObservabilitySnapshot",
+    "observe_task_job_outcome",
     "observe_task_worker_heartbeat",
     "refresh_task_queue_observability_snapshot",
     "get_task_queue_observability_snapshot",
