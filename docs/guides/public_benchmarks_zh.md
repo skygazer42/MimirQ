@@ -23,6 +23,16 @@
 - MIRACL 全量中文语料是百万级 passage；把全量语料当 nightly 基准会让“每天回归”变成“每天建库”
 - pool 的策略是：**保留每个 query 的正例 passage（qrels）** + **确定性采样一批负例**，把语料规模冻结到一个“小时级能回归”的范围
 
+### 副跑：CFEVER dev evidence v1（覆盖 B）
+
+目标：
+- **B 引用可信/可核验**：每条 claim 都带有 gold evidence 指针（`page_title + sentence_id`）
+- 在 MimirQ 中我们把 wiki 页面切成 “sentence-per-chunk”，再把 evidence 指针对齐到 `reference_sources.chunk_id`
+
+实现方式（开源友好）：
+- 不导入全量 wiki（太大）
+- 只 seed **dev evidence 涉及到的 wiki pages 子集**（474 pages 量级），一次性建库即可
+
 ---
 
 ## 2) 前置条件（Milvus + Ollama）
@@ -110,6 +120,33 @@ python scripts/seed_public_bench_miracl_zh_pool.py \
 
 ---
 
+## 4.5) 一次性建库：seed CFEVER dev evidence（sentence-level wiki 子集）
+
+脚本：`scripts/seed_public_bench_cfever_dev.py`
+
+### 4.5.1 Dry-run（推荐先跑一次）
+
+```bash
+python scripts/seed_public_bench_cfever_dev.py \
+  --dry-run \
+  --out-cases runs/public_bench/cfever_dev_v1/regression_cases.json
+```
+
+### 4.5.2 Execute（会下载 wiki 子集并写入 DB + Milvus）
+
+```bash
+python scripts/seed_public_bench_cfever_dev.py \
+  --execute \
+  --overwrite \
+  --out-cases runs/public_bench/cfever_dev_v1/regression_cases.json
+```
+
+可选参数：
+- `--max-pages N`：只 seed 前 N 个 required pages（先小规模跑通时很有用）
+- `--include-nei`：把 `NOT ENOUGH INFO` 也导出到 case bundle（默认只包含有证据的 supports/refutes）
+
+---
+
 ## 5) 启动后端 API
 
 ```bash
@@ -175,4 +212,3 @@ python scripts/run_nightly_ablations.py \
 
 3. **语料下载很大**  
    seeding 过程会下载 MIRACL-zh corpus（来自 HuggingFace）；建议确保磁盘空间与网络条件充足。
-
