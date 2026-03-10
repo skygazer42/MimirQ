@@ -1,4 +1,6 @@
 import hashlib
+import sys
+import types
 import uuid
 
 import pytest
@@ -119,3 +121,26 @@ def test_faiss_vector_store_selective_delete_by_metadata_filter(monkeypatch):
     assert "d1c1" not in doc_dict
     assert "d1c2" in doc_dict
     assert "d2c1" in doc_dict
+
+
+def test_get_faiss_cls_raises_when_faiss_import_broken(monkeypatch):
+    vector_factory._FAISS_CLS = None
+
+    dummy_lc = types.ModuleType("langchain_community")
+    dummy_vs = types.ModuleType("langchain_community.vectorstores")
+    dummy_vs.FAISS = object()
+    dummy_lc.vectorstores = dummy_vs
+    monkeypatch.setitem(sys.modules, "langchain_community", dummy_lc)
+    monkeypatch.setitem(sys.modules, "langchain_community.vectorstores", dummy_vs)
+
+    real_import = __import__
+
+    def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
+        if name == "faiss" or str(name).startswith("faiss."):
+            raise AttributeError("_ARRAY_API not found")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", _fake_import)
+
+    with pytest.raises(RuntimeError):
+        vector_factory._get_faiss_cls()

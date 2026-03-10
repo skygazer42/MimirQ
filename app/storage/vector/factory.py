@@ -29,6 +29,12 @@ def _get_faiss_cls():
     if _FAISS_CLS is not None:
         return _FAISS_CLS
     try:
+        # `langchain_community.vectorstores.FAISS` lazily imports `faiss` in some code paths,
+        # which can make optional-dependency failures surface later (and break tests that
+        # only probe `_get_faiss_cls`). Import `faiss` eagerly so callers can reliably
+        # detect availability and skip gracefully when the binary is broken (e.g. numpy ABI mismatch).
+        import faiss  # noqa: F401
+
         from langchain_community.vectorstores import FAISS
 
         _FAISS_CLS = FAISS
