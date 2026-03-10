@@ -481,6 +481,15 @@ class Settings(BaseSettings):
     # Defense-in-depth size limit for inbound base64 SAMLResponse payloads.
     SAML_MAX_RESPONSE_BYTES: int = 500_000
 
+    # Optional: SP metadata certificate/keypair (enterprise IdP compatibility).
+    #
+    # - SAML_SP_CERT_PEM is the public X.509 certificate advertised in metadata KeyDescriptor.
+    # - SAML_SP_PRIVATE_KEY_PEM is used to sign SP metadata when SAML_SP_METADATA_SIGNED=true.
+    SAML_SP_CERT_PEM: str = ""
+    SAML_SP_PRIVATE_KEY_PEM: str = ""
+    # Safe default: unsigned metadata unless explicitly enabled.
+    SAML_SP_METADATA_SIGNED: bool = False
+
     # SCIM v2 provisioning (enterprise; opt-in).
     #
     # Design:

@@ -50,6 +50,12 @@ Supporting controls:
 - `SAML_REPLAY_TTL_SEC` default `300`
 - `SAML_REPLAY_REDIS_ENABLED` default `false`
 
+SP metadata controls (optional, enterprise IdP compatibility):
+
+- `SAML_SP_CERT_PEM`: X.509 certificate advertised in SP metadata `<KeyDescriptor use="signing">`
+- `SAML_SP_PRIVATE_KEY_PEM`: private key used to sign SP metadata (required when signing is enabled)
+- `SAML_SP_METADATA_SIGNED=true`: sign the generated metadata (safe default: `false`)
+
 When `SAML_REPLAY_REDIS_ENABLED=true`, replay protection uses Redis via `REDIS_URL`. Otherwise it falls back to an in-process TTL cache.
 
 ## Identity Mapping
@@ -74,7 +80,7 @@ If the SAML assertion includes the configured groups attribute, the backend also
 - SP-initiated SAML login UI
 - Multi-step enterprise admin configuration screens
 - Automatic local user creation
-- Signed AuthnRequests or signed metadata
+- Signed AuthnRequests (AuthnRequest signing)
 - Full external identity linking tables
 
 Those can be layered on later without changing the core “backend validates assertion and signs app JWT” model.

@@ -2,7 +2,7 @@
 Auth endpoints: register, login, me.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -18,7 +18,7 @@ from app.api.schemas.auth import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.jwt_utils import create_access_token
-from app.services.saml_service import exchange_saml_response
+from app.services.saml_service import build_saml_sp_metadata_xml, exchange_saml_response
 from app.services.user_service import UserService
 
 router = APIRouter()
@@ -78,3 +78,12 @@ def saml_exchange(payload: SamlExchangeRequest, db: Session = Depends(get_db)) -
         relay_state=payload.relay_state,
         acs_url=payload.acs_url,
     )
+
+
+@router.get("/saml/metadata")
+def saml_metadata(provider_id: str | None = None) -> Response:
+    xml = build_saml_sp_metadata_xml(provider_id=provider_id)
+    resp = Response(content=xml, media_type="application/samlmetadata+xml; charset=utf-8")
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
