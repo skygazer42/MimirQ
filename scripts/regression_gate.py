@@ -35,6 +35,10 @@ def write_json_file(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def write_text_file(path: Path, content: str) -> None:
+    path.write_text(str(content or ""), encoding="utf-8")
+
+
 def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
     """
     Normalize case bundle payloads into: (dataset_id, items[]).
@@ -294,6 +298,157 @@ def format_unified_diff(old_text: str, new_text: str, *, fromfile: str, tofile: 
     old_lines = str(old_text or "").splitlines(keepends=True)
     new_lines = str(new_text or "").splitlines(keepends=True)
     return "".join(difflib.unified_diff(old_lines, new_lines, fromfile=str(fromfile), tofile=str(tofile)))
+
+
+def summarize_channel_attribution(items: list[dict[str, Any]] | None) -> dict[str, Any]:
+    totals = {
+        "vector": 0,
+        "bm25": 0,
+        "lexical": 0,
+        "sparse": 0,
+        "multi": 0,
+        "citations_with_scores": 0,
+        "total_citations": 0,
+    }
+    cases_with_citations = 0
+    for item in list(items or []):
+        if not isinstance(item, dict):
+            continue
+        citations = item.get("citations")
+        if not isinstance(citations, list):
+            continue
+        if citations:
+            cases_with_citations += 1
+        for citation in citations:
+            if not isinstance(citation, dict):
+                continue
+            totals["total_citations"] += 1
+            has_vector = _coerce_float(citation.get("vector_score")) not in (None, 0.0)
+            has_bm25 = _coerce_float(citation.get("bm25_score")) not in (None, 0.0)
+            has_lexical = _coerce_float(citation.get("lexical_score")) not in (None, 0.0)
+            has_sparse = _coerce_float(citation.get("sparse_score")) not in (None, 0.0)
+            hit_count = sum((has_vector, has_bm25, has_lexical, has_sparse))
+            if hit_count > 0:
+                totals["citations_with_scores"] += 1
+            if has_vector:
+                totals["vector"] += 1
+            if has_bm25:
+                totals["bm25"] += 1
+            if has_lexical:
+                totals["lexical"] += 1
+            if has_sparse:
+                totals["sparse"] += 1
+            if hit_count > 1:
+                totals["multi"] += 1
+
+    return {
+        "cases_with_citations": cases_with_citations,
+        "totals": totals,
+    }
+
+
+def build_regression_gate_report(
+    *,
+    dataset_id: str,
+    run_id: str,
+    matched_case_count: int,
+    metrics: list[str],
+    thresholds_enabled: bool,
+    ok: bool,
+    failures: list[str],
+    detail: dict[str, Any],
+    run_payload: dict[str, Any],
+) -> dict[str, Any]:
+    run = detail.get("run") if isinstance(detail, dict) else {}
+    run = run if isinstance(run, dict) else {}
+    items = detail.get("items") if isinstance(detail, dict) else []
+    items = items if isinstance(items, list) else []
+    summary = run.get("summary") if isinstance(run.get("summary"), dict) else {}
+
+    if str(run.get("status") or "") != "completed":
+        gate_status = "error"
+    elif ok:
+        gate_status = "pass"
+    else:
+        gate_status = "fail"
+
+    return {
+        "schema": "mimirq.regression_gate_report.v1",
+        "dataset_id": str(dataset_id or ""),
+        "run_id": str(run_id or ""),
+        "gate_status": gate_status,
+        "thresholds_enabled": bool(thresholds_enabled),
+        "matched_case_count": int(matched_case_count or 0),
+        "metrics": list(metrics or []),
+        "summary": dict(summary or {}),
+        "retrieval_slices": dict(summary.get("retrieval_slices") or {}) if isinstance(summary, dict) else {},
+        "failures": [str(msg) for msg in (failures or []) if str(msg or "").strip()],
+        "run_status": str(run.get("status") or ""),
+        "error_message": str(run.get("error_message") or "") or None,
+        "channel_attribution": summarize_channel_attribution(items),
+        "run_params": dict(run_payload or {}),
+    }
+
+
+def render_regression_gate_markdown(report: dict[str, Any]) -> str:
+    payload = report if isinstance(report, dict) else {}
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    attribution = payload.get("channel_attribution") if isinstance(payload.get("channel_attribution"), dict) else {}
+    totals = attribution.get("totals") if isinstance(attribution.get("totals"), dict) else {}
+    failures = [str(x) for x in (payload.get("failures") or []) if str(x or "").strip()]
+
+    lines = [
+        "# Retrieval Regression Gate Report",
+        "",
+        f"- Gate status: `{payload.get('gate_status') or 'unknown'}`",
+        f"- Run status: `{payload.get('run_status') or 'unknown'}`",
+        f"- Dataset ID: `{payload.get('dataset_id') or ''}`",
+        f"- Run ID: `{payload.get('run_id') or ''}`",
+        f"- Matched cases: `{int(payload.get('matched_case_count') or 0)}`",
+        f"- Thresholds enabled: `{bool(payload.get('thresholds_enabled'))}`",
+        "",
+        "## Metrics",
+        "",
+        "| Metric | Value |",
+        "| --- | ---: |",
+    ]
+
+    rendered_metric = False
+    for key, value in sorted((summary or {}).items()):
+        if key == "retrieval_slices":
+            continue
+        numeric = _coerce_float(value)
+        if numeric is None and isinstance(value, (dict, list)):
+            continue
+        rendered_metric = True
+        value_text = f"{numeric:.4f}" if numeric is not None else str(value)
+        lines.append(f"| {key} | {value_text} |")
+    if not rendered_metric:
+        lines.append("| _none_ | - |")
+
+    lines.extend(
+        [
+            "",
+            "## Channel Attribution",
+            "",
+            "| Channel | Citations |",
+            "| --- | ---: |",
+            f"| vector | {int(totals.get('vector') or 0)} |",
+            f"| bm25 | {int(totals.get('bm25') or 0)} |",
+            f"| lexical | {int(totals.get('lexical') or 0)} |",
+            f"| sparse | {int(totals.get('sparse') or 0)} |",
+            f"| multi-channel | {int(totals.get('multi') or 0)} |",
+            "",
+        ]
+    )
+
+    if failures:
+        lines.extend(["## Failures", ""])
+        for msg in failures:
+            lines.append(f"- {msg}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def check_thresholds(
@@ -602,6 +757,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="",
         help="Write the final run detail JSON (includes summary + retrieval_slices) to a file (optional)",
     )
+    p.add_argument(
+        "--out-report-json",
+        default="",
+        help="Write a compact regression gate report JSON artifact (optional)",
+    )
+    p.add_argument(
+        "--out-report-md",
+        default="",
+        help="Write a compact regression gate Markdown artifact (optional)",
+    )
 
     # Optional: generate structured thresholds (v2) from the run summary.
     p.add_argument(
@@ -878,10 +1043,52 @@ def main() -> int:
                 print(f"[regression_gate] wrote generated thresholds: {pth}")
 
         if not thresholds and not slice_thresholds:
+            report = build_regression_gate_report(
+                dataset_id=dataset_id,
+                run_id=str(run_id),
+                matched_case_count=len(matched_ids),
+                metrics=metrics,
+                thresholds_enabled=False,
+                ok=True,
+                failures=[],
+                detail=detail,
+                run_payload=run_payload,
+            )
+            if args.out_report_json:
+                out_json_path = Path(str(args.out_report_json or "").strip())
+                out_json_path.parent.mkdir(parents=True, exist_ok=True)
+                write_json_file(out_json_path, report)
+                print(f"[regression_gate] wrote report json: {out_json_path}")
+            if args.out_report_md:
+                out_md_path = Path(str(args.out_report_md or "").strip())
+                out_md_path.parent.mkdir(parents=True, exist_ok=True)
+                write_text_file(out_md_path, render_regression_gate_markdown(report))
+                print(f"[regression_gate] wrote report markdown: {out_md_path}")
             print("[regression_gate] no thresholds set; PASS")
             return 0
 
         ok, failures = check_thresholds(summary=summary, thresholds=thresholds, slice_thresholds=slice_thresholds)
+        report = build_regression_gate_report(
+            dataset_id=dataset_id,
+            run_id=str(run_id),
+            matched_case_count=len(matched_ids),
+            metrics=metrics,
+            thresholds_enabled=bool(thresholds or slice_thresholds),
+            ok=ok,
+            failures=failures,
+            detail=detail,
+            run_payload=run_payload,
+        )
+        if args.out_report_json:
+            out_json_path = Path(str(args.out_report_json or "").strip())
+            out_json_path.parent.mkdir(parents=True, exist_ok=True)
+            write_json_file(out_json_path, report)
+            print(f"[regression_gate] wrote report json: {out_json_path}")
+        if args.out_report_md:
+            out_md_path = Path(str(args.out_report_md or "").strip())
+            out_md_path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_file(out_md_path, render_regression_gate_markdown(report))
+            print(f"[regression_gate] wrote report markdown: {out_md_path}")
         if ok:
             print("[regression_gate] thresholds: PASS")
             return 0

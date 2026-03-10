@@ -36,8 +36,22 @@ python scripts/regression_gate.py \
   --user-id test-admin \
   --cases ./regression_cases.json \
   --metrics "" \
-  --thresholds ./thresholds.v2.json
+  --thresholds ./thresholds.v2.json \
+  --out-report-json ./artifacts/regression_gate.report.json \
+  --out-report-md ./artifacts/regression_gate.report.md
 ```
+
+The regression gate can now emit two CI-friendly artifacts:
+
+- `--out-report-json`: machine-readable summary for downstream jobs/dashboards
+- `--out-report-md`: human-readable Markdown summary for artifact review
+
+The JSON/Markdown reports include:
+
+- run id / dataset id / matched case count
+- top-level summary metrics
+- per-channel citation attribution where available (`vector` / `bm25` / `lexical` / `sparse`)
+- threshold failures when the gate does not pass
 
 ### 2) Run Release Gate (SLO + Cost)
 
@@ -71,4 +85,3 @@ python scripts/release_gate.py \
 - `AUTH_MODE=header`: use `--user-id` (and optionally `--tenant-id`).
 - `AUTH_MODE=jwt`: use `--bearer` (and `X-Tenant-ID` if your deployment requires it).
 - Probe traffic uses `retrieval_mode=keyword` and disables multi-query/alias/rerank to keep it deterministic.
-

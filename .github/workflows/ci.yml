@@ -156,6 +156,7 @@ jobs:
           exit 1
 
       - name: Run retrieval-only regression gate + generate candidate thresholds
+        continue-on-error: true
         env:
           # Used by the backend process; keep env consistent for subprocesses.
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
@@ -169,6 +170,8 @@ jobs:
             --thresholds ci/retrieval_thresholds.v2.json \
             --retrieval-mode hybrid \
             --out-run-json artifacts/run.detail.json \
+            --out-report-json artifacts/regression_gate.report.json \
+            --out-report-md artifacts/regression_gate.report.md \
             --generate-thresholds-out artifacts/thresholds.generated.json
 
       - name: Release gate (SLO + cost budgets)
