@@ -39,6 +39,29 @@ def test_default_ablations_include_hybrid_rerank_variant() -> None:
     )
 
 
+def test_default_ablations_cover_key_runtime_knobs() -> None:
+    mod = _load_module()
+
+    ablations = mod._default_ablations()  # type: ignore[attr-defined]
+    assert isinstance(ablations, list) and ablations
+    assert len(ablations) <= 10  # keep nightly cheap/bounded
+
+    rag_params_list = [dict(ab.get("rag_params") or {}) for ab in ablations]
+
+    assert any(rp.get("retrieval_profile") == "recall50" for rp in rag_params_list)
+    assert any(rp.get("fusion_strategy") == "linear" for rp in rag_params_list)
+    assert any(rp.get("fusion_strategy") == "budgeted_rrf" for rp in rag_params_list)
+    assert any(bool(rp.get("sparse_retrieval_enabled")) for rp in rag_params_list)
+
+    # Retrieval-only friendly by default: no LLM-backed query rewrite / multi-query in defaults.
+    assert all(not bool(rp.get("enable_query_rewrite")) for rp in rag_params_list)
+    assert all(not bool(rp.get("enable_multi_query")) for rp in rag_params_list)
+
+    for rp in rag_params_list:
+        if rp.get("sparse_retrieval_enabled"):
+            assert str(rp.get("sparse_retrieval_provider") or "").strip()
+
+
 class _FakeQuery:
     def __init__(self, result):
         self._result = result
