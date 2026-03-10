@@ -2274,7 +2274,13 @@ class HybridRetriever(BaseRetriever):
         # `_get_relevant_documents` will embed these into `_last_debug_metrics`.
         channel_metrics: Dict[str, Any] = {
             "timing": {"vector_ms": 0.0, "colbert_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0},
-            "counts": {"vector_candidates": 0, "colbert_candidates": 0, "bm25_candidates": 0},
+            "counts": {
+                "vector_candidates": 0,
+                "colbert_candidates": 0,
+                "bm25_candidates": 0,
+                "lexical_candidates": 0,
+                "sparse_candidates": 0,
+            },
         }
         self._last_channel_metrics = channel_metrics
         # Reset per-call diversity caps meta to avoid stale fields on cache-hit/early-return paths.
@@ -2352,18 +2358,47 @@ class HybridRetriever(BaseRetriever):
                 vf["embedding_space_hash"] = {"$in": [space, ""]}
             vector_filter = vf or None
 
+        lexical_db_enabled = bool(getattr(settings, "LEXICAL_DB_ENABLED", True))
+        bm25_index_enabled = bool(getattr(settings, "BM25_INDEX_ENABLED", True))
+        keyword_bm25_secondary_enabled = bool(
+            getattr(settings, "RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED", False)
+        )
+
         want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
         want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
         # Persistent lexical DB search is an additional sparse channel that does not depend on the in-memory BM25 flag.
-        want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr")
+        want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr") and lexical_db_enabled
         # Optional sparse retrieval (SPLADE-style scaffolding) is an additional sparse channel.
         want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and self._effective_sparse_enabled()
-        if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+        keyword_strategy: Dict[str, Any] | None = None
+        if retrieval_mode == "keyword":
+            if lexical_db_enabled:
+                want_bm25 = keyword_bm25_secondary_enabled
+                keyword_strategy = {
+                    "primary": "lexical_db",
+                    "secondary": "bm25" if keyword_bm25_secondary_enabled else None,
+                    "bm25_secondary_enabled": bool(keyword_bm25_secondary_enabled),
+                    "lexical_db_enabled": True,
+                }
+            else:
+                want_bm25 = True
+                keyword_strategy = {
+                    "primary": "bm25",
+                    "secondary": None,
+                    "bm25_secondary_enabled": False,
+                    "lexical_db_enabled": False,
+                    "fallback_reason": "lexical_db_disabled",
+                }
+        if want_bm25 and not bm25_index_enabled:
             # Enforce the global flag even if a BM25 cache exists.
             #
             # Note: do not force-enable vector here. Lexical DB retrieval is an additional sparse channel,
             # and keyword-mode already has an explicit fallback to vector when both sparse channels return empty.
             want_bm25 = False
+            if keyword_strategy is not None:
+                keyword_strategy["bm25_index_enabled"] = False
+        elif keyword_strategy is not None:
+            keyword_strategy["bm25_index_enabled"] = bool(bm25_index_enabled)
 
         # Optional: retrieval candidate short TTL cache (Redis, best-effort).
         cache_key: str | None = None
@@ -2498,35 +2533,61 @@ class HybridRetriever(BaseRetriever):
                 logger.warning("ColBERT ANN search failed: %s", exc)
                 vector_results = []
 
-        # 2) BM25 retrieval
         bm25_results: List[Dict[str, Any]] = []
-        if want_bm25:
-            t0 = time.perf_counter()
-            try:
-                bm25_results = self._search_bm25(
-                    query=query,
-                    top_k=fetch_k,
-                    document_ids=document_ids,
-                    tenant_id=tenant_id,
-                    metadata_filter=bm25_filter,
-                )
-            finally:
-                bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
-
-        # 2b) Persistent lexical fallback (Postgres FTS / pg_trgm)
         lexical_results: List[Dict[str, Any]] = []
-        if want_lexical:
-            try:
-                lexical_results = self._search_lexical_db(
-                    query=query,
-                    top_k=fetch_k,
-                    document_ids=document_ids,
-                    tenant_id=tenant_id,
-                    metadata_filter=bm25_filter,
-                )
-            except Exception as exc:
-                logger.warning("Lexical DB search failed: %s", exc)
-                lexical_results = []
+        if retrieval_mode == "keyword":
+            if want_lexical:
+                try:
+                    lexical_results = self._search_lexical_db(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                except Exception as exc:
+                    logger.warning("Lexical DB search failed: %s", exc)
+                    lexical_results = []
+            if want_bm25:
+                t0 = time.perf_counter()
+                try:
+                    bm25_results = self._search_bm25(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                finally:
+                    bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
+        else:
+            # 2) BM25 retrieval
+            if want_bm25:
+                t0 = time.perf_counter()
+                try:
+                    bm25_results = self._search_bm25(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                finally:
+                    bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
+
+            # 2b) Persistent lexical fallback (Postgres FTS / pg_trgm)
+            if want_lexical:
+                try:
+                    lexical_results = self._search_lexical_db(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                except Exception as exc:
+                    logger.warning("Lexical DB search failed: %s", exc)
+                    lexical_results = []
 
         # 2c) Optional sparse channel (SPLADE-style)
         sparse_results: List[Dict[str, Any]] = []
@@ -2665,6 +2726,7 @@ class HybridRetriever(BaseRetriever):
                 counts["vector_candidates"] = int(len(vector_results or []))
                 counts["colbert_candidates"] = int(colbert_candidates or 0)
                 counts["bm25_candidates"] = int(len(bm25_results or []))
+                counts["lexical_candidates"] = int(len(lexical_results or []))
                 counts["sparse_candidates"] = int(len(sparse_results or []))
 
             # Optional: ColBERT ANN fallback meta (PII-safe, low-cardinality).
@@ -2706,11 +2768,11 @@ class HybridRetriever(BaseRetriever):
                     "bm25": {
                         "enabled": bool(want_bm25),
                         "candidates": len(bm25_results or []),
-                        "index_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+                        "index_enabled": bool(bm25_index_enabled),
                         "filter_applied": bool(bm25_filter),
                     },
                     "lexical_db": {
-                        "enabled": bool(want_lexical) and bool(getattr(settings, "LEXICAL_DB_ENABLED", True)),
+                        "enabled": bool(want_lexical) and bool(lexical_db_enabled),
                         "candidates": len(lexical_results or []),
                         "fts_config": str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple"),
                         "trgm_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)),
@@ -2724,6 +2786,11 @@ class HybridRetriever(BaseRetriever):
                     },
                 }
             )
+            if keyword_strategy is not None:
+                keyword_strategy["bm25_used"] = bool(bm25_results)
+                keyword_strategy["lexical_db_used"] = bool(lexical_results)
+                keyword_strategy["sparse_used"] = bool(sparse_results)
+                channel_metrics["keyword_strategy"] = keyword_strategy
         except Exception:
             # Keep the stable shape even if richer channel details fail.
             try:
@@ -2737,6 +2804,7 @@ class HybridRetriever(BaseRetriever):
                     counts["vector_candidates"] = int(len(vector_results or []))
                     counts["colbert_candidates"] = int(colbert_candidates or 0)
                     counts["bm25_candidates"] = int(len(bm25_results or []))
+                    counts["lexical_candidates"] = int(len(lexical_results or []))
                     counts["sparse_candidates"] = int(len(sparse_results or []))
             except Exception:
                 pass
