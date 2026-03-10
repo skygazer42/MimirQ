@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
+from app.rag.rerank_result_cache import clear_evidence_post_rerank_cache
 
 
 def _as_iso(value: Any) -> str | None:
@@ -122,8 +123,58 @@ def resolve_corpus_cache_token(
     return None
 
 
+def invalidate_dataset_cache_namespace(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+) -> dict[str, Any]:
+    previous_token = resolve_corpus_cache_token(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_ids=[],
+    )
+
+    dataset = (
+        db.query(Dataset)
+        .filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id)
+        .first()
+    )
+    if dataset is None:
+        raise LookupError("dataset not found")
+
+    invalidated_at = datetime.now(timezone.utc)
+    dataset.updated_at = invalidated_at
+
+    try:
+        flush = getattr(db, "flush", None)
+        if callable(flush):
+            flush()
+    except Exception:
+        pass
+
+    current_token = resolve_corpus_cache_token(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_ids=[],
+    )
+    memory_cleared = bool(clear_evidence_post_rerank_cache())
+
+    return {
+        "dataset_id": str(dataset_id),
+        "previous_corpus_cache_token": previous_token,
+        "current_corpus_cache_token": current_token,
+        "invalidated_at": invalidated_at,
+        "evidence_post_rerank_memory_cleared": memory_cleared,
+        "note": "Dataset caches are invalidated by rotating the dataset corpus token. Existing redis entries expire by TTL.",
+    }
+
+
 __all__ = [
     "build_dataset_scope_corpus_cache_token",
     "build_document_scope_corpus_cache_token",
+    "invalidate_dataset_cache_namespace",
     "resolve_corpus_cache_token",
 ]

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
 from app.services.ops_config_snapshot_service import build_ops_config_snapshot
 from app.services.periodic_job_freshness_service import build_periodic_job_freshness_snapshot
 from app.services.rag_metrics_dashboard import (
@@ -285,6 +286,15 @@ class DepsDiagnosticsResponse(BaseModel):
     milvus: Dict[str, Any] = Field(default_factory=dict)
 
 
+class DatasetCacheInvalidationResponse(BaseModel):
+    dataset_id: str
+    previous_corpus_cache_token: str | None = None
+    current_corpus_cache_token: str | None = None
+    invalidated_at: datetime
+    evidence_post_rerank_memory_cleared: bool = False
+    note: str = ""
+
+
 @router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse)
 def get_rag_metrics_summary(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
@@ -456,6 +466,24 @@ def get_ops_config_snapshot(
     _ensure_admin(db, tenant_id, account_id)
     snap = build_ops_config_snapshot()
     return snap.__dict__
+
+
+@router.post("/cache/datasets/{dataset_id}/invalidate", response_model=DatasetCacheInvalidationResponse)
+def invalidate_dataset_cache_namespace_endpoint(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+    try:
+        return invalidate_dataset_cache_namespace(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/periodic-jobs/freshness", response_model=PeriodicJobFreshnessResponse)
