@@ -87,12 +87,18 @@ export RERANKER_PROVIDER=none
 
 脚本：`scripts/seed_public_bench_miracl_zh_pool.py`
 
+> 为了让评测可复现，建议显式 pin HuggingFace revision（tag/commit hash），并把脚本输出的 manifest 作为产物保存。
+> 否则上游 dataset 更新后，下载到的语料可能发生漂移，导致 nightly 对比失真。
+
 ### 4.1 Dry-run（推荐先跑一次）
 
 ```bash
 python scripts/seed_public_bench_miracl_zh_pool.py \
   --dry-run \
-  --out-cases runs/public_bench/miracl_zh_pool_v1/regression_cases.json
+  --hf-revision <miracl_revision> \
+  --hf-revision-corpus <miracl_corpus_revision> \
+  --out-cases runs/public_bench/miracl_zh_pool_v1/regression_cases.json \
+  --out-manifest runs/public_bench/miracl_zh_pool_v1/seed_manifest.json
 ```
 
 输出会包含（JSON）：
@@ -110,7 +116,10 @@ python scripts/seed_public_bench_miracl_zh_pool.py \
   --overwrite \
   --target-passages 200000 \
   --chunks-per-document 1000 \
-  --out-cases runs/public_bench/miracl_zh_pool_v1/regression_cases.json
+  --hf-revision <miracl_revision> \
+  --hf-revision-corpus <miracl_corpus_revision> \
+  --out-cases runs/public_bench/miracl_zh_pool_v1/regression_cases.json \
+  --out-manifest runs/public_bench/miracl_zh_pool_v1/seed_manifest.json
 ```
 
 说明：
@@ -129,7 +138,9 @@ python scripts/seed_public_bench_miracl_zh_pool.py \
 ```bash
 python scripts/seed_public_bench_cfever_dev.py \
   --dry-run \
-  --out-cases runs/public_bench/cfever_dev_v1/regression_cases.json
+  --hf-revision <cfever_revision> \
+  --out-cases runs/public_bench/cfever_dev_v1/regression_cases.json \
+  --out-manifest runs/public_bench/cfever_dev_v1/seed_manifest.json
 ```
 
 ### 4.5.2 Execute（会下载 wiki 子集并写入 DB + Milvus）
@@ -138,7 +149,9 @@ python scripts/seed_public_bench_cfever_dev.py \
 python scripts/seed_public_bench_cfever_dev.py \
   --execute \
   --overwrite \
-  --out-cases runs/public_bench/cfever_dev_v1/regression_cases.json
+  --hf-revision <cfever_revision> \
+  --out-cases runs/public_bench/cfever_dev_v1/regression_cases.json \
+  --out-manifest runs/public_bench/cfever_dev_v1/seed_manifest.json
 ```
 
 可选参数：
