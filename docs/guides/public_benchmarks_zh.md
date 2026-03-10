@@ -212,7 +212,7 @@ python scripts/run_nightly_ablations.py \
 
 提示：
 - 默认 ablations 是有界的（适合每天跑）
-- `RERANKER_PROVIDER=none` 时，`hybrid_rerank` 变体不会触发 LLM 调用（仍可覆盖 rerank 代码路径的基本行为）
+- 默认 `hybrid_rerank` 使用非 LLM 的 `pc` reranker 变体（可覆盖 rerank 代码路径的基本行为且不依赖 LLM key）
 - 如果你希望 nightly 结果更可复现，建议传 `--cases <mimirq.regression_cases.v1 bundle>` 锁定 suite。  
   注意：`--cases` 不会自动导入用例；请先用 `scripts/regression_gate.py` 或 UI 导入一次。
 

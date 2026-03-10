@@ -155,102 +155,77 @@ def _default_ablations() -> list[dict]:
 
     Keep this bounded; "continuous nightly" should remain cheap and stable.
     """
+    base_rag_params: dict[str, Any] = {
+        # Runtime knobs (aligned with scripts/retrieval_ablation.py + app/api/schemas/regression.py).
+        "retrieval_profile": None,
+        "enable_query_alias_expansion": False,
+        "query_alias_max_queries": 0,
+        "enable_multi_query": False,
+        "multi_query_count": 0,
+        "multi_query_temperature": 0.0,
+        "multi_query_max_chars": 0,
+        "enable_query_rewrite": False,
+        "query_rewrite_strategy": None,
+        "query_rewrite_temperature": 0.0,
+        "query_rewrite_max_chars": 0,
+        "sparse_retrieval_enabled": False,
+        "sparse_retrieval_provider": "deterministic",
+        # Core retrieval controls.
+        "top_k": 20,
+        "score_threshold": 0.0,
+        "retrieval_mode": "hybrid",
+        "alpha": 0.6,
+        "fusion_strategy": "rrf",
+        "fusion_budgets": None,
+        "fusion_min_scores": None,
+        "fusion_weights": None,
+        "enable_weight_rerank": True,
+        "vector_weight": 0.6,
+        "keyword_weight": 0.4,
+        "mmr_lambda": 0.7,
+        # Reranker (keep retrieval-only safe by default; no LLM required).
+        "enable_reranker": False,
+        "reranker_provider": "none",
+        "reranker_top_n": 20,
+        # Prompt template selection (kept for completeness; usually irrelevant for retrieval-only).
+        "prompt_template_id": None,
+        "prompt_template_key": None,
+        "prompt_ab_experiment_key": None,
+    }
+
+    def _ablation(ablation_key: str, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+        rp = dict(base_rag_params)
+        if overrides:
+            rp.update(overrides)
+        return {"ablation_key": str(ablation_key), "rag_params": rp}
+
     return [
-        {
-            "ablation_key": "baseline",
-            "rag_params": {
-                "top_k": 20,
-                "score_threshold": 0.0,
-                "retrieval_mode": "hybrid",
-                "alpha": 0.6,
-                "enable_weight_rerank": True,
-                "vector_weight": 0.6,
-                "keyword_weight": 0.4,
-                "mmr_lambda": 0.7,
-                "enable_reranker": False,
-                "reranker_provider": "llm",
-                "reranker_top_n": 20,
-                "prompt_template_id": None,
-                "prompt_template_key": None,
-                "prompt_ab_experiment_key": None,
+        _ablation("baseline"),
+        _ablation("topk50", {"top_k": 50}),
+        _ablation("keyword_only", {"top_k": 50, "retrieval_mode": "keyword", "vector_weight": 0.0, "keyword_weight": 1.0}),
+        _ablation("vector_only", {"top_k": 50, "retrieval_mode": "vector", "vector_weight": 1.0, "keyword_weight": 0.0}),
+        # Retrieval profile ablation: exercises apply_retrieval_profile_overrides (non-LLM).
+        _ablation("profile_recall50", {"retrieval_profile": "recall50"}),
+        # Fusion strategy ablations (non-LLM).
+        _ablation("fusion_linear", {"fusion_strategy": "linear"}),
+        _ablation(
+            "sparse_budgeted_rrf",
+            {
+                "fusion_strategy": "budgeted_rrf",
+                "fusion_budgets": {"vector": 10, "bm25": 8, "lexical": 0, "sparse": 2},
+                "sparse_retrieval_enabled": True,
+                "sparse_retrieval_provider": "deterministic",
             },
-        },
-        {
-            "ablation_key": "topk50",
-            "rag_params": {
-                "top_k": 50,
-                "score_threshold": 0.0,
-                "retrieval_mode": "hybrid",
-                "alpha": 0.6,
-                "enable_weight_rerank": True,
-                "vector_weight": 0.6,
-                "keyword_weight": 0.4,
-                "mmr_lambda": 0.7,
-                "enable_reranker": False,
-                "reranker_provider": "llm",
-                "reranker_top_n": 50,
-                "prompt_template_id": None,
-                "prompt_template_key": None,
-                "prompt_ab_experiment_key": None,
-            },
-        },
-        {
-            "ablation_key": "keyword_only",
-            "rag_params": {
-                "top_k": 50,
-                "score_threshold": 0.0,
-                "retrieval_mode": "keyword",
-                "alpha": 0.6,
-                "enable_weight_rerank": True,
-                "vector_weight": 0.0,
-                "keyword_weight": 1.0,
-                "mmr_lambda": 0.7,
-                "enable_reranker": False,
-                "reranker_provider": "llm",
-                "reranker_top_n": 50,
-                "prompt_template_id": None,
-                "prompt_template_key": None,
-                "prompt_ab_experiment_key": None,
-            },
-        },
-        {
-            "ablation_key": "vector_only",
-            "rag_params": {
-                "top_k": 50,
-                "score_threshold": 0.0,
-                "retrieval_mode": "vector",
-                "alpha": 0.6,
-                "enable_weight_rerank": True,
-                "vector_weight": 1.0,
-                "keyword_weight": 0.0,
-                "mmr_lambda": 0.7,
-                "enable_reranker": False,
-                "reranker_provider": "llm",
-                "reranker_top_n": 50,
-                "prompt_template_id": None,
-                "prompt_template_key": None,
-                "prompt_ab_experiment_key": None,
-            },
-        },
-        {
-            "ablation_key": "hybrid_rerank",
-            "rag_params": {
-                "top_k": 20,
-                "score_threshold": 0.0,
-                "retrieval_mode": "hybrid",
-                "alpha": 0.6,
-                "enable_weight_rerank": True,
-                "vector_weight": 0.6,
-                "keyword_weight": 0.4,
-                "mmr_lambda": 0.7,
+        ),
+        # Reranker wiring: keep it non-LLM for default nightly safety.
+        _ablation(
+            "hybrid_rerank",
+            {
                 "enable_reranker": True,
-                "reranker_provider": settings.RERANKER_PROVIDER,
+                "reranker_provider": "pc",
                 "reranker_top_n": min(20, int(settings.RERANKER_TOP_N or 20)),
-                "prompt_template_id": None,
-                "prompt_template_key": None,
-                "prompt_ab_experiment_key": None,
             },
-        },
+        ),
     ]
 
 

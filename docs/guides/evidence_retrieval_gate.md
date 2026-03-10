@@ -82,8 +82,9 @@ python scripts/run_nightly_ablations.py \
 - 脚本会为每个 ablation 创建一条 regression run，并在 `run.params` 写入：
   - `nightly: true`
   - `job_run_id: <timestamp>`
-  - `ablation_key: baseline|topk50|keyword_only|vector_only|hybrid_rerank`
-- 默认 nightly 集合里包含一个受限的 `hybrid_rerank` 变体，用来持续覆盖真实 runtime 的 hybrid + BM25 + rerank 路径。
+  - `ablation_key: baseline|topk50|keyword_only|vector_only|profile_recall50|fusion_linear|sparse_budgeted_rrf|hybrid_rerank`
+- 默认 nightly 集合会覆盖一组关键 runtime knobs（`retrieval_profile` / `fusion_strategy` / sparse channel 等）。
+- 默认 `hybrid_rerank` 使用非 LLM 的 `pc` reranker 变体，用来持续覆盖 “hybrid + BM25 + rerank” 路径，同时保持 nightly 在 retrieval-only 下可跑。
 - 结果可以直接在前端的 “检索消融” 页面查看 leaderboard/diff。
 - `--cases` 会锁定 suite（避免按 `updated_at` 取“最新 case”带来的漂移）；但它不会自动导入用例，需确保该 bundle 已经被导入到 DB（UI 或 `scripts/regression_gate.py`）。
 
