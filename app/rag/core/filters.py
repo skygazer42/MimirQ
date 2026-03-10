@@ -207,6 +207,12 @@ def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> 
                         if meta_value is None or meta_value > expected:
                             return False
                     elif op == "$in":
+                        # Backward-compatible "allow missing" semantics:
+                        # When callers include "" in the $in list, treat a missing metadata value
+                        # (None) as equivalent to "" so older rows without this field are not
+                        # incorrectly filtered out.
+                        if meta_value is None and isinstance(expected, (list, tuple, set)) and "" in expected:
+                            continue
                         if not _any_in(meta_value, expected):
                             return False
                     elif op == "$nin":

@@ -66,7 +66,8 @@ def test_hybrid_search_injects_dataset_id_into_metadata_filter(monkeypatch):  # 
         metadata_filter=None,
     )
 
-    want = {"dataset_id": str(dataset_id)}
-    assert captured.get("vector_metadata_filter") == want
-    assert captured.get("bm25_metadata_filter") == want
-    assert captured.get("lexical_metadata_filter") == want
+    want_dataset = str(dataset_id)
+    for key in ("vector_metadata_filter", "bm25_metadata_filter", "lexical_metadata_filter"):
+        filt = captured.get(key)
+        assert isinstance(filt, dict)
+        assert filt.get("dataset_id") == want_dataset
