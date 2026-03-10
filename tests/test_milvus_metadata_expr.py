@@ -20,6 +20,11 @@ def test_build_milvus_metadata_expr_dataset_id_eq():
     assert expr == 'dataset_id == "d1"'
 
 
+def test_build_milvus_metadata_expr_embedding_space_hash_eq():
+    expr = _build_milvus_metadata_expr({"embedding_space_hash": {"$eq": "h1"}})
+    assert expr == 'embedding_space_hash == "h1"'
+
+
 def test_build_milvus_metadata_expr_numeric_gte():
     expr = _build_milvus_metadata_expr({"page_number": {"$gte": 3}})
     assert expr == "page_number >= 3"
