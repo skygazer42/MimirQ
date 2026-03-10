@@ -116,6 +116,12 @@ Required backend/server env vars:
 - `SAML_REPLAY_TTL_SEC` (default: `300`)
 - `SAML_REPLAY_REDIS_ENABLED` (optional; default: `false`)
 
+Optional SP metadata env vars (enterprise IdP compatibility):
+
+- `SAML_SP_CERT_PEM` (advertise `<KeyDescriptor use="signing">` in SP metadata)
+- `SAML_SP_PRIVATE_KEY_PEM` (required for signed metadata)
+- `SAML_SP_METADATA_SIGNED=true` (sign SP metadata; default: `false`)
+
 Behavior:
 
 - The Next.js ACS route accepts the IdP POST and forwards the raw assertion to the backend exchange endpoint.

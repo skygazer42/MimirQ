@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { API_V1_BASE_URL } from '@/lib/env'
+
 export const runtime = 'nodejs'
 
 function readEnv(name: string): string {
@@ -17,22 +19,6 @@ function isSamlEnabled(): boolean {
   return !isFalsey(enabled)
 }
 
-function escapeXml(value: string): string {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;')
-}
-
-function resolveOrigin(req: NextRequest): string {
-  const xfProto = String(req.headers.get('x-forwarded-proto') || '').trim()
-  const xfHost = String(req.headers.get('x-forwarded-host') || '').trim()
-  if (xfProto && xfHost) return `${xfProto}://${xfHost}`
-  return req.nextUrl.origin
-}
-
 function xmlNoStore(xml: string, init?: { status?: number }) {
   const resp = new NextResponse(xml, { status: init?.status ?? 200 })
   resp.headers.set('Content-Type', 'application/samlmetadata+xml; charset=utf-8')
@@ -47,26 +33,22 @@ export async function GET(req: NextRequest) {
     return xmlNoStore('Not Found', { status: 404 })
   }
 
-  const origin = resolveOrigin(req)
-  const entityId = `${origin}/api/saml/metadata`
-  const acsUrl = `${origin}/api/saml/acs`
+  const providerId = String(req.nextUrl.searchParams.get('provider_id') || '').trim() || undefined
+  const url = new URL(`${API_V1_BASE_URL}/auth/saml/metadata`)
+  if (providerId) url.searchParams.set('provider_id', providerId)
 
-  // Minimal, unsigned metadata skeleton.
-  // Enterprises typically require signed requests and a configured cert/keypair;
-  // those are intentionally omitted in this skeleton.
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${escapeXml(entityId)}">
-  <SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-    <AssertionConsumerService
-      Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-      Location="${escapeXml(acsUrl)}"
-      index="1"
-      isDefault="true"
-    />
-  </SPSSODescriptor>
-</EntityDescriptor>
-`
+  const backendRes = await fetch(url, { method: 'GET', cache: 'no-store' }).catch(() => null)
+  if (!backendRes) {
+    return xmlNoStore('Unable to reach auth backend', { status: 502 })
+  }
+  if (!backendRes.ok) {
+    const errorText = (await backendRes.text().catch(() => null)) || ''
+    return xmlNoStore(errorText || `SAML metadata unavailable (${backendRes.status})`, { status: backendRes.status })
+  }
 
+  const xml = (await backendRes.text().catch(() => null)) || ''
+  if (!xml) {
+    return xmlNoStore('Empty metadata response', { status: 502 })
+  }
   return xmlNoStore(xml)
 }
-

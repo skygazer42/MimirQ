@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from base64 import b64decode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -9,7 +10,7 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from lxml import etree
-from signxml import InvalidSignature, XMLVerifier
+from signxml import InvalidSignature, XMLSigner, XMLVerifier, methods
 
 from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
 from app.core.config import settings
@@ -21,6 +22,8 @@ _NS = {
     "samlp": "urn:oasis:names:tc:SAML:2.0:protocol",
     "saml": "urn:oasis:names:tc:SAML:2.0:assertion",
 }
+_MD_NS = "urn:oasis:names:tc:SAML:2.0:metadata"
+_DS_NS = "http://www.w3.org/2000/09/xmldsig#"
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,94 @@ def _normalize_path(raw: str | None) -> str:
     if value.startswith("/"):
         return value
     return f"/{value}"
+
+
+def _first_pem_certificate_b64(cert_pem: str | None) -> str | None:
+    raw = str(cert_pem or "").strip()
+    if not raw:
+        return None
+
+    begin = "-----BEGIN CERTIFICATE-----"
+    end = "-----END CERTIFICATE-----"
+    if begin in raw and end in raw:
+        try:
+            body = raw.split(begin, 1)[1].split(end, 1)[0]
+        except Exception:
+            body = raw
+    else:
+        body = raw
+
+    lines = [line.strip() for line in str(body or "").splitlines() if line.strip()]
+    b64 = "".join([line for line in lines if not line.startswith("-----")])
+    return b64 or None
+
+
+def build_saml_sp_metadata_xml(*, provider_id: str | None = None) -> str:
+    """
+    Build SP metadata XML for the configured SAML provider.
+
+    - entityID uses the provider's configured audience (keeps exchange checks aligned)
+    - AssertionConsumerService Location uses the provider's configured acs_url
+    - Optional: include KeyDescriptor and sign the metadata (enterprise IdP compatibility)
+    """
+    provider = _resolve_provider(provider_id)
+    entity_id = str(provider.audience or "").strip()
+    acs_url = str(provider.acs_url or "").strip()
+    if not entity_id or not acs_url:
+        raise HTTPException(status_code=500, detail="SAML provider misconfigured")
+
+    sp_cert_pem = str(getattr(settings, "SAML_SP_CERT_PEM", "") or "").strip()
+    sp_key_pem = str(getattr(settings, "SAML_SP_PRIVATE_KEY_PEM", "") or "").strip()
+    sign_metadata = bool(getattr(settings, "SAML_SP_METADATA_SIGNED", False))
+
+    metadata_id = f"md-{uuid.uuid4()}"
+    nsmap = {None: _MD_NS, "ds": _DS_NS}
+    root = etree.Element(
+        f"{{{_MD_NS}}}EntityDescriptor",
+        nsmap=nsmap,
+        entityID=entity_id,
+        ID=metadata_id,
+    )
+
+    sp = etree.SubElement(
+        root,
+        f"{{{_MD_NS}}}SPSSODescriptor",
+        protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol",
+    )
+
+    cert_b64 = _first_pem_certificate_b64(sp_cert_pem)
+    if cert_b64:
+        key_descriptor = etree.SubElement(sp, f"{{{_MD_NS}}}KeyDescriptor", use="signing")
+        key_info = etree.SubElement(key_descriptor, f"{{{_DS_NS}}}KeyInfo")
+        x509_data = etree.SubElement(key_info, f"{{{_DS_NS}}}X509Data")
+        etree.SubElement(x509_data, f"{{{_DS_NS}}}X509Certificate").text = cert_b64
+
+    etree.SubElement(
+        sp,
+        f"{{{_MD_NS}}}AssertionConsumerService",
+        Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+        Location=acs_url,
+        index="1",
+        isDefault="true",
+    )
+
+    if sign_metadata:
+        if not sp_cert_pem or not sp_key_pem:
+            raise HTTPException(status_code=500, detail="SAML SP metadata signing requires SAML_SP_CERT_PEM and SAML_SP_PRIVATE_KEY_PEM")
+        root = XMLSigner(
+            method=methods.enveloped,
+            signature_algorithm="rsa-sha256",
+            digest_algorithm="sha256",
+            c14n_algorithm="http://www.w3.org/2001/10/xml-exc-c14n#",
+        ).sign(
+            root,
+            key=sp_key_pem,
+            cert=sp_cert_pem,
+            reference_uri=f"#{metadata_id}",
+            id_attribute="ID",
+        )
+
+    return etree.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
 
 def _load_saml_providers() -> list[SamlProvider]:
@@ -294,4 +385,4 @@ def exchange_saml_response(
     )
 
 
-__all__ = ["exchange_saml_response"]
+__all__ = ["build_saml_sp_metadata_xml", "exchange_saml_response"]
