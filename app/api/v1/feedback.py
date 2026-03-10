@@ -5,6 +5,7 @@ Currently provides minimal loop capability:
 - List queries (isolated by tenant)
 """
 
+from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
@@ -139,7 +140,35 @@ def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request
         if isinstance(item, dict):
             return dict(item)
         return None
-    return None
+
+
+def _extract_rag_config_snapshot(trace_payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(trace_payload, dict):
+        return {}
+    retrieval = trace_payload.get("retrieval")
+    if not isinstance(retrieval, dict):
+        return {}
+    return dict(retrieval)
+
+
+def _augment_feedback_extra_with_snapshots(
+    *,
+    extra: dict[str, Any] | None,
+    trace_payload: dict[str, Any] | None,
+    request_id: str,
+    dataset_id: UUID | None,
+) -> dict[str, Any]:
+    payload = dict(extra or {})
+    if dataset_id is not None:
+        payload["dataset_id"] = str(dataset_id)
+    if request_id:
+        payload["retrieval_trace_request_id"] = str(request_id)
+    if isinstance(trace_payload, dict) and trace_payload:
+        payload["retrieval_trace"] = dict(trace_payload)
+        rag_config_snapshot = _extract_rag_config_snapshot(trace_payload)
+        if rag_config_snapshot:
+            payload["rag_config_snapshot"] = rag_config_snapshot
+    return payload
 
 
 @router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED)
@@ -162,6 +191,36 @@ async def upsert_message_feedback(
     if (msg.role or "").lower() != "assistant":
         raise HTTPException(status_code=400, detail="Only assistant messages can be rated")
 
+    conv = (
+        db.query(Conversation)
+        .filter(Conversation.id == msg.conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    meta = msg.message_metadata if isinstance(getattr(msg, "message_metadata", None), dict) else {}
+    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
+    dataset_id: UUID | None = None
+    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
+    if isinstance(raw_ds, str) and raw_ds.strip():
+        try:
+            dataset_id = UUID(raw_ds.strip())
+        except Exception:
+            dataset_id = None
+    if dataset_id is None and conv is not None:
+        dataset_id = getattr(conv, "dataset_id", None)
+    trace_payload = None
+    if conv is not None and request_id:
+        trace_payload = _find_trace_by_request_id(
+            tenant_id=tenant_id,
+            conversation_id=conv.id,
+            request_id=request_id,
+        )
+    extra_payload = _augment_feedback_extra_with_snapshots(
+        extra=request.extra if isinstance(request.extra, dict) else {},
+        trace_payload=trace_payload,
+        request_id=request_id,
+        dataset_id=dataset_id,
+    )
+
     row = (
         db.query(MessageFeedback)
         .filter(
@@ -176,7 +235,7 @@ async def upsert_message_feedback(
         row.reason = request.reason
         row.tags = request.tags
         row.expected_answer = request.expected_answer
-        row.extra = request.extra
+        row.extra = extra_payload
         db.commit()
         db.refresh(row)
         return row
@@ -190,7 +249,7 @@ async def upsert_message_feedback(
         reason=request.reason,
         tags=request.tags,
         expected_answer=request.expected_answer,
-        extra=request.extra,
+        extra=extra_payload,
     )
     db.add(row)
     db.commit()

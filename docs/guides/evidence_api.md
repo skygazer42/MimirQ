@@ -10,6 +10,9 @@ This guide documents the **retrieval-only** endpoint intended for “evidence di
 
 `POST /api/v1/rag/retrieve`
 
+Related:
+- Dataset-scoped training export: `docs/guides/training_export.md`
+
 ### Request (JSON)
 
 ```json
