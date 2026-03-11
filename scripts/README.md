@@ -62,6 +62,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Adds risk summary (`miss_rate`, `weak_hit_rate`, `hard_cases`) and trend deltas for nightly drift checks
   - Supports threshold policy via `--policy-json` and per-run overrides such as `--miss-rate-regression-threshold`, `--weak-hit-rate-regression-threshold`
   - `--cron` emits machine-readable JSON with status + risk summary for CI logs
+- `validate_queryset_health_policy.py`: validate query-set health threshold policy JSON before CI/nightly usage
+  - Example: `python scripts/validate_queryset_health_policy.py --policy ci/queryset_health_policy.v1.json`
 - `check_retrieval_profile_compat.py`: validate retrieval profile + reranker compatibility before runtime/CI
   - Example: `python scripts/check_retrieval_profile_compat.py --retrieval-profile hybrid_ce --enable-reranker true --reranker-provider cross_encoder`
 

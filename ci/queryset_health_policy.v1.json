@@ -1,0 +1,10 @@
+{
+  "hit_at_k_drop_threshold": 0.03,
+  "mrr_drop_threshold": 0.03,
+  "ndcg_drop_threshold": 0.03,
+  "p95_latency_regression_ms": 20.0,
+  "miss_rate_regression_threshold": 0.05,
+  "weak_hit_rate_regression_threshold": 0.08,
+  "weak_hit_rr_threshold": 0.2,
+  "hard_cases_limit": 5
+}

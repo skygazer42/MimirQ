@@ -90,6 +90,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
+      - name: Validate query-set health policy config
+        run: |
+          mkdir -p artifacts
+          python scripts/validate_queryset_health_policy.py \
+            --policy ci/queryset_health_policy.v1.json \
+            --out artifacts/queryset_health_policy.normalized.json
+
       - name: Run deterministic sample retrieval benchmark
         env:
           LLM_MOCK_ENABLED: "true"
@@ -155,6 +162,8 @@ jobs:
           name: retrieval-only-bounded-gate
           path: |
             artifacts/sample_retrieval_bench.json
+            artifacts/queryset_health_policy.normalized.json
+            ci/queryset_health_policy.v1.json
             ci/retrieval_thresholds.v2.json
 
   retrieval-regression-gate:
