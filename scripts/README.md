@@ -64,6 +64,10 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Emits `trend.policy_changed` when policy hash changes relative to previous snapshot
   - Supports threshold policy via `--policy-json` and per-run overrides such as `--miss-rate-regression-threshold`, `--weak-hit-rate-regression-threshold`
   - `--cron` emits machine-readable JSON with status + risk summary for CI logs
+- `diff_queryset_health_snapshots.py`: diff baseline/current query-set health snapshots for PR/release review
+  - Output schema: `mimirq.queryset_health_diff.v1`
+  - Includes metric deltas, policy drift (`policy_source`/`policy_hash`), hard-case churn, degradation-flag churn
+  - Supports `--out-md` to emit a human-readable Markdown summary for PR comments
 - `validate_queryset_health_policy.py`: validate query-set health threshold policy JSON before CI/nightly usage
   - Example: `python scripts/validate_queryset_health_policy.py --policy ci/queryset_health_policy.v1.json`
 - `check_retrieval_profile_compat.py`: validate retrieval profile + reranker compatibility before runtime/CI

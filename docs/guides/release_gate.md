@@ -10,6 +10,8 @@ pass/fail decision suitable for CI and for pre-release checks in staging.
 
 Wave40 extends it with an optional **retrieval leaderboard drift gate** that can consume
 `leaderboard.json` artifacts (for example from `scripts/retrieval_ablation.py`).
+Wave44 adds optional **queryset health policy metadata ingestion** so release reports can
+distinguish quality drift from threshold-policy edits.
 
 ## What It Gates
 
@@ -17,6 +19,8 @@ Wave40 extends it with an optional **retrieval leaderboard drift gate** that can
 2. **SLO**: retrieval latency + zero-hit + error rate (1h + 24h windows)
 3. **Cost budget**: average token/cost proxies derived from `rag_trace.cost_attribution`
 4. **Leaderboard drift (optional)**: enforce min/max thresholds on top leaderboard rows
+5. **Queryset policy drift (optional)**: ingest `queryset_health` snapshot metadata (`policy_hash`,
+   `policy_source`, `trend.policy_changed`) and optionally fail/warn on policy changes
 
 All outputs are PII-safe by construction (numbers, hashes, low-cardinality labels).
 
@@ -48,6 +52,21 @@ Optional leaderboard gate config (in budgets JSON):
 `policy` supports:
 - `fail`: violate threshold => process exits non-zero
 - `warn`: print warning and continue (useful for gradual rollout)
+
+Optional queryset-health policy drift config (in budgets JSON):
+
+```json
+{
+  "queryset_health": {
+    "path": "artifacts/queryset_health.snapshot.json",
+    "policy": "warn"
+  }
+}
+```
+
+Semantics:
+- `policy=warn`: include metadata in report and emit warning when `trend.policy_changed=true`
+- `policy=fail`: treat `trend.policy_changed=true` as gate violation
 
 ## Local / Staging Usage
 
@@ -103,6 +122,19 @@ python scripts/release_gate.py \
   --skip-regression
 ```
 
+With queryset health policy metadata (warn mode):
+
+```bash
+python scripts/release_gate.py \
+  --base-url http://localhost:8000/api/v1 \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id test-admin \
+  --budgets ci/release_gate_budgets.v1.json \
+  --queryset-health-snapshot artifacts/queryset_health.snapshot.json \
+  --queryset-health-policy warn \
+  --skip-regression
+```
+
 If you want the script to generate a small amount of deterministic traffic (useful for CI/staging),
 provide a cases bundle and `--probe-chat-requests`:
 
@@ -123,3 +155,7 @@ python scripts/release_gate.py \
 - `AUTH_MODE=jwt`: use `--bearer` (and `X-Tenant-ID` if your deployment requires it).
 - Probe traffic uses `retrieval_mode=keyword` and disables multi-query/alias/rerank to keep it deterministic.
 - Leaderboard gate prints metric-level threshold deltas in CI logs, e.g. `value`, `threshold`, `msg`.
+- Queryset health metadata captured in report:
+  - `policy_source` (`default` / `policy_json` / `cli_overrides` / `policy_json+cli_overrides`)
+  - `policy_hash` (stable hash of normalized threshold policy)
+  - `trend.policy_changed` (compared to previous queryset health snapshot)

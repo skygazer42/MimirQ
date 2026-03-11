@@ -571,6 +571,52 @@ def _gate_retrieval_leaderboard(
     return violations, notes, observed
 
 
+def _gate_queryset_policy_snapshot(
+    *,
+    snapshot: Any,
+    cfg: dict[str, Any],
+) -> tuple[list[GateViolation], list[str], dict[str, Any]]:
+    """
+    Surface queryset-health policy metadata into release gate report and optionally gate on policy drift.
+    """
+    policy = _policy((cfg or {}).get("policy"), default="warn")
+
+    observed: dict[str, Any] = {}
+    if isinstance(snapshot, dict):
+        trend = snapshot.get("trend") if isinstance(snapshot.get("trend"), dict) else {}
+        observed = {
+            "policy_source": str(snapshot.get("policy_source") or ""),
+            "policy_hash": str(snapshot.get("policy_hash") or ""),
+            "policy_changed": bool(trend.get("policy_changed")),
+            "status": str(snapshot.get("status") or ""),
+        }
+        flags = snapshot.get("degradation_flags")
+        if isinstance(flags, list):
+            observed["degradation_flags"] = [str(x) for x in flags][:20]
+
+    violations: list[GateViolation] = []
+    notes: list[str] = []
+
+    if bool(observed.get("policy_changed")):
+        src = str(observed.get("policy_source") or "")
+        hsh = str(observed.get("policy_hash") or "")
+        msg = f"queryset policy changed (source={src}, policy_hash={hsh})"
+        if policy == "fail":
+            violations.append(
+                GateViolation(
+                    area="queryset_health",
+                    metric="policy_changed",
+                    value=1.0,
+                    threshold={"max": 0.0},
+                    message=msg,
+                )
+            )
+        else:
+            notes.append(f"[release_gate] WARN: {msg}")
+
+    return violations, notes, observed
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Release gate: regression + SLO + cost budgets.")
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base url (default: %(default)s)")
@@ -605,6 +651,12 @@ def main() -> int:
         "--retrieval-leaderboard-policy",
         default="",
         help="Override retrieval leaderboard policy (warn|fail). Empty uses budgets file.",
+    )
+    p.add_argument("--queryset-health-snapshot", default="", help="Query-set health snapshot JSON path (optional)")
+    p.add_argument(
+        "--queryset-health-policy",
+        default="",
+        help="Override queryset health policy drift gate behavior (warn|fail). Empty uses budgets file.",
     )
 
     p.add_argument("--out-report", default="", help="Write a JSON report to a file (optional)")
@@ -650,6 +702,7 @@ def main() -> int:
         "probe": {},
         "slo": {},
         "cost": {},
+        "queryset_health": {},
         "retrieval_leaderboard": {},
         "violations": [],
         "notes": [],
@@ -723,6 +776,53 @@ def main() -> int:
         violations.extend(cost_violations)
         notes.extend(cost_notes)
         report["cost"] = {"summary": cost_summary, "computed": computed}
+
+    # Optional queryset health snapshot / policy-drift gate.
+    qs_cfg = budgets.get("queryset_health") if isinstance(budgets.get("queryset_health"), dict) else {}
+    if args.queryset_health_snapshot:
+        qs_cfg = dict(qs_cfg or {})
+        qs_cfg["path"] = str(args.queryset_health_snapshot)
+    if args.queryset_health_policy:
+        qs_cfg = dict(qs_cfg or {})
+        qs_cfg["policy"] = str(args.queryset_health_policy)
+
+    if isinstance(qs_cfg, dict) and qs_cfg:
+        qs_path_text = str(qs_cfg.get("path") or "").strip()
+        qs_policy = _policy(qs_cfg.get("policy"), default="warn")
+        if qs_path_text:
+            qs_path = Path(qs_path_text)
+            if not qs_path.exists():
+                msg = f"queryset health snapshot not found: {qs_path}"
+                if qs_policy == "fail":
+                    violations.append(
+                        GateViolation(
+                            area="queryset_health",
+                            metric="artifact_path",
+                            value=None,
+                            threshold={},
+                            message=msg,
+                        )
+                    )
+                else:
+                    notes.append(f"[release_gate] WARN: {msg}")
+                report["queryset_health"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
+            else:
+                qs_obj = _load_json(qs_path)
+                qs_violations, qs_notes, qs_observed = _gate_queryset_policy_snapshot(
+                    snapshot=qs_obj,
+                    cfg=qs_cfg,
+                )
+                report["queryset_health"] = {
+                    "path": str(qs_path),
+                    "policy": qs_policy,
+                    "observed": qs_observed,
+                }
+                if qs_policy == "warn":
+                    notes.extend(qs_notes)
+                else:
+                    violations.extend(qs_violations)
+        else:
+            report["queryset_health"] = {"policy": qs_policy, "observed": {}}
 
     # Optional retrieval leaderboard drift gate.
     lb_cfg = budgets.get("retrieval_leaderboard") if isinstance(budgets.get("retrieval_leaderboard"), dict) else {}
