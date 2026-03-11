@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -27,6 +27,7 @@ COMPOSE_INFRA_PARSERS := docker compose -f docker/docker-compose.infra.yml -f do
 COMPOSE_WEB := docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml
 COMPOSE_LITE := docker compose -f docker/docker-compose.lite.yml
 COMPOSE_RETRIEVAL_DEV := docker compose -f docker/docker-compose.retrieval-dev.yml
+QUERYSET_HEALTH_POLICY ?= ci/queryset_health_policy.v1.json
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -85,6 +86,7 @@ help:
 	@echo "  make enterprise-checks - verify + backend/web tests (CI-like)"
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
+	@echo "  make check-queryset-health-policy - validate query-set health threshold policy JSON"
 	@echo "  make helm-template - helm template smoke (deploy/helm/mimirq)"
 	@echo "  make helm-lint  - helm lint (deploy/helm/mimirq)"
 	@echo "  make clean     - remove local caches"
@@ -202,6 +204,9 @@ parser-status:
 
 check-retrieval-profile-compat:
 	$(PY) scripts/check_retrieval_profile_compat.py
+
+check-queryset-health-policy:
+	$(PY) scripts/validate_queryset_health_policy.py --policy $(QUERYSET_HEALTH_POLICY)
 
 compose-diagnostics:
 	$(PY) scripts/compose_diagnostics.py

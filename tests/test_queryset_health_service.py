@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.services.queryset_health_service import (
     build_queryset_health_snapshot,
     update_queryset_health_history,
+    validate_and_normalize_queryset_health_policy,
 )
 
 
@@ -182,3 +183,13 @@ def test_build_queryset_health_snapshot_applies_custom_risk_policy_thresholds() 
     # rr=0.2 is no longer treated as weak when threshold is 0.15.
     assert snap.get("risk", {}).get("weak_hit_count") == 0
     assert "miss_rate_regression" not in (snap.get("degradation_flags") or [])
+
+
+def test_validate_and_normalize_queryset_health_policy_rejects_invalid_values() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        validate_and_normalize_queryset_health_policy({"unknown_key": 1})
+
+    with pytest.raises(ValueError):
+        validate_and_normalize_queryset_health_policy({"weak_hit_rr_threshold": 1.5})

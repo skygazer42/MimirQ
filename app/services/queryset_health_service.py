@@ -62,36 +62,88 @@ def _metric_delta(current: float, previous: float, digits: int = 6) -> float:
     return round(float(current) - float(previous), int(digits))
 
 
-def _resolve_policy(policy: Mapping[str, Any] | None) -> dict[str, float | int]:
-    raw = dict(policy) if isinstance(policy, Mapping) else {}
+def _strict_number(value: Any, *, key: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{key} must be a number")
+    out = float(value)
+    if out != out or out in {float("inf"), float("-inf")}:
+        raise ValueError(f"{key} must be finite")
+    return out
+
+
+def _strict_rate(value: Any, *, key: str) -> float:
+    out = _strict_number(value, key=key)
+    if out < 0.0 or out > 1.0:
+        raise ValueError(f"{key} must be within [0, 1]")
+    return round(float(out), 6)
+
+
+def _strict_non_negative(value: Any, *, key: str) -> float:
+    out = _strict_number(value, key=key)
+    if out < 0.0:
+        raise ValueError(f"{key} must be >= 0")
+    return round(float(out), 6)
+
+
+def _strict_positive_int(value: Any, *, key: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{key} must be an integer")
+    if isinstance(value, int):
+        out = int(value)
+    elif isinstance(value, float) and value.is_integer():
+        out = int(value)
+    else:
+        raise ValueError(f"{key} must be an integer")
+    if out < 1:
+        raise ValueError(f"{key} must be >= 1")
+    return out
+
+
+def validate_and_normalize_queryset_health_policy(policy: Mapping[str, Any] | None) -> dict[str, float | int]:
+    if policy is None:
+        return dict(DEFAULT_POLICY)
+    if not isinstance(policy, Mapping):
+        raise ValueError("policy must be an object")
+
+    raw = dict(policy)
+    allowed = set(DEFAULT_POLICY.keys())
+    unknown = sorted(str(k) for k in raw.keys() if str(k) not in allowed)
+    if unknown:
+        raise ValueError(f"unknown policy keys: {', '.join(unknown)}")
+
     resolved: dict[str, float | int] = dict(DEFAULT_POLICY)
-    resolved["hit_at_k_drop_threshold"] = max(0.0, _as_float(raw.get("hit_at_k_drop_threshold"), _as_float(resolved["hit_at_k_drop_threshold"])))
-    resolved["mrr_drop_threshold"] = max(0.0, _as_float(raw.get("mrr_drop_threshold"), _as_float(resolved["mrr_drop_threshold"])))
-    resolved["ndcg_drop_threshold"] = max(0.0, _as_float(raw.get("ndcg_drop_threshold"), _as_float(resolved["ndcg_drop_threshold"])))
-    resolved["p95_latency_regression_ms"] = max(
-        0.0,
-        _as_float(raw.get("p95_latency_regression_ms"), _as_float(resolved["p95_latency_regression_ms"])),
-    )
-    resolved["miss_rate_regression_threshold"] = min(
-        1.0,
-        max(0.0, _as_float(raw.get("miss_rate_regression_threshold"), _as_float(resolved["miss_rate_regression_threshold"]))),
-    )
-    resolved["weak_hit_rate_regression_threshold"] = min(
-        1.0,
-        max(
-            0.0,
-            _as_float(
-                raw.get("weak_hit_rate_regression_threshold"),
-                _as_float(resolved["weak_hit_rate_regression_threshold"]),
-            ),
-        ),
-    )
-    resolved["weak_hit_rr_threshold"] = min(
-        1.0,
-        max(0.0, _as_float(raw.get("weak_hit_rr_threshold"), _as_float(resolved["weak_hit_rr_threshold"]))),
-    )
-    resolved["hard_cases_limit"] = max(1, _as_int(raw.get("hard_cases_limit"), _as_int(resolved["hard_cases_limit"])))
+
+    if "hit_at_k_drop_threshold" in raw:
+        resolved["hit_at_k_drop_threshold"] = _strict_rate(raw["hit_at_k_drop_threshold"], key="hit_at_k_drop_threshold")
+    if "mrr_drop_threshold" in raw:
+        resolved["mrr_drop_threshold"] = _strict_rate(raw["mrr_drop_threshold"], key="mrr_drop_threshold")
+    if "ndcg_drop_threshold" in raw:
+        resolved["ndcg_drop_threshold"] = _strict_rate(raw["ndcg_drop_threshold"], key="ndcg_drop_threshold")
+    if "p95_latency_regression_ms" in raw:
+        resolved["p95_latency_regression_ms"] = _strict_non_negative(
+            raw["p95_latency_regression_ms"],
+            key="p95_latency_regression_ms",
+        )
+    if "miss_rate_regression_threshold" in raw:
+        resolved["miss_rate_regression_threshold"] = _strict_rate(
+            raw["miss_rate_regression_threshold"],
+            key="miss_rate_regression_threshold",
+        )
+    if "weak_hit_rate_regression_threshold" in raw:
+        resolved["weak_hit_rate_regression_threshold"] = _strict_rate(
+            raw["weak_hit_rate_regression_threshold"],
+            key="weak_hit_rate_regression_threshold",
+        )
+    if "weak_hit_rr_threshold" in raw:
+        resolved["weak_hit_rr_threshold"] = _strict_rate(raw["weak_hit_rr_threshold"], key="weak_hit_rr_threshold")
+    if "hard_cases_limit" in raw:
+        resolved["hard_cases_limit"] = _strict_positive_int(raw["hard_cases_limit"], key="hard_cases_limit")
+
     return resolved
+
+
+def _resolve_policy(policy: Mapping[str, Any] | None) -> dict[str, float | int]:
+    return validate_and_normalize_queryset_health_policy(policy)
 
 
 def _clip_text(value: Any, *, max_len: int = 160) -> str:
