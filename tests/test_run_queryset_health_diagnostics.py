@@ -20,7 +20,7 @@ def _load_script(rel: str):
     return mod
 
 
-def test_run_queryset_health_diagnostics_writes_snapshot_and_history(tmp_path: Path) -> None:
+def test_run_queryset_health_diagnostics_writes_snapshot_and_history(tmp_path: Path, capsys) -> None:
     mod = _load_script("scripts/run_queryset_health_diagnostics.py")
     bench = tmp_path / "bench.json"
     out = tmp_path / "snapshot.json"
@@ -41,6 +41,24 @@ def test_run_queryset_health_diagnostics_writes_snapshot_and_history(tmp_path: P
                     "avg_latency_ms": 8.0,
                     "p95_latency_ms": 15.0,
                 },
+                "cases": [
+                    {
+                        "id": "q-1",
+                        "question": "alpha",
+                        "hit_at_k": 0.0,
+                        "reciprocal_rank": 0.0,
+                        "ndcg_at_k": 0.0,
+                        "latency_ms": 8.5,
+                    },
+                    {
+                        "id": "q-2",
+                        "question": "beta",
+                        "hit_at_k": 1.0,
+                        "reciprocal_rank": 0.2,
+                        "ndcg_at_k": 0.3,
+                        "latency_ms": 7.8,
+                    },
+                ],
             },
             ensure_ascii=False,
         ),
@@ -67,3 +85,11 @@ def test_run_queryset_health_diagnostics_writes_snapshot_and_history(tmp_path: P
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload.get("schema") == "mimirq.queryset_health_snapshot.v1"
     assert payload.get("profile_hash") == "profile-abc"
+    assert payload.get("risk", {}).get("miss_count") == 1
+    assert payload.get("risk", {}).get("weak_hit_count") == 1
+
+    cron_line = capsys.readouterr().out.strip()
+    cron_payload = json.loads(cron_line)
+    assert cron_payload.get("miss_rate") == 0.5
+    assert cron_payload.get("weak_hit_rate") == 0.5
+    assert cron_payload.get("hard_case_ids") == ["q-1", "q-2"]

@@ -88,6 +88,15 @@ def run(
         write_queryset_health_history(history, updated)
 
     if cron:
+        risk = snapshot.get("risk") if isinstance(snapshot.get("risk"), dict) else {}
+        hard_cases = risk.get("hard_cases") if isinstance(risk.get("hard_cases"), list) else []
+        hard_case_ids: list[str] = []
+        for row in hard_cases[:3]:
+            if not isinstance(row, dict):
+                continue
+            cid = str(row.get("id") or "").strip()
+            if cid:
+                hard_case_ids.append(cid)
         print(
             json.dumps(
                 {
@@ -95,6 +104,9 @@ def run(
                     "status": snapshot.get("status"),
                     "degradation_flags": snapshot.get("degradation_flags"),
                     "profile_hash": snapshot.get("profile_hash"),
+                    "miss_rate": risk.get("miss_rate"),
+                    "weak_hit_rate": risk.get("weak_hit_rate"),
+                    "hard_case_ids": hard_case_ids,
                     "out": str(out),
                 },
                 ensure_ascii=False,

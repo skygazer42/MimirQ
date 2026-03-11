@@ -57,6 +57,10 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `run_sample_retrieval_benchmark.py`: run a deterministic local sample benchmark from `data/sample/retrieval_fixture_v1.json`
   - Outputs: `runs/sample_bench.json` (schema: `mimirq.sample_retrieval_benchmark.v1`)
   - Example: `python scripts/run_sample_retrieval_benchmark.py --out runs/sample_bench.json`
+- `run_queryset_health_diagnostics.py`: build query-set health snapshot from benchmark report and maintain bounded trend history
+  - Output snapshot schema: `mimirq.queryset_health_snapshot.v1`
+  - Adds risk summary (`miss_rate`, `weak_hit_rate`, `hard_cases`) and trend deltas for nightly drift checks
+  - `--cron` emits machine-readable JSON with status + risk summary for CI logs
 - `check_retrieval_profile_compat.py`: validate retrieval profile + reranker compatibility before runtime/CI
   - Example: `python scripts/check_retrieval_profile_compat.py --retrieval-profile hybrid_ce --enable-reranker true --reranker-provider cross_encoder`
 
