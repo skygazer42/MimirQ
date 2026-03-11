@@ -279,6 +279,7 @@ db-revision:
 
 verify:
 	@$(MAKE) lint-py
+	@$(MAKE) check-queryset-health-policy
 	@$(MAKE) api-check
 	cd web && pnpm run lint
 	cd web && pnpm run ui-check

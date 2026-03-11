@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.rag.core.hashing import stable_hash
+
 SNAPSHOT_SCHEMA = "mimirq.queryset_health_snapshot.v1"
 DEFAULT_POLICY: dict[str, float | int] = {
     "hit_at_k_drop_threshold": 0.03,
@@ -146,6 +148,11 @@ def _resolve_policy(policy: Mapping[str, Any] | None) -> dict[str, float | int]:
     return validate_and_normalize_queryset_health_policy(policy)
 
 
+def _policy_hash(policy: Mapping[str, Any]) -> str:
+    payload = json.dumps(dict(policy), ensure_ascii=False, sort_keys=True)
+    return stable_hash(payload, length=24)
+
+
 def _clip_text(value: Any, *, max_len: int = 160) -> str:
     text = str(value or "").strip()
     if len(text) <= max_len:
@@ -249,11 +256,15 @@ def build_queryset_health_snapshot(
     previous_snapshot: Mapping[str, Any] | None = None,
     generated_at: str | datetime | None = None,
     policy: Mapping[str, Any] | None = None,
+    policy_source: str | None = None,
 ) -> dict[str, Any]:
     resolved_policy = _resolve_policy(policy)
+    policy_source_norm = str(policy_source or "").strip() or "default"
+    policy_hash = _policy_hash(resolved_policy)
     summary = benchmark_report.get("summary") if isinstance(benchmark_report.get("summary"), Mapping) else {}
     prev_metrics = previous_snapshot.get("metrics") if isinstance((previous_snapshot or {}).get("metrics"), Mapping) else {}
     prev_risk = previous_snapshot.get("risk") if isinstance((previous_snapshot or {}).get("risk"), Mapping) else {}
+    prev_policy_hash = str((previous_snapshot or {}).get("policy_hash") or "").strip()
 
     hit_at_k = round(_as_float(summary.get("hit_at_k"), 0.0), 6)
     mrr = round(_as_float(summary.get("mrr"), 0.0), 6)
@@ -281,6 +292,7 @@ def build_queryset_health_snapshot(
             _as_float(prev_risk.get("weak_hit_rate"), _as_float(risk.get("weak_hit_rate"), 0.0)),
             6,
         ),
+        "policy_changed": bool(prev_policy_hash and prev_policy_hash != policy_hash),
     }
 
     degradation_flags: list[str] = []
@@ -304,6 +316,8 @@ def build_queryset_health_snapshot(
         "schema": SNAPSHOT_SCHEMA,
         "generated_at": _normalize_ts(generated_at),
         "profile_hash": profile_hash_norm,
+        "policy_source": policy_source_norm,
+        "policy_hash": policy_hash,
         "fixture_hash": str(benchmark_report.get("fixture_hash") or "").strip(),
         "retrieval_mode": str(benchmark_report.get("retrieval_mode") or "").strip(),
         "top_k": _as_int(benchmark_report.get("top_k"), 0),

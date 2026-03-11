@@ -70,3 +70,8 @@ def test_ci_queryset_health_policy_file_is_valid() -> None:
 def test_makefile_has_queryset_health_policy_target() -> None:
     contents = Path("Makefile").read_text(encoding="utf-8")
     assert re.search(r"^check-queryset-health-policy:$", contents, flags=re.MULTILINE)
+
+
+def test_makefile_verify_includes_queryset_health_policy_check() -> None:
+    contents = Path("Makefile").read_text(encoding="utf-8")
+    assert "\t@$(MAKE) check-queryset-health-policy" in contents

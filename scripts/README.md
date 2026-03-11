@@ -60,6 +60,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `run_queryset_health_diagnostics.py`: build query-set health snapshot from benchmark report and maintain bounded trend history
   - Output snapshot schema: `mimirq.queryset_health_snapshot.v1`
   - Adds risk summary (`miss_rate`, `weak_hit_rate`, `hard_cases`) and trend deltas for nightly drift checks
+  - Embeds `policy_source` + stable `policy_hash` in snapshot/cron output for reproducible trend analysis across config changes
+  - Emits `trend.policy_changed` when policy hash changes relative to previous snapshot
   - Supports threshold policy via `--policy-json` and per-run overrides such as `--miss-rate-regression-threshold`, `--weak-hit-rate-regression-threshold`
   - `--cron` emits machine-readable JSON with status + risk summary for CI logs
 - `validate_queryset_health_policy.py`: validate query-set health threshold policy JSON before CI/nightly usage

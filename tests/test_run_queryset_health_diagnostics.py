@@ -85,11 +85,16 @@ def test_run_queryset_health_diagnostics_writes_snapshot_and_history(tmp_path: P
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload.get("schema") == "mimirq.queryset_health_snapshot.v1"
     assert payload.get("profile_hash") == "profile-abc"
+    assert payload.get("policy_source") == "default"
+    assert len(str(payload.get("policy_hash") or "")) == 24
     assert payload.get("risk", {}).get("miss_count") == 1
     assert payload.get("risk", {}).get("weak_hit_count") == 1
 
     cron_line = capsys.readouterr().out.strip()
     cron_payload = json.loads(cron_line)
+    assert cron_payload.get("policy_source") == "default"
+    assert len(str(cron_payload.get("policy_hash") or "")) == 24
+    assert cron_payload.get("policy_changed") is False
     assert cron_payload.get("miss_rate") == 0.5
     assert cron_payload.get("weak_hit_rate") == 0.5
     assert cron_payload.get("hard_case_ids") == ["q-1", "q-2"]
@@ -227,6 +232,9 @@ def test_run_queryset_health_diagnostics_applies_cli_risk_threshold_overrides(tm
     assert rc2 == 0
 
     payload = json.loads(out.read_text(encoding="utf-8"))
+    assert payload.get("policy_source") == "policy_json+cli_overrides"
+    assert len(str(payload.get("policy_hash") or "")) == 24
+    assert payload.get("trend", {}).get("policy_changed") is True
     assert payload.get("risk", {}).get("miss_rate") == 0.5
     # Policy file lowered weak-hit threshold to 0.15, so rr=0.2 is not weak.
     assert payload.get("risk", {}).get("weak_hit_count") == 0
