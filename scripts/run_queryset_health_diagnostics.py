@@ -76,15 +76,30 @@ def run(
     )
 
     bench = _load_json(benchmark_report)
+    has_policy_json = policy_json is not None
     policy = _load_policy(policy_json)
+    has_cli_overrides = False
     if miss_rate_regression_threshold is not None:
         policy["miss_rate_regression_threshold"] = float(miss_rate_regression_threshold)
+        has_cli_overrides = True
     if weak_hit_rate_regression_threshold is not None:
         policy["weak_hit_rate_regression_threshold"] = float(weak_hit_rate_regression_threshold)
+        has_cli_overrides = True
     if weak_hit_rr_threshold is not None:
         policy["weak_hit_rr_threshold"] = float(weak_hit_rr_threshold)
+        has_cli_overrides = True
     if hard_cases_limit is not None:
         policy["hard_cases_limit"] = int(hard_cases_limit)
+        has_cli_overrides = True
+
+    if has_policy_json and has_cli_overrides:
+        policy_source = "policy_json+cli_overrides"
+    elif has_policy_json:
+        policy_source = "policy_json"
+    elif has_cli_overrides:
+        policy_source = "cli_overrides"
+    else:
+        policy_source = "default"
 
     args_obj = argparse.Namespace(profile_hash=profile_hash, profile_json=str(profile_json) if profile_json else None)
     resolved_profile_hash = _resolve_profile_hash(args=args_obj, benchmark=bench)
@@ -101,6 +116,7 @@ def run(
         profile_hash=resolved_profile_hash,
         previous_snapshot=prev,
         policy=policy,
+        policy_source=policy_source,
     )
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -127,6 +143,9 @@ def run(
                     "status": snapshot.get("status"),
                     "degradation_flags": snapshot.get("degradation_flags"),
                     "profile_hash": snapshot.get("profile_hash"),
+                    "policy_source": snapshot.get("policy_source"),
+                    "policy_hash": snapshot.get("policy_hash"),
+                    "policy_changed": bool((snapshot.get("trend") or {}).get("policy_changed")),
                     "miss_rate": risk.get("miss_rate"),
                     "weak_hit_rate": risk.get("weak_hit_rate"),
                     "hard_case_ids": hard_case_ids,

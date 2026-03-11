@@ -108,6 +108,15 @@ jobs:
             --retrieval-mode keyword \
             --top-k 5
 
+      - name: Build query-set health snapshot from bounded benchmark
+        run: |
+          python scripts/run_queryset_health_diagnostics.py \
+            --benchmark-report artifacts/sample_retrieval_bench.json \
+            --out artifacts/queryset_health.snapshot.json \
+            --history artifacts/queryset_health.history.jsonl \
+            --policy-json ci/queryset_health_policy.v1.json \
+            --cron | tee artifacts/queryset_health.cron.json
+
       - name: Evaluate bounded retrieval-only gate (metric delta output)
         run: |
           python - <<'PY'
@@ -163,6 +172,9 @@ jobs:
           path: |
             artifacts/sample_retrieval_bench.json
             artifacts/queryset_health_policy.normalized.json
+            artifacts/queryset_health.snapshot.json
+            artifacts/queryset_health.history.jsonl
+            artifacts/queryset_health.cron.json
             ci/queryset_health_policy.v1.json
             ci/retrieval_thresholds.v2.json
 

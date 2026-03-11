@@ -166,3 +166,30 @@ python scripts/generate_retrieval_debt_audit.py --out runs/retrieval_debt_audit.
 模板位置：
 
 - `docs/templates/retrieval_debt_audit_template.md`
+
+## 10) Query-set Health 诊断元数据约定
+
+用于解释“同一 query 集趋势变化”是否来自真实召回退化，还是仅由阈值策略调整导致。
+
+推荐流程：
+
+```bash
+python scripts/validate_queryset_health_policy.py --policy ci/queryset_health_policy.v1.json
+python scripts/run_queryset_health_diagnostics.py \
+  --benchmark-report runs/sample_bench.json \
+  --out runs/queryset_health/snapshot.json \
+  --history runs/queryset_health/history.jsonl \
+  --policy-json ci/queryset_health_policy.v1.json \
+  --cron
+```
+
+关键字段（snapshot 与 cron 输出都可见）：
+
+- `policy_source`：策略来源（`default` / `policy_json` / `cli_overrides` / `policy_json+cli_overrides`）
+- `policy_hash`：归一化策略 JSON 的稳定哈希（用于跨 PR/跨时间对比）
+- `trend.policy_changed`：与上一个 snapshot 比较后策略是否变更
+
+解读建议：
+
+- 若 `trend.policy_changed=true`，先判断是否策略改动导致门禁变化，再判断检索质量是否真实退化。
+- 若 `trend.policy_changed=false` 且核心指标下降，则优先排查召回/重排链路回归。

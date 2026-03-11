@@ -86,6 +86,9 @@ def test_build_queryset_health_snapshot_includes_profile_hash_and_trend() -> Non
 
     assert snap.get("schema") == "mimirq.queryset_health_snapshot.v1"
     assert snap.get("profile_hash") == "profile-v1"
+    assert snap.get("policy_source") == "default"
+    policy_hash = str(snap.get("policy_hash") or "")
+    assert len(policy_hash) == 24
     assert snap.get("fixture_hash") == "fx123"
     assert snap.get("retrieval_mode") == "keyword"
     assert int(snap.get("top_k") or 0) == 5
@@ -98,6 +101,7 @@ def test_build_queryset_health_snapshot_includes_profile_hash_and_trend() -> Non
     assert trend.get("p95_latency_ms_delta") == 3.0
     assert trend.get("miss_rate_delta") == 0.2
     assert trend.get("weak_hit_rate_delta") == 0.2
+    assert trend.get("policy_changed") is False
 
     risk = snap.get("risk") or {}
     assert risk.get("miss_count") == 1
@@ -193,3 +197,46 @@ def test_validate_and_normalize_queryset_health_policy_rejects_invalid_values() 
 
     with pytest.raises(ValueError):
         validate_and_normalize_queryset_health_policy({"weak_hit_rr_threshold": 1.5})
+
+
+def test_build_queryset_health_snapshot_includes_explicit_policy_source() -> None:
+    snap = build_queryset_health_snapshot(
+        benchmark_report={
+            "summary": {
+                "cases_total": 1,
+                "hit_at_k": 1.0,
+                "mrr": 1.0,
+                "ndcg_at_k": 1.0,
+                "avg_latency_ms": 1.0,
+                "p95_latency_ms": 1.0,
+            }
+        },
+        profile_hash="profile-v3",
+        policy_source="policy_json+cli_overrides",
+    )
+    assert snap.get("policy_source") == "policy_json+cli_overrides"
+    assert len(str(snap.get("policy_hash") or "")) == 24
+
+
+def test_build_queryset_health_snapshot_marks_policy_changed_when_hash_differs() -> None:
+    prev = {
+        "policy_hash": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "metrics": {"hit_at_k": 1.0, "mrr": 1.0, "ndcg_at_k": 1.0, "p95_latency_ms": 1.0},
+        "risk": {"miss_rate": 0.0, "weak_hit_rate": 0.0},
+    }
+    snap = build_queryset_health_snapshot(
+        benchmark_report={
+            "summary": {
+                "cases_total": 1,
+                "hit_at_k": 1.0,
+                "mrr": 1.0,
+                "ndcg_at_k": 1.0,
+                "avg_latency_ms": 1.0,
+                "p95_latency_ms": 1.0,
+            }
+        },
+        profile_hash="profile-v4",
+        previous_snapshot=prev,
+        policy={"miss_rate_regression_threshold": 0.2},
+    )
+    assert snap.get("trend", {}).get("policy_changed") is True
