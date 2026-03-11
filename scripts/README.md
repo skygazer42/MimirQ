@@ -54,6 +54,11 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Supports `--colbert-provider deterministic|hf` plus model/device/batch flags
   - Summary JSON includes per-metric `wins/losses/ties` so you can see when the stronger path helps or hurts
 - `eval_retrieval_fusion_offline.py`: compare fusion strategy variants offline via Evidence API (retrieval-only)
+- `run_sample_retrieval_benchmark.py`: run a deterministic local sample benchmark from `data/sample/retrieval_fixture_v1.json`
+  - Outputs: `runs/sample_bench.json` (schema: `mimirq.sample_retrieval_benchmark.v1`)
+  - Example: `python scripts/run_sample_retrieval_benchmark.py --out runs/sample_bench.json`
+- `check_retrieval_profile_compat.py`: validate retrieval profile + reranker compatibility before runtime/CI
+  - Example: `python scripts/check_retrieval_profile_compat.py --retrieval-profile hybrid_ce --enable-reranker true --reranker-provider cross_encoder`
 
 ## Exit Codes
 

@@ -239,6 +239,9 @@ def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
         # Treat evidence relevance_score as the base retrieval score.
         "score": _as_float(c.get("relevance_score")),
         "retrieval_role": c.get("retrieval_role"),
+        # Field-aware recall signals (optional; v3 feature spec).
+        "field_aware_boost": _as_float(c.get("field_aware_boost")),
+        "field_aware_signal": str(c.get("field_aware_signal") or "").strip() or None,
         # Optional KG features.
         "kg_pagerank": _as_float(c.get("kg_pagerank")),
         "kg_shared_events": _as_float(c.get("kg_shared_events")),

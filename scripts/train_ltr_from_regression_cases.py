@@ -198,6 +198,9 @@ def build_ltr_feature_map(*, citation: dict[str, Any], query: str, spec: LTRFeat
         "sparse_score": _as_float(citation.get("sparse_score")),
         # Evidence API exposes this as relevance_score; treat it as the base retrieval score.
         "score": _as_float(citation.get("relevance_score")),
+        # Field-aware recall signals (optional; v3 feature spec).
+        "field_aware_boost": _as_float(citation.get("field_aware_boost")),
+        "field_aware_signal": _safe_str(citation.get("field_aware_signal"), max_len=32),
         # Optional KG ranking features (low-cardinality).
         "kg_pagerank": _as_float(citation.get("kg_pagerank")),
         "kg_shared_events": _as_float(citation.get("kg_shared_events")),

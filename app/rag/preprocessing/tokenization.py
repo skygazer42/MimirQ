@@ -8,6 +8,7 @@ These are used across:
 
 
 import re
+import unicodedata
 from functools import lru_cache
 from typing import List
 
@@ -30,6 +31,23 @@ _ASCII_PART_SPLIT_RE = re.compile(r"[_\-.:]+")
 _CAMEL_SPLIT_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
 _NUM_SEQ_RE = re.compile(r"\d{2,}")
 _NUM_COMMA_UNDER_RE = re.compile(r"\d[\d,_]{2,}\d")
+
+
+def _normalize_for_bm25(text: str) -> str:
+    """
+    Normalize query/doc text before tokenization.
+
+    NFKC is intentionally used to fold full-width Latin/digits into ASCII forms
+    (e.g. "ＡＰＩ" -> "API", "２０２６" -> "2026") for multilingual recall stability.
+    """
+
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    try:
+        return unicodedata.normalize("NFKC", raw)
+    except Exception:
+        return raw
 
 
 def _keep_token(norm: str) -> bool:
@@ -202,7 +220,7 @@ def _flush_cjk_oov_buffer(buf: List[str], out_tokens: List[str], *, extra_budget
 
 
 def _tokenize_for_bm25_impl(text: str) -> List[str]:
-    raw = (text or "").strip()
+    raw = _normalize_for_bm25(text)
     if not raw:
         return []
 
@@ -257,7 +275,7 @@ def tokenize_for_bm25(text: str) -> List[str]:
     - Uses jieba search mode.
     - Applies conservative filters: stopwords, empty tokens, single-character tokens.
     """
-    raw = (text or "").strip()
+    raw = _normalize_for_bm25(text)
     if not raw:
         return []
     # Cache only short strings (queries, titles) to avoid unbounded memory use.

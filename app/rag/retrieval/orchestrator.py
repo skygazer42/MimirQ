@@ -57,6 +57,7 @@ from app.rag.rerank_result_cache import (
 from app.rag.reranker.factory import describe_reranker_provider, get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retriever import hybrid_retriever
+from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 
 
@@ -1612,6 +1613,137 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     post_rerank_cache_hits = 0
     post_rerank_cache_misses = 0
     post_rerank_corpus_cache_token = _resolve_post_rerank_corpus_cache_token(state)
+    post_rerank_score_calibration_enabled = bool(
+        getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", False)
+    )
+    try:
+        post_rerank_score_calibration_alpha = float(
+            getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.7) or 0.7
+        )
+    except Exception:
+        post_rerank_score_calibration_alpha = 0.7
+    post_rerank_score_calibration_alpha = min(1.0, max(0.0, float(post_rerank_score_calibration_alpha)))
+    post_rerank_score_calibration_used = False
+    post_rerank_score_calibration_stats: dict[str, Any] = {
+        "enabled": bool(post_rerank_score_calibration_enabled),
+        "alpha": round(float(post_rerank_score_calibration_alpha), 4),
+        "used": False,
+    }
+
+    def _calibrate_post_rerank_prefix(prefix_docs: List[Document]) -> List[Document]:
+        nonlocal post_rerank_score_calibration_used
+        if not post_rerank_score_calibration_enabled:
+            return prefix_docs
+        if not prefix_docs:
+            post_rerank_score_calibration_stats["skip_reason"] = "no_candidates"
+            return prefix_docs
+
+        rows: list[dict[str, Any]] = []
+        for idx, doc in enumerate(prefix_docs):
+            meta = dict(doc.metadata or {})
+            rid = _doc_key(doc) or str(idx)
+
+            base_raw = meta.get("retrieval_score")
+            if base_raw is None:
+                base_raw = meta.get("score", 0.0)
+            try:
+                retrieval_score = float(base_raw or 0.0)
+            except Exception:
+                retrieval_score = 0.0
+
+            rerank_raw = meta.get("rerank_score")
+            try:
+                rerank_score = float(rerank_raw) if rerank_raw is not None else None
+            except Exception:
+                rerank_score = None
+
+            rows.append(
+                {
+                    "idx": int(idx),
+                    "rid": rid,
+                    "doc": doc,
+                    "meta": meta,
+                    "retrieval_score": float(retrieval_score),
+                    "rerank_score": rerank_score,
+                }
+            )
+
+        ranked_rows = [r for r in rows if r.get("rerank_score") is not None]
+        if len(ranked_rows) < 2:
+            post_rerank_score_calibration_stats["skip_reason"] = "insufficient_rerank_scores"
+            post_rerank_score_calibration_stats["eligible_docs"] = int(len(ranked_rows))
+            return prefix_docs
+
+        def _minmax(values: list[float]) -> list[float]:
+            if not values:
+                return []
+            lo = min(values)
+            hi = max(values)
+            rng = hi - lo
+            if rng <= 0.0:
+                return [0.0 for _ in values]
+            return [(float(v) - float(lo)) / float(rng) for v in values]
+
+        retrieval_norm = _minmax([float(r.get("retrieval_score") or 0.0) for r in rows])
+        rerank_norm_values = _minmax([float(r.get("rerank_score") or 0.0) for r in ranked_rows])
+        rerank_norm_by_id: dict[str, float] = {
+            str(ranked_rows[i].get("rid") or ""): float(rerank_norm_values[i])
+            for i in range(min(len(ranked_rows), len(rerank_norm_values)))
+        }
+
+        for i, r in enumerate(rows):
+            base_norm = float(retrieval_norm[i]) if i < len(retrieval_norm) else 0.0
+            rr_norm = rerank_norm_by_id.get(str(r.get("rid") or ""))
+            if rr_norm is None:
+                calibrated = base_norm
+            else:
+                calibrated = (post_rerank_score_calibration_alpha * float(rr_norm)) + (
+                    (1.0 - post_rerank_score_calibration_alpha) * float(base_norm)
+                )
+            r["retrieval_score_norm"] = float(base_norm)
+            r["rerank_score_norm"] = (float(rr_norm) if rr_norm is not None else None)
+            r["calibrated_score"] = float(calibrated)
+
+        rows_sorted = sorted(
+            rows,
+            key=lambda r: (
+                -float(r.get("calibrated_score") or 0.0),
+                -float(r.get("rerank_score_norm") or -1.0),
+                -float(r.get("retrieval_score_norm") or 0.0),
+                int(r.get("idx") or 0),
+            ),
+        )
+
+        moved = sum(1 for i, r in enumerate(rows_sorted) if int(r.get("idx") or 0) != i)
+        top_changed = bool(rows_sorted) and int(rows_sorted[0].get("idx") or 0) != 0
+
+        out_docs: list[Document] = []
+        for r in rows_sorted:
+            meta = dict(r.get("meta") or {})
+            calibrated = float(r.get("calibrated_score") or 0.0)
+            meta["rerank_score_calibrated"] = round(calibrated, 6)
+            meta["score"] = float(calibrated)
+            doc = r.get("doc")
+            if isinstance(doc, Document):
+                out_docs.append(
+                    Document(
+                        page_content=doc.page_content,
+                        metadata=meta,
+                        id=getattr(doc, "id", None) or meta.get("chunk_id"),
+                    )
+                )
+
+        post_rerank_score_calibration_used = True
+        post_rerank_score_calibration_stats.update(
+            {
+                "used": True,
+                "applied_docs": int(len(rows)),
+                "eligible_docs": int(len(ranked_rows)),
+                "moved_positions": int(moved),
+                "top_changed": bool(top_changed),
+            }
+        )
+        return out_docs
 
     try:
         if post_rerank_enabled and not (docs or []):
@@ -1773,6 +1905,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                                 )
                             )
 
+                        if is_final:
+                            ordered_prefix = _calibrate_post_rerank_prefix(ordered_prefix)
                         docs_work = ordered_prefix + list(docs_work[st_n:])
                         prev_n = int(st_n)
                         post_rerank_pipeline_stages.append(
@@ -1891,6 +2025,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                             meta.setdefault("rerank_model_used", post_rerank_model_used)
                             ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
 
+                        ordered = _calibrate_post_rerank_prefix(ordered)
                         docs = ordered + list((docs or [])[post_rerank_candidates_n:])
                         post_rerank_used = True
                     elif post_rerank_skip_reason is None:
@@ -1942,6 +2077,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["evidence_post_rerank_pipeline_enabled"] = bool(post_rerank_pipeline_enabled)
     metrics["evidence_post_rerank_pipeline_used"] = bool(post_rerank_pipeline_used)
     metrics["evidence_post_rerank_pipeline_stages"] = post_rerank_pipeline_stages[:4]
+    metrics["evidence_post_rerank_score_calibration_enabled"] = bool(post_rerank_score_calibration_enabled)
+    metrics["evidence_post_rerank_score_calibration_alpha"] = round(float(post_rerank_score_calibration_alpha), 4)
+    metrics["evidence_post_rerank_score_calibration_used"] = bool(post_rerank_score_calibration_used)
+    metrics["evidence_post_rerank_score_calibration"] = dict(post_rerank_score_calibration_stats or {})
 
     metrics["query_rewrite_enabled"] = bool(rewrite_enabled)
     metrics["query_rewrite_strategy_id"] = rewrite_strategy_id
@@ -2162,6 +2301,16 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         citations_by_role = {}
 
+    chunk_quality_summary = None
+    try:
+        chunk_quality_summary = summarize_retrieved_chunk_quality(
+            docs,
+            max_candidates=min(max(1, int(top_k or 0)), 20),
+            max_items=8,
+        )
+    except Exception:
+        chunk_quality_summary = None
+
     retrieval_trace: Dict[str, Any] = {
         "schema": "mimirq.retrieval_trace_pass.v1",
         "query_for_retrieval_hash": stable_hash(query_for_retrieval),
@@ -2290,6 +2439,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "candidates_n": int(post_rerank_candidates_n or 0),
             "elapsed_sec": round(float(post_rerank_elapsed or 0.0), 3),
             "model_used": post_rerank_model_used,
+            "score_calibration": dict(post_rerank_score_calibration_stats or {}),
             "error": post_rerank_error,
         },
         "abstain": {
@@ -2303,6 +2453,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "citations": {
             "count": int(len(citations)),
             "by_role": citations_by_role,
+            "chunk_quality": chunk_quality_summary,
         },
     }
 
@@ -2357,6 +2508,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
             "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
             "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
+            "evidence_post_rerank_score_calibration_enabled": bool(
+                getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", False)
+            ),
+            "evidence_post_rerank_score_calibration_alpha": float(
+                getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.0) or 0.0
+            ),
             "multi_query": {
                 "enabled": bool(mq_enabled),
                 "count": int(mq_n or 0),

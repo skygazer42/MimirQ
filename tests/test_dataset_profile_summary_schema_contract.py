@@ -23,3 +23,4 @@ def test_dataset_profile_summary_schema_includes_distribution_fields() -> None:
     assert "page_number_histogram" in fields
     assert "parse_quality_histogram" in fields
     assert "language_mix" in fields
+    assert "recall_risk_hints" in fields

@@ -1,0 +1,117 @@
+"""
+Retrieval profile introspection endpoint.
+
+Goal:
+- expose stable, reproducible profile definitions for operators/contributors
+- avoid leaking scope/query/internal request fields
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from fastapi import APIRouter
+
+from app.core.config import settings
+from app.rag.core.hashing import stable_hash
+from app.rag.core.retrieval_profiles import (
+    PRODUCTION_RETRIEVAL_PROFILE,
+    RECALL_FIRST_RETRIEVAL_PROFILES,
+    SUPPORTED_RETRIEVAL_PROFILES,
+    apply_retrieval_profile_overrides,
+)
+
+router = APIRouter()
+
+_SCHEMA = "mimirq.retrieval_profiles.v1"
+
+
+def _runtime_baseline() -> dict[str, Any]:
+    return {
+        "top_k": int(getattr(settings, "RETRIEVAL_TOP_K", 5) or 5),
+        "score_threshold": float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0),
+        "retrieval_mode": str(getattr(settings, "RETRIEVAL_MODE", "hybrid") or "hybrid"),
+        "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
+        "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
+        "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
+        "enable_weight_rerank": True,
+    }
+
+
+def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[str, Any]:
+    applied = apply_retrieval_profile_overrides(
+        profile=name,
+        top_k=int(baseline.get("top_k") or 0),
+        score_threshold=float(baseline.get("score_threshold") or 0.0),
+        retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
+        enable_reranker=bool(baseline.get("enable_reranker")),
+        reranker_provider=str(baseline.get("reranker_provider") or ""),
+        reranker_top_n=int(baseline.get("reranker_top_n") or 0),
+        enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+    )
+    return {
+        "name": str(applied.get("retrieval_profile") or name),
+        "is_recall_first": bool(name in RECALL_FIRST_RETRIEVAL_PROFILES),
+        "retrieval_mode": str(applied.get("retrieval_mode") or baseline.get("retrieval_mode") or "hybrid"),
+        "top_k": int(applied.get("top_k") or 0),
+        "score_threshold": float(applied.get("score_threshold") or 0.0),
+        "enable_reranker": bool(applied.get("enable_reranker") if applied.get("enable_reranker") is not None else False),
+        "reranker_provider": (
+            str(applied.get("reranker_provider") or "")
+            if bool(applied.get("enable_reranker"))
+            else None
+        ),
+        "reranker_top_n": (
+            int(applied.get("reranker_top_n") or 0)
+            if bool(applied.get("enable_reranker"))
+            else 0
+        ),
+        "enable_weight_rerank": bool(applied.get("enable_weight_rerank", True)),
+    }
+
+
+@router.get("/profiles")
+def get_retrieval_profiles() -> dict[str, Any]:
+    baseline = _runtime_baseline()
+    request_defaults = apply_retrieval_profile_overrides(
+        profile=None,
+        top_k=int(baseline.get("top_k") or 0),
+        score_threshold=float(baseline.get("score_threshold") or 0.0),
+        retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
+        enable_reranker=bool(baseline.get("enable_reranker")),
+        reranker_provider=str(baseline.get("reranker_provider") or ""),
+        reranker_top_n=int(baseline.get("reranker_top_n") or 0),
+        enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+    )
+    production_effective = apply_retrieval_profile_overrides(
+        profile=PRODUCTION_RETRIEVAL_PROFILE,
+        top_k=int(baseline.get("top_k") or 0),
+        score_threshold=float(baseline.get("score_threshold") or 0.0),
+        retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
+        enable_reranker=bool(baseline.get("enable_reranker")),
+        reranker_provider=str(baseline.get("reranker_provider") or ""),
+        reranker_top_n=int(baseline.get("reranker_top_n") or 0),
+        enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+    )
+
+    ordered_profiles = sorted({str(p) for p in SUPPORTED_RETRIEVAL_PROFILES})
+    profiles = [_public_profile_definition(name, baseline=baseline) for name in ordered_profiles]
+
+    payload: dict[str, Any] = {
+        "schema": _SCHEMA,
+        "effective_defaults": {
+            "production_profile": PRODUCTION_RETRIEVAL_PROFILE,
+            "request_defaults": request_defaults,
+            "production_effective": production_effective,
+            "runtime_defaults": baseline,
+        },
+        "profiles": profiles,
+    }
+    payload_for_hash = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    payload["version_hash"] = stable_hash(payload_for_hash, length=24)
+    return payload
+
+
+__all__ = ["router", "get_retrieval_profiles"]
+

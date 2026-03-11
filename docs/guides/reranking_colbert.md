@@ -57,6 +57,11 @@ COLBERT_RERANK_MAX_LENGTH=256
 - `RERANKER_TOP_N` 建议不要太大（rerank 发生在候选融合之后，会线性增加开销）。
 - 该 rerank 会在 `HybridRetriever._hybrid_search()` 的融合/去重之后执行。
 - 如果不配置 `COLBERT_RERANK_PROVIDER`，系统保持 deterministic fallback，不会偷偷下载模型。
+- HF 模式有显式约束（非法配置会直接报错而不是静默降级）：
+  - `COLBERT_RERANK_MODEL_NAME` 必须非空
+  - `COLBERT_RERANK_DEVICE` 必须是 `cpu|cuda|auto`
+  - `COLBERT_RERANK_BATCH_SIZE` 必须在 `[1, 256]`
+  - `COLBERT_RERANK_MAX_LENGTH` 必须在 `[8, 2048]`
 
 ---
 

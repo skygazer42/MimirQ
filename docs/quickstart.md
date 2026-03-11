@@ -39,6 +39,12 @@ make ps
 make up-lite
 make ps-lite
 
+# (推荐给检索质量实验) 最小 retrieval-dev 组合：
+# 仅启动 postgres + redis + api，不启用重解析服务；默认 LLM_MOCK_ENABLED=true
+make up-retrieval-dev
+make ps-retrieval-dev
+make api-ping
+
 # 或直接使用 docker compose
 cd docker
 docker compose up -d --build
@@ -53,6 +59,13 @@ make up-web
 ```
 
 > 本地源码运行后端需要 Python 3.11+（项目包含 `match/case` 等语法与依赖约束）。如果你只想快速跑起来，优先使用 Docker。
+
+#### retrieval-dev 资源与时延预期（经验值）
+
+- 推荐机器：4 vCPU / 8 GB RAM（最低可在 2 vCPU / 4 GB RAM 运行，但索引与查询明显更慢）。
+- 冷启动（首次 build）：约 3-8 分钟，取决于网络与镜像缓存。
+- 热启动（镜像已缓存）：通常 20-60 秒即可达到 `api-ping` 全绿。
+- 该模式默认关闭重解析路径，适合做召回/排序离线对比，不适合高并发生产压测。
 
 > Docker 启动前端时：`NEXT_PUBLIC_API_URL` 是给浏览器用的（默认 `http://localhost:8000`）；如需 SSR 在容器内访问后端，请设置 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000`（不要把 `NEXT_PUBLIC_API_URL` 改成 Docker 内部地址）。
 

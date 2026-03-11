@@ -613,6 +613,13 @@ class Settings(BaseSettings):
     # Metadata filtering for vector search
     RETRIEVAL_METADATA_FILTER_ENABLED: bool = True
     RETRIEVAL_MIN_DISTINCT_DOCS: int = 0
+    # Optional field-aware recall signal (disabled by default).
+    # When enabled, vector candidates sourced from title/heading auxiliary embeddings
+    # receive a small bounded additive score during channel fusion.
+    RETRIEVAL_FIELD_AWARE_RECALL_ENABLED: bool = False
+    RETRIEVAL_FIELD_AWARE_TITLE_BOOST: float = 0.08
+    RETRIEVAL_FIELD_AWARE_HEADING_BOOST: float = 0.05
+    RETRIEVAL_FIELD_AWARE_MAX_BOOST: float = 0.10
     # When retrieval is not pre-scoped by explicit document_ids (open scope / dataset scope),
     # we may need to over-fetch to compensate for candidate-level ACL + active-pipeline trimming.
     # 1 disables.
@@ -761,6 +768,10 @@ class Settings(BaseSettings):
     EVIDENCE_POST_RERANK_ENABLED: bool = False
     EVIDENCE_POST_RERANK_PROVIDER: str = "ltr"  # ltr | colbert | ...
     EVIDENCE_POST_RERANK_TOP_N: int = 30
+    # Optional calibrated blending between retrieval fusion score and rerank score.
+    # Final score = alpha * norm(rerank_score) + (1 - alpha) * norm(retrieval_score).
+    EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED: bool = False
+    EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA: float = 0.7
     # Optional: multi-stage post-rerank pipeline for Evidence API (budgeted by stage top_n).
     #
     # When enabled and EVIDENCE_POST_RERANK_PIPELINE is non-empty, the orchestrator will apply
@@ -1580,6 +1591,19 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_PAGE must be >= 0")
         if int(getattr(self, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MIN_DISTINCT_DOCS must be >= 0")
+        field_title_boost = float(getattr(self, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST", 0.0) or 0.0)
+        field_heading_boost = float(getattr(self, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.0) or 0.0)
+        field_max_boost = float(getattr(self, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.0) or 0.0)
+        if field_title_boost < 0.0:
+            raise ValueError("RETRIEVAL_FIELD_AWARE_TITLE_BOOST must be >= 0")
+        if field_heading_boost < 0.0:
+            raise ValueError("RETRIEVAL_FIELD_AWARE_HEADING_BOOST must be >= 0")
+        if field_max_boost < 0.0:
+            raise ValueError("RETRIEVAL_FIELD_AWARE_MAX_BOOST must be >= 0")
+        if field_title_boost > field_max_boost:
+            raise ValueError("RETRIEVAL_FIELD_AWARE_TITLE_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
+        if field_heading_boost > field_max_boost:
+            raise ValueError("RETRIEVAL_FIELD_AWARE_HEADING_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
         if int(self.RETRIEVAL_QUERY_PARALLELISM or 0) < 1:
             raise ValueError(
                 f"RETRIEVAL_QUERY_PARALLELISM ({self.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1"
@@ -1652,6 +1676,11 @@ class Settings(BaseSettings):
             raise ValueError("EVIDENCE_POST_RERANK_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 0) or 0) < 0:
             raise ValueError("EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES must be >= 0")
+        post_rerank_score_calibration_alpha = float(
+            getattr(self, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.0) or 0.0
+        )
+        if post_rerank_score_calibration_alpha < 0.0 or post_rerank_score_calibration_alpha > 1.0:
+            raise ValueError("EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA must be between 0 and 1")
         post_rerank_cache_backend = (
             str(getattr(self, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "memory") or "memory").strip().lower()
         )

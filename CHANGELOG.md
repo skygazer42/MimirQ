@@ -15,6 +15,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Docs: evidence retrieval gate, sparse retrieval, ColBERT/LTR reranking guides, and a retrieval-only parity gap snapshot.
 - Stable retrieval config fingerprint (`retrieval_config`) in retrieval trace plus `retrieval_config_hash` metric for cross-run comparisons.
 
+### Retrieval Quality
+
+#### Snapshot
+
+| Metric | Baseline | Current | Delta |
+| --- | ---: | ---: | ---: |
+| hit@10 | TBD | TBD | TBD |
+| mrr@10 | TBD | TBD | TBD |
+| ndcg@10 | TBD | TBD | TBD |
+| p95 latency (ms) | TBD | TBD | TBD |
+
+#### Artifacts
+
+- Benchmark summary: `runs/.../leaderboard.json`
+- Gate report: `runs/.../gate_report.json`
+- Thresholds: `runs/.../thresholds.v2.json`
+- Template guide: `docs/guides/retrieval_release_notes.md`
+
 ### Changed
 
 - Evidence retrieval orchestrator supports optional post-fusion reranking for retrieval-only workflows (`EVIDENCE_POST_RERANK_*`).

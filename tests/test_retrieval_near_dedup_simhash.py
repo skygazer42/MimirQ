@@ -55,3 +55,30 @@ def test_retrieval_near_dedup_keeps_when_disabled(monkeypatch: pytest.MonkeyPatc
 
     out = r._deduplicate_results(results)
     assert len(out) == 2
+
+
+def test_retrieval_near_dedup_exposes_debug_metadata_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    monkeypatch.setattr(settings, "RETRIEVAL_NEAR_DEDUP_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 2, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 10, raising=False)
+
+    r = HybridRetriever()
+    r.dedup_enabled = True
+    r.dedup_jaccard_threshold = 0.0
+    r._last_channel_metrics = {}
+
+    results = [
+        _mk_result(chunk_id="c1", document_id="d1", content="Alpha content", simhash64="0000000000000000"),
+        _mk_result(chunk_id="c2", document_id="d2", content="Beta content", simhash64="0000000000000001"),
+    ]
+
+    _ = r._deduplicate_results(results)
+    dedup = (r._last_channel_metrics or {}).get("dedup") if isinstance(r._last_channel_metrics, dict) else {}
+    assert isinstance(dedup, dict)
+    assert dedup.get("near_dedup_enabled") is False
+    assert int(dedup.get("near_dedup_dropped") or 0) == 0
+    assert int(dedup.get("near_dedup_hamming_threshold") or 0) == 2
+    assert int(dedup.get("near_dedup_max_compare") or 0) == 10

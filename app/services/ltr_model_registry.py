@@ -96,10 +96,15 @@ def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> Tu
         raise ValueError(f"manifest schema mismatch: {schema or '<missing>'}")
 
     feature_schema = str(manifest.get("feature_schema") or "").strip()
-    if feature_schema not in {"mimirq.ltr_features.v1", "mimirq.ltr_features.v2"}:
-        raise ValueError("manifest feature_schema must be mimirq.ltr_features.v1 or mimirq.ltr_features.v2")
+    if feature_schema not in {"mimirq.ltr_features.v1", "mimirq.ltr_features.v2", "mimirq.ltr_features.v3"}:
+        raise ValueError("manifest feature_schema must be mimirq.ltr_features.v1, .v2, or .v3")
 
-    version = 2 if feature_schema.endswith(".v2") else 1
+    if feature_schema.endswith(".v3"):
+        version = 3
+    elif feature_schema.endswith(".v2"):
+        version = 2
+    else:
+        version = 1
     spec = LTRFeatureSpec.from_version(version)
 
     names = manifest.get("feature_names")

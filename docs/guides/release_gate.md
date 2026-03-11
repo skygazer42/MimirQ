@@ -8,11 +8,15 @@ This repo already has:
 Wave26-T40 adds a small **release gate** wrapper script that combines those signals into a single
 pass/fail decision suitable for CI and for pre-release checks in staging.
 
+Wave40 extends it with an optional **retrieval leaderboard drift gate** that can consume
+`leaderboard.json` artifacts (for example from `scripts/retrieval_ablation.py`).
+
 ## What It Gates
 
 1. **Regression**: retrieval-only or RAGAS metrics, gated on thresholds
 2. **SLO**: retrieval latency + zero-hit + error rate (1h + 24h windows)
 3. **Cost budget**: average token/cost proxies derived from `rag_trace.cost_attribution`
+4. **Leaderboard drift (optional)**: enforce min/max thresholds on top leaderboard rows
 
 All outputs are PII-safe by construction (numbers, hashes, low-cardinality labels).
 
@@ -24,6 +28,26 @@ The GitHub Actions workflow runs:
 
 Budgets live in:
 - `ci/release_gate_budgets.v1.json`
+
+Optional leaderboard gate config (in budgets JSON):
+
+```json
+{
+  "retrieval_leaderboard": {
+    "path": "runs/retrieval_ablation/leaderboard.json",
+    "policy": "fail",
+    "top_n": 1,
+    "thresholds": {
+      "retrieval_mrr": { "min": 0.60 },
+      "retrieval_hit_at_20": { "min": 0.90 }
+    }
+  }
+}
+```
+
+`policy` supports:
+- `fail`: violate threshold => process exits non-zero
+- `warn`: print warning and continue (useful for gradual rollout)
 
 ## Local / Staging Usage
 
@@ -66,6 +90,19 @@ python scripts/release_gate.py \
   --skip-regression
 ```
 
+With leaderboard drift gate (hard-fail mode):
+
+```bash
+python scripts/release_gate.py \
+  --base-url http://localhost:8000/api/v1 \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --user-id test-admin \
+  --budgets ci/release_gate_budgets.v1.json \
+  --retrieval-leaderboard runs/retrieval_ablation/leaderboard.json \
+  --retrieval-leaderboard-policy fail \
+  --skip-regression
+```
+
 If you want the script to generate a small amount of deterministic traffic (useful for CI/staging),
 provide a cases bundle and `--probe-chat-requests`:
 
@@ -85,3 +122,4 @@ python scripts/release_gate.py \
 - `AUTH_MODE=header`: use `--user-id` (and optionally `--tenant-id`).
 - `AUTH_MODE=jwt`: use `--bearer` (and `X-Tenant-ID` if your deployment requires it).
 - Probe traffic uses `retrieval_mode=keyword` and disables multi-query/alias/rerank to keep it deterministic.
+- Leaderboard gate prints metric-level threshold deltas in CI logs, e.g. `value`, `threshold`, `msg`.

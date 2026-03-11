@@ -1,0 +1,44 @@
+@base_url = http://localhost:8000
+@tenant_id = 00000000-0000-0000-0000-000000000001
+@user_id = local-dev-user
+
+### Retrieval profiles
+GET {{base_url}}/api/v1/retrieval/profiles
+X-Tenant-ID: {{tenant_id}}
+X-User-ID: {{user_id}}
+
+### Retrieval explain (single query, retrieval-only)
+POST {{base_url}}/api/v1/retrieval/explain
+Content-Type: application/json
+X-Tenant-ID: {{tenant_id}}
+X-User-ID: {{user_id}}
+
+{
+  "query": "解释一下 RAG 检索链路里 recall 的关键影响因素",
+  "retrieval_only": true,
+  "rag_config": {
+    "retrieval_profile": "recall50",
+    "retrieval_mode": "hybrid",
+    "top_k": 50,
+    "score_threshold": 0.0
+  }
+}
+
+### Retrieval config hash
+POST {{base_url}}/api/v1/retrieval/config-hash
+Content-Type: application/json
+X-Tenant-ID: {{tenant_id}}
+X-User-ID: {{user_id}}
+
+{
+  "rag_config": {
+    "retrieval_profile": "hybrid_ce",
+    "retrieval_mode": "hybrid",
+    "top_k": 20,
+    "enable_reranker": true,
+    "reranker_provider": "cross_encoder",
+    "reranker_top_n": 20
+  },
+  "include_runtime_defaults": true
+}
+

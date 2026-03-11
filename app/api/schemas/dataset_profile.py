@@ -75,6 +75,22 @@ class DatasetProfileFindingSummary(BaseModel):
     description: Optional[str] = None
 
 
+class DatasetProfileRecallRiskHint(BaseModel):
+    """
+    Best-effort recall-risk hints derived from lightweight profile signals.
+
+    Hints are advisory and must not block ingest/indexing.
+    """
+
+    key: str
+    label: str
+    severity: Literal["info", "warning", "error"] = "warning"
+    observed: Dict[str, Any] = Field(default_factory=dict)
+    target: Dict[str, Any] = Field(default_factory=dict)
+    message: Optional[str] = None
+    suggestions: List[str] = Field(default_factory=list)
+
+
 class DatasetProfileScanRunSummary(BaseModel):
     id: UUID
     kind: str = "deep"
@@ -143,6 +159,9 @@ class DatasetProfileSummary(BaseModel):
 
     # Actionable buckets.
     findings: List[DatasetProfileFindingSummary] = Field(default_factory=list)
+
+    # Retrieval recall-risk hints (best-effort; non-blocking).
+    recall_risk_hints: List[DatasetProfileRecallRiskHint] = Field(default_factory=list)
 
     # Target checks for chunk tuning (best-effort; may be empty when stats missing).
     chunk_targets: List[DatasetProfileTargetCheck] = Field(default_factory=list)

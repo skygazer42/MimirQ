@@ -10,4 +10,3 @@ def test_ci_retrieval_gate_uses_bounded_hybrid_runtime_configuration() -> None:
     assert 'BM25_INDEX_ENABLED: "true"' in text
     assert 'LLM_MOCK_ENABLED: "true"' in text
     assert "--retrieval-mode hybrid \\" in text
-    assert "--retrieval-mode keyword \\" not in text

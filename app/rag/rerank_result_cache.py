@@ -49,6 +49,68 @@ _META_ALLOWLIST = {
 _redis_client: Any | None = None
 
 
+def _normalize_provider(provider: str | None) -> str:
+    p = str(provider or "").strip().lower()
+    if p in {"cross-encoder", "sentence_transformers", "sentence-transformers"}:
+        return "cross_encoder"
+    if p in {"xgboost_ltr"}:
+        return "ltr"
+    if p in {"late_interaction"}:
+        return "colbert"
+    return p or "unknown"
+
+
+def _provider_version_signature(provider: str | None) -> dict[str, Any]:
+    """
+    Build low-cardinality provider-version signature for cache keying.
+
+    The signature intentionally excludes secrets and query/candidate text.
+    """
+    normalized = _normalize_provider(provider)
+    sig: dict[str, Any] = {"provider": normalized}
+
+    if normalized == "ltr":
+        sig.update(
+            {
+                "ltr_model_path": str(getattr(settings, "LTR_MODEL_PATH", "") or ""),
+                "ltr_manifest_path": str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or ""),
+                "ltr_feature_spec_version": int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1),
+            }
+        )
+        return sig
+
+    if normalized == "colbert":
+        sig.update(
+            {
+                "colbert_provider": str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic")
+                .strip()
+                .lower(),
+                "colbert_model_name": str(getattr(settings, "COLBERT_RERANK_MODEL_NAME", "") or ""),
+                "colbert_device": str(getattr(settings, "COLBERT_RERANK_DEVICE", "cpu") or "cpu").strip().lower(),
+                "colbert_batch_size": int(getattr(settings, "COLBERT_RERANK_BATCH_SIZE", 16) or 16),
+                "colbert_max_length": int(getattr(settings, "COLBERT_RERANK_MAX_LENGTH", 256) or 256),
+                "colbert_embed_dim": int(getattr(settings, "COLBERT_RERANK_EMBED_DIM", 64) or 64),
+            }
+        )
+        return sig
+
+    if normalized == "cross_encoder":
+        sig.update(
+            {
+                "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
+            }
+        )
+        return sig
+
+    sig.update(
+        {
+            "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
+            "reranker_api_base": str(getattr(settings, "RERANKER_API_BASE", "") or ""),
+        }
+    )
+    return sig
+
+
 def _normalize_meta_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
@@ -110,9 +172,10 @@ def build_evidence_post_rerank_cache_key(
     - `query` is hashed (not stored).
     - `tenant_id` / `account_id` are included only as hashed components (not stored).
     """
+    provider_norm = _normalize_provider(provider)
     sig = {
         "schema": str(schema or "").strip() or "mimirq.evidence_post_rerank_cache.v1",
-        "provider": str(provider or "").strip().lower() or "unknown",
+        "provider": provider_norm,
         "top_n": int(top_n or 0),
         "query_hash": stable_hash((query or "").strip(), length=16),
         "candidates": str(candidates_fingerprint or ""),
@@ -120,10 +183,8 @@ def build_evidence_post_rerank_cache_key(
         "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
         "tenant_hash": stable_hash(str(tenant_id or ""), length=16),
         "account_hash": stable_hash(str(account_id or ""), length=16),
-        # Include low-cardinality config knobs so cache doesn't cross incompatible deployments.
-        "ltr_model_path": str(getattr(settings, "LTR_MODEL_PATH", "") or ""),
-        "ltr_feature_spec_version": int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1),
-        "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
+        # Provider/model/spec identity so cache entries do not cross incompatible reranker versions.
+        "provider_version": _provider_version_signature(provider_norm),
     }
     raw = json.dumps(sig, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     digest = stable_hash(raw, length=32)

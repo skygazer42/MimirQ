@@ -20,7 +20,7 @@ LTR（Learning-to-Rank）用于把多个检索信号（dense/bm25/lexical/sparse
 ## 1) 特征规范（Feature Spec）
 
 特征顺序必须稳定（训练与推理一致）：
-- 见 `app/rag/reranker/ltr.py:LTRFeatureSpec.v1()/v2()`
+- 见 `app/rag/reranker/ltr.py:LTRFeatureSpec.v1()/v2()/v3()`
 
 ### v1（默认）
 
@@ -45,6 +45,22 @@ v2 在 v1 基础上加入一组低基数 KG 特征（用于把 KG 从 “召回�
 
 ```bash
 LTR_FEATURE_SPEC_VERSION=2
+```
+
+### v3（可选，强化排序关键特征）
+
+v3 在 v2 基础上加入融合后排序更敏感的信号：
+- `field_aware_boost`
+- `field_signal_title`
+- `field_signal_heading`
+- `keyword_max_score`
+- `vector_keyword_gap`
+- `multi_channel_hits`
+
+启用方式（必须与模型工件一致）：
+
+```bash
+LTR_FEATURE_SPEC_VERSION=3
 ```
 
 > 如果你修改了 feature spec，必须同时更新训练与推理侧，并通过回归测试锁住。

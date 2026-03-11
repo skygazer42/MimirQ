@@ -9,7 +9,7 @@ Keep this module pure and dependency-free so it can be used from:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 
 def safe_int(value: object, *, default: int = 0) -> int:
@@ -179,3 +179,128 @@ OVERLAP_WASTE_PCT_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("35-60%", 35, 60),
     HistogramBinSpec("60%+", 60, None),
 ]
+
+
+def _as_pct(numerator: int, denominator: int) -> int:
+    den = int(max(0, denominator))
+    if den <= 0:
+        return 0
+    num = int(max(0, numerator))
+    return int(round((num / den) * 100.0))
+
+
+def _risk_severity(*, pct: int, warn: int, error: int) -> str | None:
+    if int(pct) >= int(error):
+        return "error"
+    if int(pct) >= int(warn):
+        return "warning"
+    return None
+
+
+def build_recall_risk_hints(
+    *,
+    total_documents: int,
+    chunk_token_bins_by_label: Dict[str, int] | None,
+    chunk_token_total: int,
+    duplicate_like_docs: int,
+    low_density_docs: int,
+    parse_low_quality_docs: int,
+) -> List[dict[str, Any]]:
+    """
+    Build non-blocking recall-risk hints from dataset-profile aggregates.
+
+    The heuristics are intentionally lightweight and deterministic:
+    - short-chunk ratio from token histogram
+    - duplicate-like document ratio from chunk_quality_gate reason codes
+    - low text quality ratio from existing low-density/parse-quality counters
+    """
+
+    hints: List[dict[str, Any]] = []
+    total_docs = int(max(0, total_documents))
+    token_total = int(max(0, chunk_token_total))
+    by_label = dict(chunk_token_bins_by_label or {})
+
+    if token_total > 0:
+        short_cnt = int(max(0, by_label.get("0-50", 0))) + int(max(0, by_label.get("50-100", 0)))
+        short_pct = _as_pct(short_cnt, token_total)
+        sev = _risk_severity(pct=short_pct, warn=20, error=35)
+        if sev is not None:
+            hints.append(
+                {
+                    "key": "short_chunks_heavy",
+                    "label": "短 Chunk 占比偏高",
+                    "severity": sev,
+                    "observed": {
+                        "short_chunks": int(short_cnt),
+                        "total_chunks": int(token_total),
+                        "short_chunk_pct": int(short_pct),
+                    },
+                    "target": {"short_chunk_pct_warn": 20, "short_chunk_pct_error": 35},
+                    "message": f"短 chunk（<=100 tokens）占比 {short_pct}%，可能导致召回碎片化与排序不稳定。",
+                    "suggestions": [
+                        "提高 chunk_size 或降低切分强度，减少碎片化。",
+                        "优先使用结构化切分（如 markdown_header/outline）保持语义完整度。",
+                    ],
+                }
+            )
+
+    if total_docs > 0:
+        dup_docs = int(max(0, duplicate_like_docs))
+        dup_pct = _as_pct(dup_docs, total_docs)
+        sev = _risk_severity(pct=dup_pct, warn=10, error=25)
+        if sev is not None:
+            hints.append(
+                {
+                    "key": "low_lexical_diversity",
+                    "label": "词汇多样性偏低（重复风险）",
+                    "severity": sev,
+                    "observed": {
+                        "duplicate_docs": int(dup_docs),
+                        "total_documents": int(total_docs),
+                        "duplicate_docs_pct": int(dup_pct),
+                    },
+                    "target": {"duplicate_docs_pct_warn": 10, "duplicate_docs_pct_error": 25},
+                    "message": f"疑似重复/低多样性文档占比 {dup_pct}%，可能压缩有效召回空间。",
+                    "suggestions": [
+                        "检查 chunk_quality_gate 的 duplicate 相关原因项，优先治理重复段落。",
+                        "在入库链路启用重复段落去重或 near_dedup（按需）。",
+                    ],
+                }
+            )
+
+        quality_affected = int(max(0, low_density_docs)) + int(max(0, parse_low_quality_docs))
+        # Best-effort upper bound for potentially overlapping sets.
+        quality_affected = int(min(total_docs, quality_affected))
+        quality_pct = _as_pct(quality_affected, total_docs)
+        sev = _risk_severity(pct=quality_pct, warn=15, error=30)
+        if sev is not None:
+            hints.append(
+                {
+                    "key": "low_text_quality",
+                    "label": "低文本质量占比偏高",
+                    "severity": sev,
+                    "observed": {
+                        "affected_docs": int(quality_affected),
+                        "total_documents": int(total_docs),
+                        "affected_docs_pct": int(quality_pct),
+                        "low_density_docs": int(max(0, low_density_docs)),
+                        "parse_low_quality_docs": int(max(0, parse_low_quality_docs)),
+                    },
+                    "target": {"affected_docs_pct_warn": 15, "affected_docs_pct_error": 30},
+                    "message": f"低密度/低解析质量文档占比 {quality_pct}%，可能影响召回覆盖和相关性。",
+                    "suggestions": [
+                        "优先处理扫描件/OCR 路由与低质量解析文档。",
+                        "结合 dataset profile findings 做文件级回灌与重解析。",
+                    ],
+                }
+            )
+
+    sev_order = {"error": 2, "warning": 1, "info": 0}
+    hints.sort(
+        key=lambda h: (
+            -int(sev_order.get(str(h.get("severity") or "warning"), 1)),
+            -int((h.get("observed") or {}).get("short_chunk_pct", (h.get("observed") or {}).get("duplicate_docs_pct", 0)) or 0),
+            str(h.get("key") or ""),
+        )
+    )
+    return hints[:8]

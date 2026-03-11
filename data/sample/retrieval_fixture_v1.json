@@ -1,0 +1,87 @@
+{
+  "schema": "mimirq.sample_retrieval_fixture.v1",
+  "version": 1,
+  "defaults": {
+    "top_k": 5,
+    "retrieval_mode": "keyword"
+  },
+  "documents": [
+    {
+      "chunk_id": "chunk-k8s-rollout",
+      "document_id": "doc-platform",
+      "text": "Kubernetes deploys applications in Pods. Use kubectl apply for rollout.",
+      "metadata": {
+        "source": "platform.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-postgres-port",
+      "document_id": "doc-database",
+      "text": "PostgreSQL listens on port 5432 by default.",
+      "metadata": {
+        "source": "database.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-redis-policy",
+      "document_id": "doc-cache",
+      "text": "Redis allkeys-lru policy evicts least recently used keys.",
+      "metadata": {
+        "source": "cache.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-rrf-fusion",
+      "document_id": "doc-retrieval",
+      "text": "Reciprocal Rank Fusion combines ranked lists from vector and keyword channels.",
+      "metadata": {
+        "source": "retrieval.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-mmr-diversity",
+      "document_id": "doc-retrieval",
+      "text": "Maximal Marginal Relevance balances relevance and diversity to reduce duplicates.",
+      "metadata": {
+        "source": "retrieval.md",
+        "chunk_index": 1,
+        "pipeline_hash": "sample-v1"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "id": "q-k8s",
+      "question": "How do we rollout on Kubernetes with kubectl apply?",
+      "expected_chunk_ids": ["chunk-k8s-rollout"]
+    },
+    {
+      "id": "q-postgres-port",
+      "question": "What is the default PostgreSQL port?",
+      "expected_chunk_ids": ["chunk-postgres-port"]
+    },
+    {
+      "id": "q-redis-eviction",
+      "question": "Which Redis policy evicts least recently used keys?",
+      "expected_chunk_ids": ["chunk-redis-policy"]
+    },
+    {
+      "id": "q-rrf",
+      "question": "What does Reciprocal Rank Fusion combine?",
+      "expected_chunk_ids": ["chunk-rrf-fusion"]
+    },
+    {
+      "id": "q-mmr",
+      "question": "How does Maximal Marginal Relevance reduce duplicate context?",
+      "expected_chunk_ids": ["chunk-mmr-diversity"]
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+name: Retrieval Quality Regression
+description: Report retrieval recall/ranking regressions with reproducible artifacts.
+title: "[Retrieval Regression] "
+labels:
+  - retrieval
+  - regression
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a retrieval-quality regression.
+        Please include reproducible evidence so maintainers can triage quickly.
+  - type: input
+    id: query
+    attributes:
+      label: Repro Query
+      description: The exact query that reproduces the regression.
+      placeholder: "How does reciprocal rank fusion work?"
+    validations:
+      required: true
+  - type: input
+    id: dataset_scope
+    attributes:
+      label: Dataset Scope
+      description: Dataset ID or dataset key (do not include sensitive content).
+      placeholder: "dataset_id=11111111-2222-3333-4444-555555555555"
+    validations:
+      required: true
+  - type: input
+    id: retrieval_profile
+    attributes:
+      label: Retrieval Profile / Runtime Config
+      description: Retrieval profile and key knobs used (mode/top_k/reranker/fusion).
+      placeholder: "profile=hybrid_ce, mode=hybrid, top_k=20, reranker=ltr"
+    validations:
+      required: true
+  - type: textarea
+    id: expected_citations
+    attributes:
+      label: Expected Citations
+      description: Which chunks/docs should be retrieved, and why.
+      placeholder: |
+        Expected:
+        - doc-a/chunk-12 because it defines the exact API behavior
+        - doc-b/chunk-04 because it contains the version-specific caveat
+    validations:
+      required: true
+  - type: textarea
+    id: observed_citations
+    attributes:
+      label: Observed Citations
+      description: What was actually returned.
+      placeholder: |
+        Observed:
+        - doc-x/chunk-07
+        - doc-y/chunk-02
+    validations:
+      required: true
+  - type: textarea
+    id: regression_artifacts
+    attributes:
+      label: Regression Artifacts (Required)
+      description: Attach or link benchmark/trace artifacts (JSON preferred).
+      placeholder: |
+        Please attach at least one of:
+        - runs/sample_bench.json
+        - retrieval ablation summary
+        - evidence retrieve trace/metrics payload
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: Optional context, e.g. suspected commit/config change.
