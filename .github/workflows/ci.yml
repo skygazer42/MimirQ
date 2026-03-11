@@ -69,6 +69,94 @@ jobs:
       - name: Build web image
         run: docker build -t mimirq-web -f web/Dockerfile.prod web
 
+  retrieval-only-bounded-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+
+      - name: Run deterministic sample retrieval benchmark
+        env:
+          LLM_MOCK_ENABLED: "true"
+        run: |
+          mkdir -p artifacts
+          python scripts/run_sample_retrieval_benchmark.py \
+            --fixture data/sample/retrieval_fixture_v1.json \
+            --out artifacts/sample_retrieval_bench.json \
+            --retrieval-mode keyword \
+            --top-k 5
+
+      - name: Evaluate bounded retrieval-only gate (metric delta output)
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path("artifacts/sample_retrieval_bench.json").read_text(encoding="utf-8"))
+          cfg = json.loads(Path("ci/retrieval_thresholds.v2.json").read_text(encoding="utf-8"))
+          bounded = cfg.get("ci_retrieval_only_bounded_gate") if isinstance(cfg, dict) else {}
+          thresholds = bounded.get("thresholds") if isinstance(bounded, dict) else {}
+          summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+
+          failures = []
+          for metric, raw in (thresholds or {}).items():
+              if not isinstance(raw, dict):
+                  continue
+              try:
+                  value = float(summary.get(metric))
+              except Exception:
+                  value = None
+              if value is None:
+                  failures.append((metric, "missing", raw, None))
+                  continue
+              if "min" in raw:
+                  low = float(raw["min"])
+                  if value < low:
+                      failures.append((metric, value, {"min": low}, value - low))
+              if "max" in raw:
+                  high = float(raw["max"])
+                  if value > high:
+                      failures.append((metric, value, {"max": high}, value - high))
+
+          if failures:
+              print("[retrieval-only-bounded-gate] FAIL: threshold violation(s)", file=sys.stderr)
+              for metric, value, th, delta in failures:
+                  print(
+                      f"[retrieval-only-bounded-gate] metric={metric} value={value} threshold={th} delta={delta}",
+                      file=sys.stderr,
+                  )
+              raise SystemExit(1)
+
+          print("[retrieval-only-bounded-gate] PASS")
+          PY
+
+      - name: Upload bounded gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-only-bounded-gate
+          path: |
+            artifacts/sample_retrieval_bench.json
+            ci/retrieval_thresholds.v2.json
+
   retrieval-regression-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 30

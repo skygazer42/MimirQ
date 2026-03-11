@@ -51,6 +51,7 @@ from app.services.dataset_profile_utils import (
     OVERLAP_WASTE_PCT_BINS,
     PAGE_COUNT_BINS,
     TEXT_LENGTH_BINS,
+    build_recall_risk_hints,
     histogram,
     percentile_from_sorted,
     safe_bool,
@@ -416,6 +417,7 @@ def aggregate_profile_from_rows(
     # Findings counters.
     finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
     sha_counts: Counter[str] = Counter()
+    duplicate_like_docs = 0
 
     chunk_length_label_to_idx: dict[str, int] = {spec.label: i for i, spec in enumerate(CHUNK_LENGTH_BINS)}
     chunk_token_label_to_idx: dict[str, int] = {spec.label: i for i, spec in enumerate(CHUNK_TOKEN_BINS)}
@@ -540,6 +542,18 @@ def aggregate_profile_from_rows(
             grade = str(gate.get("grade") or "").strip().lower()
             if grade == "fail":
                 finding_counts["chunk_quality_fail"] += 1
+            reason_items = gate.get("reason_items")
+            if isinstance(reason_items, list):
+                has_duplicate_reason = False
+                for it in reason_items:
+                    if not isinstance(it, dict):
+                        continue
+                    code = str(it.get("code") or "").strip().lower()
+                    if code in {"many_duplicates", "too_many_duplicates"}:
+                        has_duplicate_reason = True
+                        break
+                if has_duplicate_reason:
+                    duplicate_like_docs += 1
 
         # Language mix (best-effort).
         language_counts[extract_language_bucket(meta_dict)] += 1
@@ -794,6 +808,19 @@ def aggregate_profile_from_rows(
         "mixed": int(language_counts.get("mixed", 0) or 0),
         "unknown": int(language_counts.get("unknown", 0) or 0),
     }
+
+    chunk_token_bins_by_label: dict[str, int] = {}
+    for spec, cnt in zip(CHUNK_TOKEN_BINS, chunk_token_bins, strict=False):
+        chunk_token_bins_by_label[str(spec.label)] = int(cnt or 0)
+
+    recall_risk_hints_out = build_recall_risk_hints(
+        total_documents=int(sum(by_status.values())),
+        chunk_token_bins_by_label=chunk_token_bins_by_label,
+        chunk_token_total=int(chunk_token_total or 0),
+        duplicate_like_docs=int(duplicate_like_docs),
+        low_density_docs=int(finding_counts.get("low_density", 0) or 0),
+        parse_low_quality_docs=int(finding_counts.get("parse_low_quality", 0) or 0),
+    )
 
     # Findings list in stable order.
     findings_out: List[DatasetProfileFindingSummary] = []
@@ -1063,6 +1090,7 @@ def aggregate_profile_from_rows(
         pii_hits_total={k: int(v) for k, v in pii_totals.items()},
         secrets_hits_total={k: int(v) for k, v in secrets_totals.items()},
         findings=findings_out,
+        recall_risk_hints=recall_risk_hints_out,
         chunk_targets=chunk_targets_out,
         latest_scan_run=latest_scan_run,
     )

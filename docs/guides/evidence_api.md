@@ -213,3 +213,4 @@ Cache notes:
 - `memory` keeps the post-rerank cache process-local and is suitable for single-replica deployments.
 - `redis` uses the shared Redis cluster configured by `REDIS_URL`, which keeps cache hits valid across API replicas.
 - Cache keys are PII-safe stable hashes; values store only ordered chunk ids plus numeric scores.
+- Cache keys also include provider-specific version identity (for example LTR model/manifest/spec or ColBERT mode/model/device), preventing stale cross-version reuse.

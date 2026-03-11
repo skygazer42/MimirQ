@@ -4116,6 +4116,10 @@ class HybridRetriever(BaseRetriever):
                 meta["lexical_score"] = r.get("lexical_score")
             if "sparse_score" in r:
                 meta["sparse_score"] = r.get("sparse_score")
+            if "field_aware_signal" in r:
+                meta["field_aware_signal"] = r.get("field_aware_signal")
+            if "field_aware_boost" in r:
+                meta["field_aware_boost"] = r.get("field_aware_boost")
             if "keyword_score" in r:
                 meta["keyword_score"] = r.get("keyword_score")
             if "rerank_score" in r:
@@ -4532,22 +4536,18 @@ class HybridRetriever(BaseRetriever):
                     except Exception:
                         pass
 
-        # Best-effort: expose near-dedup info in retriever_debug.channels for diagnostics.
+        # Best-effort: expose dedup controls/impact in retriever_debug.channels for diagnostics.
+        # Important: emit near-dedup fields even when disabled to avoid "hidden filtering" ambiguity.
         try:
-            if near_enabled and isinstance(self._last_channel_metrics, dict):
+            if isinstance(self._last_channel_metrics, dict):
                 dedup_meta = self._last_channel_metrics.get("dedup")
                 if not isinstance(dedup_meta, dict):
                     dedup_meta = {}
                     self._last_channel_metrics["dedup"] = dedup_meta
-                dedup_meta["near_dedup_enabled"] = True
+                dedup_meta["near_dedup_enabled"] = bool(near_enabled)
                 dedup_meta["near_dedup_dropped"] = int(dropped_near)
                 dedup_meta["near_dedup_hamming_threshold"] = int(near_thr)
                 dedup_meta["near_dedup_max_compare"] = int(near_max_compare)
-            if dropped_content_hash and isinstance(self._last_channel_metrics, dict):
-                dedup_meta = self._last_channel_metrics.get("dedup")
-                if not isinstance(dedup_meta, dict):
-                    dedup_meta = {}
-                    self._last_channel_metrics["dedup"] = dedup_meta
                 dedup_meta["content_hash_dropped"] = int(dropped_content_hash)
         except Exception:
             pass
@@ -4718,7 +4718,41 @@ class HybridRetriever(BaseRetriever):
         lexical_results = list(lexical_results or [])
         sparse_results = list(sparse_results or [])
 
-        def normalize(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        field_aware_enabled = bool(getattr(settings, "RETRIEVAL_FIELD_AWARE_RECALL_ENABLED", False))
+        field_aware_title_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST", 0.08) or 0.0))
+        field_aware_heading_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.05) or 0.0))
+        field_aware_max_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.10) or 0.0))
+        field_aware_title_boost = min(field_aware_title_boost, field_aware_max_boost)
+        field_aware_heading_boost = min(field_aware_heading_boost, field_aware_max_boost)
+
+        def _resolve_field_signal(result: Dict[str, Any]) -> str:
+            meta = result.get("metadata") or {}
+            hinted = str(
+                meta.get("embedding_field_role")
+                or meta.get("embedding_field_kind")
+                or meta.get("field_channel")
+                or ""
+            ).strip().lower()
+            if hinted in {"title", "heading", "body"}:
+                return hinted
+
+            chunk_id = str(result.get("chunk_id") or meta.get("chunk_id") or "").strip().lower()
+            if chunk_id.endswith(":title"):
+                return "title"
+            if chunk_id.endswith(":heading"):
+                return "heading"
+            return "body"
+
+        def _field_boost(field_signal: str) -> float:
+            if not field_aware_enabled:
+                return 0.0
+            if field_signal == "title":
+                return field_aware_title_boost
+            if field_signal == "heading":
+                return field_aware_heading_boost
+            return 0.0
+
+        def normalize(results: List[Dict[str, Any]], *, channel: str) -> Dict[str, Dict[str, Any]]:
             if not results:
                 return {}
             scores = [r.get("score", 0.0) for r in results]
@@ -4729,18 +4763,57 @@ class HybridRetriever(BaseRetriever):
             for r in results:
                 key = self._result_key(r)
                 norm_score = (r.get("score", 0.0) - min_score) / rng
+                field_signal = "body"
+                field_boost = 0.0
+                if channel == "vector":
+                    field_signal = _resolve_field_signal(r)
+                    field_boost = min(_field_boost(field_signal), field_aware_max_boost)
+                scored = float(norm_score) + float(field_boost)
                 existing = out.get(key)
-                if existing is None or float(norm_score) > float(existing.get("score", 0.0) or 0.0):
+                if existing is None or float(scored) > float(existing.get("score", 0.0) or 0.0):
                     out[key] = {
-                        "score": float(norm_score),
+                        "score": float(scored),
+                        "base_score": float(norm_score),
                         "data": r,
+                        "field_aware_signal": field_signal if channel == "vector" else None,
+                        "field_aware_boost": float(field_boost if channel == "vector" else 0.0),
                     }
             return out
 
-        vector_norm = normalize(vector_results)
-        bm25_norm = normalize(bm25_results)
-        lexical_norm = normalize(lexical_results)
-        sparse_norm = normalize(sparse_results)
+        vector_norm = normalize(vector_results, channel="vector")
+        bm25_norm = normalize(bm25_results, channel="bm25")
+        lexical_norm = normalize(lexical_results, channel="lexical")
+        sparse_norm = normalize(sparse_results, channel="sparse")
+
+        def _attach_field_aware_signal(item: Dict[str, Any], key: str) -> None:
+            field_signal = vector_norm.get(key, {}).get("field_aware_signal")
+            field_boost = float(vector_norm.get(key, {}).get("field_aware_boost") or 0.0)
+            if field_signal:
+                item["field_aware_signal"] = str(field_signal)
+            if field_boost > 0.0:
+                item["field_aware_boost"] = float(field_boost)
+
+        try:
+            if isinstance(self._last_channel_metrics, dict):
+                field_signal_counts: Counter[str] = Counter()
+                boosted = 0
+                for payload in vector_norm.values():
+                    signal = str(payload.get("field_aware_signal") or "body").strip().lower() or "body"
+                    field_signal_counts[signal] += 1
+                    if float(payload.get("field_aware_boost") or 0.0) > 0.0:
+                        boosted += 1
+
+                self._last_channel_metrics["field_aware"] = {
+                    "enabled": bool(field_aware_enabled),
+                    "title_boost": round(float(field_aware_title_boost), 6),
+                    "heading_boost": round(float(field_aware_heading_boost), 6),
+                    "max_boost": round(float(field_aware_max_boost), 6),
+                    "candidates": int(len(vector_norm)),
+                    "boosted_candidates": int(boosted),
+                    "signals": dict(sorted((str(k), int(v)) for k, v in field_signal_counts.items())),
+                }
+        except Exception:
+            pass
 
         fusion = (fusion_strategy or "linear").lower().strip()
         if fusion in ("rrf", "reciprocal_rank_fusion"):
@@ -4832,6 +4905,7 @@ class HybridRetriever(BaseRetriever):
                     "fusion_strategy": "rrf",
                     "score": float(rrf_raw),
                 }
+                _attach_field_aware_signal(merged[key], key)
 
             if merged:
                 min_s = min(raw_scores) if raw_scores else 0.0
@@ -5018,6 +5092,7 @@ class HybridRetriever(BaseRetriever):
                     "fusion_strategy": "budgeted_rrf",
                     "score": float(rrf_raw),
                 }
+                _attach_field_aware_signal(merged[key], key)
 
             if merged:
                 min_s = min(raw_scores) if raw_scores else 0.0
@@ -5202,6 +5277,7 @@ class HybridRetriever(BaseRetriever):
                         "fusion_strategy": "weighted",
                         "score": float(fused_score),
                     }
+                    _attach_field_aware_signal(merged[key], key)
 
                 # Best-effort: surface weights used into retriever_debug.channels for diagnostics.
                 try:
@@ -5281,6 +5357,7 @@ class HybridRetriever(BaseRetriever):
                 "fusion_strategy": "linear",
                 "score": fused_score,
             }
+            _attach_field_aware_signal(merged[key], key)
 
         def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, str]:
             return (

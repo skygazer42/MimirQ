@@ -9,6 +9,8 @@
 ## 使用指南
 - [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：当前纯 LangChain RAG 架构说明与迁移记录。
 - [guides/rag_optimization.md](./guides/rag_optimization.md)：检索效果与回答质量优化方案。
+- [guides/retrieval_debugging.md](./guides/retrieval_debugging.md)：检索质量排障 cookbook（召回/重排/缓存路径定位）。
+- [examples/retrieval_api_examples.md](./examples/retrieval_api_examples.md)：检索 API 示例（profiles / explain / config-hash + 回归/消融 CLI）。
 - [guides/lexical_fallback.md](./guides/lexical_fallback.md)：Lexical fallback（Postgres FTS + pg_trgm）配置、索引与可观测性。
 - [guides/knowledge_graph.md](./guides/knowledge_graph.md)：知识图谱（KG）的开启、抽取、可视化与导出。
 - [guides/explainability_workflows.md](./guides/explainability_workflows.md)：可解释性工作台使用工作流（检索/KG/入库/报告串联）。
@@ -34,6 +36,7 @@
 
 ## 优化与审计
 - [guides/regression_gate.md](./guides/regression_gate.md)：离线评测回归（Retrieval gate / RAGAS / CI）。
+- [guides/retrieval_release_notes.md](./guides/retrieval_release_notes.md)：检索质量发布说明模板（hit@k/mrr/ndcg + artifact 链接）。
 - [guides/evaluation_maturity_model.md](./guides/evaluation_maturity_model.md)：评测成熟度模型（从手工 QA → CI 门禁 → 持续评测）。
 - 数据画像（Web）：`/datasets/{id}/profile`（入库后画像）
 - 预检扫描（Web）：`/datasets/{id}/precheck`（入库前摸底）

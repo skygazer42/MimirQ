@@ -484,6 +484,35 @@ def render_dataset_report_html(
         else '<div class="empty">暂无数据</div>'
     )
 
+    # Retrieval recall-risk hints (best-effort; from profile.recall_risk_hints).
+    recall_risk_hints = prof.get("recall_risk_hints") if isinstance(prof.get("recall_risk_hints"), list) else []
+    rrh_rows: list[str] = []
+    for h in recall_risk_hints:
+        if not isinstance(h, dict):
+            continue
+        label = str(h.get("label") or h.get("key") or "").strip() or "unknown"
+        severity = str(h.get("severity") or "").strip() or "warning"
+        msg = str(h.get("message") or "").strip()
+        observed = h.get("observed") if isinstance(h.get("observed"), dict) else {}
+        observed_str = ", ".join(
+            [f"{str(k)}={str(v)}" for k, v in sorted(observed.items(), key=lambda kv: str(kv[0] or ""))[:6]]
+        )[:220]
+        rrh_rows.append(
+            "<tr>"
+            f"<td class=\"k\">{escape(label)}</td>"
+            f"<td class=\"v\">{escape(severity)}</td>"
+            f"<td class=\"v\">{escape(observed_str)}</td>"
+            f"<td class=\"v\">{escape(msg)}</td>"
+            "</tr>"
+        )
+    recall_risk_table = (
+        "<table class=\"bars\"><thead><tr><th>Hint</th><th>Severity</th><th>Observed</th><th>Message</th></tr></thead><tbody>"
+        + "".join(rrh_rows)
+        + "</tbody></table>"
+        if rrh_rows
+        else '<div class="empty">暂无数据</div>'
+    )
+
     comp = report.get("compliance") if isinstance(report, dict) else None
     compd = comp if isinstance(comp, dict) else {}
     quarantined = int(compd.get("quarantined_documents") or 0)
@@ -809,6 +838,11 @@ def render_dataset_report_html(
 	    <div class="section">
 	      <h2>Chunk Targets（分布目标检查）</h2>
 	      {chunk_targets_table}
+	    </div>
+
+	    <div class="section">
+	      <h2>召回风险摘要（Recall Risk Hints）</h2>
+	      {recall_risk_table}
 	    </div>
 
 	    <div class="section two">

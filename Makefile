@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite ps ps-lite logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -26,6 +26,7 @@ COMPOSE_PARSERS := docker compose -f docker/docker-compose.yml -f docker/docker-
 COMPOSE_INFRA_PARSERS := docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml
 COMPOSE_WEB := docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml
 COMPOSE_LITE := docker compose -f docker/docker-compose.lite.yml
+COMPOSE_RETRIEVAL_DEV := docker compose -f docker/docker-compose.retrieval-dev.yml
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -33,6 +34,7 @@ help:
 	@echo "  make up        - docker compose up (build + detach)"
 	@echo "  make up-web    - docker compose up + frontend (extra compose file)"
 	@echo "  make up-lite   - docker compose up (lite: no milvus/minio; chroma by default)"
+	@echo "  make up-retrieval-dev - start minimal retrieval-only stack (postgres+redis+api; no parser services)"
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make up-marker - docker compose up + Marker parser (profile marker)"
 	@echo "  make up-paddlevl - docker compose up + PaddleOCR-VL parser (profile paddlevl)"
@@ -51,7 +53,9 @@ help:
 	@echo "  make infra-ps  - infra docker compose ps"
 	@echo "  make infra-down - stop infra only"
 	@echo "  make down      - docker compose down"
+	@echo "  make down-retrieval-dev - stop retrieval-dev compose stack"
 	@echo "  make ps        - docker compose ps"
+	@echo "  make ps-retrieval-dev - retrieval-dev docker compose ps"
 	@echo "  make logs      - docker compose logs -f"
 	@echo "  make restart   - docker compose restart mimirq-api"
 	@echo "  make backend   - run backend locally (uvicorn --reload)"
@@ -80,6 +84,7 @@ help:
 	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
 	@echo "  make enterprise-checks - verify + backend/web tests (CI-like)"
 	@echo "  make parser-status - print parser backend availability"
+	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
 	@echo "  make helm-template - helm template smoke (deploy/helm/mimirq)"
 	@echo "  make helm-lint  - helm lint (deploy/helm/mimirq)"
 	@echo "  make clean     - remove local caches"
@@ -98,6 +103,9 @@ up-web:
 
 up-lite:
 	$(COMPOSE_LITE) up -d --build
+
+up-retrieval-dev:
+	$(COMPOSE_RETRIEVAL_DEV) up -d --build
 
 up-etl4llm:
 	$(COMPOSE_PARSERS) --profile etl4llm up -d --build
@@ -156,11 +164,17 @@ down:
 down-lite:
 	$(COMPOSE_LITE) down
 
+down-retrieval-dev:
+	$(COMPOSE_RETRIEVAL_DEV) down
+
 ps:
 	$(COMPOSE) ps
 
 ps-lite:
 	$(COMPOSE_LITE) ps
+
+ps-retrieval-dev:
+	$(COMPOSE_RETRIEVAL_DEV) ps
 
 logs:
 	$(COMPOSE) logs -f --tail=200
@@ -185,6 +199,9 @@ perf-smoke:
 
 parser-status:
 	$(PY) scripts/check_parsers.py
+
+check-retrieval-profile-compat:
+	$(PY) scripts/check_retrieval_profile_compat.py
 
 compose-diagnostics:
 	$(PY) scripts/compose_diagnostics.py

@@ -148,3 +148,21 @@ python scripts/regression_gate.py \
   "route": "/api/v1/rag/retrieve"
 }
 ```
+
+## 9) 季度 Retrieval Debt Audit
+
+用于持续跟踪“长期但不紧急”的检索质量债务（阈值老化、flaky 信号、profile 风险、TODO 热点）：
+
+```bash
+python scripts/generate_retrieval_debt_audit.py --out runs/retrieval_debt_audit.md
+```
+
+建议制度化节奏：
+
+- Cadence：每季度至少 1 次（建议季度首月第一周）。
+- Owner：检索负责人（主责）+ 当季 oncall（共评）。
+- Artifact：产出 `runs/retrieval_debt_audit.md` 并在迭代计划中登记处理项。
+
+模板位置：
+
+- `docs/templates/retrieval_debt_audit_template.md`

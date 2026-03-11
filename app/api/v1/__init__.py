@@ -34,6 +34,9 @@ from app.api.v1 import (
     ragviz,
     rbac,
     reports,
+    retrieval_config_hash,
+    retrieval_explain,
+    retrieval_profiles,
     scim,
     settings,
     usage,
@@ -67,6 +70,9 @@ router.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
 router.include_router(connectors.router, prefix="/connectors", tags=["Connectors"])
 router.include_router(ingestion_runs.router, prefix="/ingestion", tags=["Ingestion Runs"])
 router.include_router(rag.router, prefix="/rag", tags=["RAG"])
+router.include_router(retrieval_profiles.router, prefix="/retrieval", tags=["Retrieval"])
+router.include_router(retrieval_explain.router, prefix="/retrieval", tags=["Retrieval"])
+router.include_router(retrieval_config_hash.router, prefix="/retrieval", tags=["Retrieval"])
 router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])
 router.include_router(groups.router, prefix="/groups", tags=["Groups"])
 router.include_router(rbac.router, prefix="/rbac", tags=["RBAC"])

@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    raw = path.read_text(encoding="utf-8")
+    obj = json.loads(raw)
+    if not isinstance(obj, dict):
+        raise ValueError(f"JSON root must be object: {path}")
+    return obj
+
+
+def _resolve_profile_hash(*, args: argparse.Namespace, benchmark: dict[str, Any]) -> str:
+    from app.rag.core.hashing import stable_hash
+
+    explicit = str(args.profile_hash or "").strip()
+    if explicit:
+        return explicit
+
+    from_bench = str(benchmark.get("profile_hash") or "").strip()
+    if from_bench:
+        return from_bench
+
+    if args.profile_json:
+        payload = Path(args.profile_json).read_text(encoding="utf-8")
+        return stable_hash(payload, length=24)
+
+    seed = json.dumps(
+        {
+            "retrieval_mode": str(benchmark.get("retrieval_mode") or ""),
+            "top_k": int(benchmark.get("top_k") or 0),
+            "fixture_hash": str(benchmark.get("fixture_hash") or ""),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return stable_hash(seed, length=24)
+
+
+def run(
+    *,
+    benchmark_report: Path,
+    out: Path,
+    history: Path | None,
+    profile_hash: str | None,
+    profile_json: Path | None,
+    max_history: int,
+    cron: bool,
+) -> dict[str, Any]:
+    from app.services.queryset_health_service import (
+        build_queryset_health_snapshot,
+        load_queryset_health_history,
+        update_queryset_health_history,
+        write_queryset_health_history,
+    )
+
+    bench = _load_json(benchmark_report)
+    args_obj = argparse.Namespace(profile_hash=profile_hash, profile_json=str(profile_json) if profile_json else None)
+    resolved_profile_hash = _resolve_profile_hash(args=args_obj, benchmark=bench)
+
+    prev = None
+    hist_rows: list[dict[str, Any]] = []
+    if history is not None:
+        hist_rows = load_queryset_health_history(history)
+        if hist_rows:
+            prev = hist_rows[-1]
+
+    snapshot = build_queryset_health_snapshot(
+        benchmark_report=bench,
+        profile_hash=resolved_profile_hash,
+        previous_snapshot=prev,
+    )
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if history is not None:
+        updated = update_queryset_health_history(history=hist_rows, current=snapshot, max_items=max_history)
+        write_queryset_health_history(history, updated)
+
+    if cron:
+        print(
+            json.dumps(
+                {
+                    "schema": snapshot.get("schema"),
+                    "status": snapshot.get("status"),
+                    "degradation_flags": snapshot.get("degradation_flags"),
+                    "profile_hash": snapshot.get("profile_hash"),
+                    "out": str(out),
+                },
+                ensure_ascii=False,
+            )
+        )
+    else:
+        print(f"[queryset-health] status={snapshot.get('status')} out={out} profile_hash={snapshot.get('profile_hash')}")
+
+    return snapshot
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description="Run query-set health diagnostics from a benchmark report")
+    p.add_argument("--benchmark-report", required=True, help="Path to benchmark report JSON")
+    p.add_argument("--out", required=True, help="Output path for health snapshot JSON")
+    p.add_argument(
+        "--history",
+        default="runs/queryset_health/history.jsonl",
+        help="History JSONL path for trend tracking (set empty to disable)",
+    )
+    p.add_argument("--profile-hash", default="", help="Explicit retrieval profile hash")
+    p.add_argument("--profile-json", default="", help="Optional profile config JSON used to derive profile hash")
+    p.add_argument("--max-history", type=int, default=90, help="Max history snapshots to keep")
+    p.add_argument("--cron", action="store_true", help="Emit compact machine-readable summary line")
+    args = p.parse_args(argv)
+
+    try:
+        history_path = Path(args.history) if str(args.history or "").strip() else None
+        profile_json_path = Path(args.profile_json) if str(args.profile_json or "").strip() else None
+        run(
+            benchmark_report=Path(args.benchmark_report),
+            out=Path(args.out),
+            history=history_path,
+            profile_hash=str(args.profile_hash or "").strip() or None,
+            profile_json=profile_json_path,
+            max_history=int(args.max_history or 90),
+            cron=bool(args.cron),
+        )
+    except Exception as exc:
+        print(f"[queryset-health] failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

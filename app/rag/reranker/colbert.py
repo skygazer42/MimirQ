@@ -78,11 +78,18 @@ class _HFTokenEmbedder(TokenEmbedder):
 
         dev = str(device or "cpu").strip().lower() or "cpu"
         if dev not in {"cpu", "cuda", "auto"}:
-            dev = "cpu"
+            raise ValueError("HF ColBERT reranker device must be one of: cpu, cuda, auto")
 
         self._device = dev
-        self._batch_size = max(1, int(batch_size or 0))
-        self._max_length = max(8, int(max_length or 0))
+        bs = int(batch_size or 0)
+        if bs < 1 or bs > 256:
+            raise ValueError("HF ColBERT reranker batch_size must be within [1, 256]")
+        self._batch_size = bs
+
+        ml = int(max_length or 0)
+        if ml < 8 or ml > 2048:
+            raise ValueError("HF ColBERT reranker max_length must be within [8, 2048]")
+        self._max_length = ml
         self._lock = threading.Lock()
         self._tokenizer = None
         self._model = None

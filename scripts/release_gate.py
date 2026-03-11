@@ -489,6 +489,88 @@ def _gate_cost(*, summary: dict[str, Any], budgets: dict[str, Any]) -> tuple[lis
     return violations, notes, computed
 
 
+def _leaderboard_rows(obj: Any) -> list[dict[str, Any]]:
+    if isinstance(obj, dict):
+        rows = obj.get("rows")
+        if isinstance(rows, list):
+            return [r for r in rows if isinstance(r, dict)]
+        return []
+    if isinstance(obj, list):
+        return [r for r in obj if isinstance(r, dict)]
+    return []
+
+
+def _gate_retrieval_leaderboard(
+    *,
+    leaderboard: Any,
+    cfg: dict[str, Any],
+) -> tuple[list[GateViolation], list[str], dict[str, Any]]:
+    """
+    Gate retrieval leaderboard artifact against minimum/maximum thresholds.
+
+    Supported leaderboard shapes:
+    - {"rows":[{...}]}
+    - [{...}]
+    """
+
+    rows = _leaderboard_rows(leaderboard)
+    policy = _policy((cfg or {}).get("policy"), default="fail")
+    top_n = int((cfg or {}).get("top_n") or 1)
+    top_n = max(1, min(top_n, max(1, len(rows))))
+    thresholds = normalize_thresholds((cfg or {}).get("thresholds"))
+
+    violations: list[GateViolation] = []
+    notes: list[str] = []
+    observed: dict[str, Any] = {"policy": policy, "rows_total": int(len(rows)), "top_n": int(top_n)}
+
+    if not rows:
+        msg = "missing leaderboard rows"
+        violations.append(
+            GateViolation(
+                area="retrieval_leaderboard",
+                metric="rows",
+                value=None,
+                threshold={"min": 1.0},
+                message=msg,
+            )
+        )
+        if policy == "warn":
+            notes.append(f"[release_gate] WARN: {msg}")
+        return violations, notes, observed
+
+    if not thresholds:
+        return violations, notes, observed
+
+    # Use the best row among top_n candidates by retrieval_mrr (fallback to first row).
+    candidates = rows[:top_n]
+
+    def _row_score(row: dict[str, Any]) -> float:
+        v = _safe_float(row.get("retrieval_mrr"))
+        return float(v) if v is not None else -1.0
+
+    best = sorted(candidates, key=_row_score, reverse=True)[0]
+    observed["label"] = str(best.get("label") or "")
+    observed["run_id"] = str(best.get("run_id") or "")
+
+    for metric, threshold in thresholds.items():
+        val = _safe_float(best.get(metric))
+        viol = _check_threshold(
+            area="retrieval_leaderboard",
+            metric=metric,
+            value=val,
+            threshold=threshold,
+        )
+        if viol is None:
+            continue
+        violations.append(viol)
+        if policy == "warn":
+            notes.append(
+                f"[release_gate] WARN: retrieval_leaderboard.{metric}: value={viol.value} threshold={threshold} msg={viol.message}"
+            )
+
+    return violations, notes, observed
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Release gate: regression + SLO + cost budgets.")
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base url (default: %(default)s)")
@@ -516,6 +598,14 @@ def main() -> int:
     p.add_argument("--probe-window-minutes", type=int, default=60, help="Metrics window to poll for probe (default: %(default)s)")
     p.add_argument("--probe-poll-sec", type=float, default=0.25, help="Poll interval while waiting for metrics flush (default: %(default)s)")
     p.add_argument("--probe-timeout-sec", type=float, default=15.0, help="Timeout waiting for metrics flush (default: %(default)s)")
+
+    # Optional retrieval leaderboard drift gate.
+    p.add_argument("--retrieval-leaderboard", default="", help="Leaderboard JSON artifact path (optional)")
+    p.add_argument(
+        "--retrieval-leaderboard-policy",
+        default="",
+        help="Override retrieval leaderboard policy (warn|fail). Empty uses budgets file.",
+    )
 
     p.add_argument("--out-report", default="", help="Write a JSON report to a file (optional)")
 
@@ -560,6 +650,7 @@ def main() -> int:
         "probe": {},
         "slo": {},
         "cost": {},
+        "retrieval_leaderboard": {},
         "violations": [],
         "notes": [],
     }
@@ -633,6 +724,48 @@ def main() -> int:
         notes.extend(cost_notes)
         report["cost"] = {"summary": cost_summary, "computed": computed}
 
+    # Optional retrieval leaderboard drift gate.
+    lb_cfg = budgets.get("retrieval_leaderboard") if isinstance(budgets.get("retrieval_leaderboard"), dict) else {}
+    if args.retrieval_leaderboard:
+        lb_cfg = dict(lb_cfg or {})
+        lb_cfg["path"] = str(args.retrieval_leaderboard)
+    if args.retrieval_leaderboard_policy:
+        lb_cfg = dict(lb_cfg or {})
+        lb_cfg["policy"] = str(args.retrieval_leaderboard_policy)
+
+    if isinstance(lb_cfg, dict) and lb_cfg:
+        lb_path_text = str(lb_cfg.get("path") or "").strip()
+        if lb_path_text:
+            lb_path = Path(lb_path_text)
+            if not lb_path.exists():
+                violations.append(
+                    GateViolation(
+                        area="retrieval_leaderboard",
+                        metric="artifact_path",
+                        value=None,
+                        threshold={},
+                        message=f"leaderboard artifact not found: {lb_path}",
+                    )
+                )
+            else:
+                lb_obj = _load_json(lb_path)
+                lb_violations, lb_notes, lb_observed = _gate_retrieval_leaderboard(
+                    leaderboard=lb_obj,
+                    cfg=lb_cfg,
+                )
+                policy = _policy(lb_cfg.get("policy"), default="fail")
+                report["retrieval_leaderboard"] = {
+                    "path": str(lb_path),
+                    "policy": policy,
+                    "observed": lb_observed,
+                }
+                if policy == "warn":
+                    notes.extend(lb_notes)
+                else:
+                    violations.extend(lb_violations)
+        else:
+            report["retrieval_leaderboard"] = {"policy": _policy(lb_cfg.get("policy"), default="fail"), "observed": {}}
+
     report["notes"] = notes
     report["violations"] = [
         {
@@ -651,6 +784,9 @@ def main() -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(out_path, report)
 
+    for n in notes:
+        print(str(n), file=sys.stderr)
+
     if not violations:
         print("[release_gate] PASS")
         return 0
@@ -668,4 +804,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

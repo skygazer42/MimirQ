@@ -83,11 +83,36 @@ class LTRFeatureSpec:
         return LTRFeatureSpec(schema="mimirq.ltr_features.v2", feature_names=tuple(base))
 
     @staticmethod
+    def v3() -> "LTRFeatureSpec":
+        """
+        Feature spec v3: v2 + ranking-critical fusion/field-aware signals.
+
+        Added signals:
+        - field_aware_boost / field_signal_*: retrieval-time field-aware recall hints.
+        - keyword_max_score / vector_keyword_gap: dense-vs-keyword agreement/conflict signal.
+        - multi_channel_hits: channel support count (vector/bm25/lexical/sparse).
+        """
+        base = list(LTRFeatureSpec.v2().feature_names)
+        base.extend(
+            [
+                "field_aware_boost",
+                "field_signal_title",
+                "field_signal_heading",
+                "keyword_max_score",
+                "vector_keyword_gap",
+                "multi_channel_hits",
+            ]
+        )
+        return LTRFeatureSpec(schema="mimirq.ltr_features.v3", feature_names=tuple(base))
+
+    @staticmethod
     def from_version(version: int | str | None) -> "LTRFeatureSpec":
         try:
             v = int(version) if version is not None else 1
         except Exception:
             v = 1
+        if v >= 3:
+            return LTRFeatureSpec.v3()
         if v >= 2:
             return LTRFeatureSpec.v2()
         return LTRFeatureSpec.v1()
@@ -170,13 +195,39 @@ def extract_ltr_features(*, spec: LTRFeatureSpec, query: str, candidate: RerankC
     role = meta.get("retrieval_role")
     role_oh = _role_one_hot(str(role) if role is not None else None)
 
+    vector_score = _as_float(meta.get("vector_score"))
+    bm25_score = _as_float(meta.get("bm25_score"))
+    lexical_score = _as_float(meta.get("lexical_score"))
+    sparse_score = _as_float(meta.get("sparse_score"))
     base_score = _as_float(meta.get("score"))
+
+    field_aware_boost = _as_float(meta.get("field_aware_boost"))
+    field_signal = str(meta.get("field_aware_signal") or "").strip().lower()
+    field_signal_title = 1.0 if field_signal == "title" else 0.0
+    field_signal_heading = 1.0 if field_signal == "heading" else 0.0
+
+    keyword_max_score = max(float(bm25_score), float(lexical_score), float(sparse_score))
+    vector_keyword_gap = float(vector_score) - float(keyword_max_score)
+    multi_channel_hits = float(
+        sum(
+            1
+            for s in (vector_score, bm25_score, lexical_score, sparse_score)
+            if float(s) > 0.0
+        )
+    )
+
     f_map: dict[str, float] = {
-        "vector_score": _as_float(meta.get("vector_score")),
-        "bm25_score": _as_float(meta.get("bm25_score")),
-        "lexical_score": _as_float(meta.get("lexical_score")),
-        "sparse_score": _as_float(meta.get("sparse_score")),
+        "vector_score": float(vector_score),
+        "bm25_score": float(bm25_score),
+        "lexical_score": float(lexical_score),
+        "sparse_score": float(sparse_score),
         "base_score": base_score,
+        "field_aware_boost": float(field_aware_boost),
+        "field_signal_title": float(field_signal_title),
+        "field_signal_heading": float(field_signal_heading),
+        "keyword_max_score": float(keyword_max_score),
+        "vector_keyword_gap": float(vector_keyword_gap),
+        "multi_channel_hits": float(multi_channel_hits),
         # KG ranking signals (optional; present only for KG-linked candidates).
         "kg_pagerank": _as_float(meta.get("kg_pagerank")),
         "kg_shared_events": _as_float(meta.get("kg_shared_events")),

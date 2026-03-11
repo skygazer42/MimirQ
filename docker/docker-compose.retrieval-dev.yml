@@ -1,0 +1,90 @@
+x-backend-build: &backend_build
+  context: ..
+  dockerfile: docker/Dockerfile
+  args:
+    MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
+    MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
+
+x-backend-env: &backend_env
+  PYTHONDONTWRITEBYTECODE: 1
+  UVICORN_WORKERS: ${BACKEND_WORKERS:-1}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@mimirq-postgres:5432/${POSTGRES_DB:-mimirq}
+  REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
+  # Retrieval-dev profile: keep startup light and deterministic.
+  VECTOR_BACKEND: ${VECTOR_BACKEND_RETRIEVAL_DEV:-chroma}
+  CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/data/vector_chroma}
+  FAISS_STORE_PATH: ${FAISS_STORE_PATH_DOCKER:-/data/vector_faiss}
+  MINIO_ENABLED: ${MINIO_ENABLED_RETRIEVAL_DEV:-false}
+  MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_RETRIEVAL_DEV:-false}
+  TASK_QUEUE_ENABLED: ${TASK_QUEUE_ENABLED_RETRIEVAL_DEV:-false}
+  # Keep retrieval-only experiments free from proprietary API requirements by default.
+  LLM_MOCK_ENABLED: ${LLM_MOCK_ENABLED_RETRIEVAL_DEV:-true}
+  ENABLE_QUERY_REWRITE: ${ENABLE_QUERY_REWRITE_RETRIEVAL_DEV:-false}
+  ENABLE_MULTI_QUERY: ${ENABLE_MULTI_QUERY_RETRIEVAL_DEV:-false}
+  ENABLE_HYDE: ${ENABLE_HYDE_RETRIEVAL_DEV:-false}
+  ENABLE_QUERY_DECOMPOSITION: ${ENABLE_QUERY_DECOMPOSITION_RETRIEVAL_DEV:-false}
+  CORS_ORIGINS: ${CORS_ORIGINS_DOCKER:-http://localhost:3000,http://localhost:3001}
+  UPLOAD_DIR: ${UPLOAD_DIR_DOCKER:-/data/uploads}
+
+x-docker-logging: &docker_logging
+  driver: "json-file"
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+    max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+
+services:
+  mimirq-postgres:
+    image: postgres:15
+    restart: unless-stopped
+    logging: *docker_logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mimirq}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mimirq-redis:
+    image: redis:7
+    restart: unless-stopped
+    logging: *docker_logging
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mimirq-api:
+    build: *backend_build
+    restart: unless-stopped
+    logging: *docker_logging
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      mimirq-postgres:
+        condition: service_healthy
+      mimirq-redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      <<: *backend_env
+    volumes:
+      - upload_data:/data/uploads
+      - vector_data:/data/vector_chroma
+
+volumes:
+  postgres_data:
+  upload_data:
+  vector_data:

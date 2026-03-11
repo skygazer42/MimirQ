@@ -329,6 +329,7 @@ def build_citations_from_docs(
         c_score_raw = float(meta.get("colbert_score", 0.0) or 0.0)
         rerank_score = meta.get("rerank_score")
         retrieval_score = meta.get("retrieval_score")
+        rerank_score_calibrated = meta.get("rerank_score_calibrated")
 
         retrieval_role = meta.get("retrieval_role") or None
         neighbor_of = meta.get("neighbor_of") or None
@@ -452,6 +453,8 @@ def build_citations_from_docs(
             "sparse_score": round(s_score_raw, 3),
             "colbert_score": round(c_score_raw, 3),
             "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
+            "field_aware_signal": (str(meta.get("field_aware_signal")).strip().lower() if meta.get("field_aware_signal") is not None else None),
+            "field_aware_boost": round(float(meta.get("field_aware_boost", 0.0) or 0.0), 6),
             # KG ranking features (optional; low-cardinality).
             # These fields stay numeric/boolean and do not include scope identifiers.
             "kg_pagerank": round(float(meta.get("kg_pagerank", 0.0) or 0.0), 3),
@@ -463,6 +466,11 @@ def build_citations_from_docs(
             "kg_evidence_anchored": bool(meta.get("kg_evidence_anchored", False)),
             "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
             "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
+            "rerank_score_calibrated": (
+                round(float(rerank_score_calibrated), 6)
+                if rerank_score_calibrated is not None
+                else None
+            ),
             "reranker_provider": meta.get("reranker_provider"),
             "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
             "rerank_model_used": meta.get("rerank_model_used"),
