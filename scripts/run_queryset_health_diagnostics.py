@@ -19,6 +19,13 @@ def _load_json(path: Path) -> dict[str, Any]:
     return obj
 
 
+def _load_policy(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
+    obj = _load_json(path)
+    return dict(obj) if isinstance(obj, dict) else {}
+
+
 def _resolve_profile_hash(*, args: argparse.Namespace, benchmark: dict[str, Any]) -> str:
     from app.rag.core.hashing import stable_hash
 
@@ -53,6 +60,11 @@ def run(
     history: Path | None,
     profile_hash: str | None,
     profile_json: Path | None,
+    policy_json: Path | None,
+    miss_rate_regression_threshold: float | None,
+    weak_hit_rate_regression_threshold: float | None,
+    weak_hit_rr_threshold: float | None,
+    hard_cases_limit: int | None,
     max_history: int,
     cron: bool,
 ) -> dict[str, Any]:
@@ -64,6 +76,16 @@ def run(
     )
 
     bench = _load_json(benchmark_report)
+    policy = _load_policy(policy_json)
+    if miss_rate_regression_threshold is not None:
+        policy["miss_rate_regression_threshold"] = float(miss_rate_regression_threshold)
+    if weak_hit_rate_regression_threshold is not None:
+        policy["weak_hit_rate_regression_threshold"] = float(weak_hit_rate_regression_threshold)
+    if weak_hit_rr_threshold is not None:
+        policy["weak_hit_rr_threshold"] = float(weak_hit_rr_threshold)
+    if hard_cases_limit is not None:
+        policy["hard_cases_limit"] = int(hard_cases_limit)
+
     args_obj = argparse.Namespace(profile_hash=profile_hash, profile_json=str(profile_json) if profile_json else None)
     resolved_profile_hash = _resolve_profile_hash(args=args_obj, benchmark=bench)
 
@@ -78,6 +100,7 @@ def run(
         benchmark_report=bench,
         profile_hash=resolved_profile_hash,
         previous_snapshot=prev,
+        policy=policy,
     )
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -129,6 +152,31 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--profile-hash", default="", help="Explicit retrieval profile hash")
     p.add_argument("--profile-json", default="", help="Optional profile config JSON used to derive profile hash")
+    p.add_argument("--policy-json", default="", help="Optional policy JSON with risk/regression thresholds")
+    p.add_argument(
+        "--miss-rate-regression-threshold",
+        type=float,
+        default=None,
+        help="Override miss_rate_regression_threshold for this run",
+    )
+    p.add_argument(
+        "--weak-hit-rate-regression-threshold",
+        type=float,
+        default=None,
+        help="Override weak_hit_rate_regression_threshold for this run",
+    )
+    p.add_argument(
+        "--weak-hit-rr-threshold",
+        type=float,
+        default=None,
+        help="Override weak_hit_rr_threshold for risk classification",
+    )
+    p.add_argument(
+        "--hard-cases-limit",
+        type=int,
+        default=None,
+        help="Override number of hard cases included in risk summary",
+    )
     p.add_argument("--max-history", type=int, default=90, help="Max history snapshots to keep")
     p.add_argument("--cron", action="store_true", help="Emit compact machine-readable summary line")
     args = p.parse_args(argv)
@@ -136,12 +184,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         history_path = Path(args.history) if str(args.history or "").strip() else None
         profile_json_path = Path(args.profile_json) if str(args.profile_json or "").strip() else None
+        policy_json_path = Path(args.policy_json) if str(args.policy_json or "").strip() else None
         run(
             benchmark_report=Path(args.benchmark_report),
             out=Path(args.out),
             history=history_path,
             profile_hash=str(args.profile_hash or "").strip() or None,
             profile_json=profile_json_path,
+            policy_json=policy_json_path,
+            miss_rate_regression_threshold=args.miss_rate_regression_threshold,
+            weak_hit_rate_regression_threshold=args.weak_hit_rate_regression_threshold,
+            weak_hit_rr_threshold=args.weak_hit_rr_threshold,
+            hard_cases_limit=args.hard_cases_limit,
             max_history=int(args.max_history or 90),
             cron=bool(args.cron),
         )

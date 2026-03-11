@@ -15,6 +15,16 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 SNAPSHOT_SCHEMA = "mimirq.queryset_health_snapshot.v1"
+DEFAULT_POLICY: dict[str, float | int] = {
+    "hit_at_k_drop_threshold": 0.03,
+    "mrr_drop_threshold": 0.03,
+    "ndcg_drop_threshold": 0.03,
+    "p95_latency_regression_ms": 20.0,
+    "miss_rate_regression_threshold": 0.05,
+    "weak_hit_rate_regression_threshold": 0.08,
+    "weak_hit_rr_threshold": 0.2,
+    "hard_cases_limit": 5,
+}
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -50,6 +60,38 @@ def _normalize_ts(generated_at: str | datetime | None) -> str:
 
 def _metric_delta(current: float, previous: float, digits: int = 6) -> float:
     return round(float(current) - float(previous), int(digits))
+
+
+def _resolve_policy(policy: Mapping[str, Any] | None) -> dict[str, float | int]:
+    raw = dict(policy) if isinstance(policy, Mapping) else {}
+    resolved: dict[str, float | int] = dict(DEFAULT_POLICY)
+    resolved["hit_at_k_drop_threshold"] = max(0.0, _as_float(raw.get("hit_at_k_drop_threshold"), _as_float(resolved["hit_at_k_drop_threshold"])))
+    resolved["mrr_drop_threshold"] = max(0.0, _as_float(raw.get("mrr_drop_threshold"), _as_float(resolved["mrr_drop_threshold"])))
+    resolved["ndcg_drop_threshold"] = max(0.0, _as_float(raw.get("ndcg_drop_threshold"), _as_float(resolved["ndcg_drop_threshold"])))
+    resolved["p95_latency_regression_ms"] = max(
+        0.0,
+        _as_float(raw.get("p95_latency_regression_ms"), _as_float(resolved["p95_latency_regression_ms"])),
+    )
+    resolved["miss_rate_regression_threshold"] = min(
+        1.0,
+        max(0.0, _as_float(raw.get("miss_rate_regression_threshold"), _as_float(resolved["miss_rate_regression_threshold"]))),
+    )
+    resolved["weak_hit_rate_regression_threshold"] = min(
+        1.0,
+        max(
+            0.0,
+            _as_float(
+                raw.get("weak_hit_rate_regression_threshold"),
+                _as_float(resolved["weak_hit_rate_regression_threshold"]),
+            ),
+        ),
+    )
+    resolved["weak_hit_rr_threshold"] = min(
+        1.0,
+        max(0.0, _as_float(raw.get("weak_hit_rr_threshold"), _as_float(resolved["weak_hit_rr_threshold"]))),
+    )
+    resolved["hard_cases_limit"] = max(1, _as_int(raw.get("hard_cases_limit"), _as_int(resolved["hard_cases_limit"])))
+    return resolved
 
 
 def _clip_text(value: Any, *, max_len: int = 160) -> str:
@@ -154,7 +196,9 @@ def build_queryset_health_snapshot(
     profile_hash: str,
     previous_snapshot: Mapping[str, Any] | None = None,
     generated_at: str | datetime | None = None,
+    policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    resolved_policy = _resolve_policy(policy)
     summary = benchmark_report.get("summary") if isinstance(benchmark_report.get("summary"), Mapping) else {}
     prev_metrics = previous_snapshot.get("metrics") if isinstance((previous_snapshot or {}).get("metrics"), Mapping) else {}
     prev_risk = previous_snapshot.get("risk") if isinstance((previous_snapshot or {}).get("risk"), Mapping) else {}
@@ -164,7 +208,11 @@ def build_queryset_health_snapshot(
     ndcg_at_k = round(_as_float(summary.get("ndcg_at_k"), 0.0), 6)
     avg_latency_ms = round(_as_float(summary.get("avg_latency_ms"), 0.0), 3)
     p95_latency_ms = round(_as_float(summary.get("p95_latency_ms"), 0.0), 3)
-    risk = _build_case_risk(benchmark_report=benchmark_report)
+    risk = _build_case_risk(
+        benchmark_report=benchmark_report,
+        weak_hit_rr_threshold=_as_float(resolved_policy.get("weak_hit_rr_threshold"), 0.2),
+        hard_cases_limit=_as_int(resolved_policy.get("hard_cases_limit"), 5),
+    )
 
     trend = {
         "hit_at_k_delta": _metric_delta(hit_at_k, _as_float(prev_metrics.get("hit_at_k"), hit_at_k), 6),
@@ -184,17 +232,17 @@ def build_queryset_health_snapshot(
     }
 
     degradation_flags: list[str] = []
-    if trend["hit_at_k_delta"] <= -0.03:
+    if trend["hit_at_k_delta"] <= -_as_float(resolved_policy.get("hit_at_k_drop_threshold"), 0.03):
         degradation_flags.append("hit_at_k_drop")
-    if trend["mrr_delta"] <= -0.03:
+    if trend["mrr_delta"] <= -_as_float(resolved_policy.get("mrr_drop_threshold"), 0.03):
         degradation_flags.append("mrr_drop")
-    if trend["ndcg_at_k_delta"] <= -0.03:
+    if trend["ndcg_at_k_delta"] <= -_as_float(resolved_policy.get("ndcg_drop_threshold"), 0.03):
         degradation_flags.append("ndcg_drop")
-    if trend["p95_latency_ms_delta"] >= 20.0:
+    if trend["p95_latency_ms_delta"] >= _as_float(resolved_policy.get("p95_latency_regression_ms"), 20.0):
         degradation_flags.append("p95_latency_regression")
-    if trend["miss_rate_delta"] >= 0.05:
+    if trend["miss_rate_delta"] >= _as_float(resolved_policy.get("miss_rate_regression_threshold"), 0.05):
         degradation_flags.append("miss_rate_regression")
-    if trend["weak_hit_rate_delta"] >= 0.08:
+    if trend["weak_hit_rate_delta"] >= _as_float(resolved_policy.get("weak_hit_rate_regression_threshold"), 0.08):
         degradation_flags.append("weak_hit_rate_regression")
 
     status = "degraded" if degradation_flags else "healthy"
@@ -216,6 +264,7 @@ def build_queryset_health_snapshot(
             "p95_latency_ms": p95_latency_ms,
         },
         "risk": risk,
+        "policy": resolved_policy,
         "trend": trend,
         "degradation_flags": degradation_flags,
         "status": status,
