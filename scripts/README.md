@@ -60,6 +60,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `run_queryset_health_diagnostics.py`: build query-set health snapshot from benchmark report and maintain bounded trend history
   - Output snapshot schema: `mimirq.queryset_health_snapshot.v1`
   - Adds risk summary (`miss_rate`, `weak_hit_rate`, `hard_cases`) and trend deltas for nightly drift checks
+  - Supports threshold policy via `--policy-json` and per-run overrides such as `--miss-rate-regression-threshold`, `--weak-hit-rate-regression-threshold`
   - `--cron` emits machine-readable JSON with status + risk summary for CI logs
 - `check_retrieval_profile_compat.py`: validate retrieval profile + reranker compatibility before runtime/CI
   - Example: `python scripts/check_retrieval_profile_compat.py --retrieval-profile hybrid_ce --enable-reranker true --reranker-provider cross_encoder`

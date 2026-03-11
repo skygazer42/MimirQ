@@ -123,3 +123,62 @@ def test_update_queryset_health_history_appends_and_prunes() -> None:
     assert len(out) == 2
     assert out[0]["generated_at"] == "2026-03-10T00:00:00Z"
     assert out[1]["generated_at"] == "2026-03-11T00:00:00Z"
+
+
+def test_build_queryset_health_snapshot_applies_custom_risk_policy_thresholds() -> None:
+    benchmark_report = {
+        "summary": {
+            "cases_total": 2,
+            "hit_at_k": 0.5,
+            "mrr": 0.1,
+            "ndcg_at_k": 0.2,
+            "avg_latency_ms": 8.0,
+            "p95_latency_ms": 12.0,
+        },
+        "cases": [
+            {
+                "id": "q-1",
+                "question": "miss case",
+                "hit_at_k": 0.0,
+                "reciprocal_rank": 0.0,
+                "ndcg_at_k": 0.0,
+                "latency_ms": 11.0,
+            },
+            {
+                "id": "q-2",
+                "question": "weak rank case",
+                "hit_at_k": 1.0,
+                "reciprocal_rank": 0.2,
+                "ndcg_at_k": 0.3,
+                "latency_ms": 7.0,
+            },
+        ],
+    }
+    previous = {
+        "metrics": {
+            "hit_at_k": 0.5,
+            "mrr": 0.1,
+            "ndcg_at_k": 0.2,
+            "p95_latency_ms": 12.0,
+        },
+        "risk": {
+            "miss_rate": 0.0,
+            "weak_hit_rate": 0.0,
+        },
+    }
+
+    snap = build_queryset_health_snapshot(
+        benchmark_report=benchmark_report,
+        profile_hash="profile-v2",
+        previous_snapshot=previous,
+        policy={
+            "miss_rate_regression_threshold": 0.75,
+            "weak_hit_rr_threshold": 0.15,
+            "weak_hit_rate_regression_threshold": 0.6,
+        },
+    )
+
+    assert snap.get("risk", {}).get("miss_count") == 1
+    # rr=0.2 is no longer treated as weak when threshold is 0.15.
+    assert snap.get("risk", {}).get("weak_hit_count") == 0
+    assert "miss_rate_regression" not in (snap.get("degradation_flags") or [])
