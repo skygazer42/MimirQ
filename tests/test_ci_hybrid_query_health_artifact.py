@@ -12,6 +12,8 @@ def test_ci_retrieval_only_gate_has_hybrid_bounded_artifacts() -> None:
     assert "queryset_health.cron.hybrid.json" in text
     assert "queryset_health.diff.hybrid.json" in text
     assert "queryset_health.diff.hybrid.md" in text
+    assert "--queryset-health-snapshot-hybrid" in text
+    assert "--queryset-health-diff-hybrid" in text
 
 
 def test_hybrid_retrieval_fixture_contract_is_valid() -> None:

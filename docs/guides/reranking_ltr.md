@@ -186,6 +186,8 @@ Wave B 增加了显式 gate evaluator 与独立 gate CLI，推荐流程从“fee
 - `--gate-min-delta-ndcg-at-k`
 - `--gate-min-delta-mrr`
 - `--gate-min-cases-used`
+- `--canary-on-pass`
+- `--canary-ratio <0..1>`
 
 并会把 `gate` 写入：
 
@@ -207,7 +209,16 @@ python scripts/ltr_rollout_gate.py \
 - `3`：gate fail（不应激活）
 - `2`：输入/参数错误
 
-激活与回滚仍然单独控制：
+Gate 结果里现在还会附带 `policy_profile` 与可选 `activation` 计划：
+
+- `policy_profile.levels.pass/warn/block`
+  - 可定义每个级别允许的失败检查数
+  - 可定义对应 `canary_ratio`
+- `activation`
+  - 当 `--canary-on-pass` 打开且 gate 允许时，输出 `canary_activation_ready`
+  - 该对象是“建议执行计划”，不会偷偷自动改 active model
+
+激活与回滚仍然显式控制：
 
 ```bash
 # 查看注册过的 candidate
@@ -224,9 +235,35 @@ curl -X POST http://localhost:8000/api/v1/ltr/models/rollback
 
 如果你只想准备工件、不注册 candidate，可加 `--skip-register`。
 
+线上回滚触发辅助：
+
+- `app/services/ltr_model_registry.py` 提供 `evaluate_online_rollback_trigger(...)`
+- 该 helper 用连续 degradation window 判定是否应回滚
+- 推荐把它接到你的在线指标面板/告警，而不是直接把单个 bad window 当作回滚条件
+
 ---
 
-## 6) 生产化差距（需要额外工程）
+## 6) 已补齐的 rollout 保护带
+
+当前仓库已经有这些受限生产化能力：
+
+- hard negative mining 工具链
+- rollout gate threshold / policy profile
+- pass/warn/block -> canary ratio 映射
+- `prepare_ltr_rollout.py` / `ltr_rollout_gate.py` 的 canary activation plan 输出
+- model registry rollback API
+- online degradation window -> rollback trigger helper
+
+推荐最小生产流程：
+
+1. 训练 candidate
+2. 生成 comparison/workflow artifacts
+3. 运行 gate
+4. `gate=pass` 时先按 `activation.canary_ratio` 小流量激活
+5. 观察在线窗口指标
+6. 命中 rollback trigger 时回滚到 previous active model
+
+## 7) 仍然存在的差距（需要额外工程）
 
 训练脚本默认支持 **按 query 分组** 的 ranking objective（例如 `rank:pairwise` / `rank:ndcg`），并提供
 hard negative（near-miss）采样能力。
@@ -253,7 +290,7 @@ python scripts/eval_ltr_offline.py \
 
 仍然存在的生产化差距（需要额外工程）：
 - 更强的 hard negative mining（跨 run、跨版本、从 trace/feedback 自动挖掘）
-- 更细粒度的 rollout guardrail（例如自动 gate / 自动 canary / 人工审批队列）
-- A/B 分流与线上指标回写
+- 更细粒度的 rollout orchestration（例如审批流、分阶段多波次 canary）
+- 完整 A/B 分流与线上指标自动回写
 
 详见最新差距快照与实施计划：`docs/plans/2026-03-12-top-tier-rag-gap-wave-c-40-task-implementation-plan.md`。

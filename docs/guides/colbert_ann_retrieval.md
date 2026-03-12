@@ -80,3 +80,59 @@ Deterministic provider（单测/回归）：
 - 额外索引构建开销（CPU/GPU + 内存）
 - 多进程场景下，持久化索引可以显著降低冷启动成本（best-effort）
 - 这不是完整 ColBERT 检索：如果你需要真实 token-level ColBERT index，需要额外工程与依赖
+
+---
+
+## 6) Bounded Regression Artifact
+
+Wave D 为 ColBERT fallback 增加了一个稳定的 bounded fixture：
+
+- Fixture: `data/sample/retrieval_fixture_colbert_v1.json`
+- Local run:
+
+```bash
+python scripts/run_sample_retrieval_benchmark.py \
+  --fixture data/sample/retrieval_fixture_colbert_v1.json \
+  --out runs/sample_bench.colbert.json \
+  --retrieval-mode vector \
+  --enable-colbert-retrieval \
+  --colbert-retrieval-provider deterministic
+```
+
+输出重点：
+
+- `runtime.colbert_retrieval_enabled=true`
+- `runtime.colbert_retrieval_provider=deterministic`
+- `summary.hit_at_k / mrr / ndcg_at_k`
+
+CI 中对应 artifact 为：
+
+- `artifacts/sample_retrieval_bench.colbert.json`
+
+它的定位是“验证 ColBERT fallback 路径仍可工作且结果稳定”，不是替代完整 leaderboard / production 数据集评估。
+
+---
+
+## 7) Rollout Criteria
+
+建议 rollout 顺序：
+
+1. **先用 deterministic provider 跑 bounded fixture**
+   - 目标：确认回退链路、索引构建、runtime metadata、CI artifact 都稳定。
+2. **再在预发启用真实 provider（HF）**
+   - 目标：观察 `rag_trace.channels.colbert_ann.*` 的耗时与候选量。
+3. **只在 vector backend 空结果占比可接受的前提下扩大范围**
+   - ColBERT 当前是 vector fallback，不是主通道。
+
+推荐观察项：
+
+- `rag_trace.channels.timing.colbert_ms`
+- `rag_trace.channels.counts.colbert_candidates`
+- `rag_trace.channels.colbert_ann.skipped_reason`
+- `COLBERT_RETRIEVAL_MAX_DOCS` 是否频繁触发资源保护
+
+建议停下 rollout 的信号：
+
+- bounded fixture 不能稳定保持 `hit_at_k=1.0`
+- `skipped_reason=too_many_docs` 在目标数据集上持续出现
+- HF provider 冷启动或索引构建耗时明显拉高请求尾延迟

@@ -213,6 +213,8 @@ def run_benchmark(
     retrieval_mode: str | None,
     sparse_retrieval_enabled: bool = False,
     sparse_retrieval_provider: str = "deterministic",
+    colbert_retrieval_enabled: bool | None = None,
+    colbert_retrieval_provider: str | None = None,
 ) -> dict[str, Any]:
     from app.core.config import settings as app_settings
     from app.rag.core.hashing import stable_hash
@@ -230,12 +232,25 @@ def run_benchmark(
     default_mode = str((defaults or {}).get("retrieval_mode") or "keyword").strip().lower() or "keyword"
     effective_top_k = max(1, int(top_k if top_k is not None else default_top_k))
     effective_mode = str(retrieval_mode or default_mode).strip().lower() or "keyword"
+    default_colbert_enabled = bool((defaults or {}).get("colbert_retrieval_enabled"))
+    default_colbert_provider = str((defaults or {}).get("colbert_retrieval_provider") or "deterministic").strip().lower()
+    effective_colbert_enabled = (
+        bool(colbert_retrieval_enabled)
+        if colbert_retrieval_enabled is not None
+        else default_colbert_enabled
+    )
+    effective_colbert_provider = str(colbert_retrieval_provider or default_colbert_provider or "deterministic").strip().lower()
+    if effective_colbert_provider not in {"deterministic", "hf"}:
+        effective_colbert_provider = "deterministic"
 
     settings_keys = (
         "BM25_INDEX_ENABLED",
         "LEXICAL_DB_ENABLED",
         "SPARSE_RETRIEVAL_ENABLED",
         "SPARSE_RETRIEVAL_PROVIDER",
+        "COLBERT_RETRIEVAL_ENABLED",
+        "COLBERT_RETRIEVAL_PROVIDER",
+        "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED",
         "ENABLE_QUERY_REWRITE",
         "ENABLE_MULTI_QUERY",
         "ENABLE_HYDE",
@@ -252,6 +267,9 @@ def run_benchmark(
         app_settings.LEXICAL_DB_ENABLED = False
         app_settings.SPARSE_RETRIEVAL_ENABLED = bool(sparse_retrieval_enabled)
         app_settings.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
+        app_settings.COLBERT_RETRIEVAL_ENABLED = bool(effective_colbert_enabled)
+        app_settings.COLBERT_RETRIEVAL_PROVIDER = effective_colbert_provider
+        app_settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED = False
         app_settings.ENABLE_QUERY_REWRITE = False
         app_settings.ENABLE_MULTI_QUERY = False
         app_settings.ENABLE_HYDE = False
@@ -316,6 +334,8 @@ def run_benchmark(
         "runtime": {
             "sparse_retrieval_enabled": bool(sparse_retrieval_enabled),
             "sparse_retrieval_provider": sparse_provider,
+            "colbert_retrieval_enabled": bool(effective_colbert_enabled),
+            "colbert_retrieval_provider": effective_colbert_provider,
         },
         "summary": {
             "cases_total": int(len(cases)),
@@ -367,6 +387,17 @@ def main(argv: list[str] | None = None) -> int:
         default="deterministic",
         help="Sparse retrieval provider (deterministic|splade; unknown values fallback to deterministic).",
     )
+    parser.add_argument(
+        "--enable-colbert-retrieval",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable ColBERT ANN fallback retrieval for this benchmark run.",
+    )
+    parser.add_argument(
+        "--colbert-retrieval-provider",
+        default=None,
+        help="ColBERT retrieval provider (deterministic|hf; unknown values fallback to deterministic).",
+    )
     args = parser.parse_args(argv)
 
     fixture_path = Path(str(args.fixture)).expanduser().resolve()
@@ -379,6 +410,8 @@ def main(argv: list[str] | None = None) -> int:
         retrieval_mode=args.retrieval_mode,
         sparse_retrieval_enabled=bool(args.enable_sparse_retrieval),
         sparse_retrieval_provider=str(args.sparse_retrieval_provider or "deterministic"),
+        colbert_retrieval_enabled=args.enable_colbert_retrieval,
+        colbert_retrieval_provider=args.colbert_retrieval_provider,
     )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     print(

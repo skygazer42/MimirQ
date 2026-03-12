@@ -28,6 +28,31 @@
       "embed_query_tokens_avg": { "max": 80.0 },
       "retrieval_query_count_avg": { "max": 2.0 }
     }
+  },
+  "queryset_health": {
+    "path": "artifacts/queryset_health.snapshot.json",
+    "policy": "warn"
+  },
+  "queryset_health_hybrid": {
+    "path": "artifacts/queryset_health.snapshot.hybrid.json",
+    "policy": "warn"
+  },
+  "queryset_health_diff": {
+    "path": "artifacts/queryset_health.diff.json",
+    "policy": "fail",
+    "thresholds": {
+      "hard_case_added_count": { "max": 0 },
+      "degradation_flag_added_count": { "max": 0 },
+      "parse_risk_tail_added_count": { "max": 0 }
+    }
+  },
+  "queryset_health_diff_hybrid": {
+    "path": "artifacts/queryset_health.diff.hybrid.json",
+    "policy": "fail",
+    "thresholds": {
+      "hard_case_added_count": { "max": 0 },
+      "degradation_flag_added_count": { "max": 0 },
+      "parse_risk_tail_added_count": { "max": 0 }
+    }
   }
 }
-

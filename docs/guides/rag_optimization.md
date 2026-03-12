@@ -138,6 +138,26 @@ When enabled, MimirQ will:
 - **Post-check generated claims** against the retrieved evidence and drop unsupported ones
 - Apply the same scrubbing to **structured_output** JSON (keeps JSON parseable)
 
+Claim verifier diagnostics now expose machine-readable removal reasons:
+
+- `reason_code`
+  - `supported`
+  - `overlap_insufficient`
+  - `contradiction_numeric_mismatch`
+  - `contradiction_negation_conflict`
+  - `nli_entailment` / `nli_contradiction` / `nli_neutral` when optional NLI fallback is enabled
+- `contradiction_type`
+  - `numeric_mismatch`
+  - `negation_conflict`
+  - `numeric_and_negation`
+
+Operationally:
+
+1. Keep `RAG_CLAIM_VERIFIER_MODE=token_overlap` as the cheapest baseline.
+2. Move to `semantic_heuristic` when you need better numeric/negation protection.
+3. Use `strict` only when evidence spans and parser quality are already stable.
+4. Enable `RAG_CLAIM_NLI_VERIFIER_ENABLED=true` only as a bounded fallback layer after heuristic failure, not as the primary verifier.
+
 ### grounded_strict Profile (Recommended Rollout Baseline)
 
 Wave D adds a strict grounding retrieval profile:

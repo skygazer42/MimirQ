@@ -59,6 +59,34 @@ def test_settings_rejects_invalid_claim_verifier_mode(monkeypatch: pytest.Monkey
         Settings()
 
 
+def test_settings_rejects_invalid_claim_nli_verifier_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RAG_CLAIM_NLI_VERIFIER_ENABLED", "true")
+    monkeypatch.setenv("RAG_CLAIM_NLI_VERIFIER_PROVIDER", "invalid_provider")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_accepts_claim_nli_verifier_openai_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RAG_CLAIM_NLI_VERIFIER_ENABLED", "true")
+    monkeypatch.setenv("RAG_CLAIM_NLI_VERIFIER_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("RAG_CLAIM_NLI_VERIFIER_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", "8")
+
+    cfg = Settings()
+    assert cfg.RAG_CLAIM_NLI_VERIFIER_ENABLED is True
+    assert cfg.RAG_CLAIM_NLI_VERIFIER_PROVIDER == "openai_compatible"
+    assert cfg.RAG_CLAIM_NLI_VERIFIER_MODEL == "gpt-4o-mini"
+    assert int(cfg.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC) == 8
+
+
 def test_settings_accepts_grounded_strict_chat_default_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -134,3 +162,87 @@ def test_settings_rejects_splade_provider_without_model_when_sparse_enabled(
     monkeypatch.setenv("SPARSE_SPLADE_MODEL_NAME", "")
     with pytest.raises(ValueError):
         Settings()
+
+
+def test_settings_rejects_non_positive_db_catalog_row_sync_max_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("DB_CATALOG_ROW_SYNC_MAX_TABLES", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_non_positive_db_catalog_row_sync_max_rows_per_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_non_positive_db_catalog_row_sync_max_cols(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("DB_CATALOG_ROW_SYNC_MAX_COLS", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_accepts_db_catalog_row_sync_toggles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("DB_CATALOG_ROW_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DB_CATALOG_ROW_SYNC_MAX_TABLES", "25")
+    monkeypatch.setenv("DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", "40")
+    monkeypatch.setenv("DB_CATALOG_ROW_SYNC_MAX_COLS", "30")
+
+    cfg = Settings()
+    assert cfg.DB_CATALOG_ROW_SYNC_ENABLED is True
+    assert int(cfg.DB_CATALOG_ROW_SYNC_MAX_TABLES) == 25
+    assert int(cfg.DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE) == 40
+    assert int(cfg.DB_CATALOG_ROW_SYNC_MAX_COLS) == 30
+
+
+def test_settings_rejects_non_positive_table_query_max_join_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("TABLE_QUERY_MAX_JOIN_TABLES", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_invalid_index_consistency_strictness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("INDEX_CONSISTENCY_STRICTNESS", "invalid")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_accepts_index_consistency_toggles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("INDEX_CONSISTENCY_ENABLED", "true")
+    monkeypatch.setenv("INDEX_CONSISTENCY_STRICTNESS", "strict")
+    monkeypatch.setenv("INDEX_CONSISTENCY_PATCH_CHUNK_STRICT", "true")
+    monkeypatch.setenv("INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS", "true")
+
+    cfg = Settings()
+    assert cfg.INDEX_CONSISTENCY_ENABLED is True
+    assert cfg.INDEX_CONSISTENCY_STRICTNESS == "strict"
+    assert cfg.INDEX_CONSISTENCY_PATCH_CHUNK_STRICT is True
+    assert cfg.INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS is True

@@ -8,6 +8,7 @@ import re
 from typing import Any, Dict, Literal, Tuple
 
 from app.core.token_utils import estimate_tokens  # noqa: F401
+from app.rag.core.claim_nli_verifier import verify_claim_with_nli
 from app.rag.core.claim_verifier import verify_claim
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", flags=re.IGNORECASE | re.DOTALL)
@@ -498,6 +499,53 @@ def _claim_token_set(text: str) -> set[str]:
             tokens.add(t)
     return tokens
 
+def verify_claim_with_fallback(
+    claim: str,
+    evidence: str,
+    *,
+    verifier_mode: str = "token_overlap",
+    verifier_enable_contradiction_check: bool = True,
+    use_nli_fallback: bool = False,
+    nli_provider: str | None = None,
+    nli_model_name: str | None = None,
+    nli_timeout_sec: float | None = None,
+):
+    result = verify_claim(
+        claim,
+        evidence,
+        mode=verifier_mode,
+        enable_contradiction_check=bool(verifier_enable_contradiction_check),
+    )
+    if bool(result.supported) or not bool(use_nli_fallback):
+        return result
+
+    nli_result = verify_claim_with_nli(
+        claim,
+        evidence,
+        enabled=True,
+        provider=nli_provider,
+        model_name=nli_model_name,
+        timeout_sec=nli_timeout_sec,
+    )
+    diagnostics = dict(result.diagnostics or {})
+    diagnostics["nli_fallback"] = {
+        "available": bool(nli_result.available),
+        "label": nli_result.label,
+        "provider": dict(nli_result.provider_status or {}),
+        "reason_code": str((nli_result.diagnostics or {}).get("reason_code") or ""),
+    }
+    if not bool(nli_result.available) or nli_result.supported is None:
+        return result.__class__(supported=result.supported, mode=result.mode, diagnostics=diagnostics)
+
+    diagnostics["reason"] = str((nli_result.diagnostics or {}).get("reason_code") or "nli_neutral")
+    diagnostics["reason_code"] = str((nli_result.diagnostics or {}).get("reason_code") or "nli_neutral")
+    diagnostics["contradiction_type"] = None
+    return result.__class__(
+        supported=bool(nli_result.supported),
+        mode=f"{result.mode}+nli",
+        diagnostics=diagnostics,
+    )
+
 
 def is_claim_supported(
     claim: str,
@@ -505,6 +553,10 @@ def is_claim_supported(
     *,
     verifier_mode: str = "token_overlap",
     verifier_enable_contradiction_check: bool = True,
+    use_nli_fallback: bool = False,
+    nli_provider: str | None = None,
+    nli_model_name: str | None = None,
+    nli_timeout_sec: float | None = None,
 ) -> bool:
     """
     Deterministic baseline: token-overlap check between a claim and evidence text.
@@ -513,11 +565,15 @@ def is_claim_supported(
     - Always keep "uncertainty/insufficient evidence" phrasing (do not delete refusals).
     - Heuristic only; designed to be safe and bounded.
     """
-    result = verify_claim(
+    result = verify_claim_with_fallback(
         claim,
         evidence,
-        mode=verifier_mode,
-        enable_contradiction_check=bool(verifier_enable_contradiction_check),
+        verifier_mode=verifier_mode,
+        verifier_enable_contradiction_check=bool(verifier_enable_contradiction_check),
+        use_nli_fallback=bool(use_nli_fallback),
+        nli_provider=nli_provider,
+        nli_model_name=nli_model_name,
+        nli_timeout_sec=nli_timeout_sec,
     )
     return bool(result.supported)
 
@@ -529,6 +585,10 @@ def scrub_structured_output_visible_evidence_only(
     max_claims: int = 24,
     verifier_mode: str = "token_overlap",
     verifier_enable_contradiction_check: bool = True,
+    use_nli_fallback: bool = False,
+    nli_provider: str | None = None,
+    nli_model_name: str | None = None,
+    nli_timeout_sec: float | None = None,
     max_depth: int = 6,
     max_items: int = 500,
 ) -> tuple[Any, Dict[str, Any]]:
@@ -569,6 +629,7 @@ def scrub_structured_output_visible_evidence_only(
         "strings_changed": 0,
         "claims_total": 0,
         "claims_removed": 0,
+        "claim_check_removed_reasons": [],
         "max_claims": max_claims,
         "max_depth": max_depth,
         "max_items": max_items,
@@ -592,15 +653,34 @@ def scrub_structured_output_visible_evidence_only(
         kept: list[str] = []
         removed = 0
         for c in claims:
-            if is_claim_supported(
+            vr = verify_claim_with_fallback(
                 c,
                 evidence_text,
                 verifier_mode=verifier_mode,
                 verifier_enable_contradiction_check=verifier_enable_contradiction_check,
-            ):
+                use_nli_fallback=bool(use_nli_fallback),
+                nli_provider=nli_provider,
+                nli_model_name=nli_model_name,
+                nli_timeout_sec=nli_timeout_sec,
+            )
+            if bool(vr.supported):
                 kept.append(c)
             else:
                 removed += 1
+                reasons = meta.get("claim_check_removed_reasons")
+                if isinstance(reasons, list) and len(reasons) < 64:
+                    diag = vr.diagnostics if isinstance(vr.diagnostics, dict) else {}
+                    reasons.append(
+                        {
+                            "claim": str(c or "")[:300],
+                            "reason_code": str(diag.get("reason_code") or diag.get("reason") or "unsupported")[:120],
+                            "contradiction_type": (
+                                str(diag.get("contradiction_type"))[:120]
+                                if diag.get("contradiction_type") is not None
+                                else None
+                            ),
+                        }
+                    )
         if removed:
             meta["claims_removed"] = int(meta.get("claims_removed", 0) or 0) + removed
 

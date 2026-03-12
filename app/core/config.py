@@ -328,6 +328,12 @@ class Settings(BaseSettings):
     # Optional: ingest structured DB metadata (catalog/profiling) from MySQL/SQLServer.
     # Disabled by default because it requires outbound DB connectivity and careful secrets handling.
     DB_CATALOG_ENABLED: bool = False
+    # Optional: ingest bounded row snapshots (for TAG recall) alongside DB catalog metadata.
+    # This is off by default and intentionally bounded by strict caps.
+    DB_CATALOG_ROW_SYNC_ENABLED: bool = False
+    DB_CATALOG_ROW_SYNC_MAX_TABLES: int = 20
+    DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE: int = 50
+    DB_CATALOG_ROW_SYNC_MAX_COLS: int = 50
     URL_INGEST_MAX_BYTES: int = 50_000_000
     URL_INGEST_TIMEOUT_SEC: float = 30.0
     # Allowlist (CSV) for outbound URL ingestion. Empty means "allow any public host/port"
@@ -872,6 +878,13 @@ class Settings(BaseSettings):
     # - strict: stronger overlap threshold + contradiction checks
     RAG_CLAIM_VERIFIER_MODE: str = "token_overlap"
     RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK: bool = True
+    # Optional NLI fallback verifier. Disabled by default to preserve deterministic local behavior.
+    RAG_CLAIM_NLI_VERIFIER_ENABLED: bool = False
+    RAG_CLAIM_NLI_VERIFIER_PROVIDER: str = "none"  # none | openai_compatible
+    RAG_CLAIM_NLI_VERIFIER_MODEL: str = ""
+    RAG_CLAIM_NLI_VERIFIER_API_BASE: str = ""
+    RAG_CLAIM_NLI_VERIFIER_API_KEY: str = ""
+    RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC: int = 8
     # Strict grounding: treat missing evidence as non-existent. When enabled:
     # - Force abstain gate even if RAG_ABSTAIN_ENABLED=false
     # - Force claim-check (non-structured output) even if RAG_CLAIM_CHECK_ENABLED=false
@@ -905,6 +918,13 @@ class Settings(BaseSettings):
     VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
     # Indexing toggles (to reduce duplicate pipelines when desired)
     CHUNK_VECTOR_ENABLED: bool = True
+    # Index-consistency controls for manual chunk operations (create/patch/delete/disable/reembed).
+    INDEX_CONSISTENCY_ENABLED: bool = False
+    INDEX_CONSISTENCY_STRICTNESS: str = "off"  # off | warn | strict
+    # Optional endpoint-specific strict toggle for patch-chunk workflow.
+    INDEX_CONSISTENCY_PATCH_CHUNK_STRICT: bool = False
+    # Emit bounded drift markers into chunk/document metadata when index operation partial failures occur.
+    INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS: bool = True
     # When true, allow per-dataset/document pipeline to prefix chunk content with structural context
     # (e.g. header_path) before embedding. Default is off to keep backward-compatible vectors.
     EMBEDDING_CONTEXT_PREFIX_ENABLED: bool = False
@@ -972,6 +992,9 @@ class Settings(BaseSettings):
     # Abort long-running SQL queries (SQLite VM instruction budget via progress handler).
     TABLE_QUERY_TIMEOUT_SEC: float = 5.0
     TABLE_QUERY_PROGRESS_OPS: int = 10_000
+    # Multi-table TAG query controls.
+    TABLE_QUERY_MAX_JOIN_TABLES: int = 4
+    TABLE_QUERY_ALLOW_CROSS_JOIN: bool = False
     # NL->SQL / TAG answer generation (optional; requires LLM credentials).
     TABLE_NL2SQL_ENABLED: bool = False
     # Deterministic fallback for NL->SQL:
@@ -1794,6 +1817,24 @@ class Settings(BaseSettings):
         if int(getattr(self, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0) < 0:
             raise ValueError("VECTOR_WRITE_BATCH_MAX_CHARS must be >= 0")
 
+        if int(getattr(self, "DB_CATALOG_ROW_SYNC_MAX_TABLES", 0) or 0) < 1:
+            raise ValueError("DB_CATALOG_ROW_SYNC_MAX_TABLES must be >= 1")
+        if int(getattr(self, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", 0) or 0) < 1:
+            raise ValueError("DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE must be >= 1")
+        if int(getattr(self, "DB_CATALOG_ROW_SYNC_MAX_COLS", 0) or 0) < 1:
+            raise ValueError("DB_CATALOG_ROW_SYNC_MAX_COLS must be >= 1")
+        if int(getattr(self, "TABLE_QUERY_MAX_JOIN_TABLES", 0) or 0) < 1:
+            raise ValueError("TABLE_QUERY_MAX_JOIN_TABLES must be >= 1")
+        index_strictness = str(getattr(self, "INDEX_CONSISTENCY_STRICTNESS", "off") or "off").strip().lower()
+        valid_index_strictness = {"off", "warn", "strict"}
+        if index_strictness not in valid_index_strictness:
+            raise ValueError(
+                "INDEX_CONSISTENCY_STRICTNESS must be one of: "
+                + ", ".join(sorted(valid_index_strictness))
+            )
+        if self.INDEX_CONSISTENCY_STRICTNESS != index_strictness:
+            self.INDEX_CONSISTENCY_STRICTNESS = index_strictness
+
         if int(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT", 0) or 0) < 0:
             raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT must be >= 0")
         if int(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS", 0) or 0) <= 0:
@@ -1859,6 +1900,38 @@ class Settings(BaseSettings):
             )
         if self.RAG_CLAIM_VERIFIER_MODE != claim_verifier_mode:
             self.RAG_CLAIM_VERIFIER_MODE = claim_verifier_mode
+
+        claim_nli_provider = str(
+            getattr(self, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"
+        ).strip().lower()
+        claim_nli_aliases = {
+            "": "none",
+            "off": "none",
+            "false": "none",
+            "0": "none",
+            "disabled": "none",
+            "none": "none",
+            "openai": "openai_compatible",
+            "openai-compatible": "openai_compatible",
+            "openai_compatible": "openai_compatible",
+        }
+        claim_nli_provider = claim_nli_aliases.get(claim_nli_provider, claim_nli_provider)
+        valid_claim_nli_providers = {"none", "openai_compatible"}
+        if claim_nli_provider not in valid_claim_nli_providers:
+            raise ValueError(
+                "RAG_CLAIM_NLI_VERIFIER_PROVIDER must be one of: "
+                + ", ".join(sorted(valid_claim_nli_providers))
+            )
+        if self.RAG_CLAIM_NLI_VERIFIER_PROVIDER != claim_nli_provider:
+            self.RAG_CLAIM_NLI_VERIFIER_PROVIDER = claim_nli_provider
+        if int(getattr(self, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 0) or 0) < 1:
+            raise ValueError("RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC must be >= 1")
+        if bool(getattr(self, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)) and claim_nli_provider == "openai_compatible":
+            claim_nli_model = str(getattr(self, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or "").strip()
+            if not claim_nli_model:
+                raise ValueError("RAG_CLAIM_NLI_VERIFIER_MODEL is required when NLI verifier is enabled")
+            if self.RAG_CLAIM_NLI_VERIFIER_MODEL != claim_nli_model:
+                self.RAG_CLAIM_NLI_VERIFIER_MODEL = claim_nli_model
 
         valid_retrieval_modes = {"hybrid", "vector", "keyword", "mmr"}
         fallback_mode = str(getattr(self, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword").strip().lower()

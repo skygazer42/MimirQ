@@ -46,6 +46,29 @@ METRICS_LOG_PATH=./logs/rag_metrics.jsonl
 
 > 说明：该接口为 **best-effort + bounded**（默认只检查/抽样有限数量 id），不会在大数据集上做全量扫描。
 
+## Index Drift（未完成索引操作）
+
+当 chunk patch / disable / delete 在 vector/BM25 侧只完成了一部分时，系统会写入 durable index-drift item。
+
+- API（列表）：`GET /api/v1/observability/index-drift?dataset_id=...&status=open`
+- API（人工 resolve）：`POST /api/v1/observability/index-drift/{id}/resolve`
+- CLI（重放）：`python scripts/replay_index_drift.py --tenant-id ... --dataset-id ... --execute`
+
+关键字段：
+
+- `operation`: `chunk.patch` / `chunk.disable` / `chunk.delete`
+- `channel`: `vector` / `bm25`
+- `strictness`: `off` / `warn` / `strict`
+- `reason`: 失败原因摘要
+- `reconcile_task_id`: 原始 reconcile / replay 任务 id（如果有）
+- `replay_count`, `last_replayed_at`
+
+使用建议：
+
+- `status=open` 且 `strictness=strict`：通常代表调用方已经收到 `409`，需要先修复 drift 再重试业务动作。
+- `status=open` 且 `strictness=warn`：请求已经成功返回，但检索面可能仍残留旧状态，应尽快 replay。
+- 只有在 drift 已被别的运维动作修复时，才使用 resolve endpoint 直接结单。
+
 ## Chat 诊断（引用定位 / Claim Evidence）
 
 除了聚合面板外，单次问答的“证据定位”也可以在 Chat UI 里完成：

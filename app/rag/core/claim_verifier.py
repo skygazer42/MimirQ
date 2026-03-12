@@ -100,18 +100,58 @@ def verify_claim(
     e = str(evidence or "").strip()
 
     if not c:
-        return ClaimVerificationResult(supported=True, mode=m, diagnostics={"reason": "empty_claim"})
+        return ClaimVerificationResult(
+            supported=True,
+            mode=m,
+            diagnostics={
+                "reason": "empty_claim",
+                "reason_code": "empty_claim",
+                "contradiction_type": None,
+            },
+        )
     if _UNCERTAINTY_RE.search(c):
-        return ClaimVerificationResult(supported=True, mode=m, diagnostics={"reason": "uncertainty_claim"})
+        return ClaimVerificationResult(
+            supported=True,
+            mode=m,
+            diagnostics={
+                "reason": "uncertainty_claim",
+                "reason_code": "uncertainty_claim",
+                "contradiction_type": None,
+            },
+        )
     if not e:
-        return ClaimVerificationResult(supported=False, mode=m, diagnostics={"reason": "empty_evidence"})
+        return ClaimVerificationResult(
+            supported=False,
+            mode=m,
+            diagnostics={
+                "reason": "empty_evidence",
+                "reason_code": "empty_evidence",
+                "contradiction_type": None,
+            },
+        )
 
     c_tokens = _token_set(c)
     e_tokens = _token_set(e)
     if not c_tokens:
-        return ClaimVerificationResult(supported=True, mode=m, diagnostics={"reason": "no_claim_tokens"})
+        return ClaimVerificationResult(
+            supported=True,
+            mode=m,
+            diagnostics={
+                "reason": "no_claim_tokens",
+                "reason_code": "no_claim_tokens",
+                "contradiction_type": None,
+            },
+        )
     if not e_tokens:
-        return ClaimVerificationResult(supported=False, mode=m, diagnostics={"reason": "no_evidence_tokens"})
+        return ClaimVerificationResult(
+            supported=False,
+            mode=m,
+            diagnostics={
+                "reason": "no_evidence_tokens",
+                "reason_code": "no_evidence_tokens",
+                "contradiction_type": None,
+            },
+        )
 
     shared = c_tokens.intersection(e_tokens)
     shared_n = int(len(shared))
@@ -136,8 +176,32 @@ def verify_claim(
         if numeric_mismatch or negation_conflict:
             supported = False
 
+    contradiction_type: str | None = None
+    if numeric_mismatch and negation_conflict:
+        contradiction_type = "numeric_and_negation"
+    elif numeric_mismatch:
+        contradiction_type = "numeric_mismatch"
+    elif negation_conflict:
+        contradiction_type = "negation_conflict"
+
+    if supported:
+        reason_code = "supported"
+    elif contradiction_type == "numeric_and_negation":
+        reason_code = "contradiction_numeric_and_negation"
+    elif contradiction_type == "numeric_mismatch":
+        reason_code = "contradiction_numeric_mismatch"
+    elif contradiction_type == "negation_conflict":
+        reason_code = "contradiction_negation_conflict"
+    elif not overlap_ok:
+        reason_code = "overlap_insufficient"
+    else:
+        reason_code = "unsupported"
+
     diagnostics = {
         "mode": m,
+        "reason": reason_code,
+        "reason_code": reason_code,
+        "contradiction_type": contradiction_type,
         "claim_tokens": claim_n,
         "evidence_tokens": int(len(e_tokens)),
         "shared_tokens": shared_n,
@@ -150,4 +214,3 @@ def verify_claim(
 
 
 __all__ = ["ClaimVerificationResult", "verify_claim"]
-

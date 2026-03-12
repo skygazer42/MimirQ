@@ -64,5 +64,18 @@
       "mrr": { "min": 1.0 },
       "ndcg_at_k": { "min": 1.0 }
     }
+  },
+  "ci_retrieval_only_bounded_gate_colbert": {
+    "schema": "mimirq.ci_retrieval_only_gate.v1",
+    "fixture": "data/sample/retrieval_fixture_colbert_v1.json",
+    "retrieval_mode": "vector",
+    "top_k": 5,
+    "colbert_retrieval_enabled": true,
+    "colbert_retrieval_provider": "deterministic",
+    "thresholds": {
+      "hit_at_k": { "min": 1.0 },
+      "mrr": { "min": 1.0 },
+      "ndcg_at_k": { "min": 1.0 }
+    }
   }
 }

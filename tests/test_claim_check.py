@@ -47,6 +47,63 @@ def test_is_claim_supported_always_keeps_uncertainty_phrasing() -> None:
     assert is_claim_supported("证据不足，无法根据现有材料确定。", "") is True
 
 
+def test_is_claim_supported_can_use_nli_fallback_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.rag.core.claim_nli_verifier import ClaimNLIVerificationResult
+    from app.rag.core.text import is_claim_supported
+
+    def _fake_verify_with_nli(*_args, **_kwargs) -> ClaimNLIVerificationResult:  # noqa: ANN002
+        return ClaimNLIVerificationResult(
+            available=True,
+            supported=True,
+            label="entailment",
+            provider_status={"provider": "openai_compatible", "tier": "experimental"},
+            diagnostics={"reason_code": "nli_entailment"},
+        )
+
+    monkeypatch.setattr("app.rag.core.text.verify_claim_with_nli", _fake_verify_with_nli, raising=True)
+
+    evidence = "The API replies with Too Many Requests when rate limited."
+    assert is_claim_supported(
+        "The service returns HTTP 429 when rate limited.",
+        evidence,
+        use_nli_fallback=True,
+        nli_provider="openai_compatible",
+        nli_model_name="gpt-4o-mini",
+    ) is True
+
+
+def test_scrub_structured_output_can_use_nli_fallback_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.rag.core.claim_nli_verifier import ClaimNLIVerificationResult
+    from app.rag.core.text import scrub_structured_output_visible_evidence_only
+
+    def _fake_verify_with_nli(*_args, **_kwargs) -> ClaimNLIVerificationResult:  # noqa: ANN002
+        return ClaimNLIVerificationResult(
+            available=True,
+            supported=True,
+            label="entailment",
+            provider_status={"provider": "openai_compatible", "tier": "experimental"},
+            diagnostics={"reason_code": "nli_entailment"},
+        )
+
+    monkeypatch.setattr("app.rag.core.text.verify_claim_with_nli", _fake_verify_with_nli, raising=True)
+
+    scrubbed, meta = scrub_structured_output_visible_evidence_only(
+        {"answer": "The service returns HTTP 429 when rate limited."},
+        evidence_text="The API replies with Too Many Requests when rate limited.",
+        verifier_mode="strict",
+        use_nli_fallback=True,
+        nli_provider="openai_compatible",
+        nli_model_name="gpt-4o-mini",
+    )
+
+    assert scrubbed["answer"] == "The service returns HTTP 429 when rate limited."
+    assert int(meta.get("claims_removed") or 0) == 0
+
+
 @pytest.mark.asyncio
 async def test_rag_engine_claim_check_removes_unsupported_claims(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.engine as engine_mod
@@ -116,6 +173,9 @@ async def test_rag_engine_claim_check_removes_unsupported_claims(monkeypatch: py
     assert "Sky is blue" in full_response
     assert "Bananas" not in full_response
     assert (done_metrics or {}).get("claim_check_removed") == 1
+    reasons = list((done_metrics or {}).get("claim_check_removed_reasons") or [])
+    assert len(reasons) == 1
+    assert str((reasons[0] or {}).get("reason_code") or "") == "overlap_insufficient"
 
 
 @pytest.mark.asyncio
@@ -187,3 +247,7 @@ async def test_rag_engine_claim_check_semantic_mode_blocks_contradiction(monkeyp
     assert "Unable to answer this question based on the available materials." in full_response
     assert (done_metrics or {}).get("claim_check_removed") == 1
     assert (done_metrics or {}).get("claim_verifier_mode") == "semantic_heuristic"
+    reasons = list((done_metrics or {}).get("claim_check_removed_reasons") or [])
+    assert len(reasons) == 1
+    assert str((reasons[0] or {}).get("reason_code") or "") == "contradiction_negation_conflict"
+    assert str((reasons[0] or {}).get("contradiction_type") or "") == "negation_conflict"

@@ -14,7 +14,9 @@ Important:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import re
 import threading
@@ -178,6 +180,9 @@ class HFDenseEmbedder(DenseEmbedder):
 
 _EMBEDDER_LOCK = threading.Lock()
 _EMBEDDER_CACHE: dict[str, DenseEmbedder] = {}
+_FAISS_LOCK = threading.Lock()
+_FAISS_MODULE: Any | None = None
+_FAISS_IMPORT_ATTEMPTED = False
 
 
 def get_dense_embedder(
@@ -340,9 +345,25 @@ def topk_cosine_scores(*, query_vec: np.ndarray, doc_vecs: np.ndarray, k: int) -
     # doc_vecs is already L2-normalized; keep q normalized too.
     qn = q / (np.linalg.norm(q) + 1e-12)
 
-    try:
-        import faiss  # type: ignore
+    faiss = None
+    global _FAISS_IMPORT_ATTEMPTED, _FAISS_MODULE
+    if not _FAISS_IMPORT_ATTEMPTED:
+        with _FAISS_LOCK:
+            if not _FAISS_IMPORT_ATTEMPTED:
+                try:
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        import faiss as faiss_mod  # type: ignore
 
+                    _FAISS_MODULE = faiss_mod
+                except Exception:
+                    _FAISS_MODULE = None
+                finally:
+                    _FAISS_IMPORT_ATTEMPTED = True
+    faiss = _FAISS_MODULE
+
+    try:
+        if faiss is None:
+            raise RuntimeError("faiss unavailable")
         # Build a temporary index (in-memory); persisted format stores vectors only.
         index = faiss.IndexFlatIP(int(doc_vecs.shape[1]))
         index.add(doc_vecs.astype(np.float32, copy=False))

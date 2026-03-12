@@ -514,6 +514,17 @@ class DocumentChunkSchema(OrmModel):
         default_factory=dict,
         validation_alias=AliasChoices("doc_metadata", "metadata"),
     )
+    index_operation: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def _populate_index_operation(self) -> "DocumentChunkSchema":
+        if self.index_operation is not None:
+            return self
+        raw = self.metadata.get("index_operation_result") if isinstance(self.metadata, dict) else None
+        if not isinstance(raw, dict):
+            return self
+        self.index_operation = dict(raw)
+        return self
 
 
 class DocumentChunkUpdateRequest(BaseModel):

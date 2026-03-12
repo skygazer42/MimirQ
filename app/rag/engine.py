@@ -36,12 +36,12 @@ from app.rag.core.text import (
     extract_evidence_text,
     guess_recall_bucket,
     guess_retrieval_mode,
-    is_claim_supported,
     normalize_retrieval_mode,
     parse_json_from_text,
     scrub_structured_output_visible_evidence_only,
     should_rewrite_query,
     split_into_claims,
+    verify_claim_with_fallback,
 )
 from app.rag.kg.pipeline import kg_search
 from app.rag.policy.intent_router import route_retrieval_preset
@@ -2166,6 +2166,7 @@ Requirements:
             claim_check_applied = claim_check_mode != "none"
             claim_check_removed = 0
             claim_check_total = 0
+            claim_check_removed_reasons: list[dict[str, Any]] = []
 
             holdback = max(0, int(getattr(settings, "PII_STREAM_HOLDBACK_CHARS", 128) or 128))
             context_for_model = redact_text(context) if pii_on else context
@@ -2222,15 +2223,33 @@ Requirements:
                     claim_check_total = len(claims)
                     kept: List[str] = []
                     for c in claims:
-                        if is_claim_supported(
+                        vr = verify_claim_with_fallback(
                             c,
                             evidence_text,
                             verifier_mode=claim_verifier_mode,
                             verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
-                        ):
+                            use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+                            nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+                            nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                            nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+                        )
+                        if bool(vr.supported):
                             kept.append(c)
                         else:
                             claim_check_removed += 1
+                            if len(claim_check_removed_reasons) < 64:
+                                diag = vr.diagnostics if isinstance(vr.diagnostics, dict) else {}
+                                claim_check_removed_reasons.append(
+                                    {
+                                        "claim": str(c or "")[:300],
+                                        "reason_code": str(diag.get("reason_code") or diag.get("reason") or "unsupported")[:120],
+                                        "contradiction_type": (
+                                            str(diag.get("contradiction_type"))[:120]
+                                            if diag.get("contradiction_type") is not None
+                                            else None
+                                        ),
+                                    }
+                                )
                     cleaned = "\n".join(kept).strip()
                     if not cleaned:
                         cleaned = "Unable to answer this question based on the available materials."
@@ -2258,10 +2277,17 @@ Requirements:
                         max_claims=claim_check_max_claims,
                         verifier_mode=claim_verifier_mode,
                         verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
+                        use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+                        nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+                        nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                        nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
                     )
                     if isinstance(scrub_meta, dict):
                         claim_check_total = int(scrub_meta.get("claims_total") or 0)
                         claim_check_removed = int(scrub_meta.get("claims_removed") or 0)
+                        rm = scrub_meta.get("claim_check_removed_reasons")
+                        if isinstance(rm, list):
+                            claim_check_removed_reasons = [x for x in rm if isinstance(x, dict)][:64]
 
                     # Ensure the common top-level answer field is non-empty (keeps clients stable).
                     try:
@@ -2285,6 +2311,10 @@ Requirements:
                         max_claims=claim_check_max_claims if claim_check_configured else 24,
                         verifier_mode=claim_verifier_mode,
                         verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
+                        use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+                        nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+                        nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                        nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
                     )
                 except Exception:
                     claim_evidence = []
@@ -2403,6 +2433,7 @@ Requirements:
                 "max_claims": int(claim_check_max_claims),
                 "claims_total": int(claim_check_total),
                 "claims_removed": int(claim_check_removed),
+                "removed_reasons": claim_check_removed_reasons,
             }
             # Prometheus SLI metrics (PII-safe; low-cardinality by default).
             try:
@@ -2507,7 +2538,13 @@ Requirements:
                         "claim_verifier_enable_contradiction_check": bool(claim_verifier_enable_contradiction_check),
                         "claim_check_removed": int(claim_check_removed),
                         "claim_check_total": int(claim_check_total),
+                        "claim_check_removed_reasons": claim_check_removed_reasons,
                         "claim_check_max_claims": int(claim_check_max_claims) if claim_check_configured else None,
+                        "claim_nli_verifier": {
+                            "enabled": bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+                            "provider": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+                            "model_name": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                        },
                         "claim_evidence": claim_evidence,
                         "visible_evidence_only_enabled": bool(strict_visible),
                         "visible_evidence_only_requested": bool(visible_evidence_only),
