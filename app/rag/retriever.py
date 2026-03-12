@@ -116,6 +116,8 @@ class HybridRetriever(BaseRetriever):
     # Optional sparse retrieval channel caches (per scope key).
     _sparse_doc_vectors: Dict[str, Dict[str, SparseVector]] = PrivateAttr(default_factory=dict)
     _sparse_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+    # Last sparse provider status for current query (PII-safe, low-cardinality).
+    _last_sparse_provider_status: Dict[str, Any] = PrivateAttr(default_factory=dict)
     # Optional ColBERT-style ANN retrieval caches (per scope key).
     # These are used only when settings.COLBERT_RETRIEVAL_ENABLED=true.
     _colbert_index_cache: Dict[str, Any] = PrivateAttr(default_factory=dict)
@@ -125,6 +127,16 @@ class HybridRetriever(BaseRetriever):
         if self.sparse_enabled is not None:
             return bool(self.sparse_enabled)
         return bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
+
+    def _resolve_sparse_provider_status(self, *, sparse_enabled: bool) -> Dict[str, Any]:
+        from app.rag.retrieval.sparse import resolve_sparse_provider_capability
+
+        return resolve_sparse_provider_capability(
+            requested_provider=str(self.sparse_provider or ""),
+            sparse_enabled=bool(sparse_enabled),
+            splade_model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            default_provider="deterministic",
+        )
 
     def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
         if not docs:
@@ -1896,10 +1908,12 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             return []
 
-        provider = str(self.sparse_provider or "deterministic").strip().lower()
+        provider_status = self._resolve_sparse_provider_status(sparse_enabled=True)
+        provider = str(provider_status.get("effective_provider") or "deterministic").strip().lower() or "deterministic"
         search_t0 = time.perf_counter()
         outcome = "error"
         candidates_count = 0
+        reason = str(provider_status.get("reason") or "none")
 
         from app.rag.retrieval.sparse_prometheus_metrics import (  # local import: optional dependency
             observe_sparse_index_load,
@@ -1916,6 +1930,7 @@ class HybridRetriever(BaseRetriever):
             docs = self._bm25_docs.get(cache_key) or []
             if not docs:
                 outcome = "skipped"
+                reason = "scope_empty"
                 return []
 
             from app.rag.retrieval.sparse import (
@@ -1941,6 +1956,7 @@ class HybridRetriever(BaseRetriever):
 
             # Lazy-load persisted sparse vectors if needed (best-effort; robust across restarts).
             sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+            had_index_load_error = False
             if len(sparse_vecs) != len(docs):
                 if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
                     load_outcome = "miss"
@@ -1956,10 +1972,12 @@ class HybridRetriever(BaseRetriever):
                             load_outcome = "hit"
                     except Exception:
                         load_outcome = "error"
+                        had_index_load_error = True
                     observe_sparse_index_load(provider=provider, outcome=load_outcome)
                 else:
                     observe_sparse_index_load(provider=provider, outcome="skipped")
 
+            had_index_build_error = False
             if len(sparse_vecs) != len(docs):
                 try:
                     with self._get_sparse_build_lock(cache_key):
@@ -1968,7 +1986,13 @@ class HybridRetriever(BaseRetriever):
                             self._build_sparse_index(cache_key=cache_key, docs=docs)
                             sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
                 except Exception:
+                    had_index_build_error = True
                     sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+
+            if reason == "none" and had_index_load_error:
+                reason = "index_load_error"
+            if reason == "none" and had_index_build_error and len(sparse_vecs) != len(docs):
+                reason = "index_build_failed"
 
             encoder = get_sparse_encoder(
                 provider=provider,
@@ -1992,6 +2016,8 @@ class HybridRetriever(BaseRetriever):
             scored = topk_scores(query_vec=q_vec, docs=sparse_vecs, k=max(0, int(top_k or 0)))
             if not scored:
                 outcome = "empty"
+                if reason == "none":
+                    reason = "no_candidates"
                 return []
 
             doc_by_id: Dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
@@ -2030,19 +2056,35 @@ class HybridRetriever(BaseRetriever):
 
             if not results:
                 outcome = "empty"
+                if reason == "none":
+                    reason = "no_candidates"
                 return []
             candidates_count = len(results)
             outcome = "ok"
             return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
         except Exception:
             outcome = "error"
+            if reason == "none":
+                reason = "exception"
             raise
         finally:
+            try:
+                self._last_sparse_provider_status = {
+                    **provider_status,
+                    "effective_provider": provider,
+                    "status": str(provider_status.get("status") or "ready"),
+                    "outcome": outcome,
+                    "reason": reason,
+                    "candidates": int(candidates_count or 0),
+                }
+            except Exception:
+                self._last_sparse_provider_status = {}
             observe_sparse_search(
                 provider=provider,
                 outcome=outcome,
                 duration_sec=(time.perf_counter() - search_t0),
                 candidates_count=candidates_count,
+                reason=reason,
             )
 
     def _search_lexical_db(  # noqa: PLR0915
@@ -2669,6 +2711,15 @@ class HybridRetriever(BaseRetriever):
 
         # 2c) Optional sparse channel (SPLADE-style)
         sparse_results: List[Dict[str, Any]] = []
+        self._last_sparse_provider_status = self._resolve_sparse_provider_status(
+            sparse_enabled=self._effective_sparse_enabled()
+        )
+        if not want_sparse:
+            self._last_sparse_provider_status = {
+                **(self._last_sparse_provider_status or {}),
+                "outcome": "skipped",
+                "candidates": 0,
+            }
         if want_sparse:
             try:
                 sparse_results = self._search_sparse(
@@ -2821,6 +2872,23 @@ class HybridRetriever(BaseRetriever):
             )
             channel_metrics["colbert_ann"] = colbert_box
 
+            sparse_status = dict(self._last_sparse_provider_status or {})
+            sparse_provider_status = {
+                "requested_provider": str(sparse_status.get("requested_provider") or ""),
+                "requested_provider_normalized": str(sparse_status.get("requested_provider_normalized") or ""),
+                "effective_provider": str(
+                    sparse_status.get("effective_provider")
+                    or self.sparse_provider
+                    or "deterministic"
+                ),
+                "provider_supported": bool(sparse_status.get("provider_supported", False)),
+                "model_required": bool(sparse_status.get("model_required", False)),
+                "model_configured": bool(sparse_status.get("model_configured", False)),
+                "status": str(sparse_status.get("status") or ""),
+                "reason": str(sparse_status.get("reason") or ""),
+                "outcome": str(sparse_status.get("outcome") or ""),
+            }
+
             channel_metrics.update(
                 {
                     "retrieval_mode": retrieval_mode,
@@ -2860,7 +2928,12 @@ class HybridRetriever(BaseRetriever):
                     "sparse": {
                         "enabled": bool(want_sparse),
                         "candidates": len(sparse_results or []),
-                        "provider": str(self.sparse_provider or ""),
+                        "provider": str(
+                            sparse_provider_status.get("effective_provider")
+                            or self.sparse_provider
+                            or "deterministic"
+                        ),
+                        "provider_status": sparse_provider_status,
                     },
                 }
             )

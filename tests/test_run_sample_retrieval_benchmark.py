@@ -52,3 +52,31 @@ def test_run_sample_retrieval_benchmark_respects_llm_mock_env(monkeypatch: pytes
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload.get("llm_mock") is True
     assert str(payload.get("llm_mock_env") or "").lower() == "true"
+
+
+def test_run_sample_retrieval_benchmark_supports_sparse_runtime_flags(tmp_path: Path) -> None:
+    mod = _load_script("scripts/run_sample_retrieval_benchmark.py")
+    out_path = tmp_path / "sample_bench_sparse.json"
+    fixture = _repo_root() / "data" / "sample" / "retrieval_fixture_sparse_v1.json"
+
+    rc = mod.main(
+        [
+            "--fixture",
+            str(fixture),
+            "--out",
+            str(out_path),
+            "--retrieval-mode",
+            "keyword",
+            "--top-k",
+            "5",
+            "--enable-sparse-retrieval",
+            "--sparse-retrieval-provider",
+            "deterministic",
+        ]
+    )
+    assert rc == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    runtime = payload.get("runtime") or {}
+    assert runtime.get("sparse_retrieval_enabled") is True
+    assert runtime.get("sparse_retrieval_provider") == "deterministic"

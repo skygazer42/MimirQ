@@ -211,9 +211,12 @@ def run_benchmark(
     output_path: Path,
     top_k: int | None,
     retrieval_mode: str | None,
+    sparse_retrieval_enabled: bool = False,
+    sparse_retrieval_provider: str = "deterministic",
 ) -> dict[str, Any]:
     from app.core.config import settings as app_settings
     from app.rag.core.hashing import stable_hash
+    from app.rag.retrieval.sparse import normalize_sparse_provider_name
     from app.rag.retriever import HybridRetriever
 
     fixture_raw = fixture_path.read_text(encoding="utf-8")
@@ -232,6 +235,7 @@ def run_benchmark(
         "BM25_INDEX_ENABLED",
         "LEXICAL_DB_ENABLED",
         "SPARSE_RETRIEVAL_ENABLED",
+        "SPARSE_RETRIEVAL_PROVIDER",
         "ENABLE_QUERY_REWRITE",
         "ENABLE_MULTI_QUERY",
         "ENABLE_HYDE",
@@ -239,11 +243,15 @@ def run_benchmark(
         "RETRIEVAL_QUERY_PARALLELISM",
     )
     previous: dict[str, Any] = {k: getattr(app_settings, k) for k in settings_keys}
+    sparse_provider = normalize_sparse_provider_name(str(sparse_retrieval_provider or "deterministic"))
+    if sparse_provider not in {"deterministic", "splade"}:
+        sparse_provider = "deterministic"
     try:
         # Deterministic local profile for OSS/dev reproducibility.
         app_settings.BM25_INDEX_ENABLED = True
         app_settings.LEXICAL_DB_ENABLED = False
-        app_settings.SPARSE_RETRIEVAL_ENABLED = False
+        app_settings.SPARSE_RETRIEVAL_ENABLED = bool(sparse_retrieval_enabled)
+        app_settings.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
         app_settings.ENABLE_QUERY_REWRITE = False
         app_settings.ENABLE_MULTI_QUERY = False
         app_settings.ENABLE_HYDE = False
@@ -257,8 +265,8 @@ def run_benchmark(
         retriever = HybridRetriever(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
-            sparse_enabled=False,
-            sparse_provider="deterministic",
+            sparse_enabled=bool(sparse_retrieval_enabled),
+            sparse_provider=sparse_provider,
         )
         retriever.upsert_bm25_documents(docs, tenant_id=tenant_id)
 
@@ -305,6 +313,10 @@ def run_benchmark(
         "llm_mock_env": llm_mock_env,
         "retrieval_mode": effective_mode,
         "top_k": int(effective_top_k),
+        "runtime": {
+            "sparse_retrieval_enabled": bool(sparse_retrieval_enabled),
+            "sparse_retrieval_provider": sparse_provider,
+        },
         "summary": {
             "cases_total": int(len(cases)),
             "hit_at_k": round(float(sum(hits) / len(hits)), 6) if hits else 0.0,
@@ -345,6 +357,16 @@ def main(argv: list[str] | None = None) -> int:
         choices=["keyword", "vector", "hybrid", "mmr"],
         help="Override retrieval_mode from fixture defaults",
     )
+    parser.add_argument(
+        "--enable-sparse-retrieval",
+        action="store_true",
+        help="Enable sparse retrieval channel for this benchmark run.",
+    )
+    parser.add_argument(
+        "--sparse-retrieval-provider",
+        default="deterministic",
+        help="Sparse retrieval provider (deterministic|splade; unknown values fallback to deterministic).",
+    )
     args = parser.parse_args(argv)
 
     fixture_path = Path(str(args.fixture)).expanduser().resolve()
@@ -355,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
         output_path=out_path,
         top_k=args.top_k,
         retrieval_mode=args.retrieval_mode,
+        sparse_retrieval_enabled=bool(args.enable_sparse_retrieval),
+        sparse_retrieval_provider=str(args.sparse_retrieval_provider or "deterministic"),
     )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     print(

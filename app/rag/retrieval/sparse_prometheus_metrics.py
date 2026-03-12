@@ -17,6 +17,18 @@ from app.core.config import settings
 
 _PROVIDERS = {"deterministic", "splade", "unknown"}
 _OUTCOMES = {"ok", "empty", "error", "skipped"}
+_SEARCH_REASONS = {
+    "none",
+    "sparse_disabled",
+    "provider_invalid",
+    "splade_model_missing",
+    "scope_empty",
+    "no_candidates",
+    "index_load_error",
+    "index_build_failed",
+    "exception",
+    "unknown",
+}
 _INDEX_LOAD_OUTCOMES = {"hit", "miss", "error", "skipped"}
 _INDEX_SAVE_OUTCOMES = {"ok", "error", "skipped"}
 _BUILD_KINDS = {"full", "incremental"}
@@ -38,6 +50,11 @@ SPARSE_SEARCH_CANDIDATES_COUNT = Histogram(
     "Sparse retrieval candidates count (per query; best-effort)",
     ["provider", "outcome"],
     buckets=(0, 1, 2, 3, 5, 10, 20, 50, 80, 100, 200, 500),
+)
+SPARSE_SEARCH_REASON_TOTAL = Counter(
+    "rag_sparse_search_reason_total",
+    "Sparse retrieval fallback/skip reason counts (low-cardinality; best-effort)",
+    ["provider", "reason"],
 )
 
 SPARSE_INDEX_LOAD_TOTAL = Counter(
@@ -92,6 +109,7 @@ def observe_sparse_search(
     outcome: str,
     duration_sec: float | None,
     candidates_count: int | None,
+    reason: str | None = None,
 ) -> None:
     if not _enabled():
         return
@@ -99,6 +117,8 @@ def observe_sparse_search(
     p = _norm_provider(provider)
     oc = _norm_outcome(outcome, allowed=_OUTCOMES, fallback="error")
     SPARSE_SEARCH_TOTAL.labels(provider=p, outcome=oc).inc()
+    rs = _norm_outcome(reason, allowed=_SEARCH_REASONS, fallback="unknown")
+    SPARSE_SEARCH_REASON_TOTAL.labels(provider=p, reason=rs).inc()
 
     try:
         sec = float(duration_sec) if duration_sec is not None else None
@@ -157,6 +177,7 @@ __all__ = [
     "SPARSE_SEARCH_TOTAL",
     "SPARSE_SEARCH_DURATION_SECONDS",
     "SPARSE_SEARCH_CANDIDATES_COUNT",
+    "SPARSE_SEARCH_REASON_TOTAL",
     "SPARSE_INDEX_LOAD_TOTAL",
     "SPARSE_INDEX_SAVE_TOTAL",
     "SPARSE_INDEX_BUILD_DURATION_SECONDS",

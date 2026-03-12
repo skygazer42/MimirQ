@@ -59,13 +59,31 @@ SPLADE provider（可选，需显式配置模型）：
 - `SPARSE_SPLADE_TOP_K=128`
 - `SPARSE_SPLADE_MIN_WEIGHT=0.0`
 
+provider capability contract（统一契约）：
+- `requested_provider`：请求 provider（原始值，lowercase）
+- `requested_provider_normalized`：归一化后的 provider（别名会被折叠）
+- `effective_provider`：真正执行检索的 provider
+- `provider_supported`：是否在允许列表内（`deterministic|splade`）
+- `model_required` / `model_configured`：该 provider 是否依赖模型、模型是否已配置
+- `status`：`ready|fallback|disabled`
+- `reason`：`none|provider_invalid|splade_model_missing|sparse_disabled`
+
+配置校验规则（启动时）：
+- `SPARSE_RETRIEVAL_PROVIDER` 必须是 `deterministic|splade`
+- 当 `SPARSE_RETRIEVAL_ENABLED=true` 且 provider=`splade` 时，`SPARSE_SPLADE_MODEL_NAME` 必填
+
 ---
 
 ## 4) 召回结果如何体现？
 
 当 sparse 通道启用并命中时：
 - 最终 `citations` 中会包含 `sparse_score`
-- `query_debug.channels.sparse` 会包含候选数与 provider（best-effort）
+- `query_debug.channels.sparse` 会包含候选数、`provider` 以及 `provider_status`（best-effort）
+
+`provider_status` 常见字段：
+- `status`：`ready|fallback|disabled`
+- `reason`：`none|provider_invalid|splade_model_missing|scope_empty|no_candidates|index_load_error|index_build_failed|exception`
+- `outcome`：`ok|empty|skipped|error`
 
 > `sparse_score` 仅表示 sparse 通道对该 chunk 的支持强度；最终排序仍由融合策略与（可选）rerank 决定。
 
@@ -92,6 +110,7 @@ SPLADE provider（可选，需显式配置模型）：
 - `rag_sparse_search_total{provider,outcome}`
 - `rag_sparse_search_duration_seconds{provider,outcome}`
 - `rag_sparse_search_candidates_count{provider,outcome}`
+- `rag_sparse_search_reason_total{provider,reason}`
 
 索引侧（持久化缓存 + 构建）：
 - `rag_sparse_index_load_total{provider,outcome}`（`hit|miss|error|skipped`）
@@ -101,12 +120,33 @@ SPLADE provider（可选，需显式配置模型）：
 字段说明：
 - `provider`：`deterministic|splade|unknown`
 - `outcome`（search/build）：`ok|empty|error|skipped`
+- `reason`（search）：`none|provider_invalid|splade_model_missing|scope_empty|no_candidates|index_load_error|index_build_failed|exception|unknown`
 
 > 建议关注：`outcome=error` 的比例、`duration_seconds` 的 P95/P99，以及 `index_load_total{outcome=miss}` 的变化（可能表示频繁重建/冷启动）。
 
 ---
 
-## 7) 回滚（Rollback Playbook）
+## 7) CI / Nightly 门禁
+
+CI bounded gate 增加 sparse slice：
+- fixture：`data/sample/retrieval_fixture_sparse_v1.json`
+- baseline：`ci/queryset_health_snapshot_sparse_baseline.v1.json`
+- threshold key：`ci_retrieval_only_bounded_gate_sparse`
+- artifact：
+  - `artifacts/sample_retrieval_bench.sparse.json`
+  - `artifacts/queryset_health.snapshot.sparse.json`
+  - `artifacts/queryset_health.diff.sparse.json`
+  - `artifacts/queryset_health.diff.sparse.md`
+
+nightly ablation 增加 sparse bounded slice：
+- key：`sparse_bounded_slice`
+- 策略：`retrieval_mode=keyword` + `fusion_strategy=budgeted_rrf`
+- 预算：`{vector:0,bm25:4,lexical:0,sparse:4}`
+- provider：`deterministic`
+
+---
+
+## 8) 回滚（Rollback Playbook）
 
 sparse 通道设计为 **默认关闭**，且所有加载/索引持久化均为 best-effort；因此回滚通常只需配置开关：
 
@@ -125,4 +165,5 @@ sparse 通道设计为 **默认关闭**，且所有加载/索引持久化均为 
 
 建议流程：
 - 先看 Prometheus：`rag_sparse_search_total{outcome="error"}` 是否突然升高、`rag_sparse_search_duration_seconds` 是否飙升
+- 再看 taxonomy：`rag_sparse_search_reason_total{reason="provider_invalid|splade_model_missing|index_build_failed|exception"}` 是否出现异常尖峰
 - 先把 `SPARSE_RETRIEVAL_ENABLED=false`（硬回滚），然后在预发/灰度环境逐步恢复并跑 retrieval-only regression gate 验证收益

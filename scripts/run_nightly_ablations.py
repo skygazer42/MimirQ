@@ -217,6 +217,17 @@ def _default_ablations() -> list[dict]:
                 "sparse_retrieval_provider": "deterministic",
             },
         ),
+        _ablation(
+            "sparse_bounded_slice",
+            {
+                "retrieval_mode": "keyword",
+                "fusion_strategy": "budgeted_rrf",
+                # Deterministic sparse-heavy bounded slice for nightly regression drift checks.
+                "fusion_budgets": {"vector": 0, "bm25": 4, "lexical": 0, "sparse": 4},
+                "sparse_retrieval_enabled": True,
+                "sparse_retrieval_provider": "deterministic",
+            },
+        ),
         # Reranker wiring: keep it non-LLM for default nightly safety.
         _ablation(
             "hybrid_rerank",

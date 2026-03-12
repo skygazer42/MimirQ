@@ -13,14 +13,21 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "validate_queryset_health_policy.py" in text
     assert "ci/queryset_health_snapshot_baseline.v1.json" in text
     assert "ci/queryset_health_snapshot_hybrid_baseline.v1.json" in text
+    assert "ci/queryset_health_snapshot_sparse_baseline.v1.json" in text
     assert "data/sample/retrieval_fixture_hybrid_v1.json" in text
+    assert "data/sample/retrieval_fixture_sparse_v1.json" in text
     assert "ci/queryset_health_policy.v1.json" in text
     assert "artifacts/queryset_health.snapshot.json" in text
     assert "artifacts/queryset_health.snapshot.hybrid.json" in text
+    assert "artifacts/queryset_health.snapshot.sparse.json" in text
     assert "artifacts/queryset_health.diff.json" in text
     assert "artifacts/queryset_health.diff.md" in text
     assert "artifacts/queryset_health.diff.hybrid.json" in text
     assert "artifacts/queryset_health.diff.hybrid.md" in text
+    assert "artifacts/queryset_health.diff.sparse.json" in text
+    assert "artifacts/queryset_health.diff.sparse.md" in text
+    assert "artifacts/sample_retrieval_bench.sparse.json" in text
+    assert "ci_retrieval_only_bounded_gate_sparse" in text
     assert "ci_retrieval_only_bounded_gate_hybrid" in text
     assert "grounded_strict" in text
     assert "artifacts/retrieval_profile.grounded_strict.contract.json" in text

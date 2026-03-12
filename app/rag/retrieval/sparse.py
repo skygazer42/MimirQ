@@ -25,6 +25,79 @@ from typing import Any, Iterable, Protocol, Sequence
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}|\d+|[\u4e00-\u9fff]{2,}")
 _INDEX_SCHEMA_V1 = "mimirq.sparse_index.v1"
+VALID_SPARSE_PROVIDERS = frozenset({"deterministic", "splade"})
+_SPARSE_PROVIDER_ALIASES = {
+    "det": "deterministic",
+    "deterministic": "deterministic",
+    "splade": "splade",
+}
+_SPARSE_STATUS_VALUES = frozenset({"ready", "disabled", "fallback"})
+_SPARSE_REASON_VALUES = frozenset(
+    {
+        "none",
+        "sparse_disabled",
+        "provider_invalid",
+        "splade_model_missing",
+    }
+)
+
+
+def normalize_sparse_provider_name(provider: str | None) -> str:
+    raw = str(provider or "").strip().lower()
+    if not raw:
+        return "deterministic"
+    return _SPARSE_PROVIDER_ALIASES.get(raw, raw)
+
+
+def resolve_sparse_provider_capability(
+    *,
+    requested_provider: str | None,
+    sparse_enabled: bool,
+    splade_model_name: str | None,
+    default_provider: str = "deterministic",
+) -> dict[str, Any]:
+    """
+    Resolve sparse provider capability and deterministic fallback status.
+
+    Contract goals:
+    - Keep provider normalization deterministic and low-cardinality.
+    - Expose explicit fallback reasons for audit/debug/metrics.
+    - Never require callers to guess whether runtime fell back to deterministic.
+    """
+    requested_raw = str(requested_provider or "").strip().lower()
+    requested_norm = normalize_sparse_provider_name(requested_raw)
+    default_norm = normalize_sparse_provider_name(default_provider)
+    if default_norm not in VALID_SPARSE_PROVIDERS:
+        default_norm = "deterministic"
+
+    provider_supported = requested_norm in VALID_SPARSE_PROVIDERS
+    model_required = requested_norm == "splade"
+    model_configured = bool(str(splade_model_name or "").strip())
+
+    effective_provider = requested_norm if provider_supported else default_norm
+    status = "ready"
+    reason = "none"
+    if not bool(sparse_enabled):
+        status = "disabled"
+        reason = "sparse_disabled"
+    elif not provider_supported:
+        status = "fallback"
+        reason = "provider_invalid"
+        effective_provider = default_norm
+    elif model_required and not model_configured:
+        status = "fallback"
+        reason = "splade_model_missing"
+
+    return {
+        "requested_provider": requested_raw or "",
+        "requested_provider_normalized": requested_norm,
+        "effective_provider": effective_provider,
+        "provider_supported": bool(provider_supported),
+        "model_required": bool(model_required),
+        "model_configured": bool(model_configured),
+        "status": status if status in _SPARSE_STATUS_VALUES else "fallback",
+        "reason": reason if reason in _SPARSE_REASON_VALUES else "provider_invalid",
+    }
 
 
 def _norm_token(t: str) -> str:
@@ -308,8 +381,8 @@ def get_sparse_encoder(
     - Caching is keyed by provider + config so repeated indexing is faster.
     - SPLADE is opt-in and requires a model name/path.
     """
-    p = str(provider or "").strip().lower() or "deterministic"
-    if p not in {"deterministic", "splade"}:
+    p = normalize_sparse_provider_name(provider)
+    if p not in VALID_SPARSE_PROVIDERS:
         p = "deterministic"
 
     if p == "deterministic":
@@ -354,7 +427,9 @@ def build_sparse_provider_config(
     top_k: int = 128,
     min_weight: float = 0.0,
 ) -> dict[str, Any]:
-    p = str(provider or "").strip().lower() or "deterministic"
+    p = normalize_sparse_provider_name(provider)
+    if p not in VALID_SPARSE_PROVIDERS:
+        p = "deterministic"
     if p == "deterministic":
         return {"provider": p, "synonyms_raw": str(synonyms_raw or "")}
     return {
