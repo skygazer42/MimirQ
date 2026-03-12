@@ -11,6 +11,8 @@ def test_chat_rag_config_defaults_follow_system_settings(monkeypatch):  # noqa: 
     monkeypatch.setattr(settings, "ENABLE_RERANKER", True, raising=False)
     monkeypatch.setattr(settings, "RERANKER_PROVIDER", "llm", raising=False)
     monkeypatch.setattr(settings, "RERANKER_TOP_N", 17, raising=False)
+    # Disable default retrieval profile so this test validates raw settings defaults.
+    monkeypatch.setattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "", raising=False)
 
     cfg = ChatRAGConfig()
     assert cfg.top_k == 11
@@ -19,4 +21,3 @@ def test_chat_rag_config_defaults_follow_system_settings(monkeypatch):  # noqa: 
     assert cfg.enable_reranker is True
     assert cfg.reranker_provider == "llm"
     assert cfg.reranker_top_n == 17
-

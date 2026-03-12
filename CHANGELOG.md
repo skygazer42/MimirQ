@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Offline training helper: `scripts/train_ltr_from_regression_cases.py` (build LTR model artifacts from regression cases via Evidence API).
 - Docs: evidence retrieval gate, sparse retrieval, ColBERT/LTR reranking guides, and a retrieval-only parity gap snapshot.
 - Stable retrieval config fingerprint (`retrieval_config`) in retrieval trace plus `retrieval_config_hash` metric for cross-run comparisons.
+- Retrieval orchestrator hard-fallback path (opt-in) with deterministic fallback metrics/trace (`hard_fallback_*`) and config-fingerprint keys.
+- Strict evidence-span mode for retrieval (`RAG_EVIDENCE_REQUIRE_SPANS_ENABLED`) including span-based citation filtering and abstain coupling.
+- Hardcase candidate emission from retrieval metrics (`mimirq.hardcase_candidate.v1`) with stable dedupe key.
+- Docs: hardcase feedback automation playbook (`docs/guides/hardcase_feedback_automation.md`).
+- Chat-side default retrieval profile setting (`CHAT_DEFAULT_RETRIEVAL_PROFILE`) with omitted-knob apply semantics and explicit-knob override preservation.
+- TAG deterministic NL2SQL fallback path (`generate_sql_for_table_with_mode`) and no-key behavior for chat TAG.
+- Parse-quality retrieval diagnostics (`metrics.parse_quality`, `retrieval_trace.parse_quality`) and operator guide `docs/guides/parse_quality_retrieval_diagnostics.md`.
 
 ### Retrieval Quality
 
@@ -37,6 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Evidence retrieval orchestrator supports optional post-fusion reranking for retrieval-only workflows (`EVIDENCE_POST_RERANK_*`).
 - Evidence citations now surface additional per-channel sparse scores (`lexical_score`, `sparse_score`) for debugging/training.
+- Retrieval profiles endpoint now exposes runtime `chat_default_profile` and `chat_default_effective`.
+- TAG citation payloads now include stable table traceability keys (`table_id`, `sheet_index`, `sheet_name`, `sql_generation_mode`) for tag hits.
 
 ### Fixed
 

@@ -321,6 +321,32 @@ class ChatRAGConfig(BaseModel):
         is a contract about retrieval behavior, not just a suggestion.
         """
         p = (self.retrieval_profile or "").strip().lower()
+        default_profile_applied = False
+
+        # Request-level default retrieval profile:
+        # apply only when caller omitted retrieval_profile and did not provide explicit retrieval knobs.
+        if not p:
+            default_top_k = int(getattr(settings, "RETRIEVAL_TOP_K", 10) or 10)
+            default_score_threshold = float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0)
+            default_retrieval_mode = "hybrid"
+            default_enable_reranker = bool(getattr(settings, "ENABLE_RERANKER", False))
+            default_reranker_provider = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower()
+            default_reranker_top_n = int(getattr(settings, "RERANKER_TOP_N", 20) or 20)
+            default_enable_weight_rerank = True
+
+            knobs_appear_omitted = (
+                int(self.top_k or 0) == int(default_top_k)
+                and abs(float(self.score_threshold or 0.0) - float(default_score_threshold)) <= 1e-9
+                and str(self.retrieval_mode or "").strip().lower() == default_retrieval_mode
+                and bool(self.enable_reranker) is default_enable_reranker
+                and str(self.reranker_provider or "").strip().lower() == default_reranker_provider
+                and int(self.reranker_top_n or 0) == int(default_reranker_top_n)
+                and bool(self.enable_weight_rerank) is default_enable_weight_rerank
+            )
+            if knobs_appear_omitted:
+                p = str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
+                default_profile_applied = bool(p)
+
         if not p:
             self.retrieval_profile = None
             return self
@@ -348,6 +374,8 @@ class ChatRAGConfig(BaseModel):
             self.reranker_top_n = int(applied["reranker_top_n"])
         if applied.get("enable_weight_rerank") is not None:
             self.enable_weight_rerank = bool(applied["enable_weight_rerank"])
+        if default_profile_applied and bool(getattr(settings, "CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY", False)):
+            self.visible_evidence_only = True
         return self
 
 class ChatRequest(BaseModel):

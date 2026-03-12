@@ -3180,6 +3180,7 @@ class HybridRetriever(BaseRetriever):
             doc_dataset_by_id: Dict[str, str] = {}
             doc_ready_by_id: Dict[str, bool] = {}
             doc_active_pipeline_key_by_id: Dict[str, str] = {}
+            doc_parse_quality_by_id: Dict[str, float] = {}
             try:
                 doc_ids: set[UUID] = set()
                 for ck in list(chunks_by_id.values()) + list(chunks_by_pair.values()):
@@ -3202,6 +3203,22 @@ class HybridRetriever(BaseRetriever):
                         user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
                         if user0:
                             doc_user_by_id[str(doc_id)] = dict(user0)
+                        pq_obj = meta0.get("parse_quality")
+                        pq_score_raw = None
+                        if isinstance(pq_obj, dict):
+                            pq_score_raw = pq_obj.get("score")
+                        elif pq_obj is not None:
+                            pq_score_raw = pq_obj
+                        try:
+                            if pq_score_raw is not None:
+                                pq_score = float(pq_score_raw)
+                                if pq_score < 0.0:
+                                    pq_score = 0.0
+                                if pq_score > 1.0:
+                                    pq_score = 1.0
+                                doc_parse_quality_by_id[str(doc_id)] = float(pq_score)
+                        except Exception:
+                            pass
                         if ds_id is not None:
                             doc_dataset_by_id[str(doc_id)] = str(ds_id)
 
@@ -3229,6 +3246,7 @@ class HybridRetriever(BaseRetriever):
                 doc_dataset_by_id = {}
                 doc_ready_by_id = {}
                 doc_active_pipeline_key_by_id = {}
+                doc_parse_quality_by_id = {}
 
             # Candidate-level ACL trimming (security trimming) and dataset scoping.
             # This enables "open scope" retrieval (no precomputed allowed_doc_ids list) without leaking data.
@@ -3378,6 +3396,10 @@ class HybridRetriever(BaseRetriever):
                     doc_user = doc_user_by_id.get(str(ck.document_id))
                     if doc_user and not meta.get("document_user"):
                         meta["document_user"] = doc_user
+                    if meta.get("doc_parse_quality_score") is None:
+                        pq_score = doc_parse_quality_by_id.get(str(ck.document_id))
+                        if pq_score is not None:
+                            meta["doc_parse_quality_score"] = float(pq_score)
 
                     # Embedding space guard (vector only): avoid mixing vectors created with different
                     # embedding models/providers/endpoints.

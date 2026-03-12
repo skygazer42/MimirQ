@@ -626,6 +626,20 @@ class Settings(BaseSettings):
     RETRIEVAL_OVERFETCH_MULTIPLIER: int = 4
     # Hard cap for the over-fetched k (0 disables).
     RETRIEVAL_OVERFETCH_MAX_K: int = 50
+    # Retrieval contract mode (opt-in deterministic behavior packs).
+    # - "" (default): no contract override
+    # - deterministic_recall: force deterministic fallback-first safeguards for empty evidence
+    RETRIEVAL_CONTRACT_MODE: str = ""
+    # Deterministic hard fallback (opt-in):
+    # when primary retrieval yields no citations, run one bounded fallback pass.
+    RETRIEVAL_HARD_FALLBACK_ENABLED: bool = False
+    RETRIEVAL_HARD_FALLBACK_MODE: str = "keyword"  # hybrid | vector | keyword | mmr
+    RETRIEVAL_HARD_FALLBACK_TOP_K: int = 30
+    # Optional hardcase emission hook for downstream EvidenceSuite/LTR automation.
+    RETRIEVAL_HARDCASE_EMIT_ENABLED: bool = False
+    # Parse-quality retrieval diagnostics (operator-facing; no ranking change by default).
+    RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD: float = 0.35
+    RETRIEVAL_PARSE_QUALITY_ALERT_RATIO: float = 0.5
 
     # Lifecycle governance-aware retrieval policy (disabled by default; opt-in).
     #
@@ -756,6 +770,8 @@ class Settings(BaseSettings):
     RAG_ABSTAIN_ENABLED: bool = False
     RAG_ABSTAIN_MIN_CITATIONS: int = 1
     RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE: float = 0.0  # 0 disables
+    # Strict evidence contract: when enabled, citations without span offsets are discarded.
+    RAG_EVIDENCE_REQUIRE_SPANS_ENABLED: bool = False
     # Evidence API (retrieval-only) iterative fallback:
     # When enabled, `POST /api/v1/rag/retrieve` may run one extra bounded retrieval pass
     # (e.g. switch retrieval_mode/profile) if the primary pass finds no usable evidence.
@@ -895,6 +911,11 @@ class Settings(BaseSettings):
     TABLE_QUERY_PROGRESS_OPS: int = 10_000
     # NL->SQL / TAG answer generation (optional; requires LLM credentials).
     TABLE_NL2SQL_ENABLED: bool = False
+    # Deterministic fallback for NL->SQL:
+    # - if no LLM key is configured, or LLM generation fails, use bounded rule-based SQL synthesis.
+    TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED: bool = True
+    # Force deterministic mode even when LLM is configured (debug/benchmark-friendly).
+    TABLE_NL2SQL_DETERMINISTIC_ONLY: bool = False
     # Data egress controls for LLM-backed table operations.
     # - RESULT_EGRESS: allow sending SQL query results (rows) to an LLM (for answer drafting).
     # - ROW_EGRESS: allow sending raw table rows to an LLM (e.g. semantic filter).
@@ -933,6 +954,11 @@ class Settings(BaseSettings):
     OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD: float = 3.0
     OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD: float = 3.0
     ENABLE_QUERY_REWRITE: bool = False
+    # Chat endpoint default retrieval profile (applied only when caller omits retrieval knobs).
+    # Empty string disables profile coercion.
+    CHAT_DEFAULT_RETRIEVAL_PROFILE: str = "hybrid_ce"
+    # Optional strict grounding default when request relies on CHAT_DEFAULT_RETRIEVAL_PROFILE.
+    CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY: bool = False
     # Versioned query rewrite strategy id (used for evaluation gating / rollback).
     # The strategy identifier is intentionally low-cardinality and should not contain raw prompt text.
     QUERY_REWRITE_STRATEGY: str = "kb_followup.v1"
@@ -1731,6 +1757,45 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"VECTOR_BACKEND ({self.VECTOR_BACKEND}) must be one of {valid_vector_backends}"
             )
+
+        # Validate default retrieval profile used by chat when request-side knobs are omitted.
+        valid_retrieval_profiles = {"", "recall20", "recall50", "coverage80", "hybrid_ce"}
+        chat_default_profile = str(getattr(self, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
+        if chat_default_profile not in valid_retrieval_profiles:
+            raise ValueError(
+                "CHAT_DEFAULT_RETRIEVAL_PROFILE must be one of: "
+                + ", ".join(sorted(valid_retrieval_profiles))
+            )
+        if self.CHAT_DEFAULT_RETRIEVAL_PROFILE != chat_default_profile:
+            self.CHAT_DEFAULT_RETRIEVAL_PROFILE = chat_default_profile
+
+        retrieval_contract_mode = str(getattr(self, "RETRIEVAL_CONTRACT_MODE", "") or "").strip().lower()
+        valid_contract_modes = {"", "deterministic_recall"}
+        if retrieval_contract_mode not in valid_contract_modes:
+            raise ValueError(
+                "RETRIEVAL_CONTRACT_MODE must be one of: "
+                + ", ".join(sorted(valid_contract_modes))
+            )
+        if self.RETRIEVAL_CONTRACT_MODE != retrieval_contract_mode:
+            self.RETRIEVAL_CONTRACT_MODE = retrieval_contract_mode
+
+        valid_retrieval_modes = {"hybrid", "vector", "keyword", "mmr"}
+        fallback_mode = str(getattr(self, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
+        if fallback_mode not in valid_retrieval_modes:
+            raise ValueError(
+                f"RETRIEVAL_HARD_FALLBACK_MODE ({fallback_mode}) must be one of {valid_retrieval_modes}"
+            )
+        if self.RETRIEVAL_HARD_FALLBACK_MODE != fallback_mode:
+            self.RETRIEVAL_HARD_FALLBACK_MODE = fallback_mode
+        if int(getattr(self, "RETRIEVAL_HARD_FALLBACK_TOP_K", 0) or 0) < 1:
+            raise ValueError("RETRIEVAL_HARD_FALLBACK_TOP_K must be >= 1")
+
+        low_quality = float(getattr(self, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
+        if low_quality < 0.0 or low_quality > 1.0:
+            raise ValueError("RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD must be between 0 and 1")
+        alert_ratio = float(getattr(self, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
+        if alert_ratio < 0.0 or alert_ratio > 1.0:
+            raise ValueError("RETRIEVAL_PARSE_QUALITY_ALERT_RATIO must be between 0 and 1")
 
         # Validate checkpoint backend
         valid_checkpoint_backends = {"memory", "sqlite"}

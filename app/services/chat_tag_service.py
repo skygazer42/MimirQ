@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.services.table_store_service import run_table_query
-from app.services.table_tag_service import generate_sql_for_table
+from app.services.table_tag_service import generate_sql_for_table, generate_sql_for_table_with_mode
 
 _TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
 _TABLE_INTENT_RE = re.compile(
@@ -62,7 +62,11 @@ def _enabled_reason() -> tuple[bool, str]:
     if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
         # Chat will inject query results into the LLM context; treat this as "result egress".
         return False, "TABLE_LLM_ALLOW_RESULT_EGRESS=false"
-    if not str(getattr(settings, "LLM_API_KEY", "") or "").strip():
+    has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
+    deterministic_ok = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False)) or bool(
+        getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True)
+    )
+    if not has_llm_key and not deterministic_ok:
         return False, "LLM_API_KEY is not configured"
     return True, "ok"
 
@@ -326,12 +330,26 @@ def build_chat_tag_context_docs(
     for c in picked:
         sql_table = f"sheet_{int(c.sheet_index)}"
         try:
-            sql = generate_sql_for_table(
-                question=str(question or ""),
-                sql_table=sql_table,
-                columns=c.columns,
-                max_rows=max_rows,
-            )
+            sql_generation_mode = "llm"
+            has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
+            deterministic_only = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False))
+            deterministic_fallback = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True))
+
+            if deterministic_only or (not has_llm_key and deterministic_fallback):
+                sql, sql_generation_mode = generate_sql_for_table_with_mode(
+                    question=str(question or ""),
+                    sql_table=sql_table,
+                    columns=c.columns,
+                    max_rows=max_rows,
+                )
+            else:
+                sql = generate_sql_for_table(
+                    question=str(question or ""),
+                    sql_table=sql_table,
+                    columns=c.columns,
+                    max_rows=max_rows,
+                )
+
             result = run_table_query(
                 tenant_id=tenant_id,
                 dataset_id=c.dataset_id,
@@ -350,6 +368,7 @@ def build_chat_tag_context_docs(
                 "row_count": int(c.row_count),
                 "col_count": int(c.col_count),
                 "sql": str(result.get("sql") or sql),
+                "sql_generation_mode": sql_generation_mode,
                 "columns": result.get("columns") if isinstance(result.get("columns"), list) else [],
                 "rows": result.get("rows") if isinstance(result.get("rows"), list) else [],
                 "truncated": bool(result.get("truncated")),
@@ -376,6 +395,7 @@ def build_chat_tag_context_docs(
                         "table_id": c.table_id,
                         "sheet_index": int(c.sheet_index),
                         "sheet_name": c.sheet_name,
+                        "sql_generation_mode": sql_generation_mode,
                         # Treat as strong evidence for abstain guard (not comparable to vector scores).
                         "score": 1.0,
                         "retrieval_score": 1.0,

@@ -375,6 +375,96 @@ def _diagnose_empty_retrieval(retrieval_per_query: Any) -> dict[str, Any] | None
     return diag or None
 
 
+def _extract_parse_quality_score(meta: Any) -> float | None:
+    if not isinstance(meta, dict):
+        return None
+
+    candidates = [
+        meta.get("doc_parse_quality_score"),
+        meta.get("parse_quality_score"),
+    ]
+    pq = meta.get("parse_quality")
+    if isinstance(pq, dict):
+        candidates.append(pq.get("score"))
+    elif pq is not None:
+        candidates.append(pq)
+
+    for raw in candidates:
+        try:
+            if raw is None:
+                continue
+            score = float(raw)
+            if score < 0.0:
+                score = 0.0
+            if score > 1.0:
+                score = 1.0
+            return float(score)
+        except Exception:
+            continue
+    return None
+
+
+def _parse_quality_recommendation(*, low_ratio: float, considered: int) -> str | None:
+    if considered <= 0:
+        return "no_parse_quality_metadata"
+    if low_ratio >= 0.8:
+        return "high_parse_risk_reparse_documents"
+    if low_ratio >= 0.5:
+        return "medium_parse_risk_prioritize_low_quality_docs"
+    if low_ratio >= 0.2:
+        return "monitor_parse_quality_tail"
+    return "parse_quality_healthy"
+
+
+def _summarize_parse_quality_risk(
+    docs: list[Document] | None,
+    *,
+    low_threshold: float,
+    alert_ratio: float,
+) -> dict[str, Any]:
+    considered = 0
+    low_count = 0
+    scores: list[float] = []
+    low_samples: list[dict[str, Any]] = []
+
+    for i, d in enumerate(list(docs or [])[:50]):
+        meta = d.metadata if isinstance(getattr(d, "metadata", None), dict) else {}
+        score = _extract_parse_quality_score(meta)
+        if score is None:
+            continue
+        considered += 1
+        scores.append(float(score))
+        if float(score) < float(low_threshold):
+            low_count += 1
+            if len(low_samples) < 5:
+                low_samples.append(
+                    {
+                        "rank": int(i + 1),
+                        "chunk_id": str(getattr(d, "id", None) or meta.get("chunk_id") or ""),
+                        "document_id": str(meta.get("document_id") or ""),
+                        "score": round(float(score), 3),
+                    }
+                )
+
+    low_ratio = (float(low_count) / float(considered)) if considered > 0 else 0.0
+    avg_score = (float(sum(scores) / float(len(scores))) if scores else None)
+    alert = bool(considered > 0 and low_ratio >= float(alert_ratio))
+    recommendation = _parse_quality_recommendation(low_ratio=float(low_ratio), considered=int(considered))
+
+    return {
+        "enabled": True,
+        "low_threshold": round(float(low_threshold), 3),
+        "alert_ratio": round(float(alert_ratio), 3),
+        "considered": int(considered),
+        "low_count": int(low_count),
+        "low_ratio": round(float(low_ratio), 3),
+        "avg_score": (round(float(avg_score), 3) if avg_score is not None else None),
+        "alert": bool(alert),
+        "recommendation": recommendation,
+        "low_samples": low_samples,
+    }
+
+
 def _doc_key(doc: Document) -> str:
     meta = doc.metadata or {}
     doc_id = meta.get("document_id")
@@ -620,6 +710,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     # Capture caller intent before any routing/presets apply (kept for trace/metrics).
     requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
     requested_retrieval_profile = state.get("retrieval_profile")
+    retrieval_contract_mode = str(
+        state.get("retrieval_contract_mode")
+        if state.get("retrieval_contract_mode") is not None
+        else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
+    ).strip().lower()
+    contract_deterministic_recall = retrieval_contract_mode == "deterministic_recall"
 
     # Step 0.25: Deterministic intent router (optional).
     #
@@ -2035,8 +2131,147 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         post_rerank_error = str(exc)[:200]
         post_rerank_skip_reason = "error"
 
-    citations = build_citations_from_docs(docs, retrieval_elapsed_sec=retrieval_elapsed, retrieval_mode=request_retrieval_mode, query=query_for_retrieval)
+    hard_fallback_enabled_setting = bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False))
+    hard_fallback_enabled = bool(hard_fallback_enabled_setting or contract_deterministic_recall)
+    hard_fallback_mode = str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword").strip().lower() or "keyword"
+    if contract_deterministic_recall and not hard_fallback_enabled_setting:
+        hard_fallback_mode = "keyword"
+    hard_fallback_top_k = max(1, int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30))
+    if contract_deterministic_recall:
+        hard_fallback_top_k = max(int(hard_fallback_top_k), int(top_k or 0), 20)
+    hard_fallback_attempted = False
+    hard_fallback_used = False
+    hard_fallback_error: str | None = None
+    hard_fallback_elapsed = 0.0
+    hard_fallback_added_docs = 0
+    hard_fallback_added_citations = 0
+    hard_fallback_retriever_debug: Dict[str, Any] | None = None
+
+    citations = build_citations_from_docs(
+        docs,
+        retrieval_elapsed_sec=retrieval_elapsed,
+        retrieval_mode=request_retrieval_mode,
+        query=query_for_retrieval,
+    )
+
+    # Deterministic hard fallback (opt-in): when primary retrieval yields no citations,
+    # run one bounded fallback pass (typically keyword-first) to reduce false-empty cases.
+    if hard_fallback_enabled and not citations:
+        hard_fallback_attempted = True
+        fb_start = time.time()
+        fb_docs: list[Document] = []
+        fb_err: str | None = None
+        try:
+            fallback_update = dict(retriever_update)
+            fallback_update.update(
+                {
+                    "retrieval_mode": hard_fallback_mode,
+                    "k": int(hard_fallback_top_k),
+                    "enable_reranker": False,
+                }
+            )
+            fallback_retriever = hybrid_retriever.model_copy(update=fallback_update)
+            fb_docs = fallback_retriever.invoke(query_for_retrieval) or []
+            fb_docs = engine._annotate_docs_with_role(fb_docs, "hard_fallback")  # type: ignore[attr-defined]
+            dbg = getattr(fallback_retriever, "_last_debug_metrics", None)
+            hard_fallback_retriever_debug = _sanitize_retriever_debug(dbg if isinstance(dbg, dict) else None)
+        except Exception as exc:  # noqa: BLE001
+            fb_docs = []
+            fb_err = str(exc)[:200]
+
+        hard_fallback_elapsed = max(0.0, float(time.time() - fb_start))
+        retrieval_elapsed += float(hard_fallback_elapsed)
+
+        retrieval_per_query.append(
+            {
+                "kind": "hard_fallback",
+                "query_chars": len(query_for_retrieval or ""),
+                "elapsed_sec": round(float(hard_fallback_elapsed), 3),
+                "ok": fb_err is None,
+                "retriever_debug": hard_fallback_retriever_debug,
+            }
+        )
+        if fb_err:
+            hard_fallback_error = fb_err
+            retrieval_errors.append(f"hard_fallback:{fb_err[:160]}")
+
+        if fb_docs:
+            seen_keys: set[str] = set()
+            merged_docs: list[Document] = []
+            for d in (docs or []):
+                if d is None:
+                    continue
+                merged_docs.append(d)
+                try:
+                    seen_keys.add(_doc_key(d))
+                except Exception:
+                    continue
+
+            for d in fb_docs:
+                if d is None:
+                    continue
+                try:
+                    key = _doc_key(d)
+                except Exception:
+                    key = None
+                if key and key in seen_keys:
+                    continue
+                if key:
+                    seen_keys.add(key)
+                merged_docs.append(d)
+                hard_fallback_added_docs += 1
+
+            docs = merged_docs
+            citations_after = build_citations_from_docs(
+                docs,
+                retrieval_elapsed_sec=retrieval_elapsed,
+                retrieval_mode=request_retrieval_mode,
+                query=query_for_retrieval,
+            )
+            hard_fallback_added_citations = max(0, int(len(citations_after) - len(citations)))
+            citations = citations_after
+            hard_fallback_used = bool(hard_fallback_added_docs > 0 and citations)
+
+    evidence_span_strict_enabled = bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False))
+    evidence_span_missing_citations = 0
+    if evidence_span_strict_enabled and citations:
+        filtered_citations: list[dict[str, Any]] = []
+        for item in citations:
+            if not isinstance(item, dict):
+                continue
+            start = item.get("evidence_start_char")
+            end = item.get("evidence_end_char")
+            try:
+                start_i = int(start) if start is not None else None
+                end_i = int(end) if end is not None else None
+            except Exception:
+                start_i = None
+                end_i = None
+            if start_i is None or end_i is None or end_i <= start_i:
+                evidence_span_missing_citations += 1
+                continue
+            filtered_citations.append(item)
+        citations = filtered_citations
+
     coverage = _coverage_proxy_from_citations(citations)
+
+    try:
+        parse_quality_low_threshold = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
+    except Exception:
+        parse_quality_low_threshold = 0.35
+    parse_quality_low_threshold = min(1.0, max(0.0, float(parse_quality_low_threshold)))
+
+    try:
+        parse_quality_alert_ratio = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
+    except Exception:
+        parse_quality_alert_ratio = 0.5
+    parse_quality_alert_ratio = min(1.0, max(0.0, float(parse_quality_alert_ratio)))
+
+    parse_quality_summary = _summarize_parse_quality_risk(
+        docs,
+        low_threshold=parse_quality_low_threshold,
+        alert_ratio=parse_quality_alert_ratio,
+    )
 
     metrics = dict(state.get("metrics") or {})
     metrics["retrieval_elapsed_sec"] = round(retrieval_elapsed, 3)
@@ -2047,6 +2282,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["retrieval_profile_requested"] = (
         str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
     )
+    metrics["retrieval_contract_mode"] = retrieval_contract_mode or None
+    metrics["retrieval_contract_deterministic_recall"] = bool(contract_deterministic_recall)
     metrics["intent_router_enabled"] = bool(intent_router_meta.get("enabled"))
     metrics["intent_router_used"] = bool(intent_router_meta.get("used"))
     metrics["intent_router"] = intent_router_meta
@@ -2054,11 +2291,40 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["retrieval_query_count"] = len(retrieval_plan)
     metrics["retrieval_per_query"] = retrieval_per_query[:8]
     metrics["vector_backend"] = settings.VECTOR_BACKEND
+    metrics["hard_fallback_enabled"] = bool(hard_fallback_enabled)
+    metrics["hard_fallback_attempted"] = bool(hard_fallback_attempted)
+    metrics["hard_fallback_used"] = bool(hard_fallback_used)
+    metrics["hard_fallback_mode"] = hard_fallback_mode
+    metrics["hard_fallback_top_k"] = int(hard_fallback_top_k)
+    metrics["hard_fallback_elapsed_sec"] = round(float(hard_fallback_elapsed or 0.0), 3)
+    metrics["hard_fallback_added_docs"] = int(hard_fallback_added_docs or 0)
+    metrics["hard_fallback_added_citations"] = int(hard_fallback_added_citations or 0)
+    metrics["hard_fallback_error"] = hard_fallback_error
+    metrics["evidence_span_strict_enabled"] = bool(evidence_span_strict_enabled)
+    metrics["evidence_span_missing_citations"] = int(evidence_span_missing_citations or 0)
     if coverage:
         metrics["citation_coverage"] = coverage
     if retrieval_errors:
         metrics["retrieval_errors"] = retrieval_errors[:5]
     empty_diag = _diagnose_empty_retrieval(metrics.get("retrieval_per_query")) if not citations else None
+    if not citations and hard_fallback_attempted:
+        empty_diag = dict(empty_diag or {})
+        reasons = list(empty_diag.get("reasons") or [])
+        if "hard_fallback_no_hit" not in reasons:
+            reasons.append("hard_fallback_no_hit")
+        empty_diag["reasons"] = reasons
+
+        signals = dict(empty_diag.get("signals") or {})
+        signals["hard_fallback_attempted"] = 1
+        if hard_fallback_error:
+            signals["hard_fallback_error"] = 1
+        empty_diag["signals"] = signals
+
+        empty_diag["hard_fallback"] = {
+            "mode": hard_fallback_mode,
+            "top_k": int(hard_fallback_top_k),
+            "error": hard_fallback_error,
+        }
     if empty_diag:
         metrics["empty_retrieval"] = empty_diag
 
@@ -2140,10 +2406,17 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["decompose_parse_ok"] = bool(decompose_parse_meta.get("ok"))
     metrics["decompose_parse_method"] = decompose_parse_meta.get("method")
     metrics["decompose_parse_error"] = decompose_parse_meta.get("error")
+    metrics["parse_quality"] = dict(parse_quality_summary or {})
+    metrics["parse_quality_low_threshold"] = float(parse_quality_low_threshold)
+    metrics["parse_quality_alert_ratio"] = float(parse_quality_alert_ratio)
+    metrics["parse_quality_alert"] = bool((parse_quality_summary or {}).get("alert"))
+    metrics["parse_quality_low_ratio"] = float((parse_quality_summary or {}).get("low_ratio") or 0.0)
+    metrics["parse_quality_considered"] = int((parse_quality_summary or {}).get("considered") or 0)
+    metrics["parse_quality_recommendation"] = (parse_quality_summary or {}).get("recommendation")
 
     # Grounding guard: abstain when evidence is weak/empty.
     strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(state.get("visible_evidence_only"))
-    abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible
+    abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible or bool(evidence_span_strict_enabled)
     abstain_triggered = False
     abstain_reason: str | None = None
     top_rel = 0.0
@@ -2173,6 +2446,26 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["top_relevance_score"] = round(float(top_rel or 0.0), 3)
     if bool(abstain_triggered):
         metrics["abstain_followup"] = build_abstain_followup(reason=abstain_reason, citations=citations)
+
+    hardcase_emit_enabled = bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False))
+    if hardcase_emit_enabled and (abstain_triggered or not citations):
+        reason = "abstain" if abstain_triggered else "no_citations"
+        dedupe_payload = {
+            "reason": reason,
+            "query_hash": stable_hash(query_for_retrieval),
+            "mode": str(request_retrieval_mode or ""),
+            "profile": profile_norm or None,
+            "cfg_hash": metrics.get("retrieval_config_hash"),
+        }
+        metrics["hardcase_candidate"] = {
+            "schema": "mimirq.hardcase_candidate.v1",
+            "reason": reason,
+            "query_hash": stable_hash(query_for_retrieval),
+            "retrieval_mode": str(request_retrieval_mode or ""),
+            "retrieval_profile": profile_norm or None,
+            "dedupe_key": stable_hash(json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True), length=32),
+            "ts_ms": int(time.time() * 1000),
+        }
 
     # Best-effort query_debug payload (bounded, structured).
     query_debug: Dict[str, Any] = {"original": question, "normalized": None, "applied_rules": [], "expansions": [], "contributions": [], "channels": None}
@@ -2246,6 +2539,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
     )
     query_debug["intent_router"] = intent_router_meta
+    query_debug["parse_quality"] = {
+        "considered": int((parse_quality_summary or {}).get("considered") or 0),
+        "low_ratio": float((parse_quality_summary or {}).get("low_ratio") or 0.0),
+        "alert": bool((parse_quality_summary or {}).get("alert")),
+        "recommendation": (parse_quality_summary or {}).get("recommendation"),
+    }
     if empty_diag:
         query_debug["empty_retrieval"] = empty_diag
 
@@ -2321,7 +2620,20 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "retrieval_profile_requested": (
             str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
         ),
+        "retrieval_contract_mode": retrieval_contract_mode or None,
+        "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),
         "intent_router": intent_router_meta,
+        "hard_fallback": {
+            "enabled": bool(hard_fallback_enabled),
+            "attempted": bool(hard_fallback_attempted),
+            "used": bool(hard_fallback_used),
+            "mode": hard_fallback_mode,
+            "top_k": int(hard_fallback_top_k),
+            "elapsed_sec": round(float(hard_fallback_elapsed or 0.0), 3),
+            "added_docs": int(hard_fallback_added_docs or 0),
+            "added_citations": int(hard_fallback_added_citations or 0),
+            "error": hard_fallback_error,
+        },
         "rewrite": {
             "enabled": bool(rewrite_enabled),
             "strategy_id": rewrite_strategy_id,
@@ -2446,6 +2758,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": bool(abstain_enabled),
             "triggered": bool(abstain_triggered),
             "reason": abstain_reason,
+            "evidence_span_strict_enabled": bool(evidence_span_strict_enabled),
+            "evidence_span_missing_citations": int(evidence_span_missing_citations or 0),
             "min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
             "min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
             "top_relevance_score": round(float(top_rel or 0.0), 3),
@@ -2455,6 +2769,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "by_role": citations_by_role,
             "chunk_quality": chunk_quality_summary,
         },
+        "parse_quality": dict(parse_quality_summary or {}),
+        "hardcase_candidate": (metrics.get("hardcase_candidate") if isinstance(metrics.get("hardcase_candidate"), dict) else None),
     }
 
     # Stable retrieval config fingerprint (PII-safe).
@@ -2503,6 +2819,15 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "parent_child_auto_merge_mode": str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "") or ""),
             "kg_query_expansion_enabled": bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
             "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+            "retrieval_contract_mode": retrieval_contract_mode or None,
+            "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),
+            "retrieval_hard_fallback_enabled": bool(hard_fallback_enabled),
+            "retrieval_hard_fallback_mode": hard_fallback_mode,
+            "retrieval_hard_fallback_top_k": int(hard_fallback_top_k),
+            "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
+            "rag_evidence_require_spans_enabled": bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
+            "retrieval_parse_quality_low_threshold": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35),
+            "retrieval_parse_quality_alert_ratio": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5),
             "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
             "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
@@ -2575,6 +2900,22 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         fp = build_retrieval_config_fingerprint(config=retrieval_cfg)
         retrieval_trace["retrieval_config"] = fp
         metrics["retrieval_config_hash"] = fp.get("hash")
+        hc = metrics.get("hardcase_candidate")
+        if isinstance(hc, dict):
+            hc["retrieval_config_hash"] = fp.get("hash")
+            if not hc.get("dedupe_key"):
+                dedupe_payload = {
+                    "reason": hc.get("reason"),
+                    "query_hash": hc.get("query_hash"),
+                    "mode": hc.get("retrieval_mode"),
+                    "profile": hc.get("retrieval_profile"),
+                    "cfg_hash": fp.get("hash"),
+                }
+                hc["dedupe_key"] = stable_hash(
+                    json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True),
+                    length=32,
+                )
+            metrics["hardcase_candidate"] = hc
     except Exception:
         pass
 
