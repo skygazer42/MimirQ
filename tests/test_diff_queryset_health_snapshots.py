@@ -101,5 +101,7 @@ def test_diff_queryset_health_snapshots_script_writes_markdown(tmp_path: Path) -
     assert rc == 0
     text = out_md.read_text(encoding="utf-8")
     assert "Queryset Health Snapshot Diff" in text
+    assert "Policy/Hash Drift Summary" in text
     assert "Policy Changed" in text
+    assert "Policy Hash Changed" in text
     assert "q-2" in text

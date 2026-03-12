@@ -256,4 +256,4 @@ python scripts/eval_ltr_offline.py \
 - 更细粒度的 rollout guardrail（例如自动 gate / 自动 canary / 人工审批队列）
 - A/B 分流与线上指标回写
 
-详见差距快照：`docs/plans/2026-02-24-retrieval-only-rag-gap-snapshot.md`。
+详见最新差距快照与实施计划：`docs/plans/2026-03-12-top-tier-rag-gap-wave-c-40-task-implementation-plan.md`。

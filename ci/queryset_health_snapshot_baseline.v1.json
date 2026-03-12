@@ -1,0 +1,89 @@
+{
+  "schema": "mimirq.queryset_health_snapshot.v1",
+  "generated_at": "2026-03-12T03:41:36+00:00",
+  "profile_hash": "0f1eef1c0428f788d7d07695",
+  "policy_source": "policy_json",
+  "policy_hash": "42731ef57c972d16df7fc0c9",
+  "fixture_hash": "20953be769c84a3e87eee8ce",
+  "retrieval_mode": "keyword",
+  "top_k": 5,
+  "metrics": {
+    "cases_total": 5,
+    "hit_at_k": 1.0,
+    "mrr": 1.0,
+    "ndcg_at_k": 1.0,
+    "avg_latency_ms": 99.89,
+    "p95_latency_ms": 492.979
+  },
+  "risk": {
+    "cases_analyzed": 5,
+    "miss_count": 0,
+    "miss_rate": 0.0,
+    "weak_hit_count": 0,
+    "weak_hit_rate": 0.0,
+    "weak_hit_rr_threshold": 0.2,
+    "hard_cases": [
+      {
+        "id": "q-k8s",
+        "question": "How do we rollout on Kubernetes with kubectl apply?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 492.979
+      },
+      {
+        "id": "q-postgres-port",
+        "question": "What is the default PostgreSQL port?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 1.998
+      },
+      {
+        "id": "q-mmr",
+        "question": "How does Maximal Marginal Relevance reduce duplicate context?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 1.544
+      },
+      {
+        "id": "q-redis-eviction",
+        "question": "Which Redis policy evicts least recently used keys?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 1.482
+      },
+      {
+        "id": "q-rrf",
+        "question": "What does Reciprocal Rank Fusion combine?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 1.448
+      }
+    ]
+  },
+  "policy": {
+    "hit_at_k_drop_threshold": 0.03,
+    "mrr_drop_threshold": 0.03,
+    "ndcg_drop_threshold": 0.03,
+    "p95_latency_regression_ms": 20.0,
+    "miss_rate_regression_threshold": 0.05,
+    "weak_hit_rate_regression_threshold": 0.08,
+    "weak_hit_rr_threshold": 0.2,
+    "hard_cases_limit": 5
+  },
+  "trend": {
+    "hit_at_k_delta": 0.0,
+    "mrr_delta": 0.0,
+    "ndcg_at_k_delta": 0.0,
+    "p95_latency_ms_delta": 0.0,
+    "miss_rate_delta": 0.0,
+    "weak_hit_rate_delta": 0.0,
+    "policy_changed": false
+  },
+  "degradation_flags": [],
+  "status": "healthy"
+}

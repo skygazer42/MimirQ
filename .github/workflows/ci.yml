@@ -117,6 +117,14 @@ jobs:
             --policy-json ci/queryset_health_policy.v1.json \
             --cron | tee artifacts/queryset_health.cron.json
 
+      - name: Build query-set health diff artifacts
+        run: |
+          python scripts/diff_queryset_health_snapshots.py \
+            --a ci/queryset_health_snapshot_baseline.v1.json \
+            --b artifacts/queryset_health.snapshot.json \
+            --out artifacts/queryset_health.diff.json \
+            --out-md artifacts/queryset_health.diff.md
+
       - name: Evaluate bounded retrieval-only gate (metric delta output)
         run: |
           python - <<'PY'
@@ -173,8 +181,11 @@ jobs:
             artifacts/sample_retrieval_bench.json
             artifacts/queryset_health_policy.normalized.json
             artifacts/queryset_health.snapshot.json
+            artifacts/queryset_health.diff.json
+            artifacts/queryset_health.diff.md
             artifacts/queryset_health.history.jsonl
             artifacts/queryset_health.cron.json
+            ci/queryset_health_snapshot_baseline.v1.json
             ci/queryset_health_policy.v1.json
             ci/retrieval_thresholds.v2.json
 
