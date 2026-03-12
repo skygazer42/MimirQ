@@ -1,0 +1,89 @@
+{
+  "schema": "mimirq.queryset_health_snapshot.v1",
+  "generated_at": "2026-03-12T04:38:05+00:00",
+  "profile_hash": "e4109b6a109361b5391cee9a",
+  "policy_source": "policy_json",
+  "policy_hash": "42731ef57c972d16df7fc0c9",
+  "fixture_hash": "df279e9291a46caa0fae6bc2",
+  "retrieval_mode": "hybrid",
+  "top_k": 5,
+  "metrics": {
+    "cases_total": 5,
+    "hit_at_k": 1.0,
+    "mrr": 1.0,
+    "ndcg_at_k": 1.0,
+    "avg_latency_ms": 10202.574,
+    "p95_latency_ms": 10995.881
+  },
+  "risk": {
+    "cases_analyzed": 5,
+    "miss_count": 0,
+    "miss_rate": 0.0,
+    "weak_hit_count": 0,
+    "weak_hit_rate": 0.0,
+    "weak_hit_rr_threshold": 0.2,
+    "hard_cases": [
+      {
+        "id": "hq-k8s",
+        "question": "How do we rollout on Kubernetes with kubectl apply?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 10995.881
+      },
+      {
+        "id": "hq-rrf",
+        "question": "What does Reciprocal Rank Fusion combine in retrieval?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 10005.086
+      },
+      {
+        "id": "hq-redis",
+        "question": "Which Redis eviction policy removes least recently used keys?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 10004.136
+      },
+      {
+        "id": "hq-mmr",
+        "question": "How does MMR reduce duplicate context chunks?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 10003.917
+      },
+      {
+        "id": "hq-postgres",
+        "question": "Which port is PostgreSQL using by default?",
+        "hit_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "latency_ms": 10003.852
+      }
+    ]
+  },
+  "policy": {
+    "hit_at_k_drop_threshold": 0.03,
+    "mrr_drop_threshold": 0.03,
+    "ndcg_drop_threshold": 0.03,
+    "p95_latency_regression_ms": 20.0,
+    "miss_rate_regression_threshold": 0.05,
+    "weak_hit_rate_regression_threshold": 0.08,
+    "weak_hit_rr_threshold": 0.2,
+    "hard_cases_limit": 5
+  },
+  "trend": {
+    "hit_at_k_delta": 0.0,
+    "mrr_delta": 0.0,
+    "ndcg_at_k_delta": 0.0,
+    "p95_latency_ms_delta": 0.0,
+    "miss_rate_delta": 0.0,
+    "weak_hit_rate_delta": 0.0,
+    "policy_changed": false
+  },
+  "degradation_flags": [],
+  "status": "healthy"
+}
