@@ -60,6 +60,7 @@ from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retriever import hybrid_retriever
 from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
+from app.services.hardcase_discovery_service import build_parse_risk_hardcase_candidate
 
 
 def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
@@ -463,6 +464,42 @@ def _summarize_parse_quality_risk(
         "alert": bool(alert),
         "recommendation": recommendation,
         "low_samples": low_samples,
+    }
+
+
+def _classify_parse_risk(
+    *,
+    summary: dict[str, Any] | None,
+    hardcase_min_low_ratio: float,
+    hardcase_min_considered: int,
+) -> dict[str, Any]:
+    payload = summary if isinstance(summary, dict) else {}
+    considered = int(payload.get("considered") or 0)
+    low_ratio = float(payload.get("low_ratio") or 0.0)
+    recommendation = str(payload.get("recommendation") or "").strip()
+
+    level = "healthy"
+    if considered <= 0:
+        level = "unknown"
+    elif recommendation == "high_parse_risk_reparse_documents" or low_ratio >= 0.8:
+        level = "high"
+    elif recommendation == "medium_parse_risk_prioritize_low_quality_docs" or low_ratio >= 0.5:
+        level = "medium"
+    elif recommendation == "monitor_parse_quality_tail" or low_ratio >= 0.2:
+        level = "low"
+
+    hardcase_eligible = bool(
+        level in {"high", "medium"}
+        and considered >= int(max(1, hardcase_min_considered))
+        and low_ratio >= float(max(0.0, hardcase_min_low_ratio))
+    )
+    return {
+        "level": level,
+        "score": round(float(low_ratio), 3),
+        "reason": recommendation or ("no_parse_quality_metadata" if considered <= 0 else "parse_quality_healthy"),
+        "considered": int(considered),
+        "low_ratio": round(float(low_ratio), 3),
+        "hardcase_eligible": bool(hardcase_eligible),
     }
 
 
@@ -2308,6 +2345,27 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         low_threshold=parse_quality_low_threshold,
         alert_ratio=parse_quality_alert_ratio,
     )
+    try:
+        parse_risk_hardcase_min_low_ratio = float(
+            getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5
+        )
+    except Exception:
+        parse_risk_hardcase_min_low_ratio = 0.5
+    parse_risk_hardcase_min_low_ratio = min(1.0, max(0.0, float(parse_risk_hardcase_min_low_ratio)))
+
+    try:
+        parse_risk_hardcase_min_considered = int(
+            getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED", 3) or 3
+        )
+    except Exception:
+        parse_risk_hardcase_min_considered = 3
+    parse_risk_hardcase_min_considered = max(1, int(parse_risk_hardcase_min_considered))
+
+    parse_risk = _classify_parse_risk(
+        summary=parse_quality_summary,
+        hardcase_min_low_ratio=parse_risk_hardcase_min_low_ratio,
+        hardcase_min_considered=parse_risk_hardcase_min_considered,
+    )
 
     metrics = dict(state.get("metrics") or {})
     metrics["retrieval_elapsed_sec"] = round(retrieval_elapsed, 3)
@@ -2450,6 +2508,11 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["parse_quality_low_ratio"] = float((parse_quality_summary or {}).get("low_ratio") or 0.0)
     metrics["parse_quality_considered"] = int((parse_quality_summary or {}).get("considered") or 0)
     metrics["parse_quality_recommendation"] = (parse_quality_summary or {}).get("recommendation")
+    metrics["parse_risk"] = dict(parse_risk or {})
+    metrics["parse_risk_level"] = str(parse_risk.get("level") or "unknown")
+    metrics["parse_risk_score"] = float(parse_risk.get("score") or 0.0)
+    metrics["parse_risk_reason"] = str(parse_risk.get("reason") or "")
+    metrics["parse_risk_hardcase_eligible"] = bool(parse_risk.get("hardcase_eligible"))
 
     # Grounding guard: abstain when evidence is weak/empty.
     strict_visible = bool(
@@ -2506,6 +2569,21 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "dedupe_key": stable_hash(json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True), length=32),
             "ts_ms": int(time.time() * 1000),
         }
+    if (
+        not isinstance(metrics.get("hardcase_candidate"), dict)
+        and bool(getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED", False))
+        and bool(parse_risk.get("hardcase_eligible"))
+    ):
+        parse_risk_candidate = build_parse_risk_hardcase_candidate(
+            query_hash=stable_hash(query_for_retrieval),
+            retrieval_mode=str(request_retrieval_mode or ""),
+            retrieval_profile=(profile_norm or None),
+            retrieval_config_hash=(metrics.get("retrieval_config_hash") if isinstance(metrics, dict) else None),
+            parse_risk=parse_risk,
+            ts_ms=int(time.time() * 1000),
+        )
+        if isinstance(parse_risk_candidate, dict):
+            metrics["hardcase_candidate"] = parse_risk_candidate
 
     # Best-effort query_debug payload (bounded, structured).
     query_debug: Dict[str, Any] = {"original": question, "normalized": None, "applied_rules": [], "expansions": [], "contributions": [], "channels": None}
@@ -2811,6 +2889,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "chunk_quality": chunk_quality_summary,
         },
         "parse_quality": dict(parse_quality_summary or {}),
+        "parse_risk": dict(parse_risk or {}),
         "hardcase_candidate": (metrics.get("hardcase_candidate") if isinstance(metrics.get("hardcase_candidate"), dict) else None),
     }
 

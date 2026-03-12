@@ -30,6 +30,20 @@ def _load_json(path: Path) -> dict[str, Any]:
     return obj
 
 
+def _parse_risk_tail(snapshot: dict[str, Any]) -> list[str]:
+    risk = snapshot.get("risk") if isinstance(snapshot.get("risk"), dict) else {}
+    rows = risk.get("parse_risk_tail") if isinstance(risk.get("parse_risk_tail"), list) else []
+    out: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        doc_id = str(row.get("document_id") or "").strip()
+        if not doc_id or doc_id in out:
+            continue
+        out.append(doc_id)
+    return out
+
+
 def run(
     *,
     baseline_path: Path,
@@ -46,6 +60,15 @@ def run(
         current=current,
         max_hard_case_ids=max_hard_case_ids,
     )
+    base_tail = set(_parse_risk_tail(baseline))
+    curr_tail = set(_parse_risk_tail(current))
+    diff["parse_risk_tail_drift"] = {
+        "baseline_count": int(len(base_tail)),
+        "current_count": int(len(curr_tail)),
+        "added_document_ids": sorted(curr_tail - base_tail),
+        "removed_document_ids": sorted(base_tail - curr_tail),
+        "retained_document_ids": sorted(base_tail & curr_tail),
+    }
     if out is not None:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(diff, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -56,6 +79,7 @@ def _render_markdown(diff: dict[str, Any]) -> str:
     policy = diff.get("policy") if isinstance(diff.get("policy"), dict) else {}
     deltas = diff.get("metric_deltas") if isinstance(diff.get("metric_deltas"), dict) else {}
     hard = diff.get("hard_case_drift") if isinstance(diff.get("hard_case_drift"), dict) else {}
+    parse_tail = diff.get("parse_risk_tail_drift") if isinstance(diff.get("parse_risk_tail_drift"), dict) else {}
     baseline_source = str(policy.get("baseline_source") or "")
     current_source = str(policy.get("current_source") or "")
     baseline_hash = str(policy.get("baseline_hash") or "")
@@ -94,6 +118,14 @@ def _render_markdown(diff: dict[str, Any]) -> str:
     lines.append(f"- Added IDs: `{', '.join(hard.get('added_ids') or [])}`")
     lines.append(f"- Removed IDs: `{', '.join(hard.get('removed_ids') or [])}`")
     lines.append(f"- Retained IDs: `{', '.join(hard.get('retained_ids') or [])}`")
+    lines.append("")
+    lines.append("## Parse Risk Tail Drift")
+    lines.append("")
+    lines.append(f"- Baseline Count: `{parse_tail.get('baseline_count')}`")
+    lines.append(f"- Current Count: `{parse_tail.get('current_count')}`")
+    lines.append(f"- Added Document IDs: `{', '.join(parse_tail.get('added_document_ids') or [])}`")
+    lines.append(f"- Removed Document IDs: `{', '.join(parse_tail.get('removed_document_ids') or [])}`")
+    lines.append(f"- Retained Document IDs: `{', '.join(parse_tail.get('retained_document_ids') or [])}`")
     lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

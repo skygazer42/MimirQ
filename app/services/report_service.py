@@ -22,6 +22,8 @@ from app.api.schemas.report import (
     DatasetGovernanceAuditOut,
     DatasetGovernanceMetricsOut,
     DatasetKGStatsOut,
+    DatasetParseRiskDocumentOut,
+    DatasetParseRiskSummaryOut,
     DatasetRegressionRunSummaryOut,
     DatasetReportOut,
     PipelineVersionSummary,
@@ -421,6 +423,81 @@ def _aggregate_chunk_quality_metrics(
         coverage_low_documents=int(max(0, coverage_low)),
         overlap_waste_high_documents=int(max(0, overlap_high)),
         token_stats_missing_documents=int(max(0, tokens_missing)),
+    )
+
+
+def _aggregate_parse_risk_summary(
+    *,
+    total_documents: int,
+    metadatas: list[dict],
+    truncated: bool,
+    low_threshold: float,
+) -> DatasetParseRiskSummaryOut:
+    used = len([m for m in metadatas if isinstance(m, dict)])
+    considered = 0
+    high = 0
+    medium = 0
+    healthy = 0
+    docs_low: list[tuple[str, float]] = []
+    medium_upper = min(1.0, max(float(low_threshold), float(low_threshold) + 0.2))
+
+    for meta in metadatas:
+        if not isinstance(meta, dict):
+            continue
+        pq = meta.get("parse_quality")
+        score: float | None = None
+        if isinstance(pq, dict):
+            try:
+                score = float(pq.get("score"))
+            except Exception:
+                score = None
+        elif pq is not None:
+            try:
+                score = float(pq)
+            except Exception:
+                score = None
+        if score is None:
+            continue
+        score = min(1.0, max(0.0, float(score)))
+        considered += 1
+        if score < float(low_threshold):
+            high += 1
+            doc_id = str(meta.get("document_id") or "").strip()
+            if doc_id:
+                docs_low.append((doc_id, score))
+        elif score < float(medium_upper):
+            medium += 1
+        else:
+            healthy += 1
+
+    high_ratio = (float(high) / float(considered)) if considered > 0 else 0.0
+    recommendation = "parse_quality_healthy"
+    if considered <= 0:
+        recommendation = "no_parse_quality_metadata"
+    elif high_ratio >= 0.8:
+        recommendation = "high_parse_risk_reparse_documents"
+    elif high_ratio >= 0.5:
+        recommendation = "medium_parse_risk_prioritize_low_quality_docs"
+    elif high_ratio >= 0.2:
+        recommendation = "monitor_parse_quality_tail"
+
+    docs_low.sort(key=lambda x: (x[1], x[0]))
+    top_low = [
+        DatasetParseRiskDocumentOut(document_id=doc_id, score=round(float(score), 3))
+        for doc_id, score in docs_low[:20]
+    ]
+    return DatasetParseRiskSummaryOut(
+        total_documents=int(total_documents or 0),
+        used_documents=int(used),
+        truncated=bool(truncated),
+        low_threshold=round(float(low_threshold), 3),
+        considered_documents=int(considered),
+        high_risk_documents=int(high),
+        medium_risk_documents=int(medium),
+        healthy_documents=int(healthy),
+        high_risk_ratio=round(float(high_ratio), 3),
+        recommendation=str(recommendation),
+        top_low_quality_documents=top_low,
     )
 
 
@@ -854,6 +931,7 @@ class ReportService:
         governance_metrics: DatasetGovernanceMetricsOut | None = None
         governance_audit: DatasetGovernanceAuditOut | None = None
         chunk_quality_metrics: DatasetChunkQualityMetricsOut | None = None
+        parse_risk_summary: DatasetParseRiskSummaryOut | None = None
         try:
             max_docs = 2000
             _dataset, q = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
@@ -865,8 +943,18 @@ class ReportService:
                 q = q.filter(active_expr == pipeline_hash_norm)
 
             # Sample the most recently updated docs for responsiveness; report includes a truncation flag.
-            rows = q.with_entities(DBDocument.doc_metadata).order_by(DBDocument.updated_at.desc()).limit(max_docs + 1).all()
-            metas = [r[0] for r in rows if isinstance(r, tuple) and isinstance(r[0], dict)]
+            rows = q.with_entities(DBDocument.id, DBDocument.doc_metadata).order_by(DBDocument.updated_at.desc()).limit(max_docs + 1).all()
+            metas: list[dict] = []
+            for row in rows:
+                if not isinstance(row, tuple) or len(row) != 2:
+                    continue
+                doc_id, meta_raw = row
+                if not isinstance(meta_raw, dict):
+                    continue
+                meta = dict(meta_raw)
+                if meta.get("document_id") is None:
+                    meta["document_id"] = str(doc_id)
+                metas.append(meta)
             truncated = len(metas) > max_docs
             if truncated:
                 metas = metas[:max_docs]
@@ -885,10 +973,22 @@ class ReportService:
                 metadatas=metas,
                 truncated=truncated,
             )
+            try:
+                low_threshold = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
+            except Exception:
+                low_threshold = 0.35
+            low_threshold = min(1.0, max(0.0, float(low_threshold)))
+            parse_risk_summary = _aggregate_parse_risk_summary(
+                total_documents=int(getattr(profile, "total_documents", 0) or 0),
+                metadatas=metas,
+                truncated=truncated,
+                low_threshold=low_threshold,
+            )
         except Exception:
             governance_metrics = None
             governance_audit = None
             chunk_quality_metrics = None
+            parse_risk_summary = None
 
         # Optional: latest dataset precheck summary snapshot (best-effort).
         # Precheck runs are "before ingestion" scans over a local folder; we embed the latest
@@ -929,6 +1029,7 @@ class ReportService:
             governance_metrics=governance_metrics,
             governance_audit=governance_audit,
             chunk_quality_metrics=chunk_quality_metrics,
+            parse_risk_summary=parse_risk_summary,
             kg_stats=kg_stats,
             latest_regression_run=latest_regression_run,
             precheck_summary=precheck_summary,

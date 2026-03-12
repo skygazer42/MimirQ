@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services.hardcase_discovery_service import (
+    build_parse_risk_hardcase_candidate,
     build_rag_trace_index_from_records,
     plan_feedback_hardcase_candidates,
 )
@@ -113,3 +114,28 @@ def test_plan_feedback_hardcases_dedupes_by_question_hash_and_marks_in_suite() -
     assert cand["retrieval_error_kinds"].get("timeout") == 1
     assert cand["rag_config_template"]["patch_hash"] == "ph"
 
+
+def test_build_parse_risk_hardcase_candidate_emits_only_for_actionable_levels() -> None:
+    c = build_parse_risk_hardcase_candidate(
+        query_hash="qh-1",
+        retrieval_mode="hybrid",
+        retrieval_profile="grounded_strict",
+        retrieval_config_hash="cfg-1",
+        parse_risk={"level": "high", "score": 0.82, "reason": "high_parse_risk_reparse_documents"},
+        ts_ms=123,
+    )
+    assert isinstance(c, dict)
+    assert c.get("reason") == "parse_risk_tail"
+    assert c.get("parse_risk_level") == "high"
+    assert c.get("parse_risk_score") == 0.82
+    assert isinstance(c.get("dedupe_key"), str) and len(str(c.get("dedupe_key") or "")) >= 16
+
+    c2 = build_parse_risk_hardcase_candidate(
+        query_hash="qh-2",
+        retrieval_mode="hybrid",
+        retrieval_profile=None,
+        retrieval_config_hash=None,
+        parse_risk={"level": "low", "score": 0.2, "reason": "monitor_parse_quality_tail"},
+        ts_ms=456,
+    )
+    assert c2 is None
