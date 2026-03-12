@@ -30,7 +30,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.services.table_store_service import run_table_query
-from app.services.table_tag_service import generate_sql_for_table, generate_sql_for_table_with_mode
+from app.services.table_tag_service import (
+    generate_sql_for_table,
+    generate_sql_for_table_with_metadata,
+    score_schema_link_diagnostics,
+)
 
 _TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
 _TABLE_INTENT_RE = re.compile(
@@ -330,18 +334,35 @@ def build_chat_tag_context_docs(
     for c in picked:
         sql_table = f"sheet_{int(c.sheet_index)}"
         try:
+            schema_link_diagnostics = score_schema_link_diagnostics(
+                question=str(question or ""),
+                sql_table=sql_table,
+                columns=c.columns,
+                sample_rows=c.sample_rows,
+                table_aliases=[c.table_id, c.filename, str(c.sheet_name or "")],
+            )
+            planner_diagnostics: dict[str, Any] | None = None
             sql_generation_mode = "llm"
             has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
             deterministic_only = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False))
             deterministic_fallback = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True))
 
             if deterministic_only or (not has_llm_key and deterministic_fallback):
-                sql, sql_generation_mode = generate_sql_for_table_with_mode(
+                sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
                     question=str(question or ""),
                     sql_table=sql_table,
                     columns=c.columns,
                     max_rows=max_rows,
+                    sample_rows=c.sample_rows,
+                    table_aliases=[c.table_id, c.filename, str(c.sheet_name or "")],
                 )
+                if isinstance(sql_meta, dict):
+                    linked = sql_meta.get("schema_link")
+                    if isinstance(linked, dict):
+                        schema_link_diagnostics = linked
+                    planner = sql_meta.get("planner")
+                    if isinstance(planner, dict):
+                        planner_diagnostics = planner
             else:
                 sql = generate_sql_for_table(
                     question=str(question or ""),
@@ -349,6 +370,7 @@ def build_chat_tag_context_docs(
                     columns=c.columns,
                     max_rows=max_rows,
                 )
+                planner_diagnostics = {"strategy": "llm", "reason": "llm_generation"}
 
             result = run_table_query(
                 tenant_id=tenant_id,
@@ -369,6 +391,8 @@ def build_chat_tag_context_docs(
                 "col_count": int(c.col_count),
                 "sql": str(result.get("sql") or sql),
                 "sql_generation_mode": sql_generation_mode,
+                "schema_link": schema_link_diagnostics,
+                "planner": planner_diagnostics,
                 "columns": result.get("columns") if isinstance(result.get("columns"), list) else [],
                 "rows": result.get("rows") if isinstance(result.get("rows"), list) else [],
                 "truncated": bool(result.get("truncated")),
@@ -396,6 +420,23 @@ def build_chat_tag_context_docs(
                         "sheet_index": int(c.sheet_index),
                         "sheet_name": c.sheet_name,
                         "sql_generation_mode": sql_generation_mode,
+                        "schema_link_score": (
+                            schema_link_diagnostics.get("score")
+                            if isinstance(schema_link_diagnostics, dict)
+                            else None
+                        ),
+                        "schema_link_strategy": (
+                            schema_link_diagnostics.get("strategy")
+                            if isinstance(schema_link_diagnostics, dict)
+                            else None
+                        ),
+                        "schema_link_reason": (
+                            schema_link_diagnostics.get("reason")
+                            if isinstance(schema_link_diagnostics, dict)
+                            else None
+                        ),
+                        "schema_link_diagnostics": schema_link_diagnostics,
+                        "planner_diagnostics": planner_diagnostics,
                         # Treat as strong evidence for abstain guard (not comparable to vector scores).
                         "score": 1.0,
                         "retrieval_score": 1.0,

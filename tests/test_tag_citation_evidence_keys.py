@@ -22,6 +22,14 @@ def test_tag_citation_includes_stable_traceability_keys() -> None:
         "rows": [[42]],
         "truncated": False,
         "sql_generation_mode": "deterministic",
+        "schema_link": {
+            "score": 0.78,
+            "strategy": "column_overlap",
+            "reason": "matched_columns",
+            "matched_columns": ["amount"],
+            "matched_values": [],
+            "matched_tables": ["sheet_0"],
+        },
     }
     docs = [
         Document(
@@ -36,6 +44,8 @@ def test_tag_citation_includes_stable_traceability_keys() -> None:
                 "sheet_index": 0,
                 "sheet_name": "Sales",
                 "sql_generation_mode": "deterministic",
+                "schema_link_score": 0.78,
+                "schema_link_strategy": "column_overlap",
                 "score": 1.0,
                 "retrieval_score": 1.0,
             },
@@ -56,6 +66,8 @@ def test_tag_citation_includes_stable_traceability_keys() -> None:
     assert c0.get("sheet_index") == 0
     assert str(c0.get("sheet_name") or "") == "Sales"
     assert str(c0.get("sql_generation_mode") or "") == "deterministic"
+    assert float(c0.get("tag_schema_link_score") or 0.0) == 0.78
+    assert str(c0.get("tag_schema_link_strategy") or "") == "column_overlap"
 
     # TAG citations should expose UUID-like chunk_id for schema compatibility.
     cid = str(c0.get("chunk_id") or "")

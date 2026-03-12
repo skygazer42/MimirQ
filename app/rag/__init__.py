@@ -21,18 +21,23 @@ Note: To avoid circular imports, some submodules need to be imported directly:
 - from app.rag.chunking import chunker_factory
 """
 
-from app.rag.embedding import (
-    DEFAULT_EMBED_MODELS,
-    select_embedding_model,
-    test_embedding_model_status,
-)
+__all__ = ["select_embedding_model", "test_embedding_model_status", "DEFAULT_EMBED_MODELS"]
 
-__all__ = [
-    "select_embedding_model",
-    "test_embedding_model_status",
-    "DEFAULT_EMBED_MODELS",
-]
 
+def __getattr__(name: str):
+    if name == "select_embedding_model":
+        from app.rag.embedding import select_embedding_model
+
+        return select_embedding_model
+    if name == "test_embedding_model_status":
+        from app.rag.embedding import test_embedding_model_status
+
+        return test_embedding_model_status
+    if name == "DEFAULT_EMBED_MODELS":
+        from app.rag.embedding import DEFAULT_EMBED_MODELS
+
+        return DEFAULT_EMBED_MODELS
+    raise AttributeError(name)
 
 
 

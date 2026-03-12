@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.core.config import settings
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 from app.rag.core.text import normalize_retrieval_mode
+from app.rag.retrieval.contract import (
+    VALID_RETRIEVAL_CONTRACT_MODES,
+    normalize_retrieval_contract_mode,
+)
 
 from .base import OrmModel
 
@@ -120,6 +124,11 @@ class ChatRAGConfig(BaseModel):
     # - "coverage80": aggressive recall/coverage preset (top_k>=80, score_threshold=0.0)
     # - "hybrid_ce": explicit production baseline (hybrid recall + cross-encoder rerank)
     retrieval_profile: Optional[str] = None
+    # Optional retrieval contract override.
+    # - None: use server default RETRIEVAL_CONTRACT_MODE
+    # - "": disable contract for this request
+    # - deterministic_recall | evidence_strict | audit_trace
+    retrieval_contract_mode: Optional[str] = None
     # Optional intent router: when enabled, the system may override retrieval knobs based on
     # query intent (faq/howto/api/log). This is deterministic and PII-safe (no raw query in outputs).
     #
@@ -199,6 +208,19 @@ class ChatRAGConfig(BaseModel):
     @classmethod
     def _normalize_retrieval_mode(cls, v: Any) -> str:
         return normalize_retrieval_mode(str(v) if v is not None else None)
+
+    @field_validator("retrieval_contract_mode", mode="before")
+    @classmethod
+    def _normalize_retrieval_contract_mode(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        mode = normalize_retrieval_contract_mode(v)
+        if mode not in VALID_RETRIEVAL_CONTRACT_MODES:
+            raise ValueError(
+                "retrieval_contract_mode must be one of: "
+                + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
+            )
+        return mode
 
     @field_validator("fusion_strategy", mode="before")
     @classmethod

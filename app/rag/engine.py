@@ -48,6 +48,7 @@ from app.rag.policy.intent_router import route_retrieval_preset
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.reranker.factory import describe_reranker_provider
+from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from app.services.prompt_resolver import resolve_prompt_template
@@ -451,6 +452,7 @@ Requirements:
         visible_evidence_only: bool = False,
         retrieval_mode: str = "hybrid",
         retrieval_profile: Optional[str] = None,
+        retrieval_contract_mode: Optional[str] = None,
         intent_router: Optional[bool] = None,
         intent_router_policy: Optional[Dict[str, Any]] = None,
         enable_query_alias_expansion: Optional[bool] = None,
@@ -669,6 +671,21 @@ Requirements:
             # Capture caller intent (kept for trace/metrics).
             mode_req = retrieval_mode or "hybrid"
             profile_req = retrieval_profile
+            contract_req = (
+                retrieval_contract_mode
+                if retrieval_contract_mode is not None
+                else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
+            )
+            retrieval_contract_policy = resolve_retrieval_contract_policy(
+                mode=contract_req,
+                requested_top_k=int(top_k or 0),
+                hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
+                hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
+                hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
+                visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
+                evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
+            )
+            retrieval_contract_mode_effective = str(retrieval_contract_policy.get("mode") or "").strip()
 
             # Step 0.25: Deterministic intent router (optional).
             #
@@ -1524,6 +1541,30 @@ Requirements:
                 query=query_for_retrieval,
             )
 
+            evidence_span_strict_enabled = bool(
+                bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False))
+                or bool(retrieval_contract_policy.get("require_evidence_spans"))
+            )
+            evidence_span_missing_citations = 0
+            if evidence_span_strict_enabled and citations:
+                filtered_citations: list[dict[str, Any]] = []
+                for item in citations:
+                    if not isinstance(item, dict):
+                        continue
+                    start = item.get("evidence_start_char")
+                    end = item.get("evidence_end_char")
+                    try:
+                        start_i = int(start) if start is not None else None
+                        end_i = int(end) if end is not None else None
+                    except Exception:
+                        start_i = None
+                        end_i = None
+                    if start_i is None or end_i is None or end_i <= start_i:
+                        evidence_span_missing_citations += 1
+                        continue
+                    filtered_citations.append(item)
+                citations = filtered_citations
+
             # Send citation info.
             yield {
                 "type": "citations",
@@ -1534,8 +1575,12 @@ Requirements:
             #
             # Strict visible-evidence-only grounding treats missing evidence as non-existent:
             # abstain is a normal success path (no error).
-            strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(visible_evidence_only)
-            abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible
+            strict_visible = bool(
+                bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False))
+                or bool(visible_evidence_only)
+                or bool(retrieval_contract_policy.get("force_visible_evidence_only"))
+            )
+            abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible or bool(evidence_span_strict_enabled)
             abstain_triggered = False
             abstain_reason: str | None = None
             top_rel = 0.0
@@ -1627,6 +1672,8 @@ Requirements:
                             "retrieval_profile_requested": (
                                 str(profile_req).strip().lower() if profile_req is not None else None
                             ),
+                            "retrieval_contract_mode": retrieval_contract_mode_effective or None,
+                            "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
                             "intent_router_enabled": bool(intent_router_meta.get("enabled")),
                             "intent_router_used": bool(intent_router_meta.get("used")),
                             "intent_router": intent_router_meta,
@@ -1679,6 +1726,8 @@ Requirements:
                             "abstain_min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
                             "visible_evidence_only_enabled": bool(strict_visible),
                             "visible_evidence_only_requested": bool(visible_evidence_only),
+                            "evidence_span_strict_enabled": bool(evidence_span_strict_enabled),
+                            "evidence_span_missing_citations": int(evidence_span_missing_citations or 0),
                             "top_relevance_score": round(float(top_rel or 0.0), 3),
                             "answer_chars": answer_chars,
                             "answer_tokens": answer_tokens,
@@ -1914,6 +1963,7 @@ Requirements:
                         ).get("tier"),
                         "reranker_top_n": int(rerank_top_n) if rerank_top_n is not None else 0,
                         "visible_evidence_only": bool(visible_evidence_only),
+                        "retrieval_contract_mode": retrieval_contract_mode_effective or None,
                         "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
                         "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
                         "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
@@ -2025,6 +2075,8 @@ Requirements:
                     "auto_routed": bool(mode_auto),
                     "profile": profile_norm or None,
                     "profile_requested": (str(profile_req).strip().lower() if profile_req is not None else None),
+                    "contract_mode": retrieval_contract_mode_effective or None,
+                    "contract_policy": dict(retrieval_contract_policy or {}),
                     "intent_router": intent_router_meta,
                     "retrieval_config_hash": retrieval_config_hash,
                     "recall_bucket": recall_bucket,
@@ -2071,6 +2123,12 @@ Requirements:
 
             claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or bool(strict_visible)
             claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
+            claim_verifier_mode = str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
+            if claim_verifier_mode not in {"token_overlap", "semantic_heuristic", "strict"}:
+                claim_verifier_mode = "token_overlap"
+            claim_verifier_enable_contradiction_check = bool(
+                getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+            )
             claim_check_mode = "none"
             if bool(claim_check_configured):
                 # For structured output we keep the JSON shape and only scrub natural-language fields.
@@ -2134,7 +2192,12 @@ Requirements:
                     claim_check_total = len(claims)
                     kept: List[str] = []
                     for c in claims:
-                        if is_claim_supported(c, evidence_text):
+                        if is_claim_supported(
+                            c,
+                            evidence_text,
+                            verifier_mode=claim_verifier_mode,
+                            verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
+                        ):
                             kept.append(c)
                         else:
                             claim_check_removed += 1
@@ -2163,6 +2226,8 @@ Requirements:
                         parsed,
                         evidence_text=evidence_text,
                         max_claims=claim_check_max_claims,
+                        verifier_mode=claim_verifier_mode,
+                        verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
                     )
                     if isinstance(scrub_meta, dict):
                         claim_check_total = int(scrub_meta.get("claims_total") or 0)
@@ -2188,6 +2253,8 @@ Requirements:
                         full_response,
                         evidence_chunks=docs,
                         max_claims=claim_check_max_claims if claim_check_configured else 24,
+                        verifier_mode=claim_verifier_mode,
+                        verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
                     )
                 except Exception:
                     claim_evidence = []
@@ -2300,6 +2367,8 @@ Requirements:
             rag_trace_payload["claim_check"] = {
                 "enabled": bool(claim_check_configured),
                 "mode": claim_check_mode,
+                "verifier_mode": claim_verifier_mode,
+                "verifier_enable_contradiction_check": bool(claim_verifier_enable_contradiction_check),
                 "applied": bool(claim_check_applied),
                 "max_claims": int(claim_check_max_claims),
                 "claims_total": int(claim_check_total),
@@ -2350,6 +2419,8 @@ Requirements:
                         "retrieval_profile_requested": (
                             str(profile_req).strip().lower() if profile_req is not None else None
                         ),
+                        "retrieval_contract_mode": retrieval_contract_mode_effective or None,
+                        "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
                         "intent_router_enabled": bool(intent_router_meta.get("enabled")),
                         "intent_router_used": bool(intent_router_meta.get("used")),
                         "intent_router": intent_router_meta,
@@ -2402,12 +2473,16 @@ Requirements:
                         "cost_rerank_elapsed_sec": round(float(rerank_elapsed_sec), 3) if rerank_elapsed_sec is not None else None,
                         "claim_check_enabled": bool(claim_check_applied),
                         "claim_check_mode": claim_check_mode,
+                        "claim_verifier_mode": claim_verifier_mode,
+                        "claim_verifier_enable_contradiction_check": bool(claim_verifier_enable_contradiction_check),
                         "claim_check_removed": int(claim_check_removed),
                         "claim_check_total": int(claim_check_total),
                         "claim_check_max_claims": int(claim_check_max_claims) if claim_check_configured else None,
                         "claim_evidence": claim_evidence,
                         "visible_evidence_only_enabled": bool(strict_visible),
                         "visible_evidence_only_requested": bool(visible_evidence_only),
+                        "evidence_span_strict_enabled": bool(evidence_span_strict_enabled),
+                        "evidence_span_missing_citations": int(evidence_span_missing_citations or 0),
                         "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                         "context_evidence_max_sentences_per_chunk": (
                             int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)

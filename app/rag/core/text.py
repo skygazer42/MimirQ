@@ -8,6 +8,7 @@ import re
 from typing import Any, Dict, Literal, Tuple
 
 from app.core.token_utils import estimate_tokens  # noqa: F401
+from app.rag.core.claim_verifier import verify_claim
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", flags=re.IGNORECASE | re.DOTALL)
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
@@ -498,7 +499,13 @@ def _claim_token_set(text: str) -> set[str]:
     return tokens
 
 
-def is_claim_supported(claim: str, evidence: str) -> bool:
+def is_claim_supported(
+    claim: str,
+    evidence: str,
+    *,
+    verifier_mode: str = "token_overlap",
+    verifier_enable_contradiction_check: bool = True,
+) -> bool:
     """
     Deterministic baseline: token-overlap check between a claim and evidence text.
 
@@ -506,35 +513,13 @@ def is_claim_supported(claim: str, evidence: str) -> bool:
     - Always keep "uncertainty/insufficient evidence" phrasing (do not delete refusals).
     - Heuristic only; designed to be safe and bounded.
     """
-    c = (claim or "").strip()
-    if not c:
-        return True
-
-    if _CLAIM_UNCERTAINTY_RE.search(c):
-        return True
-
-    e = (evidence or "").strip()
-    if not e:
-        return False
-
-    c_tokens = _claim_token_set(c)
-    if not c_tokens:
-        return True
-    e_tokens = _claim_token_set(e)
-    if not e_tokens:
-        return False
-
-    shared = c_tokens.intersection(e_tokens)
-    shared_n = len(shared)
-    if shared_n <= 0:
-        return False
-
-    claim_n = len(c_tokens)
-    if claim_n <= 3:
-        return shared_n >= 1
-    if claim_n <= 8:
-        return shared_n >= 2 or (shared_n / float(claim_n)) >= 0.34
-    return shared_n >= 2 and (shared_n / float(claim_n)) >= 0.2
+    result = verify_claim(
+        claim,
+        evidence,
+        mode=verifier_mode,
+        enable_contradiction_check=bool(verifier_enable_contradiction_check),
+    )
+    return bool(result.supported)
 
 
 def scrub_structured_output_visible_evidence_only(
@@ -542,6 +527,8 @@ def scrub_structured_output_visible_evidence_only(
     *,
     evidence_text: str,
     max_claims: int = 24,
+    verifier_mode: str = "token_overlap",
+    verifier_enable_contradiction_check: bool = True,
     max_depth: int = 6,
     max_items: int = 500,
 ) -> tuple[Any, Dict[str, Any]]:
@@ -605,7 +592,12 @@ def scrub_structured_output_visible_evidence_only(
         kept: list[str] = []
         removed = 0
         for c in claims:
-            if is_claim_supported(c, evidence_text):
+            if is_claim_supported(
+                c,
+                evidence_text,
+                verifier_mode=verifier_mode,
+                verifier_enable_contradiction_check=verifier_enable_contradiction_check,
+            ):
                 kept.append(c)
             else:
                 removed += 1

@@ -101,6 +101,28 @@ These are off by default and can improve recall on ambiguous or short queries:
 Recommendation:
 - Enable one at a time, measure impact with RAGAS/regression suites before enabling multiple.
 
+## 5.2) RAG Config Template Adaptive Routing (AB)
+
+Wave B 在 `rag_config_template_resolver` 增加了可选的 adaptive epsilon-greedy 路由能力（默认仍是 `weighted`，保持兼容）。
+
+核心语义：
+- `routing_mode=weighted`：按 `ab_weight` 稳定分流。
+- `routing_mode=adaptive`：`epsilon` 概率探索，`1-epsilon` 概率利用历史 reward 更高的 variant。
+- `feedback_reward_snapshot` / `feedback_reward_hook`：把反馈聚合结果作为利用阶段的依据。
+
+可审计输出：
+- chat/rag metrics 中 `rag_config_template.resolver_debug` 会记录：
+  - `strategy`
+  - `epsilon`
+  - `decision`（`explore` / `exploit` / `weighted`）
+  - `chosen_variant`
+  - `reward_snapshot`
+
+建议 rollout：
+1. 先用 `weighted` 收集稳定反馈。
+2. 再小流量启用 `adaptive`，并从 `epsilon=0.05~0.1` 起步。
+3. 持续观察 `resolver_debug.decision` 与线上效果，防止 reward 偏差放大。
+
 ## 5.5) Strict Grounding (Visible Evidence Only)
 
 If you want to strongly reduce hallucinations (at the cost of more refusals and potentially buffered streaming),

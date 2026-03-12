@@ -84,6 +84,21 @@ SQL 执行器是 **SELECT-only**：
 
 - `POST /api/v1/datasets/{dataset_id}/tables/{table_id}/ask`
 
+### NL→SQL schema-link diagnostics（Wave B）
+
+为了解决“SQL 为什么这么生成、字段是否真正命中”的可追溯问题，`/tables/{table_id}/ask` 现在会返回 schema-link 诊断字段：
+
+- `sql_generation_mode`：`llm` / `deterministic`
+- `schema_link_diagnostics`：
+  - `matched_tables`
+  - `matched_columns`
+  - `matched_values`
+  - `score`
+  - `strategy`
+  - `reason`
+
+在 `TABLE_NL2SQL_ENABLED=true` 但缺少可用 LLM key 的场景，系统会自动走 deterministic fallback，并仍然输出上述 diagnostics，便于确认“召回到表但生成策略降级”的具体原因。
+
 ## 语义过滤（sem_filter，可选）
 
 开启（默认关闭，避免意外产生高额 LLM 调用）：
@@ -112,6 +127,8 @@ Chat 侧会：
 1. 从当前会话绑定的 `document_ids` 中，找出已走 Table Store 的表格资产（`doc_metadata.table_store`）。
 2. 基于问题与表结构（文件名/sheet/列名）选择少量候选表（默认最多 2 个）。
 3. 对每个候选表执行一次 bounded NL→SQL→SELECT，并把结果以 JSON 形式注入到引用材料中（`retrieval_role=tag`）。
+
+Chat TAG 注入的 payload 与 citations 也会透出 schema-link 关键信息（例如 `schema_link_score` / `schema_link_strategy`），用于线上排障与“有据可查”的审计。
 
 可调参数（见 `.env.example`）：
 

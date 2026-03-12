@@ -1,10 +1,71 @@
 from __future__ import annotations
 
+import sys
+import types
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+if "app.core.config" not in sys.modules:
+    config_mod = types.ModuleType("app.core.config")
+    config_mod.settings = types.SimpleNamespace(
+        DATABASE_URL="sqlite:///./tests_connectors_endpoints_stub.db",
+        SECRET_KEY="tests-secret-key",
+        SECRET_KEY_FALLBACKS="",
+        URL_INGEST_ENABLED=True,
+        URL_INGEST_TIMEOUT_SEC=30.0,
+        URL_INGEST_MAX_BYTES=0,
+        URL_INGEST_FOLLOW_REDIRECTS=False,
+        MAX_FILE_SIZE=10_000_000,
+        TASK_QUEUE_ENABLED=False,
+        MINIO_ENABLED=False,
+        DB_CATALOG_ENABLED=False,
+    )
+    sys.modules["app.core.config"] = config_mod
+
+if "app.api.v1" not in sys.modules:
+    v1_pkg = types.ModuleType("app.api.v1")
+    v1_pkg.__path__ = [str(Path(__file__).resolve().parents[1] / "app" / "api" / "v1")]
+    sys.modules["app.api.v1"] = v1_pkg
+
+if "app.api.v1.documents" not in sys.modules:
+    documents_mod = types.ModuleType("app.api.v1.documents")
+
+    class _DummyRequest:
+        def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            for idx, arg in enumerate(args):
+                setattr(self, f"arg_{idx}", arg)
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    async def _noop_async(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    documents_mod.LocalHtmlIngestRequest = _DummyRequest
+    documents_mod.UrlUploadRequest = _DummyRequest
+    documents_mod._ingest_local_html_request = _noop_async
+    documents_mod._ingest_url_upload_request = _noop_async
+    documents_mod._normalize_datetime_utc_iso = lambda *_a, **_k: None
+    documents_mod._resolve_writable_dataset = lambda *_a, **_k: None
+    sys.modules["app.api.v1.documents"] = documents_mod
+
+if "app.services.web_crawler" not in sys.modules:
+    web_crawler_mod = types.ModuleType("app.services.web_crawler")
+
+    async def _crawl_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    web_crawler_mod.crawl_site = _crawl_noop
+    sys.modules["app.services.web_crawler"] = web_crawler_mod
+
+if "app.tasks.queue" not in sys.modules:
+    queue_mod = types.ModuleType("app.tasks.queue")
+    queue_mod.enqueue_connector_run = lambda *_a, **_k: None
+    queue_mod.get_queue = lambda *_a, **_k: None
+    sys.modules["app.tasks.queue"] = queue_mod
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
@@ -82,8 +143,8 @@ def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
     assert items["github_repo"]["supports_full_reconcile"] is True
     assert items["github_repo"]["sync_cursor_kind"] == "offset"
     assert items["drive_files"]["supports_resume"] is True
-    assert items["drive_files"]["supports_incremental"] is False
-    assert items["drive_files"]["supports_full_reconcile"] is False
+    assert items["drive_files"]["supports_incremental"] is True
+    assert items["drive_files"]["supports_full_reconcile"] is True
     assert items["drive_files"]["sync_cursor_kind"] == "offset"
     assert items["minio_bucket"]["supports_resume"] is True
     assert items["minio_bucket"]["supports_incremental"] is True

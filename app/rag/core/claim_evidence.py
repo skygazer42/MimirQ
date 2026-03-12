@@ -182,6 +182,8 @@ def build_claim_evidence_map(
     max_claims: int = 24,
     max_evidence_per_claim: int = 2,
     max_quote_chars: int = 240,
+    verifier_mode: str = "token_overlap",
+    verifier_enable_contradiction_check: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Build a JSON-safe list of claim → evidence mappings.
@@ -232,7 +234,12 @@ def build_claim_evidence_map(
             text = str(ch.get("text") or "")
             if not text.strip():
                 continue
-            if not is_claim_supported(c, text):
+            if not is_claim_supported(
+                c,
+                text,
+                verifier_mode=verifier_mode,
+                verifier_enable_contradiction_check=verifier_enable_contradiction_check,
+            ):
                 continue
             e_tokens = _token_set(text)
             shared = c_tokens.intersection(e_tokens)
@@ -284,4 +291,3 @@ def build_claim_evidence_map(
 
 
 __all__ = ["build_claim_evidence_map"]
-

@@ -129,6 +129,12 @@ def test_chat_tag_builds_context_doc(monkeypatch):  # noqa: ANN001
     payload = json.loads(d0.page_content)
     assert payload["kind"] == "tag_table_store"
     assert payload["table_id"] == table_id
+    schema_link = payload.get("schema_link") or {}
+    assert isinstance(schema_link, dict)
+    assert "score" in schema_link
+    assert str(schema_link.get("strategy") or "")
+    assert d0.metadata.get("schema_link_score") is not None
+    assert str(d0.metadata.get("schema_link_strategy") or "")
 
 
 def test_chat_tag_includes_docx_tables(monkeypatch):  # noqa: ANN001
@@ -557,6 +563,12 @@ def test_chat_tag_uses_deterministic_sql_when_llm_key_missing(monkeypatch):  # n
     payload = json.loads(docs[0].page_content)
     assert payload.get("table_id") == table_id
     assert payload.get("sql_generation_mode") == "deterministic"
+    schema_link = payload.get("schema_link") or {}
+    assert isinstance(schema_link, dict)
+    assert float(schema_link.get("score") or 0.0) > 0.0
+    assert str(schema_link.get("strategy") or "")
+    assert docs[0].metadata.get("schema_link_score") is not None
+    assert str(docs[0].metadata.get("schema_link_strategy") or "")
     assert "count" in str(payload.get("sql") or "").lower()
 
 

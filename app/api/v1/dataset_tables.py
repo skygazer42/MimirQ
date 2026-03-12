@@ -47,7 +47,12 @@ from app.services.rbac_service import TenantPermissions, role_allows
 from app.services.security_redaction import redact_sql_literals
 from app.services.table_store import parse_table_id, table_store_path
 from app.services.table_store_service import run_table_query
-from app.services.table_tag_service import generate_answer_from_result, generate_sql_for_table, tag_enabled
+from app.services.table_tag_service import (
+    generate_answer_from_result,
+    generate_sql_for_table,
+    generate_sql_for_table_with_metadata,
+    tag_enabled,
+)
 
 router = APIRouter()
 
@@ -645,7 +650,11 @@ def ask_dataset_table(
 ):
     if not tag_enabled():
         raise HTTPException(status_code=400, detail="TABLE_NL2SQL_ENABLED=false")
-    if not str(getattr(settings, "LLM_API_KEY", "") or "").strip():
+    has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
+    deterministic_ok = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False)) or bool(
+        getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True)
+    )
+    if not has_llm_key and not deterministic_ok:
         raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
 
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
@@ -677,6 +686,8 @@ def ask_dataset_table(
     store = meta.get("table_store") if isinstance(meta, dict) else None
     tables = store.get("tables") if isinstance(store, dict) else None
     columns: list[dict[str, Any]] = []
+    sample_rows: list[dict[str, Any]] = []
+    sheet_name: str | None = None
     if isinstance(tables, list):
         for t in tables:
             if not isinstance(t, dict):
@@ -686,14 +697,30 @@ def ask_dataset_table(
             cols = t.get("columns")
             if isinstance(cols, list):
                 columns = [c for c in cols if isinstance(c, dict)]
+            rows = t.get("sample_rows")
+            if isinstance(rows, list):
+                sample_rows = [r for r in rows if isinstance(r, dict)]
+            sn = t.get("sheet_name")
+            sheet_name = str(sn).strip() if sn is not None else None
             break
 
     sql_table = f"sheet_{int(parsed.sheet_index)}"
     max_rows = int(body.max_rows or getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)
     max_rows = min(max_rows, int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200))
 
+    sql_generation_mode = "llm"
+    schema_link_diagnostics: dict[str, Any] | None = None
     try:
-        sql = generate_sql_for_table(question=str(body.question or ""), sql_table=sql_table, columns=columns, max_rows=max_rows)
+        sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
+            question=str(body.question or ""),
+            sql_table=sql_table,
+            columns=columns,
+            max_rows=max_rows,
+            sample_rows=sample_rows,
+            table_aliases=[str(table_id), str(getattr(doc, "filename", "") or ""), str(sheet_name or "")],
+        )
+        schema_link = sql_meta.get("schema_link") if isinstance(sql_meta, dict) else None
+        schema_link_diagnostics = schema_link if isinstance(schema_link, dict) else None
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
     if not sql.strip():
@@ -764,6 +791,8 @@ def ask_dataset_table(
         answer=answer,
         sql=redacted_sql,
         data=TableQueryResponse(**data_payload),
+        sql_generation_mode=str(sql_generation_mode or "llm"),
+        schema_link_diagnostics=schema_link_diagnostics,
     )
 
 

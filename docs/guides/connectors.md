@@ -222,6 +222,26 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 }
 ```
 
+增量 freshness 语义（Wave B）：
+
+- `drive_files` 现在支持 manifest-based incremental（`supports_incremental=true`）。
+- 每个 source 记录稳定 sync token，优先使用 `version + modifiedTime + file_id`；缺失时退化到 URL/file_id hash。
+- 后续 run 会对比历史 `source_manifest`，仅处理 changed/new 项，并统计：
+  - `mode`（`full` / `incremental`）
+  - `delta_urls`
+  - `skipped_unchanged`
+  - `source_manifest`
+- 对于历史存在但本次缺失的 Drive path，会进入 removed reconcile：
+  - `removed_paths`
+  - `removed_paths_reconciled`
+  - `removed_documents_disabled`
+  - 执行 soft-disable（不做 hard delete）
+
+运维建议：
+
+- 首次 run 预期是 `mode=full`；第二次起应主要看到 `mode=incremental`。
+- 若 `delta_urls` 长期异常偏高，优先检查上游是否频繁改写 `modifiedTime/version`。
+
 ### 5.5 `minio_bucket`：MinIO/S3 Bucket 导入
 
 用途：列出 bucket 对象，生成 presigned URL 拉取并入库。

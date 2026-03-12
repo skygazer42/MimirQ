@@ -56,6 +56,8 @@ class TableAskResponse(BaseModel):
     answer: str
     sql: Optional[str] = None
     data: Optional[TableQueryResponse] = None
+    sql_generation_mode: Optional[str] = Field(default=None, max_length=40)
+    schema_link_diagnostics: Optional[dict[str, Any]] = None
 
 
 class LotusSemFilterRequest(BaseModel):

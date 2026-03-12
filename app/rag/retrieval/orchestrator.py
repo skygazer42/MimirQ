@@ -56,6 +56,7 @@ from app.rag.rerank_result_cache import (
 )
 from app.rag.reranker.factory import describe_reranker_provider, get_reranker
 from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retriever import hybrid_retriever
 from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
@@ -710,12 +711,21 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     # Capture caller intent before any routing/presets apply (kept for trace/metrics).
     requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
     requested_retrieval_profile = state.get("retrieval_profile")
-    retrieval_contract_mode = str(
-        state.get("retrieval_contract_mode")
-        if state.get("retrieval_contract_mode") is not None
-        else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-    ).strip().lower()
-    contract_deterministic_recall = retrieval_contract_mode == "deterministic_recall"
+    retrieval_contract_policy = resolve_retrieval_contract_policy(
+        mode=(
+            state.get("retrieval_contract_mode")
+            if state.get("retrieval_contract_mode") is not None
+            else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
+        ),
+        requested_top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
+        hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
+        hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
+        hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
+        visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
+        evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
+    )
+    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
+    contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
 
     # Step 0.25: Deterministic intent router (optional).
     #
@@ -2131,14 +2141,9 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         post_rerank_error = str(exc)[:200]
         post_rerank_skip_reason = "error"
 
-    hard_fallback_enabled_setting = bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False))
-    hard_fallback_enabled = bool(hard_fallback_enabled_setting or contract_deterministic_recall)
-    hard_fallback_mode = str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword").strip().lower() or "keyword"
-    if contract_deterministic_recall and not hard_fallback_enabled_setting:
-        hard_fallback_mode = "keyword"
-    hard_fallback_top_k = max(1, int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30))
-    if contract_deterministic_recall:
-        hard_fallback_top_k = max(int(hard_fallback_top_k), int(top_k or 0), 20)
+    hard_fallback_enabled = bool(retrieval_contract_policy.get("hard_fallback_enabled"))
+    hard_fallback_mode = str(retrieval_contract_policy.get("hard_fallback_mode") or "keyword").strip().lower() or "keyword"
+    hard_fallback_top_k = max(1, int(retrieval_contract_policy.get("hard_fallback_top_k") or 1))
     hard_fallback_attempted = False
     hard_fallback_used = False
     hard_fallback_error: str | None = None
@@ -2232,7 +2237,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             citations = citations_after
             hard_fallback_used = bool(hard_fallback_added_docs > 0 and citations)
 
-    evidence_span_strict_enabled = bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False))
+    evidence_span_strict_enabled = bool(retrieval_contract_policy.get("require_evidence_spans"))
     evidence_span_missing_citations = 0
     if evidence_span_strict_enabled and citations:
         filtered_citations: list[dict[str, Any]] = []
@@ -2283,6 +2288,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
     )
     metrics["retrieval_contract_mode"] = retrieval_contract_mode or None
+    metrics["retrieval_contract_policy"] = dict(retrieval_contract_policy or {})
     metrics["retrieval_contract_deterministic_recall"] = bool(contract_deterministic_recall)
     metrics["intent_router_enabled"] = bool(intent_router_meta.get("enabled"))
     metrics["intent_router_used"] = bool(intent_router_meta.get("used"))
@@ -2415,7 +2421,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["parse_quality_recommendation"] = (parse_quality_summary or {}).get("recommendation")
 
     # Grounding guard: abstain when evidence is weak/empty.
-    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(state.get("visible_evidence_only"))
+    strict_visible = bool(
+        bool(state.get("visible_evidence_only"))
+        or bool(retrieval_contract_policy.get("force_visible_evidence_only"))
+    )
     abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible or bool(evidence_span_strict_enabled)
     abstain_triggered = False
     abstain_reason: str | None = None
@@ -2621,6 +2630,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
         ),
         "retrieval_contract_mode": retrieval_contract_mode or None,
+        "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
         "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),
         "intent_router": intent_router_meta,
         "hard_fallback": {
@@ -2803,7 +2813,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 provider_name=str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"),
             ).get("tier"),
             "reranker_top_n": int(retriever_update.get("reranker_top_n") or 0),
-            "visible_evidence_only": bool(state.get("visible_evidence_only") or False),
+            "visible_evidence_only": bool(strict_visible),
             # Global retrieval channel toggles (low-cardinality).
             "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
             "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
@@ -2820,12 +2830,13 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "kg_query_expansion_enabled": bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
             "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
             "retrieval_contract_mode": retrieval_contract_mode or None,
+            "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
             "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),
             "retrieval_hard_fallback_enabled": bool(hard_fallback_enabled),
             "retrieval_hard_fallback_mode": hard_fallback_mode,
             "retrieval_hard_fallback_top_k": int(hard_fallback_top_k),
             "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
-            "rag_evidence_require_spans_enabled": bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
+            "rag_evidence_require_spans_enabled": bool(evidence_span_strict_enabled),
             "retrieval_parse_quality_low_threshold": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35),
             "retrieval_parse_quality_alert_ratio": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5),
             "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),

@@ -162,6 +162,25 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     # TAG: stub LLM helpers (avoid real network).
     monkeypatch.setattr(mod, "tag_enabled", lambda: True, raising=True)
     monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT * FROM "sheet_0" LIMIT 10', raising=True)
+    monkeypatch.setattr(
+        mod,
+        "generate_sql_for_table_with_metadata",
+        lambda **kwargs: (
+            'SELECT * FROM "sheet_0" LIMIT 10',
+            "llm",
+            {
+                "schema_link": {
+                    "score": 0.66,
+                    "strategy": "column_overlap",
+                    "reason": "matched_columns",
+                    "matched_columns": ["a", "b"],
+                    "matched_values": [],
+                    "matched_tables": ["sheet_0"],
+                }
+            },
+        ),
+        raising=False,
+    )
     monkeypatch.setattr(mod, "generate_answer_from_result", lambda **kwargs: "answer", raising=True)
 
     # Enable NL2SQL flag checks in endpoint.
@@ -204,7 +223,10 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
 
     res = client.post(f"/api/v1/datasets/{dataset_id}/tables/{table_id}/ask", json={"question": "What is a+b?"})
     assert res.status_code == 200
-    assert res.json()["answer"] == "answer"
+    ask_payload = res.json()
+    assert ask_payload["answer"] == "answer"
+    assert ask_payload["sql_generation_mode"] == "llm"
+    assert float((ask_payload.get("schema_link_diagnostics") or {}).get("score") or 0.0) > 0.0
 
 
 def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001

@@ -20,6 +20,37 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
         replaced[name] = sys.modules.get(name, sentinel)
         sys.modules[name] = module
 
+    auth_deps = types.ModuleType("app.api.dependencies.auth")
+    auth_deps.get_current_account_id = lambda: "tester"
+    _swap("app.api.dependencies.auth", auth_deps)
+
+    tenant_deps = types.ModuleType("app.api.dependencies.tenant")
+    tenant_deps.get_tenant_id = lambda: uuid.uuid4()
+    _swap("app.api.dependencies.tenant", tenant_deps)
+
+    deps_pkg = types.ModuleType("app.api.dependencies")
+    deps_pkg.get_current_account_id = auth_deps.get_current_account_id
+    deps_pkg.get_tenant_id = tenant_deps.get_tenant_id
+    deps_pkg.auth = auth_deps
+    deps_pkg.tenant = tenant_deps
+    _swap("app.api.dependencies", deps_pkg)
+
+    config_mod = types.ModuleType("app.core.config")
+    config_mod.settings = types.SimpleNamespace(
+        DATABASE_URL="sqlite:///./tests_saved_state_stub.db",
+        SECRET_KEY="tests-secret-key",
+        SECRET_KEY_FALLBACKS="",
+        URL_INGEST_ENABLED=True,
+        URL_INGEST_TIMEOUT_SEC=30.0,
+        URL_INGEST_MAX_BYTES=0,
+        URL_INGEST_FOLLOW_REDIRECTS=False,
+        MAX_FILE_SIZE=10_000_000,
+        TASK_QUEUE_ENABLED=False,
+        MINIO_ENABLED=False,
+        DB_CATALOG_ENABLED=False,
+    )
+    _swap("app.core.config", config_mod)
+
     connector_schemas = types.ModuleType("app.api.schemas.connector")
     for name in [
         "ConfluenceSpaceConnectorConfig",
@@ -805,6 +836,11 @@ async def test_execute_drive_files_run_resumes_from_saved_state_cursor(monkeypat
     monkeypatch.setattr(connectors, "_extract_drive_file_id", lambda url: str(url).split("//", 1)[-1], raising=True)
     monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
 
+    async def _fake_drive_sync_token(*, file_id: str, source_url: str, **_k):  # noqa: ANN202
+        return f"token-{file_id}-{len(source_url)}"
+
+    monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
+
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
@@ -822,6 +858,185 @@ async def test_execute_drive_files_run_resumes_from_saved_state_cursor(monkeypat
     assert int((run.stats or {}).get("processed_urls") or 0) == 3
     assert int((run.stats or {}).get("cursor") or 0) == 3
     assert bool((run.stats or {}).get("resumed_from_state")) is True
+
+
+@pytest.mark.asyncio
+async def test_execute_drive_files_run_incremental_skips_unchanged_files(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="drive_files",
+        config={
+            "urls": ["drive://file-a", "drive://file-b", "drive://file-c"],
+            "_state": {"source_manifest": {"file-a": "token-a", "file-b": "token-b-old"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors, "_extract_drive_file_id", lambda url: str(url).split("//", 1)[-1], raising=True)
+    monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
+
+    tokens = {"file-a": "token-a", "file-b": "token-b-new", "file-c": "token-c"}
+
+    async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        return tokens[file_id]
+
+    monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_drive_files_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == [
+        "https://drive.local/file-b",
+        "https://drive.local/file-c",
+    ]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_urls") or 0) == 2
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 1
+    assert int((run.stats or {}).get("processed_urls") or 0) == 3
+    assert (run.stats or {}).get("source_manifest") == {
+        "file-a": "token-a",
+        "file-b": "token-b-new",
+        "file-c": "token-c",
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_drive_files_run_incremental_noop_when_manifest_matches(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="drive_files",
+        config={
+            "urls": ["drive://file-a", "drive://file-b"],
+            "_state": {"source_manifest": {"file-a": "token-a", "file-b": "token-b"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors, "_extract_drive_file_id", lambda url: str(url).split("//", 1)[-1], raising=True)
+    monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
+
+    async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        return {"file-a": "token-a", "file-b": "token-b"}[file_id]
+
+    async def _fail_if_ingest_called(*_a, **_k):  # noqa: ANN202
+        raise AssertionError("ingest should not be called for noop incremental run")
+
+    monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fail_if_ingest_called, raising=True)
+
+    await connectors._execute_drive_files_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_urls") or 0) == 0
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 2
+    assert int((run.stats or {}).get("created") or 0) == 0
+    assert int((run.stats or {}).get("processed_urls") or 0) == 2
+    assert (run.stats or {}).get("source_manifest") == {"file-a": "token-a", "file-b": "token-b"}
+
+
+@pytest.mark.asyncio
+async def test_execute_drive_files_run_incremental_partial_failure_only_advances_successful_manifest(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="drive_files",
+        config={
+            "urls": ["drive://file-a", "drive://file-b"],
+            "_state": {"source_manifest": {"file-a": "token-a-old"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors, "_extract_drive_file_id", lambda url: str(url).split("//", 1)[-1], raising=True)
+    monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
+
+    async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        return {"file-a": "token-a-new", "file-b": "token-b"}[file_id]
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        url = str(getattr(body, "url", ""))
+        ingested_urls.append(url)
+        if url.endswith("/file-a"):
+            raise RuntimeError("boom")
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_drive_files_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == [
+        "https://drive.local/file-a",
+        "https://drive.local/file-b",
+    ]
+    assert int((run.stats or {}).get("created") or 0) == 1
+    assert int((run.stats or {}).get("failed") or 0) == 1
+    assert (run.stats or {}).get("source_manifest") == {"file-a": "token-a-old", "file-b": "token-b"}
+
+
+@pytest.mark.asyncio
+async def test_execute_drive_files_run_incremental_prunes_removed_files_and_soft_disables_documents(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="drive_files",
+        config={
+            "urls": ["drive://file-a", "drive://file-b"],
+            "_state": {"source_manifest": {"file-a": "token-a", "file-obsolete": "token-obsolete"}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors, "_extract_drive_file_id", lambda url: str(url).split("//", 1)[-1], raising=True)
+    monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
+
+    async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        return {"file-a": "token-a", "file-b": "token-b"}[file_id]
+
+    ingested_urls: list[str] = []
+    disabled_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    def _fake_soft_disable(_db, *, source_url: str, **_k):  # noqa: ANN001
+        disabled_urls.append(source_url)
+        return 1
+
+    monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_connector_documents_by_source_url",
+        _fake_soft_disable,
+        raising=True,
+    )
+
+    await connectors._execute_drive_files_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://drive.local/file-b"]
+    assert disabled_urls == ["https://drive.local/file-obsolete"]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("removed_paths") or 0) == 1
+    assert int((run.stats or {}).get("removed_paths_reconciled") or 0) == 1
+    assert int((run.stats or {}).get("removed_documents_disabled") or 0) == 1
+    assert (run.stats or {}).get("source_manifest") == {"file-a": "token-a", "file-b": "token-b"}
 
 
 @pytest.mark.asyncio
