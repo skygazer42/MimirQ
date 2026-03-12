@@ -80,6 +80,8 @@ Wave B 增加了 retrieval contract 与 claim verifier 的显式调试面，排�
   - `deterministic_recall`：强制 hard fallback，优先保证“有可检索证据”。
   - `evidence_strict`：开启更严格的 evidence gate，证据不足时更倾向拒答。
   - `audit_trace`：保留默认行为但加强 trace/metrics 审计信息。
+- `rag_config.retrieval_profile`
+  - `grounded_strict`：一键启用 `evidence_strict + visible_evidence_only`，并固定 hybrid + cross-encoder 基线。
 - `RAG_CLAIM_VERIFIER_MODE`
   - `token_overlap`（默认）
   - `semantic_heuristic`（含数值/否定冲突检测）
@@ -99,6 +101,13 @@ Wave B 增加了 retrieval contract 与 claim verifier 的显式调试面，排�
 - `claim_check_removed > 0` 且 `claim_verifier_mode=semantic_heuristic`：通常是检测到数值冲突或否定冲突。
 - `retrieval_contract_policy.enforce_visible_evidence_only=true`：回答会更保守，拒答率升高是预期行为。
 - `retrieval_contract_policy.hard_fallback_enabled=true` 但仍空证据：优先检查 `document_ids/metadata_filter` 是否过窄。
+
+`grounded_strict` 排障最小清单：
+
+- 确认 `metrics.retrieval_contract_mode=evidence_strict`
+- 确认 `metrics.evidence_span_strict_enabled=true`
+- 关注 `metrics.evidence_span_missing_citations` 是否持续偏高（通常意味着解析/切块 span 质量不足）
+- 若 `abstain_triggered=true` 频率异常，先修复证据链质量，再考虑回退 profile
 
 ---
 

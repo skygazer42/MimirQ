@@ -789,6 +789,16 @@ Requirements:
                 reranker_provider=rerank_provider,
                 reranker_top_n=rerank_top_n,
                 enable_weight_rerank=enable_weight_rerank,
+                retrieval_contract_mode=(
+                    retrieval_contract_mode
+                    if retrieval_contract_mode is not None
+                    else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
+                ),
+                visible_evidence_only=(
+                    bool(visible_evidence_only)
+                    if visible_evidence_only is not None
+                    else None
+                ),
             )
             profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
             retrieval_profile = profile_applied.get("retrieval_profile")
@@ -803,6 +813,26 @@ Requirements:
                 rerank_top_n = int(profile_applied.get("reranker_top_n") or rerank_top_n or 0)
             if profile_applied.get("enable_weight_rerank") is not None:
                 enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
+            if profile_applied.get("retrieval_contract_mode") is not None:
+                retrieval_contract_mode = str(profile_applied.get("retrieval_contract_mode") or "").strip() or None
+            if profile_applied.get("visible_evidence_only") is not None:
+                visible_evidence_only = bool(profile_applied.get("visible_evidence_only"))
+
+            contract_req = (
+                retrieval_contract_mode
+                if retrieval_contract_mode is not None
+                else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
+            )
+            retrieval_contract_policy = resolve_retrieval_contract_policy(
+                mode=contract_req,
+                requested_top_k=int(top_k or 0),
+                hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
+                hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
+                hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
+                visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
+                evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
+            )
+            retrieval_contract_mode_effective = str(retrieval_contract_policy.get("mode") or "").strip()
 
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             alias_elapsed = 0.0

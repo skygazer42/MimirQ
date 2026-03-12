@@ -796,6 +796,16 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         reranker_provider=str(state.get("reranker_provider", settings.RERANKER_PROVIDER) or ""),
         reranker_top_n=int(state.get("reranker_top_n", settings.RERANKER_TOP_N) or settings.RERANKER_TOP_N or 20),
         enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
+        retrieval_contract_mode=(
+            state.get("retrieval_contract_mode")
+            if state.get("retrieval_contract_mode") is not None
+            else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
+        ),
+        visible_evidence_only=(
+            bool(state.get("visible_evidence_only"))
+            if state.get("visible_evidence_only") is not None
+            else None
+        ),
     )
     profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
     retriever_update: Dict[str, Any] = {
@@ -839,6 +849,27 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "document_ids": state.get("document_ids"),
         "metadata_filter": state.get("metadata_filter"),
     }
+
+    if profile_applied.get("retrieval_contract_mode") is not None:
+        state["retrieval_contract_mode"] = profile_applied.get("retrieval_contract_mode")
+    if profile_applied.get("visible_evidence_only") is not None:
+        state["visible_evidence_only"] = bool(profile_applied.get("visible_evidence_only"))
+
+    retrieval_contract_policy = resolve_retrieval_contract_policy(
+        mode=(
+            state.get("retrieval_contract_mode")
+            if state.get("retrieval_contract_mode") is not None
+            else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
+        ),
+        requested_top_k=int(retriever_update.get("k") or settings.RETRIEVAL_TOP_K or 5),
+        hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
+        hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
+        hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
+        visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
+        evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
+    )
+    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
+    contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
 
     # Recall-first profiles: do not drop candidates due to dedup/diversity heuristics.
     if _is_recall_profile(profile_norm):
