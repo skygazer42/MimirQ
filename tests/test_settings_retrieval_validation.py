@@ -104,3 +104,13 @@ def test_settings_accepts_parse_risk_remediation_policy_settings(
     assert abs(float(cfg.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO) - 0.45) <= 1e-9
     assert int(cfg.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED) == 5
     assert int(cfg.RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS) == 120
+
+
+def test_settings_accepts_table_sidecar_exclusive_routing_toggle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", "true")
+    cfg = Settings()
+    assert cfg.TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING is True

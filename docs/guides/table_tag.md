@@ -30,7 +30,42 @@ MimirQ 会对这些表格做 best-effort：
 - 在文档 `doc_metadata.table_store` 中记录 `table_id/sheet_name/row_count/col_count/columns` 等元数据
 - 因此数据集的「表格 / TAG」页面与 Chat→TAG 都能对 PDF 表格进行预览与查询
 
-> 说明：这是一个 **sidecar** 能力（不改变现有 RAG 主流程）。目前不会默认把 PDF 表格从文本 chunks 中移除；若你希望“大表不入向量库”，可在后续任务中继续做表格路由优化。
+默认情况下这是一个 **sidecar** 能力（兼容历史行为）：解析器输出的 table segments 仍可能进入 RAG chunk 流程。
+
+## TAG/RAG 独占路由（parser table sidecar exclusive）
+
+从 Wave D 开始，可以启用“table sidecar 独占路由”，把解析器产出的表格块固定到 TAG 通道，避免表格噪声影响文本问答召回。
+
+- 全局开关：`TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING=true`
+- Pipeline 覆盖：`table_store_sidecar_exclusive_routing=true`
+  - 可配置在 dataset/document pipeline（优先级高于全局）
+- 生效前提：`table_store_enabled=true` 且解析 sidecar 导入成功（已写入 Table Store）
+
+启用后行为：
+
+- parser-emitted table segments 会继续导入 `doc_metadata.table_store`
+- 这些 table chunks 会被排除出 vector/BM25 写入路径
+- 非表格文本 chunks 继续正常走 RAG 索引
+- 当文档只包含表格块时，任务会以 TAG-only 方式完成（不会因为“无 chunks”失败）
+
+可审计元数据：
+
+- `doc_metadata.table_store.routing`
+  - `kind=tag_sidecar`
+  - `exclusive_rag_routing_enabled`
+- `doc_metadata.table_sidecar_routing`
+  - `table_chunks_seen`
+  - `table_chunks_excluded_from_rag`
+  - `rag_exclusion_reason=table_sidecar_exclusive`
+  - `excluded_samples`
+
+数据集策略审计（用于运营排障）：
+
+- `GET /api/v1/datasets/{dataset_id}/ingestion-policy`
+- 响应中的 `table_routing_policy_audit` 会返回：
+  - 全局默认值
+  - 数据集 pipeline 默认值
+  - 每条 ingestion rule 的 table 路由有效值和来源（`rule_pipeline_patch` / `dataset_pipeline_default` / `global_default`）
 
 ## 表格自动分流（推荐：小表 RAG / 大表 TAG）
 
@@ -53,9 +88,17 @@ MimirQ 会对这些表格做 best-effort：
 - `TABLE_STORE_MAX_SHEETS=50`：最多导入的 Sheet 数（防止极端 Excel 占用资源；0 不限制）
 - `TABLE_STORE_SAMPLE_ROWS=0`：不持久化采样行（合规/PII 场景建议）
 - `TABLE_STORE_AUTO_ROUTE=true`：开启自动分流（小表继续走 RAG；大表走 Table Store）
+- `TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING=true`：解析 sidecar 表格独占走 TAG（不进 vector/BM25）
 - `TABLE_STORE_AUTO_ROW_THRESHOLD / TABLE_STORE_AUTO_COL_THRESHOLD / TABLE_STORE_AUTO_SHEET_THRESHOLD / TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD`：分流阈值
 - `TABLE_QUERY_MAX_ROWS / TABLE_QUERY_MAX_COLS / TABLE_QUERY_MAX_BYTES`：限制 API 返回规模
 - `TABLE_QUERY_MAX_SQL_CHARS / TABLE_QUERY_TIMEOUT_SEC / TABLE_QUERY_PROGRESS_OPS`：SQL 长度与执行时间保护（DoS 防护）
+
+## 迁移建议（从兼容模式到独占模式）
+
+1. 先在一个数据集启用 `table_store_sidecar_exclusive_routing=true`（不要一上来全局开）。
+2. 复跑该数据集的代表性问答用例，确认文本问答的 evidence 更稳定、表格问答仍由 TAG 覆盖。
+3. 检查 `doc_metadata.table_sidecar_routing` 与 `table_routing_policy_audit`，确认排除数量与策略来源符合预期。
+4. 再逐步放大到更多数据集，最后再考虑全局 `TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING=true`。
 
 SQL 执行器是 **SELECT-only**：
 

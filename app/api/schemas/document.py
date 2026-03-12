@@ -168,6 +168,13 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         description="When table_store_enabled=true, auto-route small tables to RAG and large/complex tables to TAG",
     )
+    table_store_sidecar_exclusive_routing: Optional[bool] = Field(
+        default=None,
+        description=(
+            "When true, parser-emitted table segments are TAG-sidecar only "
+            "(excluded from vector/BM25 indexing)."
+        ),
+    )
     table_store_auto_row_threshold: Optional[int] = Field(
         default=None,
         ge=0,

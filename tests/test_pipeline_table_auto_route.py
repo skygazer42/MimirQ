@@ -9,6 +9,7 @@ def test_pipeline_metadata_roundtrip_table_auto_fields():
         table_store_max_cols=45,
         table_store_sample_rows=6,
         table_store_auto_route=True,
+        table_store_sidecar_exclusive_routing=True,
         table_store_auto_row_threshold=5001,
         table_store_auto_col_threshold=81,
         table_store_auto_sheet_threshold=7,
@@ -22,6 +23,7 @@ def test_pipeline_metadata_roundtrip_table_auto_fields():
     assert parsed.table_store_max_cols == 45
     assert parsed.table_store_sample_rows == 6
     assert parsed.table_store_auto_route is True
+    assert parsed.table_store_sidecar_exclusive_routing is True
     assert parsed.table_store_auto_row_threshold == 5001
     assert parsed.table_store_auto_col_threshold == 81
     assert parsed.table_store_auto_sheet_threshold == 7
@@ -33,6 +35,7 @@ def test_resolve_pipeline_options_uses_overrides_for_table_auto_fields():
         PipelineOptions(
             table_store_enabled=True,
             table_store_auto_route=True,
+            table_store_sidecar_exclusive_routing=True,
             table_store_auto_row_threshold=111,
             table_store_auto_col_threshold=22,
             table_store_auto_sheet_threshold=3,
@@ -41,8 +44,16 @@ def test_resolve_pipeline_options_uses_overrides_for_table_auto_fields():
     )
     assert eff.table_store_enabled is True
     assert eff.table_store_auto_route is True
+    assert eff.table_store_sidecar_exclusive_routing is True
     assert eff.table_store_auto_row_threshold == 111
     assert eff.table_store_auto_col_threshold == 22
     assert eff.table_store_auto_sheet_threshold == 3
     assert eff.table_store_auto_file_bytes_threshold == 4444
 
+
+def test_resolve_pipeline_options_uses_settings_default_for_table_sidecar_exclusive(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", True, raising=False)
+    eff = resolve_pipeline_options(PipelineOptions(table_store_enabled=True))
+    assert eff.table_store_sidecar_exclusive_routing is True

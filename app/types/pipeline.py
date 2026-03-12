@@ -92,6 +92,7 @@ class PipelineOptions:
     table_store_max_cols: Optional[int] = None
     table_store_sample_rows: Optional[int] = None
     table_store_auto_route: Optional[bool] = None
+    table_store_sidecar_exclusive_routing: Optional[bool] = None
     table_store_auto_row_threshold: Optional[int] = None
     table_store_auto_col_threshold: Optional[int] = None
     table_store_auto_sheet_threshold: Optional[int] = None
@@ -176,6 +177,7 @@ class PipelineEffective:
     table_store_max_cols: int
     table_store_sample_rows: int
     table_store_auto_route: bool
+    table_store_sidecar_exclusive_routing: bool
     table_store_auto_row_threshold: int
     table_store_auto_col_threshold: int
     table_store_auto_sheet_threshold: int

@@ -60,21 +60,27 @@ def test_processor_imports_parsed_table_segments_to_table_store(monkeypatch, tmp
     )
 
     svc = DocumentProcessorService()
-    svc._import_parsed_markdown_tables_to_store(  # type: ignore[attr-defined]
+    imported = svc._import_parsed_markdown_tables_to_store(  # type: ignore[attr-defined]
         _DB(),
         db_document=db_doc,
         tenant_id=tenant_id,
         documents=docs,
         pipeline_effective=pipeline,
     )
+    assert imported == 1
 
     store = (db_doc.doc_metadata or {}).get("table_store")
     assert isinstance(store, dict)
+    routing = store.get("routing")
+    assert isinstance(routing, dict)
+    assert routing.get("kind") == "tag_sidecar"
+    assert routing.get("source") == "parser_table_segments"
     tables = store.get("tables")
     assert isinstance(tables, list)
     assert len(tables) == 1
     assert tables[0]["table_id"] == f"doc:{document_id}:sheet:0"
+    assert tables[0]["routing_kind"] == "tag_sidecar"
+    assert tables[0]["routing_source"] == "parser_table_segment"
 
     db_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
     assert db_path.exists()
-

@@ -46,10 +46,14 @@ from app.api.schemas.dataset_profile import (
 )
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import (
+    DatasetTableRoutingPolicyAudit,
     IngestionPolicy,
     IngestionPolicyImportResponse,
     IngestionPolicyRollbackRequest,
     IngestionPolicyVersionListResponse,
+    IngestionPolicyWithAudit,
+    IngestionRuleTableRoutingAudit,
+    TableRoutingSettingAudit,
 )
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
@@ -108,6 +112,113 @@ def _dataset_ingestion_defaults(ds: Dataset) -> tuple[str | None, str | None]:
     pb_out = str(pb).strip() if isinstance(pb, str) and pb.strip() else None
     cs_out = str(cs).strip() if isinstance(cs, str) and cs.strip() else None
     return pb_out, cs_out
+
+
+_TABLE_ROUTING_EXTENSIONS = {".csv", ".xls", ".xlsx"}
+
+
+def _resolve_table_routing_setting(
+    *,
+    rule_patch_value: Any,
+    dataset_default: bool | None,
+    global_default: bool,
+) -> TableRoutingSettingAudit:
+    if rule_patch_value is not None:
+        return TableRoutingSettingAudit(value=bool(rule_patch_value), source="rule_pipeline_patch")
+    if dataset_default is not None:
+        return TableRoutingSettingAudit(value=bool(dataset_default), source="dataset_pipeline_default")
+    return TableRoutingSettingAudit(value=bool(global_default), source="global_default")
+
+
+def _build_table_routing_policy_audit(*, meta: dict[str, Any], policy: IngestionPolicy) -> DatasetTableRoutingPolicyAudit:
+    dataset_opts = parse_pipeline_from_metadata(meta)
+
+    dataset_defaults = {
+        "table_store_enabled": bool(dataset_opts.table_store_enabled) if dataset_opts.table_store_enabled is not None else False,
+        "table_store_auto_route": bool(dataset_opts.table_store_auto_route) if dataset_opts.table_store_auto_route is not None else False,
+        "table_store_sidecar_exclusive_routing": (
+            bool(dataset_opts.table_store_sidecar_exclusive_routing)
+            if dataset_opts.table_store_sidecar_exclusive_routing is not None
+            else False
+        ),
+    }
+    dataset_default_presence = {
+        "table_store_enabled": dataset_opts.table_store_enabled is not None,
+        "table_store_auto_route": dataset_opts.table_store_auto_route is not None,
+        "table_store_sidecar_exclusive_routing": dataset_opts.table_store_sidecar_exclusive_routing is not None,
+    }
+    global_defaults = {
+        "table_store_enabled": bool(getattr(settings, "TABLE_STORE_ENABLED", False)),
+        "table_store_auto_route": bool(getattr(settings, "TABLE_STORE_AUTO_ROUTE", False)),
+        "table_store_sidecar_exclusive_routing": bool(
+            getattr(settings, "TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", False)
+        ),
+    }
+
+    rule_audits: list[IngestionRuleTableRoutingAudit] = []
+    for rule in policy.rules or []:
+        patch = rule.pipeline_patch if isinstance(rule.pipeline_patch, dict) else {}
+        exts: list[str] = []
+        for ext in (rule.match.extensions if rule.match is not None else []) or []:
+            sval = str(ext or "").strip().lower()
+            if not sval:
+                continue
+            if not sval.startswith("."):
+                sval = "." + sval
+            exts.append(sval)
+
+        patch_has_table_keys = any(
+            k in patch
+            for k in (
+                "table_store_enabled",
+                "table_store_auto_route",
+                "table_store_sidecar_exclusive_routing",
+            )
+        )
+        is_table_rule = bool(set(exts) & _TABLE_ROUTING_EXTENSIONS) or patch_has_table_keys
+
+        ds_enabled = dataset_defaults["table_store_enabled"] if dataset_default_presence["table_store_enabled"] else None
+        ds_auto_route = (
+            dataset_defaults["table_store_auto_route"] if dataset_default_presence["table_store_auto_route"] else None
+        )
+        ds_sidecar_exclusive = (
+            dataset_defaults["table_store_sidecar_exclusive_routing"]
+            if dataset_default_presence["table_store_sidecar_exclusive_routing"]
+            else None
+        )
+
+        rule_audits.append(
+            IngestionRuleTableRoutingAudit(
+                rule_id=str(rule.id),
+                rule_name=str(rule.name),
+                enabled=bool(rule.enabled),
+                match_extensions=exts,
+                table_rule_match=is_table_rule,
+                table_store_enabled=_resolve_table_routing_setting(
+                    rule_patch_value=patch.get("table_store_enabled"),
+                    dataset_default=ds_enabled,
+                    global_default=global_defaults["table_store_enabled"],
+                ),
+                table_store_auto_route=_resolve_table_routing_setting(
+                    rule_patch_value=patch.get("table_store_auto_route"),
+                    dataset_default=ds_auto_route,
+                    global_default=global_defaults["table_store_auto_route"],
+                ),
+                table_store_sidecar_exclusive_routing=_resolve_table_routing_setting(
+                    rule_patch_value=patch.get("table_store_sidecar_exclusive_routing"),
+                    dataset_default=ds_sidecar_exclusive,
+                    global_default=global_defaults["table_store_sidecar_exclusive_routing"],
+                ),
+            )
+        )
+
+    return DatasetTableRoutingPolicyAudit(
+        version="1",
+        table_extensions=sorted(_TABLE_ROUTING_EXTENSIONS),
+        global_defaults=global_defaults,
+        dataset_pipeline_defaults=dataset_defaults,
+        rules=rule_audits,
+    )
 
 
 def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
@@ -1423,7 +1534,7 @@ def _append_ingestion_policy_version(
     return meta, version_id
 
 
-@router.get("/{dataset_id}/ingestion-policy", response_model=IngestionPolicy)
+@router.get("/{dataset_id}/ingestion-policy", response_model=IngestionPolicyWithAudit)
 def get_dataset_ingestion_policy(
     dataset_id: UUID,
     tenant_id: UUID = Depends(get_tenant_id),
@@ -1433,8 +1544,14 @@ def get_dataset_ingestion_policy(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
     meta = getattr(dataset, "dataset_metadata", None)
-    policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(version="1", rules=[])
-    return policy
+    meta_obj = meta if isinstance(meta, dict) else {}
+    policy = parse_ingestion_policy_from_metadata(meta_obj) or IngestionPolicy(version="1", rules=[])
+    audit = _build_table_routing_policy_audit(meta=meta_obj, policy=policy)
+    return IngestionPolicyWithAudit(
+        version=policy.version,
+        rules=policy.rules,
+        table_routing_policy_audit=audit,
+    )
 
 
 @router.get("/{dataset_id}/ingestion-policy/versions", response_model=IngestionPolicyVersionListResponse)
