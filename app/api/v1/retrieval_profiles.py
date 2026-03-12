@@ -36,6 +36,8 @@ def _runtime_baseline() -> dict[str, Any]:
         "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
         "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
         "enable_weight_rerank": True,
+        "retrieval_contract_mode": None,
+        "visible_evidence_only": False,
     }
 
 
@@ -49,6 +51,10 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+        retrieval_contract_mode=(
+            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
+        ),
+        visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
     return {
         "name": str(applied.get("retrieval_profile") or name),
@@ -68,6 +74,10 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
             else 0
         ),
         "enable_weight_rerank": bool(applied.get("enable_weight_rerank", True)),
+        "retrieval_contract_mode": (
+            str(applied.get("retrieval_contract_mode") or "").strip().lower() or None
+        ),
+        "visible_evidence_only": bool(applied.get("visible_evidence_only", False)),
     }
 
 
@@ -84,6 +94,10 @@ def get_retrieval_profiles() -> dict[str, Any]:
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+        retrieval_contract_mode=(
+            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
+        ),
+        visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
     chat_default_effective = apply_retrieval_profile_overrides(
         profile=chat_default_profile,
@@ -94,6 +108,10 @@ def get_retrieval_profiles() -> dict[str, Any]:
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+        retrieval_contract_mode=(
+            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
+        ),
+        visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
     production_effective = apply_retrieval_profile_overrides(
         profile=PRODUCTION_RETRIEVAL_PROFILE,
@@ -104,6 +122,10 @@ def get_retrieval_profiles() -> dict[str, Any]:
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+        retrieval_contract_mode=(
+            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
+        ),
+        visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
 
     ordered_profiles = sorted({str(p) for p in SUPPORTED_RETRIEVAL_PROFILES})
