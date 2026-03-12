@@ -247,6 +247,77 @@ jobs:
           print("[retrieval-only-bounded-gate-hybrid] PASS")
           PY
 
+      - name: Validate grounded_strict retrieval-profile contract
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
+
+          applied = apply_retrieval_profile_overrides(
+              profile="grounded_strict",
+              top_k=5,
+              score_threshold=0.3,
+              retrieval_mode="keyword",
+              enable_reranker=False,
+              reranker_provider="llm",
+              reranker_top_n=5,
+              enable_weight_rerank=True,
+              retrieval_contract_mode="",
+              visible_evidence_only=False,
+          )
+
+          expected = {
+              "retrieval_mode": "hybrid",
+              "retrieval_contract_mode": "evidence_strict",
+              "visible_evidence_only": True,
+              "enable_reranker": True,
+              "reranker_provider": "cross_encoder",
+              "enable_weight_rerank": False,
+          }
+          failures = []
+          for key, expected_value in expected.items():
+              if applied.get(key) != expected_value:
+                  failures.append((key, applied.get(key), expected_value))
+
+          if int(applied.get("top_k") or 0) < 20:
+              failures.append(("top_k", applied.get("top_k"), ">=20"))
+          if int(applied.get("reranker_top_n") or 0) < 20:
+              failures.append(("reranker_top_n", applied.get("reranker_top_n"), ">=20"))
+
+          out_path = Path("artifacts/retrieval_profile.grounded_strict.contract.json")
+          out_path.parent.mkdir(parents=True, exist_ok=True)
+          out_path.write_text(
+              json.dumps(
+                  {
+                      "schema": "mimirq.retrieval_profile_contract.v1",
+                      "profile": "grounded_strict",
+                      "applied": applied,
+                      "failures": failures,
+                  },
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  indent=2,
+              ),
+              encoding="utf-8",
+          )
+
+          if failures:
+              print("[retrieval-profile-grounded-strict] FAIL", file=sys.stderr)
+              for key, value, expected_value in failures:
+                  print(
+                      f"[retrieval-profile-grounded-strict] key={key} value={value} expected={expected_value}",
+                      file=sys.stderr,
+                  )
+              raise SystemExit(1)
+
+          print("[retrieval-profile-grounded-strict] PASS")
+          PY
+
       - name: Upload bounded gate artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -262,6 +333,7 @@ jobs:
             artifacts/queryset_health.diff.md
             artifacts/queryset_health.diff.hybrid.json
             artifacts/queryset_health.diff.hybrid.md
+            artifacts/retrieval_profile.grounded_strict.contract.json
             artifacts/queryset_health.history.jsonl
             artifacts/queryset_health.history.hybrid.jsonl
             artifacts/queryset_health.cron.json

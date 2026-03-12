@@ -138,6 +138,27 @@ When enabled, MimirQ will:
 - **Post-check generated claims** against the retrieved evidence and drop unsupported ones
 - Apply the same scrubbing to **structured_output** JSON (keeps JSON parseable)
 
+### grounded_strict Profile (Recommended Rollout Baseline)
+
+Wave D adds a strict grounding retrieval profile:
+
+- `rag_config.retrieval_profile=grounded_strict`
+
+`grounded_strict` applies the following contract together:
+
+- `retrieval_mode=hybrid`
+- `top_k>=20`
+- `enable_reranker=true` with `reranker_provider=cross_encoder`
+- `retrieval_contract_mode=evidence_strict`
+- `visible_evidence_only=true`
+
+Rollout recommendation:
+
+1. Start with one dataset that has stable citations and good parse quality.
+2. Observe `abstain_rate`, `claim_check_removed`, and `evidence_span_missing_citations` for 24-48 hours.
+3. If refusal rate spikes because of span gaps, prioritize parser/chunking remediation before expanding rollout.
+4. Keep a rollback switch by reverting dataset default to `hybrid_ce` (or clearing `retrieval_profile`).
+
 ## 6) Evaluation (Measure, Don’t Guess)
 
 MimirQ includes RAGAS evaluation and regression helpers. See:

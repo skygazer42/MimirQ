@@ -55,6 +55,12 @@ def merge_rag_config_with_dataset_defaults(
     if not overrides:
         return rag_config, []
 
+    if (
+        str(overrides.get("retrieval_contract_mode") or "").strip().lower() == "evidence_strict"
+        and "visible_evidence_only" not in overrides
+    ):
+        overrides["visible_evidence_only"] = True
+
     merged = dict(rag_config.model_dump())
     applied: list[str] = []
     for k, v in overrides.items():
@@ -67,4 +73,3 @@ def merge_rag_config_with_dataset_defaults(
         return rag_config, []
 
     return ChatRAGConfig(**merged), applied
-

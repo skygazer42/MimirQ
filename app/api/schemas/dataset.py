@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.models.dataset import DatasetPermissionEnum
 from app.rag.core.text import normalize_retrieval_mode
+from app.rag.retrieval.contract import (
+    VALID_RETRIEVAL_CONTRACT_MODES,
+    normalize_retrieval_contract_mode,
+)
 
 from .base import OrmModel
 from .document import DocumentPipelineOptions
@@ -78,6 +82,7 @@ class DatasetRAGDefaults(BaseModel):
     top_k: Optional[int] = Field(default=None, ge=1, le=100)
     score_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     retrieval_mode: Optional[str] = None  # hybrid | vector | keyword | mmr | auto
+    retrieval_contract_mode: Optional[str] = None
     alpha: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
     # Retrieval channel fusion strategy override (optional, dataset-scoped).
@@ -111,6 +116,19 @@ class DatasetRAGDefaults(BaseModel):
             return None
         s = str(v)
         return normalize_retrieval_mode(s) if s.strip() else None
+
+    @field_validator("retrieval_contract_mode", mode="before")
+    @classmethod
+    def _normalize_retrieval_contract_mode(cls, v):  # noqa: ANN001
+        if v is None:
+            return None
+        mode = normalize_retrieval_contract_mode(v)
+        if mode not in VALID_RETRIEVAL_CONTRACT_MODES:
+            raise ValueError(
+                "retrieval_contract_mode must be one of: "
+                + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
+            )
+        return mode
 
     @model_validator(mode="after")
     def _validate_fusion_dicts(self) -> "DatasetRAGDefaults":

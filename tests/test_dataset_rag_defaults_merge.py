@@ -67,3 +67,26 @@ def test_merge_rag_defaults_applies_query_expansion_fields():  # noqa: ANN001
     assert effective.enable_multi_query is True
     assert effective.multi_query_count == 3
     assert set(applied) == {"query_aliases", "enable_multi_query", "multi_query_count"}
+
+
+def test_merge_rag_defaults_applies_retrieval_contract_mode():  # noqa: ANN001
+    base = ChatRAGConfig(top_k=5, retrieval_mode="hybrid")
+    effective, applied = merge_rag_config_with_dataset_defaults(
+        rag_config=base,
+        request_fields_set=set(),
+        raw_dataset_defaults={"retrieval_contract_mode": "deterministic"},
+    )
+    assert effective.retrieval_contract_mode == "deterministic_recall"
+    assert set(applied) == {"retrieval_contract_mode"}
+
+
+def test_merge_rag_defaults_strict_contract_maps_visible_evidence_only():  # noqa: ANN001
+    base = ChatRAGConfig(top_k=5, retrieval_mode="hybrid")
+    effective, applied = merge_rag_config_with_dataset_defaults(
+        rag_config=base,
+        request_fields_set=set(),
+        raw_dataset_defaults={"retrieval_contract_mode": "evidence_strict"},
+    )
+    assert effective.retrieval_contract_mode == "evidence_strict"
+    assert effective.visible_evidence_only is True
+    assert set(applied) == {"retrieval_contract_mode", "visible_evidence_only"}

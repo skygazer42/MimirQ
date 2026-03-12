@@ -22,4 +22,6 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "artifacts/queryset_health.diff.hybrid.json" in text
     assert "artifacts/queryset_health.diff.hybrid.md" in text
     assert "ci_retrieval_only_bounded_gate_hybrid" in text
+    assert "grounded_strict" in text
+    assert "artifacts/retrieval_profile.grounded_strict.contract.json" in text
     assert "delta" in text.lower()
