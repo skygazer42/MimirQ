@@ -108,6 +108,17 @@ jobs:
             --retrieval-mode keyword \
             --top-k 5
 
+      - name: Run deterministic sample retrieval benchmark (hybrid bounded fixture)
+        env:
+          LLM_MOCK_ENABLED: "true"
+        run: |
+          mkdir -p artifacts
+          python scripts/run_sample_retrieval_benchmark.py \
+            --fixture data/sample/retrieval_fixture_hybrid_v1.json \
+            --out artifacts/sample_retrieval_bench.hybrid.json \
+            --retrieval-mode hybrid \
+            --top-k 5
+
       - name: Build query-set health snapshot from bounded benchmark
         run: |
           python scripts/run_queryset_health_diagnostics.py \
@@ -117,6 +128,15 @@ jobs:
             --policy-json ci/queryset_health_policy.v1.json \
             --cron | tee artifacts/queryset_health.cron.json
 
+      - name: Build query-set health snapshot from bounded hybrid benchmark
+        run: |
+          python scripts/run_queryset_health_diagnostics.py \
+            --benchmark-report artifacts/sample_retrieval_bench.hybrid.json \
+            --out artifacts/queryset_health.snapshot.hybrid.json \
+            --history artifacts/queryset_health.history.hybrid.jsonl \
+            --policy-json ci/queryset_health_policy.v1.json \
+            --cron | tee artifacts/queryset_health.cron.hybrid.json
+
       - name: Build query-set health diff artifacts
         run: |
           python scripts/diff_queryset_health_snapshots.py \
@@ -124,6 +144,14 @@ jobs:
             --b artifacts/queryset_health.snapshot.json \
             --out artifacts/queryset_health.diff.json \
             --out-md artifacts/queryset_health.diff.md
+
+      - name: Build query-set health diff artifacts (hybrid)
+        run: |
+          python scripts/diff_queryset_health_snapshots.py \
+            --a ci/queryset_health_snapshot_hybrid_baseline.v1.json \
+            --b artifacts/queryset_health.snapshot.hybrid.json \
+            --out artifacts/queryset_health.diff.hybrid.json \
+            --out-md artifacts/queryset_health.diff.hybrid.md
 
       - name: Evaluate bounded retrieval-only gate (metric delta output)
         run: |
@@ -172,6 +200,53 @@ jobs:
           print("[retrieval-only-bounded-gate] PASS")
           PY
 
+      - name: Evaluate bounded retrieval-only gate (hybrid metric delta output)
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path("artifacts/sample_retrieval_bench.hybrid.json").read_text(encoding="utf-8"))
+          cfg = json.loads(Path("ci/retrieval_thresholds.v2.json").read_text(encoding="utf-8"))
+          bounded = cfg.get("ci_retrieval_only_bounded_gate_hybrid") if isinstance(cfg, dict) else {}
+          thresholds = bounded.get("thresholds") if isinstance(bounded, dict) else {}
+          summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+
+          failures = []
+          for metric, raw in (thresholds or {}).items():
+              if not isinstance(raw, dict):
+                  continue
+              try:
+                  value = float(summary.get(metric))
+              except Exception:
+                  value = None
+              if value is None:
+                  failures.append((metric, "missing", raw, None))
+                  continue
+              if "min" in raw:
+                  low = float(raw["min"])
+                  if value < low:
+                      failures.append((metric, value, {"min": low}, value - low))
+              if "max" in raw:
+                  high = float(raw["max"])
+                  if value > high:
+                      failures.append((metric, value, {"max": high}, value - high))
+
+          if failures:
+              print("[retrieval-only-bounded-gate-hybrid] FAIL: threshold violation(s)", file=sys.stderr)
+              for metric, value, th, delta in failures:
+                  print(
+                      f"[retrieval-only-bounded-gate-hybrid] metric={metric} value={value} threshold={th} delta={delta}",
+                      file=sys.stderr,
+                  )
+              raise SystemExit(1)
+
+          print("[retrieval-only-bounded-gate-hybrid] PASS")
+          PY
+
       - name: Upload bounded gate artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -179,13 +254,20 @@ jobs:
           name: retrieval-only-bounded-gate
           path: |
             artifacts/sample_retrieval_bench.json
+            artifacts/sample_retrieval_bench.hybrid.json
             artifacts/queryset_health_policy.normalized.json
             artifacts/queryset_health.snapshot.json
+            artifacts/queryset_health.snapshot.hybrid.json
             artifacts/queryset_health.diff.json
             artifacts/queryset_health.diff.md
+            artifacts/queryset_health.diff.hybrid.json
+            artifacts/queryset_health.diff.hybrid.md
             artifacts/queryset_health.history.jsonl
+            artifacts/queryset_health.history.hybrid.jsonl
             artifacts/queryset_health.cron.json
+            artifacts/queryset_health.cron.hybrid.json
             ci/queryset_health_snapshot_baseline.v1.json
+            ci/queryset_health_snapshot_hybrid_baseline.v1.json
             ci/queryset_health_policy.v1.json
             ci/retrieval_thresholds.v2.json
 

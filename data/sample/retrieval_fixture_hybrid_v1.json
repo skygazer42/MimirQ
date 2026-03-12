@@ -1,0 +1,87 @@
+{
+  "schema": "mimirq.sample_retrieval_fixture.v1",
+  "version": 1,
+  "defaults": {
+    "top_k": 5,
+    "retrieval_mode": "hybrid"
+  },
+  "documents": [
+    {
+      "chunk_id": "chunk-hybrid-k8s",
+      "document_id": "doc-platform",
+      "text": "Kubernetes deploys applications in Pods. Use kubectl apply for rollout.",
+      "metadata": {
+        "source": "platform.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-hybrid-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-hybrid-postgres",
+      "document_id": "doc-database",
+      "text": "PostgreSQL listens on port 5432 by default.",
+      "metadata": {
+        "source": "database.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-hybrid-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-hybrid-redis",
+      "document_id": "doc-cache",
+      "text": "Redis allkeys-lru policy evicts least recently used keys.",
+      "metadata": {
+        "source": "cache.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-hybrid-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-hybrid-rrf",
+      "document_id": "doc-retrieval",
+      "text": "Reciprocal Rank Fusion combines ranked lists from vector and keyword channels.",
+      "metadata": {
+        "source": "retrieval.md",
+        "chunk_index": 0,
+        "pipeline_hash": "sample-hybrid-v1"
+      }
+    },
+    {
+      "chunk_id": "chunk-hybrid-mmr",
+      "document_id": "doc-retrieval",
+      "text": "Maximal Marginal Relevance balances relevance and diversity to reduce duplicates.",
+      "metadata": {
+        "source": "retrieval.md",
+        "chunk_index": 1,
+        "pipeline_hash": "sample-hybrid-v1"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "id": "hq-k8s",
+      "question": "How do we rollout on Kubernetes with kubectl apply?",
+      "expected_chunk_ids": ["chunk-hybrid-k8s"]
+    },
+    {
+      "id": "hq-postgres",
+      "question": "Which port is PostgreSQL using by default?",
+      "expected_chunk_ids": ["chunk-hybrid-postgres"]
+    },
+    {
+      "id": "hq-redis",
+      "question": "Which Redis eviction policy removes least recently used keys?",
+      "expected_chunk_ids": ["chunk-hybrid-redis"]
+    },
+    {
+      "id": "hq-rrf",
+      "question": "What does Reciprocal Rank Fusion combine in retrieval?",
+      "expected_chunk_ids": ["chunk-hybrid-rrf"]
+    },
+    {
+      "id": "hq-mmr",
+      "question": "How does MMR reduce duplicate context chunks?",
+      "expected_chunk_ids": ["chunk-hybrid-mmr"]
+    }
+  ]
+}

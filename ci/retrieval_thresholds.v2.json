@@ -40,5 +40,16 @@
       "mrr": { "min": 1.0 },
       "ndcg_at_k": { "min": 1.0 }
     }
+  },
+  "ci_retrieval_only_bounded_gate_hybrid": {
+    "schema": "mimirq.ci_retrieval_only_gate.v1",
+    "fixture": "data/sample/retrieval_fixture_hybrid_v1.json",
+    "retrieval_mode": "hybrid",
+    "top_k": 5,
+    "thresholds": {
+      "hit_at_k": { "min": 1.0 },
+      "mrr": { "min": 1.0 },
+      "ndcg_at_k": { "min": 1.0 }
+    }
   }
 }
