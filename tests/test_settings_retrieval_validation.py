@@ -67,3 +67,40 @@ def test_settings_accepts_grounded_strict_chat_default_profile(
     monkeypatch.setenv("CHAT_DEFAULT_RETRIEVAL_PROFILE", "grounded_strict")
     cfg = Settings()
     assert cfg.CHAT_DEFAULT_RETRIEVAL_PROFILE == "grounded_strict"
+
+
+def test_settings_rejects_invalid_parse_risk_hardcase_min_low_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", "1.2")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_non_positive_parse_risk_hardcase_min_considered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_accepts_parse_risk_remediation_policy_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED", "true")
+    monkeypatch.setenv("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", "0.45")
+    monkeypatch.setenv("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED", "5")
+    monkeypatch.setenv("RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS", "120")
+
+    cfg = Settings()
+    assert cfg.RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED is True
+    assert abs(float(cfg.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO) - 0.45) <= 1e-9
+    assert int(cfg.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED) == 5
+    assert int(cfg.RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS) == 120

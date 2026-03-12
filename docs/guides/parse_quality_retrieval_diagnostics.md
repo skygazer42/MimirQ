@@ -17,6 +17,10 @@ Use the following settings to tune alert sensitivity:
 
 - `RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD` (default `0.35`)
 - `RETRIEVAL_PARSE_QUALITY_ALERT_RATIO` (default `0.5`)
+- `RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED` (default `false`)
+- `RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO` (default `0.5`)
+- `RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED` (default `3`)
+- `RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS` (default `100`)
 
 Interpretation:
 
@@ -34,6 +38,11 @@ Interpretation:
 - `metrics.parse_quality_low_ratio`
 - `metrics.parse_quality_considered`
 - `metrics.parse_quality_recommendation`
+- `metrics.parse_risk`
+- `metrics.parse_risk_level`
+- `metrics.parse_risk_score`
+- `metrics.parse_risk_reason`
+- `metrics.parse_risk_hardcase_eligible`
 
 `metrics.parse_quality` payload includes:
 
@@ -50,6 +59,7 @@ Interpretation:
 The stable trace now includes:
 
 - `retrieval_trace.parse_quality`
+- `retrieval_trace.parse_risk`
 
 This mirrors the metrics payload and is safe for offline analysis / replay pipelines.
 
@@ -76,3 +86,58 @@ Current deterministic recommendations:
 - `high_parse_risk_reparse_documents`
 
 These are intentionally machine-friendly and stable for alerting pipelines.
+
+## Remediation Playbook
+
+When `parse_risk_level` is `high` or `medium`, run this deterministic loop:
+
+1. Confirm signal quality
+- Check `metrics.parse_quality_considered` is not near zero.
+- If considered is too low, treat this as metadata coverage work, not parser degradation.
+
+2. Confirm impact scope
+- Inspect `metrics.parse_quality.low_samples` for representative low-score chunks.
+- Cross-check `retrieval_trace.parse_risk` and `retrieval_trace.parse_quality` in the same request.
+
+3. Enable parse-risk hardcase emission (optional but recommended)
+- Set `RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED=true`.
+- Keep `RETRIEVAL_HARDCASE_EMIT_ENABLED` as-is; parse-risk emission is additive and only triggers when eligible.
+- Watch for `metrics.hardcase_candidate.reason=parse_risk_tail`.
+
+4. Build dataset-level remediation scope
+- Generate/refresh dataset report and inspect `parse_risk_summary`.
+- Use `parse_risk_summary.top_low_quality_documents` as initial repair candidates.
+
+5. Generate reparse execution plan
+- Run:
+```bash
+python scripts/plan_parse_quality_reparse.py \
+  --report runs/dataset_report.json \
+  --out runs/parse_quality_reparse_plan.json
+```
+- Optional:
+```bash
+python scripts/plan_parse_quality_reparse.py \
+  --report runs/dataset_report.json \
+  --max-docs 50 \
+  --max-score 0.30 \
+  --out runs/parse_quality_reparse_plan.json
+```
+
+6. Execute reparse + verify closure
+- Reparse planned documents with improved parser/chunk settings.
+- Re-run retrieval diagnostics and verify:
+  - `parse_risk_level` moves from `high/medium` to `low/healthy`
+  - `parse_quality_low_ratio` drops
+  - CI diff artifact shows parse-risk-tail contraction (`parse_risk_tail_drift`)
+
+## CI Artifact Notes
+
+`scripts/diff_queryset_health_snapshots.py` now emits `parse_risk_tail_drift`:
+
+- `baseline_count` / `current_count`
+- `added_document_ids`
+- `removed_document_ids`
+- `retained_document_ids`
+
+This enables PR-time review of whether parse-risk tail is shrinking after remediation.

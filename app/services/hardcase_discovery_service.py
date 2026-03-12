@@ -17,6 +17,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping, Sequence, Set
 
+from app.rag.core.hashing import stable_hash
+
 
 def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
     s = str(value or "").strip()
@@ -357,8 +359,59 @@ def plan_feedback_hardcase_candidates(
     return candidates[:cap]
 
 
+def build_parse_risk_hardcase_candidate(
+    *,
+    query_hash: str,
+    retrieval_mode: str,
+    retrieval_profile: str | None,
+    retrieval_config_hash: str | None,
+    parse_risk: Mapping[str, Any] | None,
+    ts_ms: int,
+) -> dict[str, Any] | None:
+    """
+    Build a deterministic hardcase candidate from parse-risk signals.
+
+    Returns None when parse risk is not actionable.
+    """
+    risk = parse_risk if isinstance(parse_risk, Mapping) else {}
+    level = str(risk.get("level") or "").strip().lower()
+    if level not in {"high", "medium"}:
+        return None
+
+    score: float
+    try:
+        score = float(risk.get("score") or 0.0)
+    except Exception:
+        score = 0.0
+    reason_text = _safe_str(risk.get("reason"), max_len=120) or "parse_risk_tail"
+    cfg_hash = _safe_str(retrieval_config_hash, max_len=128)
+
+    dedupe_payload = {
+        "reason": "parse_risk_tail",
+        "query_hash": str(query_hash or "").strip(),
+        "mode": str(retrieval_mode or "").strip(),
+        "profile": str(retrieval_profile or "").strip() or None,
+        "cfg_hash": cfg_hash,
+        "parse_risk_level": level,
+    }
+    return {
+        "schema": "mimirq.hardcase_candidate.v1",
+        "reason": "parse_risk_tail",
+        "query_hash": str(query_hash or "").strip(),
+        "retrieval_mode": str(retrieval_mode or "").strip(),
+        "retrieval_profile": (str(retrieval_profile or "").strip() or None),
+        "retrieval_config_hash": cfg_hash,
+        "parse_risk_level": level,
+        "parse_risk_score": round(float(score), 3),
+        "parse_risk_reason": reason_text,
+        "dedupe_key": stable_hash(json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True), length=32),
+        "ts_ms": int(max(0, ts_ms)),
+    }
+
+
 __all__ = [
     "build_rag_trace_index_from_records",
+    "build_parse_risk_hardcase_candidate",
     "plan_feedback_hardcase_candidates",
     "read_jsonl_tail",
 ]

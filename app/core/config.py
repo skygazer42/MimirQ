@@ -669,6 +669,13 @@ class Settings(BaseSettings):
     # Parse-quality retrieval diagnostics (operator-facing; no ranking change by default).
     RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD: float = 0.35
     RETRIEVAL_PARSE_QUALITY_ALERT_RATIO: float = 0.5
+    # Parse-risk remediation policy (operator-facing, bounded, optional).
+    # - when enabled, high parse-risk tails can emit hardcase candidates even if retrieval is non-empty.
+    RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED: bool = False
+    RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO: float = 0.5
+    RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED: int = 3
+    # Default upper-bound for parse-risk driven reparse planning CLI.
+    RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS: int = 100
 
     # Lifecycle governance-aware retrieval policy (disabled by default; opt-in).
     #
@@ -1849,6 +1856,17 @@ class Settings(BaseSettings):
         alert_ratio = float(getattr(self, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
         if alert_ratio < 0.0 or alert_ratio > 1.0:
             raise ValueError("RETRIEVAL_PARSE_QUALITY_ALERT_RATIO must be between 0 and 1")
+        parse_risk_min_low_ratio = float(getattr(self, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5)
+        if parse_risk_min_low_ratio < 0.0 or parse_risk_min_low_ratio > 1.0:
+            raise ValueError("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO must be between 0 and 1")
+        raw_parse_risk_min_considered = getattr(self, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED", 3)
+        parse_risk_min_considered = int(3 if raw_parse_risk_min_considered is None else raw_parse_risk_min_considered)
+        if parse_risk_min_considered < 1:
+            raise ValueError("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED must be >= 1")
+        raw_parse_risk_reparse_max_docs = getattr(self, "RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS", 100)
+        parse_risk_reparse_max_docs = int(100 if raw_parse_risk_reparse_max_docs is None else raw_parse_risk_reparse_max_docs)
+        if parse_risk_reparse_max_docs < 1:
+            raise ValueError("RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS must be >= 1")
 
         # Validate checkpoint backend
         valid_checkpoint_backends = {"memory", "sqlite"}

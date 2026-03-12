@@ -69,6 +69,27 @@ class DatasetChunkQualityMetricsOut(BaseModel):
     token_stats_missing_documents: int = 0
 
 
+class DatasetParseRiskDocumentOut(BaseModel):
+    document_id: str
+    score: float = 0.0
+
+
+class DatasetParseRiskSummaryOut(BaseModel):
+    """Best-effort parse-risk summary derived from document parse_quality metadata."""
+
+    total_documents: int = 0
+    used_documents: int = 0
+    truncated: bool = False
+    low_threshold: float = 0.35
+    considered_documents: int = 0
+    high_risk_documents: int = 0
+    medium_risk_documents: int = 0
+    healthy_documents: int = 0
+    high_risk_ratio: float = 0.0
+    recommendation: str = "no_parse_quality_metadata"
+    top_low_quality_documents: List[DatasetParseRiskDocumentOut] = Field(default_factory=list)
+
+
 class DatasetGovernanceAuditOut(BaseModel):
     """
     Dataset-level governance audit (best-effort).
@@ -207,6 +228,8 @@ class DatasetReportOut(BaseModel):
 
     # Optional: chunking quality metrics derived from document.metadata.chunk_* (best-effort).
     chunk_quality_metrics: Optional[DatasetChunkQualityMetricsOut] = None
+    # Optional: retrieval parse-risk summary derived from document parse_quality metadata (best-effort).
+    parse_risk_summary: Optional[DatasetParseRiskSummaryOut] = None
 
     # Optional: KG stats for the dataset, filtered by doc-level ACL (best-effort).
     kg_stats: Optional[DatasetKGStatsOut] = None
