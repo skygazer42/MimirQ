@@ -400,3 +400,117 @@ def test_prepare_ltr_rollout_writes_artifacts_without_activation(tmp_path: Path,
     assert workflow["comparison"]["baseline_source"] == "active_ltr_model"
     assert isinstance(workflow.get("gate"), dict)
     assert workflow["gate"]["passed"] is True
+
+
+def test_prepare_ltr_rollout_emits_canary_activation_plan_after_gate_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.ltr_rollout_workflow import FeedbackCaseMaterialization
+
+    mod = _load_rollout_script()
+
+    dataset_id = uuid.uuid4()
+    suite = EvidenceSuite(
+        id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        dataset_id=dataset_id,
+        name="gold",
+        description=None,
+        tags=[],
+        config={},
+        created_by="u",
+    )
+    evidence_item = EvidenceItem(
+        id=uuid.uuid4(),
+        tenant_id=suite.tenant_id,
+        dataset_id=dataset_id,
+        suite_id=suite.id,
+        status="approved",
+        query="Q1",
+        expected_answer="A1",
+        tags=["gold"],
+        source_metadata={},
+        reference_sources=[{"document_id": str(uuid.uuid4()), "chunk_id": str(uuid.uuid4())}],
+        retrieval_snapshot={},
+        rag_config_snapshot={},
+        notes=None,
+        regression_case_id=None,
+        created_by="u",
+    )
+    feedback_case = FeedbackCaseMaterialization(
+        feedback_id=str(uuid.uuid4()),
+        dataset_id=str(dataset_id),
+        question="Q2",
+        expected_answer="A2",
+        reference_sources=[{"document_id": str(uuid.uuid4()), "chunk_id": str(uuid.uuid4())}],
+        tags=["neg"],
+        extra={"rating": 2},
+    )
+
+    baseline_model = tmp_path / "baseline-model.json"
+    baseline_model.write_text("{\"baseline\":true}\n", encoding="utf-8")
+    baseline_manifest = tmp_path / "baseline-manifest.json"
+    baseline_manifest.write_text("{\"schema\":\"mimirq.ltr_model_manifest.v1\"}\n", encoding="utf-8")
+
+    def _fake_train(*, cases_path: Path, out_model_path: Path, out_manifest_path: Path, **_kwargs) -> None:
+        assert cases_path.exists()
+        out_model_path.write_text("{\"candidate\":true}\n", encoding="utf-8")
+        out_manifest_path.write_text(
+            json.dumps(
+                {
+                    "schema": "mimirq.ltr_model_manifest.v1",
+                    "model_sha256": "a" * 64,
+                    "feature_schema": "mimirq.ltr_features.v1",
+                    "feature_names": [],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def _fake_eval(*, model_path: Path, out_json_path: Path, **_kwargs) -> None:
+        summary = {
+            "schema": "mimirq.ltr_offline_eval.v1",
+            "cases_total": 2,
+            "cases_used": 2,
+            "k": 20,
+            "top_k": 50,
+            "baseline": {"hit": 0.4, "mrr": 0.3, "recall": 0.5, "ndcg": 0.35},
+            "ltr": {"hit": 0.7, "mrr": 0.65, "recall": 0.8, "ndcg": 0.7},
+            "lineage": {"model_sha256": ("c" if "candidate" in model_path.name else "b") * 64},
+        }
+        if "baseline" in model_path.name:
+            summary["ltr"] = {"hit": 0.5, "mrr": 0.45, "recall": 0.6, "ndcg": 0.5}
+        out_json_path.write_text(json.dumps(summary) + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(mod, "_run_train", _fake_train, raising=True)
+    monkeypatch.setattr(mod, "_run_eval", _fake_eval, raising=True)
+    monkeypatch.setattr(mod, "resolve_active_model_paths", lambda: (str(baseline_model), str(baseline_manifest), 1, "baseline-id"), raising=True)
+    monkeypatch.setattr(
+        mod,
+        "register_model",
+        lambda *, model_bytes, manifest_bytes, actor_id: type(
+            "RegisteredModel",
+            (),
+            {"model_id": "candidate-id", "model_sha256": "a" * 64, "size_bytes": len(model_bytes), "feature_spec_version": 1},
+        )(),
+        raising=True,
+    )
+
+    result = mod.prepare_ltr_rollout(
+        workflow_dir=tmp_path / "workflow",
+        base_url="http://localhost:8000/api/v1",
+        tenant_id=str(uuid.uuid4()),
+        user_id="operator",
+        suite=suite,
+        evidence_items=[evidence_item],
+        feedback_cases=[feedback_case],
+        register_candidate=True,
+        canary_on_pass=True,
+        canary_ratio=0.15,
+    )
+
+    assert result["gate"]["passed"] is True
+    assert result["activation"]["status"] == "canary_activation_ready"
+    assert abs(float(result["activation"]["canary_ratio"]) - 0.15) <= 1e-9

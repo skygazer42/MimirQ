@@ -261,6 +261,37 @@ class IndexAuditResponse(BaseModel):
     milvus_orphan_ids_sample: List[str] = []
 
 
+class IndexDriftItemResponse(BaseModel):
+    id: str
+    tenant_id: str
+    dataset_id: str | None = None
+    document_id: str | None = None
+    chunk_id: str | None = None
+    operation: str
+    channel: str
+    strictness: str
+    status: str
+    reason: str
+    details: Dict[str, Any] = Field(default_factory=dict)
+    reconcile_task_id: str | None = None
+    replay_count: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    last_replayed_at: datetime | None = None
+    resolved_at: datetime | None = None
+    resolved_by: str | None = None
+    resolution_note: str | None = None
+
+
+class IndexDriftListResponse(BaseModel):
+    schema: str
+    items: List[IndexDriftItemResponse] = Field(default_factory=list)
+
+
+class IndexDriftResolveRequest(BaseModel):
+    resolution_note: str = Field(default="", max_length=2000)
+
+
 class IngestionDashboardSummaryResponse(BaseModel):
     window_hours: int
     bucket_minutes: int
@@ -294,6 +325,30 @@ class DatasetCacheInvalidationResponse(BaseModel):
     invalidated_at: datetime
     evidence_post_rerank_memory_cleared: bool = False
     note: str = ""
+
+
+def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
+    return {
+        "id": str(getattr(item, "id", "") or ""),
+        "tenant_id": str(getattr(item, "tenant_id", "") or ""),
+        "dataset_id": str(getattr(item, "dataset_id", "") or "") or None,
+        "document_id": str(getattr(item, "document_id", "") or "") or None,
+        "chunk_id": str(getattr(item, "chunk_id", "") or "") or None,
+        "operation": str(getattr(item, "operation", "") or ""),
+        "channel": str(getattr(item, "channel", "") or ""),
+        "strictness": str(getattr(item, "strictness", "") or ""),
+        "status": str(getattr(item, "status", "") or ""),
+        "reason": str(getattr(item, "reason", "") or ""),
+        "details": dict(getattr(item, "details", {}) or {}),
+        "reconcile_task_id": str(getattr(item, "reconcile_task_id", "") or "") or None,
+        "replay_count": int(getattr(item, "replay_count", 0) or 0),
+        "created_at": getattr(item, "created_at", None),
+        "updated_at": getattr(item, "updated_at", None),
+        "last_replayed_at": getattr(item, "last_replayed_at", None),
+        "resolved_at": getattr(item, "resolved_at", None),
+        "resolved_by": str(getattr(item, "resolved_by", "") or "") or None,
+        "resolution_note": str(getattr(item, "resolution_note", "") or "") or None,
+    }
 
 
 @router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse)
@@ -599,3 +654,53 @@ def get_index_audit(
         milvus_list_limit=milvus_list_limit,
         sample_limit=sample_limit,
     )
+
+
+@router.get("/index-drift", response_model=IndexDriftListResponse)
+def list_index_drift(
+    dataset_id: UUID | None = Query(default=None, description="Optional dataset UUID filter"),
+    status: str = Query(default="open", description="open | resolved | all"),
+    limit: int = Query(default=100, ge=1, le=500),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.index_audit_service import list_index_drift_items
+
+    rows = list_index_drift_items(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        status=status,
+        limit=limit,
+    )
+    return {
+        "schema": "mimirq.index_drift_list.v1",
+        "items": [_serialize_index_drift_item(row) for row in rows],
+    }
+
+
+@router.post("/index-drift/{item_id}/resolve", response_model=IndexDriftItemResponse)
+def resolve_index_drift(
+    item_id: UUID,
+    payload: IndexDriftResolveRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.index_audit_service import resolve_index_drift_item
+
+    item = resolve_index_drift_item(
+        db=db,
+        tenant_id=tenant_id,
+        item_id=item_id,
+        resolved_by=account_id,
+        resolution_note=str(payload.resolution_note or ""),
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="index drift item not found")
+    return _serialize_index_drift_item(item)

@@ -70,6 +70,30 @@ def test_evaluate_ltr_rollout_gate_fails_when_metric_regresses() -> None:
     assert any("delta.mrr" in str(reason) for reason in gate["reasons"])
 
 
+def test_evaluate_ltr_rollout_gate_emits_warn_decision_with_canary_ratio() -> None:
+    from app.services.ltr_rollout_workflow import evaluate_ltr_rollout_gate
+
+    comparison = _comparison_payload(mrr_delta=-0.02, cases_used=3)
+    gate = evaluate_ltr_rollout_gate(
+        comparison=comparison,
+        thresholds={
+            "metrics": {"delta.mrr": {"min": 0.0}},
+            "policy_profile": {
+                "levels": {
+                    "pass": {"max_failed_checks": 0, "canary_ratio": 0.25},
+                    "warn": {"max_failed_checks": 1, "canary_ratio": 0.08},
+                    "block": {"max_failed_checks": 99, "canary_ratio": 0.0},
+                }
+            },
+        },
+    )
+
+    assert gate["passed"] is False
+    assert gate["summary"]["failed"] == 1
+    assert gate["decision"]["level"] == "warn"
+    assert abs(float(gate["decision"]["canary_ratio"]) - 0.08) <= 1e-9
+
+
 def test_ltr_rollout_gate_cli_supports_workflow_payload_and_threshold_overrides(tmp_path: Path) -> None:
     mod = _load_gate_script()
     comparison = _comparison_payload(mrr_delta=0.05, cases_used=2)
@@ -85,3 +109,36 @@ def test_ltr_rollout_gate_cli_supports_workflow_payload_and_threshold_overrides(
 
     assert rc_ok == 0
     assert rc_fail == 3
+
+
+def test_ltr_rollout_gate_cli_canary_plan_on_pass(tmp_path: Path) -> None:
+    mod = _load_gate_script()
+    comparison = _comparison_payload(mrr_delta=0.12, cases_used=3)
+    workflow_payload = {
+        "schema": "mimirq.ltr_rollout_workflow.v1",
+        "comparison": comparison,
+    }
+    workflow_path = tmp_path / "workflow.json"
+    out_path = tmp_path / "gate.json"
+    workflow_path.write_text(json.dumps(workflow_payload), encoding="utf-8")
+
+    rc = mod.main(  # type: ignore[attr-defined]
+        [
+            "--input",
+            str(workflow_path),
+            "--out",
+            str(out_path),
+            "--canary-on-pass",
+            "--canary-ratio",
+            "0.2",
+            "--actor-id",
+            "ops",
+        ]
+    )
+    assert rc == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["activation"]["status"] == "canary_activation_ready"
+    assert abs(float(payload["activation"]["canary_ratio"]) - 0.2) <= 1e-9
+    assert payload["activation"]["actor_id"] == "ops"

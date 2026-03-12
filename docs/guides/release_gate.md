@@ -12,6 +12,8 @@ Wave40 extends it with an optional **retrieval leaderboard drift gate** that can
 `leaderboard.json` artifacts (for example from `scripts/retrieval_ablation.py`).
 Wave44 adds optional **queryset health policy metadata ingestion** so release reports can
 distinguish quality drift from threshold-policy edits.
+Wave46 adds explicit **queryset drift-class gating** for both the default bounded fixture and the
+hybrid bounded fixture.
 
 ## What It Gates
 
@@ -21,6 +23,8 @@ distinguish quality drift from threshold-policy edits.
 4. **Leaderboard drift (optional)**: enforce min/max thresholds on top leaderboard rows
 5. **Queryset policy drift (optional)**: ingest `queryset_health` snapshot metadata (`policy_hash`,
    `policy_source`, `trend.policy_changed`) and optionally fail/warn on policy changes
+6. **Queryset drift-class thresholds (optional)**: fail when bounded diffs introduce new hard cases,
+   degradation flags, or parse-risk tail documents
 
 All outputs are PII-safe by construction (numbers, hashes, low-cardinality labels).
 
@@ -28,7 +32,15 @@ All outputs are PII-safe by construction (numbers, hashes, low-cardinality label
 
 The GitHub Actions workflow runs:
 - `retrieval-regression-gate` job (retrieval-only regression gate)
-- Then `scripts/release_gate.py --skip-regression` with a small probe traffic to ensure SLO/cost summaries have data.
+- `retrieval-only-bounded-gate` job to publish deterministic artifacts:
+  - `artifacts/sample_retrieval_bench.json`
+  - `artifacts/sample_retrieval_bench.hybrid.json`
+  - `artifacts/sample_retrieval_bench.colbert.json`
+  - `artifacts/retrieval_profile.grounded_strict.contract.json`
+  - `artifacts/claim_verifier.contract.json`
+  - `artifacts/queryset_health.snapshot*.json`
+  - `artifacts/queryset_health.diff*.json`
+- Then `scripts/release_gate.py --skip-regression` with a small probe traffic to ensure SLO/cost summaries have data and to ingest the bounded query-set artifacts.
 
 Budgets live in:
 - `ci/release_gate_budgets.v1.json`
@@ -60,6 +72,28 @@ Optional queryset-health policy drift config (in budgets JSON):
   "queryset_health": {
     "path": "artifacts/queryset_health.snapshot.json",
     "policy": "warn"
+  },
+  "queryset_health_hybrid": {
+    "path": "artifacts/queryset_health.snapshot.hybrid.json",
+    "policy": "warn"
+  },
+  "queryset_health_diff": {
+    "path": "artifacts/queryset_health.diff.json",
+    "policy": "fail",
+    "thresholds": {
+      "hard_case_added_count": { "max": 0 },
+      "degradation_flag_added_count": { "max": 0 },
+      "parse_risk_tail_added_count": { "max": 0 }
+    }
+  },
+  "queryset_health_diff_hybrid": {
+    "path": "artifacts/queryset_health.diff.hybrid.json",
+    "policy": "fail",
+    "thresholds": {
+      "hard_case_added_count": { "max": 0 },
+      "degradation_flag_added_count": { "max": 0 },
+      "parse_risk_tail_added_count": { "max": 0 }
+    }
   }
 }
 ```
@@ -67,6 +101,11 @@ Optional queryset-health policy drift config (in budgets JSON):
 Semantics:
 - `policy=warn`: include metadata in report and emit warning when `trend.policy_changed=true`
 - `policy=fail`: treat `trend.policy_changed=true` as gate violation
+- Drift-class thresholds are evaluated against:
+  - `hard_case_added_count`
+  - `degradation_flag_added_count`
+  - `parse_risk_tail_added_count`
+- In CI we gate both the default bounded queryset diff and the hybrid bounded queryset diff.
 
 ## Local / Staging Usage
 
@@ -131,6 +170,9 @@ python scripts/release_gate.py \
   --user-id test-admin \
   --budgets ci/release_gate_budgets.v1.json \
   --queryset-health-snapshot artifacts/queryset_health.snapshot.json \
+  --queryset-health-snapshot-hybrid artifacts/queryset_health.snapshot.hybrid.json \
+  --queryset-health-diff artifacts/queryset_health.diff.json \
+  --queryset-health-diff-hybrid artifacts/queryset_health.diff.hybrid.json \
   --queryset-health-policy warn \
   --skip-regression
 ```
@@ -153,9 +195,20 @@ python scripts/release_gate.py \
 
 - `AUTH_MODE=header`: use `--user-id` (and optionally `--tenant-id`).
 - `AUTH_MODE=jwt`: use `--bearer` (and `X-Tenant-ID` if your deployment requires it).
-- Probe traffic uses `retrieval_mode=keyword` and disables multi-query/alias/rerank to keep it deterministic.
+- CI probe traffic uses `--probe-retrieval-mode hybrid` so the SLO/cost sample is closer to the retrieval-regression runtime.
 - Leaderboard gate prints metric-level threshold deltas in CI logs, e.g. `value`, `threshold`, `msg`.
 - Queryset health metadata captured in report:
   - `policy_source` (`default` / `policy_json` / `cli_overrides` / `policy_json+cli_overrides`)
   - `policy_hash` (stable hash of normalized threshold policy)
-  - `trend.policy_changed` (compared to previous queryset health snapshot)
+  - `policy_changed` / `trend.policy_changed` (compared to previous queryset health snapshot)
+  - `retrieval_mode`
+  - `profile_hash`
+- Queryset health diff observed fields captured in report:
+  - `hard_case_added_count`
+  - `degradation_flag_added_count`
+  - `parse_risk_tail_added_count`
+- Bounded-gate interpretation:
+  - `retrieval_profile.grounded_strict.contract.json` proves the strict retrieval profile still enforces evidence-only semantics.
+  - `claim_verifier.contract.json` proves claim-verifier diagnostics still emit stable `reason_code` and `contradiction_type` values.
+  - `sample_retrieval_bench.hybrid.json` is the hybrid bounded quality baseline.
+  - `sample_retrieval_bench.colbert.json` is a bounded regression signal for the ColBERT fallback path, not a replacement for end-to-end leaderboard evaluation.

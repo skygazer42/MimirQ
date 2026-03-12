@@ -86,6 +86,12 @@ Wave B 增加了 retrieval contract 与 claim verifier 的显式调试面，排�
   - `token_overlap`（默认）
   - `semantic_heuristic`（含数值/否定冲突检测）
   - `strict`（更严格 overlap + 冲突检查）
+- `RAG_CLAIM_NLI_VERIFIER_ENABLED`
+  - `false`（默认）：只使用本地 deterministic heuristic
+  - `true`：当 heuristic 判定不支持时，允许再走一次受限 NLI fallback
+- `RAG_CLAIM_NLI_VERIFIER_PROVIDER`
+  - `none`（默认）
+  - `openai_compatible`
 
 重点观测字段：
 
@@ -93,14 +99,36 @@ Wave B 增加了 retrieval contract 与 claim verifier 的显式调试面，排�
 - `metrics.retrieval_contract_policy`
 - `metrics.claim_verifier_mode`
 - `metrics.claim_verifier_enable_contradiction_check`
+- `metrics.claim_nli_verifier`
 - `metrics.claim_check_removed`
+- `metrics.claim_check_removed_reasons[*].reason_code`
+- `metrics.claim_check_removed_reasons[*].contradiction_type`
 - `metrics.claim_evidence`
 
 判读建议：
 
 - `claim_check_removed > 0` 且 `claim_verifier_mode=semantic_heuristic`：通常是检测到数值冲突或否定冲突。
+- `claim_check_removed_reasons[*].reason_code=overlap_insufficient`：通常是 lexical overlap 不足，优先检查 chunk 文本、引用范围和 query 改写。
+- `claim_check_removed_reasons[*].reason_code=contradiction_numeric_mismatch`：claim 与 evidence 数值不一致。
+- `claim_check_removed_reasons[*].reason_code=contradiction_negation_conflict`：claim 与 evidence 在否定语义上冲突。
+- `metrics.claim_nli_verifier.enabled=true` 且 removed reason 里出现 `nli_*`：说明本地 heuristic 已失败，系统又走了一次 NLI fallback；这时要同时检查 provider 可用性和 prompt/模型稳定性。
 - `retrieval_contract_policy.enforce_visible_evidence_only=true`：回答会更保守，拒答率升高是预期行为。
 - `retrieval_contract_policy.hard_fallback_enabled=true` 但仍空证据：优先检查 `document_ids/metadata_filter` 是否过窄。
+
+Claim verifier 模式选择建议：
+
+- `token_overlap`
+  - 适合：默认生产基线、最小成本路径、先看有没有明显回归
+  - 风险：对语义改写/释义不敏感
+- `semantic_heuristic`
+  - 适合：希望更早拦住数值/否定类硬冲突
+  - 风险：对证据文本质量更敏感
+- `strict`
+  - 适合：`grounded_strict` / 高风险问答 / 明确偏保守场景
+  - 风险：拒答率更高，对 span/切块质量要求更高
+- `NLI fallback`
+  - 推荐只在 heuristic 已经失败的链路上作为补充，不建议替代 deterministic baseline
+  - 默认关闭；开启后优先把它当成“减少误删句”的二次判定层，而不是主判定器
 
 `grounded_strict` 排障最小清单：
 
@@ -181,3 +209,37 @@ python scripts/run_nightly_ablations.py --help
 - 若涉及 rerank：附 `rerank_score` 与 `rerank_score_calibrated` 变化
 
 这样 reviewer 可以快速判断是“真实质量提升”还是“偶然命中”。
+
+---
+
+## 6) Index Consistency / Drift 排障
+
+当 chunk patch / disable / delete 后出现“DB 改了但召回面没同步”的问题，优先确认索引一致性严格度：
+
+- `INDEX_CONSISTENCY_STRICTNESS=off`
+  - 只做 best-effort index 操作，不因为失败阻塞请求。
+- `INDEX_CONSISTENCY_STRICTNESS=warn`
+  - 请求继续成功，但会写 `index_operation_result` / `index_drift_markers`，并记录 durable drift item。
+- `INDEX_CONSISTENCY_STRICTNESS=strict`
+  - delete / disable 失败直接返回 `409`
+  - patch 失败也会返回 `409`
+  - 适合需要“DB 与检索面必须同步成功”的高风险环境
+
+推荐排查路径：
+
+1. 看 chunk 元数据里的 `index_operation_result`
+2. 看 `index_drift_markers[*]`
+3. 看 observability API：
+   - `GET /api/v1/observability/index-drift?dataset_id=...`
+   - `POST /api/v1/observability/index-drift/{id}/resolve`
+4. 需要重放时运行：
+
+```bash
+python scripts/replay_index_drift.py \
+  --tenant-id <tenant_uuid> \
+  --dataset-id <dataset_uuid> \
+  --execute \
+  --out runs/index_drift_replay.json
+```
+
+手动 resolve 只适用于“你已经通过别的运维动作修好，并确认不需要再重放”的情况；否则优先保留 open 状态。

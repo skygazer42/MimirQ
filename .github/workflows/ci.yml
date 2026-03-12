@@ -132,6 +132,19 @@ jobs:
             --enable-sparse-retrieval \
             --sparse-retrieval-provider deterministic
 
+      - name: Run deterministic sample retrieval benchmark (colbert bounded fixture)
+        env:
+          LLM_MOCK_ENABLED: "true"
+        run: |
+          mkdir -p artifacts
+          python scripts/run_sample_retrieval_benchmark.py \
+            --fixture data/sample/retrieval_fixture_colbert_v1.json \
+            --out artifacts/sample_retrieval_bench.colbert.json \
+            --retrieval-mode vector \
+            --top-k 5 \
+            --enable-colbert-retrieval \
+            --colbert-retrieval-provider deterministic
+
       - name: Build query-set health snapshot from bounded benchmark
         run: |
           python scripts/run_queryset_health_diagnostics.py \
@@ -334,6 +347,63 @@ jobs:
           print("[retrieval-only-bounded-gate-sparse] PASS")
           PY
 
+      - name: Evaluate bounded retrieval-only gate (colbert metric delta output)
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path("artifacts/sample_retrieval_bench.colbert.json").read_text(encoding="utf-8"))
+          cfg = json.loads(Path("ci/retrieval_thresholds.v2.json").read_text(encoding="utf-8"))
+          bounded = cfg.get("ci_retrieval_only_bounded_gate_colbert") if isinstance(cfg, dict) else {}
+          thresholds = bounded.get("thresholds") if isinstance(bounded, dict) else {}
+          summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+
+          runtime = report.get("runtime") if isinstance(report.get("runtime"), dict) else {}
+          provider = str(runtime.get("colbert_retrieval_provider") or "").strip().lower()
+          if not bool(runtime.get("colbert_retrieval_enabled")) or provider != "deterministic":
+              print("[retrieval-only-bounded-gate-colbert] FAIL: colbert runtime metadata mismatch", file=sys.stderr)
+              print(
+                  f"[retrieval-only-bounded-gate-colbert] runtime={runtime}",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+
+          failures = []
+          for metric, raw in (thresholds or {}).items():
+              if not isinstance(raw, dict):
+                  continue
+              try:
+                  value = float(summary.get(metric))
+              except Exception:
+                  value = None
+              if value is None:
+                  failures.append((metric, "missing", raw, None))
+                  continue
+              if "min" in raw:
+                  low = float(raw["min"])
+                  if value < low:
+                      failures.append((metric, value, {"min": low}, value - low))
+              if "max" in raw:
+                  high = float(raw["max"])
+                  if value > high:
+                      failures.append((metric, value, {"max": high}, value - high))
+
+          if failures:
+              print("[retrieval-only-bounded-gate-colbert] FAIL: threshold violation(s)", file=sys.stderr)
+              for metric, value, th, delta in failures:
+                  print(
+                      f"[retrieval-only-bounded-gate-colbert] metric={metric} value={value} threshold={th} delta={delta}",
+                      file=sys.stderr,
+                  )
+              raise SystemExit(1)
+
+          print("[retrieval-only-bounded-gate-colbert] PASS")
+          PY
+
       - name: Validate grounded_strict retrieval-profile contract
         run: |
           python - <<'PY'
@@ -405,6 +475,109 @@ jobs:
           print("[retrieval-profile-grounded-strict] PASS")
           PY
 
+      - name: Validate claim verifier diagnostics contract
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          from app.rag.core.claim_verifier import verify_claim
+
+          cases = [
+              {
+                  "id": "supported",
+                  "claim": "Sky is blue.",
+                  "evidence": "The sky is blue due to Rayleigh scattering.",
+                  "mode": "token_overlap",
+                  "enable_contradiction_check": False,
+                  "expected_supported": True,
+                  "expected_reason_code": "supported",
+                  "expected_contradiction_type": None,
+              },
+              {
+                  "id": "numeric_mismatch",
+                  "claim": "Revenue exceeded 100 in 2025.",
+                  "evidence": "Revenue was 90 in 2025.",
+                  "mode": "semantic_heuristic",
+                  "enable_contradiction_check": True,
+                  "expected_supported": False,
+                  "expected_reason_code": "contradiction_numeric_mismatch",
+                  "expected_contradiction_type": "numeric_mismatch",
+              },
+              {
+                  "id": "negation_conflict",
+                  "claim": "The policy was not active in 2020.",
+                  "evidence": "The policy was active in 2020.",
+                  "mode": "semantic_heuristic",
+                  "enable_contradiction_check": True,
+                  "expected_supported": False,
+                  "expected_reason_code": "contradiction_negation_conflict",
+                  "expected_contradiction_type": "negation_conflict",
+              },
+          ]
+
+          failures = []
+          results = []
+          for case in cases:
+              res = verify_claim(
+                  case["claim"],
+                  case["evidence"],
+                  mode=case["mode"],
+                  enable_contradiction_check=case["enable_contradiction_check"],
+              )
+              diag = dict(getattr(res, "diagnostics", {}) or {})
+              results.append(
+                  {
+                      "id": case["id"],
+                      "supported": bool(getattr(res, "supported", False)),
+                      "diagnostics": diag,
+                  }
+              )
+              if bool(getattr(res, "supported", False)) != bool(case["expected_supported"]):
+                  failures.append((case["id"], "supported", getattr(res, "supported", None), case["expected_supported"]))
+              if str(diag.get("reason_code") or "") != str(case["expected_reason_code"] or ""):
+                  failures.append((case["id"], "reason_code", diag.get("reason_code"), case["expected_reason_code"]))
+              if diag.get("contradiction_type") != case["expected_contradiction_type"]:
+                  failures.append(
+                      (
+                          case["id"],
+                          "contradiction_type",
+                          diag.get("contradiction_type"),
+                          case["expected_contradiction_type"],
+                      )
+                  )
+
+          out_path = Path("artifacts/claim_verifier.contract.json")
+          out_path.parent.mkdir(parents=True, exist_ok=True)
+          out_path.write_text(
+              json.dumps(
+                  {
+                      "schema": "mimirq.claim_verifier_contract.v1",
+                      "cases": results,
+                      "failures": failures,
+                  },
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  indent=2,
+              ),
+              encoding="utf-8",
+          )
+
+          if failures:
+              print("[claim-verifier-contract] FAIL", file=sys.stderr)
+              for case_id, field, value, expected in failures:
+                  print(
+                      f"[claim-verifier-contract] case={case_id} field={field} value={value} expected={expected}",
+                      file=sys.stderr,
+                  )
+              raise SystemExit(1)
+
+          print("[claim-verifier-contract] PASS")
+          PY
+
       - name: Upload bounded gate artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -414,6 +587,7 @@ jobs:
             artifacts/sample_retrieval_bench.json
             artifacts/sample_retrieval_bench.hybrid.json
             artifacts/sample_retrieval_bench.sparse.json
+            artifacts/sample_retrieval_bench.colbert.json
             artifacts/queryset_health_policy.normalized.json
             artifacts/queryset_health.snapshot.json
             artifacts/queryset_health.snapshot.hybrid.json
@@ -425,6 +599,7 @@ jobs:
             artifacts/queryset_health.diff.sparse.json
             artifacts/queryset_health.diff.sparse.md
             artifacts/retrieval_profile.grounded_strict.contract.json
+            artifacts/claim_verifier.contract.json
             artifacts/queryset_health.history.jsonl
             artifacts/queryset_health.history.hybrid.jsonl
             artifacts/queryset_health.history.sparse.jsonl
@@ -441,6 +616,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'pull_request'
+    needs:
+      - retrieval-only-bounded-gate
     services:
       postgres:
         image: postgres:15
@@ -471,6 +648,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+
+      - name: Download bounded gate artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: retrieval-only-bounded-gate
+          path: bounded_gate_artifacts
 
       - name: Seed CI retrieval fixture (DB + cases bundle)
         env:
@@ -524,7 +707,6 @@ jobs:
           exit 1
 
       - name: Run retrieval-only regression gate + generate candidate thresholds
-        continue-on-error: true
         env:
           # Used by the backend process; keep env consistent for subprocesses.
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
@@ -543,6 +725,7 @@ jobs:
             --generate-thresholds-out artifacts/thresholds.generated.json
 
       - name: Release gate (SLO + cost budgets)
+        if: always()
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
         run: |
@@ -553,11 +736,17 @@ jobs:
             --budgets ci/release_gate_budgets.v1.json \
             --cases artifacts/regression_cases.json \
             --probe-chat-requests 4 \
+            --probe-retrieval-mode hybrid \
             --probe-timeout-sec 20 \
+            --queryset-health-snapshot bounded_gate_artifacts/artifacts/queryset_health.snapshot.json \
+            --queryset-health-snapshot-hybrid bounded_gate_artifacts/artifacts/queryset_health.snapshot.hybrid.json \
+            --queryset-health-diff bounded_gate_artifacts/artifacts/queryset_health.diff.json \
+            --queryset-health-diff-hybrid bounded_gate_artifacts/artifacts/queryset_health.diff.hybrid.json \
             --skip-regression \
             --out-report artifacts/release_gate.report.json
 
       - name: Diff thresholds (baseline vs generated)
+        if: always()
         run: |
           python - <<'PY'
           from __future__ import annotations
@@ -568,6 +757,10 @@ jobs:
           a_path = Path("ci/retrieval_thresholds.v2.json")
           b_path = Path("artifacts/thresholds.generated.json")
           out_path = Path("artifacts/thresholds.diff.txt")
+
+          if not b_path.exists():
+              out_path.write_text("generated thresholds missing\n", encoding="utf-8")
+              raise SystemExit(0)
 
           a = a_path.read_text(encoding="utf-8").splitlines(keepends=True)
           b = b_path.read_text(encoding="utf-8").splitlines(keepends=True)

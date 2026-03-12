@@ -589,6 +589,8 @@ def _gate_queryset_policy_snapshot(
             "policy_hash": str(snapshot.get("policy_hash") or ""),
             "policy_changed": bool(trend.get("policy_changed")),
             "status": str(snapshot.get("status") or ""),
+            "retrieval_mode": str(snapshot.get("retrieval_mode") or ""),
+            "profile_hash": str(snapshot.get("profile_hash") or ""),
         }
         flags = snapshot.get("degradation_flags")
         if isinstance(flags, list):
@@ -613,6 +615,54 @@ def _gate_queryset_policy_snapshot(
             )
         else:
             notes.append(f"[release_gate] WARN: {msg}")
+
+    return violations, notes, observed
+
+
+def _gate_queryset_health_diff(
+    *,
+    diff: Any,
+    cfg: dict[str, Any],
+    area: str = "queryset_health_diff",
+) -> tuple[list[GateViolation], list[str], dict[str, Any]]:
+    policy = _policy((cfg or {}).get("policy"), default="fail")
+    thresholds = normalize_thresholds((cfg or {}).get("thresholds"))
+
+    hard = diff.get("hard_case_drift") if isinstance(diff, dict) and isinstance(diff.get("hard_case_drift"), dict) else {}
+    flags = (
+        diff.get("degradation_flags_drift")
+        if isinstance(diff, dict) and isinstance(diff.get("degradation_flags_drift"), dict)
+        else {}
+    )
+    parse_tail = (
+        diff.get("parse_risk_tail_drift")
+        if isinstance(diff, dict) and isinstance(diff.get("parse_risk_tail_drift"), dict)
+        else {}
+    )
+
+    observed = {
+        "hard_case_added_count": int(len(hard.get("added_ids") or [])),
+        "degradation_flag_added_count": int(len(flags.get("added_flags") or [])),
+        "parse_risk_tail_added_count": int(len(parse_tail.get("added_document_ids") or [])),
+    }
+
+    violations: list[GateViolation] = []
+    notes: list[str] = []
+    for metric, threshold in thresholds.items():
+        value = _safe_float(observed.get(metric))
+        viol = _check_threshold(
+            area=area,
+            metric=metric,
+            value=value,
+            threshold=threshold,
+        )
+        if viol is None:
+            continue
+        violations.append(viol)
+        if policy == "warn":
+            notes.append(
+                f"[release_gate] WARN: {area}.{metric}: value={viol.value} threshold={threshold} msg={viol.message}"
+            )
 
     return violations, notes, observed
 
@@ -653,6 +703,17 @@ def main() -> int:
         help="Override retrieval leaderboard policy (warn|fail). Empty uses budgets file.",
     )
     p.add_argument("--queryset-health-snapshot", default="", help="Query-set health snapshot JSON path (optional)")
+    p.add_argument(
+        "--queryset-health-snapshot-hybrid",
+        default="",
+        help="Hybrid query-set health snapshot JSON path (optional)",
+    )
+    p.add_argument("--queryset-health-diff", default="", help="Query-set health diff JSON path (optional)")
+    p.add_argument(
+        "--queryset-health-diff-hybrid",
+        default="",
+        help="Hybrid query-set health diff JSON path (optional)",
+    )
     p.add_argument(
         "--queryset-health-policy",
         default="",
@@ -703,6 +764,9 @@ def main() -> int:
         "slo": {},
         "cost": {},
         "queryset_health": {},
+        "queryset_health_hybrid": {},
+        "queryset_health_diff": {},
+        "queryset_health_diff_hybrid": {},
         "retrieval_leaderboard": {},
         "violations": [],
         "notes": [],
@@ -823,6 +887,141 @@ def main() -> int:
                     violations.extend(qs_violations)
         else:
             report["queryset_health"] = {"policy": qs_policy, "observed": {}}
+
+    qs_hybrid_cfg = budgets.get("queryset_health_hybrid") if isinstance(budgets.get("queryset_health_hybrid"), dict) else {}
+    if args.queryset_health_snapshot_hybrid:
+        qs_hybrid_cfg = dict(qs_hybrid_cfg or {})
+        qs_hybrid_cfg["path"] = str(args.queryset_health_snapshot_hybrid)
+
+    if isinstance(qs_hybrid_cfg, dict) and qs_hybrid_cfg:
+        qs_path_text = str(qs_hybrid_cfg.get("path") or "").strip()
+        qs_policy = _policy(qs_hybrid_cfg.get("policy"), default="warn")
+        if qs_path_text:
+            qs_path = Path(qs_path_text)
+            if not qs_path.exists():
+                msg = f"hybrid queryset health snapshot not found: {qs_path}"
+                if qs_policy == "fail":
+                    violations.append(
+                        GateViolation(
+                            area="queryset_health_hybrid",
+                            metric="artifact_path",
+                            value=None,
+                            threshold={},
+                            message=msg,
+                        )
+                    )
+                else:
+                    notes.append(f"[release_gate] WARN: {msg}")
+                report["queryset_health_hybrid"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
+            else:
+                qs_obj = _load_json(qs_path)
+                qs_violations, qs_notes, qs_observed = _gate_queryset_policy_snapshot(
+                    snapshot=qs_obj,
+                    cfg=qs_hybrid_cfg,
+                )
+                report["queryset_health_hybrid"] = {
+                    "path": str(qs_path),
+                    "policy": qs_policy,
+                    "observed": qs_observed,
+                }
+                if qs_policy == "warn":
+                    notes.extend(qs_notes)
+                else:
+                    violations.extend(qs_violations)
+        else:
+            report["queryset_health_hybrid"] = {"policy": qs_policy, "observed": {}}
+
+    qs_diff_cfg = budgets.get("queryset_health_diff") if isinstance(budgets.get("queryset_health_diff"), dict) else {}
+    if args.queryset_health_diff:
+        qs_diff_cfg = dict(qs_diff_cfg or {})
+        qs_diff_cfg["path"] = str(args.queryset_health_diff)
+
+    if isinstance(qs_diff_cfg, dict) and qs_diff_cfg:
+        qs_path_text = str(qs_diff_cfg.get("path") or "").strip()
+        qs_policy = _policy(qs_diff_cfg.get("policy"), default="fail")
+        if qs_path_text:
+            qs_path = Path(qs_path_text)
+            if not qs_path.exists():
+                msg = f"queryset health diff not found: {qs_path}"
+                if qs_policy == "fail":
+                    violations.append(
+                        GateViolation(
+                            area="queryset_health_diff",
+                            metric="artifact_path",
+                            value=None,
+                            threshold={},
+                            message=msg,
+                        )
+                    )
+                else:
+                    notes.append(f"[release_gate] WARN: {msg}")
+                report["queryset_health_diff"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
+            else:
+                qs_obj = _load_json(qs_path)
+                qs_violations, qs_notes, qs_observed = _gate_queryset_health_diff(
+                    diff=qs_obj,
+                    cfg=qs_diff_cfg,
+                    area="queryset_health_diff",
+                )
+                report["queryset_health_diff"] = {
+                    "path": str(qs_path),
+                    "policy": qs_policy,
+                    "observed": qs_observed,
+                }
+                if qs_policy == "warn":
+                    notes.extend(qs_notes)
+                else:
+                    violations.extend(qs_violations)
+        else:
+            report["queryset_health_diff"] = {"policy": qs_policy, "observed": {}}
+
+    qs_diff_hybrid_cfg = (
+        budgets.get("queryset_health_diff_hybrid")
+        if isinstance(budgets.get("queryset_health_diff_hybrid"), dict)
+        else {}
+    )
+    if args.queryset_health_diff_hybrid:
+        qs_diff_hybrid_cfg = dict(qs_diff_hybrid_cfg or {})
+        qs_diff_hybrid_cfg["path"] = str(args.queryset_health_diff_hybrid)
+
+    if isinstance(qs_diff_hybrid_cfg, dict) and qs_diff_hybrid_cfg:
+        qs_path_text = str(qs_diff_hybrid_cfg.get("path") or "").strip()
+        qs_policy = _policy(qs_diff_hybrid_cfg.get("policy"), default="fail")
+        if qs_path_text:
+            qs_path = Path(qs_path_text)
+            if not qs_path.exists():
+                msg = f"hybrid queryset health diff not found: {qs_path}"
+                if qs_policy == "fail":
+                    violations.append(
+                        GateViolation(
+                            area="queryset_health_diff_hybrid",
+                            metric="artifact_path",
+                            value=None,
+                            threshold={},
+                            message=msg,
+                        )
+                    )
+                else:
+                    notes.append(f"[release_gate] WARN: {msg}")
+                report["queryset_health_diff_hybrid"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
+            else:
+                qs_obj = _load_json(qs_path)
+                qs_violations, qs_notes, qs_observed = _gate_queryset_health_diff(
+                    diff=qs_obj,
+                    cfg=qs_diff_hybrid_cfg,
+                    area="queryset_health_diff_hybrid",
+                )
+                report["queryset_health_diff_hybrid"] = {
+                    "path": str(qs_path),
+                    "policy": qs_policy,
+                    "observed": qs_observed,
+                }
+                if qs_policy == "warn":
+                    notes.extend(qs_notes)
+                else:
+                    violations.extend(qs_violations)
+        else:
+            report["queryset_health_diff_hybrid"] = {"policy": qs_policy, "observed": {}}
 
     # Optional retrieval leaderboard drift gate.
     lb_cfg = budgets.get("retrieval_leaderboard") if isinstance(budgets.get("retrieval_leaderboard"), dict) else {}

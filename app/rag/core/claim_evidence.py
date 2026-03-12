@@ -184,6 +184,10 @@ def build_claim_evidence_map(
     max_quote_chars: int = 240,
     verifier_mode: str = "token_overlap",
     verifier_enable_contradiction_check: bool = True,
+    use_nli_fallback: bool = False,
+    nli_provider: str | None = None,
+    nli_model_name: str | None = None,
+    nli_timeout_sec: float | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Build a JSON-safe list of claim → evidence mappings.
@@ -239,6 +243,10 @@ def build_claim_evidence_map(
                 text,
                 verifier_mode=verifier_mode,
                 verifier_enable_contradiction_check=verifier_enable_contradiction_check,
+                use_nli_fallback=bool(use_nli_fallback),
+                nli_provider=nli_provider,
+                nli_model_name=nli_model_name,
+                nli_timeout_sec=nli_timeout_sec,
             ):
                 continue
             e_tokens = _token_set(text)

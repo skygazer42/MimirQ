@@ -113,6 +113,7 @@ from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_folders import build_document_folder_tree
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.document_qa_service import generate_and_index_document_qa
+from app.services.index_audit_service import build_index_drift_marker
 from app.services.indexer import Indexer
 from app.services.ingestion_policy import (
     match_ingestion_rule,
@@ -6116,6 +6117,214 @@ def _apply_chunk_metadata_patch(*, current: dict, patch: dict) -> dict:
     return next_meta
 
 
+def _normalize_index_consistency_strictness(*, patch_mode: bool = False) -> str:
+    strictness = str(getattr(settings, "INDEX_CONSISTENCY_STRICTNESS", "off") or "off").strip().lower()
+    if strictness not in {"off", "warn", "strict"}:
+        strictness = "off"
+    enabled = bool(getattr(settings, "INDEX_CONSISTENCY_ENABLED", False))
+    patch_strict = bool(getattr(settings, "INDEX_CONSISTENCY_PATCH_CHUNK_STRICT", False))
+    if patch_mode and patch_strict:
+        return "strict"
+    if not enabled and strictness != "strict":
+        return "off"
+    return strictness
+
+
+def _build_index_channel_result(
+    *,
+    status: str,
+    attempted: bool,
+    error: str | None = None,
+    vector_id: str | None = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "status": str(status or "skipped"),
+        "attempted": bool(attempted),
+    }
+    if error:
+        out["error"] = str(error)[:240]
+    if vector_id:
+        out["vector_id"] = str(vector_id)[:200]
+    return out
+
+
+def _build_chunk_index_operation_result(
+    *,
+    operation: str,
+    strictness: str,
+    vector: dict[str, Any],
+    bm25: dict[str, Any],
+    kg: dict[str, Any] | None = None,
+    drift_markers: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    vector_status = str((vector or {}).get("status") or "skipped").strip().lower()
+    bm25_status = str((bm25 or {}).get("status") or "skipped").strip().lower()
+    kg_status = str((kg or {}).get("status") or "skipped").strip().lower() if isinstance(kg, dict) else "skipped"
+    success = all(st in {"ok", "skipped"} for st in (vector_status, bm25_status, kg_status))
+    return {
+        "schema": "mimirq.index_operation_result.v1",
+        "operation": str(operation or "").strip()[:80] or "chunk.patch",
+        "strictness": str(strictness or "off").strip().lower(),
+        "success": bool(success),
+        "vector": dict(vector or {}),
+        "bm25": dict(bm25 or {}),
+        "kg": (dict(kg or {}) if isinstance(kg, dict) else None),
+        "drift_markers": [dict(m) for m in list(drift_markers or []) if isinstance(m, dict)][:20],
+    }
+
+
+def _persist_chunk_index_operation_result(
+    *,
+    db: Session,
+    chunk: DocumentChunk,
+    result: dict[str, Any],
+    drift_markers: list[dict[str, Any]] | None = None,
+) -> None:
+    meta = dict(getattr(chunk, "doc_metadata", None) or {})
+    meta["index_operation_result"] = dict(result or {})
+
+    if drift_markers:
+        existing = meta.get("index_drift_markers")
+        existing_rows = [dict(x) for x in existing if isinstance(x, dict)] if isinstance(existing, list) else []
+        merged = existing_rows + [dict(x) for x in drift_markers if isinstance(x, dict)]
+        meta["index_drift_markers"] = merged[-20:]
+
+    chunk.doc_metadata = meta
+    db.commit()
+    with contextlib.suppress(Exception):
+        db.refresh(chunk)
+
+
+async def _enqueue_index_drift_reconcile(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    requested_by: str,
+) -> str | None:
+    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        return None
+
+    try:
+        from app.tasks.queue import enqueue_rebuild_indexes
+
+        return await enqueue_rebuild_indexes(
+            tenant_id=tenant_id,
+            requested_by=str(requested_by or "system:index-drift"),
+            job_id=f"index-drift-reconcile:{tenant_id}:{document_id}",
+        )
+    except Exception:
+        return None
+
+
+def _build_chunk_drift_markers(
+    *,
+    operation: str,
+    strictness: str,
+    tenant_id: UUID,
+    document_id: UUID,
+    chunk: DocumentChunk,
+    vector_error: str | None,
+    bm25_error: str | None,
+    emit_drift_markers: bool,
+) -> list[dict[str, Any]]:
+    drift_markers: list[dict[str, Any]] = []
+    if emit_drift_markers and vector_error:
+        drift_markers.append(
+            build_index_drift_marker(
+                operation=operation,
+                strictness=strictness,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                chunk_id=chunk.id,
+                channel="vector",
+                reason=vector_error,
+            )
+        )
+    if emit_drift_markers and bm25_error:
+        drift_markers.append(
+            build_index_drift_marker(
+                operation=operation,
+                strictness=strictness,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                chunk_id=chunk.id,
+                channel="bm25",
+                reason=bm25_error,
+            )
+        )
+    return drift_markers
+
+
+async def _record_chunk_index_drift(
+    *,
+    db: Session,
+    document: DBDocument,
+    chunk: DocumentChunk,
+    tenant_id: UUID,
+    account_id: str,
+    operation: str,
+    strictness: str,
+    vector_error: str | None,
+    bm25_error: str | None,
+    vector_id_after: str | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], str | None]:
+    from app.services.index_audit_service import record_index_drift_item
+
+    emit_drift_markers = bool(getattr(settings, "INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS", True))
+    drift_markers = _build_chunk_drift_markers(
+        operation=operation,
+        strictness=strictness,
+        tenant_id=tenant_id,
+        document_id=document.id,
+        chunk=chunk,
+        vector_error=vector_error,
+        bm25_error=bm25_error,
+        emit_drift_markers=emit_drift_markers,
+    )
+    reconcile_task_id: str | None = None
+    if drift_markers:
+        reconcile_task_id = await _enqueue_index_drift_reconcile(
+            tenant_id=tenant_id,
+            document_id=document.id,
+            requested_by=account_id,
+        )
+        for marker in drift_markers:
+            with contextlib.suppress(Exception):
+                record_index_drift_item(
+                    db=db,
+                    dataset_id=getattr(document, "dataset_id", None),
+                    marker=marker,
+                    reconcile_task_id=reconcile_task_id,
+                )
+
+    vector_result = _build_index_channel_result(
+        status=("error" if vector_error else "ok"),
+        attempted=True,
+        error=vector_error,
+        vector_id=vector_id_after,
+    )
+    bm25_result = _build_index_channel_result(
+        status=("error" if bm25_error else "ok"),
+        attempted=True,
+        error=bm25_error,
+    )
+    operation_result = _build_chunk_index_operation_result(
+        operation=operation,
+        strictness=strictness,
+        vector=vector_result,
+        bm25=bm25_result,
+        kg=None,
+        drift_markers=drift_markers,
+    )
+    _persist_chunk_index_operation_result(
+        db=db,
+        chunk=chunk,
+        result=operation_result,
+        drift_markers=drift_markers,
+    )
+    return operation_result, drift_markers, reconcile_task_id
+
+
 @router.post("/{document_id}/chunks", response_model=DocumentChunkSchema, status_code=201)
 async def create_document_chunk(
     document_id: uuid.UUID,
@@ -6325,7 +6534,14 @@ async def patch_document_chunk(
     db.commit()
     db.refresh(chunk)
 
-    # Vector re-index (chunk-level). Fail closed if backend doesn't support selective delete.
+    strictness = _normalize_index_consistency_strictness(patch_mode=True)
+    emit_drift_markers = bool(getattr(settings, "INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS", True))
+    drift_markers: list[dict[str, Any]] = []
+    vector_error: str | None = None
+    bm25_error: str | None = None
+    vector_id_after: str | None = None
+
+    # Vector re-index (chunk-level).
     vector_store = get_vector_store()
     try:
         vector_store.delete_by_document_id_and_filter(
@@ -6333,23 +6549,27 @@ async def patch_document_chunk(
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level updates") from exc
-    except Exception:
-        # Best-effort: if delete fails, avoid creating duplicates.
-        pass
+    except NotImplementedError:
+        vector_error = "vector backend does not support chunk-level updates"
+    except Exception as exc:
+        # Keep old best-effort behavior, but record as index drift risk.
+        vector_error = f"vector delete failed: {str(exc)[:160]}"
 
     try:
         meta_for_vector = dict(chunk.doc_metadata or {})
         ids = list(vector_store.add_documents([{"content": chunk.content, "metadata": meta_for_vector}], document_id, tenant_id))
         if ids and ids[0]:
-            chunk.vector_id = str(ids[0])
+            vector_id_after = str(ids[0])
+            chunk.vector_id = vector_id_after
             db.commit()
             db.refresh(chunk)
-    except Exception:
+        else:
+            vector_error = vector_error or "vector add returned empty id"
+    except Exception as exc:
         db.rollback()
+        vector_error = vector_error or f"vector add failed: {str(exc)[:160]}"
 
-    # BM25 upsert (best-effort).
+    # BM25 upsert (best-effort, but recorded in contract).
     try:
         Indexer(db)._update_bm25_for_chunks(
             db_chunks=[chunk],
@@ -6359,7 +6579,58 @@ async def patch_document_chunk(
             enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
         )
     except Exception:
-        pass
+        bm25_error = "bm25 upsert failed"
+
+    if emit_drift_markers and vector_error:
+        drift_markers.append(
+            build_index_drift_marker(
+                operation="chunk.patch",
+                strictness=strictness,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                chunk_id=chunk.id,
+                channel="vector",
+                reason=vector_error,
+            )
+        )
+    if emit_drift_markers and bm25_error:
+        drift_markers.append(
+            build_index_drift_marker(
+                operation="chunk.patch",
+                strictness=strictness,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                chunk_id=chunk.id,
+                channel="bm25",
+                reason=bm25_error,
+            )
+        )
+
+    vector_result = _build_index_channel_result(
+        status=("error" if vector_error else "ok"),
+        attempted=True,
+        error=vector_error,
+        vector_id=vector_id_after,
+    )
+    bm25_result = _build_index_channel_result(
+        status=("error" if bm25_error else "ok"),
+        attempted=True,
+        error=bm25_error,
+    )
+    operation_result = _build_chunk_index_operation_result(
+        operation="chunk.patch",
+        strictness=strictness,
+        vector=vector_result,
+        bm25=bm25_result,
+        kg=None,
+        drift_markers=drift_markers,
+    )
+    _persist_chunk_index_operation_result(
+        db=db,
+        chunk=chunk,
+        result=operation_result,
+        drift_markers=drift_markers,
+    )
 
     audit_log_event(
         db,
@@ -6368,10 +6639,18 @@ async def patch_document_chunk(
         action="document.chunk.update",
         resource_type="document",
         resource_id=str(document_id),
-        details={"chunk_id": str(chunk.id), "chunk_index": int(chunk.chunk_index)},
+        details={
+            "chunk_id": str(chunk.id),
+            "chunk_index": int(chunk.chunk_index),
+            "index_operation_success": bool(operation_result.get("success")),
+            "index_consistency_strictness": strictness,
+        },
     )
     with contextlib.suppress(Exception):
         db.commit()
+
+    if strictness == "strict" and (vector_error or bm25_error):
+        raise HTTPException(status_code=409, detail="Index consistency strict mode blocked patch; drift marker emitted")
 
     return chunk
 
@@ -6430,6 +6709,10 @@ async def delete_document_chunk(
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
 
+    strictness = _normalize_index_consistency_strictness(patch_mode=False)
+    vector_error: str | None = None
+    bm25_error: str | None = None
+
     vector_store = get_vector_store()
     try:
         vector_store.delete_by_document_id_and_filter(
@@ -6438,15 +6721,34 @@ async def delete_document_chunk(
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
     except NotImplementedError as exc:
-        raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level deletes") from exc
-    except Exception:
-        pass
+        vector_error = "vector backend does not support chunk-level deletes"
+        if strictness != "strict":
+            raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level deletes") from exc
+    except Exception as exc:
+        vector_error = f"vector delete failed: {str(exc)[:160]}"
 
-    with contextlib.suppress(Exception):
+    try:
         hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
+    except Exception:
+        bm25_error = "bm25 delete failed"
+
+    if vector_error or bm25_error:
+        _operation_result, _markers, _task_id = await _record_chunk_index_drift(
+            db=db,
+            document=document,
+            chunk=chunk,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            operation="chunk.delete",
+            strictness=strictness,
+            vector_error=vector_error,
+            bm25_error=bm25_error,
+        )
+        if strictness == "strict":
+            raise HTTPException(status_code=409, detail="Index consistency strict mode blocked delete; drift item recorded")
 
     db.delete(chunk)
     db.commit()
@@ -6497,7 +6799,11 @@ async def delete_document_chunk(
         action="document.chunk.delete",
         resource_type="document",
         resource_id=str(document_id),
-        details={"chunk_id": str(chunk_id)},
+        details={
+            "chunk_id": str(chunk_id),
+            "index_operation_success": not bool(vector_error or bm25_error),
+            "index_consistency_strictness": strictness,
+        },
     )
     with contextlib.suppress(Exception):
         db.commit()
@@ -6538,28 +6844,59 @@ async def disable_document_chunk(
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
 
-    if getattr(chunk, "disabled_at", None) is None:
-        chunk.disabled_at = datetime.now(timezone.utc)
-    # Prefer setting vector_id to None as a local signal even if delete is best-effort.
-    try:
-        chunk.vector_id = None
-    except Exception:
-        pass
+    strictness = _normalize_index_consistency_strictness(patch_mode=False)
+    vector_error: str | None = None
+    bm25_error: str | None = None
 
-    # Best-effort index removal (vector + BM25).
     try:
         get_vector_store().delete_by_document_id_and_filter(
             document_id=document_id,
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
-    except Exception:
-        pass
-    with contextlib.suppress(Exception):
+    except Exception as exc:
+        vector_error = f"vector delete failed: {str(exc)[:160]}"
+
+    try:
         hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
+    except Exception:
+        bm25_error = "bm25 delete failed"
+
+    if strictness == "strict" and (vector_error or bm25_error):
+        await _record_chunk_index_drift(
+            db=db,
+            document=document,
+            chunk=chunk,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            operation="chunk.disable",
+            strictness=strictness,
+            vector_error=vector_error,
+            bm25_error=bm25_error,
+        )
+        raise HTTPException(status_code=409, detail="Index consistency strict mode blocked disable; drift item recorded")
+
+    if getattr(chunk, "disabled_at", None) is None:
+        chunk.disabled_at = datetime.now(timezone.utc)
+    try:
+        chunk.vector_id = None
+    except Exception:
+        pass
+
+    await _record_chunk_index_drift(
+        db=db,
+        document=document,
+        chunk=chunk,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        operation="chunk.disable",
+        strictness=strictness,
+        vector_error=vector_error,
+        bm25_error=bm25_error,
+    )
 
     audit_log_event(
         db,
@@ -6568,7 +6905,12 @@ async def disable_document_chunk(
         action="document.chunk.disable",
         resource_type="document",
         resource_id=str(document_id),
-        details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
+        details={
+            "chunk_id": str(chunk.id),
+            "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0),
+            "index_operation_success": not bool(vector_error or bm25_error),
+            "index_consistency_strictness": strictness,
+        },
     )
     db.commit()
     with contextlib.suppress(Exception):
