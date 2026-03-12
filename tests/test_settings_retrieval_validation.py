@@ -114,3 +114,23 @@ def test_settings_accepts_table_sidecar_exclusive_routing_toggle(
     monkeypatch.setenv("TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", "true")
     cfg = Settings()
     assert cfg.TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING is True
+
+
+def test_settings_rejects_invalid_sparse_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("SPARSE_RETRIEVAL_PROVIDER", "invalid_provider")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_splade_provider_without_model_when_sparse_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("SPARSE_RETRIEVAL_ENABLED", "true")
+    monkeypatch.setenv("SPARSE_RETRIEVAL_PROVIDER", "splade")
+    monkeypatch.setenv("SPARSE_SPLADE_MODEL_NAME", "")
+    with pytest.raises(ValueError):
+        Settings()

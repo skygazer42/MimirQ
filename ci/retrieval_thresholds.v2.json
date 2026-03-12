@@ -51,5 +51,18 @@
       "mrr": { "min": 1.0 },
       "ndcg_at_k": { "min": 1.0 }
     }
+  },
+  "ci_retrieval_only_bounded_gate_sparse": {
+    "schema": "mimirq.ci_retrieval_only_gate.v1",
+    "fixture": "data/sample/retrieval_fixture_sparse_v1.json",
+    "retrieval_mode": "keyword",
+    "top_k": 5,
+    "sparse_retrieval_enabled": true,
+    "sparse_retrieval_provider": "deterministic",
+    "thresholds": {
+      "hit_at_k": { "min": 1.0 },
+      "mrr": { "min": 1.0 },
+      "ndcg_at_k": { "min": 1.0 }
+    }
   }
 }

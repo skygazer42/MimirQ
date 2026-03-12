@@ -47,6 +47,24 @@ except ImportError:
             return "audit_trace"
         return raw
 
+try:
+    from app.rag.retrieval.sparse import (
+        VALID_SPARSE_PROVIDERS,
+        normalize_sparse_provider_name,
+    )
+except ImportError:
+    VALID_SPARSE_PROVIDERS = {"deterministic", "splade"}
+
+    def normalize_sparse_provider_name(provider: str | None) -> str:
+        raw = str(provider or "").strip().lower()
+        if not raw:
+            return "deterministic"
+        if raw in {"det", "deterministic"}:
+            return "deterministic"
+        if raw == "splade":
+            return "splade"
+        return raw
+
 
 class Settings(BaseSettings):
     """
@@ -1870,6 +1888,27 @@ class Settings(BaseSettings):
         parse_risk_reparse_max_docs = int(100 if raw_parse_risk_reparse_max_docs is None else raw_parse_risk_reparse_max_docs)
         if parse_risk_reparse_max_docs < 1:
             raise ValueError("RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS must be >= 1")
+
+        sparse_provider = normalize_sparse_provider_name(
+            str(getattr(self, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic")
+        )
+        if sparse_provider not in VALID_SPARSE_PROVIDERS:
+            raise ValueError(
+                "SPARSE_RETRIEVAL_PROVIDER must be one of: "
+                + ", ".join(sorted(VALID_SPARSE_PROVIDERS))
+            )
+        if self.SPARSE_RETRIEVAL_PROVIDER != sparse_provider:
+            self.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
+
+        if bool(getattr(self, "SPARSE_RETRIEVAL_ENABLED", False)) and sparse_provider == "splade":
+            splade_model_name = str(getattr(self, "SPARSE_SPLADE_MODEL_NAME", "") or "").strip()
+            if not splade_model_name:
+                raise ValueError(
+                    "SPARSE_SPLADE_MODEL_NAME is required when "
+                    "SPARSE_RETRIEVAL_ENABLED=true and SPARSE_RETRIEVAL_PROVIDER=splade"
+                )
+            if self.SPARSE_SPLADE_MODEL_NAME != splade_model_name:
+                self.SPARSE_SPLADE_MODEL_NAME = splade_model_name
 
         # Validate checkpoint backend
         valid_checkpoint_backends = {"memory", "sqlite"}

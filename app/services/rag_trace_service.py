@@ -323,6 +323,26 @@ def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
                 s = _safe_str(box_raw.get("provider"), max_len=80)
                 if s is not None:
                     box["provider"] = s
+                ps_raw = box_raw.get("provider_status")
+                if isinstance(ps_raw, dict) and ps_raw:
+                    ps: dict[str, Any] = {}
+                    for key, max_len in (
+                        ("requested_provider", 80),
+                        ("requested_provider_normalized", 80),
+                        ("effective_provider", 80),
+                        ("status", 40),
+                        ("reason", 80),
+                        ("outcome", 40),
+                    ):
+                        sval = _safe_str(ps_raw.get(key), max_len=max_len)
+                        if sval is not None:
+                            ps[key] = sval
+                    for key in ("provider_supported", "model_required", "model_configured"):
+                        bval = _to_bool(ps_raw.get(key))
+                        if bval is not None:
+                            ps[key] = bval
+                    if ps:
+                        box["provider_status"] = ps
             if kind == "colbert_ann":
                 s = _safe_str(box_raw.get("provider"), max_len=80)
                 if s is not None:

@@ -119,6 +119,19 @@ jobs:
             --retrieval-mode hybrid \
             --top-k 5
 
+      - name: Run deterministic sample retrieval benchmark (sparse bounded fixture)
+        env:
+          LLM_MOCK_ENABLED: "true"
+        run: |
+          mkdir -p artifacts
+          python scripts/run_sample_retrieval_benchmark.py \
+            --fixture data/sample/retrieval_fixture_sparse_v1.json \
+            --out artifacts/sample_retrieval_bench.sparse.json \
+            --retrieval-mode keyword \
+            --top-k 5 \
+            --enable-sparse-retrieval \
+            --sparse-retrieval-provider deterministic
+
       - name: Build query-set health snapshot from bounded benchmark
         run: |
           python scripts/run_queryset_health_diagnostics.py \
@@ -137,6 +150,15 @@ jobs:
             --policy-json ci/queryset_health_policy.v1.json \
             --cron | tee artifacts/queryset_health.cron.hybrid.json
 
+      - name: Build query-set health snapshot from bounded sparse benchmark
+        run: |
+          python scripts/run_queryset_health_diagnostics.py \
+            --benchmark-report artifacts/sample_retrieval_bench.sparse.json \
+            --out artifacts/queryset_health.snapshot.sparse.json \
+            --history artifacts/queryset_health.history.sparse.jsonl \
+            --policy-json ci/queryset_health_policy.v1.json \
+            --cron | tee artifacts/queryset_health.cron.sparse.json
+
       - name: Build query-set health diff artifacts
         run: |
           python scripts/diff_queryset_health_snapshots.py \
@@ -152,6 +174,14 @@ jobs:
             --b artifacts/queryset_health.snapshot.hybrid.json \
             --out artifacts/queryset_health.diff.hybrid.json \
             --out-md artifacts/queryset_health.diff.hybrid.md
+
+      - name: Build query-set health diff artifacts (sparse)
+        run: |
+          python scripts/diff_queryset_health_snapshots.py \
+            --a ci/queryset_health_snapshot_sparse_baseline.v1.json \
+            --b artifacts/queryset_health.snapshot.sparse.json \
+            --out artifacts/queryset_health.diff.sparse.json \
+            --out-md artifacts/queryset_health.diff.sparse.md
 
       - name: Evaluate bounded retrieval-only gate (metric delta output)
         run: |
@@ -247,6 +277,63 @@ jobs:
           print("[retrieval-only-bounded-gate-hybrid] PASS")
           PY
 
+      - name: Evaluate bounded retrieval-only gate (sparse metric delta output)
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path("artifacts/sample_retrieval_bench.sparse.json").read_text(encoding="utf-8"))
+          cfg = json.loads(Path("ci/retrieval_thresholds.v2.json").read_text(encoding="utf-8"))
+          bounded = cfg.get("ci_retrieval_only_bounded_gate_sparse") if isinstance(cfg, dict) else {}
+          thresholds = bounded.get("thresholds") if isinstance(bounded, dict) else {}
+          summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+
+          runtime = report.get("runtime") if isinstance(report.get("runtime"), dict) else {}
+          provider = str(runtime.get("sparse_retrieval_provider") or "").strip().lower()
+          if not bool(runtime.get("sparse_retrieval_enabled")) or provider != "deterministic":
+              print("[retrieval-only-bounded-gate-sparse] FAIL: sparse runtime metadata mismatch", file=sys.stderr)
+              print(
+                  f"[retrieval-only-bounded-gate-sparse] runtime={runtime}",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+
+          failures = []
+          for metric, raw in (thresholds or {}).items():
+              if not isinstance(raw, dict):
+                  continue
+              try:
+                  value = float(summary.get(metric))
+              except Exception:
+                  value = None
+              if value is None:
+                  failures.append((metric, "missing", raw, None))
+                  continue
+              if "min" in raw:
+                  low = float(raw["min"])
+                  if value < low:
+                      failures.append((metric, value, {"min": low}, value - low))
+              if "max" in raw:
+                  high = float(raw["max"])
+                  if value > high:
+                      failures.append((metric, value, {"max": high}, value - high))
+
+          if failures:
+              print("[retrieval-only-bounded-gate-sparse] FAIL: threshold violation(s)", file=sys.stderr)
+              for metric, value, th, delta in failures:
+                  print(
+                      f"[retrieval-only-bounded-gate-sparse] metric={metric} value={value} threshold={th} delta={delta}",
+                      file=sys.stderr,
+                  )
+              raise SystemExit(1)
+
+          print("[retrieval-only-bounded-gate-sparse] PASS")
+          PY
+
       - name: Validate grounded_strict retrieval-profile contract
         run: |
           python - <<'PY'
@@ -326,20 +413,27 @@ jobs:
           path: |
             artifacts/sample_retrieval_bench.json
             artifacts/sample_retrieval_bench.hybrid.json
+            artifacts/sample_retrieval_bench.sparse.json
             artifacts/queryset_health_policy.normalized.json
             artifacts/queryset_health.snapshot.json
             artifacts/queryset_health.snapshot.hybrid.json
+            artifacts/queryset_health.snapshot.sparse.json
             artifacts/queryset_health.diff.json
             artifacts/queryset_health.diff.md
             artifacts/queryset_health.diff.hybrid.json
             artifacts/queryset_health.diff.hybrid.md
+            artifacts/queryset_health.diff.sparse.json
+            artifacts/queryset_health.diff.sparse.md
             artifacts/retrieval_profile.grounded_strict.contract.json
             artifacts/queryset_health.history.jsonl
             artifacts/queryset_health.history.hybrid.jsonl
+            artifacts/queryset_health.history.sparse.jsonl
             artifacts/queryset_health.cron.json
             artifacts/queryset_health.cron.hybrid.json
+            artifacts/queryset_health.cron.sparse.json
             ci/queryset_health_snapshot_baseline.v1.json
             ci/queryset_health_snapshot_hybrid_baseline.v1.json
+            ci/queryset_health_snapshot_sparse_baseline.v1.json
             ci/queryset_health_policy.v1.json
             ci/retrieval_thresholds.v2.json
 

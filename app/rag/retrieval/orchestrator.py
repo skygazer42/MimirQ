@@ -681,6 +681,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     rewrite_strategy_hash: str | None = None
     rewrite_temperature: float | None = None
     rewrite_max_chars: int | None = None
+    from app.rag.retrieval.sparse import normalize_sparse_provider_name
+
     sparse_enabled_override = state.get("sparse_retrieval_enabled")
     sparse_enabled = (
         bool(sparse_enabled_override)
@@ -688,11 +690,13 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         else bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
     )
     sparse_provider_raw = state.get("sparse_retrieval_provider")
-    sparse_provider = str(
-        sparse_provider_raw
-        if sparse_provider_raw is not None
-        else (getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic")
-    ).strip().lower() or "deterministic"
+    sparse_provider = normalize_sparse_provider_name(
+        str(
+            sparse_provider_raw
+            if sparse_provider_raw is not None
+            else (getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic")
+        )
+    )
 
     # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
     kg_result_cached: dict[str, Any] | None = None

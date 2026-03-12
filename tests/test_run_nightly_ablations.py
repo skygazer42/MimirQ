@@ -52,6 +52,10 @@ def test_default_ablations_cover_key_runtime_knobs() -> None:
     assert any(rp.get("fusion_strategy") == "linear" for rp in rag_params_list)
     assert any(rp.get("fusion_strategy") == "budgeted_rrf" for rp in rag_params_list)
     assert any(bool(rp.get("sparse_retrieval_enabled")) for rp in rag_params_list)
+    assert any(
+        ab.get("ablation_key") == "sparse_bounded_slice"
+        for ab in ablations
+    )
 
     # Retrieval-only friendly by default: no LLM-backed query rewrite / multi-query in defaults.
     assert all(not bool(rp.get("enable_query_rewrite")) for rp in rag_params_list)
@@ -60,6 +64,16 @@ def test_default_ablations_cover_key_runtime_knobs() -> None:
     for rp in rag_params_list:
         if rp.get("sparse_retrieval_enabled"):
             assert str(rp.get("sparse_retrieval_provider") or "").strip()
+
+    sparse_slice = next((ab for ab in ablations if ab.get("ablation_key") == "sparse_bounded_slice"), None)
+    assert isinstance(sparse_slice, dict)
+    sparse_rp = dict((sparse_slice or {}).get("rag_params") or {})
+    assert sparse_rp.get("retrieval_mode") == "keyword"
+    assert sparse_rp.get("fusion_strategy") == "budgeted_rrf"
+    assert bool(sparse_rp.get("sparse_retrieval_enabled")) is True
+    budgets = dict(sparse_rp.get("fusion_budgets") or {})
+    assert int(budgets.get("sparse") or 0) > 0
+    assert int(budgets.get("vector") or 0) == 0
 
 
 class _FakeQuery:
