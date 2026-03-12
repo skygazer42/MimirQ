@@ -74,8 +74,19 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
 @router.get("/profiles")
 def get_retrieval_profiles() -> dict[str, Any]:
     baseline = _runtime_baseline()
+    chat_default_profile = str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower() or None
     request_defaults = apply_retrieval_profile_overrides(
         profile=None,
+        top_k=int(baseline.get("top_k") or 0),
+        score_threshold=float(baseline.get("score_threshold") or 0.0),
+        retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
+        enable_reranker=bool(baseline.get("enable_reranker")),
+        reranker_provider=str(baseline.get("reranker_provider") or ""),
+        reranker_top_n=int(baseline.get("reranker_top_n") or 0),
+        enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
+    )
+    chat_default_effective = apply_retrieval_profile_overrides(
+        profile=chat_default_profile,
         top_k=int(baseline.get("top_k") or 0),
         score_threshold=float(baseline.get("score_threshold") or 0.0),
         retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
@@ -102,7 +113,9 @@ def get_retrieval_profiles() -> dict[str, Any]:
         "schema": _SCHEMA,
         "effective_defaults": {
             "production_profile": PRODUCTION_RETRIEVAL_PROFILE,
+            "chat_default_profile": chat_default_profile,
             "request_defaults": request_defaults,
+            "chat_default_effective": chat_default_effective,
             "production_effective": production_effective,
             "runtime_defaults": baseline,
         },
@@ -114,4 +127,3 @@ def get_retrieval_profiles() -> dict[str, Any]:
 
 
 __all__ = ["router", "get_retrieval_profiles"]
-

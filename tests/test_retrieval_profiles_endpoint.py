@@ -42,3 +42,16 @@ def test_retrieval_profiles_endpoint_omits_hidden_scope_fields() -> None:
         assert isinstance(row, dict)
         assert not (set(row.keys()) & banned)
 
+
+def test_retrieval_profiles_endpoint_exposes_chat_default_profile_effective(monkeypatch) -> None:  # noqa: ANN001
+    import app.api.v1.retrieval_profiles as api_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "hybrid_ce", raising=False)
+    payload = api_mod.get_retrieval_profiles()
+    effective = payload.get("effective_defaults") or {}
+
+    assert effective.get("chat_default_profile") == "hybrid_ce"
+    chat_default_effective = effective.get("chat_default_effective") or {}
+    assert chat_default_effective.get("retrieval_profile") == "hybrid_ce"
+    assert str(chat_default_effective.get("retrieval_mode") or "") == "hybrid"

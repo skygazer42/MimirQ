@@ -338,6 +338,7 @@ def build_citations_from_docs(
             str(retrieval_role or "").strip().lower() == "image"
             or str(meta.get("doc_type_kwd") or "").strip().lower() == "image"
         )
+        tag_payload = _parse_json_object(doc.page_content or "") if is_tag else None
 
         page_number = None
         page_raw = meta.get("page")
@@ -380,9 +381,8 @@ def build_citations_from_docs(
             # remains compatible even when callers used a non-UUID id (historical behavior/tests).
             tag_table_id = str(meta.get("table_id") or "").strip()
             if not tag_table_id:
-                payload = _parse_json_object(doc.page_content or "")
-                if payload:
-                    tag_table_id = str(payload.get("table_id") or "").strip()
+                if tag_payload:
+                    tag_table_id = str(tag_payload.get("table_id") or "").strip()
             chunk_id = _stable_tag_chunk_id(tag_table_id)
 
         effective_text = doc.page_content or ""
@@ -390,6 +390,19 @@ def build_citations_from_docs(
             formatted = _format_tag_table_store_summary(doc, meta=meta)
             if formatted:
                 effective_text = formatted
+
+        tag_table_id = str(meta.get("table_id") or "").strip()
+        if not tag_table_id and tag_payload:
+            tag_table_id = str(tag_payload.get("table_id") or "").strip()
+        tag_sheet_index = meta.get("sheet_index")
+        if tag_sheet_index is None and tag_payload:
+            tag_sheet_index = tag_payload.get("sheet_index")
+        tag_sheet_name = meta.get("sheet_name")
+        if tag_sheet_name is None and tag_payload:
+            tag_sheet_name = tag_payload.get("sheet_name")
+        tag_sql_generation_mode = meta.get("sql_generation_mode")
+        if tag_sql_generation_mode is None and tag_payload:
+            tag_sql_generation_mode = tag_payload.get("sql_generation_mode")
 
         snippet, matched_terms, evidence_start_in_chunk, evidence_end_in_chunk = _build_snippet_and_span(
             effective_text, query, max_chars=220
@@ -479,6 +492,16 @@ def build_citations_from_docs(
             "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
             "hit_type": hit_type,
         }
+
+        if is_tag:
+            if tag_table_id:
+                citation["table_id"] = tag_table_id
+            if tag_sheet_index is not None:
+                citation["sheet_index"] = tag_sheet_index
+            if tag_sheet_name is not None:
+                citation["sheet_name"] = tag_sheet_name
+            if tag_sql_generation_mode is not None:
+                citation["sql_generation_mode"] = tag_sql_generation_mode
 
         # Optional: KG path provenance for KG-injected citations (bounded, PII-safe).
         #

@@ -492,3 +492,146 @@ def test_chat_tag_can_match_sample_rows(monkeypatch):  # noqa: ANN001
     assert meta["used"] is True
     assert len(docs) == 1
     assert chosen.get("table_id") == table_b
+
+
+def test_chat_tag_uses_deterministic_sql_when_llm_key_missing(monkeypatch):  # noqa: ANN001
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "sales.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "Sales",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}, {"name": "region", "dtype": "text"}],
+                            "sample_rows": [],
+                        }
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False, raising=False)
+
+    import app.services.chat_tag_service as mod
+
+    monkeypatch.setattr(
+        mod,
+        "run_table_query",
+        lambda **kwargs: {"sql": kwargs.get("sql"), "columns": ["count"], "rows": [[10]], "truncated": False},
+        raising=True,
+    )
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="总数有多少",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert len(docs) == 1
+
+    payload = json.loads(docs[0].page_content)
+    assert payload.get("table_id") == table_id
+    assert payload.get("sql_generation_mode") == "deterministic"
+    assert "count" in str(payload.get("sql") or "").lower()
+
+
+def test_chat_tag_selection_tie_break_is_deterministic(monkeypatch):  # noqa: ANN001
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_a = f"doc:{doc_id}:sheet:1"
+    table_b = f"doc:{doc_id}:sheet:2"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "sales.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_b,
+                            "sheet_index": 2,
+                            "sheet_name": "B",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}],
+                            "sample_rows": [],
+                        },
+                        {
+                            "table_id": table_a,
+                            "sheet_index": 1,
+                            "sheet_name": "A",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}],
+                            "sample_rows": [],
+                        },
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1, raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MAX_TABLES", 1, raising=False)
+
+    import app.services.chat_tag_service as mod
+
+    chosen: dict[str, str] = {}
+
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT COUNT(*) AS n FROM "sheet_0" LIMIT 1', raising=True)
+
+    def _fake_run_table_query(**kwargs):  # noqa: ANN001
+        chosen["table_id"] = str(kwargs.get("table_id") or "")
+        return {"sql": kwargs.get("sql"), "columns": ["n"], "rows": [[10]], "truncated": False}
+
+    monkeypatch.setattr(mod, "run_table_query", _fake_run_table_query, raising=True)
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="这张表有多少行？",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert len(docs) == 1
+    # Same score/row_count/filename: final tie-break is table_id lexical order.
+    assert chosen.get("table_id") == min(table_a, table_b)

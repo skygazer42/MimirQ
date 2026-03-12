@@ -105,7 +105,7 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     assert trace.get("schema") == "mimirq.retrieval_trace_pass.v1"
 
     # Lock the stable top-level sections.
-    for key in ("rewrite", "expansions", "retrieval", "query_variant_fusion", "post_rerank", "abstain", "citations"):
+    for key in ("hard_fallback", "rewrite", "expansions", "retrieval", "query_variant_fusion", "post_rerank", "abstain", "citations", "parse_quality"):
         assert key in trace
 
     # Retrieval trace is intentionally separate from query_debug: no raw question text.
