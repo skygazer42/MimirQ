@@ -57,3 +57,13 @@ def test_settings_rejects_invalid_claim_verifier_mode(monkeypatch: pytest.Monkey
     monkeypatch.setenv("RAG_CLAIM_VERIFIER_MODE", "invalid")
     with pytest.raises(ValueError):
         Settings()
+
+
+def test_settings_accepts_grounded_strict_chat_default_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("CHAT_DEFAULT_RETRIEVAL_PROFILE", "grounded_strict")
+    cfg = Settings()
+    assert cfg.CHAT_DEFAULT_RETRIEVAL_PROFILE == "grounded_strict"

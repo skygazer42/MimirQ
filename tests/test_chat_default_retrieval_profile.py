@@ -37,3 +37,30 @@ def test_chat_rag_default_profile_can_enable_strict_visible_evidence(monkeypatch
     cfg = ChatRAGConfig()
     assert cfg.retrieval_profile == "hybrid_ce"
     assert cfg.visible_evidence_only is True
+
+
+def test_chat_rag_config_grounded_strict_projects_contract_fields() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(
+        retrieval_profile="grounded_strict",
+        retrieval_contract_mode="",
+        visible_evidence_only=False,
+    )
+
+    assert cfg.retrieval_profile == "grounded_strict"
+    assert cfg.retrieval_contract_mode == "evidence_strict"
+    assert cfg.visible_evidence_only is True
+
+
+def test_chat_rag_config_default_grounded_strict_projects_contract_fields(monkeypatch) -> None:  # noqa: ANN001
+    from app.api.schemas.chat import ChatRAGConfig
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "grounded_strict", raising=False)
+    monkeypatch.setattr(settings, "CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY", False, raising=False)
+
+    cfg = ChatRAGConfig()
+    assert cfg.retrieval_profile == "grounded_strict"
+    assert cfg.retrieval_contract_mode == "evidence_strict"
+    assert cfg.visible_evidence_only is True

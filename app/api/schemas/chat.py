@@ -382,6 +382,8 @@ class ChatRAGConfig(BaseModel):
             reranker_provider=self.reranker_provider,
             reranker_top_n=int(self.reranker_top_n or 0),
             enable_weight_rerank=self.enable_weight_rerank,
+            retrieval_contract_mode=self.retrieval_contract_mode,
+            visible_evidence_only=self.visible_evidence_only,
         )
         self.retrieval_profile = applied["retrieval_profile"]
         self.top_k = int(applied["top_k"])
@@ -396,6 +398,10 @@ class ChatRAGConfig(BaseModel):
             self.reranker_top_n = int(applied["reranker_top_n"])
         if applied.get("enable_weight_rerank") is not None:
             self.enable_weight_rerank = bool(applied["enable_weight_rerank"])
+        if applied.get("retrieval_contract_mode") is not None:
+            self.retrieval_contract_mode = normalize_retrieval_contract_mode(applied["retrieval_contract_mode"])
+        if applied.get("visible_evidence_only") is not None:
+            self.visible_evidence_only = bool(applied["visible_evidence_only"])
         if default_profile_applied and bool(getattr(settings, "CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY", False)):
             self.visible_evidence_only = True
         return self

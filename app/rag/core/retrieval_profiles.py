@@ -3,8 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 PRODUCTION_RETRIEVAL_PROFILE = "hybrid_ce"
+STRICT_GROUNDED_RETRIEVAL_PROFILE = "grounded_strict"
 RECALL_FIRST_RETRIEVAL_PROFILES = {"recall20", "recall50", "coverage80"}
-SUPPORTED_RETRIEVAL_PROFILES = set(RECALL_FIRST_RETRIEVAL_PROFILES) | {PRODUCTION_RETRIEVAL_PROFILE}
+SUPPORTED_RETRIEVAL_PROFILES = set(RECALL_FIRST_RETRIEVAL_PROFILES) | {
+    PRODUCTION_RETRIEVAL_PROFILE,
+    STRICT_GROUNDED_RETRIEVAL_PROFILE,
+}
 
 
 def normalize_retrieval_profile(profile: Any) -> str | None:
@@ -29,6 +33,8 @@ def apply_retrieval_profile_overrides(
     reranker_provider: str | None = None,
     reranker_top_n: int | None = None,
     enable_weight_rerank: bool | None = None,
+    retrieval_contract_mode: str | None = None,
+    visible_evidence_only: bool | None = None,
 ) -> dict[str, Any]:
     normalized = normalize_retrieval_profile(profile)
 
@@ -41,6 +47,8 @@ def apply_retrieval_profile_overrides(
         "reranker_provider": str(reranker_provider or "").strip().lower() or None,
         "reranker_top_n": None if reranker_top_n is None else int(reranker_top_n or 0),
         "enable_weight_rerank": None if enable_weight_rerank is None else bool(enable_weight_rerank),
+        "retrieval_contract_mode": str(retrieval_contract_mode or "").strip().lower() or None,
+        "visible_evidence_only": None if visible_evidence_only is None else bool(visible_evidence_only),
     }
 
     if normalized is None:
@@ -72,11 +80,26 @@ def apply_retrieval_profile_overrides(
         out["enable_weight_rerank"] = False
         return out
 
-    raise ValueError("retrieval_profile must be one of: recall20, recall50, coverage80, hybrid_ce")
+    if normalized == STRICT_GROUNDED_RETRIEVAL_PROFILE:
+        out["retrieval_mode"] = "hybrid"
+        out["top_k"] = max(int(out["top_k"] or 0), 20)
+        out["score_threshold"] = 0.0
+        out["enable_reranker"] = True
+        out["reranker_provider"] = "cross_encoder"
+        out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
+        out["enable_weight_rerank"] = False
+        out["retrieval_contract_mode"] = "evidence_strict"
+        out["visible_evidence_only"] = True
+        return out
+
+    raise ValueError(
+        "retrieval_profile must be one of: recall20, recall50, coverage80, hybrid_ce, grounded_strict"
+    )
 
 
 __all__ = [
     "PRODUCTION_RETRIEVAL_PROFILE",
+    "STRICT_GROUNDED_RETRIEVAL_PROFILE",
     "RECALL_FIRST_RETRIEVAL_PROFILES",
     "SUPPORTED_RETRIEVAL_PROFILES",
     "apply_retrieval_profile_overrides",

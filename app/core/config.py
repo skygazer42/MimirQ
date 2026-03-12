@@ -1794,7 +1794,14 @@ class Settings(BaseSettings):
             )
 
         # Validate default retrieval profile used by chat when request-side knobs are omitted.
-        valid_retrieval_profiles = {"", "recall20", "recall50", "coverage80", "hybrid_ce"}
+        valid_retrieval_profiles = {
+            "",
+            "recall20",
+            "recall50",
+            "coverage80",
+            "hybrid_ce",
+            "grounded_strict",
+        }
         chat_default_profile = str(getattr(self, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
         if chat_default_profile not in valid_retrieval_profiles:
             raise ValueError(
