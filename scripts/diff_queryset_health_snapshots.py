@@ -56,17 +56,25 @@ def _render_markdown(diff: dict[str, Any]) -> str:
     policy = diff.get("policy") if isinstance(diff.get("policy"), dict) else {}
     deltas = diff.get("metric_deltas") if isinstance(diff.get("metric_deltas"), dict) else {}
     hard = diff.get("hard_case_drift") if isinstance(diff.get("hard_case_drift"), dict) else {}
+    baseline_source = str(policy.get("baseline_source") or "")
+    current_source = str(policy.get("current_source") or "")
+    baseline_hash = str(policy.get("baseline_hash") or "")
+    current_hash = str(policy.get("current_hash") or "")
+    policy_source_changed = bool((baseline_source or current_source) and baseline_source != current_source)
+    policy_hash_changed = bool((baseline_hash or current_hash) and baseline_hash != current_hash)
 
     lines: list[str] = []
     lines.append("# Queryset Health Snapshot Diff")
     lines.append("")
-    lines.append("## Policy")
+    lines.append("## Policy/Hash Drift Summary")
     lines.append("")
     lines.append(f"- Policy Changed: `{bool(policy.get('changed'))}`")
-    lines.append(f"- Baseline Source: `{str(policy.get('baseline_source') or '')}`")
-    lines.append(f"- Current Source: `{str(policy.get('current_source') or '')}`")
-    lines.append(f"- Baseline Hash: `{str(policy.get('baseline_hash') or '')}`")
-    lines.append(f"- Current Hash: `{str(policy.get('current_hash') or '')}`")
+    lines.append(f"- Policy Source Changed: `{policy_source_changed}`")
+    lines.append(f"- Policy Hash Changed: `{policy_hash_changed}`")
+    lines.append(f"- Baseline Source: `{baseline_source}`")
+    lines.append(f"- Current Source: `{current_source}`")
+    lines.append(f"- Baseline Hash: `{baseline_hash}`")
+    lines.append(f"- Current Hash: `{current_hash}`")
     lines.append("")
     lines.append("## Metric Deltas")
     lines.append("")

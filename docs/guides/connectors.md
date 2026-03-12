@@ -40,11 +40,13 @@
 
 当前内置 connector 的同步语义：
 
-- `url_batch`：支持 `supports_resume`，并利用 URL 列表去重做轻量增量保护。
+- `url_batch`：支持 `supports_incremental + supports_resume`；主要提供 URL 级别的轻量增量保护（去重/断点续跑）。
 - `github_repo`：支持 `supports_incremental + supports_resume`；后续 run 会用 Git blob SHA manifest 跳过未变化文件，并在检测到 tracked path 已从仓库消失时剪掉 stale manifest entry。
 - `confluence_space`：支持 `supports_incremental`；后续 run 会基于 `last_modified` cursor 拉取更新页面。
 - `jira_project`：支持 `supports_incremental`；后续 run 会基于 issue `updated` cursor 只拉取新变更 issue，并默认使用 `jira_ticket` chunker。
-- `web_crawl` / `drive_files` / `minio_bucket`：当前仍以 `supports_resume` 为主，解决中断续跑，不把它们宣称为真正源增量。
+- `web_crawl`：支持 `supports_incremental + supports_resume`；当前增量 token 以 URL 清单 hash 为主，支持 removed URL reconcile（soft-disable）。
+- `drive_files`：支持 `supports_incremental + supports_resume`；使用 source manifest token（优先 version/modifiedTime/file_id）做 changed/new 判定，并支持 removed path reconcile（soft-disable）。
+- `minio_bucket`：支持 `supports_incremental + supports_resume`；使用对象 token（etag/last_modified/size）做 changed/new 判定，并支持 removed path reconcile（soft-disable）。
 
 ### 2.1.2 Saved State Contract
 
@@ -175,6 +177,12 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 
 更完整说明见：[web_crawl.md](./web_crawl.md)。
 
+增量 freshness 语义（当前实现）：
+
+- `web_crawl` 支持 manifest-based incremental（`supports_incremental=true`）。
+- 每个 source 目前使用 URL 级别 token（URL hash）作为判定依据；后续 run 基于 `source_manifest` 只处理 changed/new 项，并统计 `mode` / `delta_urls` / `skipped_unchanged`。
+- 对于历史存在但本次 crawl 未发现的 URL，会进入 removed reconcile，记录 `removed_paths` / `removed_paths_reconciled` / `removed_documents_disabled` 并执行 soft-disable。
+
 ### 5.3 `github_repo`：GitHub Repo 导入
 
 用途：通过 GitHub API 列出仓库文件，再用 `raw.githubusercontent.com` 拉取内容入库。
@@ -268,6 +276,13 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
   }
 }
 ```
+
+增量 freshness 语义（Wave B）：
+
+- `minio_bucket` 支持 manifest-based incremental（`supports_incremental=true`）。
+- 每个 object 使用稳定 token（`etag` + `last_modified` + `size`，按可用性组合）；后续 run 基于 `source_manifest` 仅处理 changed/new 对象，并统计 `mode` / `delta_objects` / `skipped_unchanged`。
+- scope 变化（例如 bucket/prefix/include 规则变化）会触发 scope hash 变化，并重置旧 manifest，避免跨 scope 的脏增量。
+- 对于历史存在但本次缺失的 object key，会进入 removed reconcile，记录 `removed_paths` / `removed_paths_reconciled` / `removed_documents_disabled` 并执行 soft-disable。
 
 ### 5.6 `jira_project`：Jira Cloud Project 导入
 
