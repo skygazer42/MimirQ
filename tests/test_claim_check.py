@@ -116,3 +116,74 @@ async def test_rag_engine_claim_check_removes_unsupported_claims(monkeypatch: py
     assert "Sky is blue" in full_response
     assert "Bananas" not in full_response
     assert (done_metrics or {}).get("claim_check_removed") == 1
+
+
+@pytest.mark.asyncio
+async def test_rag_engine_claim_check_semantic_mode_blocks_contradiction(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.engine as engine_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "Bananas are red.", raising=False)
+
+    monkeypatch.setattr(settings, "RAG_CLAIM_CHECK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24, raising=False)
+    monkeypatch.setattr(settings, "RAG_CLAIM_VERIFIER_MODE", "semantic_heuristic", raising=False)
+    monkeypatch.setattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True, raising=False)
+
+    from langchain_core.documents import Document
+
+    class _CapturingRetriever:
+        _last_debug_metrics = {}
+
+        def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+            return self
+
+        def invoke(self, _q):  # noqa: ANN001
+            return [
+                Document(
+                    page_content="Bananas are not red.",
+                    metadata={"source": "doc.txt", "page": 1},
+                    id=str(uuid.uuid4()),
+                )
+            ]
+
+    monkeypatch.setattr(engine_mod, "hybrid_retriever", _CapturingRetriever(), raising=True)
+
+    rag = engine_mod.get_rag_engine()
+    agen = rag.stream_chat(
+        question="What color are bananas?",
+        history=None,
+        conversation_id=None,
+        tenant_id=uuid.uuid4(),
+        document_ids=None,
+        account_id="u",
+        top_k=1,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        db=None,
+    )
+
+    parts: list[str] = []
+    done_metrics = None
+    async for item in agen:
+        if item.get("type") == "token":
+            data = item.get("data") or {}
+            parts.append(str(data.get("content") or ""))
+        if item.get("type") == "done":
+            done_metrics = (item.get("data") or {}).get("metrics") or {}
+            break
+    await agen.aclose()
+
+    full_response = "".join(parts).strip()
+    assert "Unable to answer this question based on the available materials." in full_response
+    assert (done_metrics or {}).get("claim_check_removed") == 1
+    assert (done_metrics or {}).get("claim_verifier_mode") == "semantic_heuristic"

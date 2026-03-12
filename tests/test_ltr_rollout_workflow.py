@@ -341,6 +341,10 @@ def test_prepare_ltr_rollout_writes_artifacts_without_activation(tmp_path: Path,
     def _fake_eval(*, model_path: Path, out_json_path: Path, **_kwargs) -> None:
         summary = {
             "schema": "mimirq.ltr_offline_eval.v1",
+            "cases_total": 2,
+            "cases_used": 2,
+            "k": 20,
+            "top_k": 50,
             "baseline": {"hit": 0.4, "mrr": 0.3, "recall": 0.5, "ndcg": 0.35},
             "ltr": {"hit": 0.6, "mrr": 0.5, "recall": 0.7, "ndcg": 0.55},
             "lineage": {"model_sha256": ("c" if "candidate" in model_path.name else "b") * 64},
@@ -380,12 +384,19 @@ def test_prepare_ltr_rollout_writes_artifacts_without_activation(tmp_path: Path,
     assert activated == []
     assert result["status"] == "ready_for_manual_activation"
     assert result["candidate"]["registered_model_id"] == "candidate-id"
+    assert isinstance(result.get("gate"), dict)
+    assert result["gate"]["schema"] == "mimirq.ltr_rollout_gate_result.v1"
+    assert result["gate"]["passed"] is True
     assert (tmp_path / "workflow" / "cases.bundle.json").exists()
     assert (tmp_path / "workflow" / "candidate.model.json").exists()
     assert (tmp_path / "workflow" / "candidate.eval.json").exists()
     assert (tmp_path / "workflow" / "baseline.eval.json").exists()
     assert (tmp_path / "workflow" / "comparison.json").exists()
+    comparison = json.loads((tmp_path / "workflow" / "comparison.json").read_text(encoding="utf-8"))
+    assert isinstance(comparison.get("gate"), dict)
+    assert comparison["gate"]["passed"] is True
     workflow = json.loads((tmp_path / "workflow" / "workflow.json").read_text(encoding="utf-8"))
     assert workflow["activation"]["performed"] is False
     assert workflow["comparison"]["baseline_source"] == "active_ltr_model"
-
+    assert isinstance(workflow.get("gate"), dict)
+    assert workflow["gate"]["passed"] is True

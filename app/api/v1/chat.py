@@ -653,6 +653,7 @@ async def chat(
     )
 
     rag_config_template_meta: dict[str, Any] | None = None
+    rag_config_template_resolver_debug: dict[str, Any] | None = None
     rag_config_template_patch_applied_fields: list[str] = []
     try:
         if (
@@ -660,13 +661,14 @@ async def chat(
             or (effective_rag_config_template_key or "").strip()
             or (effective_rag_config_ab_experiment_key or "").strip()
         ):
-            chosen = resolve_rag_config_template(
+            chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
                 db=db,
                 tenant_id=tenant_id,
                 rag_config_template_id=effective_rag_config_template_id,
                 template_key=effective_rag_config_template_key,
                 ab_experiment_key=effective_rag_config_ab_experiment_key,
                 ab_user_key=account_id,
+                return_debug_metadata=True,
             )
             if chosen:
                 effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
@@ -683,6 +685,8 @@ async def chat(
                     "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
                     "patch_applied_fields": rag_config_template_patch_applied_fields,
                 }
+                if rag_config_template_resolver_debug:
+                    rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
 
                 # Analytics only; never fail chat due to counter updates.
                 try:
@@ -773,6 +777,7 @@ async def chat(
                     score_threshold=effective_rag_config.score_threshold,
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
+                    retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -914,6 +919,7 @@ async def chat(
                     structured_output=request.structured_output,
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
+                    retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -1377,6 +1383,7 @@ async def stream_chat(
         )
 
         rag_config_template_meta: dict[str, Any] | None = None
+        rag_config_template_resolver_debug: dict[str, Any] | None = None
         rag_config_template_patch_applied_fields: list[str] = []
         try:
             if (
@@ -1384,13 +1391,14 @@ async def stream_chat(
                 or (effective_rag_config_template_key or "").strip()
                 or (effective_rag_config_ab_experiment_key or "").strip()
             ):
-                chosen = resolve_rag_config_template(
+                chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
                     db=db,
                     tenant_id=tenant_id,
                     rag_config_template_id=effective_rag_config_template_id,
                     template_key=effective_rag_config_template_key,
                     ab_experiment_key=effective_rag_config_ab_experiment_key,
                     ab_user_key=account_id,
+                    return_debug_metadata=True,
                 )
                 if chosen:
                     effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
@@ -1407,6 +1415,8 @@ async def stream_chat(
                         "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
                         "patch_applied_fields": rag_config_template_patch_applied_fields,
                     }
+                    if rag_config_template_resolver_debug:
+                        rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
 
                     # Analytics only; never fail chat due to counter updates.
                     try:
@@ -1647,6 +1657,7 @@ async def stream_chat(
                     score_threshold=effective_rag_config.score_threshold,
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
+                    retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -1953,6 +1964,7 @@ async def stream_chat(
                         structured_output=request.structured_output,
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
+                    retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,

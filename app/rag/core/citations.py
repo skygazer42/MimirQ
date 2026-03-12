@@ -403,6 +403,25 @@ def build_citations_from_docs(
         tag_sql_generation_mode = meta.get("sql_generation_mode")
         if tag_sql_generation_mode is None and tag_payload:
             tag_sql_generation_mode = tag_payload.get("sql_generation_mode")
+        tag_schema_link_score = meta.get("schema_link_score")
+        tag_schema_link_strategy = meta.get("schema_link_strategy")
+        tag_schema_link_diag = meta.get("schema_link_diagnostics")
+        if isinstance(tag_schema_link_diag, dict):
+            if tag_schema_link_score is None:
+                tag_schema_link_score = tag_schema_link_diag.get("score")
+            if tag_schema_link_strategy is None:
+                tag_schema_link_strategy = tag_schema_link_diag.get("strategy")
+        if tag_payload:
+            if tag_schema_link_score is None:
+                tag_schema_link_score = tag_payload.get("schema_link_score")
+            if tag_schema_link_strategy is None:
+                tag_schema_link_strategy = tag_payload.get("schema_link_strategy")
+            payload_schema_link = tag_payload.get("schema_link")
+            if isinstance(payload_schema_link, dict):
+                if tag_schema_link_score is None:
+                    tag_schema_link_score = payload_schema_link.get("score")
+                if tag_schema_link_strategy is None:
+                    tag_schema_link_strategy = payload_schema_link.get("strategy")
 
         snippet, matched_terms, evidence_start_in_chunk, evidence_end_in_chunk = _build_snippet_and_span(
             effective_text, query, max_chars=220
@@ -502,6 +521,13 @@ def build_citations_from_docs(
                 citation["sheet_name"] = tag_sheet_name
             if tag_sql_generation_mode is not None:
                 citation["sql_generation_mode"] = tag_sql_generation_mode
+            if tag_schema_link_score is not None:
+                try:
+                    citation["tag_schema_link_score"] = round(float(tag_schema_link_score), 6)
+                except Exception:
+                    pass
+            if tag_schema_link_strategy is not None:
+                citation["tag_schema_link_strategy"] = str(tag_schema_link_strategy)[:80]
 
         # Optional: KG path provenance for KG-injected citations (bounded, PII-safe).
         #

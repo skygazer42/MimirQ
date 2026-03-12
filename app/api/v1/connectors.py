@@ -67,11 +67,12 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
-from app.services.connector_registry import get_connector_definition, list_connector_definitions
+from app.services.audit_log_service import audit_log_event
 from app.services.connector_reconcile_service import (
     plan_connector_reconcile,
     resolve_connector_reconcile_source_refs,
 )
+from app.services.connector_registry import get_connector_definition, list_connector_definitions
 from app.services.connector_sync_state import (
     build_persisted_state,
     build_saved_state_snapshot,
@@ -80,7 +81,6 @@ from app.services.connector_sync_state import (
     normalize_source_manifest,
     slice_items_from_cursor,
 )
-from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.security_redaction import redact_connection_info
@@ -1511,6 +1511,80 @@ def _drive_direct_download_url(file_id: str) -> str:
         raise ValueError("drive_file_id_required")
     # Best-effort; may still require auth/cookie for non-public files.
     return f"https://drive.google.com/uc?export=download&id={fid}"
+
+
+def _drive_source_ref(*, file_id: str | None, source_url: str) -> str:
+    """
+    Build a stable source_ref for Drive incremental manifests.
+
+    Prefer `file_id` for stability across share-link variants.
+    """
+    fid = str(file_id or "").strip()
+    if fid:
+        return fid
+
+    raw_url = str(source_url or "").strip()
+    digest = hashlib.sha256(raw_url.encode("utf-8", "ignore")).hexdigest()
+    return f"url:{digest}"
+
+
+def _drive_fallback_sync_token(*, file_id: str | None, source_url: str) -> str:
+    """
+    Best-effort fallback token when Drive metadata cursor fields are unavailable.
+    """
+    fid = str(file_id or "").strip()
+    raw_url = str(source_url or "").strip()
+    seed = f"file_id:{fid}|url:{raw_url}"
+    digest = hashlib.sha256(seed.encode("utf-8", "ignore")).hexdigest()
+    return f"hash:{digest}"
+
+
+async def _drive_fetch_file_sync_token(
+    *,
+    client: httpx.AsyncClient | None,
+    file_id: str,
+    source_url: str,
+    headers: dict[str, str] | None = None,
+) -> str:
+    """
+    Build a Drive file sync token for incremental freshness.
+
+    Priority:
+    1) version + modifiedTime + fileId from Drive API metadata.
+    2) fallback hash derived from url/file_id.
+    """
+    fid = str(file_id or "").strip()
+    fallback = _drive_fallback_sync_token(file_id=fid, source_url=source_url)
+    if not fid or client is None:
+        return fallback
+
+    url = f"https://www.googleapis.com/drive/v3/files/{quote(fid, safe='')}"
+    params = {
+        "fields": "id,version,modifiedTime",
+        "supportsAllDrives": "true",
+    }
+    try:
+        resp = await client.get(url, params=params, headers=dict(headers or {}))
+        if int(resp.status_code or 0) >= 400:
+            return fallback
+        payload = resp.json() if callable(getattr(resp, "json", None)) else {}
+    except Exception:
+        return fallback
+
+    data = payload if isinstance(payload, dict) else {}
+    version = str(data.get("version") or "").strip()
+    modified_time = str(data.get("modifiedTime") or "").strip()
+    resolved_file_id = str(data.get("id") or fid).strip() or fid
+    if not version and not modified_time:
+        return fallback
+
+    parts: list[str] = []
+    if version:
+        parts.append(f"version:{version}")
+    if modified_time:
+        parts.append(f"modified_time:{modified_time}")
+    parts.append(f"file_id:{resolved_file_id}")
+    return "|".join(parts)
 
 
 def _drive_group_principal_key(email: str) -> str:
@@ -3117,22 +3191,12 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         delta_acl_sources_updated = 0
 
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        urls_to_process, cursor_in = slice_items_from_cursor(urls, cursor=get_resume_cursor(state))
-        stats0 = dict(run.stats or {})
-        stats0.update(
-            {
-                "total_urls": int(len(urls)),
-                "processed_urls": int(cursor_in),
-                "cursor": int(cursor_in),
-                "created": 0,
-                "failed": 0,
-                "failed_urls": [],
-                "cursor_in": int(cursor_in),
-                "resumed_from_state": bool(cursor_in > 0),
-            }
-        )
-        run.stats = stats0
-        db.commit()
+        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+        tracked_source_refs = set(existing_manifest)
+        resume_cursor_raw = get_resume_cursor(state)
+        is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+        effective_mode = "incremental" if existing_manifest else "full"
+        resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
 
         source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
         source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
@@ -3142,12 +3206,73 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
         enable_source_acl = bool(source_acl_mode == "inherit" and not has_manual_access_override)
 
-        drive_client: httpx.AsyncClient | None = None
-        if enable_source_acl:
-            drive_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
+        drive_client: httpx.AsyncClient | None = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
+        removed_source_refs: list[str] = []
+        removed_paths_reconciled = 0
+        removed_documents_disabled = 0
 
         try:
-            for idx, url in enumerate(urls_to_process):
+            discovered_sources: list[tuple[str, str, str, str]] = []
+            observed_tracked_refs: set[str] = set()
+            for source_url in urls:
+                file_id_raw = _extract_drive_file_id(source_url)
+                file_id = str(file_id_raw or "").strip()
+                source_ref = _drive_source_ref(file_id=file_id_raw, source_url=source_url)
+                if source_ref in tracked_source_refs:
+                    observed_tracked_refs.add(source_ref)
+                source_token = await _drive_fetch_file_sync_token(
+                    client=drive_client,
+                    file_id=file_id,
+                    source_url=source_url,
+                    headers=auth_headers,
+                )
+                discovered_sources.append((source_url, source_ref, file_id, source_token))
+
+            delta_sources: list[tuple[str, str, str, str]] = []
+            skipped_unchanged = 0
+            for source_url, source_ref, file_id, source_token in discovered_sources:
+                if (
+                    (not enable_source_acl)
+                    and effective_mode == "incremental"
+                    and existing_manifest.get(source_ref) == source_token
+                ):
+                    skipped_unchanged += 1
+                    continue
+                delta_sources.append((source_url, source_ref, file_id, source_token))
+
+            removed_source_refs = (
+                sorted(tracked_source_refs - observed_tracked_refs) if effective_mode == "incremental" else []
+            )
+            sources_to_process, cursor_in = slice_items_from_cursor(delta_sources, cursor=resume_cursor)
+            source_manifest_state = {
+                source_ref: token for source_ref, token in existing_manifest.items() if source_ref not in removed_source_refs
+            }
+            processed_visible = skipped_unchanged + cursor_in
+
+            stats0 = dict(run.stats or {})
+            stats0.update(
+                {
+                    "mode": effective_mode,
+                    "total_urls": int(len(discovered_sources)),
+                    "delta_urls": int(len(delta_sources)),
+                    "skipped_unchanged": int(skipped_unchanged),
+                    "processed_urls": int(processed_visible),
+                    "cursor": int(cursor_in),
+                    "created": 0,
+                    "failed": 0,
+                    "failed_urls": [],
+                    "cursor_in": int(cursor_in),
+                    "resumed_from_state": bool(is_resume_run and ((effective_mode == "incremental") or cursor_in > 0)),
+                    "removed_paths": int(len(removed_source_refs)),
+                    "removed_paths_reconciled": int(removed_paths_reconciled),
+                    "removed_documents_disabled": int(removed_documents_disabled),
+                    "source_manifest": dict(source_manifest_state),
+                }
+            )
+            run.stats = _finalize_connector_stats(stats0)
+            db.commit()
+
+            for idx, (source_url, source_ref, file_id, source_token) in enumerate(sources_to_process):
                 try:
                     db.refresh(run)
                 except Exception:
@@ -3155,14 +3280,14 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 if str(run.status or "").lower() == "cancelled":
                     break
 
+                succeeded = False
                 try:
-                    file_id = _extract_drive_file_id(url)
                     if not file_id:
                         raise ValueError("unsupported_drive_url")
 
                     effective_access = access
                     acl_provenance: dict | None = None
-                    if drive_client is not None:
+                    if enable_source_acl and drive_client is not None:
                         ext_ids: list[str] = []
                         mapped_gids: set[UUID] = set()
                         has_anyone = False
@@ -3232,7 +3357,7 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                             )
 
                     dl_url = _drive_direct_download_url(file_id)
-                    if drive_client is not None:
+                    if enable_source_acl:
                         updated_existing = _delta_sync_connector_documents_acl_by_source_url(
                             db,
                             tenant_id=tenant_id,
@@ -3280,35 +3405,46 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                         doc=doc,
                         run=run,
                         connector_id="drive_files",
-                        source_ref=url,
-                        source_id=url,
+                        source_ref=source_ref,
+                        source_id=file_id,
                     )
                     db.add(
                         ConnectorRunDocument(
                             tenant_id=tenant_id,
                             run_id=run.id,
                             document_id=doc.id,
-                            source_ref=url,
+                            source_ref=source_ref,
                             status="created",
                         )
                     )
                     created += 1
                     created_doc_ids.append(doc.id)
+                    succeeded = True
                 except Exception as exc:  # noqa: BLE001
                     failed += 1
                     stats = dict(run.stats or {})
-                    stats = _append_connector_error(stats, url=url, exc=exc)
+                    stats = _append_connector_error(stats, url=source_url or source_ref, exc=exc)
                     run.stats = stats
                 finally:
                     processed = cursor_in + idx + 1
+                    processed_visible = skipped_unchanged + processed
+                    if succeeded:
+                        source_manifest_state[source_ref] = source_token
                     stats = dict(run.stats or {})
                     stats.update(
                         {
-                            "total_urls": int(len(urls)),
-                            "processed_urls": int(processed),
+                            "mode": effective_mode,
+                            "total_urls": int(len(discovered_sources)),
+                            "delta_urls": int(len(delta_sources)),
+                            "skipped_unchanged": int(skipped_unchanged),
+                            "processed_urls": int(processed_visible),
                             "cursor": int(processed),
                             "created": int(created),
                             "failed": int(failed),
+                            "removed_paths": int(len(removed_source_refs)),
+                            "removed_paths_reconciled": int(removed_paths_reconciled),
+                            "removed_documents_disabled": int(removed_documents_disabled),
+                            "source_manifest": dict(source_manifest_state),
                             "document_ids": [str(d) for d in created_doc_ids],
                             "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                             "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
@@ -3334,12 +3470,48 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
                 _sync_connector_config_from_run(db, run=run)
             return
 
+        if effective_mode == "incremental" and removed_source_refs:
+            for source_ref in removed_source_refs:
+                try:
+                    if str(source_ref).startswith("url:"):
+                        disabled = _soft_disable_connector_documents_by_source_ref(
+                            db,
+                            tenant_id=tenant_id,
+                            dataset_id=run.dataset_id,
+                            connector_id="drive_files",
+                            source_ref=source_ref,
+                        )
+                    else:
+                        disabled = _soft_disable_connector_documents_by_source_url(
+                            db,
+                            tenant_id=tenant_id,
+                            dataset_id=run.dataset_id,
+                            connector_id="drive_files",
+                            source_url=_drive_direct_download_url(source_ref),
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    stats = dict(run.stats or {})
+                    stats = _append_connector_error(stats, url=source_ref, exc=exc)
+                    run.stats = _finalize_connector_stats(stats)
+                    db.commit()
+                    continue
+                removed_documents_disabled += int(disabled)
+                if disabled:
+                    removed_paths_reconciled += 1
+
         stats = dict(run.stats or {})
         stats.update(
             {
+                "mode": effective_mode,
+                "delta_urls": int(len(delta_sources)),
+                "skipped_unchanged": int(skipped_unchanged),
                 "document_ids": [str(d) for d in created_doc_ids],
                 "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
                 "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+                "removed_paths": int(len(removed_source_refs)),
+                "removed_paths_reconciled": int(removed_paths_reconciled),
+                "removed_documents_disabled": int(removed_documents_disabled),
+                "source_manifest": dict(source_manifest_state),
             }
         )
         run.stats = _finalize_connector_stats(stats)

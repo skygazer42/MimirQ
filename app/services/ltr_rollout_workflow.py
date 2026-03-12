@@ -17,6 +17,18 @@ def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_DEFAULT_LTR_ROLLOUT_GATE_THRESHOLDS: dict[str, Any] = {
+    "schema": "mimirq.ltr_rollout_gate_thresholds.v1",
+    "metrics": {
+        "delta.hit": {"min": 0.0},
+        "delta.mrr": {"min": 0.0},
+        "delta.recall": {"min": 0.0},
+        "delta.ndcg": {"min": 0.0},
+        "candidate.cases_used": {"min": 1.0},
+    },
+}
+
+
 def _safe_uuid_text(value: Any) -> str | None:
     if value is None:
         return None
@@ -260,6 +272,143 @@ def _metric_map(raw: Any) -> dict[str, float]:
     return out
 
 
+def _as_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _normalize_gate_bound(value: Any) -> dict[str, float]:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return {"min": float(value)}
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, float] = {}
+    if "min" in value:
+        mn = _as_float(value.get("min"))
+        if mn is not None:
+            out["min"] = mn
+    if "max" in value:
+        mx = _as_float(value.get("max"))
+        if mx is not None:
+            out["max"] = mx
+    return out
+
+
+def normalize_ltr_rollout_gate_thresholds(raw: Any | None) -> dict[str, Any]:
+    payload = raw if isinstance(raw, dict) else {}
+    metric_payload = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else payload
+    metrics: dict[str, dict[str, float]] = {}
+    if isinstance(metric_payload, dict):
+        for key, value in metric_payload.items():
+            metric_name = str(key or "").strip()
+            if not metric_name:
+                continue
+            bounds = _normalize_gate_bound(value)
+            if bounds:
+                metrics[metric_name] = bounds
+    if not metrics:
+        for key, value in (_DEFAULT_LTR_ROLLOUT_GATE_THRESHOLDS.get("metrics") or {}).items():
+            bounds = _normalize_gate_bound(value)
+            if bounds:
+                metrics[str(key)] = bounds
+    return {
+        "schema": "mimirq.ltr_rollout_gate_thresholds.v1",
+        "metrics": metrics,
+    }
+
+
+def _comparison_metric_value(*, comparison: dict[str, Any], metric_key: str) -> float | None:
+    parts = [p.strip() for p in str(metric_key or "").split(".") if p.strip()]
+    if not parts:
+        return None
+    root = parts[0]
+    key = ".".join(parts[1:])
+
+    if root in {"delta", "deltas"}:
+        return _as_float((comparison.get("deltas") or {}).get(key))
+    if root == "candidate":
+        if key in {"hit", "mrr", "recall", "ndcg"}:
+            return _as_float((comparison.get("candidate_metrics") or {}).get(key))
+        if key.startswith("cases_"):
+            return _as_float((comparison.get("candidate_eval_summary") or {}).get(key))
+    if root == "baseline":
+        if key in {"hit", "mrr", "recall", "ndcg"}:
+            return _as_float((comparison.get("baseline_metrics") or {}).get(key))
+        if key.startswith("cases_"):
+            return _as_float((comparison.get("baseline_eval_summary") or {}).get(key))
+
+    # Best-effort fallback for arbitrary nested fields.
+    cur: Any = comparison
+    for part in parts:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return _as_float(cur)
+
+
+def evaluate_ltr_rollout_gate(
+    *,
+    comparison: dict[str, Any],
+    thresholds: dict[str, Any] | None = None,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    normalized = normalize_ltr_rollout_gate_thresholds(thresholds)
+    reasons: list[str] = []
+    checks: list[dict[str, Any]] = []
+
+    metrics = normalized.get("metrics") if isinstance(normalized.get("metrics"), dict) else {}
+    for metric_name, bounds in metrics.items():
+        metric = str(metric_name or "").strip()
+        if not metric:
+            continue
+        metric_bounds = bounds if isinstance(bounds, dict) else {}
+        actual = _comparison_metric_value(comparison=comparison, metric_key=metric)
+        if actual is None:
+            checks.append({"metric": metric, "passed": False, "actual": None, "bounds": dict(metric_bounds)})
+            reasons.append(f"missing metric: {metric}")
+            continue
+
+        passed = True
+        lower = _as_float(metric_bounds.get("min"))
+        upper = _as_float(metric_bounds.get("max"))
+        if lower is not None and actual < lower:
+            passed = False
+            reasons.append(f"{metric}={actual:.4f} < min {lower:.4f}")
+        if upper is not None and actual > upper:
+            passed = False
+            reasons.append(f"{metric}={actual:.4f} > max {upper:.4f}")
+
+        checks.append(
+            {
+                "metric": metric,
+                "passed": bool(passed),
+                "actual": round(float(actual), 4),
+                "bounds": {k: round(float(v), 4) for k, v in metric_bounds.items() if _as_float(v) is not None},
+            }
+        )
+
+    failed = sum(1 for item in checks if not bool(item.get("passed")))
+    summary = {
+        "total": int(len(checks)),
+        "passed": int(len(checks) - failed),
+        "failed": int(failed),
+    }
+
+    return {
+        "schema": "mimirq.ltr_rollout_gate_result.v1",
+        "generated_at": generated_at or _now_utc_iso(),
+        "passed": failed == 0,
+        "summary": summary,
+        "reasons": reasons,
+        "checks": checks,
+        "thresholds": normalized,
+    }
+
+
 def build_rollout_comparison(
     *,
     generated_at: str | None,
@@ -287,6 +436,22 @@ def build_rollout_comparison(
         "baseline_source": baseline_source,
         "active_model_id": active_model_id,
         "candidate_model_id": candidate_model_id,
+        "candidate_eval_summary": {
+            "cases_total": int(candidate_eval.get("cases_total") or 0),
+            "cases_used": int(candidate_eval.get("cases_used") or 0),
+            "k": int(candidate_eval.get("k") or 0),
+            "top_k": int(candidate_eval.get("top_k") or 0),
+        },
+        "baseline_eval_summary": (
+            {
+                "cases_total": int((baseline_eval or {}).get("cases_total") or 0),
+                "cases_used": int((baseline_eval or {}).get("cases_used") or 0),
+                "k": int((baseline_eval or {}).get("k") or 0),
+                "top_k": int((baseline_eval or {}).get("top_k") or 0),
+            }
+            if isinstance(baseline_eval, dict)
+            else None
+        ),
         "retrieval_baseline_metrics": retrieval_baseline_metrics,
         "baseline_metrics": baseline_metrics,
         "candidate_metrics": candidate_metrics,
@@ -311,7 +476,9 @@ __all__ = [
     "FeedbackCaseMaterialization",
     "build_rollout_comparison",
     "build_rollout_regression_bundle",
+    "evaluate_ltr_rollout_gate",
     "materialize_feedback_case",
+    "normalize_ltr_rollout_gate_thresholds",
     "normalize_reference_sources",
     "sha256_file",
     "write_json",

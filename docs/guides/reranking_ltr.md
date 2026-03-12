@@ -169,6 +169,44 @@ python scripts/prepare_ltr_rollout.py \
 - 有 active model 时，对比 `candidate.ltr` vs `active_model.ltr`
 - 没有 active model 时，对比 `candidate.ltr` vs retrieval baseline
 
+### Gate（train 之后、activate 之前）
+
+Wave B 增加了显式 gate evaluator 与独立 gate CLI，推荐流程从“feedback->train->eval->compare”升级为：
+
+1. feedback/evidence 物化回归 case
+2. train candidate
+3. eval candidate + baseline
+4. compare 产出
+5. **gate 判定（通过才允许激活）**
+6. 人工 activate
+
+`prepare_ltr_rollout.py` 已内置 gate 结果，支持：
+
+- `--gate-thresholds <path.json>`
+- `--gate-min-delta-ndcg-at-k`
+- `--gate-min-delta-mrr`
+- `--gate-min-cases-used`
+
+并会把 `gate` 写入：
+
+- `comparison.json`
+- `workflow.json`
+
+也可以单独运行：
+
+```bash
+python scripts/ltr_rollout_gate.py \
+  --comparison ./comparison.json \
+  --workflow ./workflow.json \
+  --out ./gate.json
+```
+
+返回码语义：
+
+- `0`：gate pass
+- `3`：gate fail（不应激活）
+- `2`：输入/参数错误
+
 激活与回滚仍然单独控制：
 
 ```bash

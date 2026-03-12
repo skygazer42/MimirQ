@@ -26,7 +26,9 @@ from app.services.ltr_rollout_workflow import (  # noqa: E402
     FeedbackCaseMaterialization,
     build_rollout_comparison,
     build_rollout_regression_bundle,
+    evaluate_ltr_rollout_gate,
     materialize_feedback_case,
+    normalize_ltr_rollout_gate_thresholds,
     sha256_file,
     write_json,
 )
@@ -170,6 +172,13 @@ def _read_json(path: Path) -> dict[str, Any]:
     return raw
 
 
+def _read_gate_thresholds(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    payload = _read_json(path)
+    return normalize_ltr_rollout_gate_thresholds(payload)
+
+
 def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request_id: str) -> dict[str, Any] | None:
     rid = str(request_id or "").strip()
     if not rid:
@@ -307,6 +316,7 @@ def prepare_ltr_rollout(
     objective: str = "rank:pairwise",
     eval_k: int = 20,
     rerank_top_n: int = 30,
+    gate_thresholds: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     workflow_dir = Path(workflow_dir)
     workflow_dir.mkdir(parents=True, exist_ok=True)
@@ -415,6 +425,12 @@ def prepare_ltr_rollout(
             active_model_id=active_model_id,
             candidate_model_id=registered_model_id,
         )
+        gate = evaluate_ltr_rollout_gate(
+            comparison=comparison,
+            thresholds=gate_thresholds,
+            generated_at=generated_at,
+        )
+        comparison["gate"] = gate
         write_json(comparison_path, comparison)
 
         result = {
@@ -445,6 +461,7 @@ def prepare_ltr_rollout(
                 "active_model_path": active_model_path,
             },
             "comparison": comparison,
+            "gate": gate,
             "activation": dict(comparison.get("activation") or {"performed": False, "status": "manual_review_required"}),
         }
         write_json(workflow_json_path, result)
@@ -482,6 +499,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--objective", default="rank:pairwise", help="LTR training objective")
     parser.add_argument("--eval-k", type=int, default=20, help="Metric cutoff for offline eval")
     parser.add_argument("--rerank-top-n", type=int, default=30, help="Local rerank prefix for offline eval")
+    parser.add_argument("--gate-thresholds", default="", help="Optional path to gate thresholds JSON")
+    parser.add_argument("--gate-min-delta-hit", type=float, default=None, help="Override threshold for delta.hit")
+    parser.add_argument("--gate-min-delta-mrr", type=float, default=None, help="Override threshold for delta.mrr")
+    parser.add_argument("--gate-min-delta-recall", type=float, default=None, help="Override threshold for delta.recall")
+    parser.add_argument("--gate-min-delta-ndcg", type=float, default=None, help="Override threshold for delta.ndcg")
+    parser.add_argument("--gate-min-cases-used", type=float, default=None, help="Override threshold for candidate.cases_used")
     args = parser.parse_args(argv)
 
     suite_id = str(args.suite_id or "").strip()
@@ -495,6 +518,26 @@ def main(argv: list[str] | None = None) -> int:
     suite: EvidenceSuite | None = None
     evidence_items: list[EvidenceItem] = []
     feedback_cases: list[FeedbackCaseMaterialization] = []
+    thresholds_path = Path(str(args.gate_thresholds or "").strip()) if str(args.gate_thresholds or "").strip() else None
+    gate_thresholds = _read_gate_thresholds(thresholds_path)
+
+    metrics_overrides: dict[str, dict[str, float]] = {}
+    for metric, value in (
+        ("delta.hit", args.gate_min_delta_hit),
+        ("delta.mrr", args.gate_min_delta_mrr),
+        ("delta.recall", args.gate_min_delta_recall),
+        ("delta.ndcg", args.gate_min_delta_ndcg),
+        ("candidate.cases_used", args.gate_min_cases_used),
+    ):
+        if value is None:
+            continue
+        metrics_overrides[metric] = {"min": float(value)}
+    if metrics_overrides:
+        merged = normalize_ltr_rollout_gate_thresholds(gate_thresholds)
+        merged_metrics = dict(merged.get("metrics") or {})
+        merged_metrics.update(metrics_overrides)
+        merged["metrics"] = merged_metrics
+        gate_thresholds = merged
 
     db = SessionLocal()
     try:
@@ -530,6 +573,7 @@ def main(argv: list[str] | None = None) -> int:
         objective=str(args.objective),
         eval_k=int(args.eval_k or 0),
         rerank_top_n=int(args.rerank_top_n or 0),
+        gate_thresholds=gate_thresholds,
     )
 
     print(
@@ -539,6 +583,7 @@ def main(argv: list[str] | None = None) -> int:
         f" cases={result['sources']['total_items']}"
         f" candidate_model_id={result['candidate']['registered_model_id'] or '<unregistered>'}"
         f" baseline_source={result['comparison']['baseline_source']}"
+        f" gate_passed={result['gate']['passed']}"
         f" activation={result['activation']['status']}"
     )
     return 0

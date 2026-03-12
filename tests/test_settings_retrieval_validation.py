@@ -41,3 +41,19 @@ def test_settings_rejects_negative_page_diversity_limit(monkeypatch: pytest.Monk
     monkeypatch.setenv("RETRIEVAL_MAX_CHUNKS_PER_PAGE", "-1")
     with pytest.raises(ValueError):
         Settings()
+
+
+def test_settings_rejects_invalid_retrieval_contract_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_CONTRACT_MODE", "unknown_mode")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_invalid_claim_verifier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RAG_CLAIM_VERIFIER_MODE", "invalid")
+    with pytest.raises(ValueError):
+        Settings()

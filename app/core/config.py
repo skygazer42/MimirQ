@@ -20,6 +20,33 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.env import is_production_env
 
+try:
+    from app.rag.retrieval.contract import (
+        VALID_RETRIEVAL_CONTRACT_MODES,
+        normalize_retrieval_contract_mode,
+    )
+except ImportError:
+    # Keep config importable even when app.rag triggers circular imports during
+    # process bootstrap (e.g., settings imported before rag modules are fully ready).
+    VALID_RETRIEVAL_CONTRACT_MODES = {
+        "",
+        "deterministic_recall",
+        "evidence_strict",
+        "audit_trace",
+    }
+
+    def normalize_retrieval_contract_mode(value: str | None) -> str:
+        raw = str(value or "").strip().lower()
+        if raw in {"none", "off", "disabled"}:
+            return ""
+        if raw in {"deterministic", "deterministic_recall"}:
+            return "deterministic_recall"
+        if raw in {"evidence", "evidence_strict", "strict"}:
+            return "evidence_strict"
+        if raw in {"audit", "audit_trace", "trace"}:
+            return "audit_trace"
+        return raw
+
 
 class Settings(BaseSettings):
     """
@@ -626,9 +653,11 @@ class Settings(BaseSettings):
     RETRIEVAL_OVERFETCH_MULTIPLIER: int = 4
     # Hard cap for the over-fetched k (0 disables).
     RETRIEVAL_OVERFETCH_MAX_K: int = 50
-    # Retrieval contract mode (opt-in deterministic behavior packs).
+    # Retrieval contract mode (opt-in behavior packs).
     # - "" (default): no contract override
     # - deterministic_recall: force deterministic fallback-first safeguards for empty evidence
+    # - evidence_strict: force span-level evidence gating + visible-evidence-only grounding
+    # - audit_trace: reserved for high-verbosity retrieval tracing (no scoring behavior change)
     RETRIEVAL_CONTRACT_MODE: str = ""
     # Deterministic hard fallback (opt-in):
     # when primary retrieval yields no citations, run one bounded fallback pass.
@@ -812,6 +841,12 @@ class Settings(BaseSettings):
     # Disabled by default because it may delay streaming (answer is buffered for claim-check).
     RAG_CLAIM_CHECK_ENABLED: bool = False
     RAG_CLAIM_CHECK_MAX_CLAIMS: int = 24
+    # Claim verifier mode for claim-check / claim-evidence mapping.
+    # - token_overlap: historical deterministic overlap heuristic
+    # - semantic_heuristic: overlap + contradiction checks (numeric / negation)
+    # - strict: stronger overlap threshold + contradiction checks
+    RAG_CLAIM_VERIFIER_MODE: str = "token_overlap"
+    RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK: bool = True
     # Strict grounding: treat missing evidence as non-existent. When enabled:
     # - Force abstain gate even if RAG_ABSTAIN_ENABLED=false
     # - Force claim-check (non-structured output) even if RAG_CLAIM_CHECK_ENABLED=false
@@ -1769,15 +1804,26 @@ class Settings(BaseSettings):
         if self.CHAT_DEFAULT_RETRIEVAL_PROFILE != chat_default_profile:
             self.CHAT_DEFAULT_RETRIEVAL_PROFILE = chat_default_profile
 
-        retrieval_contract_mode = str(getattr(self, "RETRIEVAL_CONTRACT_MODE", "") or "").strip().lower()
-        valid_contract_modes = {"", "deterministic_recall"}
-        if retrieval_contract_mode not in valid_contract_modes:
+        retrieval_contract_mode = normalize_retrieval_contract_mode(
+            str(getattr(self, "RETRIEVAL_CONTRACT_MODE", "") or "")
+        )
+        if retrieval_contract_mode not in VALID_RETRIEVAL_CONTRACT_MODES:
             raise ValueError(
                 "RETRIEVAL_CONTRACT_MODE must be one of: "
-                + ", ".join(sorted(valid_contract_modes))
+                + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
             )
         if self.RETRIEVAL_CONTRACT_MODE != retrieval_contract_mode:
             self.RETRIEVAL_CONTRACT_MODE = retrieval_contract_mode
+
+        claim_verifier_mode = str(getattr(self, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
+        valid_claim_verifier_modes = {"token_overlap", "semantic_heuristic", "strict"}
+        if claim_verifier_mode not in valid_claim_verifier_modes:
+            raise ValueError(
+                "RAG_CLAIM_VERIFIER_MODE must be one of: "
+                + ", ".join(sorted(valid_claim_verifier_modes))
+            )
+        if self.RAG_CLAIM_VERIFIER_MODE != claim_verifier_mode:
+            self.RAG_CLAIM_VERIFIER_MODE = claim_verifier_mode
 
         valid_retrieval_modes = {"hybrid", "vector", "keyword", "mmr"}
         fallback_mode = str(getattr(self, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword").strip().lower()

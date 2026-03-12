@@ -49,9 +49,11 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
         connector_id="drive_files",
         name="Google Drive 文件导入（链接）",
         description="从 Google Drive 文件分享链接解析 file_id 并构造直链下载入库（仅文件；不支持文件夹）",
+        supports_incremental=True,
         supports_resume=True,
+        supports_full_reconcile=True,
         sync_cursor_kind="offset",
-        state_keys=("cursor", "total_urls"),
+        state_keys=("cursor", "total_urls", "source_manifest"),
     ),
     "minio_bucket": ConnectorDefinition(
         connector_id="minio_bucket",

@@ -38,7 +38,11 @@ def test_slice_items_from_cursor_returns_tail_and_normalized_cursor() -> None:
             {"cursor": 2, "total_files": 8, "source_manifest": {"a.md": "sha-a", "b.md": "sha-b"}},
         ),
         ("jira_project", {"last_modified": "2026-03-02T12:34:56.000+0000"}, {"last_modified": "2026-03-02T12:34:56.000+0000"}),
-        ("drive_files", {"cursor": 1, "total_urls": 3}, {"cursor": 1, "total_urls": 3}),
+        (
+            "drive_files",
+            {"cursor": 1, "total_urls": 3, "source_manifest": {"file-a": "tok-a", "file-b": "tok-b"}},
+            {"cursor": 1, "total_urls": 3, "source_manifest": {"file-a": "tok-a", "file-b": "tok-b"}},
+        ),
         (
             "minio_bucket",
             {

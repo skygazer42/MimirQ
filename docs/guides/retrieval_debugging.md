@@ -70,6 +70,36 @@ curl -sS -X POST "http://localhost:8000/api/v1/rag/evidence/retrieve" \
 
 这些字段足够定位“召回没进来”还是“进来了但被重排压下去”。
 
+### 2.1 Retrieval Contract 与 Claim Verifier 快速定位
+
+Wave B 增加了 retrieval contract 与 claim verifier 的显式调试面，排查“为什么拒答/为什么被删句”时优先看这组字段。
+
+请求侧可控参数：
+
+- `rag_config.retrieval_contract_mode`
+  - `deterministic_recall`：强制 hard fallback，优先保证“有可检索证据”。
+  - `evidence_strict`：开启更严格的 evidence gate，证据不足时更倾向拒答。
+  - `audit_trace`：保留默认行为但加强 trace/metrics 审计信息。
+- `RAG_CLAIM_VERIFIER_MODE`
+  - `token_overlap`（默认）
+  - `semantic_heuristic`（含数值/否定冲突检测）
+  - `strict`（更严格 overlap + 冲突检查）
+
+重点观测字段：
+
+- `metrics.retrieval_contract_mode`
+- `metrics.retrieval_contract_policy`
+- `metrics.claim_verifier_mode`
+- `metrics.claim_verifier_enable_contradiction_check`
+- `metrics.claim_check_removed`
+- `metrics.claim_evidence`
+
+判读建议：
+
+- `claim_check_removed > 0` 且 `claim_verifier_mode=semantic_heuristic`：通常是检测到数值冲突或否定冲突。
+- `retrieval_contract_policy.enforce_visible_evidence_only=true`：回答会更保守，拒答率升高是预期行为。
+- `retrieval_contract_policy.hard_fallback_enabled=true` 但仍空证据：优先检查 `document_ids/metadata_filter` 是否过窄。
+
 ---
 
 ## 3) 常见故障分层诊断

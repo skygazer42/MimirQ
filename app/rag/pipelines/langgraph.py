@@ -72,6 +72,7 @@ class RAGState(TypedDict, total=False):
     score_threshold: float
     retrieval_mode: str
     retrieval_profile: Optional[str]
+    retrieval_contract_mode: Optional[str]
     intent_router: Optional[bool]
     intent_router_policy: Optional[Dict[str, Any]]
     enable_query_alias_expansion: Optional[bool]
@@ -422,6 +423,12 @@ def _generate_node(state: RAGState) -> RAGState:
     strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(state.get("visible_evidence_only"))
     claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or strict_visible
     claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
+    claim_verifier_mode = str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
+    if claim_verifier_mode not in {"token_overlap", "semantic_heuristic", "strict"}:
+        claim_verifier_mode = "token_overlap"
+    claim_verifier_enable_contradiction_check = bool(
+        getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+    )
     claim_check_mode = "none"
     if bool(claim_check_configured):
         claim_check_mode = "structured" if bool(state.get("structured_output")) else "text"
@@ -436,7 +443,12 @@ def _generate_node(state: RAGState) -> RAGState:
             claim_check_total = len(claims)
             kept: List[str] = []
             for c in claims:
-                if is_claim_supported(c, evidence_text):
+                if is_claim_supported(
+                    c,
+                    evidence_text,
+                    verifier_mode=claim_verifier_mode,
+                    verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
+                ):
                     kept.append(c)
                 else:
                     claim_check_removed += 1
@@ -464,6 +476,8 @@ def _generate_node(state: RAGState) -> RAGState:
                 parsed,
                 evidence_text=evidence_text,
                 max_claims=claim_check_max_claims,
+                verifier_mode=claim_verifier_mode,
+                verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
             )
             if isinstance(scrub_meta, dict):
                 claim_check_total = int(scrub_meta.get("claims_total") or 0)
@@ -488,6 +502,8 @@ def _generate_node(state: RAGState) -> RAGState:
                 str(answer or ""),
                 evidence_chunks=list(state.get("docs") or []),
                 max_claims=claim_check_max_claims if claim_check_configured else 24,
+                verifier_mode=claim_verifier_mode,
+                verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
             )
         except Exception:
             claim_evidence = []
@@ -534,6 +550,8 @@ def _generate_node(state: RAGState) -> RAGState:
     )
     metrics["claim_check_enabled"] = bool(claim_check_applied)
     metrics["claim_check_mode"] = claim_check_mode
+    metrics["claim_verifier_mode"] = claim_verifier_mode
+    metrics["claim_verifier_enable_contradiction_check"] = bool(claim_verifier_enable_contradiction_check)
     metrics["claim_check_removed"] = int(claim_check_removed)
     metrics["claim_check_total"] = int(claim_check_total)
     metrics["claim_check_max_claims"] = int(claim_check_max_claims) if claim_check_configured else None
@@ -886,6 +904,7 @@ def build_rag_state(
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
     retrieval_profile: Optional[str] = None,
+    retrieval_contract_mode: Optional[str] = None,
     intent_router: Optional[bool] = None,
     intent_router_policy: Optional[Dict[str, Any]] = None,
     enable_query_alias_expansion: Optional[bool] = None,
@@ -1034,6 +1053,7 @@ def build_rag_state(
         "score_threshold": score_threshold,
         "retrieval_mode": retrieval_mode,
         "retrieval_profile": retrieval_profile,
+        "retrieval_contract_mode": retrieval_contract_mode,
         "intent_router": intent_router,
         "intent_router_policy": intent_router_policy,
         "enable_query_alias_expansion": enable_query_alias_expansion,
@@ -1084,6 +1104,7 @@ def run_rag_graph(
     top_k: int = 5,
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
+    retrieval_contract_mode: Optional[str] = None,
     thread_id: Optional[str] = None,
     runtime_context: Optional[Dict[str, Any]] = None,
     alpha: float = 0.6,
@@ -1114,6 +1135,7 @@ def run_rag_graph(
         top_k=top_k,
         score_threshold=score_threshold,
         retrieval_mode=retrieval_mode,
+        retrieval_contract_mode=retrieval_contract_mode,
         alpha=alpha,
         enable_weight_rerank=enable_weight_rerank,
         vector_weight=vector_weight,
