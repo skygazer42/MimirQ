@@ -131,6 +131,14 @@ def _chunk_has_asset(meta: dict[str, Any]) -> bool:
     return bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
 
 
+def _is_table_segment_metadata(meta: dict[str, Any] | None) -> bool:
+    if not isinstance(meta, dict):
+        return False
+    content_type = str(meta.get("content_type") or "").strip().lower()
+    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+    return content_type == "table" or doc_type == "table"
+
+
 def _uniform_sample_indices(indices: List[int], k: int) -> List[int]:
     if k <= 0:
         return []
@@ -1422,6 +1430,8 @@ class DocumentProcessorService:
             )
             index_options = build_indexing_options(pipeline_effective)
             self._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
+            table_sidecar_tables_imported = 0
+            table_sidecar_routing_audit: dict[str, Any] | None = None
 
             # Optional: file-level preprocessing before parsing (configured via ingestion policy).
             try:
@@ -2070,7 +2080,7 @@ class DocumentProcessorService:
 
                 # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
                 if parsed_documents and file_path.suffix.lower() == ".pdf":
-                    self._import_parsed_markdown_tables_to_store(
+                    table_sidecar_tables_imported = self._import_parsed_markdown_tables_to_store(
                         db,
                         db_document=db_document,
                         tenant_id=tenant_id,
@@ -2240,7 +2250,7 @@ class DocumentProcessorService:
 
                 # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
                 if parsed_documents and file_path.suffix.lower() == ".pdf":
-                    self._import_parsed_markdown_tables_to_store(
+                    table_sidecar_tables_imported = self._import_parsed_markdown_tables_to_store(
                         db,
                         db_document=db_document,
                         tenant_id=tenant_id,
@@ -2605,6 +2615,19 @@ class DocumentProcessorService:
                     logger.warning("Near-dup stage failed (ignored): %s", str(exc)[:200])
                 _add_stage_duration("near_dedup", (time.perf_counter() - t0) * 1000)
 
+            # Optional: TAG/RAG separation for parser-emitted table segments.
+            # When sidecar exclusive routing is enabled and sidecar import succeeded,
+            # keep table content in TAG only (exclude from RAG vectors/BM25).
+            table_sidecar_exclusive_enabled = bool(
+                getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False)
+            )
+            if chunks and table_sidecar_tables_imported >= 0:
+                chunks, table_sidecar_routing_audit = self._apply_table_sidecar_exclusive_routing(
+                    chunks=chunks,
+                    enabled=table_sidecar_exclusive_enabled,
+                    sidecar_tables_imported=table_sidecar_tables_imported,
+                )
+
             # Guardrail: cap chunk count per document (0 disables).
             max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
             truncation_strategy = str(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "head") or "head")
@@ -2683,12 +2706,40 @@ class DocumentProcessorService:
             await raise_if_cancelled()
 
             if not chunks:
+                sidecar_excluded = int((table_sidecar_routing_audit or {}).get("table_chunks_excluded_from_rag") or 0)
+                sidecar_imported = int((table_sidecar_routing_audit or {}).get("sidecar_tables_imported") or 0)
+                if sidecar_excluded > 0 and sidecar_imported > 0:
+                    meta_patch = dict(db_document.doc_metadata or {})
+                    meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit or {})
+                    meta_patch = _with_stage_durations(meta_patch)
+                    await self._update_status(
+                        db,
+                        tenant_id,
+                        document_id,
+                        "completed",
+                        100,
+                        "completed",
+                        chunk_count=0,
+                        total_characters=0,
+                        error_message=None,
+                        doc_metadata=meta_patch,
+                    )
+                    return {
+                        "status": "completed",
+                        "reason": "table_sidecar_exclusive",
+                        "chunk_count": 0,
+                        "total_characters": 0,
+                        "parser_backend": resolved_backend,
+                        "chunk_strategy": resolved_chunk_strategy,
+                    }
                 msg = (
                     "No chunks produced for document (empty or filtered by CHUNK_MIN_CHARS). "
                     "Consider lowering CHUNK_MIN_CHARS or checking the parser output."
                 )
                 logger.warning("%s document_id=%s", msg, document_id)
                 meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
+                if table_sidecar_routing_audit:
+                    meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
                 await self._update_status(
                     db,
                     tenant_id,
@@ -2847,6 +2898,9 @@ class DocumentProcessorService:
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.info("Failed to record pipeline provenance (ignored): %s", str(exc)[:200])
+
+            if table_sidecar_routing_audit:
+                meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
 
             meta_patch = _with_stage_durations(meta_patch)
             await self._update_status(
@@ -3289,7 +3343,7 @@ class DocumentProcessorService:
         tenant_id: UUID,
         documents: List[Document],
         pipeline_effective: PipelineEffective,
-    ) -> None:
+    ) -> int:
         """
         Best-effort: import parser-emitted table segments into the per-document Table Store.
 
@@ -3298,20 +3352,18 @@ class DocumentProcessorService:
         - We store those tables as a TAG sidecar so dataset table endpoints + chat TAG can use them.
         """
         if not bool(getattr(pipeline_effective, "table_store_enabled", False)):
-            return
+            return 0
 
         dataset_id = getattr(db_document, "dataset_id", None)
         document_id = getattr(db_document, "id", None)
         if dataset_id is None or document_id is None:
-            return
+            return 0
 
         table_inputs: list[dict[str, Any]] = []
         table_index = 0
         for doc in documents or []:
             meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
-            content_type = str(meta.get("content_type") or "").strip().lower()
-            doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
-            if content_type != "table" and doc_type != "table":
+            if not _is_table_segment_metadata(meta):
                 continue
 
             md = str(doc.page_content or "")
@@ -3330,13 +3382,19 @@ class DocumentProcessorService:
             if page_i > 0:
                 label = f"Page {page_i} Table {table_index + 1}"
 
-            table_inputs.append({"markdown": md, "sheet_name": label})
+            table_inputs.append(
+                {
+                    "markdown": md,
+                    "sheet_name": label,
+                    "source_page": (page_i if page_i > 0 else None),
+                }
+            )
             table_index += 1
             if table_index >= 500:
                 break
 
         if not table_inputs:
-            return
+            return 0
 
         try:
             from app.services.table_store_service import import_markdown_tables
@@ -3352,7 +3410,7 @@ class DocumentProcessorService:
             )
         except Exception as exc:  # noqa: BLE001
             logger.info("Parsed table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
-            return
+            return 0
 
         # Persist structured table metadata for listing/preview endpoints + chat TAG.
         try:
@@ -3360,7 +3418,10 @@ class DocumentProcessorService:
             if assets:
                 now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
                 tables_payload: list[dict[str, Any]] = []
-                for a in assets or []:
+                for idx, a in enumerate(assets or []):
+                    source_page = None
+                    if idx < len(table_inputs):
+                        source_page = table_inputs[idx].get("source_page")
                     tables_payload.append(
                         {
                             "table_id": str(getattr(a, "table_id", "")),
@@ -3371,15 +3432,26 @@ class DocumentProcessorService:
                             "truncated": bool(getattr(a, "truncated", False)),
                             "columns": list(getattr(a, "columns", None) or []),
                             "sample_rows": list(getattr(a, "sample_rows", None) or []),
+                            "source_page": source_page,
+                            "routing_kind": "tag_sidecar",
+                            "routing_source": "parser_table_segment",
                         }
                     )
 
                 source_ext = getattr(db_document, "file_type", None)
                 source_ext = f".{str(source_ext).lower().lstrip('.')}" if source_ext else None
+                exclusive_enabled = bool(
+                    getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False)
+                )
                 next_meta["table_store"] = {
                     "version": "1",
                     "source_ext": source_ext,
                     "imported_at": now_iso,
+                    "routing": {
+                        "kind": "tag_sidecar",
+                        "source": "parser_table_segments",
+                        "exclusive_rag_routing_enabled": exclusive_enabled,
+                    },
                     "tables": tables_payload,
                 }
             else:
@@ -3394,6 +3466,77 @@ class DocumentProcessorService:
                 db.refresh(db_document)
         except Exception as exc:  # noqa: BLE001
             logger.info("Failed to persist parsed table_store metadata (ignored): %s document_id=%s", str(exc)[:200], document_id)
+        return len(assets or [])
+
+    def _apply_table_sidecar_exclusive_routing(
+        self,
+        *,
+        chunks: List[Document],
+        enabled: bool,
+        sidecar_tables_imported: int,
+    ) -> tuple[List[Document], dict[str, Any]]:
+        """
+        Optional TAG/RAG separation for parser-emitted table segments.
+
+        When enabled and we already imported parser tables into table_store sidecar,
+        drop table chunks from the RAG indexing path to avoid table-noise dominance.
+        """
+        imported = max(0, int(sidecar_tables_imported or 0))
+        should_exclude = bool(enabled) and imported > 0
+        excluded_samples: list[dict[str, Any]] = []
+        kept: list[Document] = []
+        table_seen = 0
+        table_excluded = 0
+
+        for idx, chunk in enumerate(chunks or []):
+            meta = dict(chunk.metadata or {})
+            is_table = _is_table_segment_metadata(meta)
+            if is_table:
+                table_seen += 1
+                meta.setdefault("table_routing_kind", "tag_sidecar")
+                meta.setdefault("table_routing_source", "parser_table_segment")
+                if should_exclude:
+                    table_excluded += 1
+                    if len(excluded_samples) < 20:
+                        page = meta.get("page")
+                        try:
+                            page = int(page) if page is not None else None
+                        except Exception:
+                            page = None
+                        excluded_samples.append(
+                            {
+                                "chunk_index": int(idx),
+                                "page": page,
+                                "content_type": str(meta.get("content_type") or "").strip().lower() or None,
+                                "doc_type_kwd": str(meta.get("doc_type_kwd") or "").strip().lower() or None,
+                            }
+                        )
+                    continue
+                meta["table_rag_excluded"] = False
+                meta["table_rag_exclusion_reason"] = None
+                chunk.metadata = meta
+                kept.append(chunk)
+                continue
+
+            if imported > 0:
+                meta.setdefault("table_routing_kind", "rag_text")
+                meta.setdefault("table_routing_source", "non_table_content")
+                meta.setdefault("table_rag_excluded", False)
+                meta.setdefault("table_rag_exclusion_reason", None)
+                chunk.metadata = meta
+            kept.append(chunk)
+
+        audit = {
+            "version": "1",
+            "mode": "table_sidecar_exclusive",
+            "enabled": bool(enabled),
+            "sidecar_tables_imported": int(imported),
+            "table_chunks_seen": int(table_seen),
+            "table_chunks_excluded_from_rag": int(table_excluded),
+            "rag_exclusion_reason": ("table_sidecar_exclusive" if table_excluded > 0 else None),
+            "excluded_samples": excluded_samples,
+        }
+        return kept, audit
 
     def _cleanup_parser_artifacts(self, artifact_dirs: set[str], *, tenant_id: UUID) -> None:
         if not artifact_dirs:

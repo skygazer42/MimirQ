@@ -939,6 +939,9 @@ class Settings(BaseSettings):
     # - small tables -> parse to Markdown / chunk / index (RAG)
     # - large/complex tables -> import to SQLite (TAG / Text-to-SQL)
     TABLE_STORE_AUTO_ROUTE: bool = False
+    # When true, parser-emitted table segments (e.g. PDF table blocks) are treated as TAG sidecar only:
+    # they are imported to table_store but excluded from vector/BM25 ingestion.
+    TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING: bool = False
     TABLE_STORE_AUTO_ROW_THRESHOLD: int = 5000
     TABLE_STORE_AUTO_COL_THRESHOLD: int = 80
     TABLE_STORE_AUTO_SHEET_THRESHOLD: int = 5

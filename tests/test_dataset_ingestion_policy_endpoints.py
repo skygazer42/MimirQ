@@ -94,6 +94,9 @@ def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noq
     assert res.status_code == 200
     assert res.json()["version"] == "1"
     assert len(res.json()["rules"]) == 1
+    audit = res.json().get("table_routing_policy_audit") or {}
+    assert audit.get("version") == "1"
+    assert isinstance(audit.get("rules"), list)
 
     # Import (replace=true)
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -144,3 +147,72 @@ def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  #
         files={"file": ("policy.json", b'{"version":"1","rules":[]}', "application/json")},
     )
     assert res.status_code == 409
+
+
+def test_dataset_ingestion_policy_get_exposes_table_routing_policy_audit(monkeypatch):  # noqa: ANN001
+    from app.api.v1.datasets import get_dataset_ingestion_policy
+    from app.services.dataset_service import DatasetService
+
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self) -> None:
+            self.id = dataset_id
+            self.tenant_id = uuid.uuid4()
+            self.name = "Demo"
+            self.dataset_metadata = {
+                "pipeline": {
+                    "tables": {
+                        "enabled": True,
+                        "auto_route": True,
+                        "sidecar_exclusive_routing": True,
+                    }
+                },
+                "ingestion_policy": {
+                    "version": "1",
+                    "rules": [
+                        {
+                            "id": "tables-csv",
+                            "name": "CSV",
+                            "enabled": True,
+                            "match": {"extensions": [".csv"]},
+                            "preprocess": {"enabled": False, "steps": []},
+                            "pipeline_patch": {
+                                "table_store_auto_route": False,
+                            },
+                        }
+                    ],
+                },
+            }
+
+    ds = _Dataset()
+
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.get("/api/v1/datasets/{dataset_id}/ingestion-policy")(get_dataset_ingestion_policy)
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}/ingestion-policy")
+    assert res.status_code == 200
+    payload = res.json()
+    audit = payload.get("table_routing_policy_audit") or {}
+    assert audit["dataset_pipeline_defaults"]["table_store_enabled"] is True
+    assert audit["dataset_pipeline_defaults"]["table_store_auto_route"] is True
+    assert audit["dataset_pipeline_defaults"]["table_store_sidecar_exclusive_routing"] is True
+
+    rules = audit.get("rules") or []
+    assert len(rules) == 1
+    rule = rules[0]
+    assert rule["rule_id"] == "tables-csv"
+    assert rule["table_rule_match"] is True
+    assert rule["table_store_enabled"]["source"] == "dataset_pipeline_default"
+    assert rule["table_store_enabled"]["value"] is True
+    assert rule["table_store_auto_route"]["source"] == "rule_pipeline_patch"
+    assert rule["table_store_auto_route"]["value"] is False
+    assert rule["table_store_sidecar_exclusive_routing"]["source"] == "dataset_pipeline_default"
+    assert rule["table_store_sidecar_exclusive_routing"]["value"] is True

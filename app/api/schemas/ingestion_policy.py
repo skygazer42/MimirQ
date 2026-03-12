@@ -66,6 +66,34 @@ class IngestionPolicy(BaseModel):
     rules: List[IngestionRule] = Field(default_factory=list)
 
 
+class TableRoutingSettingAudit(BaseModel):
+    value: bool
+    source: Literal["rule_pipeline_patch", "dataset_pipeline_default", "global_default"]
+
+
+class IngestionRuleTableRoutingAudit(BaseModel):
+    rule_id: str
+    rule_name: str
+    enabled: bool
+    match_extensions: List[str] = Field(default_factory=list)
+    table_rule_match: bool = False
+    table_store_enabled: TableRoutingSettingAudit
+    table_store_auto_route: TableRoutingSettingAudit
+    table_store_sidecar_exclusive_routing: TableRoutingSettingAudit
+
+
+class DatasetTableRoutingPolicyAudit(BaseModel):
+    version: str = Field(default="1")
+    table_extensions: List[str] = Field(default_factory=lambda: [".csv", ".xls", ".xlsx"])
+    global_defaults: Dict[str, bool] = Field(default_factory=dict)
+    dataset_pipeline_defaults: Dict[str, bool] = Field(default_factory=dict)
+    rules: List[IngestionRuleTableRoutingAudit] = Field(default_factory=list)
+
+
+class IngestionPolicyWithAudit(IngestionPolicy):
+    table_routing_policy_audit: DatasetTableRoutingPolicyAudit
+
+
 class IngestionPolicyImportResponse(BaseModel):
     replaced: bool = False
     rule_count: int = 0
