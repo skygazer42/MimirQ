@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -68,9 +69,10 @@ def list_ingestion_runs(
     dataset_id: UUID | None = None,
     status: str | None = Query(default=None, max_length=32),
     kind: str | None = Query(default=None, max_length=80),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List ingestion runs (requires dataset write permission for each returned run's dataset)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -119,9 +121,10 @@ def list_ingestion_runs(
 @router.get("/runs/{run_id}", response_model=IngestionRunOut)
 def get_ingestion_run(
     run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get ingestion run detail (requires dataset write permission)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -145,9 +148,10 @@ def get_ingestion_run(
 @router.get("/runs/{run_id}/export")
 def export_ingestion_run_json(
     run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Export ingestion run manifest as JSON (offline-friendly)."""
     run = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
@@ -186,9 +190,10 @@ def export_ingestion_run_json(
 @router.get("/runs/{run_id}/export-html")
 def export_ingestion_run_html(
     run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Export ingestion run manifest as a single HTML file (best-effort)."""
     # Keep this simple: reuse dataset report HTML style (raw JSON + KPIs).
@@ -240,9 +245,10 @@ def export_ingestion_run_html(
 def compare_ingestion_runs(
     run_id: UUID,
     other_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Compare two ingestion runs (same ACL as get)."""
     a = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
@@ -281,9 +287,10 @@ def compare_ingestion_runs(
 async def replay_ingestion_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Best-effort "replay": create a new run that reprocesses the same document ids.

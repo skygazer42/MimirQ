@@ -10,7 +10,7 @@ import gzip as gzip_lib
 import io
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Annotated, Any, Dict, Iterator, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -170,9 +170,10 @@ def list_audit_logs(
     since: Optional[datetime] = Query(default=None),
     until: Optional[datetime] = Query(default=None),
     include_sensitive: bool = Query(default=False),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
 
@@ -217,9 +218,10 @@ def export_audit_logs(
     after_id: Optional[UUID] = Query(default=None, description="Cursor: last seen id (tie-breaker)"),
     include_sensitive: bool = Query(default=False, description="Include sensitive detail keys (admin/auditor only)"),
     gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON (Content-Encoding: gzip)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export audit logs as NDJSON (JSON Lines) for SIEM ingestion.
@@ -289,9 +291,10 @@ def purge_audit_logs(
     retention_days: int = Query(default=90, ge=1, le=3650, description="Delete logs older than N days"),
     max_delete: int = Query(default=100_000, ge=1, le=1_000_000, description="Max rows to delete in this call"),
     dry_run: bool = Query(default=True, description="Plan only; do not delete rows"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Purge old audit logs for the current tenant (bounded).
@@ -514,9 +517,10 @@ def export_access_graph_ndjson(
     ),
     export_format: str = Query(default="ndjson", description="ndjson|json"),
     gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export an access graph page (groups + memberships + allowlists) as NDJSON or JSON.
@@ -679,9 +683,10 @@ def export_access_graph_ndjson(
 
 @router.get("/access-graph/summary")
 def access_graph_summary(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     PII-minimal access review summary for a tenant (bounded JSON).

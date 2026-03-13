@@ -8,7 +8,7 @@ that were ingested into the per-document table store.
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -292,9 +292,10 @@ def list_dataset_tables(
     limit: int = Query(default=100, ge=1, le=500, description="Document-level limit (not table-level)"),
     include_columns: bool = Query(default=False, description="Include column schema in each item"),
     include_sample_rows: bool = Query(default=False, description="Include sample rows in each item"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -416,9 +417,10 @@ def get_dataset_table(
     table_id: str,
     include_columns: bool = Query(default=True),
     include_sample_rows: bool = Query(default=True),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -504,9 +506,10 @@ def preview_dataset_table(
     dataset_id: UUID,
     table_id: str,
     limit: int = Query(default=20, ge=1, le=500),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -572,9 +575,10 @@ def query_dataset_table(
     table_id: str,
     body: TableQueryRequest,
     include_sql: bool = Query(default=False, description="Include redacted SQL for owner/admin/auditor"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -652,9 +656,10 @@ def ask_dataset_table(
     table_id: str,
     body: TableAskRequest,
     include_sql: bool = Query(default=False, description="Include redacted SQL for owner/admin/auditor"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not tag_enabled():
         raise HTTPException(status_code=400, detail="TABLE_NL2SQL_ENABLED=false")
@@ -845,9 +850,10 @@ def lotus_sem_filter_dataset_table(
     dataset_id: UUID,
     table_id: str,
     body: LotusSemFilterRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "TABLE_LOTUS_ENABLED", False)):
         raise HTTPException(status_code=400, detail="TABLE_LOTUS_ENABLED=false")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -15,7 +16,7 @@ def _build_app() -> FastAPI:
     app = FastAPI()
 
     @app.get("/tid")
-    def tid(tenant_id: uuid.UUID = Depends(get_tenant_id)):  # noqa: B008
+    def tid(*, tenant_id: Annotated[uuid.UUID, Depends(get_tenant_id)]):  # noqa: B008
         return {"tenant_id": str(tenant_id)}
 
     return app

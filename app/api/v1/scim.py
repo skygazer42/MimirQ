@@ -20,7 +20,7 @@ import hmac
 import ipaddress
 import re
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Annotated, Any, Iterable
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -260,7 +260,7 @@ def _get_user(db: Session, *, tenant_id: UUID, user_id: str) -> TenantMember | N
 
 
 @router.get("/ServiceProviderConfig")
-def get_service_provider_config(_actor: str = Depends(_require_scim_actor)):
+def get_service_provider_config(_actor: Annotated[str, Depends(_require_scim_actor)]):
     # See RFC7644 §4 and RFC7643 (ServiceProviderConfig schema).
     patch_supported = bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)) or bool(
         getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)
@@ -289,7 +289,7 @@ def get_service_provider_config(_actor: str = Depends(_require_scim_actor)):
 
 
 @router.get("/Schemas")
-def list_schemas(_actor: str = Depends(_require_scim_actor)):
+def list_schemas(*, _actor: Annotated[str, Depends(_require_scim_actor)]):
     # Minimal schema definitions (enough for discovery).
     user_schema = {
         "schemas": [_URN_SCHEMA],
@@ -317,7 +317,7 @@ def list_schemas(_actor: str = Depends(_require_scim_actor)):
 
 
 @router.get("/ResourceTypes")
-def list_resource_types(_actor: str = Depends(_require_scim_actor)):
+def list_resource_types(_actor: Annotated[str, Depends(_require_scim_actor)]):
     resources = [
         {
             "schemas": [_URN_RESOURCE_TYPE],
@@ -343,9 +343,10 @@ def list_resource_types(_actor: str = Depends(_require_scim_actor)):
 def list_groups(
     start_index: int = Query(default=1, ge=1, alias="startIndex"),
     count: int = Query(default=200, ge=1),
-    tenant_id: UUID = Depends(get_tenant_id),
-    _actor: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    _actor: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     skip, limit, start = _scim_page(start_index=start_index, count=count)
     total, groups = TenantGroupService.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
@@ -356,9 +357,10 @@ def list_groups(
 @router.get("/Groups/{group_id}")
 def get_group(
     group_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    _actor: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    _actor: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     try:
         group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
@@ -373,9 +375,10 @@ def get_group(
 def create_group(
     payload: dict[str, Any],
     http_request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
-    actor_id: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    actor_id: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
         return _scim_error(status_code=404, detail="POST /Groups not enabled")
@@ -434,9 +437,10 @@ def put_group(
     group_id: UUID,
     payload: dict[str, Any],
     http_request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
-    actor_id: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    actor_id: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
         return _scim_error(status_code=404, detail="PUT /Groups not enabled")
@@ -496,9 +500,10 @@ def put_group(
 def delete_group(
     group_id: UUID,
     http_request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
-    actor_id: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    actor_id: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
         return _scim_error(status_code=404, detail="DELETE /Groups not enabled")
@@ -540,9 +545,10 @@ def delete_group(
 def list_users(
     start_index: int = Query(default=1, ge=1, alias="startIndex"),
     count: int = Query(default=200, ge=1),
-    tenant_id: UUID = Depends(get_tenant_id),
-    _actor: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    _actor: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     skip, limit, start = _scim_page(start_index=start_index, count=count)
     total, members = _list_users(db, tenant_id=tenant_id, skip=skip, limit=limit)
@@ -554,9 +560,10 @@ def list_users(
 @router.get("/Users/{user_id}")
 def get_user(
     user_id: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    _actor: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    _actor: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     member = _get_user(db, tenant_id=tenant_id, user_id=user_id)
     if member is None:
@@ -641,9 +648,10 @@ def _revoke_group_memberships_for_user(db: Session, *, tenant_id: UUID, user_id:
 def create_user(
     payload: dict[str, Any],
     http_request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
-    actor_id: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    actor_id: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "SCIM_USERS_CREATE_ENABLED", False)):
         return _scim_error(status_code=404, detail="POST /Users not enabled")
@@ -729,9 +737,10 @@ def patch_user(
     user_id: str,
     payload: dict[str, Any],
     http_request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
-    actor_id: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    actor_id: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)):
         return _scim_error(status_code=404, detail="PATCH /Users not enabled")
@@ -821,9 +830,10 @@ def _extract_member_ids(raw: Any) -> list[str]:
 def patch_group_membership(
     group_id: UUID,
     payload: dict[str, Any],
-    tenant_id: UUID = Depends(get_tenant_id),
-    actor_id: str = Depends(_require_scim_actor),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    actor_id: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)):
         return _scim_error(status_code=404, detail="PATCH group membership not enabled")

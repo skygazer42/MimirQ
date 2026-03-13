@@ -8,7 +8,7 @@ JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Annotated, Any, Dict, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -355,9 +355,10 @@ def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
 def get_rag_metrics_summary(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
     summary = summarize_rag_metrics(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
@@ -371,9 +372,10 @@ def get_rag_query_analytics(
     slow_threshold_sec: float = Query(default=2.0, ge=0.0, le=120.0),
     top_n: int = Query(default=20, ge=1, le=200),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
     summary = summarize_rag_query_analytics(
@@ -390,9 +392,10 @@ def get_rag_query_analytics(
 def get_rag_metrics_tail(
     window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Download a redacted tail of the metrics JSONL log (gzip).
@@ -425,9 +428,10 @@ def get_rag_metrics_tail(
 def get_rag_cost_attribution(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
     summary = summarize_rag_cost_attribution(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
@@ -436,9 +440,10 @@ def get_rag_cost_attribution(
 
 @router.get("/diagnostics/deps", response_model=DepsDiagnosticsResponse)
 def get_deps_diagnostics_snapshot(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Snapshot dependency connectivity + latency + versions (admin-only, PII-safe).
@@ -456,9 +461,10 @@ def get_rag_trace_bundle(
     request_id: str = Query(..., min_length=1, max_length=200, description="X-Request-ID to export"),
     window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
     bundle = build_rag_trace_bundle(
@@ -478,9 +484,10 @@ def get_rag_trace_bundle_diff(
     request_id_b: str = Query(..., min_length=1, max_length=200, description="X-Request-ID B to compare"),
     window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
 
@@ -515,9 +522,10 @@ def get_rag_trace_bundle_diff(
 
 @router.get("/config/snapshot", response_model=OpsConfigSnapshotResponse)
 def get_ops_config_snapshot(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
     snap = build_ops_config_snapshot()
@@ -527,9 +535,10 @@ def get_ops_config_snapshot(
 @router.post("/cache/datasets/{dataset_id}/invalidate", response_model=DatasetCacheInvalidationResponse)
 def invalidate_dataset_cache_namespace_endpoint(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
     try:
@@ -544,9 +553,10 @@ def invalidate_dataset_cache_namespace_endpoint(
 
 @router.get("/periodic-jobs/freshness", response_model=PeriodicJobFreshnessResponse)
 def get_periodic_job_freshness(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Periodic job freshness snapshot (admin-only, PII-safe).
@@ -561,9 +571,10 @@ def get_periodic_job_freshness(
 @router.get("/task-queue/snapshot", response_model=TaskQueueObservabilitySnapshotResponse)
 async def get_task_queue_observability_snapshot(
     force_refresh: bool = Query(default=False, description="Force refresh from broker (best-effort)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Task queue observability snapshot (admin-only, PII-safe).
@@ -584,9 +595,10 @@ async def get_task_queue_observability_snapshot(
 
 @router.get("/slo/snapshot", response_model=SloSnapshotResponse)
 async def get_slo_snapshot(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
     from app.services.slo_snapshot_service import build_slo_snapshot
@@ -599,9 +611,10 @@ def get_ingestion_dashboard_summary(
     window_hours: int = Query(default=24, ge=1, le=30 * 24),
     bucket_minutes: int = Query(default=60, ge=1, le=30 * 24 * 60),
     dataset_id: UUID | None = Query(default=None, description="Optional dataset_id filter"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Return ingestion throughput + error taxonomy aggregates (admin-only, PII-safe).
@@ -629,9 +642,10 @@ def get_index_audit(
     max_check_ids: int = Query(default=5000, ge=0, le=50_000, description="Max DB vector_ids to existence-check"),
     milvus_list_limit: int = Query(default=2000, ge=0, le=50_000, description="Max Milvus ids to sample for orphans"),
     sample_limit: int = Query(default=20, ge=0, le=200, description="Max sample ids to return per category"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Dataset-scoped index consistency audit (admin-only).
@@ -661,9 +675,10 @@ def list_index_drift(
     dataset_id: UUID | None = Query(default=None, description="Optional dataset UUID filter"),
     status: str = Query(default="open", description="open | resolved | all"),
     limit: int = Query(default=100, ge=1, le=500),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
 
@@ -686,9 +701,10 @@ def list_index_drift(
 def resolve_index_drift(
     item_id: UUID,
     payload: IndexDriftResolveRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
 

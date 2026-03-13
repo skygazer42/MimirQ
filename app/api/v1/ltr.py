@@ -9,7 +9,7 @@ Provides a small, file-based registry for LTR reranker artifacts:
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -63,9 +63,10 @@ class LTRModelActivateResponse(BaseModel):
 
 @router.get("/models", response_model=LTRModelListResponse)
 async def list_ltr_models(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -103,9 +104,10 @@ async def list_ltr_models(
 async def register_ltr_model(
     model_file: UploadFile = File(..., description="XGBoost model bytes (JSON)"),
     manifest_file: UploadFile = File(..., description="LTR manifest JSON (validated)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -171,9 +173,10 @@ async def register_ltr_model(
 @router.post("/models/activate", response_model=LTRModelActivateResponse)
 async def activate_ltr_model(
     body: LTRModelActivateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -214,9 +217,10 @@ async def activate_ltr_model(
 
 @router.post("/models/rollback", response_model=LTRModelActivateResponse)
 async def rollback_ltr_model(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,

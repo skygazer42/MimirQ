@@ -59,25 +59,25 @@ class FileTypes:
 
     # Supported extension sets
     DOCUMENT_EXTENSIONS: FrozenSet[str] = frozenset({
-        ".pdf", ".txt", ".md", ".doc", ".docx", ".ppt", ".pptx"
+        ".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX
     })
 
     SPREADSHEET_EXTENSIONS: FrozenSet[str] = frozenset({
-        ".xls", ".xlsx", ".csv"
+        ".xls", XLSX, ".csv"
     })
 
     WEB_EXTENSIONS: FrozenSet[str] = frozenset({
-        ".html", ".htm", ".json"
+        HTML, ".htm", JSON
     })
 
     ALL_SUPPORTED: FrozenSet[str] = frozenset({
-        ".pdf", ".txt", ".md", ".doc", ".docx", ".ppt", ".pptx",
-        ".xls", ".xlsx", ".csv", ".html", ".htm", ".json"
+        ".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX,
+        ".xls", XLSX, ".csv", HTML, ".htm", JSON
     })
 
     # MarkItDown special support
     MARKITDOWN_EXTENSIONS: FrozenSet[str] = frozenset({
-        ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".html", ".htm", ".json"
+        ".doc", DOCX, ".ppt", PPTX, ".xls", XLSX, ".csv", HTML, ".htm", JSON
     })
 
 

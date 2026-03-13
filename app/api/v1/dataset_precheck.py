@@ -11,6 +11,7 @@ import asyncio
 import json
 import re
 import time
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -95,9 +96,10 @@ async def create_dataset_precheck_scan_run(
     dataset_id: UUID,
     body: DatasetPrecheckScanRunCreateRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     # Starting a local scan is privileged (reads filesystem) -> require dataset write permission.
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
@@ -155,9 +157,10 @@ def list_dataset_precheck_scan_runs(
     dataset_id: UUID,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
 
@@ -179,9 +182,10 @@ def list_dataset_precheck_scan_runs(
 def get_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
 
@@ -203,9 +207,10 @@ def get_dataset_precheck_scan_run(
 def get_dataset_precheck_summary(
     dataset_id: UUID,
     scan_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
     row = (
@@ -232,9 +237,10 @@ def list_dataset_precheck_finding_files(
     finding_key: str,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     return list_precheck_finding_files(
         db,
@@ -258,9 +264,10 @@ def list_dataset_precheck_files(
     dir_prefix: str | None = Query(default=None, max_length=1024, description="Optional: directory prefix under scan root"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     return list_precheck_files_by_dir_prefix(
         db,
@@ -278,9 +285,10 @@ def list_dataset_precheck_files(
 def cancel_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     # Cancelling affects the run state -> require dataset write permission.
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
@@ -311,9 +319,10 @@ def cancel_dataset_precheck_scan_run(
 async def stream_dataset_precheck_scan_events(
     dataset_id: UUID,
     scan_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Server-sent events (SSE) stream for scan run progress.
@@ -384,9 +393,10 @@ def get_dataset_precheck_samples(
     scan_run_id: UUID,
     size: int = Query(default=60, ge=0, le=2000),
     prefer_artifact: bool = Query(default=True),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
     row = (
@@ -415,9 +425,10 @@ def get_dataset_precheck_samples(
 def get_dataset_precheck_near_dups(
     dataset_id: UUID,
     scan_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
     row = (
@@ -447,9 +458,10 @@ def diff_dataset_precheck_scan_runs(
     dataset_id: UUID,
     scan_run_id: UUID,
     base_scan_run_id: UUID = Query(..., description="Base scan run id to compare against"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
 
@@ -500,9 +512,10 @@ def get_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
     scan_run_id: UUID,
     max_names_per_bucket: int = Query(default=50, ge=0, le=2000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
     before_policy = parse_ingestion_policy_from_metadata(dict(getattr(dataset, "dataset_metadata", None) or {}))
@@ -534,9 +547,10 @@ def apply_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
     scan_run_id: UUID,
     replace: bool = Query(default=False, description="Whether to overwrite existing dataset ingestion_policy"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     # Applying modifies dataset metadata -> require write permission.
     dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
@@ -566,9 +580,10 @@ def apply_dataset_precheck_ingestion_policy_suggestion(
 def export_dataset_precheck_summary_json(
     dataset_id: UUID,
     scan_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
     row = (
@@ -599,9 +614,10 @@ def export_dataset_precheck_html_report(
     dataset_id: UUID,
     scan_run_id: UUID,
     redact: bool = Query(default=True, description="Whether to redact dataset/path for sharing"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
 

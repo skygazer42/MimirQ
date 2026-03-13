@@ -7,7 +7,7 @@ Currently provides minimal loop capability:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -174,9 +174,10 @@ def _augment_feedback_extra_with_snapshots(
 @router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED)
 async def upsert_message_feedback(
     request: MessageFeedbackCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Submit feedback for an assistant message (idempotent: resubmit will update)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -265,9 +266,10 @@ async def list_message_feedback(
     message_id: UUID | None = None,
     min_rating: int | None = None,
     max_rating: int | None = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Query feedback list (returns all items in current tenant by default)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -300,9 +302,10 @@ async def list_message_feedback_enriched(
     message_id: UUID | None = None,
     min_rating: int | None = None,
     max_rating: int | None = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Feedback list with joined message content + conversation title (for triage dashboards)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -356,9 +359,10 @@ async def list_message_feedback_enriched(
 async def create_regression_case_from_feedback(
     feedback_id: UUID,
     body: FeedbackToRegressionCaseRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Convert a feedback entry into a RAGAS regression case.
@@ -505,9 +509,10 @@ async def create_regression_case_from_feedback(
 async def create_evidence_item_from_feedback(
     feedback_id: UUID,
     body: FeedbackToEvidenceItemRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Convert a feedback entry into an EvidenceSuite item.

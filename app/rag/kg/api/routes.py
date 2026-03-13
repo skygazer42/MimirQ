@@ -5,7 +5,7 @@ import hashlib
 import time
 import uuid
 import zlib
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -54,6 +54,13 @@ from app.services.document_access import filter_allowed_document_ids, list_acces
 from app.services.metrics_logger import log_metrics
 
 router = APIRouter()
+
+KG_ENTITY_NOT_FOUND_DETAIL = "KG entity not found"
+PIPELINE_VERSION_FILTER_DESC = "Optional pipeline version filter (defaults to active pipeline per document)"
+INCLUDE_ENTITY_LINKS_DESC = "Include entity-entity co-occurrence links"
+INCLUDE_RELATION_LINKS_DESC = "Include entity-entity relation links (triples)"
+KG_API_GRAPH_METRIC = "kg.api.graph"
+KG_API_GRAPH_EXPAND_METRIC = "kg.api.graph_expand"
 
 
 def _log_kg_api_metric(event: str, **fields: object) -> None:
@@ -311,18 +318,19 @@ def get_kg_graph(
         default=None,
         min_length=1,
         max_length=200,
-        description="Optional pipeline version filter (defaults to active pipeline per document)",
+        description=PIPELINE_VERSION_FILTER_DESC,
     ),
     max_events: int = Query(default=200, ge=1, le=2000),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=2000, ge=1, le=20000),
-    include_entity_links: bool = Query(default=False, description="Include entity-entity co-occurrence links"),
-    include_relation_links: bool = Query(default=False, description="Include entity-entity relation links (triples)"),
+    include_entity_links: bool = Query(default=False, description=INCLUDE_ENTITY_LINKS_DESC),
+    include_relation_links: bool = Query(default=False, description=INCLUDE_RELATION_LINKS_DESC),
     min_shared_events: int = Query(default=2, ge=1, le=100),
     max_entity_links: int = Query(default=1000, ge=0, le=20000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Return a graph-friendly projection of KG tables for visualization.
@@ -346,7 +354,7 @@ def get_kg_graph(
     if not allowed_doc_ids:
         out = KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
         _log_kg_api_metric(
-            "kg.api.graph",
+            KG_API_GRAPH_METRIC,
             tenant_id=str(tenant_id),
             docs=0,
             events=0,
@@ -376,7 +384,7 @@ def get_kg_graph(
     if not events:
         out = KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
         _log_kg_api_metric(
-            "kg.api.graph",
+            KG_API_GRAPH_METRIC,
             tenant_id=str(tenant_id),
             docs=len(allowed_doc_ids),
             events=0,
@@ -434,7 +442,7 @@ def get_kg_graph(
             )
         out = KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
         _log_kg_api_metric(
-            "kg.api.graph",
+            KG_API_GRAPH_METRIC,
             tenant_id=str(tenant_id),
             docs=len(allowed_doc_ids),
             events=len(events),
@@ -629,7 +637,7 @@ def get_kg_graph(
         },
     )
     _log_kg_api_metric(
-        "kg.api.graph",
+        KG_API_GRAPH_METRIC,
         tenant_id=str(tenant_id),
         docs=len(allowed_doc_ids),
         events=int(out.stats.get("events", 0) or 0),
@@ -648,18 +656,19 @@ def expand_kg_graph(
         default=None,
         min_length=1,
         max_length=200,
-        description="Optional pipeline version filter (defaults to active pipeline per document)",
+        description=PIPELINE_VERSION_FILTER_DESC,
     ),
     max_events: int = Query(default=50, ge=1, le=500),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=5000, ge=1, le=20000),
-    include_entity_links: bool = Query(default=False, description="Include entity-entity co-occurrence links"),
-    include_relation_links: bool = Query(default=False, description="Include entity-entity relation links (triples)"),
+    include_entity_links: bool = Query(default=False, description=INCLUDE_ENTITY_LINKS_DESC),
+    include_relation_links: bool = Query(default=False, description=INCLUDE_RELATION_LINKS_DESC),
     min_shared_events: int = Query(default=2, ge=1, le=100),
     max_entity_links: int = Query(default=2000, ge=0, le=20000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Expand a single node (event/entity) into a small neighborhood subgraph.
@@ -679,7 +688,7 @@ def expand_kg_graph(
     if not allowed_doc_ids:
         out = KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
         _log_kg_api_metric(
-            "kg.api.graph_expand",
+            KG_API_GRAPH_EXPAND_METRIC,
             tenant_id=str(tenant_id),
             docs=0,
             events=0,
@@ -777,7 +786,7 @@ def expand_kg_graph(
         if not event_ids:
             out = KGGraphResponse(nodes=[], links=[], stats={"reason": "no_related_events"})
             _log_kg_api_metric(
-                "kg.api.graph_expand",
+                KG_API_GRAPH_EXPAND_METRIC,
                 tenant_id=str(tenant_id),
                 docs=len(allowed_doc_ids),
                 events=0,
@@ -801,7 +810,7 @@ def expand_kg_graph(
     if not events:
         out = KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
         _log_kg_api_metric(
-            "kg.api.graph_expand",
+            KG_API_GRAPH_EXPAND_METRIC,
             tenant_id=str(tenant_id),
             docs=len(allowed_doc_ids),
             events=0,
@@ -861,7 +870,7 @@ def expand_kg_graph(
             )
         out = KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
         _log_kg_api_metric(
-            "kg.api.graph_expand",
+            KG_API_GRAPH_EXPAND_METRIC,
             tenant_id=str(tenant_id),
             docs=len(allowed_doc_ids),
             events=len(events),
@@ -1056,7 +1065,7 @@ def expand_kg_graph(
         },
     )
     _log_kg_api_metric(
-        "kg.api.graph_expand",
+        KG_API_GRAPH_EXPAND_METRIC,
         tenant_id=str(tenant_id),
         docs=len(allowed_doc_ids),
         events=int(out.stats.get("events", 0) or 0),
@@ -1077,11 +1086,12 @@ def search_kg_graph_nodes(
         default=None,
         min_length=1,
         max_length=200,
-        description="Optional pipeline version filter (defaults to active pipeline per document)",
+        description=PIPELINE_VERSION_FILTER_DESC,
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Search KG nodes (entities/events) for UI autocomplete / quick jump.
@@ -1193,11 +1203,12 @@ def get_kg_stats(
         default=None,
         min_length=1,
         max_length=200,
-        description="Optional pipeline version filter (defaults to active pipeline per document)",
+        description=PIPELINE_VERSION_FILTER_DESC,
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Lightweight KG statistics for the current tenant.
@@ -1312,9 +1323,10 @@ class KGSnapshotDiffRequest(BaseModel):
 def export_kg_snapshot(
     pipeline_hash: str = Query(..., min_length=1, max_length=200),
     document_ids: list[UUID] | None = Query(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export a lightweight KG snapshot for a specific document pipeline_hash.
@@ -1441,9 +1453,10 @@ def compare_kg_snapshots(
     pipeline_hash_a: str = Query(..., min_length=1, max_length=200),
     pipeline_hash_b: str = Query(..., min_length=1, max_length=200),
     document_ids: list[UUID] | None = Query(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     from app.rag.kg.snapshot import diff_kg_snapshots  # noqa: WPS433
 
@@ -1471,20 +1484,21 @@ def export_kg_graph(
         default=None,
         min_length=1,
         max_length=200,
-        description="Optional pipeline version filter (defaults to active pipeline per document)",
+        description=PIPELINE_VERSION_FILTER_DESC,
     ),
     max_events: int = Query(default=200, ge=1, le=2000),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=2000, ge=1, le=20000),
-    include_entity_links: bool = Query(default=False, description="Include entity-entity co-occurrence links"),
-    include_relation_links: bool = Query(default=False, description="Include entity-entity relation links (triples)"),
+    include_entity_links: bool = Query(default=False, description=INCLUDE_ENTITY_LINKS_DESC),
+    include_relation_links: bool = Query(default=False, description=INCLUDE_RELATION_LINKS_DESC),
     min_shared_events: int = Query(default=2, ge=1, le=100),
     max_entity_links: int = Query(default=1000, ge=0, le=20000),
     download: bool = Query(default=True),
     gzip_output: bool = Query(default=False, alias="gzip", description="Return gzipped GraphML"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export KG graph projection as GraphML for external tooling.
@@ -1604,11 +1618,12 @@ def get_kg_event_detail(
         default=None,
         min_length=1,
         max_length=200,
-        description="Optional pipeline version filter (defaults to active pipeline per document)",
+        description=PIPELINE_VERSION_FILTER_DESC,
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get a KG event with its linked entities (scoped to accessible documents)."""
     _ensure_enabled()
@@ -1682,13 +1697,14 @@ def get_kg_entity_detail(
         default=None,
         min_length=1,
         max_length=200,
-        description="Optional pipeline version filter (defaults to active pipeline per document)",
+        description=PIPELINE_VERSION_FILTER_DESC,
     ),
     max_events: int = Query(default=30, ge=1, le=200),
     max_neighbors: int = Query(default=20, ge=0, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get a KG entity, its recent events, and co-occurring entity neighbors."""
     _ensure_enabled()
@@ -1711,7 +1727,7 @@ def get_kg_entity_detail(
 
     ent = db.query(KgEntity).filter(KgEntity.tenant_id == tenant_id, KgEntity.id == entity_id).first()
     if not ent:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     total_events_q = (
         db.query(func.count(func.distinct(KgEventEntity.event_id)))
@@ -1725,7 +1741,7 @@ def get_kg_entity_detail(
     total_events_q = _apply_event_pipeline_scope(total_events_q, pipeline_hash=pipeline_hash)
     total_events = total_events_q.scalar() or 0
     if not total_events:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     events_q = (
         db.query(KgSourceEvent)
@@ -1776,9 +1792,10 @@ def get_kg_entity_detail(
 @router.get("/entities/{entity_id}/aliases", response_model=KGEntityAliasesResponse)
 def list_kg_entity_aliases(
     entity_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List aliases for an entity (includes aliases attached to redirected source ids)."""
     _ = account_id
@@ -1792,7 +1809,7 @@ def list_kg_entity_aliases(
 
     ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=resolved_id).first()
     if not ent:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     # Include aliases attached to merged/deprecated ids that redirect into this canonical entity.
     redirect_rows = db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, to_entity_id=resolved_id).all()
@@ -1823,9 +1840,10 @@ def list_kg_entity_aliases(
 def create_kg_entity_alias(
     entity_id: UUID,
     payload: KGEntityAliasCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create (or return existing) alias for an entity."""
     _ensure_enabled()
@@ -1839,7 +1857,7 @@ def create_kg_entity_alias(
     resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
     ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=resolved_id).first()
     if not ent:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     alias_text = str(payload.alias or "").strip()
     if not alias_text:
@@ -1907,9 +1925,10 @@ def create_kg_entity_alias(
 def delete_kg_entity_alias(
     entity_id: UUID,
     alias_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Delete an alias row by id (best-effort, tenant-scoped)."""
     _ensure_enabled()
@@ -1958,9 +1977,10 @@ def suggest_kg_entity_aliases(
     mode: str = Query(default="offline", min_length=1, max_length=16, description="offline|vector"),
     k: int = Query(default=10, ge=1, le=50),
     min_similarity: float = Query(default=0.6, ge=0.0, le=1.0),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Suggest potential aliases/merge candidates for an entity."""
     _ = account_id
@@ -1975,7 +1995,7 @@ def suggest_kg_entity_aliases(
     resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
     ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=resolved_id).first()
     if not ent:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     eff_mode = (mode or "offline").strip().lower()
     want_k = int(k)
@@ -2069,9 +2089,10 @@ def suggest_kg_entity_aliases(
 @router.post("/entities/merge/preview", response_model=KGEntityMergePreviewResponse)
 def preview_kg_entity_merge(
     payload: KGEntityMergeRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Preview the impact of merging one entity into another (no side effects)."""
     _ = account_id
@@ -2087,7 +2108,7 @@ def preview_kg_entity_merge(
     source_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=source_id).first()
     target_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=target_id).first()
     if not source_ent or not target_ent:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     source_assocs = db.query(KgEventEntity).filter_by(entity_id=source_id).all()
     target_assocs = db.query(KgEventEntity).filter_by(entity_id=target_id).all()
@@ -2137,9 +2158,10 @@ def preview_kg_entity_merge(
 
 @router.get("/ontology/predicates", response_model=KGPredicateOntologyListResponse)
 def list_kg_predicate_ontology(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List predicate ontology entries (tenant-scoped)."""
     _ = account_id
@@ -2159,9 +2181,10 @@ def list_kg_predicate_ontology(
 @router.post("/ontology/predicates", response_model=KGPredicateOntologyItem)
 def create_kg_predicate_ontology(
     payload: KGPredicateOntologyCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create (or upsert) a predicate ontology entry."""
     _ensure_enabled()
@@ -2229,9 +2252,10 @@ def create_kg_predicate_ontology(
 def update_kg_predicate_ontology(
     predicate_id: UUID,
     payload: KGPredicateOntologyUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Update a predicate ontology entry (toggle enabled, edit metadata)."""
     _ensure_enabled()
@@ -2284,9 +2308,10 @@ def update_kg_predicate_ontology(
 @router.delete("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyListResponse)
 def delete_kg_predicate_ontology(
     predicate_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a predicate ontology entry."""
     _ensure_enabled()
@@ -2332,9 +2357,10 @@ def delete_kg_predicate_ontology(
 @router.post("/entities/merge", response_model=KGEntityMergeResponse)
 def merge_kg_entities(
     payload: KGEntityMergeRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Merge a source entity into a target entity (entity resolution).
@@ -2374,7 +2400,7 @@ def merge_kg_entities(
     source_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=source_id).first()
     target_ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=target_id).first()
     if not source_ent or not target_ent:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     # Safety rail: merges across types are almost always incorrect.
     if str(getattr(source_ent, "type", "") or "").strip() != str(getattr(target_ent, "type", "") or "").strip():
@@ -2583,9 +2609,10 @@ def merge_kg_entities(
 @router.post("/entities/split", response_model=KGEntitySplitResponse)
 def split_kg_entity(
     payload: KGEntitySplitRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Split an entity by moving a selected set of event-entity edges to a new entity.
@@ -2608,7 +2635,7 @@ def split_kg_entity(
 
     ent = db.query(KgEntity).filter_by(tenant_id=tenant_id, id=original_id).first()
     if not ent:
-        raise HTTPException(status_code=404, detail="KG entity not found")
+        raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
     event_ids = [eid for eid in (payload.event_ids or []) if eid is not None]
     # Safety rail: require explicit scope and cap size.
@@ -2731,9 +2758,10 @@ def split_kg_entity(
 @router.post("/entities/resolution/actions/{action_id}/undo", response_model=KGEntityResolutionUndoResponse)
 def undo_kg_entity_resolution_action(
     action_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Undo a merge/split resolution action (best-effort, deterministic)."""
     _ensure_enabled()
@@ -2983,9 +3011,10 @@ def undo_kg_entity_resolution_action(
 def delete_kg_for_document(
     document_id: UUID,
     prune_orphan_entities: bool | None = Query(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Delete KG events for a document (and optionally prune orphan entities)."""
     _ensure_enabled()
@@ -3070,9 +3099,10 @@ async def run_kg_extraction_for_document(
     prompt_template_id: UUID | None = Query(default=None),
     prompt_template_key: str | None = Query(default=None),
     prompt_ab_experiment_key: str | None = Query(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Trigger KG extraction for a processed document (rebuilds events/entities from chunks).
@@ -3265,9 +3295,10 @@ async def run_kg_extraction_for_document(
 @router.post("/search", response_model=KGSearchResponse)
 async def run_kg_search(
     payload: KGSearchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Run KG search (query -> recall/expand/rerank) for the current tenant.

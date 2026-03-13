@@ -16,6 +16,12 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.factory")
 
+DOCX_EXTENSION = '.docx'
+PPTX_EXTENSION = '.pptx'
+XLSX_EXTENSION = '.xlsx'
+HTML_EXTENSION = '.html'
+JSON_EXTENSION = '.json'
+
 if TYPE_CHECKING:
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
@@ -82,15 +88,15 @@ class ParserFactory:
     }
     SUPPORTED_NON_PDF_EXTENSIONS = PLAIN_TEXT_EXTENSIONS | {
         ".doc",
-        ".docx",
+        DOCX_EXTENSION,
         ".ppt",
-        ".pptx",
+        PPTX_EXTENSION,
         ".xls",
-        ".xlsx",
+        XLSX_EXTENSION,
         ".csv",
-        ".html",
+        HTML_EXTENSION,
         ".htm",
-        ".json",
+        JSON_EXTENSION,
     }
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
@@ -138,15 +144,15 @@ class ParserFactory:
             ".txt": TextParser(),
             ".md": MarkdownParser(),
             ".doc": None,  # lazy init MarkItDown
-            ".docx": None,
+            DOCX_EXTENSION: None,
             ".ppt": None,
-            ".pptx": None,
+            PPTX_EXTENSION: None,
             ".xls": None,
-            ".xlsx": None,
+            XLSX_EXTENSION: None,
             ".csv": None,
-            ".html": None,
+            HTML_EXTENSION: None,
             ".htm": None,
-            ".json": None,
+            JSON_EXTENSION: None,
         }
         for ext in sorted(self.PLAIN_TEXT_EXTENSIONS):
             self.parsers.setdefault(ext, TextParser())
@@ -176,14 +182,14 @@ class ParserFactory:
                 # Office/HTML defaults:
                 # - Prefer Pandoc for better image/table fidelity when enabled.
                 # - Prefer the built-in Excel Markdown renderer for .xlsx/.xls.
-                if file_ext in {".xlsx", ".xls"}:
+                if file_ext in {XLSX_EXTENSION, ".xls"}:
                     return "excel"
                 if file_ext in {".doc", ".ppt"}:
                     # Pandoc needs LibreOffice for legacy formats.
                     if bool(getattr(settings, "PANDOC_ENABLED", False)) and bool(getattr(settings, "LIBREOFFICE_ENABLED", False)):
                         return "pandoc"
                     return "markitdown"
-                if file_ext in {".docx", ".pptx", ".html", ".htm"}:
+                if file_ext in {DOCX_EXTENSION, PPTX_EXTENSION, HTML_EXTENSION, ".htm"}:
                     if bool(getattr(settings, "PANDOC_ENABLED", False)):
                         return "pandoc"
                     return "markitdown"
@@ -197,27 +203,27 @@ class ParserFactory:
                 )
 
             # Backend compatibility checks (best-effort).
-            if normalized == "excel" and file_ext not in {".xls", ".xlsx"}:
+            if normalized == "excel" and file_ext not in {".xls", XLSX_EXTENSION}:
                 raise ValueError("excel backend supports only .xls/.xlsx")
-            if normalized == "docx" and file_ext not in {".docx"}:
+            if normalized == "docx" and file_ext not in {DOCX_EXTENSION}:
                 raise ValueError("docx backend supports only .docx")
-            if normalized == "pptx" and file_ext not in {".pptx"}:
+            if normalized == "pptx" and file_ext not in {PPTX_EXTENSION}:
                 raise ValueError("pptx backend supports only .pptx")
-            if normalized == "html" and file_ext not in {".html", ".htm"}:
+            if normalized == "html" and file_ext not in {HTML_EXTENSION, ".htm"}:
                 raise ValueError("html backend supports only .html/.htm")
             if normalized == "csv" and file_ext != ".csv":
                 raise ValueError("csv backend supports only .csv")
-            if normalized == "json" and file_ext != ".json":
+            if normalized == "json" and file_ext != JSON_EXTENSION:
                 raise ValueError("json backend supports only .json")
             if normalized == "docling":
-                if file_ext not in {".docx"}:
+                if file_ext not in {DOCX_EXTENSION}:
                     raise ValueError("docling backend currently supports only .docx (non-PDF)")
                 if not getattr(settings, "DOCLING_ENABLED", False):
                     raise ValueError(
                         "Docling parser is not enabled. "
                         "Please set DOCLING_ENABLED=True."
                     )
-            if normalized == "deepdoc" and file_ext not in {".docx"}:
+            if normalized == "deepdoc" and file_ext not in {DOCX_EXTENSION}:
                 raise ValueError("deepdoc backend currently supports only .docx (non-PDF)")
             return normalized
 
@@ -615,7 +621,7 @@ class ParserFactory:
                 return None, backend
 
         # DOCX advanced backends (optional); fall back to Pandoc/MarkItDown/DocxParser.
-        if file_ext == ".docx" and backend in {"docling", "deepdoc"}:
+        if file_ext == DOCX_EXTENSION and backend in {"docling", "deepdoc"}:
             logger.warning(
                 "[parse] DOCX backend '%s' failed for %s: %s; falling back to office converters",
                 backend,
@@ -656,21 +662,21 @@ class ParserFactory:
                 str(error)[:200],
             )
             try:
-                if file_ext == ".docx":
+                if file_ext == DOCX_EXTENSION:
                     from app.parsing.parsers.docx_parser import DocxParser
 
                     return DocxParser().parse(file_path), "docx"
-                if file_ext == ".pptx":
+                if file_ext == PPTX_EXTENSION:
                     if bool(getattr(settings, "PANDOC_ENABLED", False)):
                         return self._get_pandoc_parser().parse(file_path), "pandoc"
                     from app.parsing.parsers.pptx_parser import PptxParser
 
                     return PptxParser().parse(file_path), "pptx"
-                if file_ext in {".xlsx", ".xls"}:
+                if file_ext in {XLSX_EXTENSION, ".xls"}:
                     from app.parsing.parsers.excel_parser import ExcelParser
 
                     return ExcelParser().parse(file_path), "excel"
-                if file_ext == ".html":
+                if file_ext == HTML_EXTENSION:
                     from app.parsing.parsers.html_parser import HtmlParser
 
                     return HtmlParser().parse(file_path, html_xpath=html_xpath), "html"
@@ -682,7 +688,7 @@ class ParserFactory:
                     from app.parsing.parsers.csv_parser import CsvParser
 
                     return CsvParser().parse(file_path), "csv"
-                if file_ext == ".json":
+                if file_ext == JSON_EXTENSION:
                     from app.parsing.parsers.json_parser import JsonParser
 
                     return JsonParser().parse(file_path), "json"

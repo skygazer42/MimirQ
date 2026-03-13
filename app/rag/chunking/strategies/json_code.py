@@ -17,6 +17,11 @@ from app.rag.chunking.base import BaseChunker
 
 logger = logging.getLogger(__name__)
 
+SEP_CLASS = "\nclass "
+SEP_CONST = "\nconst "
+SEP_IMPORT = "\nimport "
+CLASS_NAME_RE = r"class\s+(\w+)"
+
 
 class JSONChunker(BaseChunker):
     """
@@ -239,7 +244,7 @@ class CodeChunker(BaseChunker):
     # Language-specific separators
     LANGUAGE_SEPARATORS = {
         "python": [
-            "\nclass ",
+            SEP_CLASS,
             "\ndef ",
             "\n\tdef ",
             "\n    def ",
@@ -252,12 +257,12 @@ class CodeChunker(BaseChunker):
         ],
         "javascript": [
             "\nfunction ",
-            "\nconst ",
+            SEP_CONST,
             "\nlet ",
             "\nvar ",
-            "\nclass ",
+            SEP_CLASS,
             "\nexport ",
-            "\nimport ",
+            SEP_IMPORT,
             "\n\n",
             "\n",
             ";",
@@ -266,13 +271,13 @@ class CodeChunker(BaseChunker):
         ],
         "typescript": [
             "\nfunction ",
-            "\nconst ",
+            SEP_CONST,
             "\nlet ",
-            "\nclass ",
+            SEP_CLASS,
             "\ninterface ",
             "\ntype ",
             "\nexport ",
-            "\nimport ",
+            SEP_IMPORT,
             "\n\n",
             "\n",
             ";",
@@ -281,7 +286,7 @@ class CodeChunker(BaseChunker):
         ],
         "java": [
             "\npublic class ",
-            "\nclass ",
+            SEP_CLASS,
             "\npublic ",
             "\nprivate ",
             "\nprotected ",
@@ -296,9 +301,9 @@ class CodeChunker(BaseChunker):
             "\nfunc ",
             "\ntype ",
             "\nvar ",
-            "\nconst ",
+            SEP_CONST,
             "\npackage ",
-            "\nimport ",
+            SEP_IMPORT,
             "\n\n",
             "\n",
             " ",
@@ -478,16 +483,16 @@ class CodeChunker(BaseChunker):
             "javascript": [
                 r'function\s+(\w+)\s*\(',
                 r'const\s+(\w+)\s*=\s*(?:async\s*)?\(',
-                r'class\s+(\w+)',
+                CLASS_NAME_RE,
             ],
             "typescript": [
                 r'function\s+(\w+)\s*\(',
                 r'const\s+(\w+)\s*=',
-                r'class\s+(\w+)',
+                CLASS_NAME_RE,
                 r'interface\s+(\w+)',
             ],
             "java": [
-                r'class\s+(\w+)',
+                CLASS_NAME_RE,
                 r'(?:public|private|protected)\s+\w+\s+(\w+)\s*\(',
             ],
             "go": [

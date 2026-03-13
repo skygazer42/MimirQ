@@ -22,7 +22,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -325,9 +325,10 @@ async def list_parsing_documents(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=200),
     status: Optional[str] = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List parsing workspace documents (persistent across restarts).
@@ -355,9 +356,10 @@ async def list_parsing_documents(
 async def upload_parsing_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default="auto"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Upload a source file into the parsing workspace (no parsing yet).
@@ -438,9 +440,10 @@ async def parse_workspace_document(
     request: Request,
     parser_backend: Optional[str] = None,
     image_caption_enabled: bool = Query(default=False),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Parse a previously uploaded workspace document and persist markdown.
@@ -862,9 +865,10 @@ async def parse_workspace_document(
 @router.get("/documents/{document_id}/content", response_model=ParsingContentResponse)
 async def get_parsing_content(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
     meta = doc.doc_metadata or {}
@@ -909,9 +913,10 @@ async def get_parsing_content(
 async def update_parsing_content(
     document_id: uuid.UUID,
     payload: ParsingContentUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
     ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
@@ -985,9 +990,10 @@ async def update_parsing_content(
 @router.delete("/documents/{document_id}", status_code=204)
 async def delete_parsing_document(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
     ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)

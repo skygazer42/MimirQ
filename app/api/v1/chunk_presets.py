@@ -6,7 +6,7 @@ Tenant-scoped CRUD endpoints for reusable chunking configurations.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -173,9 +173,10 @@ def list_chunk_presets(
     limit: int = Query(default=100, ge=1, le=200),
     dataset_id: str | None = Query(default=None, max_length=64),
     include_global: bool = Query(default=True),
-    db: Session = Depends(get_db),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
+    *,
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset_uuid: UUID | None = None
@@ -199,9 +200,10 @@ def list_chunk_presets(
 @router.post("", response_model=ChunkPresetResponse, status_code=201)
 def create_chunk_preset(
     req: ChunkPresetCreateRequest,
-    db: Session = Depends(get_db),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
+    *,
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = DatasetService.ensure_member(db, tenant_id, account_id)
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
@@ -224,9 +226,10 @@ def create_chunk_preset(
 def update_chunk_preset(
     preset_id: str,
     req: ChunkPresetUpdateRequest,
-    db: Session = Depends(get_db),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
+    *,
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = DatasetService.ensure_member(db, tenant_id, account_id)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
@@ -254,9 +257,10 @@ def update_chunk_preset(
 @router.delete("/{preset_id}", status_code=204)
 def delete_chunk_preset(
     preset_id: str,
-    db: Session = Depends(get_db),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
+    *,
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = DatasetService.ensure_member(db, tenant_id, account_id)
     row = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)

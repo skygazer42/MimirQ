@@ -7,7 +7,7 @@ frontend heatmap page (Kumi-style).
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -38,9 +38,10 @@ class SimilarityCollectionsResponse(BaseModel):
 
 @router.get("/similarity/collections", response_model=SimilarityCollectionsResponse)
 def get_similarity_collections(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     collections = list_similarity_collections(db, tenant_id, account_id)
     out = [
@@ -77,9 +78,10 @@ class SimilarityCalculateResponse(BaseModel):
 @router.post("/similarity/calculate", response_model=SimilarityCalculateResponse)
 def similarity_calculate(
     request: SimilarityRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     x_collection = request.x_collection
     y_collection = request.y_collection

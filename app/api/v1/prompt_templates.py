@@ -5,7 +5,7 @@ This module provides REST API endpoints for managing prompt templates,
 including CRUD operations and template duplication functionality.
 All operations respect tenant boundaries and access control.
 """
-from typing import Optional
+from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -48,9 +48,10 @@ def _derive_template_key(name: str) -> str:
 @router.post("", response_model=PromptTemplateOut, status_code=status.HTTP_201_CREATED)
 async def create_prompt_template(
     request: PromptTemplateCreate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> PromptTemplate:
     """
     Create a new prompt template.
@@ -112,9 +113,10 @@ async def list_prompt_templates(
     limit: int = Query(default=50, ge=1, le=200),
     category: Optional[str] = None,
     is_active: Optional[bool] = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> PromptTemplateList:
     """
     List prompt templates with optional filtering and pagination.
@@ -167,9 +169,10 @@ async def list_prompt_templates(
 @router.get("/{template_id}", response_model=PromptTemplateOut)
 async def get_prompt_template(
     template_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> PromptTemplate:
     """
     Retrieve a specific prompt template by ID.
@@ -215,9 +218,10 @@ async def get_prompt_template(
 async def create_prompt_template_version(
     template_id: UUID,
     request: PromptTemplateNewVersion,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> PromptTemplate:
     """Create a new version from a template (deactivate old version by default)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -275,9 +279,10 @@ async def create_prompt_template_version(
 async def update_prompt_template(
     template_id: UUID,
     request: PromptTemplateUpdate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> PromptTemplate:
     """
     Update an existing prompt template.
@@ -335,9 +340,10 @@ async def update_prompt_template(
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_prompt_template(
     template_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> None:
     """
     Delete a prompt template.
@@ -392,9 +398,10 @@ async def delete_prompt_template(
 )
 async def duplicate_prompt_template(
     template_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> PromptTemplate:
     """
     Duplicate an existing prompt template.

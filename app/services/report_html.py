@@ -13,6 +13,12 @@ from datetime import datetime
 from html import escape
 from typing import Any
 
+EMPTY_DATA_DIV = "<div class=\"empty\">暂无数据</div>"
+TABLE_TBODY_CLOSE = '</tbody></table>'
+REDACTED_TEXT = '[REDACTED]'
+BARS_METRIC_TABLE_HEADER = "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
+EMPTY_BRIEF_DIV = "<div class=\"empty\">暂无</div>"
+
 
 def _fmt_int(n: Any) -> str:
     try:
@@ -60,7 +66,7 @@ def _as_items(mapping: Any, *, top: int = 12) -> list[tuple[str, int]]:
 
 def _render_bar_table(items: list[tuple[str, int]], *, total: int) -> str:
     if not items:
-        return '<div class="empty">暂无数据</div>'
+        return EMPTY_DATA_DIV
     total = max(1, int(total or 0))
     rows: list[str] = []
     for k, v in items:
@@ -77,13 +83,13 @@ def _render_bar_table(items: list[tuple[str, int]], *, total: int) -> str:
         "<thead><tr><th>Key</th><th>Count</th><th style=\"width:55%\">Ratio</th></tr></thead>"
         "<tbody>"
         + "".join(rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
     )
 
 
 def _render_histogram(bins: Any) -> str:
     if not isinstance(bins, list) or not bins:
-        return '<div class="empty">暂无数据</div>'
+        return EMPTY_DATA_DIV
     rows: list[str] = []
     total = 0
     for b in bins:
@@ -146,18 +152,18 @@ def _scrub_report_for_redaction(report: Any) -> dict:
     if isinstance(pre, dict):
         pre_safe = dict(pre)
         if "dataset_id" in pre_safe:
-            pre_safe["dataset_id"] = "[REDACTED]"
+            pre_safe["dataset_id"] = REDACTED_TEXT
         if "scan_run_id" in pre_safe:
-            pre_safe["scan_run_id"] = "[REDACTED]"
+            pre_safe["scan_run_id"] = REDACTED_TEXT
         if "directory_stats" in pre_safe:
             pre_safe["directory_stats"] = []
         safe["precheck_summary"] = pre_safe
 
     # Always redact dataset identity fields if present.
     if "dataset_name" in report:
-        safe["dataset_name"] = "[REDACTED]"
+        safe["dataset_name"] = REDACTED_TEXT
     if "dataset_id" in report:
-        safe["dataset_id"] = "[REDACTED]"
+        safe["dataset_id"] = REDACTED_TEXT
 
     return safe
 
@@ -171,8 +177,8 @@ def render_dataset_profile_html(
     summary: dict,
     redact: bool = False,
 ) -> str:
-    name = "[REDACTED]" if redact else (dataset_name or "")
-    dsid = "[REDACTED]" if redact else (dataset_id or "")
+    name = REDACTED_TEXT if redact else (dataset_name or "")
+    dsid = REDACTED_TEXT if redact else (dataset_id or "")
     ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
 
     total_docs = int(summary.get("total_documents") or 0)
@@ -405,8 +411,8 @@ def render_dataset_report_html(
     """
     import json
 
-    name = "[REDACTED]" if redact else (dataset_name or "")
-    dsid = "[REDACTED]" if redact else (dataset_id or "")
+    name = REDACTED_TEXT if redact else (dataset_name or "")
+    dsid = REDACTED_TEXT if redact else (dataset_id or "")
     ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
 
     profile = report.get("profile") if isinstance(report, dict) else None
@@ -451,9 +457,9 @@ def render_dataset_report_html(
     prov_meta_table = (
         "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
         + "".join(f'<tr><td class="k">{escape(str(k))}</td><td class="v">{_fmt_int(v)}</td><td></td></tr>' for k, v in prov_meta_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if prov_meta_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     # Chunk target checks (best-effort; derived from profile.chunk_targets).
@@ -479,9 +485,9 @@ def render_dataset_report_html(
     chunk_targets_table = (
         "<table class=\"bars\"><thead><tr><th>Check</th><th>Status</th><th>Message</th><th>Suggestions</th></tr></thead><tbody>"
         + "".join(ct_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if ct_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     # Retrieval recall-risk hints (best-effort; from profile.recall_risk_hints).
@@ -508,9 +514,9 @@ def render_dataset_report_html(
     recall_risk_table = (
         "<table class=\"bars\"><thead><tr><th>Hint</th><th>Severity</th><th>Observed</th><th>Message</th></tr></thead><tbody>"
         + "".join(rrh_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if rrh_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     comp = report.get("compliance") if isinstance(report, dict) else None
@@ -621,9 +627,9 @@ def render_dataset_report_html(
     kg_top_docs_table = (
         "<table class=\"bars\"><thead><tr><th>doc</th><th>events</th><th>skipped</th><th>failed</th></tr></thead><tbody>"
         + "".join(kg_doc_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if kg_doc_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     # Optional: latest regression run summary (best-effort).
@@ -662,9 +668,9 @@ def render_dataset_report_html(
     rr_meta_table = (
         "<table class=\"bars\"><thead><tr><th>Field</th><th>Value</th><th></th></tr></thead><tbody>"
         + "".join(rr_meta_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if rr_meta_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     rr_summary_rows: list[str] = []
@@ -681,9 +687,9 @@ def render_dataset_report_html(
     rr_summary_table = (
         "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
         + "".join(rr_summary_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if rr_summary_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     # Optional: retrieval-only slicing summary (nested dict) for deeper diagnostics.
@@ -718,7 +724,7 @@ def render_dataset_report_html(
         return (
             "<table class=\\\"bars\\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
             + "".join(rows)
-            + "</tbody></table>"
+            + TABLE_TBODY_CLOSE
             if rows
             else '<div class=\"empty\">暂无数据</div>'
         )
@@ -900,7 +906,7 @@ def render_dataset_report_html(
 
     <div class="section">
       <h2>最近 Connector Runs</h2>
-      {('<table class="bars"><thead><tr><th>connector_id</th><th>status</th><th>created_at</th></tr></thead><tbody>' + ''.join(conn_rows) + '</tbody></table>') if conn_rows else '<div class="empty">暂无数据</div>'}
+      {('<table class="bars"><thead><tr><th>connector_id</th><th>status</th><th>created_at</th></tr></thead><tbody>' + ''.join(conn_rows) + '</tbody></table>') if conn_rows else EMPTY_DATA_DIV}
     </div>
 
     <div class="section">
@@ -936,8 +942,8 @@ def render_rag_audit_html(
     """
     import json
 
-    name = "[REDACTED]" if redact else (dataset_name or "")
-    dsid = "[REDACTED]" if redact else (dataset_id or "")
+    name = REDACTED_TEXT if redact else (dataset_name or "")
+    dsid = REDACTED_TEXT if redact else (dataset_id or "")
     ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
 
     profile = report.get("profile") if isinstance(report, dict) else None
@@ -1044,8 +1050,8 @@ def render_rag_audit_html(
             f"<tr><td class=\\\"k\\\">tables_normalized_total</td><td class=\\\"v\\\">{_fmt_int(ga_tables_norm)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">table_rows_changed_total</td><td class=\\\"v\\\">{_fmt_int(ga_table_rows_changed)}</td><td></td></tr>"
             f"<tr><td class=\\\"k\\\">code_lines_stripped_total</td><td class=\\\"v\\\">{_fmt_int(ga_code_lines_stripped)}</td><td></td></tr>"
-            "</tbody></table>"
-            "</div>"
+            + TABLE_TBODY_CLOSE
+            + "</div>"
         )
 
     cqm = report.get("chunk_quality_metrics") if isinstance(report, dict) else None
@@ -1060,7 +1066,7 @@ def render_rag_audit_html(
     pre = precheck_summary if isinstance(precheck_summary, dict) else {}
     pre_total_files = int(pre.get("total_files") or 0)
     pre_total_bytes = int(pre.get("total_size_bytes") or 0)
-    pre_scan_run_id = "[REDACTED]" if redact else str(pre.get("scan_run_id") or "").strip()
+    pre_scan_run_id = REDACTED_TEXT if redact else str(pre.get("scan_run_id") or "").strip()
     pre_generated_at = str(pre.get("generated_at") or "").strip()
     pre_by_type = _as_items(pre.get("by_file_type"), top=12)
     pre_lang = _as_items(pre.get("language_mix"), top=4)
@@ -1090,7 +1096,7 @@ def render_rag_audit_html(
         if redact:
             return '<div class="empty">已脱敏：目录结构不展示</div>'
         if not isinstance(items, list) or not items:
-            return '<div class="empty">暂无数据</div>'
+            return EMPTY_DATA_DIV
         rows: list[str] = []
         for obj in items[: max(0, int(max_rows))]:
             if not isinstance(obj, dict):
@@ -1107,13 +1113,13 @@ def render_rag_audit_html(
                 "</tr>"
             )
         if not rows:
-            return '<div class="empty">暂无数据</div>'
+            return EMPTY_DATA_DIV
         return (
             "<table class=\"bars\">"
             "<thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead>"
             "<tbody>"
             + "".join(rows)
-            + "</tbody></table>"
+            + TABLE_TBODY_CLOSE
         )
 
     precheck_section = ""
@@ -1127,7 +1133,7 @@ def render_rag_audit_html(
             f"<tr><td class=\"k\">total_files</td><td class=\"v\">{_fmt_int(pre_total_files)}</td><td></td></tr>"
             f"<tr><td class=\"k\">total_size</td><td class=\"v\">{escape(_fmt_bytes(pre_total_bytes))}</td><td></td></tr>"
             f"<tr><td class=\"k\">pdf_scan (scanned/text/unknown)</td><td class=\"v\">{_fmt_int(pre_pdf_scanned)}/{_fmt_int(pre_pdf_text)}/{_fmt_int(pre_pdf_unknown)}</td><td></td></tr>"
-            "</tbody></table>"
+            + TABLE_TBODY_CLOSE
         )
         precheck_section = (
             "<div class=\"section\">"
@@ -1209,9 +1215,9 @@ def render_rag_audit_html(
     kg_top_docs_table = (
         "<table class=\\\"bars\\\"><thead><tr><th>doc</th><th>events</th><th></th></tr></thead><tbody>"
         + "".join(kg_doc_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if kg_doc_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     rr = report.get("latest_regression_run") if isinstance(report, dict) else None
@@ -1236,9 +1242,9 @@ def render_rag_audit_html(
     rr_summary_table = (
         "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
         + "".join(rr_summary_rows)
-        + "</tbody></table>"
+        + TABLE_TBODY_CLOSE
         if rr_summary_rows
-        else '<div class="empty">暂无数据</div>'
+        else EMPTY_DATA_DIV
     )
 
     rr_slices = rr_summary.get("retrieval_slices") if isinstance(rr_summary.get("retrieval_slices"), dict) else {}
@@ -1283,7 +1289,7 @@ def render_rag_audit_html(
         return (
             "<table class=\\\"bars\\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
             + "".join(rows)
-            + "</tbody></table>"
+            + TABLE_TBODY_CLOSE
             if rows
             else '<div class=\"empty\">暂无数据</div>'
         )
@@ -1505,9 +1511,9 @@ def render_precheck_html(
     samples: dict | None = None,
     redact: bool = False,
 ) -> str:
-    name = "[REDACTED]" if redact else (dataset_name or "")
-    dsid = "[REDACTED]" if redact else (dataset_id or "")
-    rp = "[REDACTED]" if redact else (root_path or "")
+    name = REDACTED_TEXT if redact else (dataset_name or "")
+    dsid = REDACTED_TEXT if redact else (dataset_id or "")
+    rp = REDACTED_TEXT if redact else (root_path or "")
     ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
 
     total_files = int(summary.get("total_files") or 0)
@@ -1565,7 +1571,7 @@ def render_precheck_html(
     tips_html = (
         "<div class=\"notes\"><ul>" + "".join(f"<li>{escape(t)}</li>" for t in tips) + "</ul></div>"
         if tips
-        else '<div class="empty">暂无</div>'
+        else EMPTY_BRIEF_DIV
     )
 
     finding_rows: list[tuple[str, int]] = []
@@ -1586,7 +1592,7 @@ def render_precheck_html(
         if redact:
             return '<div class="empty">已脱敏：目录结构不展示</div>'
         if not isinstance(items, list) or not items:
-            return '<div class="empty">暂无数据</div>'
+            return EMPTY_DATA_DIV
         rows: list[str] = []
         for obj in items[: max(0, int(max_rows))]:
             if not isinstance(obj, dict):
@@ -1603,13 +1609,13 @@ def render_precheck_html(
                 "</tr>"
             )
         if not rows:
-            return '<div class="empty">暂无数据</div>'
+            return EMPTY_DATA_DIV
         return (
             "<table class=\"bars\">"
             "<thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead>"
             "<tbody>"
             + "".join(rows)
-            + "</tbody></table>"
+            + TABLE_TBODY_CLOSE
         )
 
     # Optional representative sampling section.
@@ -1620,7 +1626,7 @@ def render_precheck_html(
 
         def _render_file_list(items: Any, *, max_rows: int = 60) -> str:
             if not isinstance(items, list) or not items:
-                return '<div class="empty">暂无</div>'
+                return EMPTY_BRIEF_DIV
             rows: list[str] = []
             for obj in items[: max(0, int(max_rows))]:
                 if not isinstance(obj, dict):
@@ -1630,13 +1636,13 @@ def render_precheck_html(
                 sz = _fmt_bytes(obj.get("file_size"))
                 rows.append(f"<tr><td class=\"k\">{nm}</td><td class=\"v\">{ft}</td><td class=\"v\">{escape(sz)}</td></tr>")
             if not rows:
-                return '<div class="empty">暂无</div>'
+                return EMPTY_BRIEF_DIV
             return (
                 "<table class=\"bars\">"
                 "<thead><tr><th>File</th><th>Type</th><th>Size</th></tr></thead>"
                 "<tbody>"
                 + "".join(rows)
-                + "</tbody></table>"
+                + TABLE_TBODY_CLOSE
             )
 
         # Needs-review overview (per bucket).
@@ -1651,9 +1657,9 @@ def render_precheck_html(
             "<thead><tr><th>Bucket</th><th>Samples</th></tr></thead>"
             "<tbody>"
             + "".join(needs_rows)
-            + "</tbody></table>"
+            + TABLE_TBODY_CLOSE
             if needs_rows
-            else '<div class="empty">暂无</div>'
+            else EMPTY_BRIEF_DIV
         )
 
         samples_section = (

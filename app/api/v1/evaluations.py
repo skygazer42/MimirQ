@@ -7,7 +7,7 @@ querying, and results.
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -338,8 +338,8 @@ def _merge_regression_case_extra(
 def _attach_reasoning_fields(case_row: Any) -> Any:
     extra = getattr(case_row, "extra", None)
     extra = extra if isinstance(extra, dict) else {}
-    setattr(case_row, "reasoning_hops", _normalize_reasoning_hops(extra.get("reasoning_hops")))
-    setattr(case_row, "evidence_chain", _normalize_evidence_chain(extra.get("evidence_chain")))
+    case_row.reasoning_hops = _normalize_reasoning_hops(extra.get("reasoning_hops"))
+    case_row.evidence_chain = _normalize_evidence_chain(extra.get("evidence_chain"))
     return case_row
 
 
@@ -347,9 +347,10 @@ def _attach_reasoning_fields(case_row: Any) -> Any:
 async def create_ragas_run(
     request: RagasRunCreateRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create a RAGAS evaluation run and execute it in background."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -397,9 +398,10 @@ async def list_ragas_runs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     conversation_id: UUID | None = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List RAGAS evaluation runs for current tenant."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -423,9 +425,10 @@ async def get_ragas_run(
     run_id: UUID,
     include_items: bool = True,
     include_contexts: bool = False,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get a single run and (optionally) its items."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -458,9 +461,10 @@ async def get_ragas_run(
 @router.post("/ragas/regression/cases", response_model=RagasRegressionCaseOut, status_code=201)
 async def create_ragas_regression_case(
     request: RagasRegressionCaseCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create a regression case (per-dataset; requires evidence sources)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -509,9 +513,10 @@ async def create_ragas_regression_case(
 async def patch_ragas_regression_case(
     case_id: UUID,
     request: RagasRegressionCasePatchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Patch a regression case (dataset_id is immutable)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -580,9 +585,10 @@ async def list_ragas_regression_cases(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     dataset_id: UUID | None = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List regression cases (tenant isolated, filterable by dataset_id)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -605,9 +611,10 @@ async def list_ragas_regression_cases(
 @router.get("/ragas/regression/cases/export")
 async def export_ragas_regression_cases(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Export regression cases as a dataset-scoped bundle (no internal ids)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -631,9 +638,10 @@ async def export_ragas_regression_cases(
 @router.post("/ragas/regression/cases/import")
 async def import_ragas_regression_cases(
     payload: RagasRegressionCaseImportRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Import (upsert) regression cases by (dataset_id + question.strip())."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -736,9 +744,10 @@ async def import_ragas_regression_cases(
 @router.post("/ragas/regression/cases/synthetic-hardcases", response_model=SyntheticHardcaseGenerateResponse)
 async def generate_synthetic_hardcases(
     payload: SyntheticHardcaseGenerateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Generate synthetic "hardcase" regression cases (PII-safe, deterministic).
@@ -940,9 +949,10 @@ async def generate_synthetic_hardcases(
 @router.delete("/ragas/regression/cases/{case_id}", status_code=204)
 async def delete_ragas_regression_case(
     case_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a regression case."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -971,9 +981,10 @@ async def delete_ragas_regression_case(
 async def create_ragas_regression_run(
     request: RagasRegressionRunCreateRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create a regression evaluation run and execute it in background."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1099,9 +1110,10 @@ async def create_ragas_regression_run(
 async def list_ragas_regression_runs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List regression runs."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1124,9 +1136,10 @@ async def get_ragas_regression_run_leaderboard(
     limit: int = Query(default=50, ge=1, le=200),
     include_incomplete: bool = Query(default=False, description="Include pending/failed runs (default: false)"),
     max_candidates: int = Query(default=500, ge=1, le=5000, description="Max runs to consider (recency window)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Rank regression runs by a retrieval-only metric and attach retrieval_config_hash (PII-safe)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1155,9 +1168,10 @@ async def get_ragas_regression_run(
     run_id: UUID,
     include_items: bool = True,
     include_contexts: bool = False,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get a regression run detail (optional items and contexts)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1205,9 +1219,10 @@ async def export_ragas_regression_run_bundle_api(
     max_items: int = Query(default=500, ge=1, le=5000, description="Max regression items to include"),
     max_citations: int = Query(default=80, ge=0, le=500, description="Max citations per item (PII-safe allowlist)"),
     download: bool = Query(default=True, description="Set Content-Disposition to download as a file"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Export a compact regression run bundle (PII-safe by default)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1260,9 +1275,10 @@ def purge_ragas_regression_runs(
     max_delete: int = Query(default=200, ge=1, le=5000, description="Max runs to delete in this call"),
     dry_run: bool = Query(default=True, description="Plan only; do not delete rows"),
     dataset_id: UUID | None = Query(default=None, description="Optional dataset scope"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Purge old regression runs for the current tenant (bounded).
@@ -1346,9 +1362,10 @@ def purge_ragas_regression_runs(
 async def diff_ragas_regression_runs(
     run_id: UUID,
     base_run_id: UUID = Query(..., description="Base run id to compare against"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Diff two regression runs (objective numbers + retrieval slices only)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1393,9 +1410,10 @@ async def export_ragas_regression_run_diff_html(
     run_id: UUID,
     base_run_id: UUID = Query(..., description="Base run id to compare against"),
     redact: bool = Query(default=True, description="Whether to redact run ids for sharing"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1429,9 +1447,10 @@ async def export_ragas_regression_run_diff_html(
 @router.post("/ragas/test-gen/from-documents", response_model=TestGenResponse)
 async def generate_test_cases_from_documents(
     request: TestGenFromDocsRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Generate test questions from documents."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1500,9 +1519,10 @@ async def generate_test_cases_from_documents(
 @router.post("/kg/search/diagnostics", response_model=KGSearchDiagnosticsResponse)
 async def run_kg_search_diagnostics(
     payload: KGSearchDiagnosticsRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Run a Dynamic OneEval-style diagnostics pass for KG search.
@@ -1634,9 +1654,10 @@ async def run_kg_search_diagnostics(
 async def list_kg_search_diagnostics_runs(
     dataset_id: UUID = Query(..., description="Dataset ID (required)"),
     limit: int = Query(20, ge=1, le=200, description="Max runs to return (default: 20)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "KG_ENABLED", False)):
         raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
@@ -1657,9 +1678,10 @@ async def list_kg_search_diagnostics_runs(
 @router.get("/kg/search/diagnostics/runs/{run_id}", response_model=KGSearchDiagnosticsRunDetail)
 async def get_kg_search_diagnostics_run(
     run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "KG_ENABLED", False)):
         raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
@@ -1683,9 +1705,10 @@ async def get_kg_search_diagnostics_run(
 @router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse)
 async def generate_test_cases_from_conversations(
     request: TestGenFromConversationsRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Generate test questions from conversation history."""
     DatasetService.ensure_member(db, tenant_id, account_id)

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -66,9 +67,10 @@ def _capsule_path(capsule_id: str) -> Path:
 @router.post("/capsules", response_model=EvidenceCapsulePersistResponse)
 def persist_evidence_capsule(
     body: EvidenceCapsulePersistRequest,
-    tenant_id=Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "EVIDENCE_CAPSULE_PERSIST_ENABLED", True)):
         raise HTTPException(status_code=400, detail="EVIDENCE_CAPSULE_PERSIST_ENABLED=false")
@@ -111,9 +113,10 @@ def persist_evidence_capsule(
 @router.get("/capsules/{capsule_id}", response_model=EvidenceCapsuleGetResponse)
 def get_evidence_capsule(
     capsule_id: str,
-    tenant_id=Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     path = _capsule_path(capsule_id)
@@ -135,9 +138,10 @@ def get_evidence_capsule(
 @router.post("/capsules/verify", response_model=EvidenceCapsuleVerifyResponse)
 def verify_evidence_capsule_payload(
     body: EvidenceCapsulePersistRequest,
-    tenant_id=Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     strict = bool(getattr(settings, "EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED", True))

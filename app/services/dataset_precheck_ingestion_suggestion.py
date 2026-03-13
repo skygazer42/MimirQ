@@ -29,6 +29,11 @@ from app.services.dataset_precheck_service import _assert_artifact_path_under_te
 from app.services.ingestion_policy import validate_and_normalize_ingestion_policy
 from app.services.ingestion_policy_diff import diff_ingestion_policies
 
+STRUCTURED_DATA_PROFILE_REF = "builtin:structured_data"
+STEP_NORMALIZE_NEWLINES = "text.normalize_newlines"
+STEP_REENCODE_UTF8 = "text.reencode_utf8"
+STEP_STRIP_BOM = "text.strip_bom"
+
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -226,7 +231,7 @@ def build_ingestion_policy_suggestion(
             preprocess_steps=[
                 "html.strip_scripts_styles",
                 "html.strip_comments",
-                "text.normalize_newlines",
+                STEP_NORMALIZE_NEWLINES,
                 "text.trim_trailing_whitespace",
                 "text.remove_zero_width",
                 "text.remove_control_chars",
@@ -285,12 +290,12 @@ def build_ingestion_policy_suggestion(
             name="表格（CSV）：TAG 自动分流（大表→SQL，小表→RAG）",
             extensions=[".csv"],
             preprocess_steps=[
-                "text.reencode_utf8",
-                "text.strip_bom",
-                "text.normalize_newlines",
+                STEP_REENCODE_UTF8,
+                STEP_STRIP_BOM,
+                STEP_NORMALIZE_NEWLINES,
             ],
             parser_backend="auto",
-            governance_profile_ref="builtin:structured_data",
+            governance_profile_ref=STRUCTURED_DATA_PROFILE_REF,
             pipeline_patch=table_patch,
         )
     )
@@ -302,7 +307,7 @@ def build_ingestion_policy_suggestion(
             extensions=[".xls", ".xlsx"],
             preprocess_steps=None,
             parser_backend="auto",
-            governance_profile_ref="builtin:structured_data",
+            governance_profile_ref=STRUCTURED_DATA_PROFILE_REF,
             pipeline_patch=table_patch,
         )
     )
@@ -335,12 +340,12 @@ def build_ingestion_policy_suggestion(
             name="结构化数据（JSON/日志型）",
             extensions=[".json", ".jsonl", ".ndjson", ".log"],
             preprocess_steps=[
-                "text.reencode_utf8",
-                "text.strip_bom",
-                "text.normalize_newlines",
+                STEP_REENCODE_UTF8,
+                STEP_STRIP_BOM,
+                STEP_NORMALIZE_NEWLINES,
             ],
             parser_backend="auto",
-            governance_profile_ref="builtin:structured_data",
+            governance_profile_ref=STRUCTURED_DATA_PROFILE_REF,
             pipeline_patch=structured_patch,
         )
     )
@@ -353,9 +358,9 @@ def build_ingestion_policy_suggestion(
     md_profile = "builtin:wiki_longform" if use_longform else "builtin:kb_default"
     md_patch = _pii_secrets_patch(enable_pii=bool({"md", "txt"} & pii_types), enable_secrets=bool({"md", "txt"} & secrets_types))
     common_text_preprocess = [
-        "text.reencode_utf8",
-        "text.strip_bom",
-        "text.normalize_newlines",
+        STEP_REENCODE_UTF8,
+        STEP_STRIP_BOM,
+        STEP_NORMALIZE_NEWLINES,
         "text.trim_trailing_whitespace",
         "text.remove_zero_width",
         "text.remove_control_chars",

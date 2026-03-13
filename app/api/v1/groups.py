@@ -5,6 +5,7 @@ Tenant groups API (enterprise directory primitive).
 from __future__ import annotations
 
 import contextlib
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -34,9 +35,10 @@ router = APIRouter()
 def list_groups(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=1000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -52,9 +54,10 @@ def list_groups(
 @router.post("/", response_model=TenantGroupOut, status_code=201)
 def create_group(
     payload: TenantGroupCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -84,9 +87,10 @@ def create_group(
 @router.get("/{group_id}", response_model=TenantGroupOut)
 def get_group(
     group_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -103,9 +107,10 @@ def get_group(
 def patch_group(
     group_id: UUID,
     payload: TenantGroupUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -141,9 +146,10 @@ def patch_group(
 @router.delete("/{group_id}", status_code=204)
 def delete_group(
     group_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -172,9 +178,10 @@ def list_group_members(
     group_id: UUID,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=1000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -192,9 +199,10 @@ def list_group_members(
 def add_group_members(
     group_id: UUID,
     payload: TenantGroupMembersUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,
@@ -225,9 +233,10 @@ def add_group_members(
 def remove_group_members(
     group_id: UUID,
     payload: TenantGroupMembersUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     ensure_tenant_permission(
         db,

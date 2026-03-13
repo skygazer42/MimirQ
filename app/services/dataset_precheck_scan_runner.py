@@ -52,6 +52,10 @@ from app.services.dataset_profile_utils import (
 
 logger = get_logger("services.dataset_precheck_scan")
 
+UPLOAD_DIR_FALLBACK = "./uploads"
+REDACTED_MASK = "[REDACTED]"
+SECRET_MASK = "[SECRET]"
+
 
 FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
     "parse_failed": {
@@ -387,7 +391,7 @@ def _is_local_scan_allowed_for_root(*, cfg: dict[str, Any], root: Path) -> bool:
     if not bool(cfg.get("internal_allow_upload_scan", False)):
         return False
 
-    upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
+    upload_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK).resolve(strict=False)
     resolved = root.expanduser().resolve(strict=False)
     try:
         resolved.relative_to(upload_root)
@@ -402,7 +406,7 @@ def _assert_scan_root_allowed(root: Path) -> None:
 
     This is a safety guard against arbitrary file reads in shared deployments.
     """
-    upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
+    upload_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK).resolve(strict=False)
     allowed: list[Path] = [upload_root]
     for p in _parse_csv(str(getattr(settings, "LOCAL_SCAN_ROOTS", "") or "")):
         try:
@@ -618,10 +622,10 @@ def _mask_pii_value(kind: str, raw: str) -> str:
     k = (kind or "").strip().lower()
     s = (raw or "").strip()
     if not s:
-        return "[REDACTED]"
+        return REDACTED_MASK
     if k == "email":
         if "@" not in s:
-            return "[REDACTED]"
+            return REDACTED_MASK
         local, domain = s.split("@", 1)
         head = (local[:1] + "***") if local else "***"
         return f"{head}@{domain}"
@@ -629,31 +633,31 @@ def _mask_pii_value(kind: str, raw: str) -> str:
         parts = s.split(".")
         if len(parts) == 4:
             return ".".join(parts[:3] + ["***"])
-        return "[REDACTED]"
+        return REDACTED_MASK
     if k in {"phone"}:
         digits = re.sub(r"[^\d]", "", s)
         if len(digits) >= 7:
             return f"{digits[:3]}****{digits[-2:]}"
-        return "[REDACTED]"
+        return REDACTED_MASK
     if k == "credit_card":
         digits = re.sub(r"[^\d]", "", s)
         if len(digits) >= 8:
             return f"{digits[:4]}****{digits[-4:]}"
-        return "[REDACTED]"
+        return REDACTED_MASK
     if k == "cn_id":
         if len(s) >= 10:
             return f"{s[:6]}********{s[-2:]}"
-        return "[REDACTED]"
+        return REDACTED_MASK
     if k == "ssn":
         return "***-**-****"
-    return "[REDACTED]"
+    return REDACTED_MASK
 
 
 def _mask_secret_value(kind: str, raw: str) -> str:
     k = (kind or "").strip().lower()
     s = (raw or "").strip()
     if not s:
-        return "[SECRET]"
+        return SECRET_MASK
     if k == "openai_key":
         return "sk-***"
     if k == "github_token":
@@ -661,18 +665,18 @@ def _mask_secret_value(kind: str, raw: str) -> str:
             return "ghp_***"
         if s.startswith("github_pat_"):
             return "github_pat_***"
-        return "[SECRET]"
+        return SECRET_MASK
     if k == "aws_access_key":
-        return (s[:4] + "***") if len(s) >= 4 else "[SECRET]"
+        return (s[:4] + "***") if len(s) >= 4 else SECRET_MASK
     if k == "slack_token":
         # xox[baprs]-...
         prefix = s.split("-", 1)[0]
-        return f"{prefix}-***" if prefix else "[SECRET]"
+        return f"{prefix}-***" if prefix else SECRET_MASK
     if k == "bearer_token":
         return "Bearer ***"
     if k == "private_key":
         return "-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----"
-    return "[SECRET]"
+    return SECRET_MASK
 
 
 @dataclass
@@ -876,7 +880,7 @@ def run_dataset_precheck_scan(
     directory_stats_limit = max(0, min(int(directory_stats_limit or 0), 2000))
 
     # Prepare artifact dir and JSONL writer.
-    artifact_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads") / str(tenant_id) / "precheck" / str(run.id)
+    artifact_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK) / str(tenant_id) / "precheck" / str(run.id)
     artifact_root.mkdir(parents=True, exist_ok=True)
     jsonl_path = (artifact_root / "files.jsonl").resolve(strict=False)
     samples_path = (artifact_root / "samples.json").resolve(strict=False)
@@ -938,7 +942,7 @@ def run_dataset_precheck_scan(
                 for k, v in FINDING_KEY_REASONS.items()
             ],
         }
-        run.artifacts = {"files_jsonl": str(jsonl_path), "root_path": "[REDACTED]" if redact_paths else str(root)}
+        run.artifacts = {"files_jsonl": str(jsonl_path), "root_path": REDACTED_MASK if redact_paths else str(root)}
         db.commit()
         return {"ok": True, "files": 0}
 
@@ -1057,7 +1061,7 @@ def run_dataset_precheck_scan(
                     if prev_jsonl and prev_jsonl.exists() and prev_jsonl.is_file():
                         # Defense-in-depth: only reuse artifacts under the same tenant root.
                         try:
-                            upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
+                            upload_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK).resolve(strict=False)
                             tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
                             prev_jsonl.resolve(strict=False).relative_to(tenant_root)
                         except Exception:
@@ -1836,7 +1840,7 @@ def run_dataset_precheck_scan(
     run.summary = summary
     run.artifacts = {
         "files_jsonl": str(jsonl_path),
-        "root_path": "[REDACTED]" if redact_paths else str(root),
+        "root_path": REDACTED_MASK if redact_paths else str(root),
     }
     if near_dup_path is not None:
         run.artifacts["near_dups_json"] = str(near_dup_path)

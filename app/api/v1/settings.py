@@ -11,7 +11,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
@@ -751,9 +751,10 @@ def mask_secret(value: str) -> str:
 
 @router.get("", response_model=SystemSettings)
 async def get_settings(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get current system config."""
     _ensure_settings_readable(db, tenant_id, account_id)
@@ -891,9 +892,10 @@ async def get_settings(
 async def update_settings(
     request: UpdateSettingsRequest,
     http_request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Update system config (write .env file)."""
     if not bool(getattr(settings, "SETTINGS_ENV_WRITE_ENABLED", True)):
@@ -1262,9 +1264,10 @@ async def update_settings(
 
 @router.get("/status")
 async def get_system_status(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get system status."""
     _ensure_settings_readable(db, tenant_id, account_id)
@@ -1457,9 +1460,10 @@ class TestLLMRequest(BaseModel):
 @router.post("/llm/test")
 async def test_llm_connection(
     request: TestLLMRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Test LLM connection (no config write)."""
     _ensure_settings_writable(db, tenant_id, account_id)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -20,7 +21,7 @@ def _build_app() -> FastAPI:
     app.add_middleware(RequestIDMiddleware)
 
     @app.get("/whoami")
-    def whoami(account_id: str = Depends(get_current_account_id)):  # noqa: B008
+    def whoami(*, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
         return {"account_id": account_id, "ctx": get_request_context()}
 
     return app

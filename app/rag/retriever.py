@@ -45,6 +45,10 @@ from app.storage.vector.factory import get_vector_store
 
 logger = get_logger("rag.retriever")
 
+SPARSE_INDEX_DIR_FALLBACK = "./data/sparse_indexes"
+COLBERT_INDEX_DIR_FALLBACK = "./data/colbert_indexes"
+LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
+
 
 class HybridRetriever(BaseRetriever):
     """Hybrid Retriever: Vector + Keyword BM25, optional MMR reranking."""
@@ -374,7 +378,7 @@ class HybridRetriever(BaseRetriever):
             if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
                 try:
                     fp = self._sparse_corpus_fingerprint(docs)
-                    store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
+                    store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or ""))
                     store.save(
                         cache_key=cache_key,
                         provider_config=provider_config,
@@ -478,7 +482,7 @@ class HybridRetriever(BaseRetriever):
                     try:
                         fp = self._sparse_corpus_fingerprint(corpus_docs)
                         store = SparseIndexStore(
-                            base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
+                            base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
                         )
                         loaded = store.load(
                             cache_key=cache_key,
@@ -546,7 +550,7 @@ class HybridRetriever(BaseRetriever):
                 try:
                     fp = self._sparse_corpus_fingerprint(corpus_docs)
                     store = SparseIndexStore(
-                        base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
+                        base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
                     )
                     store.save(
                         cache_key=cache_key,
@@ -670,7 +674,7 @@ class HybridRetriever(BaseRetriever):
 
         if bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
             try:
-                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", "./data/colbert_indexes") or ""))
+                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
                 store.save(
                     cache_key=cache_key,
                     provider_config=provider_config,
@@ -798,7 +802,7 @@ class HybridRetriever(BaseRetriever):
 
         if bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
             try:
-                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", "./data/colbert_indexes") or ""))
+                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
                 store.save(
                     cache_key=cache_key,
                     provider_config=provider_config,
@@ -1860,7 +1864,7 @@ class HybridRetriever(BaseRetriever):
 
         if not index_ok and bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
             try:
-                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", "./data/colbert_indexes") or ""))
+                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
                 loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
                 if loaded is not None:
                     index = loaded
@@ -2039,7 +2043,7 @@ class HybridRetriever(BaseRetriever):
                     try:
                         fp = self._sparse_corpus_fingerprint(docs)
                         store = SparseIndexStore(
-                            base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
+                            base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
                         )
                         loaded = store.load(
                             cache_key=cache_key,
@@ -2751,7 +2755,7 @@ class HybridRetriever(BaseRetriever):
                         metadata_filter=bm25_filter,
                     )
                 except Exception as exc:
-                    logger.warning("Lexical DB search failed: %s", exc)
+                    logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                     lexical_results = []
             if want_bm25:
                 t0 = time.perf_counter()
@@ -2791,7 +2795,7 @@ class HybridRetriever(BaseRetriever):
                         metadata_filter=bm25_filter,
                     )
                 except Exception as exc:
-                    logger.warning("Lexical DB search failed: %s", exc)
+                    logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                     lexical_results = []
 
         # 2c) Optional sparse channel (SPLADE-style)
@@ -2840,7 +2844,7 @@ class HybridRetriever(BaseRetriever):
                     metadata_filter=bm25_filter,
                 )
             except Exception as exc:
-                logger.warning("Lexical DB search failed: %s", exc)
+                logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                 lexical_results = []
             if want_sparse:
                 try:

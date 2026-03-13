@@ -7,7 +7,7 @@ This is primarily used by the UI for rule-pack discovery and profile editors.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -31,9 +31,10 @@ class GovernanceRulePackListResponse(BaseModel):
 
 @router.get("/rule-packs", response_model=GovernanceRulePackListResponse)
 async def list_rule_packs(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     return {"items": list_governance_rule_packs()}
@@ -84,9 +85,10 @@ def list_stale_documents_by_dataset(
     limit: int = Query(default=50, ge=1, le=200),
     order_by: Literal["review_due_at", "authority_level", "updated_at", "created_at", "filename"] = Query(default="review_due_at"),
     order_dir: Literal["asc", "desc"] = Query(default="asc"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List documents with `review_due_at` due/overdue within a dataset (pagination + sort).

@@ -7,7 +7,7 @@ Focus: low-friction, DB-backed aggregates for chat token usage.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -138,9 +138,10 @@ class TenantQuotaSummary(BaseModel):
 
 @router.get("/chat/tokens/quota", response_model=ChatTokenQuotaStatus)
 def get_chat_token_quota_status(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Return the current rolling assistant-token quota status for this tenant.
@@ -174,9 +175,10 @@ def get_chat_token_quota_status(
 
 @router.get("/tenant/quotas", response_model=TenantQuotaSummary)
 def get_tenant_quota_summary(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Return tenant quota status (docs/storage/embedding/QPS).
@@ -256,9 +258,10 @@ def get_chat_token_usage_summary(
     window_days: int = Query(default=1, ge=1, le=30),
     since: Optional[datetime] = Query(default=None),
     until: Optional[datetime] = Query(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Summarize assistant token usage grouped by dataset_id (when available).
@@ -323,9 +326,10 @@ def get_chat_cost_usage_summary(
     window_days: int = Query(default=1, ge=1, le=30),
     since: Optional[datetime] = Query(default=None),
     until: Optional[datetime] = Query(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Summarize per-request cost attribution grouped by dataset_id (best-effort).
