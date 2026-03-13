@@ -180,8 +180,33 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 增量 freshness 语义（当前实现）：
 
 - `web_crawl` 支持 manifest-based incremental（`supports_incremental=true`）。
-- 每个 source 目前使用 URL 级别 token（URL hash）作为判定依据；后续 run 基于 `source_manifest` 只处理 changed/new 项，并统计 `mode` / `delta_urls` / `skipped_unchanged`。
+- 每个 source 使用 **内容感知 sync token**：
+  - 优先：`content_type + body_sha256`（同 URL 但正文变化也会命中增量）
+  - 回退：`url_sha256`（无正文场景）
+- 为兼容旧 state，系统支持旧 token 的平滑迁移：旧 manifest 首次运行会先按 presence-only 处理，随后把 state 升级为内容感知 token。
 - 对于历史存在但本次 crawl 未发现的 URL，会进入 removed reconcile，记录 `removed_paths` / `removed_paths_reconciled` / `removed_documents_disabled` 并执行 soft-disable。
+
+增量示例（`run.stats`）：
+
+```json
+{
+  "mode": "incremental",
+  "delta_urls": 3,
+  "skipped_unchanged": 47,
+  "removed_paths": 2,
+  "removed_paths_reconciled": 2,
+  "removed_documents_disabled": 2
+}
+```
+
+增量示例（`connector_configs.state.source_manifest`）：
+
+```json
+{
+  "https://example.com/docs/a": "web_crawl|text/html|body:7e1b...c0",
+  "https://example.com/docs/b": "web_crawl|application/pdf|body:1f45...9a"
+}
+```
 
 ### 5.3 `github_repo`：GitHub Repo 导入
 
@@ -250,6 +275,15 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 - 首次 run 预期是 `mode=full`；第二次起应主要看到 `mode=incremental`。
 - 若 `delta_urls` 长期异常偏高，优先检查上游是否频繁改写 `modifiedTime/version`。
 
+增量示例（`source_manifest`）：
+
+```json
+{
+  "https://drive.google.com/file/d/FILE_A/view": "drive_files|version:12|modified:2026-03-11T08:10:00Z|id:FILE_A",
+  "https://drive.google.com/file/d/FILE_B/view": "drive_files|version:3|modified:2026-03-09T02:00:00Z|id:FILE_B"
+}
+```
+
 ### 5.5 `minio_bucket`：MinIO/S3 Bucket 导入
 
 用途：列出 bucket 对象，生成 presigned URL 拉取并入库。
@@ -283,6 +317,15 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 - 每个 object 使用稳定 token（`etag` + `last_modified` + `size`，按可用性组合）；后续 run 基于 `source_manifest` 仅处理 changed/new 对象，并统计 `mode` / `delta_objects` / `skipped_unchanged`。
 - scope 变化（例如 bucket/prefix/include 规则变化）会触发 scope hash 变化，并重置旧 manifest，避免跨 scope 的脏增量。
 - 对于历史存在但本次缺失的 object key，会进入 removed reconcile，记录 `removed_paths` / `removed_paths_reconciled` / `removed_documents_disabled` 并执行 soft-disable。
+
+增量示例（`source_manifest`）：
+
+```json
+{
+  "kb/handbook/a.pdf": "minio_bucket|etag:8d5f...aa|last_modified:2026-03-10T12:10:00Z|size:2097152",
+  "kb/handbook/b.md": "minio_bucket|etag:11af...8e|last_modified:2026-03-09T01:20:00Z|size:18291"
+}
+```
 
 ### 5.6 `jira_project`：Jira Cloud Project 导入
 
@@ -339,10 +382,12 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 ### 5.7 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
 
 用途：同步 schema/table/column 的目录信息，并可选做 **安全画像**（聚合统计）用于治理与检索侧“理解数据形态”。
+在 Wave C 中，额外支持可控的 **DB 行级 sidecar**（用于 TAG 召回），默认关闭。
 
 安全边界（重要）：
 
-- 该 connector 目标是 **目录与聚合**，不直接导出原始行数据
+- 默认目标仍是 **目录与聚合**，不导出原始行数据
+- 若明确开启 row sync，会以严格上限抽取行快照写入 `dbrows` sidecar（供 TAG 查询）
 - 密码会被加密存储，API 会脱敏
 
 MySQL 示例：
@@ -360,7 +405,11 @@ MySQL 示例：
     "include_schemas": ["public"],
     "include_tables": ["orders", "users"],
     "max_tables": 200,
-    "profile_enabled": true
+    "profile_enabled": true,
+    "row_sync_enabled": true,
+    "row_sync_max_tables": 20,
+    "row_sync_max_rows_per_table": 50,
+    "row_sync_max_cols": 50
   }
 }
 ```
@@ -378,7 +427,28 @@ SQLServer 示例：
     "username": "sa",
     "password": "pass",
     "max_tables": 200,
-    "profile_enabled": true
+    "profile_enabled": true,
+    "row_sync_enabled": true,
+    "row_sync_max_tables": 20,
+    "row_sync_max_rows_per_table": 50,
+    "row_sync_max_cols": 50
   }
 }
 ```
+
+行级 sidecar 开启条件：
+
+- 全局开关：`DB_CATALOG_ROW_SYNC_ENABLED=true`
+- 连接器配置：`row_sync_enabled=true`
+
+行级 sidecar 上限（全局）：
+
+- `DB_CATALOG_ROW_SYNC_MAX_TABLES`（每次 run 最多抽取多少张表）
+- `DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE`（每张表最多抽多少行）
+- `DB_CATALOG_ROW_SYNC_MAX_COLS`（每张表最多保留多少列）
+
+连接器 run 结束后，可在 `run.stats` / `connector_configs.state` 看到：
+
+- `total_tables`：本次 row snapshot 的表数
+- `source_manifest`：`source_table -> source_sync_token`（用于增量对账和可追溯）
+- `row_sidecar.document_id`：写入的 `dbrows` sidecar 文档

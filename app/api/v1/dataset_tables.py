@@ -268,6 +268,13 @@ def _extract_table_assets(
                 truncated=bool(t.get("truncated") or False),
                 columns=cols_payload,
                 sample_rows=sample_payload,
+                row_source_table=(str(t.get("row_source_table"))[:300] if t.get("row_source_table") is not None else None),
+                row_source_sync_token=(
+                    str(t.get("row_source_sync_token"))[:300] if t.get("row_source_sync_token") is not None else None
+                ),
+                row_source_pk_hash_col=(
+                    str(t.get("row_source_pk_hash_col"))[:120] if t.get("row_source_pk_hash_col") is not None else None
+                ),
             )
         )
     return out
@@ -312,7 +319,7 @@ def list_dataset_tables(
     # - Table-like files: csv/xls/xlsx
     # - Mixed documents: docx may contain embedded tables imported as a sidecar.
     # - Parsed documents: pdf may emit tables imported as a sidecar from parsing output.
-    q = q.filter(DBDocument.file_type.in_(["csv", "xlsx", "xls", "docx", "pdf"]))
+    q = q.filter(DBDocument.file_type.in_(["csv", "xlsx", "xls", "docx", "pdf", "dbrows"]))
 
     # Apply doc-level pagination first (table expansion happens after).
     docs = q.offset(int(skip)).limit(int(limit)).all()
@@ -710,6 +717,8 @@ def ask_dataset_table(
 
     sql_generation_mode = "llm"
     schema_link_diagnostics: dict[str, Any] | None = None
+    planner_diagnostics: dict[str, Any] | None = None
+    join_provenance: list[dict[str, Any]] | None = None
     try:
         sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
             question=str(body.question or ""),
@@ -721,6 +730,11 @@ def ask_dataset_table(
         )
         schema_link = sql_meta.get("schema_link") if isinstance(sql_meta, dict) else None
         schema_link_diagnostics = schema_link if isinstance(schema_link, dict) else None
+        planner = sql_meta.get("planner") if isinstance(sql_meta, dict) else None
+        planner_diagnostics = planner if isinstance(planner, dict) else None
+        joins = sql_meta.get("join_provenance") if isinstance(sql_meta, dict) else None
+        if isinstance(joins, list):
+            join_provenance = [j for j in joins if isinstance(j, dict)][:10]
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
     if not sql.strip():
@@ -793,6 +807,8 @@ def ask_dataset_table(
         data=TableQueryResponse(**data_payload),
         sql_generation_mode=str(sql_generation_mode or "llm"),
         schema_link_diagnostics=schema_link_diagnostics,
+        planner_diagnostics=planner_diagnostics,
+        join_provenance=join_provenance,
     )
 
 

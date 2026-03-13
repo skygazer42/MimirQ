@@ -176,7 +176,18 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
                     "matched_columns": ["a", "b"],
                     "matched_values": [],
                     "matched_tables": ["sheet_0"],
-                }
+                },
+                "planner": {"strategy": "deterministic_heuristic", "reason": "projection"},
+                "join_provenance": [
+                    {
+                        "left_table": "sheet_0",
+                        "left_column": "a",
+                        "right_table": "sheet_0",
+                        "right_column": "a",
+                        "confidence": 1.0,
+                        "reason": "single_table",
+                    }
+                ],
             },
         ),
         raising=False,
@@ -227,6 +238,8 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     assert ask_payload["answer"] == "answer"
     assert ask_payload["sql_generation_mode"] == "llm"
     assert float((ask_payload.get("schema_link_diagnostics") or {}).get("score") or 0.0) > 0.0
+    assert str((ask_payload.get("planner_diagnostics") or {}).get("strategy") or "")
+    assert isinstance(ask_payload.get("join_provenance"), list)
 
 
 def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
@@ -663,3 +676,88 @@ def test_dataset_tables_list_includes_pdf_table_store_docs(monkeypatch):  # noqa
     payload = res.json()
     assert payload["total"] == 1
     assert payload["items"][0]["table_id"] == table_id
+
+
+def test_dataset_tables_list_includes_db_row_sidecar_docs(monkeypatch):  # noqa: ANN001
+    from app.api.v1.dataset_tables import list_dataset_tables
+    from app.services.dataset_service import DatasetService
+
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Dataset:
+        def __init__(self) -> None:
+            self.id = dataset_id
+            self.tenant_id = uuid.uuid4()
+            self.name = "Demo"
+            self.dataset_metadata = {}
+
+    ds = _Dataset()
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = ds.tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "db_rows_demo.sqlite"
+            self.file_type = "dbrows"
+            self.status = "completed"
+            self.updated_at = datetime.now(timezone.utc)
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "source_ext": ".dbrows",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "demo.users",
+                            "row_count": 2,
+                            "col_count": 3,
+                            "truncated": False,
+                            "columns": [
+                                {"name": "id", "dtype": "int"},
+                                {"name": "name", "dtype": "text"},
+                                {"name": "__row_pk_hash", "dtype": "text"},
+                            ],
+                            "sample_rows": [{"id": 1, "name": "alice", "__row_pk_hash": "pkhash-1"}],
+                            "row_source_table": "demo.users",
+                            "row_source_sync_token": "tok-users-v1",
+                            "row_source_pk_hash_col": "__row_pk_hash",
+                        }
+                    ],
+                }
+            }
+
+    doc = _Doc()
+
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+
+    class _Member:
+        role = "member"
+
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+
+    import app.api.v1.dataset_tables as mod
+
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db([doc])
+    app.dependency_overrides[get_tenant_id] = lambda: ds.tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+
+    app.get("/api/v1/datasets/{dataset_id}/tables")(list_dataset_tables)
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}/tables")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["total"] == 1
+    item = payload["items"][0]
+    assert item["table_id"] == table_id
+    assert item["row_source_table"] == "demo.users"
+    assert item["row_source_sync_token"] == "tok-users-v1"
+    assert item["row_source_pk_hash_col"] == "__row_pk_hash"

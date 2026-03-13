@@ -647,3 +647,176 @@ def test_chat_tag_selection_tie_break_is_deterministic(monkeypatch):  # noqa: AN
     assert len(docs) == 1
     # Same score/row_count/filename: final tie-break is table_id lexical order.
     assert chosen.get("table_id") == min(table_a, table_b)
+
+
+def test_chat_tag_carries_db_row_source_metadata_into_payload(monkeypatch):  # noqa: ANN001
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "db_rows_demo.sqlite"
+            self.file_type = "dbrows"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "source_ext": ".dbrows",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "demo.users",
+                            "row_count": 2,
+                            "col_count": 3,
+                            "truncated": False,
+                            "columns": [
+                                {"name": "id", "dtype": "int"},
+                                {"name": "name", "dtype": "text"},
+                                {"name": "__row_pk_hash", "dtype": "text"},
+                            ],
+                            "sample_rows": [{"id": 1, "name": "alice", "__row_pk_hash": "pkhash-1"}],
+                            "row_source_table": "demo.users",
+                            "row_source_sync_token": "tok-users-v1",
+                            "row_source_pk_hash_col": "__row_pk_hash",
+                        }
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+
+    import app.services.chat_tag_service as mod
+
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT * FROM "sheet_0" LIMIT 10', raising=True)
+    monkeypatch.setattr(
+        mod,
+        "run_table_query",
+        lambda **kwargs: {
+            "sql": kwargs.get("sql"),
+            "columns": ["id", "name", "__row_pk_hash"],
+            "rows": [[1, "alice", "pkhash-1"], [2, "bob", "pkhash-2"]],
+            "truncated": False,
+        },
+        raising=True,
+    )
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="users 表里有谁",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert len(docs) == 1
+
+    payload = json.loads(docs[0].page_content)
+    row_source = payload.get("row_source") or {}
+    assert str(row_source.get("table") or "") == "demo.users"
+    assert str(row_source.get("sync_token") or "") == "tok-users-v1"
+    assert list(row_source.get("pk_hashes") or []) == ["pkhash-1", "pkhash-2"]
+
+    md = docs[0].metadata
+    assert str(md.get("row_source_table") or "") == "demo.users"
+    assert str(md.get("row_source_sync_token") or "") == "tok-users-v1"
+
+
+def test_chat_tag_builds_multitable_join_payload(monkeypatch):  # noqa: ANN001
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_orders = f"doc:{doc_id}:sheet:0"
+    table_users = f"doc:{doc_id}:sheet:1"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "sales.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_orders,
+                            "sheet_index": 0,
+                            "sheet_name": "orders",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "user_id", "dtype": "int"}, {"name": "amount", "dtype": "float"}],
+                            "sample_rows": [{"user_id": 1, "amount": 100.0}],
+                        },
+                        {
+                            "table_id": table_users,
+                            "sheet_index": 1,
+                            "sheet_name": "users",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "id", "dtype": "int"}, {"name": "region", "dtype": "text"}],
+                            "sample_rows": [{"id": 1, "region": "APAC"}],
+                        },
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MAX_TABLES", 2, raising=False)
+
+    import app.services.chat_tag_service as mod
+
+    monkeypatch.setattr(
+        mod,
+        "run_table_query",
+        lambda **kwargs: {
+            "sql": kwargs.get("sql"),
+            "columns": ["region", "total"],
+            "rows": [["APAC", 100.0]],
+            "truncated": False,
+        },
+        raising=True,
+    )
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="按 region 统计订单金额前10",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert str(meta.get("table_pick_policy") or "") == "complexity_schema_link_multi_table"
+    assert len(docs) == 1
+
+    payload = json.loads(docs[0].page_content)
+    assert "JOIN" in str(payload.get("sql") or "").upper()
+    join_prov = payload.get("join_provenance")
+    assert isinstance(join_prov, list)
+    assert len(join_prov) == 1
+    assert str((join_prov[0] or {}).get("left_table") or "").startswith("sheet_")
+    assert str((join_prov[0] or {}).get("right_table") or "").startswith("sheet_")
+
+    md = docs[0].metadata
+    assert isinstance(md.get("join_provenance"), list)
+    assert list(md.get("join_table_ids") or []) == [table_orders, table_users]

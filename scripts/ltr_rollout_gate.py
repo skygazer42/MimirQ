@@ -12,6 +12,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from app.services.ltr_rollout_workflow import (  # noqa: E402
+    build_ltr_rollout_activation_plan,
     evaluate_ltr_rollout_gate,
     normalize_ltr_rollout_gate_thresholds,
 )
@@ -74,6 +75,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-delta-recall", type=float, default=None, help="Override threshold for delta.recall")
     parser.add_argument("--min-delta-ndcg", type=float, default=None, help="Override threshold for delta.ndcg")
     parser.add_argument("--min-cases-used", type=float, default=None, help="Override threshold for candidate.cases_used")
+    parser.add_argument(
+        "--canary-on-pass",
+        action="store_true",
+        help="When gate passes, attach a canary activation plan to output JSON.",
+    )
+    parser.add_argument(
+        "--canary-ratio",
+        type=float,
+        default=None,
+        help="Optional canary ratio override in [0,1]. Empty uses gate decision ratio.",
+    )
+    parser.add_argument("--actor-id", default="", help="Optional actor id in canary activation plan metadata.")
     return parser
 
 
@@ -98,10 +111,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ltr_rollout_gate] ERROR: {str(exc)[:240]}", file=sys.stderr)
         return 2
 
+    gate_out: dict[str, Any] = dict(gate)
+    if bool(args.canary_on_pass):
+        activation = build_ltr_rollout_activation_plan(
+            gate=gate,
+            candidate_model_id=str(comparison.get("candidate_model_id") or ""),
+            actor_id=str(args.actor_id or "").strip() or None,
+            canary_on_pass=True,
+            canary_ratio=(float(args.canary_ratio) if args.canary_ratio is not None else None),
+        )
+        gate_out["activation"] = activation
+
     if str(args.out or "").strip():
         out_path = Path(str(args.out))
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        out_path.write_text(json.dumps(gate_out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(
         "[ltr_rollout_gate]"
@@ -112,6 +136,13 @@ def main(argv: list[str] | None = None) -> int:
     if gate.get("reasons"):
         for reason in list(gate.get("reasons") or []):
             print(f"[ltr_rollout_gate] reason: {reason}")
+    if isinstance(gate_out.get("activation"), dict):
+        activation = gate_out.get("activation") or {}
+        print(
+            "[ltr_rollout_gate]"
+            f" activation_status={activation.get('status')}"
+            f" canary_ratio={activation.get('canary_ratio')}"
+        )
 
     return 0 if bool(gate.get("passed")) else 3
 

@@ -406,6 +406,11 @@ def build_citations_from_docs(
         tag_schema_link_score = meta.get("schema_link_score")
         tag_schema_link_strategy = meta.get("schema_link_strategy")
         tag_schema_link_diag = meta.get("schema_link_diagnostics")
+        tag_row_source_table = meta.get("row_source_table")
+        tag_row_source_sync_token = meta.get("row_source_sync_token")
+        tag_row_source_pk_hashes = meta.get("row_source_pk_hashes")
+        tag_join_provenance = meta.get("join_provenance")
+        tag_join_table_ids = meta.get("join_table_ids")
         if isinstance(tag_schema_link_diag, dict):
             if tag_schema_link_score is None:
                 tag_schema_link_score = tag_schema_link_diag.get("score")
@@ -422,6 +427,18 @@ def build_citations_from_docs(
                     tag_schema_link_score = payload_schema_link.get("score")
                 if tag_schema_link_strategy is None:
                     tag_schema_link_strategy = payload_schema_link.get("strategy")
+            payload_row_source = tag_payload.get("row_source")
+            if isinstance(payload_row_source, dict):
+                if tag_row_source_table is None:
+                    tag_row_source_table = payload_row_source.get("table")
+                if tag_row_source_sync_token is None:
+                    tag_row_source_sync_token = payload_row_source.get("sync_token")
+                if tag_row_source_pk_hashes is None:
+                    tag_row_source_pk_hashes = payload_row_source.get("pk_hashes")
+            if tag_join_provenance is None:
+                tag_join_provenance = tag_payload.get("join_provenance")
+            if tag_join_table_ids is None:
+                tag_join_table_ids = tag_payload.get("join_table_ids")
 
         snippet, matched_terms, evidence_start_in_chunk, evidence_end_in_chunk = _build_snippet_and_span(
             effective_text, query, max_chars=220
@@ -507,7 +524,7 @@ def build_citations_from_docs(
             "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
             "rerank_model_used": meta.get("rerank_model_used"),
             "retrieval_mode": retrieval_mode,
-            "vector_backend": settings.VECTOR_BACKEND,
+            "vector_backend": getattr(settings, "VECTOR_BACKEND", "unknown"),
             "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
             "hit_type": hit_type,
         }
@@ -528,6 +545,62 @@ def build_citations_from_docs(
                     pass
             if tag_schema_link_strategy is not None:
                 citation["tag_schema_link_strategy"] = str(tag_schema_link_strategy)[:80]
+            if tag_row_source_table is not None:
+                citation["row_source_table"] = str(tag_row_source_table)[:300]
+            if tag_row_source_sync_token is not None:
+                citation["row_source_sync_token"] = str(tag_row_source_sync_token)[:300]
+            if isinstance(tag_row_source_pk_hashes, list):
+                row_hashes: list[str] = []
+                for v in tag_row_source_pk_hashes:
+                    s = str(v or "").strip()
+                    if not s:
+                        continue
+                    if s in row_hashes:
+                        continue
+                    row_hashes.append(s)
+                    if len(row_hashes) >= 200:
+                        break
+                if row_hashes:
+                    citation["row_source_pk_hashes"] = row_hashes
+            if isinstance(tag_join_provenance, list):
+                join_items: list[dict[str, Any]] = []
+                for raw in tag_join_provenance:
+                    if not isinstance(raw, dict):
+                        continue
+                    item: dict[str, Any] = {}
+                    for key in ("left_table", "left_column", "right_table", "right_column", "reason"):
+                        v = raw.get(key)
+                        if v is None:
+                            continue
+                        s = str(v).strip()
+                        if not s:
+                            continue
+                        item[key] = s[:160]
+                    conf = raw.get("confidence")
+                    if conf is not None:
+                        try:
+                            item["confidence"] = round(float(conf), 6)
+                        except Exception:
+                            pass
+                    if item:
+                        join_items.append(item)
+                    if len(join_items) >= 10:
+                        break
+                if join_items:
+                    citation["join_provenance"] = join_items
+            if isinstance(tag_join_table_ids, list):
+                table_ids: list[str] = []
+                for v in tag_join_table_ids:
+                    s = str(v or "").strip()
+                    if not s:
+                        continue
+                    if s in table_ids:
+                        continue
+                    table_ids.append(s)
+                    if len(table_ids) >= 10:
+                        break
+                if table_ids:
+                    citation["join_table_ids"] = table_ids
 
         # Optional: KG path provenance for KG-injected citations (bounded, PII-safe).
         #

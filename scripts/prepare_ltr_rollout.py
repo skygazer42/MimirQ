@@ -24,6 +24,7 @@ from app.models.feedback import MessageFeedback  # noqa: E402
 from app.services.ltr_model_registry import register_model, resolve_active_model_paths  # noqa: E402
 from app.services.ltr_rollout_workflow import (  # noqa: E402
     FeedbackCaseMaterialization,
+    build_ltr_rollout_activation_plan,
     build_rollout_comparison,
     build_rollout_regression_bundle,
     evaluate_ltr_rollout_gate,
@@ -317,6 +318,8 @@ def prepare_ltr_rollout(
     eval_k: int = 20,
     rerank_top_n: int = 30,
     gate_thresholds: dict[str, Any] | None = None,
+    canary_on_pass: bool = False,
+    canary_ratio: float | None = None,
 ) -> dict[str, Any]:
     workflow_dir = Path(workflow_dir)
     workflow_dir.mkdir(parents=True, exist_ok=True)
@@ -430,6 +433,14 @@ def prepare_ltr_rollout(
             thresholds=gate_thresholds,
             generated_at=generated_at,
         )
+        activation = build_ltr_rollout_activation_plan(
+            gate=gate,
+            candidate_model_id=registered_model_id,
+            actor_id=user_id,
+            canary_on_pass=bool(canary_on_pass),
+            canary_ratio=canary_ratio,
+        )
+        comparison["activation"] = activation
         comparison["gate"] = gate
         write_json(comparison_path, comparison)
 
@@ -462,7 +473,7 @@ def prepare_ltr_rollout(
             },
             "comparison": comparison,
             "gate": gate,
-            "activation": dict(comparison.get("activation") or {"performed": False, "status": "manual_review_required"}),
+            "activation": dict(activation),
         }
         write_json(workflow_json_path, result)
         return result
@@ -505,6 +516,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gate-min-delta-recall", type=float, default=None, help="Override threshold for delta.recall")
     parser.add_argument("--gate-min-delta-ndcg", type=float, default=None, help="Override threshold for delta.ndcg")
     parser.add_argument("--gate-min-cases-used", type=float, default=None, help="Override threshold for candidate.cases_used")
+    parser.add_argument(
+        "--canary-on-pass",
+        action="store_true",
+        help="When gate decision is pass, emit canary activation plan into workflow/comparison artifacts.",
+    )
+    parser.add_argument(
+        "--canary-ratio",
+        type=float,
+        default=None,
+        help="Optional canary ratio override in [0,1]. Empty uses gate policy decision ratio.",
+    )
     args = parser.parse_args(argv)
 
     suite_id = str(args.suite_id or "").strip()
@@ -574,6 +596,8 @@ def main(argv: list[str] | None = None) -> int:
         eval_k=int(args.eval_k or 0),
         rerank_top_n=int(args.rerank_top_n or 0),
         gate_thresholds=gate_thresholds,
+        canary_on_pass=bool(args.canary_on_pass),
+        canary_ratio=(float(args.canary_ratio) if args.canary_ratio is not None else None),
     )
 
     print(

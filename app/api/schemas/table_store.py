@@ -26,6 +26,9 @@ class TableAssetOut(BaseModel):
     truncated: bool = False
     columns: List[TableColumnOut] = Field(default_factory=list)
     sample_rows: List[dict[str, Any]] = Field(default_factory=list)
+    row_source_table: Optional[str] = Field(default=None, max_length=300)
+    row_source_sync_token: Optional[str] = Field(default=None, max_length=300)
+    row_source_pk_hash_col: Optional[str] = Field(default=None, max_length=120)
 
 
 class DatasetTablesListResponse(BaseModel):
@@ -58,6 +61,8 @@ class TableAskResponse(BaseModel):
     data: Optional[TableQueryResponse] = None
     sql_generation_mode: Optional[str] = Field(default=None, max_length=40)
     schema_link_diagnostics: Optional[dict[str, Any]] = None
+    planner_diagnostics: Optional[dict[str, Any]] = None
+    join_provenance: Optional[List[dict[str, Any]]] = None
 
 
 class LotusSemFilterRequest(BaseModel):

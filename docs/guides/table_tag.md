@@ -2,6 +2,8 @@
 
 MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented Generation）链路：把表格导入每文档 SQLite（Table Store），通过 **SQL 查询**（以及可选的 NL→SQL/语义过滤）来回答问题，而不是强行把大表切块嵌入进向量库。
 
+从 Wave C 开始，DB Catalog connector 也可以按上限抽取行快照，写入 `dbrows` sidecar 文档进入同一套 Table Store/TAG 链路。
+
 ## 适用场景（RAG vs TAG）
 
 - **RAG 更擅长**：非结构化文本问答（规章制度、方案、手册、合同条款解释等）
@@ -17,6 +19,8 @@ MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented G
 - 写入 `TABLE_STORE_DIR/{tenant_id}/{dataset_id}/{document_id}.sqlite3`
 - 在文档 `doc_metadata.table_store` 中记录表资产（sheet、列信息、采样行等）
 - 走 Table Store 的文档 **不进入** chunk/vector/BM25 等索引（避免成本爆炸/召回质量下降）
+
+对 DB row sidecar（`file_type=dbrows`）同样遵循这套约束：只写入 per-document SQLite，不写入文本 chunk 索引。
 
 > 注意：`.xls` 读取依赖运行环境（通常需要 `xlrd`）。若你们不计划支持旧格式，建议先用 LibreOffice/Pandoc 转成 `.xlsx`。
 
@@ -104,7 +108,9 @@ SQL 执行器是 **SELECT-only**：
 
 - 拒绝多语句（`;`）
 - 只允许 `SELECT` / `WITH ... SELECT`
-- 通过 sqlite authorizer 禁止 PRAGMA/ATTACH/写入/DDL，并限制只能读目标 sheet 表
+- 通过 sqlite authorizer 禁止 PRAGMA/ATTACH/写入/DDL，并限制只能读白名单 sheet 表
+- 默认拒绝 `CROSS JOIN` / `NATURAL JOIN`（可用 `TABLE_QUERY_ALLOW_CROSS_JOIN` 显式放开）
+- 多表查询最多允许 `TABLE_QUERY_MAX_JOIN_TABLES` 个表
 
 ## 使用方式（Web）
 
@@ -142,6 +148,15 @@ SQL 执行器是 **SELECT-only**：
 
 在 `TABLE_NL2SQL_ENABLED=true` 但缺少可用 LLM key 的场景，系统会自动走 deterministic fallback，并仍然输出上述 diagnostics，便于确认“召回到表但生成策略降级”的具体原因。
 
+### 多表 explain 元数据（Wave C）
+
+`/tables/{table_id}/ask` 现在还会返回：
+
+- `planner_diagnostics`：确定性规划器信息（strategy/reason/group/order/limit 等）
+- `join_provenance`：JOIN 关系证据（left/right table+column、confidence、reason）
+
+这两个字段用于审计 “为什么选了这些表、为何按这个 JOIN 条件执行”。
+
 ## 语义过滤（sem_filter，可选）
 
 开启（默认关闭，避免意外产生高额 LLM 调用）：
@@ -169,9 +184,24 @@ Chat 侧会：
 
 1. 从当前会话绑定的 `document_ids` 中，找出已走 Table Store 的表格资产（`doc_metadata.table_store`）。
 2. 基于问题与表结构（文件名/sheet/列名）选择少量候选表（默认最多 2 个）。
-3. 对每个候选表执行一次 bounded NL→SQL→SELECT，并把结果以 JSON 形式注入到引用材料中（`retrieval_role=tag`）。
+3. 若候选表在同一文档 SQLite 且可推断关系，优先走 deterministic JOIN 规划（单次查询）。
+4. 否则回退为逐表 bounded NL→SQL→SELECT，并把结果以 JSON 形式注入到引用材料中（`retrieval_role=tag`）。
 
 Chat TAG 注入的 payload 与 citations 也会透出 schema-link 关键信息（例如 `schema_link_score` / `schema_link_strategy`），用于线上排障与“有据可查”的审计。
+
+多表 JOIN 路径下，还会透出：
+
+- `join_provenance`：JOIN 关系推断链路
+- `join_table_ids`：本次查询涉及的表资产 ID
+- `join_sql_tables`：实际 SQL 使用的 `sheet_*` 表名白名单
+
+当数据来源是 DB row sidecar 时，还会额外透出行级追溯字段：
+
+- `row_source.table`：来源表（例如 `demo.users`）
+- `row_source.sync_token`：该表本次快照 token
+- `row_source.pk_hashes`：命中行的稳定哈希（默认列 `__row_pk_hash`）
+
+这些字段会进入 TAG payload 和 citation（`row_source_table` / `row_source_sync_token` / `row_source_pk_hashes`），用于“哪一行被召回、是否可复现”的审计。
 
 可调参数（见 `.env.example`）：
 

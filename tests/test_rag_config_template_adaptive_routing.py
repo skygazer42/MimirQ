@@ -7,6 +7,7 @@ from typing import Any
 
 from app.services.rag_config_template_resolver import (
     aggregate_feedback_rewards,
+    build_adaptive_routing_reward_writeback,
     resolve_rag_config_template,
 )
 
@@ -200,3 +201,24 @@ def test_resolver_adaptive_mode_accepts_reward_hook() -> None:
     assert chosen is not None
     assert debug is not None
     assert chosen.ab_variant == "B"
+
+
+def test_build_adaptive_routing_reward_writeback_schema() -> None:
+    payload = build_adaptive_routing_reward_writeback(
+        experiment_key="exp-42",
+        variant="B",
+        strategy="adaptive_epsilon_greedy",
+        decision="exploit",
+        request_id="req-abc",
+        template_id="tpl-1",
+        template_key="retrieval-fast",
+    )
+
+    assert payload["schema"] == "mimirq.rag_config_reward_writeback.v1"
+    assert payload["experiment_key"] == "exp-42"
+    assert payload["variant"] == "B"
+    assert payload["strategy"] == "adaptive_epsilon_greedy"
+    assert payload["decision"] == "exploit"
+    assert payload["request_id"] == "req-abc"
+    assert payload["template_id"] == "tpl-1"
+    assert payload["template_key"] == "retrieval-fast"

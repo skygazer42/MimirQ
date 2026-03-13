@@ -10,6 +10,7 @@ This module intentionally keeps execution *declarative* and safe:
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import re
 import sqlite3
@@ -34,6 +35,8 @@ _WS_RE = re.compile(r"\s+")
 _BOM_RE = re.compile(r"^\ufeff+")
 _NUMERIC_ONLY_RE = re.compile(r"^\s*[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*$")
 _MD_TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
+_SQL_TABLE_REF_RE = re.compile(r'(?i)\b(?:from|join)\s+(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))')
+_SQL_DISALLOWED_JOIN_RE = re.compile(r"(?i)\b(?:cross|natural)\s+join\b")
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,9 @@ class TableAsset:
     truncated: bool
     columns: list[dict[str, Any]]
     sample_rows: list[dict[str, Any]]
+    row_source_table: str | None = None
+    row_source_sync_token: str | None = None
+    row_source_pk_hash_col: str | None = None
 
 
 def _sqlite_timeout_sec() -> float:
@@ -85,6 +91,18 @@ def _jsonify_value(v: Any) -> Any:
     except Exception:
         pass
     return str(v)
+
+
+def _stable_row_hash(row: dict[str, Any], *, exclude_keys: set[str] | None = None) -> str:
+    excluded = {str(k) for k in (exclude_keys or set())}
+    payload: dict[str, Any] = {}
+    for key in sorted(row.keys()):
+        key_s = str(key)
+        if key_s in excluded:
+            continue
+        payload[key_s] = _jsonify_value(row.get(key))
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
 
 
 def _df_sample_rows(df: "pd.DataFrame", *, sample_rows: int) -> list[dict[str, Any]]:
@@ -408,6 +426,9 @@ def _write_single_sheet(
     sheet_name: Optional[str],
     truncated: bool,
     sample_rows: int,
+    row_source_table: str | None = None,
+    row_source_sync_token: str | None = None,
+    row_source_pk_hash_col: str | None = None,
 ) -> list[TableAsset]:
     out_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -443,6 +464,9 @@ def _write_single_sheet(
         truncated=bool(truncated),
         columns=_df_columns(df),
         sample_rows=_df_sample_rows(df, sample_rows=sample_rows),
+        row_source_table=(str(row_source_table).strip() if row_source_table else None),
+        row_source_sync_token=(str(row_source_sync_token).strip() if row_source_sync_token else None),
+        row_source_pk_hash_col=(str(row_source_pk_hash_col).strip() if row_source_pk_hash_col else None),
     )
     return [asset]
 
@@ -782,6 +806,143 @@ def import_markdown_tables(
     return assets
 
 
+def import_db_row_snapshots(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID,
+    snapshots: list[dict[str, Any]],
+    max_tables: int,
+    max_rows_per_table: int,
+    max_cols: int,
+    sample_rows: int,
+) -> list[TableAsset]:
+    """
+    Import bounded DB row snapshots into per-document Table Store.
+
+    Expected snapshot item (best-effort):
+      {
+        "sheet_name": "demo.users",
+        "source_table": "demo.users",
+        "source_sync_token": "tok-...",
+        "source_pk_hash_col": "__row_pk_hash",   # optional
+        "columns": ["id", "name"],               # optional
+        "rows": [{"id": 1, "name": "alice"}, ...]
+      }
+    """
+    out_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Reset store to avoid stale tables on re-import (best-effort).
+    try:
+        if out_path.exists():
+            out_path.unlink()
+    except Exception:
+        try:
+            conn = _connect_rw(out_path)
+            try:
+                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                for row in cur.fetchall():
+                    name = str(row[0] or "")
+                    if name:
+                        conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    max_tables_i = max(0, int(max_tables or 0))
+    max_rows_i = max(0, int(max_rows_per_table or 0))
+    max_cols_i = max(0, int(max_cols or 0))
+
+    assets: list[TableAsset] = []
+    for idx, snap in enumerate(snapshots or []):
+        if max_tables_i > 0 and idx >= max_tables_i:
+            break
+        if not isinstance(snap, dict):
+            continue
+
+        sheet_name = str(snap.get("sheet_name") or snap.get("source_table") or f"table_{idx + 1}").strip()[:200] or f"table_{idx + 1}"
+        source_table = str(snap.get("source_table") or "").strip() or None
+        source_sync_token = str(snap.get("source_sync_token") or "").strip() or None
+        pk_hash_col = str(snap.get("source_pk_hash_col") or "__row_pk_hash").strip() or "__row_pk_hash"
+
+        cols_raw = snap.get("columns")
+        column_names: list[str] = []
+        if isinstance(cols_raw, list):
+            for c in cols_raw:
+                if isinstance(c, dict):
+                    name = str(c.get("name") or "").strip()
+                else:
+                    name = str(c or "").strip()
+                if not name:
+                    continue
+                column_names.append(name)
+                if max_cols_i > 0 and len(column_names) >= max_cols_i:
+                    break
+
+        rows_raw = snap.get("rows") if isinstance(snap.get("rows"), list) else []
+        rows_norm: list[dict[str, Any]] = []
+        for row in rows_raw:
+            if max_rows_i > 0 and len(rows_norm) >= max_rows_i:
+                break
+            if not isinstance(row, dict):
+                continue
+            rec_raw: dict[str, Any] = {str(k): _jsonify_value(v) for k, v in row.items()}
+            rec: dict[str, Any] = dict(rec_raw)
+            if column_names:
+                rec = {k: rec_raw.get(k) for k in column_names}
+            if pk_hash_col not in rec and pk_hash_col in rec_raw:
+                rec[pk_hash_col] = rec_raw.get(pk_hash_col)
+            rows_norm.append(rec)
+
+        if not column_names and rows_norm:
+            first = rows_norm[0]
+            column_names = [str(k) for k in first.keys()]
+            if max_cols_i > 0:
+                column_names = column_names[:max_cols_i]
+
+        if pk_hash_col not in column_names:
+            if max_cols_i <= 0 or len(column_names) < max_cols_i:
+                column_names.append(pk_hash_col)
+
+        for rec in rows_norm:
+            if not rec.get(pk_hash_col):
+                rec[pk_hash_col] = _stable_row_hash(rec, exclude_keys={pk_hash_col})
+
+        if not column_names:
+            # Ensure a valid empty table shape.
+            column_names = [pk_hash_col]
+
+        clipped_rows: list[dict[str, Any]] = []
+        for rec in rows_norm:
+            out: dict[str, Any] = {}
+            for name in column_names:
+                out[name] = rec.get(name)
+            clipped_rows.append(out)
+
+        df = pd.DataFrame(clipped_rows, columns=column_names)
+        df = _sanitize_dataframe(df)
+        assets.extend(
+            _write_single_sheet(
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                df=df,
+                sheet_index=int(idx),
+                sheet_name=sheet_name,
+                truncated=False,
+                sample_rows=sample_rows,
+                row_source_table=source_table,
+                row_source_sync_token=source_sync_token,
+                row_source_pk_hash_col=pk_hash_col,
+            )
+        )
+
+    return assets
+
+
 def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
     """
     Best-effort helper: convert document metadata into `TableAsset` models.
@@ -822,9 +983,25 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
                 truncated=bool(t.get("truncated") or False),
                 columns=list(t.get("columns") or []),
                 sample_rows=list(t.get("sample_rows") or []),
+                row_source_table=(str(t.get("row_source_table") or "").strip() or None),
+                row_source_sync_token=(str(t.get("row_source_sync_token") or "").strip() or None),
+                row_source_pk_hash_col=(str(t.get("row_source_pk_hash_col") or "").strip() or None),
             )
         )
     return out
+
+
+def _extract_sql_table_refs(sql: str) -> list[str]:
+    refs: list[str] = []
+    for m in _SQL_TABLE_REF_RE.finditer(str(sql or "")):
+        raw = str((m.group(1) or m.group(2) or "")).strip()
+        if not raw:
+            continue
+        if raw.startswith("("):
+            continue
+        if raw not in refs:
+            refs.append(raw)
+    return refs
 
 
 def run_table_query(
@@ -836,6 +1013,7 @@ def run_table_query(
     max_rows: int,
     max_cols: int,
     max_bytes: int,
+    allowed_sql_tables: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Execute a SELECT-only query against a single table within a document store.
@@ -892,6 +1070,24 @@ def run_table_query(
         if limits and max(limits) > limit:
             raise ValueError(f"limit_too_large (max {limit})")
 
+    if _SQL_DISALLOWED_JOIN_RE.search(normalized) and not bool(getattr(settings, "TABLE_QUERY_ALLOW_CROSS_JOIN", False)):
+        raise ValueError("join_type_not_allowed")
+
+    allowed_tables = {sql_table}
+    for t in list(allowed_sql_tables or []):
+        name = str(t or "").strip()
+        if name:
+            allowed_tables.add(name)
+
+    referenced_tables = _extract_sql_table_refs(normalized)
+    if referenced_tables:
+        max_join_tables = int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4)
+        if max_join_tables > 0 and len(set(referenced_tables)) > max_join_tables:
+            raise ValueError(f"too_many_join_tables (max {max_join_tables})")
+        for t in referenced_tables:
+            if t not in allowed_tables:
+                raise ValueError("table_reference_not_allowed")
+
     # SQLite authorizer: deny writes/pragma/attach and restrict reads to our sheet table only.
     conn = _connect_ro(db_path)
     truncated = False
@@ -910,7 +1106,7 @@ def run_table_query(
             except Exception:
                 pass
 
-        _apply_sqlite_readonly_authorizer(conn, allowed_tables={sql_table})
+        _apply_sqlite_readonly_authorizer(conn, allowed_tables=allowed_tables)
         try:
             cur = conn.execute(normalized)
         except sqlite3.OperationalError as exc:
