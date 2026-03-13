@@ -10,7 +10,7 @@ import re
 import uuid
 import zipfile
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Annotated, Any, Iterator
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile
@@ -303,9 +303,10 @@ def _dataset_chunk_targets_v2_out(ds: Dataset) -> DatasetChunkTargetsV2 | None:
 @router.get("/{dataset_id}/ingestion/stats", response_model=DatasetIngestionStats)
 def get_dataset_ingestion_stats(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Lightweight dataset ingestion stats (documents/chunks/chars/status breakdown).
@@ -405,9 +406,10 @@ def _normalize_dataset_default_chunk_strategy(value: str) -> str:
 @router.post("/", response_model=DatasetOut, status_code=201)
 def create_dataset(
     payload: DatasetCreate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     dataset = DatasetService.create_dataset(
         db=db,
@@ -568,9 +570,10 @@ def list_datasets(
     limit: int = Query(default=20, ge=1, le=200),
     category_id: UUID | None = Query(default=None, description="Optional: filter datasets by category (tree)"),
     include_descendants: bool = Query(default=True, description="When filtering by category_id, include subtree"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     # list all datasets in tenant
@@ -679,9 +682,10 @@ def list_datasets(
 @router.get("/{dataset_id}", response_model=DatasetOut)
 def get_dataset(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -724,9 +728,10 @@ def get_dataset(
 @router.get("/{dataset_id}/categories", response_model=DatasetCategoryAssignmentResponse)
 def get_dataset_categories(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     category_ids = DatasetCategoryService.list_dataset_category_ids(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
     return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
@@ -736,9 +741,10 @@ def get_dataset_categories(
 def set_dataset_categories(
     dataset_id: UUID,
     payload: DatasetCategoryAssignmentRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     category_ids = DatasetCategoryService.set_dataset_categories(
         db,
@@ -754,9 +760,10 @@ def set_dataset_categories(
 def update_dataset(
     dataset_id: UUID,
     payload: DatasetUpdate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
@@ -961,9 +968,10 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
 @router.get("/{dataset_id}/config/export", response_model=DatasetConfigExport)
 def export_dataset_config(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Export a portable dataset config bundle (JSON)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -983,9 +991,10 @@ def export_dataset_config(
 def import_dataset_config(
     dataset_id: UUID,
     payload: DatasetConfigImportRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Import a dataset config bundle.
@@ -1174,9 +1183,10 @@ def import_dataset_config(
 def clone_dataset(
     dataset_id: UUID,
     payload: DatasetCloneRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Clone an existing dataset (config + optional permission/members)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1259,9 +1269,10 @@ def clone_dataset(
 @router.delete("/{dataset_id}", status_code=204)
 def delete_dataset(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
@@ -1360,9 +1371,10 @@ async def purge_dataset_documents(
     dataset_id: UUID,
     max_delete: int = Query(default=1000, ge=1, le=10_000, description="Max documents to delete in this call"),
     dry_run: bool = Query(default=True, description="Plan only; do not delete"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Purge documents within a dataset (bounded, best-effort).
@@ -1537,9 +1549,10 @@ def _append_ingestion_policy_version(
 @router.get("/{dataset_id}/ingestion-policy", response_model=IngestionPolicyWithAudit)
 def get_dataset_ingestion_policy(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -1557,9 +1570,10 @@ def get_dataset_ingestion_policy(
 @router.get("/{dataset_id}/ingestion-policy/versions", response_model=IngestionPolicyVersionListResponse)
 def list_dataset_ingestion_policy_versions(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -1578,9 +1592,10 @@ def list_dataset_ingestion_policy_versions(
 def rollback_dataset_ingestion_policy(
     dataset_id: UUID,
     body: IngestionPolicyRollbackRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
@@ -1639,9 +1654,10 @@ def rollback_dataset_ingestion_policy(
 def put_dataset_ingestion_policy(
     dataset_id: UUID,
     payload: IngestionPolicy,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
@@ -1664,9 +1680,10 @@ async def import_dataset_ingestion_policy(
     dataset_id: UUID,
     file: UploadFile = File(...),
     replace: bool = Form(default=True),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
@@ -1704,9 +1721,10 @@ async def import_dataset_ingestion_policy(
 @router.get("/{dataset_id}/ingestion-policy/export")
 def export_dataset_ingestion_policy(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -1793,9 +1811,10 @@ def _run_deep_scan_background(
 @router.get("/{dataset_id}/profile/summary", response_model=DatasetProfileSummary)
 def get_dataset_profile_summary(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     summary = compute_dataset_profile_summary(
         db,
@@ -1809,9 +1828,10 @@ def get_dataset_profile_summary(
 @router.get("/{dataset_id}/health", response_model=DatasetHealthResponse)
 def get_dataset_health(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Dataset health dashboard v1.
@@ -1852,9 +1872,10 @@ def list_dataset_profile_finding_documents(
     finding_key: str,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     try:
         return list_finding_documents(
@@ -1879,9 +1900,10 @@ def list_dataset_profile_bucket_documents(
     limit: int = Query(default=50, ge=1, le=200),
     include_preview: bool = Query(default=True),
     preview_max_chars: int = Query(default=360, ge=80, le=2000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     try:
         return list_bucket_documents(
@@ -1905,9 +1927,10 @@ async def create_dataset_profile_scan_run(
     dataset_id: UUID,
     body: DatasetProfileScanRunCreateRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
@@ -1967,9 +1990,10 @@ def list_dataset_profile_scan_runs(
     dataset_id: UUID,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -1992,9 +2016,10 @@ def list_dataset_profile_scan_runs(
 def get_dataset_profile_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -2016,9 +2041,10 @@ def get_dataset_profile_scan_run(
 @router.get("/{dataset_id}/profile/export")
 def export_dataset_profile_summary(
     dataset_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -2044,9 +2070,10 @@ def export_dataset_profile_summary(
 def export_dataset_profile_html_report(
     dataset_id: UUID,
     redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
@@ -2241,9 +2268,10 @@ def export_dataset_documents_ndjson(
     include_sensitive: bool = Query(default=False, description="Include sensitive fields (admin-only)"),
     export_format: str = Query(default="ndjson", description="ndjson|json"),
     gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON (Content-Encoding: gzip)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export dataset documents as NDJSON (JSON Lines) for compliance / lifecycle workflows.
@@ -2370,9 +2398,10 @@ def export_dataset_bundle_zip(
     dataset_id: UUID,
     limit: int = Query(default=2000, ge=1, le=10_000, description="Max documents to include in the bundle"),
     include_sensitive: bool = Query(default=False, description="Include sensitive fields in documents metadata"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export a dataset "bundle" as a single ZIP archive.

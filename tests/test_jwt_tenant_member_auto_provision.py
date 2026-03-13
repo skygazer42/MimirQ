@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 import pytest
 from fastapi import Depends, FastAPI, Request
@@ -107,7 +108,7 @@ def test_auth_dependency_calls_auto_provision_when_enabled(monkeypatch: pytest.M
     app = FastAPI()
 
     @app.get("/state")
-    async def state_endpoint(request: Request, account_id: str = Depends(get_current_account_id)):  # noqa: B008
+    async def state_endpoint(*, request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
         return {
             "account_id": account_id,
             "state_user_id": getattr(request.state, "user_id", None),

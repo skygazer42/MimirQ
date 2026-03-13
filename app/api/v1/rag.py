@@ -8,7 +8,7 @@ For debugging and validating:
 
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -77,9 +77,10 @@ class ImageSearchResponse(BaseModel):
 @router.post("/retrieve-preview", response_model=RetrievePreviewResponse)
 async def retrieve_preview(
     body: RetrievePreviewRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -306,9 +307,10 @@ async def retrieve_preview(
 @router.post("/image-index", response_model=ImageIndexResponse)
 async def index_image_embeddings(
     body: ImageIndexRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Build/update the CLIP image embedding index for a dataset (best-effort).
@@ -341,9 +343,10 @@ async def index_image_embeddings(
 @router.post("/image-search-preview", response_model=ImageSearchResponse)
 async def image_search_preview(
     body: ImageSearchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Search the image embedding index using CLIP (text -> image space).
@@ -438,9 +441,10 @@ class EvidenceRetrieveResponse(BaseModel):
 @router.post("/retrieve", response_model=EvidenceRetrieveResponse)
 async def retrieve_evidence(
     body: EvidenceRetrieveRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Execute retrieval only (no answer generation) and return evidence chunks.
@@ -890,9 +894,10 @@ class PromptPreviewResponse(BaseModel):
 @router.post("/prompt-preview", response_model=PromptPreviewResponse)
 async def prompt_preview(
     body: PromptPreviewRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
     t0 = time.time()

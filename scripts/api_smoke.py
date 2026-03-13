@@ -9,6 +9,39 @@ from typing import Any, Iterable
 
 import httpx
 
+API_SETTINGS = '/api/v1/settings'
+API_SETTINGS_LLM_TEST = '/api/v1/settings/llm/test'
+API_DATASETS = '/api/v1/datasets/'
+API_DATASET_BY_ID = '/api/v1/datasets/{dataset_id}'
+API_DATASET_INGESTION_POLICY = '/api/v1/datasets/{dataset_id}/ingestion-policy'
+API_DOCUMENT_BY_ID = '/api/v1/documents/{document_id}'
+API_DOCUMENTS_MANUAL = '/api/v1/documents/manual'
+API_DOCUMENT_CHUNK_BY_ID = '/api/v1/documents/{document_id}/chunks/{chunk_id}'
+API_BATCH_UPLOAD_APPLY_URLS = '/api/v1/documents/batch-upload/apply-urls'
+API_BATCH_UPLOAD_STATUS = '/api/v1/documents/batch-upload/status/{batch_id}'
+API_PIPELINE_INGESTION_PREVIEW = '/api/v1/pipeline/ingestion-preview'
+API_PIPELINE_GOVERNANCE_PROFILES = '/api/v1/pipeline/governance-profiles'
+API_PIPELINE_GOVERNANCE_PROFILE_BY_REF = '/api/v1/pipeline/governance-profiles/{profile_ref}'
+API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES = '/api/v1/pipeline/upload-zip-with-images'
+API_PARSING_DOCUMENTS = '/api/v1/parsing/documents'
+API_PARSING_DOCUMENT_CONTENT_BY_ID = '/api/v1/parsing/documents/{document_id}/content'
+API_CHAT_CONVERSATIONS = '/api/v1/chat/conversations'
+API_CHAT_STREAM = '/api/v1/chat/stream'
+API_CHAT_MESSAGES_BY_CONVERSATION = '/api/v1/chat/conversations/{conversation_id}/messages'
+API_CHAT_CHECKPOINTS_BY_CONVERSATION = '/api/v1/chat/conversations/{conversation_id}/checkpoints'
+API_PROMPT_TEMPLATES = '/api/v1/prompt-templates'
+API_PROMPT_TEMPLATE_BY_ID = '/api/v1/prompt-templates/{template_id}'
+API_RAG_RETRIEVE_PREVIEW = '/api/v1/rag/retrieve-preview'
+API_RAG_PROMPT_PREVIEW = '/api/v1/rag/prompt-preview'
+API_EVAL_RAGAS_RUNS = '/api/v1/evaluations/ragas/runs'
+API_EVAL_REGRESSION_CASES = '/api/v1/evaluations/ragas/regression/cases'
+API_EVAL_REGRESSION_RUNS = '/api/v1/evaluations/ragas/regression/runs'
+API_EVAL_TEST_GEN_FROM_DOCUMENTS = '/api/v1/evaluations/ragas/test-gen/from-documents'
+API_EVAL_TEST_GEN_FROM_CONVERSATIONS = '/api/v1/evaluations/ragas/test-gen/from-conversations'
+API_FEEDBACK_MESSAGES = '/api/v1/feedback/messages'
+API_KG_SEARCH = '/api/v1/kg/search'
+MEDIA_TYPE_TEXT_PLAIN = 'text/plain'
+
 
 def load_dotenv(path: Path) -> dict[str, str]:
     if not path.exists():
@@ -269,14 +302,14 @@ def main() -> int:
         runner.call("GET", "/api/v1/auth/me", "/api/v1/auth/me", expected=[200])
 
         # Settings endpoints.
-        runner.call("GET", "/api/v1/settings", "/api/v1/settings", expected=[200])
+        runner.call("GET", API_SETTINGS, API_SETTINGS, expected=[200])
         runner.call("GET", "/api/v1/settings/status", "/api/v1/settings/status", expected=[200])
-        runner.call("PUT", "/api/v1/settings", "/api/v1/settings", expected=[200], json={})
+        runner.call("PUT", API_SETTINGS, API_SETTINGS, expected=[200], json={})
         if not args.skip_llm_test:
             runner.call(
                 "POST",
-                "/api/v1/settings/llm/test",
-                "/api/v1/settings/llm/test",
+                API_SETTINGS_LLM_TEST,
+                API_SETTINGS_LLM_TEST,
                 expected=[200, 400],
                 json={
                     "api_key": llm_api_key,
@@ -288,18 +321,18 @@ def main() -> int:
                 },
             )
         else:
-            runner.mark("POST", "/api/v1/settings/llm/test")
+            runner.mark("POST", API_SETTINGS_LLM_TEST)
 
         # Dataset endpoints.
         dataset_payload = {"name": f"Smoke Dataset {uuid.uuid4().hex[:6]}", "description": "smoke"}
-        ds_resp = runner.call("POST", "/api/v1/datasets/", "/api/v1/datasets/", expected=[201], json=dataset_payload)
+        ds_resp = runner.call("POST", API_DATASETS, API_DATASETS, expected=[201], json=dataset_payload)
         ds_id = parse_json(ds_resp).get("id")
-        runner.call("GET", "/api/v1/datasets/", "/api/v1/datasets/", expected=[200])
+        runner.call("GET", API_DATASETS, API_DATASETS, expected=[200])
         if ds_id:
-            runner.call("GET", "/api/v1/datasets/{dataset_id}", f"/api/v1/datasets/{ds_id}", expected=[200])
+            runner.call("GET", API_DATASET_BY_ID, f"/api/v1/datasets/{ds_id}", expected=[200])
             runner.call(
                 "PATCH",
-                "/api/v1/datasets/{dataset_id}",
+                API_DATASET_BY_ID,
                 f"/api/v1/datasets/{ds_id}",
                 expected=[200],
                 json={"description": "smoke-updated"},
@@ -324,14 +357,14 @@ def main() -> int:
             }
             runner.call(
                 "PUT",
-                "/api/v1/datasets/{dataset_id}/ingestion-policy",
+                API_DATASET_INGESTION_POLICY,
                 f"/api/v1/datasets/{ds_id}/ingestion-policy",
                 expected=[200],
                 json=policy_payload,
             )
             runner.call(
                 "GET",
-                "/api/v1/datasets/{dataset_id}/ingestion-policy",
+                API_DATASET_INGESTION_POLICY,
                 f"/api/v1/datasets/{ds_id}/ingestion-policy",
                 expected=[200],
             )
@@ -351,14 +384,14 @@ def main() -> int:
                 data={"replace": "true"},
             )
         else:
-            runner.mark("GET", "/api/v1/datasets/{dataset_id}/ingestion-policy")
-            runner.mark("PUT", "/api/v1/datasets/{dataset_id}/ingestion-policy")
+            runner.mark("GET", API_DATASET_INGESTION_POLICY)
+            runner.mark("PUT", API_DATASET_INGESTION_POLICY)
             runner.mark("POST", "/api/v1/datasets/{dataset_id}/ingestion-policy/import")
             runner.mark("GET", "/api/v1/datasets/{dataset_id}/ingestion-policy/export")
 
         # Documents endpoints: upload a small text file.
         sample_text = "Smoke test document.\nSecond line."
-        files = {"file": ("smoke.txt", sample_text.encode("utf-8"), "text/plain")}
+        files = {"file": ("smoke.txt", sample_text.encode("utf-8"), MEDIA_TYPE_TEXT_PLAIN)}
         data = {"dataset_id": ds_id} if ds_id else {}
         doc_resp = runner.call(
             "POST",
@@ -372,8 +405,8 @@ def main() -> int:
 
         # Batch upload (multi-file).
         files_batch = [
-            ("files", ("batch1.txt", b"batch-one", "text/plain")),
-            ("files", ("batch2.txt", b"batch-two", "text/plain")),
+            ("files", ("batch1.txt", b"batch-one", MEDIA_TYPE_TEXT_PLAIN)),
+            ("files", ("batch2.txt", b"batch-two", MEDIA_TYPE_TEXT_PLAIN)),
         ]
         data_batch = {"dataset_id": ds_id} if ds_id else {}
         runner.call(
@@ -389,7 +422,7 @@ def main() -> int:
         runner.call("GET", "/api/v1/documents/stats", "/api/v1/documents/stats", expected=[200])
 
         if doc_id:
-            runner.call("GET", "/api/v1/documents/{document_id}", f"/api/v1/documents/{doc_id}", expected=[200])
+            runner.call("GET", API_DOCUMENT_BY_ID, f"/api/v1/documents/{doc_id}", expected=[200])
             runner.call(
                 "GET",
                 "/api/v1/documents/{document_id}/status",
@@ -419,14 +452,14 @@ def main() -> int:
             "/api/v1/documents/preview",
             "/api/v1/documents/preview",
             expected=[200],
-            files={"file": ("preview.txt", b"preview", "text/plain")},
+            files={"file": ("preview.txt", b"preview", MEDIA_TYPE_TEXT_PLAIN)},
         )
         runner.call(
             "POST",
             "/api/v1/documents/chunk-preview",
             "/api/v1/documents/chunk-preview",
             expected=[200],
-            files={"file": ("chunk.txt", b"chunk preview text", "text/plain")},
+            files={"file": ("chunk.txt", b"chunk preview text", MEDIA_TYPE_TEXT_PLAIN)},
             data={"chunk_size": 200, "chunk_overlap": 20},
         )
 
@@ -441,14 +474,14 @@ def main() -> int:
             }
             manual_resp = runner.call(
                 "POST",
-                "/api/v1/documents/manual",
-                "/api/v1/documents/manual",
+                API_DOCUMENTS_MANUAL,
+                API_DOCUMENTS_MANUAL,
                 expected=[201],
                 json=manual_payload,
             )
             manual_doc_id = parse_json(manual_resp).get("id")
         else:
-            runner.mark("POST", "/api/v1/documents/manual")
+            runner.mark("POST", API_DOCUMENTS_MANUAL)
             manual_doc_id = None
 
         batch_patch_ids: list[str] = []
@@ -496,13 +529,13 @@ def main() -> int:
 
         # Batch upload URL apply (MinerU).
         if args.skip_mineru:
-            runner.mark("POST", "/api/v1/documents/batch-upload/apply-urls")
-            runner.mark("GET", "/api/v1/documents/batch-upload/status/{batch_id}")
+            runner.mark("POST", API_BATCH_UPLOAD_APPLY_URLS)
+            runner.mark("GET", API_BATCH_UPLOAD_STATUS)
         else:
             apply_resp = runner.call(
                 "POST",
-                "/api/v1/documents/batch-upload/apply-urls",
-                "/api/v1/documents/batch-upload/apply-urls",
+                API_BATCH_UPLOAD_APPLY_URLS,
+                API_BATCH_UPLOAD_APPLY_URLS,
                 expected=[200, 400, 500, 503],
                 json={"files": [{"name": "a.pdf", "data_id": "smoke-a"}]},
             )
@@ -511,14 +544,14 @@ def main() -> int:
             if batch_id:
                 runner.call(
                     "GET",
-                    "/api/v1/documents/batch-upload/status/{batch_id}",
-                    f"/api/v1/documents/batch-upload/status/{batch_id}",
+                    API_BATCH_UPLOAD_STATUS,
+                    API_BATCH_UPLOAD_STATUS.format(batch_id=batch_id),
                     expected=[200, 400, 404, 500, 503],
                 )
             else:
                 runner.call(
                     "GET",
-                    "/api/v1/documents/batch-upload/status/{batch_id}",
+                    API_BATCH_UPLOAD_STATUS,
                     "/api/v1/documents/batch-upload/status/invalid",
                     expected=[200, 400, 404, 500, 503],
                 )
@@ -544,7 +577,7 @@ def main() -> int:
             "/api/v1/pipeline/parse-preview",
             "/api/v1/pipeline/parse-preview",
             expected=[200],
-            files={"file": ("pipe.txt", b"pipeline preview", "text/plain")},
+            files={"file": ("pipe.txt", b"pipeline preview", MEDIA_TYPE_TEXT_PLAIN)},
         )
         runner.call(
             "POST",
@@ -571,27 +604,27 @@ def main() -> int:
         if ds_id:
             runner.call(
                 "POST",
-                "/api/v1/pipeline/ingestion-preview",
-                "/api/v1/pipeline/ingestion-preview",
+                API_PIPELINE_INGESTION_PREVIEW,
+                API_PIPELINE_INGESTION_PREVIEW,
                 expected=[200, 400, 500],
-                files={"file": ("ingest.txt", b"ingestion preview", "text/plain")},
+                files={"file": ("ingest.txt", b"ingestion preview", MEDIA_TYPE_TEXT_PLAIN)},
                 data={"dataset_id": ds_id},
             )
         else:
-            runner.mark("POST", "/api/v1/pipeline/ingestion-preview")
+            runner.mark("POST", API_PIPELINE_INGESTION_PREVIEW)
 
         # Governance profile endpoints (custom CRUD + import/export).
         runner.call(
             "GET",
-            "/api/v1/pipeline/governance-profiles",
+            API_PIPELINE_GOVERNANCE_PROFILES,
             "/api/v1/pipeline/governance-profiles?limit=5",
             expected=[200],
         )
         gov_key = f"smoke_profile_{uuid.uuid4().hex[:6]}"
         gov_resp = runner.call(
             "POST",
-            "/api/v1/pipeline/governance-profiles",
-            "/api/v1/pipeline/governance-profiles",
+            API_PIPELINE_GOVERNANCE_PROFILES,
+            API_PIPELINE_GOVERNANCE_PROFILES,
             expected=[201],
             json={
                 "name": f"Smoke Governance {uuid.uuid4().hex[:6]}",
@@ -608,13 +641,13 @@ def main() -> int:
         gov_id = parse_json(gov_resp).get("id") or gov_key
         runner.call(
             "GET",
-            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
             f"/api/v1/pipeline/governance-profiles/{gov_id}",
             expected=[200],
         )
         runner.call(
             "PATCH",
-            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
             f"/api/v1/pipeline/governance-profiles/{gov_id}",
             expected=[200],
             json={"description": "smoke-updated"},
@@ -651,19 +684,19 @@ def main() -> int:
         )
         runner.call(
             "GET",
-            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
             f"/api/v1/pipeline/governance-profiles/{import_key}",
             expected=[200, 404],
         )
         runner.call(
             "DELETE",
-            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
             f"/api/v1/pipeline/governance-profiles/{import_key}",
             expected=[204, 404],
         )
         runner.call(
             "DELETE",
-            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
             f"/api/v1/pipeline/governance-profiles/{gov_id}",
             expected=[204, 404],
         )
@@ -686,29 +719,29 @@ def main() -> int:
             with zip_path.open("rb") as fh:
                 runner.call(
                     "POST",
-                    "/api/v1/pipeline/upload-zip-with-images",
-                    "/api/v1/pipeline/upload-zip-with-images",
+                    API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
+                    API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
                     expected=[200],
                     files={"file": (zip_path.name, fh, "application/zip")},
                     data={"dataset_id": ds_id},
                 )
         else:
-            runner.mark("POST", "/api/v1/pipeline/upload-zip-with-images")
+            runner.mark("POST", API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES)
 
         # Parsing workspace endpoints (persistent drafts for /parsing UI).
         runner.call(
             "GET",
-            "/api/v1/parsing/documents",
+            API_PARSING_DOCUMENTS,
             "/api/v1/parsing/documents?limit=5",
             expected=[200],
         )
         parsing_doc_id = None
         parsing_upload = runner.call(
             "POST",
-            "/api/v1/parsing/documents",
-            "/api/v1/parsing/documents",
+            API_PARSING_DOCUMENTS,
+            API_PARSING_DOCUMENTS,
             expected=[201],
-            files={"file": ("parsing.txt", b"parsing workspace", "text/plain")},
+            files={"file": ("parsing.txt", b"parsing workspace", MEDIA_TYPE_TEXT_PLAIN)},
             data={"parser_backend": "auto"},
         )
         parsing_doc_id = parse_json(parsing_upload).get("id")
@@ -721,13 +754,13 @@ def main() -> int:
             )
             runner.call(
                 "GET",
-                "/api/v1/parsing/documents/{document_id}/content",
+                API_PARSING_DOCUMENT_CONTENT_BY_ID,
                 f"/api/v1/parsing/documents/{parsing_doc_id}/content",
                 expected=[200],
             )
             runner.call(
                 "PATCH",
-                "/api/v1/parsing/documents/{document_id}/content",
+                API_PARSING_DOCUMENT_CONTENT_BY_ID,
                 f"/api/v1/parsing/documents/{parsing_doc_id}/content",
                 expected=[200],
                 json={"markdown_content": "# Edited\n\nok", "original_markdown_content": "# Edited\n\nok"},
@@ -740,8 +773,8 @@ def main() -> int:
             )
         else:
             runner.mark("POST", "/api/v1/parsing/documents/{document_id}/parse")
-            runner.mark("GET", "/api/v1/parsing/documents/{document_id}/content")
-            runner.mark("PATCH", "/api/v1/parsing/documents/{document_id}/content")
+            runner.mark("GET", API_PARSING_DOCUMENT_CONTENT_BY_ID)
+            runner.mark("PATCH", API_PARSING_DOCUMENT_CONTENT_BY_ID)
             runner.mark("DELETE", "/api/v1/parsing/documents/{document_id}")
 
         # Poll document status until ready (best effort).
@@ -785,14 +818,14 @@ def main() -> int:
             if first_chunk_id:
                 runner.call(
                     "GET",
-                    "/api/v1/documents/{document_id}/chunks/{chunk_id}",
+                    API_DOCUMENT_CHUNK_BY_ID,
                     f"/api/v1/documents/{doc_id}/chunks/{first_chunk_id}",
                     expected=[200, 404],
                 )
             else:
                 runner.call(
                     "GET",
-                    "/api/v1/documents/{document_id}/chunks/{chunk_id}",
+                    API_DOCUMENT_CHUNK_BY_ID,
                     f"/api/v1/documents/{doc_id}/chunks/{uuid.uuid4()}",
                     expected=[404],
                 )
@@ -800,7 +833,7 @@ def main() -> int:
             runner.mark("PATCH", "/api/v1/documents/{document_id}/pipeline")
             runner.mark("GET", "/api/v1/documents/{document_id}/chunks")
             runner.mark("GET", "/api/v1/documents/{document_id}/chunks/matches")
-            runner.mark("GET", "/api/v1/documents/{document_id}/chunks/{chunk_id}")
+            runner.mark("GET", API_DOCUMENT_CHUNK_BY_ID)
 
         # RAG visualization endpoints (similarity matrix UI).
         col_resp = runner.call(
@@ -825,14 +858,14 @@ def main() -> int:
         if doc_id:
             conv_resp = runner.call(
                 "POST",
-                "/api/v1/chat/conversations",
-                "/api/v1/chat/conversations",
+                API_CHAT_CONVERSATIONS,
+                API_CHAT_CONVERSATIONS,
                 expected=[201],
                 json={"title": "Smoke conversation", "document_ids": [doc_id]},
             )
             conversation_id = parse_json(conv_resp).get("id")
         else:
-            runner.mark("POST", "/api/v1/chat/conversations")
+            runner.mark("POST", API_CHAT_CONVERSATIONS)
 
         # Non-streaming chat endpoint (best-effort; may fail without a valid LLM key).
         chat_path = "/api/v1/chat/" if ("POST", "/api/v1/chat/") in openapi_paths else "/api/v1/chat"
@@ -850,8 +883,8 @@ def main() -> int:
         if doc_id:
             ok, _ = runner.stream(
                 "POST",
-                "/api/v1/chat/stream",
-                "/api/v1/chat/stream",
+                API_CHAT_STREAM,
+                API_CHAT_STREAM,
                 expected=[200],
                 json={"message": "smoke test", "document_ids": [doc_id]},
             )
@@ -859,7 +892,7 @@ def main() -> int:
                 # Fetch conversations and pick the latest.
                 conv_list = runner.call(
                     "GET",
-                    "/api/v1/chat/conversations",
+                    API_CHAT_CONVERSATIONS,
                     "/api/v1/chat/conversations?limit=5",
                     expected=[200],
                 )
@@ -867,25 +900,25 @@ def main() -> int:
                 if items:
                     conversation_id = items[0].get("id")
         else:
-            runner.mark("POST", "/api/v1/chat/stream")
-            runner.mark("GET", "/api/v1/chat/conversations")
+            runner.mark("POST", API_CHAT_STREAM)
+            runner.mark("GET", API_CHAT_CONVERSATIONS)
 
         if conversation_id:
             runner.call(
                 "GET",
-                "/api/v1/chat/conversations/{conversation_id}/messages",
-                f"/api/v1/chat/conversations/{conversation_id}/messages",
+                API_CHAT_MESSAGES_BY_CONVERSATION,
+                API_CHAT_MESSAGES_BY_CONVERSATION.format(conversation_id=conversation_id),
                 expected=[200],
             )
             runner.call(
                 "GET",
-                "/api/v1/chat/conversations",
+                API_CHAT_CONVERSATIONS,
                 "/api/v1/chat/conversations?limit=5",
                 expected=[200],
             )
             runner.call(
                 "GET",
-                "/api/v1/chat/conversations/{conversation_id}/checkpoints",
+                API_CHAT_CHECKPOINTS_BY_CONVERSATION,
                 f"/api/v1/chat/conversations/{conversation_id}/checkpoints?limit=5",
                 expected=[200],
             )
@@ -897,15 +930,15 @@ def main() -> int:
             )
             runner.call(
                 "DELETE",
-                "/api/v1/chat/conversations/{conversation_id}/checkpoints",
-                f"/api/v1/chat/conversations/{conversation_id}/checkpoints",
+                API_CHAT_CHECKPOINTS_BY_CONVERSATION,
+                API_CHAT_CHECKPOINTS_BY_CONVERSATION.format(conversation_id=conversation_id),
                 expected=[204],
             )
         else:
-            runner.mark("GET", "/api/v1/chat/conversations/{conversation_id}/messages")
-            runner.mark("GET", "/api/v1/chat/conversations/{conversation_id}/checkpoints")
+            runner.mark("GET", API_CHAT_MESSAGES_BY_CONVERSATION)
+            runner.mark("GET", API_CHAT_CHECKPOINTS_BY_CONVERSATION)
             runner.mark("GET", "/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}")
-            runner.mark("DELETE", "/api/v1/chat/conversations/{conversation_id}/checkpoints")
+            runner.mark("DELETE", API_CHAT_CHECKPOINTS_BY_CONVERSATION)
 
         # Prompt templates.
         tmpl_payload = {
@@ -916,17 +949,17 @@ def main() -> int:
         }
         tmpl_resp = runner.call(
             "POST",
-            "/api/v1/prompt-templates",
-            "/api/v1/prompt-templates",
+            API_PROMPT_TEMPLATES,
+            API_PROMPT_TEMPLATES,
             expected=[201],
             json=tmpl_payload,
         )
         tmpl_id = parse_json(tmpl_resp).get("id")
-        runner.call("GET", "/api/v1/prompt-templates", "/api/v1/prompt-templates?limit=5", expected=[200])
+        runner.call("GET", API_PROMPT_TEMPLATES, "/api/v1/prompt-templates?limit=5", expected=[200])
         if tmpl_id:
             runner.call(
                 "GET",
-                "/api/v1/prompt-templates/{template_id}",
+                API_PROMPT_TEMPLATE_BY_ID,
                 f"/api/v1/prompt-templates/{tmpl_id}",
                 expected=[200],
             )
@@ -945,7 +978,7 @@ def main() -> int:
             )
             runner.call(
                 "PUT",
-                "/api/v1/prompt-templates/{template_id}",
+                API_PROMPT_TEMPLATE_BY_ID,
                 f"/api/v1/prompt-templates/{tmpl_id}",
                 expected=[200],
                 json={"description": "smoke-updated"},
@@ -956,36 +989,36 @@ def main() -> int:
             rag_payload = {"query": "smoke retrieval", "document_ids": [doc_id]}
             runner.call(
                 "POST",
-                "/api/v1/rag/retrieve-preview",
-                "/api/v1/rag/retrieve-preview",
+                API_RAG_RETRIEVE_PREVIEW,
+                API_RAG_RETRIEVE_PREVIEW,
                 expected=[200],
                 json=rag_payload,
             )
             runner.call(
                 "POST",
-                "/api/v1/rag/prompt-preview",
-                "/api/v1/rag/prompt-preview",
+                API_RAG_PROMPT_PREVIEW,
+                API_RAG_PROMPT_PREVIEW,
                 expected=[200],
                 json=rag_payload,
             )
         else:
-            runner.mark("POST", "/api/v1/rag/retrieve-preview")
-            runner.mark("POST", "/api/v1/rag/prompt-preview")
+            runner.mark("POST", API_RAG_RETRIEVE_PREVIEW)
+            runner.mark("POST", API_RAG_PROMPT_PREVIEW)
 
         # Evaluation endpoints (require conversation).
         if conversation_id:
             eval_payload = {"conversation_id": conversation_id, "metrics": ["faithfulness"]}
             run_resp = runner.call(
                 "POST",
-                "/api/v1/evaluations/ragas/runs",
-                "/api/v1/evaluations/ragas/runs",
+                API_EVAL_RAGAS_RUNS,
+                API_EVAL_RAGAS_RUNS,
                 expected=[201],
                 json=eval_payload,
             )
             run_id = parse_json(run_resp).get("id")
             runner.call(
                 "GET",
-                "/api/v1/evaluations/ragas/runs",
+                API_EVAL_RAGAS_RUNS,
                 "/api/v1/evaluations/ragas/runs?limit=5",
                 expected=[200],
             )
@@ -997,8 +1030,8 @@ def main() -> int:
                     expected=[200],
                 )
         else:
-            runner.mark("POST", "/api/v1/evaluations/ragas/runs")
-            runner.mark("GET", "/api/v1/evaluations/ragas/runs")
+            runner.mark("POST", API_EVAL_RAGAS_RUNS)
+            runner.mark("GET", API_EVAL_RAGAS_RUNS)
             runner.mark("GET", "/api/v1/evaluations/ragas/runs/{run_id}")
 
         if ds_id:
@@ -1009,15 +1042,15 @@ def main() -> int:
             }
             case_resp = runner.call(
                 "POST",
-                "/api/v1/evaluations/ragas/regression/cases",
-                "/api/v1/evaluations/ragas/regression/cases",
+                API_EVAL_REGRESSION_CASES,
+                API_EVAL_REGRESSION_CASES,
                 expected=[201],
                 json=case_payload,
             )
             case_id = parse_json(case_resp).get("id")
             runner.call(
                 "GET",
-                "/api/v1/evaluations/ragas/regression/cases",
+                API_EVAL_REGRESSION_CASES,
                 "/api/v1/evaluations/ragas/regression/cases?limit=5",
                 expected=[200],
             )
@@ -1030,15 +1063,15 @@ def main() -> int:
                 )
             reg_run_resp = runner.call(
                 "POST",
-                "/api/v1/evaluations/ragas/regression/runs",
-                "/api/v1/evaluations/ragas/regression/runs",
+                API_EVAL_REGRESSION_RUNS,
+                API_EVAL_REGRESSION_RUNS,
                 expected=[201],
                 json={"case_ids": [case_id] if case_id else [], "metrics": ["faithfulness"]},
             )
             reg_run_id = parse_json(reg_run_resp).get("id")
             runner.call(
                 "GET",
-                "/api/v1/evaluations/ragas/regression/runs",
+                API_EVAL_REGRESSION_RUNS,
                 "/api/v1/evaluations/ragas/regression/runs?limit=5",
                 expected=[200],
             )
@@ -1056,19 +1089,19 @@ def main() -> int:
             }
             runner.call(
                 "POST",
-                "/api/v1/evaluations/ragas/test-gen/from-documents",
-                "/api/v1/evaluations/ragas/test-gen/from-documents",
+                API_EVAL_TEST_GEN_FROM_DOCUMENTS,
+                API_EVAL_TEST_GEN_FROM_DOCUMENTS,
                 expected=[200, 400, 500],
                 json=test_gen_docs,
             )
         else:
-            runner.mark("POST", "/api/v1/evaluations/ragas/regression/cases")
-            runner.mark("GET", "/api/v1/evaluations/ragas/regression/cases")
+            runner.mark("POST", API_EVAL_REGRESSION_CASES)
+            runner.mark("GET", API_EVAL_REGRESSION_CASES)
             runner.mark("DELETE", "/api/v1/evaluations/ragas/regression/cases/{case_id}")
-            runner.mark("POST", "/api/v1/evaluations/ragas/regression/runs")
-            runner.mark("GET", "/api/v1/evaluations/ragas/regression/runs")
+            runner.mark("POST", API_EVAL_REGRESSION_RUNS)
+            runner.mark("GET", API_EVAL_REGRESSION_RUNS)
             runner.mark("GET", "/api/v1/evaluations/ragas/regression/runs/{run_id}")
-            runner.mark("POST", "/api/v1/evaluations/ragas/test-gen/from-documents")
+            runner.mark("POST", API_EVAL_TEST_GEN_FROM_DOCUMENTS)
 
         if conversation_id:
             test_gen_conv = {
@@ -1078,21 +1111,21 @@ def main() -> int:
             }
             runner.call(
                 "POST",
-                "/api/v1/evaluations/ragas/test-gen/from-conversations",
-                "/api/v1/evaluations/ragas/test-gen/from-conversations",
+                API_EVAL_TEST_GEN_FROM_CONVERSATIONS,
+                API_EVAL_TEST_GEN_FROM_CONVERSATIONS,
                 expected=[200, 400, 500],
                 json=test_gen_conv,
             )
         else:
-            runner.mark("POST", "/api/v1/evaluations/ragas/test-gen/from-conversations")
+            runner.mark("POST", API_EVAL_TEST_GEN_FROM_CONVERSATIONS)
 
         # Feedback endpoints.
         assistant_message_id = None
         if conversation_id:
             msg_resp = runner.call(
                 "GET",
-                "/api/v1/chat/conversations/{conversation_id}/messages",
-                f"/api/v1/chat/conversations/{conversation_id}/messages",
+                API_CHAT_MESSAGES_BY_CONVERSATION,
+                API_CHAT_MESSAGES_BY_CONVERSATION.format(conversation_id=conversation_id),
                 expected=[200],
             )
             messages = parse_json(msg_resp).get("messages") or []
@@ -1108,20 +1141,20 @@ def main() -> int:
             }
             runner.call(
                 "POST",
-                "/api/v1/feedback/messages",
-                "/api/v1/feedback/messages",
+                API_FEEDBACK_MESSAGES,
+                API_FEEDBACK_MESSAGES,
                 expected=[201],
                 json=feedback_payload,
             )
             runner.call(
                 "GET",
-                "/api/v1/feedback/messages",
+                API_FEEDBACK_MESSAGES,
                 "/api/v1/feedback/messages?limit=5",
                 expected=[200],
             )
         else:
-            runner.mark("POST", "/api/v1/feedback/messages")
-            runner.mark("GET", "/api/v1/feedback/messages")
+            runner.mark("POST", API_FEEDBACK_MESSAGES)
+            runner.mark("GET", API_FEEDBACK_MESSAGES)
 
         runner.call(
             "GET",
@@ -1184,14 +1217,14 @@ def main() -> int:
             )
             runner.call(
                 "POST",
-                "/api/v1/kg/search",
-                "/api/v1/kg/search",
+                API_KG_SEARCH,
+                API_KG_SEARCH,
                 expected=[200, 400, 503],
                 json={"query": "smoke"},
             )
         else:
             runner.mark("POST", "/api/v1/kg/documents/{document_id}/extract")
-            runner.mark("POST", "/api/v1/kg/search")
+            runner.mark("POST", API_KG_SEARCH)
 
         kg_delete_target = str(doc_id or uuid.uuid4())
         runner.call(
@@ -1215,27 +1248,27 @@ def main() -> int:
         if tmpl_id:
             runner.call(
                 "DELETE",
-                "/api/v1/prompt-templates/{template_id}",
+                API_PROMPT_TEMPLATE_BY_ID,
                 f"/api/v1/prompt-templates/{tmpl_id}",
                 expected=[204],
             )
         else:
-            runner.mark("DELETE", "/api/v1/prompt-templates/{template_id}")
+            runner.mark("DELETE", API_PROMPT_TEMPLATE_BY_ID)
 
         if doc_id:
             runner.call(
                 "DELETE",
-                "/api/v1/documents/{document_id}",
+                API_DOCUMENT_BY_ID,
                 f"/api/v1/documents/{doc_id}",
                 expected=[204],
             )
         else:
-            runner.mark("DELETE", "/api/v1/documents/{document_id}")
+            runner.mark("DELETE", API_DOCUMENT_BY_ID)
 
         if manual_doc_id:
             runner.call(
                 "DELETE",
-                "/api/v1/documents/{document_id}",
+                API_DOCUMENT_BY_ID,
                 f"/api/v1/documents/{manual_doc_id}",
                 expected=[204],
             )
@@ -1243,12 +1276,12 @@ def main() -> int:
         if ds_id:
             runner.call(
                 "DELETE",
-                "/api/v1/datasets/{dataset_id}",
+                API_DATASET_BY_ID,
                 f"/api/v1/datasets/{ds_id}",
                 expected=[204],
             )
         else:
-            runner.mark("DELETE", "/api/v1/datasets/{dataset_id}")
+            runner.mark("DELETE", API_DATASET_BY_ID)
 
         # Coverage report.
         missing = sorted(openapi_paths - runner.covered)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
@@ -24,9 +25,10 @@ router = APIRouter()
 
 @router.get("/", response_model=DatasetCategoryTreeResponse)
 def list_dataset_categories(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     nodes = DatasetCategoryService.list_tree(db, tenant_id=tenant_id, account_id=account_id)
     # total categories (not just root nodes)
@@ -43,9 +45,10 @@ def list_dataset_categories(
 @router.post("/", response_model=DatasetCategoryOut, status_code=201)
 def create_dataset_category(
     payload: DatasetCategoryCreate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     row = DatasetCategoryService.create(
         db,
@@ -62,9 +65,10 @@ def create_dataset_category(
 def update_dataset_category(
     category_id: UUID,
     payload: DatasetCategoryUpdate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     row = DatasetCategoryService.update(
         db,
@@ -81,9 +85,10 @@ def update_dataset_category(
 def move_dataset_category(
     category_id: UUID,
     payload: DatasetCategoryMoveRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     row = DatasetCategoryService.move(
         db,
@@ -99,9 +104,10 @@ def move_dataset_category(
 @router.delete("/{category_id}", status_code=204)
 def delete_dataset_category(
     category_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetCategoryService.delete(db, tenant_id=tenant_id, account_id=account_id, category_id=category_id)
     return Response(status_code=204)

@@ -59,6 +59,12 @@ from app.types.pipeline import PipelineEffective
 
 logger = get_logger("parsing.document_processor")
 
+MIMIRQ_PARSE_DIRNAME = '.mimirq_parse'
+REDACTED_MASK = '[REDACTED]'
+SECRET_MASK = '[SECRET]'
+LOG_DOC_ID_FMT = '%s document_id=%s'
+AUDIT_ACTION_DOCUMENT_QUARANTINE = 'document.quarantine'
+
 
 def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
     """
@@ -522,7 +528,7 @@ class ParsingStage:
             artifact_root = (
                 Path(settings.UPLOAD_DIR)
                 / str(tenant_id)
-                / ".mimirq_parse"
+                / MIMIRQ_PARSE_DIRNAME
                 / f"{str(document_id)}-integrated-{uuid.uuid4().hex}"
             )
             cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
@@ -597,7 +603,7 @@ class ParsingStage:
         artifact_root = (
             Path(settings.UPLOAD_DIR)
             / str(tenant_id)
-            / ".mimirq_parse"
+            / MIMIRQ_PARSE_DIRNAME
             / f"{str(document_id)}-parse-{uuid.uuid4().hex}"
         )
         cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
@@ -999,10 +1005,10 @@ class ChunkAssetStage:
         image_ocr_max_images: int = 20,
         pii_anonymize: bool = False,
         pii_mode: str = "mask",
-        pii_mask: str = "[REDACTED]",
+        pii_mask: str = REDACTED_MASK,
         secrets_redact: bool = False,
         secrets_mode: str = "mask",
-        secrets_mask: str = "[SECRET]",
+        secrets_mask: str = SECRET_MASK,
     ) -> ChunkAssetResult:
         from app.parsing.enrich.image_understanding import (
             append_image_understanding_text,
@@ -1070,15 +1076,15 @@ class ChunkAssetStage:
                             caption,
                             pii_anonymize=bool(pii_anonymize),
                             pii_mode=str(pii_mode or "mask"),
-                            pii_mask=str(pii_mask or "[REDACTED]"),
+                            pii_mask=str(pii_mask or REDACTED_MASK),
                             secrets_redact=bool(secrets_redact),
                             secrets_mode=str(secrets_mode or "mask"),
-                            secrets_mask=str(secrets_mask or "[SECRET]"),
+                            secrets_mask=str(secrets_mask or SECRET_MASK),
                         )
                     except Exception:
                         # Fail-closed when redaction is enabled: do not emit raw caption.
                         if bool(pii_anonymize) or bool(secrets_redact):
-                            caption = str(pii_mask or "[REDACTED]") if bool(pii_anonymize) else str(secrets_mask or "[SECRET]")
+                            caption = str(pii_mask or REDACTED_MASK) if bool(pii_anonymize) else str(secrets_mask or SECRET_MASK)
                 if caption:
                     meta["image_caption"] = caption
 
@@ -1088,10 +1094,10 @@ class ChunkAssetStage:
                             ocr_text,
                             pii_anonymize=bool(pii_anonymize),
                             pii_mode=str(pii_mode or "mask"),
-                            pii_mask=str(pii_mask or "[REDACTED]"),
+                            pii_mask=str(pii_mask or REDACTED_MASK),
                             secrets_redact=bool(secrets_redact),
                             secrets_mode=str(secrets_mode or "mask"),
-                            secrets_mask=str(secrets_mask or "[SECRET]"),
+                            secrets_mask=str(secrets_mask or SECRET_MASK),
                         )
                         if pii_hits:
                             meta["image_ocr_pii_hits"] = {str(k): int(v) for k, v in pii_hits.items() if int(v or 0) > 0}
@@ -1100,7 +1106,7 @@ class ChunkAssetStage:
                     except Exception:
                         # Fail-closed when redaction is enabled: do not emit raw OCR.
                         if bool(pii_anonymize) or bool(secrets_redact):
-                            ocr_text = str(pii_mask or "[REDACTED]") if bool(pii_anonymize) else str(secrets_mask or "[SECRET]")
+                            ocr_text = str(pii_mask or REDACTED_MASK) if bool(pii_anonymize) else str(secrets_mask or SECRET_MASK)
                         else:
                             ocr_text = ""
                     if ocr_text:
@@ -1980,7 +1986,7 @@ class DocumentProcessorService:
                                 f"(content_chars={final_chars} < min_content_chars={int(min_chars)}). "
                                 "Consider enabling OCR/backends or lowering parse_fallback_min_content_chars."
                             )
-                            logger.warning("%s document_id=%s", msg, document_id)
+                            logger.warning(LOG_DOC_ID_FMT, msg, document_id)
                             meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
 
                             from app.core.pipeline_versions import should_preserve_existing_versions
@@ -2009,7 +2015,7 @@ class DocumentProcessorService:
                                     db,
                                     tenant_id=tenant_id,
                                     actor_id=(getattr(db_document, "owner_id", None) or None),
-                                    action=("document.quarantine" if quarantined else "document.parse_drop"),
+                                    action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.parse_drop"),
                                     resource_type="document",
                                     resource_id=str(document_id),
                                     details={
@@ -2144,7 +2150,7 @@ class DocumentProcessorService:
                         + (f" ({reason_str})" if reason_str else "")
                         + f". {hint}"
                     )
-                    logger.warning("%s document_id=%s", msg, document_id)
+                    logger.warning(LOG_DOC_ID_FMT, msg, document_id)
                     status = "quarantined" if quarantined else "failed"
                     reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
                     meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
@@ -2176,7 +2182,7 @@ class DocumentProcessorService:
                             db,
                             tenant_id=tenant_id,
                             actor_id=(getattr(db_document, "owner_id", None) or None),
-                            action=("document.quarantine" if quarantined else "document.governance_drop"),
+                            action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.governance_drop"),
                             resource_type="document",
                             resource_id=str(document_id),
                             details={
@@ -2346,7 +2352,7 @@ class DocumentProcessorService:
                         + (f" ({reason_str})" if reason_str else "")
                         + f". {hint}"
                     )
-                    logger.warning("%s document_id=%s", msg, document_id)
+                    logger.warning(LOG_DOC_ID_FMT, msg, document_id)
                     status = "quarantined" if quarantined else "failed"
                     reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
                     meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
@@ -2378,7 +2384,7 @@ class DocumentProcessorService:
                             db,
                             tenant_id=tenant_id,
                             actor_id=(getattr(db_document, "owner_id", None) or None),
-                            action=("document.quarantine" if quarantined else "document.governance_drop"),
+                            action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.governance_drop"),
                             resource_type="document",
                             resource_id=str(document_id),
                             details={
@@ -2736,7 +2742,7 @@ class DocumentProcessorService:
                     "No chunks produced for document (empty or filtered by CHUNK_MIN_CHARS). "
                     "Consider lowering CHUNK_MIN_CHARS or checking the parser output."
                 )
-                logger.warning("%s document_id=%s", msg, document_id)
+                logger.warning(LOG_DOC_ID_FMT, msg, document_id)
                 meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
                 if table_sidecar_routing_audit:
                     meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
@@ -2789,10 +2795,10 @@ class DocumentProcessorService:
                     image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
                     pii_anonymize=bool(getattr(pipeline_effective, "governance_pii_anonymize", False)),
                     pii_mode=str(getattr(pipeline_effective, "governance_pii_mode", "mask") or "mask"),
-                    pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", "[REDACTED]") or "[REDACTED]"),
+                    pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
                     secrets_redact=bool(getattr(pipeline_effective, "governance_secrets_redact", False)),
                     secrets_mode=str(getattr(pipeline_effective, "governance_secrets_mode", "mask") or "mask"),
-                    secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", "[SECRET]") or "[SECRET]"),
+                    secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
                 )
             _add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
             chunks = chunk_asset.chunks
@@ -3552,7 +3558,7 @@ class DocumentProcessorService:
                 path = Path(raw).resolve(strict=False)
                 if not path.exists():
                     continue
-                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".etl4llm", ".marker", ".paddlevl", ".olmocr", ".mimirq_parse"}):
+                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".etl4llm", ".marker", ".paddlevl", ".olmocr", MIMIRQ_PARSE_DIRNAME}):
                     continue
                 # Safety: only delete within this tenant's upload directory.
                 path.relative_to(tenant_root)

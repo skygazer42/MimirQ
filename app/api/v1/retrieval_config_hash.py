@@ -7,7 +7,7 @@ pin runs and compare behavior across environments.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -83,8 +83,9 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
 @router.post("/config-hash", response_model=RetrievalConfigHashResponse)
 async def get_retrieval_config_hash(
     body: RetrievalConfigHashRequest,
-    tenant_id: UUID = Depends(get_tenant_id),  # noqa: ARG001 - dependency enforces tenant context.
-    account_id: str = Depends(get_current_account_id),  # noqa: ARG001 - dependency enforces account context.
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],  # noqa: ARG001 - dependency enforces tenant context.
+    account_id: Annotated[str, Depends(get_current_account_id)],  # noqa: ARG001 - dependency enforces account context.
 ) -> RetrievalConfigHashResponse:
     effective = _effective_config(
         rag_config=body.rag_config,

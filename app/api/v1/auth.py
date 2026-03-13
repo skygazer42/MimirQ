@@ -1,6 +1,7 @@
 """
 Auth endpoints: register, login, me.
 """
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -25,7 +26,7 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
-def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> AuthResponse:
+def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
     user = UserService.create_user(
         db,
         email=payload.email,
@@ -44,7 +45,7 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Au
 
 
 @router.post("/login", response_model=AuthResponse)
-def login_user(payload: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
+def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
     user = UserService.authenticate(db, payload.identifier, payload.password)
     UserService.mark_login(db, user)
     tenant_id = None
@@ -60,8 +61,9 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)) -> AuthResp
 
 @router.get("/me", response_model=UserPublic)
 def get_me(
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> UserPublic:
     user = UserService.get_by_id(db, account_id)
     if not user:
@@ -70,7 +72,7 @@ def get_me(
 
 
 @router.post("/saml/exchange", response_model=SamlExchangeResponse)
-def saml_exchange(payload: SamlExchangeRequest, db: Session = Depends(get_db)) -> SamlExchangeResponse:
+def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(get_db)]) -> SamlExchangeResponse:
     return exchange_saml_response(
         db=db,
         provider_id=payload.provider_id,

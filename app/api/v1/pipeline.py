@@ -3,7 +3,6 @@ Lightweight parsing and hierarchical chunk preview APIs:
 - /pipeline/parse-preview: route parsing by file type (auto/Pandoc/MarkItDown/DeepDoc/MinerU/...), return Markdown + image refs
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
-
 import json
 import re
 import shutil
@@ -11,6 +10,7 @@ import uuid
 import zipfile
 from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
@@ -114,6 +114,9 @@ router = APIRouter()
 
 _BUILTIN_GOVERNANCE_PROFILES = get_builtin_governance_profiles()
 _BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}
+GOVERNANCE_PROFILE_NOT_FOUND_DETAIL = "Governance profile not found"
+REDACTED_MASK = "[REDACTED]"
+SECRET_MASK = "[SECRET]"
 
 
 def _collect_common_lines_texts(
@@ -272,7 +275,7 @@ def _resolve_profile_ref(
     if row is not None:
         return _profile_out_from_row(row)
 
-    raise HTTPException(status_code=404, detail="Governance profile not found")
+    raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
 
 
 def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
@@ -328,9 +331,10 @@ def _unified_diff_text(before: str, after: str, *, max_lines: int) -> tuple[str 
 
 @router.get("/capabilities", response_model=PipelineCapabilitiesResponse)
 async def get_pipeline_capabilities(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Return available parsers and chunking strategies for the frontend.
@@ -670,9 +674,10 @@ async def list_governance_profiles(
     q: str | None = None,
     include_builtin: bool = True,
     limit: int = 200,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List governance profiles (built-in + tenant custom profiles).
@@ -722,9 +727,10 @@ async def list_governance_profiles(
 @router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201)
 async def create_governance_profile(
     body: GovernanceProfileCreate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -770,9 +776,10 @@ async def create_governance_profile(
 @router.get("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
 async def get_governance_profile(
     profile_ref: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     return _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
@@ -781,9 +788,10 @@ async def get_governance_profile(
 @router.get("/governance-profiles/{profile_ref}/resolved", response_model=GovernanceProfileResolvedResponse)
 async def get_governance_profile_resolved(
     profile_ref: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     try:
@@ -801,9 +809,10 @@ async def get_governance_profile_resolved(
 async def update_governance_profile(
     profile_ref: str,
     body: GovernanceProfileUpdate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -820,7 +829,7 @@ async def update_governance_profile(
     q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
     row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
     if row is None:
-        raise HTTPException(status_code=404, detail="Governance profile not found")
+        raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
 
     if body.name is not None:
         name = str(body.name or "").strip()
@@ -849,9 +858,10 @@ async def update_governance_profile(
 @router.delete("/governance-profiles/{profile_ref}", status_code=204)
 async def delete_governance_profile(
     profile_ref: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -867,7 +877,7 @@ async def delete_governance_profile(
     q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
     row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
     if row is None:
-        raise HTTPException(status_code=404, detail="Governance profile not found")
+        raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
 
     db.delete(row)
     db.commit()
@@ -878,9 +888,10 @@ async def delete_governance_profile(
 async def import_governance_profiles(
     file: UploadFile = File(...),
     overwrite: bool = Form(default=False),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Import governance profile scripts (JSON).
@@ -986,9 +997,10 @@ async def import_governance_profiles(
 @router.get("/governance-profiles/{profile_ref}/export")
 async def export_governance_profile(
     profile_ref: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     profile = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
@@ -1015,9 +1027,10 @@ async def export_governance_profile(
 @router.get("/governance-profiles/{profile_ref}/export-ingestion-policy")
 async def export_governance_profile_ingestion_policy(
     profile_ref: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export a minimal, importable dataset ingestion policy that references the given governance profile.
@@ -1057,9 +1070,10 @@ async def parse_preview(
     request: Request,
     file: UploadFile = File(...),
     parser_backend: str | None = Form(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Parse a file into a Markdown preview without persisting it; extract inline images to uploads/{tenant}/images.
@@ -1113,9 +1127,10 @@ async def ingestion_preview(
     parser_backend: str | None = Form(default=None),
     chunk_strategy: str | None = Form(default=None),
     diff_max_lines: int = Form(default=2000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     One-shot ingestion preview for a dataset:
@@ -1268,10 +1283,10 @@ async def ingestion_preview(
             strip_code_line_numbers=bool(getattr(effective, "governance_strip_code_line_numbers", False)),
             pii_anonymize=bool(getattr(effective, "governance_pii_anonymize", False)),
             pii_mode=str(getattr(effective, "governance_pii_mode", "mask") or "mask"),  # type: ignore[arg-type]
-            pii_mask=str(getattr(effective, "governance_pii_mask", "[REDACTED]") or "[REDACTED]"),
+            pii_mask=str(getattr(effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
             secrets_redact=bool(getattr(effective, "governance_secrets_redact", False)),
             secrets_mode=str(getattr(effective, "governance_secrets_mode", "mask") or "mask"),  # type: ignore[arg-type]
-            secrets_mask=str(getattr(effective, "governance_secrets_mask", "[SECRET]") or "[SECRET]"),
+            secrets_mask=str(getattr(effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
             drop_outline_only=bool(getattr(effective, "governance_drop_outline_only", False)),
             drop_outline_min_content_chars=int(getattr(effective, "governance_drop_outline_min_content_chars", 200) or 200),
             drop_outline_max_heading_ratio=float(getattr(effective, "governance_drop_outline_max_heading_ratio", 0.85) or 0.85),
@@ -1339,9 +1354,10 @@ async def ingestion_preview(
 @router.post("/chunk-preview", response_model=PipelineChunkPreviewResponse)
 async def chunk_preview(
     body: PipelineChunkPreviewRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Perform hierarchical chunking for Markdown text and return highlight offsets.
@@ -1354,9 +1370,10 @@ async def chunk_preview(
 @router.post("/clean-preview", response_model=CleanPreviewResponse)
 async def clean_preview(
     body: CleanPreviewRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
@@ -1558,12 +1575,12 @@ async def clean_preview(
     pii_hits: dict[str, int] | None = None
     secrets_hits: dict[str, int] | None = None
     if body.pii_anonymize:
-        pii = anonymize_pii(text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or "[REDACTED]"))  # type: ignore[arg-type]
+        pii = anonymize_pii(text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or REDACTED_MASK))  # type: ignore[arg-type]
         text = pii.text
         pii_hits = pii.hits or {}
 
     if body.secrets_redact:
-        sec = redact_secrets(text, enabled=True, mode=str(body.secrets_mode or "mask"), mask=str(body.secrets_mask or "[SECRET]"))  # type: ignore[arg-type]
+        sec = redact_secrets(text, enabled=True, mode=str(body.secrets_mode or "mask"), mask=str(body.secrets_mask or SECRET_MASK))  # type: ignore[arg-type]
         text = sec.text
         secrets_hits = sec.hits or {}
 
@@ -1747,9 +1764,10 @@ async def clean_preview(
 @router.post("/learn-common-lines", response_model=GovernanceCommonLinesLearnResponse)
 async def learn_common_lines(
     body: GovernanceCommonLinesLearnRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Learn common/repeated header/footer lines across multiple documents in a dataset.
@@ -1805,9 +1823,10 @@ async def learn_common_lines(
 @router.post("/governance-analyze", response_model=GovernanceAnalyzeResponse)
 async def governance_analyze(
     body: GovernanceAnalyzeRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Analyze a text for governance issues without performing cleaning/persistence.
@@ -1873,9 +1892,10 @@ async def governance_analyze(
 
 @router.get("/clean-rules", response_model=CleanRulesResponse)
 async def list_clean_rules(
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Return default governance rules for UI selection/editing.
@@ -1889,9 +1909,10 @@ async def list_clean_rules(
 @router.post("/extract-keywords", response_model=KeywordExtractResponse)
 async def extract_keywords(
     body: KeywordExtractRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Extract keywords (for governance/annotation/classification).
@@ -1927,9 +1948,10 @@ async def extract_keywords(
 @router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse)
 async def llm_clean_preview(
     body: LLMCleanPreviewRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Use an LLM to preview governance-style cleaning for Markdown (no persistence).
@@ -2050,9 +2072,10 @@ async def upload_zip_with_images(
     file: UploadFile = File(...),
     dataset_id: str = Form(...),
     document_id: str | None = Form(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Upload a ZIP that contains Markdown + images.

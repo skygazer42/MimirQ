@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -13,7 +14,7 @@ def _build_app() -> TestClient:
     app = FastAPI()
 
     @app.get("/tid")
-    def get_tid(tenant_id: uuid.UUID = Depends(get_tenant_id)):  # noqa: B008
+    def get_tid(*, tenant_id: Annotated[uuid.UUID, Depends(get_tenant_id)]):  # noqa: B008
         return {"tenant_id": str(tenant_id)}
 
     return TestClient(app)

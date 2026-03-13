@@ -6,6 +6,10 @@ Models are identified by "provider/model_name" format.
 """
 from pydantic import BaseModel, ConfigDict, Field
 
+DEFAULT_BGE_M3_NAME = "BAAI/bge-m3"
+SILICONFLOW_EMBEDDINGS_URL = "https://api.siliconflow.cn/v1/embeddings"
+OLLAMA_EMBEDDINGS_URL = "http://localhost:11434/api/embed"
+
 
 class EmbedModelInfo(BaseModel):
     """Embedding model configuration.
@@ -35,23 +39,23 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
     # SiliconFlow - Chinese embedding provider
     "siliconflow/BAAI/bge-m3": EmbedModelInfo(
         model_id="siliconflow/BAAI/bge-m3",
-        name="BAAI/bge-m3",
+        name=DEFAULT_BGE_M3_NAME,
         dimension=1024,
-        base_url="https://api.siliconflow.cn/v1/embeddings",
+        base_url=SILICONFLOW_EMBEDDINGS_URL,
         api_key="SILICONFLOW_API_KEY",
     ),
     "siliconflow/Pro/BAAI/bge-m3": EmbedModelInfo(
         model_id="siliconflow/Pro/BAAI/bge-m3",
         name="Pro/BAAI/bge-m3",
         dimension=1024,
-        base_url="https://api.siliconflow.cn/v1/embeddings",
+        base_url=SILICONFLOW_EMBEDDINGS_URL,
         api_key="SILICONFLOW_API_KEY",
     ),
     "siliconflow/Qwen/Qwen3-Embedding-0.6B": EmbedModelInfo(
         model_id="siliconflow/Qwen/Qwen3-Embedding-0.6B",
         name="Qwen/Qwen3-Embedding-0.6B",
         dimension=1024,
-        base_url="https://api.siliconflow.cn/v1/embeddings",
+        base_url=SILICONFLOW_EMBEDDINGS_URL,
         api_key="SILICONFLOW_API_KEY",
     ),
     # Ollama - Local embedding models
@@ -59,21 +63,21 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         model_id="ollama/nomic-embed-text",
         name="nomic-embed-text",
         dimension=768,
-        base_url="http://localhost:11434/api/embed",
+        base_url=OLLAMA_EMBEDDINGS_URL,
         api_key="no_api_key",
     ),
     "ollama/bge-m3": EmbedModelInfo(
         model_id="ollama/bge-m3",
         name="bge-m3",
         dimension=1024,
-        base_url="http://localhost:11434/api/embed",
+        base_url=OLLAMA_EMBEDDINGS_URL,
         api_key="no_api_key",
     ),
     "ollama/mxbai-embed-large": EmbedModelInfo(
         model_id="ollama/mxbai-embed-large",
         name="mxbai-embed-large",
         dimension=1024,
-        base_url="http://localhost:11434/api/embed",
+        base_url=OLLAMA_EMBEDDINGS_URL,
         api_key="no_api_key",
     ),
     # vLLM - Local server with various models
@@ -86,7 +90,7 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
     ),
     "vllm/BAAI/bge-m3": EmbedModelInfo(
         model_id="vllm/BAAI/bge-m3",
-        name="BAAI/bge-m3",
+        name=DEFAULT_BGE_M3_NAME,
         dimension=1024,
         base_url="http://localhost:8000/v1/embeddings",
         api_key="no_api_key",
@@ -117,7 +121,7 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
     # ModelScope (Alibaba)
     "modelscope/BAAI/bge-m3": EmbedModelInfo(
         model_id="modelscope/BAAI/bge-m3",
-        name="BAAI/bge-m3",
+        name=DEFAULT_BGE_M3_NAME,
         dimension=1024,
         base_url="https://api-inference.modelscope.cn/v1/embeddings",
         api_key="MODELSCOPE_ACCESS_TOKEN",
@@ -125,7 +129,7 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
     # Local sentence-transformers models
     "local/BAAI/bge-m3": EmbedModelInfo(
         model_id="local/BAAI/bge-m3",
-        name="BAAI/bge-m3",
+        name=DEFAULT_BGE_M3_NAME,
         dimension=1024,
         base_url="local",
         api_key="no_api_key",

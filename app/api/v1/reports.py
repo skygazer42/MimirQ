@@ -9,6 +9,7 @@ import io
 import json
 import re
 import zipfile
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -29,9 +30,10 @@ def get_dataset_report(
     dataset_id: UUID,
     pipeline_hash: str | None = Query(default=None, max_length=64, description="Optional: filter by pipeline_hash (active)"),
     connector_runs_limit: int = Query(default=20, ge=0, le=100),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     return ReportService.build_dataset_report(
         db,
@@ -48,9 +50,10 @@ def export_dataset_report_json(
     dataset_id: UUID,
     pipeline_hash: str | None = Query(default=None, max_length=64),
     connector_runs_limit: int = Query(default=20, ge=0, le=100),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     report = ReportService.build_dataset_report(
         db,
@@ -77,9 +80,10 @@ def export_dataset_report_html(
     pipeline_hash: str | None = Query(default=None, max_length=64),
     connector_runs_limit: int = Query(default=20, ge=0, le=100),
     redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     report = ReportService.build_dataset_report(
         db,
@@ -115,9 +119,10 @@ def export_dataset_rag_audit_html(
     pipeline_hash: str | None = Query(default=None, max_length=64),
     connector_runs_limit: int = Query(default=20, ge=0, le=100),
     redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     report = ReportService.build_dataset_report(
         db,
@@ -153,9 +158,10 @@ def export_dataset_report_bundle_zip(
     pipeline_hash: str | None = Query(default=None, max_length=64),
     connector_runs_limit: int = Query(default=20, ge=0, le=100),
     redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     One-click export bundle (zip) containing:

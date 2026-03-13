@@ -16,7 +16,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
 
@@ -90,6 +90,13 @@ from app.tasks.queue import enqueue_connector_run, get_queue
 
 router = APIRouter()
 _DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
+URL_SHA256_PREFIX = "url_sha256:"
+HTTP_URL_PREFIXES = ("http://", "https://")
+CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"
+JIRA_UPDATED_SOURCE = "connector:jira:updated"
+UNSUPPORTED_CONNECTOR_ID_DETAIL = "Unsupported connector_id"
+URL_INGEST_DISABLED_DETAIL = "URL ingestion is disabled"
+CONNECTOR_RUN_NOT_FOUND_DETAIL = "Connector run not found"
 
 
 def _now() -> datetime:
@@ -268,14 +275,14 @@ def _web_crawl_content_fingerprint(
     if parts:
         return "|".join(parts)
 
-    return f"url_sha256:{hashlib.sha256(str(url or '').encode('utf-8', 'ignore')).hexdigest()}"
+    return f"{URL_SHA256_PREFIX}{hashlib.sha256(str(url or '').encode('utf-8', 'ignore')).hexdigest()}"
 
 
 def _web_crawl_token_is_content_aware(token: str | None) -> bool:
     raw = str(token or "").strip()
     if not raw:
         return False
-    markers = ("etag:", "last_modified:", "body_sha256:", "url_sha256:", "content_type:")
+    markers = ("etag:", "last_modified:", "body_sha256:", URL_SHA256_PREFIX, "content_type:")
     return any(m in raw for m in markers)
 
 
@@ -293,7 +300,7 @@ def _web_crawl_manifest_token_changed(*, existing_token: str | None, discovered_
     if not _web_crawl_token_is_content_aware(existing):
         return False
     # If this run only has a weak URL-hash fallback token, avoid false-positive "changed" decisions.
-    if discovered.startswith("url_sha256:") and not existing.startswith("url_sha256:"):
+    if discovered.startswith(URL_SHA256_PREFIX) and not existing.startswith(URL_SHA256_PREFIX):
         return False
     return True
 
@@ -326,7 +333,7 @@ def _web_crawl_build_doc_sync_token(*, source_url: str, doc: Any, crawl_token: s
         body_sha256=body_sha,
     )
 
-    if token.startswith("url_sha256:") and _web_crawl_token_is_content_aware(crawl_token):
+    if token.startswith(URL_SHA256_PREFIX) and _web_crawl_token_is_content_aware(crawl_token):
         token = str(crawl_token or "").strip() or token
 
     # Preserve crawler content_type marker when available.
@@ -948,7 +955,7 @@ def _validate_connector_schema(connector_id: str, config: dict[str, Any]) -> tup
     elif connector_id == "sqlserver_catalog":
         cfg_obj = SQLServerCatalogConnectorConfig.model_validate(config or {})
     else:
-        raise ValueError("Unsupported connector_id")
+        raise ValueError(UNSUPPORTED_CONNECTOR_ID_DETAIL)
 
     # Use JSON mode to ensure the output is JSON-serializable (UUIDs, datetimes, etc.).
     cfg_dict = cfg_obj.model_dump(mode="json", exclude_none=True)
@@ -1209,9 +1216,10 @@ async def _check_db_connectivity_best_effort(*, connector_id: str, cfg: Any) -> 
 @router.post("/validate", response_model=ConnectorValidateResponse)
 async def validate_connector_config(
     payload: ConnectorValidateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Validate connector config (best-effort).
@@ -4290,7 +4298,7 @@ def _confluence_join_webui(*, base: str, webui: str) -> str:
     w = str(webui or "").strip()
     if not b or not w:
         return ""
-    if w.startswith(("http://", "https://")):
+    if w.startswith(HTTP_URL_PREFIXES):
         return w
     if not w.startswith("/"):
         w = "/" + w
@@ -4682,7 +4690,7 @@ def _jira_extract_urls_from_adf(value: object, *, limit: int) -> list[str]:
         url = str(raw or "").strip()
         if not url:
             return
-        if not url.lower().startswith(("http://", "https://")):
+        if not url.lower().startswith(HTTP_URL_PREFIXES):
             return
         if url in seen:
             return
@@ -5022,7 +5030,7 @@ def _jira_adf_text_node_html(value: dict) -> str:
         if mtype == "link":
             attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
             href = str(attrs.get("href") or "").strip()
-            if href.startswith(("http://", "https://", "mailto:")):
+            if href.startswith((*HTTP_URL_PREFIXES, "mailto:")):
                 text = f'<a href="{html.escape(href)}">{text}</a>'
             continue
         if mtype == "strong":
@@ -5135,7 +5143,7 @@ def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
     if node_type == "inlinecard":
         attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
         url = str(attrs.get("url") or "").strip()
-        if url.startswith(("http://", "https://")):
+        if url.startswith(HTTP_URL_PREFIXES):
             esc = html.escape(url)
             return f'<a href="{esc}">{esc}</a>'
         return html.escape(url) if url else ""
@@ -6599,7 +6607,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                         if updated:
                             lm_iso = _normalize_datetime_utc_iso(updated) or updated
                             meta0["source_last_modified_at"] = lm_iso
-                            meta0["source_last_modified_source"] = "connector:jira:updated"
+                            meta0["source_last_modified_source"] = JIRA_UPDATED_SOURCE
                             meta0["source_last_modified_raw"] = meta0.get("source_last_modified_raw") or updated
                         if isinstance(acl_provenance, dict):
                             meta0["acl_provenance"] = dict(acl_provenance)
@@ -6679,7 +6687,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                                     continue
                                 if link_url == issue_url:
                                     continue
-                                if not link_url.lower().startswith(("http://", "https://")):
+                                if not link_url.lower().startswith(HTTP_URL_PREFIXES):
                                     continue
                                 seen_link_urls.add(link_url)
                                 linked_artifacts_processed += 1
@@ -6720,7 +6728,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                                         if updated:
                                             lm_iso = _normalize_datetime_utc_iso(updated) or updated
                                             meta_link["source_last_modified_at"] = lm_iso
-                                            meta_link["source_last_modified_source"] = "connector:jira:updated"
+                                            meta_link["source_last_modified_source"] = JIRA_UPDATED_SOURCE
                                             meta_link["source_last_modified_raw"] = meta_link.get("source_last_modified_raw") or updated
                                         if isinstance(acl_provenance, dict):
                                             meta_link["acl_provenance"] = dict(acl_provenance)
@@ -6849,7 +6857,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                                         if updated:
                                             lm_iso = _normalize_datetime_utc_iso(updated) or updated
                                             meta_att["source_last_modified_at"] = lm_iso
-                                            meta_att["source_last_modified_source"] = "connector:jira:updated"
+                                            meta_att["source_last_modified_source"] = JIRA_UPDATED_SOURCE
                                             meta_att["source_last_modified_raw"] = meta_att.get("source_last_modified_raw") or updated
                                         if isinstance(acl_provenance, dict):
                                             meta_att["acl_provenance"] = dict(acl_provenance)
@@ -7045,9 +7053,10 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Create a connector run (currently supports url_batch).
@@ -7059,7 +7068,7 @@ async def create_connector_run(
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
 
     if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
-        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+        raise HTTPException(status_code=400, detail=URL_INGEST_DISABLED_DETAIL)
     if connector_id in db_catalog_connectors and not bool(getattr(settings, "DB_CATALOG_ENABLED", False)):
         raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
 
@@ -7094,7 +7103,7 @@ async def create_connector_run(
         cfg = SQLServerCatalogConnectorConfig.model_validate(payload.config or {})
         cfg_dict = encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
     else:
-        raise HTTPException(status_code=400, detail="Unsupported connector_id")
+        raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
 
     # Validate tenant groups referenced in config (fail-closed; prevents typos silently weakening ACLs).
     group_ids_to_check: list[UUID] = []
@@ -7156,7 +7165,7 @@ async def create_connector_run(
     elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
         background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
-        raise HTTPException(status_code=400, detail="Unsupported connector_id")
+        raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
 
     return _run_out(run)
 
@@ -7166,9 +7175,10 @@ def list_connector_runs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
     dataset_id: UUID | None = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List connector runs (requires dataset write permission for each returned run's dataset)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -7214,9 +7224,10 @@ def list_connector_runs(
 @router.get("/runs/{run_id}", response_model=ConnectorRunOut)
 def get_connector_run(
     run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get connector run detail (requires dataset write permission)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -7228,7 +7239,7 @@ def get_connector_run(
         .first()
     )
     if not run:
-        raise HTTPException(status_code=404, detail="Connector run not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
 
     if run.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
@@ -7268,19 +7279,20 @@ def _extract_failed_urls(stats: dict) -> list[str]:
 async def retry_failed_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create a new connector run that retries only the failed URLs (best-effort)."""
     if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
-        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+        raise HTTPException(status_code=400, detail=URL_INGEST_DISABLED_DETAIL)
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
     if not run:
-        raise HTTPException(status_code=404, detail="Connector run not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
 
     status = str(run.status or "").lower()
     if status in {"pending", "running"}:
@@ -7310,7 +7322,7 @@ async def retry_failed_connector_run(
             if k in base_cfg:
                 new_cfg[k] = base_cfg.get(k)
     else:
-        raise HTTPException(status_code=400, detail="Unsupported connector_id")
+        raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
 
     new_run = ConnectorRun(
         tenant_id=tenant_id,
@@ -7346,19 +7358,20 @@ async def retry_failed_connector_run(
 async def resume_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create a new connector run that resumes from where the previous run stopped (best-effort)."""
     if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
-        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+        raise HTTPException(status_code=400, detail=URL_INGEST_DISABLED_DETAIL)
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
     if not run:
-        raise HTTPException(status_code=404, detail="Connector run not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
 
     status = str(run.status or "").lower()
     if status not in {"cancelled", "failed"}:
@@ -7452,23 +7465,24 @@ async def resume_connector_run(
     elif connector_id == "minio_bucket":
         background_tasks.add_task(_execute_minio_bucket_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
-        raise HTTPException(status_code=400, detail="Unsupported connector_id")
+        raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
     return _run_out(new_run)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=ConnectorRunOut)
 async def cancel_connector_run(
     run_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Cancel a running connector run (best-effort)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
     if not run:
-        raise HTTPException(status_code=404, detail="Connector run not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
 
     if run.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
@@ -7508,9 +7522,10 @@ def list_connector_configs(
     dataset_id: UUID | None = None,
     connector_id: str | None = None,
     enabled: bool | None = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List saved connector configurations.
@@ -7556,9 +7571,10 @@ def list_connector_configs(
 @router.post("/configs", response_model=ConnectorConfigOut, status_code=201)
 def create_connector_config(
     payload: ConnectorConfigCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create a saved connector configuration."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -7587,9 +7603,10 @@ def create_connector_config(
 def update_connector_config(
     config_id: UUID,
     payload: ConnectorConfigUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Update a saved connector configuration (best-effort)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -7600,7 +7617,7 @@ def update_connector_config(
         .first()
     )
     if not cfg:
-        raise HTTPException(status_code=404, detail="Connector config not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
     ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -7624,9 +7641,10 @@ def update_connector_config(
 @router.delete("/configs/{config_id}", status_code=204)
 def delete_connector_config(
     config_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a saved connector configuration."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -7637,7 +7655,7 @@ def delete_connector_config(
         .first()
     )
     if not cfg:
-        raise HTTPException(status_code=404, detail="Connector config not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
     ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -7651,9 +7669,10 @@ def delete_connector_config(
 async def run_connector_config(
     config_id: UUID,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Create a connector run from a saved connector configuration."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -7664,7 +7683,7 @@ async def run_connector_config(
         .first()
     )
     if not cfg:
-        raise HTTPException(status_code=404, detail="Connector config not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
     ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -7673,7 +7692,7 @@ async def run_connector_config(
     url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space", "jira_project"}
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
     if connector_id in url_connectors and not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
-        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+        raise HTTPException(status_code=400, detail=URL_INGEST_DISABLED_DETAIL)
     if connector_id in db_catalog_connectors and not bool(getattr(settings, "DB_CATALOG_ENABLED", False)):
         raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
 
@@ -7715,7 +7734,7 @@ async def run_connector_config(
     elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
         background_tasks.add_task(_execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
     else:
-        raise HTTPException(status_code=400, detail="Unsupported connector_id")
+        raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
 
     return _run_out(run)
 
@@ -7725,9 +7744,10 @@ def reconcile_connector_config(
     config_id: UUID,
     apply: bool = Query(default=False, description="Apply the reconcile plan; default is dry-run"),
     sample_limit: int = Query(default=20, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Reconcile connector-managed documents for a saved config using the last known local source set.
@@ -7744,7 +7764,7 @@ def reconcile_connector_config(
         .first()
     )
     if not cfg:
-        raise HTTPException(status_code=404, detail="Connector config not found")
+        raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
     ds = DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -7804,9 +7824,10 @@ def reconcile_connector_config(
 @router.post("/scheduled/tick")
 async def scheduled_tick(
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Evaluate saved connector schedules and enqueue due runs (best-effort).

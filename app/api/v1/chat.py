@@ -8,7 +8,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -76,6 +76,12 @@ from app.services.rag_trace_service import list_rag_traces
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+CONVERSATION_NOT_FOUND_DETAIL = "Conversation not found"
+DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL = "dataset_id is required when document_ids is empty"
+DOC_IDS_MUST_MATCH_DATASET_DETAIL = "document_ids must all belong to the specified dataset_id"
+NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL = "No accessible documents for chat retrieval"
+CHAT_STREAM_AUDIT_ACTION = "chat.stream"
 
 
 def _annotate_chat_cache_metrics(
@@ -221,7 +227,7 @@ async def _persist_chat_stream_turn_background(
                 db2,
                 tenant_id=tenant_id,
                 actor_id=account_id,
-                action="chat.stream",
+                action=CHAT_STREAM_AUDIT_ACTION,
                 resource_type="conversation",
                 resource_id=str(conversation_id),
                 request_id=str(request_id),
@@ -374,9 +380,10 @@ async def chat(
     http_request: Request,
     request: ChatRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Non-streaming chat endpoint.
@@ -423,7 +430,7 @@ async def chat(
             .first()
         )
         if not conversation:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
 
         if request.document_ids:
             # Explicit doc scope.
@@ -441,7 +448,7 @@ async def chat(
                 )
                 ds_ids = {row[0] for row in rows if row and row[0] is not None}
                 if ds_ids and ds_ids != {request.dataset_id}:
-                    raise HTTPException(status_code=400, detail="document_ids must all belong to the specified dataset_id")
+                    raise HTTPException(status_code=400, detail=DOC_IDS_MUST_MATCH_DATASET_DETAIL)
 
         elif request.dataset_id is not None:
             # Explicit dataset scope.
@@ -467,7 +474,7 @@ async def chat(
             if scope_dataset_id is None and not allow_open_scope:
                 raise HTTPException(
                     status_code=400,
-                    detail="dataset_id is required when document_ids is empty",
+                    detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
                 )
 
         if not allow_empty_docs:
@@ -489,10 +496,10 @@ async def chat(
                     | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
                 )
                 if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
             else:
                 if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
 
     else:
         # Create new conversation.
@@ -510,7 +517,7 @@ async def chat(
                 )
                 ds_ids = {row[0] for row in rows if row and row[0] is not None}
                 if ds_ids and ds_ids != {request.dataset_id}:
-                    raise HTTPException(status_code=400, detail="document_ids must all belong to the specified dataset_id")
+                    raise HTTPException(status_code=400, detail=DOC_IDS_MUST_MATCH_DATASET_DETAIL)
 
         elif request.dataset_id is not None:
             DatasetService.ensure_member(db, tenant_id, account_id)
@@ -524,7 +531,7 @@ async def chat(
             if not allow_open_scope:
                 raise HTTPException(
                     status_code=400,
-                    detail="dataset_id is required when document_ids is empty",
+                    detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
                 )
 
         if not allow_empty_docs:
@@ -546,10 +553,10 @@ async def chat(
                     | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
                 )
                 if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
             else:
                 if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
 
         conversation = Conversation(
             id=uuid.uuid4(),
@@ -1117,9 +1124,10 @@ async def chat(
 async def stream_chat(
     http_request: Request,
     request: ChatRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """
     Streaming chat endpoint (core flow).
@@ -1166,7 +1174,7 @@ async def stream_chat(
             .first()
         )
         if not conversation:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
 
         if request.document_ids:
             allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
@@ -1183,7 +1191,7 @@ async def stream_chat(
                 )
                 ds_ids = {row[0] for row in rows if row and row[0] is not None}
                 if ds_ids and ds_ids != {request.dataset_id}:
-                    raise HTTPException(status_code=400, detail="document_ids must all belong to the specified dataset_id")
+                    raise HTTPException(status_code=400, detail=DOC_IDS_MUST_MATCH_DATASET_DETAIL)
 
         elif request.dataset_id is not None:
             DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1205,7 +1213,7 @@ async def stream_chat(
             if scope_dataset_id is None and not allow_open_scope:
                 raise HTTPException(
                     status_code=400,
-                    detail="dataset_id is required when document_ids is empty",
+                    detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
                 )
 
         if not allow_empty_docs:
@@ -1227,10 +1235,10 @@ async def stream_chat(
                     | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
                 )
                 if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
             else:
                 if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
 
     else:
         if request.document_ids:
@@ -1247,7 +1255,7 @@ async def stream_chat(
                 )
                 ds_ids = {row[0] for row in rows if row and row[0] is not None}
                 if ds_ids and ds_ids != {request.dataset_id}:
-                    raise HTTPException(status_code=400, detail="document_ids must all belong to the specified dataset_id")
+                    raise HTTPException(status_code=400, detail=DOC_IDS_MUST_MATCH_DATASET_DETAIL)
 
         elif request.dataset_id is not None:
             DatasetService.ensure_member(db, tenant_id, account_id)
@@ -1261,7 +1269,7 @@ async def stream_chat(
             if not allow_open_scope:
                 raise HTTPException(
                     status_code=400,
-                    detail="dataset_id is required when document_ids is empty",
+                    detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
                 )
 
         if not allow_empty_docs:
@@ -1283,10 +1291,10 @@ async def stream_chat(
                     | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
                 )
                 if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
             else:
                 if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
 
         conversation = Conversation(
             id=uuid.uuid4(),
@@ -1636,7 +1644,7 @@ async def stream_chat(
                 db,
                 tenant_id=tenant_id,
                 actor_id=account_id,
-                action="chat.stream",
+                action=CHAT_STREAM_AUDIT_ACTION,
                 resource_type="conversation",
                 resource_id=str(conversation_id),
                 request_id=str(request_id),
@@ -1934,7 +1942,7 @@ async def stream_chat(
                     db,
                     tenant_id=tenant_id,
                     actor_id=account_id,
-                    action="chat.stream",
+                    action=CHAT_STREAM_AUDIT_ACTION,
                     resource_type="conversation",
                     resource_id=str(conversation_id),
                     request_id=str(request_id),
@@ -2274,7 +2282,7 @@ async def stream_chat(
                 db,
                 tenant_id=tenant_id,
                 actor_id=account_id,
-                action="chat.stream",
+                action=CHAT_STREAM_AUDIT_ACTION,
                 resource_type="conversation",
                 resource_id=str(conversation_id),
                 request_id=str(request_id),
@@ -2334,9 +2342,10 @@ async def stream_chat(
 @router.post("/conversations", response_model=ConversationSchema, status_code=201)
 async def create_conversation(
     request: ConversationCreate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """Create a new conversation."""
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
@@ -2397,9 +2406,10 @@ async def create_conversation(
 async def update_conversation(
     conversation_id: UUID,
     payload: ConversationUpdate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Update conversation metadata (currently: title)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2410,7 +2420,7 @@ async def update_conversation(
         .first()
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
 
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
@@ -2441,9 +2451,10 @@ async def export_conversation(
     conversation_id: UUID,
     fmt: str = Query(default="markdown", pattern="^(markdown|json)$"),
     include_citations: bool = Query(default=True),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export a conversation as a downloadable file.
@@ -2459,7 +2470,7 @@ async def export_conversation(
         .first()
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
 
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
@@ -2554,9 +2565,10 @@ async def export_conversation(
 async def list_conversations(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """List conversations."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2670,9 +2682,10 @@ async def get_conversation_messages(
     conversation_id: UUID,
     limit: Optional[int] = Query(default=None, ge=1, le=500),
     before: Optional[UUID] = Query(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """Fetch conversation history (paged)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2682,7 +2695,7 @@ async def get_conversation_messages(
     ).first()
 
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
 
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
@@ -2750,9 +2763,10 @@ async def get_conversation_rag_traces(
     limit: int = Query(default=20, ge=1, le=200),
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List recent RAG traces for a conversation (PII-safe) so the UI can visualize
@@ -2766,7 +2780,7 @@ async def get_conversation_rag_traces(
         .first()
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
 
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
@@ -2791,9 +2805,10 @@ class ConversationSummaryUpdateResponse(BaseModel):
 @router.get("/conversations/{conversation_id}/summary", response_model=ConversationSummaryResponse)
 async def get_conversation_summary_endpoint(
     conversation_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = (
@@ -2802,7 +2817,7 @@ async def get_conversation_summary_endpoint(
         .first()
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     summary = None
@@ -2817,9 +2832,10 @@ async def get_conversation_summary_endpoint(
 @router.post("/conversations/{conversation_id}/summary/update", response_model=ConversationSummaryUpdateResponse)
 async def update_conversation_summary_endpoint(
     conversation_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False)):
         raise HTTPException(status_code=400, detail="Persistent summary memory is disabled")
@@ -2831,7 +2847,7 @@ async def update_conversation_summary_endpoint(
         .first()
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     summary = await update_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
@@ -2841,9 +2857,10 @@ async def update_conversation_summary_endpoint(
 @router.delete("/conversations/{conversation_id}/summary", status_code=204)
 async def delete_conversation_summary_endpoint(
     conversation_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = (
@@ -2852,7 +2869,7 @@ async def delete_conversation_summary_endpoint(
         .first()
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     clear_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
@@ -2871,9 +2888,10 @@ async def list_conversation_checkpoints(
     limit: int = Query(default=20, ge=1, le=200),
     before: Optional[str] = Query(default=None),
     include_values: bool = Query(default=False),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """List LangGraph checkpoints for this conversation (time-travel/debug)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2882,7 +2900,7 @@ async def list_conversation_checkpoints(
         Conversation.tenant_id == tenant_id,
     ).first()
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     from app.rag.pipelines.langgraph import build_rag_graph
@@ -2917,9 +2935,10 @@ async def get_conversation_checkpoint(
     conversation_id: UUID,
     checkpoint_id: str,
     include_values: bool = Query(default=True),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get a checkpoint snapshot (docs are excluded by default)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2928,7 +2947,7 @@ async def get_conversation_checkpoint(
         Conversation.tenant_id == tenant_id,
     ).first()
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     from app.rag.pipelines.langgraph import build_rag_graph
@@ -2957,9 +2976,10 @@ async def get_conversation_checkpoint(
 @router.delete("/conversations/{conversation_id}/checkpoints", status_code=204)
 async def delete_conversation_checkpoints(
     conversation_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Clear checkpoints for this conversation (does not delete messages or the conversation)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2968,7 +2988,7 @@ async def delete_conversation_checkpoints(
         Conversation.tenant_id == tenant_id,
     ).first()
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     from app.rag.checkpointer.factory import get_checkpointer
@@ -2981,9 +3001,10 @@ async def delete_conversation_checkpoints(
 @router.delete("/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
     conversation_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """Delete a conversation."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2993,7 +3014,7 @@ async def delete_conversation(
     ).first()
 
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
 
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 

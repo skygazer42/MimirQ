@@ -7,7 +7,7 @@ diagnose recall/rerank behavior without running the full chat flow.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -89,9 +89,10 @@ def _as_history_dicts(history: list[HistoryMessage]) -> list[dict[str, str]]:
 @router.post("/explain", response_model=RetrievalExplainResponse)
 async def explain_retrieval(
     body: RetrievalExplainRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> RetrievalExplainResponse:
     if not bool(body.retrieval_only):
         raise HTTPException(status_code=400, detail="retrieval_only must be true for this endpoint")

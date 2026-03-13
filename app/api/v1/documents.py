@@ -17,7 +17,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, List, Literal, Optional
+from typing import Annotated, Any, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -164,6 +164,26 @@ _TIMELINE_REDACT_KEYS = {
     "password",
     "api_key",
 }
+
+DOC_NOT_FOUND_DETAIL = 'Document not found'
+INVALID_RANGE_HEADER_DETAIL = 'Invalid Range header'
+IMAGE_NOT_FOUND_DETAIL = 'Image not found'
+IMAGE_JPEG_MEDIA_TYPE = 'image/jpeg'
+DUPLICATE_DOCUMENT_PROCESSING_DETAIL = 'Duplicate document is currently processing'
+HTML_FILE_EXTENSION = '.html'
+PIPELINE_HASH_TOO_LONG_DETAIL = 'pipeline_hash too long'
+FILENAME_INVALID_CHARS_DETAIL = 'Filename contains invalid characters'
+CHUNK_NOT_FOUND_DETAIL = 'Chunk not found'
+CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = 'Chunk is not in the active pipeline version'
+DOCUMENT_FILE_ACCESS_DENIED_DETAIL = 'Document file access denied'
+DOCUMENT_FILE_NOT_FOUND_DETAIL = 'Document file not found'
+NO_DOCUMENT_ACCESS_DETAIL = 'No document access'
+DATA_IMAGE_PREFIX = 'data:image'
+CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = 'chunk_overlap must be less than chunk_size'
+MANUAL_FILE_PATH_PREFIX = 'manual://'
+IMAGE_FILE_EXT_JPEG = '.jpeg'
+IMAGE_FILE_EXT_WEBP = '.webp'
+CHUNK_PATCH_OPERATION = 'chunk.patch'
 
 
 def _coerce_bool_preview(value: Any) -> Optional[bool]:
@@ -331,7 +351,7 @@ def _preview_chunk_has_asset(meta: dict[str, Any], content: str | None = None) -
         return True
     if content:
         lower = str(content).lower()
-        if ("data:image" in lower) or PREVIEW_IMAGE_REF_RE.search(content) or MINIO_IMAGE_REF_RE.search(content):
+        if (DATA_IMAGE_PREFIX in lower) or PREVIEW_IMAGE_REF_RE.search(content) or MINIO_IMAGE_REF_RE.search(content):
             return True
     return False
 
@@ -676,7 +696,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
     max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
     max_image_bytes = max(1_000_000, max_image_bytes)
 
-    supported_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+    supported_exts = {".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"}
 
     digest_cache: dict[str, tuple[str, str]] = {}
     from io import BytesIO
@@ -1044,7 +1064,7 @@ def _normalize_upload_path_parts(filename: str) -> list[str]:
         return []
     if "\x7f" in raw or any(ord(ch) < 32 for ch in raw):
         # Match `_sanitize_filename` behavior: reject control characters (header safety).
-        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+        raise HTTPException(status_code=400, detail=FILENAME_INVALID_CHARS_DETAIL)
 
     cleaned = raw.replace("\\", "/").strip()
     if not cleaned:
@@ -1122,9 +1142,9 @@ def _sanitize_filename(filename: str) -> str:
     if len(cleaned) > 255:
         raise HTTPException(status_code=400, detail="Filename too long (max 255 characters)")
     if "\x7f" in cleaned or any(ord(ch) < 32 for ch in cleaned):
-        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+        raise HTTPException(status_code=400, detail=FILENAME_INVALID_CHARS_DETAIL)
     if cleaned in {".", ".."}:
-        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+        raise HTTPException(status_code=400, detail=FILENAME_INVALID_CHARS_DETAIL)
     return cleaned
 
 
@@ -1664,7 +1684,7 @@ def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
     if chunk_overlap >= chunk_size:
         raise HTTPException(
             status_code=400,
-            detail="chunk_overlap must be less than chunk_size",
+            detail=CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
         )
 
 
@@ -1713,7 +1733,7 @@ def _rewrite_preview_images_to_minio(
     if max_inline_images and len(matches) > max_inline_images:
         matches = matches[:max_inline_images]
 
-    image_exts = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]
+    image_exts = [".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"]
     max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
     max_bytes = max(1_000_000, max_bytes)
 
@@ -1921,7 +1941,7 @@ def _assert_document_acl_readable(
         return
 
     if mode == "only_me":
-        raise HTTPException(status_code=403, detail="No document access")
+        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
     if mode == "partial_members":
         exists = (
@@ -1949,10 +1969,10 @@ def _assert_document_acl_readable(
                 if any(gid in allowed for gid in group_ids):
                     return
 
-        raise HTTPException(status_code=403, detail="No document access")
+        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
     # Unknown mode: fail closed.
-    raise HTTPException(status_code=403, detail="No document access")
+    raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
 
 def _get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) -> Optional[DBDocument]:
@@ -2155,7 +2175,7 @@ async def _ingest_url_upload_request(
         if not ct:
             return None
         if ct in {"text/html"}:
-            return ".html"
+            return HTML_FILE_EXTENSION
         if ct in {"text/plain"}:
             return ".txt"
         if ct in {"text/markdown", "text/x-markdown"}:
@@ -2484,9 +2504,10 @@ async def upload_document(
     entity_vector_enabled: Optional[bool] = Form(default=None),
     dataset_id: Optional[UUID] = Form(default=None),
     user_metadata: Optional[str] = Form(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """
     Upload a document.
@@ -2829,7 +2850,7 @@ async def upload_document(
         if dup_any is not None:
             status0 = str(getattr(dup_any, "status", "") or "").lower()
             if status0 in {"pending", "processing"}:
-                raise HTTPException(status_code=409, detail="Duplicate document is currently processing")
+                raise HTTPException(status_code=409, detail=DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
             # Remove the just-uploaded file to save disk.
             with contextlib.suppress(OSError):
@@ -2970,9 +2991,9 @@ async def _ingest_local_html_request(
         raise HTTPException(status_code=400, detail="File too large")
 
     safe_name = _sanitize_filename(body.filename or "confluence-page.html")
-    file_ext = Path(safe_name).suffix.lower() or ".html"
+    file_ext = Path(safe_name).suffix.lower() or HTML_FILE_EXTENSION
     if file_ext == ".htm":
-        file_ext = ".html"
+        file_ext = HTML_FILE_EXTENSION
     if not file_ext.startswith("."):
         file_ext = "." + file_ext
     if file_ext not in settings.allowed_extensions_list:
@@ -3210,9 +3231,10 @@ async def _ingest_local_html_request(
 async def upload_document_from_url(
     background_tasks: BackgroundTasks,
     body: UrlUploadRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Fetch a remote URL and ingest it as a document.
@@ -3258,9 +3280,10 @@ async def upload_documents_batch(
     dataset_id: Optional[UUID] = Form(default=None),
     precheck_first: bool = Form(default=False),
     user_metadata_map: Optional[str] = Form(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
     max_concurrent: int = Form(default=5)
 ):
     """
@@ -3800,7 +3823,7 @@ async def upload_documents_batch(
                         if dup_any is not None:
                             status0 = str(getattr(dup_any, "status", "") or "").lower()
                             if status0 in {"pending", "processing"}:
-                                raise HTTPException(status_code=409, detail="Duplicate document is currently processing")
+                                raise HTTPException(status_code=409, detail=DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
                             with contextlib.suppress(OSError):
                                 file_path.unlink(missing_ok=True)
@@ -4177,7 +4200,7 @@ async def upload_documents_batch(
                     if dup_any is not None:
                         status0 = str(getattr(dup_any, "status", "") or "").lower()
                         if status0 in {"pending", "processing"}:
-                            raise HTTPException(status_code=409, detail="Duplicate document is currently processing")
+                            raise HTTPException(status_code=409, detail=DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
                         with contextlib.suppress(OSError):
                             file_path.unlink(missing_ok=True)
@@ -4369,9 +4392,10 @@ async def list_documents(
     source_path_prefix: Optional[str] = Query(default=None, max_length=500),
     order_by: Literal["created_at", "filename", "file_size"] = Query(default="created_at"),
     order_dir: Literal["asc", "desc"] = Query(default="desc"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """
     List documents.
@@ -4542,9 +4566,10 @@ async def list_document_folders(
     dataset_id: UUID = Query(...),
     lifecycle: Literal["active", "archived", "disabled", "all"] = Query(default="active"),
     max_depth: int = Query(default=20, ge=1, le=50),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Build a folder tree derived from `document.metadata.source_path`.
@@ -4613,9 +4638,10 @@ async def get_document_stats(
     file_type: Optional[str] = Query(default=None, max_length=20),
     owner_id: Optional[str] = Query(default=None, max_length=255),
     q: Optional[str] = Query(default=None, max_length=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Document stats for knowledge-base dashboards.
@@ -4739,9 +4765,10 @@ async def list_document_duplicates(
     min_count: int = Query(default=2, ge=2, le=50),
     max_groups: int = Query(default=50, ge=1, le=200),
     max_docs_per_group: int = Query(default=20, ge=1, le=100),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Find duplicate documents by `documents.metadata.file_sha256` within a dataset.
@@ -5022,9 +5049,10 @@ async def get_document(
         default=False,
         description="If true, include chunks across all pipeline versions (debug; when include_chunks=true)",
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """
     Get document detail.
@@ -5037,7 +5065,7 @@ async def get_document(
     document = query.first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     # Permission check.
     ds: Dataset | None = None
@@ -5079,9 +5107,10 @@ async def get_document(
 async def get_document_timeline(
     document_id: uuid.UUID,
     limit: int = Query(default=200, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """User-facing document timeline (audit logs + synthetic document state events)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -5092,7 +5121,7 @@ async def get_document_timeline(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     # Permission check (mirrors get_document).
     ds: Dataset | None = None
@@ -5184,9 +5213,10 @@ async def get_document_timeline(
 @router.get("/{document_id}/access", response_model=DocumentAccessInfo)
 async def get_document_access(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Get document-level ACL settings (requires document read access)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -5197,7 +5227,7 @@ async def get_document_access(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -5224,9 +5254,10 @@ async def get_document_access(
 async def put_document_access(
     document_id: uuid.UUID,
     payload: DocumentAccessUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Update document-level ACL settings (requires dataset write or tenant edit role)."""
     member = DatasetService.ensure_member(db, tenant_id, account_id)
@@ -5237,7 +5268,7 @@ async def put_document_access(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -5312,9 +5343,10 @@ async def put_document_access(
 async def get_document_parsed_content(
     document_id: uuid.UUID,
     max_chars: int = Query(default=200_000, ge=0, le=2_000_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Get persisted parsed markdown content (raw+clean) for a document.
@@ -5331,7 +5363,7 @@ async def get_document_parsed_content(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -5379,9 +5411,10 @@ async def get_document_parsed_content(
 @router.get("/{document_id}/versions", response_model=DocumentVersionList)
 async def list_document_versions(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List document pipeline versions (keyed by pipeline_hash).
@@ -5398,7 +5431,7 @@ async def list_document_versions(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -5509,9 +5542,10 @@ async def diff_document_versions(
         le=200,
         description="Max hash samples included in added_hashes/removed_hashes",
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Diff two document pipeline versions by chunk `content_hash` (multiset semantics).
@@ -5529,7 +5563,7 @@ async def diff_document_versions(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -5542,7 +5576,7 @@ async def diff_document_versions(
     if not from_hash or not to_hash:
         raise HTTPException(status_code=400, detail="from/to pipeline_hash are required")
     if len(from_hash) > 64 or len(to_hash) > 64:
-        raise HTTPException(status_code=400, detail="pipeline_hash too long")
+        raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
 
     def _load_signatures(pipeline_hash: str) -> list[str]:
         target_key = f"{document_id}:{pipeline_hash}"
@@ -5642,9 +5676,10 @@ async def diff_document_versions(
 async def activate_document_version(
     document_id: uuid.UUID,
     pipeline_hash: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Activate (rollback to) a specific pipeline_hash version for retrieval/citations.
@@ -5659,7 +5694,7 @@ async def activate_document_version(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -5669,7 +5704,7 @@ async def activate_document_version(
     if not pipeline_hash_norm:
         raise HTTPException(status_code=400, detail="pipeline_hash is required")
     if len(pipeline_hash_norm) > 64:
-        raise HTTPException(status_code=400, detail="pipeline_hash too long")
+        raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
 
     target_key = f"{document_id}:{pipeline_hash_norm}"
     exists = (
@@ -5753,9 +5788,10 @@ async def activate_document_version(
 async def delete_document_version(
     document_id: uuid.UUID,
     pipeline_hash: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Delete a non-active document pipeline version (best-effort cleanup).
@@ -5774,7 +5810,7 @@ async def delete_document_version(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -5784,7 +5820,7 @@ async def delete_document_version(
     if not pipeline_hash_norm:
         raise HTTPException(status_code=400, detail="pipeline_hash is required")
     if len(pipeline_hash_norm) > 64:
-        raise HTTPException(status_code=400, detail="pipeline_hash too long")
+        raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
 
     # Guard: do not delete versions while processing the same target version.
     doc_status = str(getattr(document, "status", "") or "").lower()
@@ -5920,9 +5956,10 @@ async def list_document_chunks(
     q: Optional[str] = Query(default=None, max_length=200),
     pipeline_hash: Optional[str] = Query(default=None, max_length=64, description="Optional: filter by a specific pipeline_hash version"),
     all_versions: bool = Query(default=False, description="If true, return chunks across all pipeline versions (debug)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List document chunks (paged).
@@ -5937,7 +5974,7 @@ async def list_document_chunks(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -5981,9 +6018,10 @@ async def list_document_chunk_matches(
     limit: int = Query(default=2000, ge=1, le=5000, description="Max returned matches (may be truncated)"),
     pipeline_hash: Optional[str] = Query(default=None, max_length=64, description="Optional: filter by a specific pipeline_hash version"),
     all_versions: bool = Query(default=False, description="If true, return matches across all pipeline versions (debug)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     List chunk matches for a document (lightweight payload).
@@ -6004,7 +6042,7 @@ async def list_document_chunk_matches(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -6061,9 +6099,10 @@ async def list_document_chunk_matches(
 async def get_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Get a single chunk for a document.
@@ -6076,7 +6115,7 @@ async def get_document_chunk(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -6094,7 +6133,7 @@ async def get_document_chunk(
         .first()
     )
     if not chunk:
-        raise HTTPException(status_code=404, detail="Chunk not found")
+        raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
 
     return chunk
 
@@ -6163,7 +6202,7 @@ def _build_chunk_index_operation_result(
     success = all(st in {"ok", "skipped"} for st in (vector_status, bm25_status, kg_status))
     return {
         "schema": "mimirq.index_operation_result.v1",
-        "operation": str(operation or "").strip()[:80] or "chunk.patch",
+        "operation": str(operation or "").strip()[:80] or CHUNK_PATCH_OPERATION,
         "strictness": str(strictness or "off").strip().lower(),
         "success": bool(success),
         "vector": dict(vector or {}),
@@ -6329,9 +6368,10 @@ async def _record_chunk_index_drift(
 async def create_document_chunk(
     document_id: uuid.UUID,
     payload: DocumentChunkCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Create a new chunk for a document (appends to the active pipeline version).
@@ -6350,7 +6390,7 @@ async def create_document_chunk(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -6464,9 +6504,10 @@ async def patch_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
     payload: DocumentChunkUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Patch a chunk and update its indexes (vector + BM25) best-effort.
@@ -6481,7 +6522,7 @@ async def patch_document_chunk(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -6503,13 +6544,13 @@ async def patch_document_chunk(
         .first()
     )
     if not chunk:
-        raise HTTPException(status_code=404, detail="Chunk not found")
+        raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
 
     doc_meta = dict(getattr(document, "doc_metadata", None) or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
     chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
-        raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
+        raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
     if payload.content is not None:
         chunk.content = payload.content
@@ -6584,7 +6625,7 @@ async def patch_document_chunk(
     if emit_drift_markers and vector_error:
         drift_markers.append(
             build_index_drift_marker(
-                operation="chunk.patch",
+                operation=CHUNK_PATCH_OPERATION,
                 strictness=strictness,
                 tenant_id=tenant_id,
                 document_id=document_id,
@@ -6596,7 +6637,7 @@ async def patch_document_chunk(
     if emit_drift_markers and bm25_error:
         drift_markers.append(
             build_index_drift_marker(
-                operation="chunk.patch",
+                operation=CHUNK_PATCH_OPERATION,
                 strictness=strictness,
                 tenant_id=tenant_id,
                 document_id=document_id,
@@ -6618,7 +6659,7 @@ async def patch_document_chunk(
         error=bm25_error,
     )
     operation_result = _build_chunk_index_operation_result(
-        operation="chunk.patch",
+        operation=CHUNK_PATCH_OPERATION,
         strictness=strictness,
         vector=vector_result,
         bm25=bm25_result,
@@ -6659,9 +6700,10 @@ async def patch_document_chunk(
 async def delete_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Delete a chunk and update its indexes (vector + BM25) best-effort.
@@ -6679,7 +6721,7 @@ async def delete_document_chunk(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -6701,13 +6743,13 @@ async def delete_document_chunk(
         .first()
     )
     if not chunk:
-        raise HTTPException(status_code=404, detail="Chunk not found")
+        raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
 
     doc_meta = dict(getattr(document, "doc_metadata", None) or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
     chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
-        raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
+        raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
     strictness = _normalize_index_consistency_strictness(patch_mode=False)
     vector_error: str | None = None
@@ -6815,9 +6857,10 @@ async def delete_document_chunk(
 async def disable_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Disable a chunk (exclude it from retrieval/indexing)."""
     from app.rag.retriever import hybrid_retriever
@@ -6827,7 +6870,7 @@ async def disable_document_chunk(
 
     document = _get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
     _assert_document_writable_for_chunk_ops(db, tenant_id=tenant_id, account_id=account_id, document=document)
 
     current_status = str(getattr(document, "status", "") or "").lower()
@@ -6836,13 +6879,13 @@ async def disable_document_chunk(
 
     chunk = _get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
     if not chunk:
-        raise HTTPException(status_code=404, detail="Chunk not found")
+        raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
 
     doc_meta = dict(getattr(document, "doc_metadata", None) or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
     chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
-        raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
+        raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
     strictness = _normalize_index_consistency_strictness(patch_mode=False)
     vector_error: str | None = None
@@ -6923,16 +6966,17 @@ async def disable_document_chunk(
 async def enable_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Enable a previously-disabled chunk (requires re-embed to restore vector index)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     document = _get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
     _assert_document_writable_for_chunk_ops(db, tenant_id=tenant_id, account_id=account_id, document=document)
 
     current_status = str(getattr(document, "status", "") or "").lower()
@@ -6941,13 +6985,13 @@ async def enable_document_chunk(
 
     chunk = _get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
     if not chunk:
-        raise HTTPException(status_code=404, detail="Chunk not found")
+        raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
 
     doc_meta = dict(getattr(document, "doc_metadata", None) or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
     chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
-        raise HTTPException(status_code=409, detail="Chunk is not in the active pipeline version")
+        raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
     if getattr(chunk, "disabled_at", None) is not None:
         chunk.disabled_at = None
@@ -6972,9 +7016,10 @@ async def enable_document_chunk(
 async def reembed_document_chunks(
     document_id: uuid.UUID,
     payload: DocumentChunkReembedRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Re-embed selected chunks (vector + BM25) best-effort."""
     from app.rag.retriever import hybrid_retriever
@@ -6984,7 +7029,7 @@ async def reembed_document_chunks(
 
     document = _get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
     _assert_document_writable_for_chunk_ops(db, tenant_id=tenant_id, account_id=account_id, document=document)
 
     current_status = str(getattr(document, "status", "") or "").lower()
@@ -7077,9 +7122,10 @@ async def reembed_document_chunks(
 async def generate_document_qa(
     document_id: uuid.UUID,
     payload: DocumentQAGenerateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Generate (or extract) FAQ-style Q&A pairs for a document and index them as extra chunks.
@@ -7094,7 +7140,7 @@ async def generate_document_qa(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -7143,9 +7189,10 @@ async def generate_document_qa(
 async def patch_document_pipeline(
     document_id: uuid.UUID,
     payload: DocumentPipelinePatchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Patch `documents.metadata.pipeline` for document-level pipeline overrides.
@@ -7158,7 +7205,7 @@ async def patch_document_pipeline(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -7206,9 +7253,10 @@ async def patch_document_pipeline(
 async def patch_document_user_metadata(
     document_id: uuid.UUID,
     payload: DocumentUserMetadataPatchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Patch `documents.metadata.user` for user-editable document metadata.
@@ -7221,7 +7269,7 @@ async def patch_document_user_metadata(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -7265,9 +7313,10 @@ async def patch_document_user_metadata(
 @router.get("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata)
 async def get_document_lifecycle_metadata(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Get document lifecycle governance metadata.
@@ -7282,7 +7331,7 @@ async def get_document_lifecycle_metadata(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -7301,9 +7350,10 @@ async def get_document_lifecycle_metadata(
 async def patch_document_lifecycle_metadata(
     document_id: uuid.UUID,
     payload: DocumentLifecycleMetadataUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Patch document lifecycle governance metadata (owner/review_due/authority/supersedes).
@@ -7322,7 +7372,7 @@ async def patch_document_lifecycle_metadata(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -7431,9 +7481,10 @@ async def patch_document_lifecycle_metadata(
 @router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse)
 async def batch_patch_document_user_metadata(
     payload: DocumentBatchUserMetadataPatchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Batch patch `documents.metadata.user`.
@@ -7498,7 +7549,8 @@ async def download_document(
     document_id: uuid.UUID,
     request: Request,
     inline: bool = True,
-    db: Session = Depends(get_db),
+    *,
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Download (or inline-preview) a document file.
@@ -7519,7 +7571,7 @@ async def download_document(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id and account_id:
@@ -7529,7 +7581,7 @@ async def download_document(
         _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     raw_path = str(document.file_path or "").strip()
-    if not raw_path or raw_path.startswith("manual://"):
+    if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         raise HTTPException(status_code=404, detail="Document file not available")
 
     # Object storage path (MinIO/S3-compatible).
@@ -7543,7 +7595,7 @@ async def download_document(
             raise HTTPException(status_code=404, detail="Document file not available") from exc
 
         if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-            raise HTTPException(status_code=403, detail="Document file access denied")
+            raise HTTPException(status_code=403, detail=DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
 
         dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
         expected_object = minio_service.build_document_object_name(
@@ -7553,16 +7605,16 @@ async def download_document(
             extension=f".{(document.file_type or '').lower()}",
         )
         if ref.object_name != expected_object:
-            raise HTTPException(status_code=403, detail="Document file access denied")
+            raise HTTPException(status_code=403, detail=DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
 
         try:
             stat = minio_service.stat_object(object_name=ref.object_name)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=404, detail="Document file not found") from exc
+            raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
 
         total_size = int(getattr(stat, "size", 0) or 0)
         if total_size <= 0:
-            raise HTTPException(status_code=404, detail="Document file not found")
+            raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL)
 
         # Security: when auth is provided via query param (`?token=`) for <iframe>/<a>,
         # ensure downstream caches never store token-bearing URLs.
@@ -7638,7 +7690,7 @@ async def download_document(
             except HTTPException:
                 raise
             except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=416, detail="Invalid Range header") from exc
+                raise HTTPException(status_code=416, detail=INVALID_RANGE_HEADER_DETAIL) from exc
         else:
             headers["Content-Length"] = str(total_size)
 
@@ -7662,7 +7714,7 @@ async def download_document(
     # Local filesystem path (legacy/default).
     path = Path(raw_path).resolve(strict=False)
     if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=404, detail="Document file not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL)
 
     # Prevent path traversal / unsafe paths in DB: only allow files under uploads/{tenant_id}/
     upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
@@ -7670,7 +7722,7 @@ async def download_document(
     try:
         path.relative_to(tenant_root)
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail="Document file access denied") from exc
+        raise HTTPException(status_code=403, detail=DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
 
     media_type, _encoding = mimetypes.guess_type(path.name)
     if not media_type:
@@ -7702,9 +7754,10 @@ async def download_document(
 @router.get("/{document_id}/status", response_model=DocumentStatus)
 async def get_document_status(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """
     Get document processing status (for polling).
@@ -7716,7 +7769,7 @@ async def get_document_status(
     ).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     ds: Dataset | None = None
     if document.dataset_id:
@@ -7736,9 +7789,10 @@ async def get_document_status(
 @router.post("/{document_id}/cancel", response_model=DocumentStatus)
 async def cancel_document_processing(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Cancel an in-progress document processing task.
@@ -7754,7 +7808,7 @@ async def cancel_document_processing(
         DBDocument.tenant_id == tenant_id,
     ).first()
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -7827,9 +7881,10 @@ async def retry_document_processing(
     background_tasks: BackgroundTasks,
     force: bool = False,
     skip_if_unchanged: bool = False,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Retry a failed/cancelled document processing task.
@@ -7846,7 +7901,7 @@ async def retry_document_processing(
         .first()
     )
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -7859,7 +7914,7 @@ async def retry_document_processing(
         raise HTTPException(status_code=409, detail="Document is already completed (use force=true to reprocess)")
 
     raw_path = str(document.file_path or "").strip()
-    if not raw_path or raw_path.startswith("manual://"):
+    if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         raise HTTPException(status_code=409, detail="Document file is not reprocessable")
 
     # Optional: skip wasteful reprocessing for completed docs when nothing changes.
@@ -7944,9 +7999,9 @@ async def retry_document_processing(
         try:
             ref = parse_minio_uri(raw_path)
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail="Document file not found") from exc
+            raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
         if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-            raise HTTPException(status_code=403, detail="Document file access denied")
+            raise HTTPException(status_code=403, detail=DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
         dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
         expected_object = minio_service.build_document_object_name(
             tenant_id=str(tenant_id),
@@ -7955,16 +8010,16 @@ async def retry_document_processing(
             extension=f".{(document.file_type or '').lower()}",
         )
         if ref.object_name != expected_object:
-            raise HTTPException(status_code=403, detail="Document file access denied")
+            raise HTTPException(status_code=403, detail=DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
         try:
             minio_service.stat_object(object_name=ref.object_name)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=404, detail="Document file not found") from exc
+            raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
         object_name = ref.object_name
     else:
         file_path = Path(raw_path)
         if not file_path.exists() or not file_path.is_file():
-            raise HTTPException(status_code=404, detail="Document file not found")
+            raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL)
 
     meta = dict(document.doc_metadata or {})
     meta.pop("cancel_requested", None)
@@ -8183,7 +8238,7 @@ async def _delete_document_lifecycle(
     )
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
     if enforce_permissions and document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -8285,7 +8340,7 @@ async def _delete_document_lifecycle(
     # 3. Delete local file.
     try:
         raw_path = str(document.file_path or "").strip()
-        if raw_path and not raw_path.startswith("manual://"):
+        if raw_path and not raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
             if is_minio_uri(raw_path):
                 if bool(getattr(settings, "MINIO_ENABLED", False)):
                     try:
@@ -8390,9 +8445,10 @@ async def _delete_document_lifecycle(
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(
     document_id: uuid.UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """
     Delete document.
@@ -8410,9 +8466,10 @@ async def delete_document(
 @router.post("/batch/disable", response_model=DocumentBatchLifecycleResponse)
 async def batch_disable_documents(
     payload: DocumentBatchLifecycleRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Batch disable documents (best-effort)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -8458,9 +8515,10 @@ async def batch_disable_documents(
 @router.post("/batch/enable", response_model=DocumentBatchLifecycleResponse)
 async def batch_enable_documents(
     payload: DocumentBatchLifecycleRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Batch enable documents (best-effort)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -8504,9 +8562,10 @@ async def batch_enable_documents(
 @router.post("/batch/archive", response_model=DocumentBatchLifecycleResponse)
 async def batch_archive_documents(
     payload: DocumentBatchLifecycleRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Batch archive documents (best-effort)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -8552,9 +8611,10 @@ async def batch_archive_documents(
 @router.post("/batch/unarchive", response_model=DocumentBatchLifecycleResponse)
 async def batch_unarchive_documents(
     payload: DocumentBatchLifecycleRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Batch unarchive documents (best-effort)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -8598,9 +8658,10 @@ async def batch_unarchive_documents(
 @router.post("/batch-delete", response_model=DocumentBatchDeleteResponse)
 async def batch_delete_documents(
     payload: DocumentBatchDeleteRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Batch delete documents (best-effort per id).
@@ -8636,9 +8697,10 @@ async def batch_delete_documents(
 async def batch_retry_documents(
     payload: DocumentBatchRetryRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Batch retry/reprocess documents (best-effort per id)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -8690,9 +8752,10 @@ async def batch_retry_documents(
 async def batch_reingest_documents(
     payload: DocumentBatchReingestRequest,
     background_tasks: BackgroundTasks,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
@@ -8775,9 +8838,10 @@ async def batch_reingest_documents(
 @router.post("/batch/access", response_model=DocumentBatchAccessUpdateResponse)
 async def batch_update_document_access(
     payload: DocumentBatchAccessUpdateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Batch update document ACL (best-effort per id)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -8811,9 +8875,10 @@ async def batch_update_document_access(
 @router.post("/batch/move", response_model=DocumentBatchMoveResponse)
 async def batch_move_documents(
     payload: DocumentBatchMoveRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Batch move documents between datasets (best-effort).
@@ -8890,7 +8955,8 @@ async def batch_move_documents(
 async def get_image(
     image_id: str,
     request: Request,
-    db: Session = Depends(get_db),
+    *,
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Return stored image by image_id.
@@ -8908,15 +8974,15 @@ async def get_image(
     try:
         safe_id = uuid.UUID(image_id).hex
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail="Image not found") from exc
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
 
     images_dir_resolved = images_dir.resolve(strict=False)
 
     candidates: list[tuple[str, str]] = [
         (".png", "image/png"),
-        (".jpg", "image/jpeg"),
-        (".jpeg", "image/jpeg"),
-        (".webp", "image/webp"),
+        (".jpg", IMAGE_JPEG_MEDIA_TYPE),
+        (IMAGE_FILE_EXT_JPEG, IMAGE_JPEG_MEDIA_TYPE),
+        (IMAGE_FILE_EXT_WEBP, "image/webp"),
         (".gif", "image/gif"),
         (".bmp", "image/bmp"),
     ]
@@ -8967,14 +9033,15 @@ async def get_image(
                 content_disposition_type="inline",
             )
 
-    raise HTTPException(status_code=404, detail="Image not found")
+    raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
 
 
 @router.get("/image-url/{img_id}")
 async def get_image_url(
     img_id: str,
     request: Request,
-    db: Session = Depends(get_db),
+    *,
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Get MinIO presigned URL by img_id ({tenant_id}:{dataset_id}:{document_id}:{chunk_index}).
@@ -9029,7 +9096,7 @@ async def get_image_url(
             dataset_uuid = UUID(dataset_part)
             document_uuid = UUID(document_part)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=404, detail="Image not found") from exc
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
 
         document = (
             db.query(DBDocument)
@@ -9037,9 +9104,9 @@ async def get_image_url(
             .first()
         )
         if not document:
-            raise HTTPException(status_code=404, detail="Image not found")
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
         if document.dataset_id and document.dataset_id != dataset_uuid:
-            raise HTTPException(status_code=404, detail="Image not found")
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
         ds: Dataset | None = None
         if document.dataset_id and account_id:
             ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
@@ -9052,7 +9119,7 @@ async def get_image_url(
             dataset_part = img_id.split("-", 1)[0]
             dataset_uuid = UUID(dataset_part)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=404, detail="Image not found") from exc
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
         if account_id:
             ds = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
             DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -9075,7 +9142,7 @@ async def get_image_url(
             object_name = None
 
     if not object_name:
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
 
     # Stat for size (Range) and stable caching metadata.
     try:
@@ -9088,7 +9155,7 @@ async def get_image_url(
 
     total_size = int(getattr(stat, "size", 0) or 0)
     if total_size <= 0:
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
 
     max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
     cache_control = "no-store" if token_in_url else (f"private, max-age={max_age}" if max_age > 0 else "no-cache")
@@ -9134,7 +9201,7 @@ async def get_image_url(
 
     if range_header:
         if not range_header.lower().startswith("bytes="):
-            raise HTTPException(status_code=416, detail="Invalid Range header")
+            raise HTTPException(status_code=416, detail=INVALID_RANGE_HEADER_DETAIL)
         spec = range_header[6:].strip()
         if "," in spec:
             raise HTTPException(status_code=416, detail="Multiple ranges not supported")
@@ -9164,14 +9231,14 @@ async def get_image_url(
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=416, detail="Invalid Range header") from exc
+            raise HTTPException(status_code=416, detail=INVALID_RANGE_HEADER_DETAIL) from exc
     else:
         headers["Content-Length"] = str(total_size)
 
     return StreamingResponse(
         minio_service.iter_object_bytes(object_name=object_name, offset=offset, length=length),
         status_code=status_code,
-        media_type="image/jpeg",
+        media_type=IMAGE_JPEG_MEDIA_TYPE,
         headers=headers,
     )
 
@@ -9194,9 +9261,10 @@ async def preview_document(
     governance_noise_ratio_threshold: Optional[float] = Form(default=None),
     governance_common_lines_min_docs: Optional[int] = Form(default=None),
     governance_common_lines_min_ratio: Optional[float] = Form(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Document parse preview endpoint.
@@ -9431,9 +9499,10 @@ async def preview_document(
 @router.post("/manual", response_model=DocumentDetail, status_code=201)
 async def create_document_with_manual_chunks(
     request: ManualDocumentCreate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)]
 ):
     """
     Create a document from frontend custom chunks.
@@ -9490,7 +9559,7 @@ async def create_document_with_manual_chunks(
         file_type=request.file_type.lower(),
         file_size=request.file_size,
         # Manual-chunk documents have no real file path; use a placeholder.
-        file_path=f"manual://{document_id}",
+        file_path=f"{MANUAL_FILE_PATH_PREFIX}{document_id}",
         owner_id=account_id,
         access_mode=None,  # inherit dataset permission by default
         status='processing',
@@ -9688,9 +9757,10 @@ async def preview_chunking(
     governance_noise_ratio_threshold: Optional[float] = Form(default=None),
     governance_common_lines_min_docs: Optional[int] = Form(default=None),
     governance_common_lines_min_ratio: Optional[float] = Form(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Chunk preview endpoint.
@@ -9731,7 +9801,7 @@ async def preview_chunking(
     if chunk_overlap < 0 or chunk_overlap > 1000:
         raise HTTPException(status_code=400, detail="chunk_overlap must be between 0 and 1000")
     if resolved_chunk_strategy != "separator" and chunk_overlap >= chunk_size:
-        raise HTTPException(status_code=400, detail="chunk_overlap must be less than chunk_size")
+        raise HTTPException(status_code=400, detail=CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL)
 
     # separator strategy does not use overlap; normalize for downstream consistency.
     effective_chunk_overlap = 0 if resolved_chunk_strategy == "separator" else chunk_overlap
@@ -10162,7 +10232,7 @@ async def preview_chunking(
                     or meta.get("image_url")
                     or PREVIEW_IMAGE_REF_RE.search(content)
                     or MINIO_IMAGE_REF_RE.search(content)
-                    or ("data:image" in content.lower())
+                    or (DATA_IMAGE_PREFIX in content.lower())
                 ):
                     filtered.append(c)
             kept_short_fallback = False
@@ -10572,9 +10642,10 @@ async def preview_chunking_by_sha(
     governance_noise_ratio_threshold: Optional[float] = Form(default=None),
     governance_common_lines_min_docs: Optional[int] = Form(default=None),
     governance_common_lines_min_ratio: Optional[float] = Form(default=None),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Chunk preview endpoint (reuse parse cache; no file upload).
@@ -10622,7 +10693,7 @@ async def preview_chunking_by_sha(
     if chunk_overlap < 0 or chunk_overlap > 1000:
         raise HTTPException(status_code=400, detail="chunk_overlap must be between 0 and 1000")
     if resolved_chunk_strategy != "separator" and chunk_overlap >= chunk_size:
-        raise HTTPException(status_code=400, detail="chunk_overlap must be less than chunk_size")
+        raise HTTPException(status_code=400, detail=CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL)
 
     effective_chunk_overlap = 0 if resolved_chunk_strategy == "separator" else chunk_overlap
     if resolved_chunk_strategy == "separator" and chunk_overlap != effective_chunk_overlap:
@@ -10895,7 +10966,7 @@ async def preview_chunking_by_sha(
                 or meta.get("image_url")
                 or PREVIEW_IMAGE_REF_RE.search(content)
                 or MINIO_IMAGE_REF_RE.search(content)
-                or ("data:image" in content.lower())
+                or (DATA_IMAGE_PREFIX in content.lower())
             ):
                 filtered.append(c)
         if not filtered and original_chunks:
@@ -11191,9 +11262,10 @@ async def preview_chunking_by_sha(
 @router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse)
 async def apply_batch_upload_urls(
     request: BatchUploadRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Batch request file upload URLs (MinerU online parsing).
@@ -11260,9 +11332,10 @@ async def apply_batch_upload_urls(
 @router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus)
 async def get_batch_task_status(
     batch_id: str,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Query batch parsing task status.

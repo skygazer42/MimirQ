@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
@@ -14,7 +15,7 @@ def _build_app() -> FastAPI:
     app = FastAPI()
 
     @app.get("/state")
-    async def state_endpoint(request: Request, account_id: str = Depends(get_current_account_id)):  # noqa: B008
+    async def state_endpoint(*, request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
         tenant_state = getattr(request.state, "tenant_id", None)
         return {
             "account_id": account_id,

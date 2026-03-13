@@ -10,7 +10,7 @@ All operations are tenant-isolated and admin-gated (settings.write / settings.re
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -70,9 +70,10 @@ def _derive_template_key(name: str) -> str:
 @router.post("", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED)
 async def create_rag_config_template(
     request: RagConfigTemplateCreate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
     DatasetService.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
@@ -112,9 +113,10 @@ async def list_rag_config_templates(
     template_key: Optional[str] = None,
     ab_experiment_key: Optional[str] = None,
     is_active: Optional[bool] = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplateList:
     DatasetService.ensure_member(db, tenant_id, account_id)
     _ensure_read(db, tenant_id, account_id)
@@ -145,9 +147,10 @@ async def list_rag_config_templates(
 @router.get("/{template_id}", response_model=RagConfigTemplateOut)
 async def get_rag_config_template(
     template_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
     DatasetService.ensure_member(db, tenant_id, account_id)
     _ensure_read(db, tenant_id, account_id)
@@ -166,9 +169,10 @@ async def get_rag_config_template(
 async def update_rag_config_template(
     template_id: UUID,
     request: RagConfigTemplateUpdate,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
     DatasetService.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
@@ -211,9 +215,10 @@ async def update_rag_config_template(
 async def create_rag_config_template_version(
     template_id: UUID,
     request: RagConfigTemplateNewVersion,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
     DatasetService.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)

@@ -9,15 +9,15 @@ Key goals:
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import io
 import json
 import re
 import zipfile
-import csv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
@@ -326,9 +326,10 @@ async def repair_evidence_suite_reference_sources(
     payload: EvidenceReferenceRepairRequest,
     response: Response,
     async_mode: bool = Query(default=False, description="Enqueue repair via task queue (arq)"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Best-effort repair for drifted `reference_sources`.
@@ -454,9 +455,10 @@ async def repair_evidence_suite_reference_sources(
 @router.post("/suites", response_model=EvidenceSuiteOut, status_code=201)
 async def create_evidence_suite(
     payload: EvidenceSuiteCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -487,9 +489,10 @@ async def list_evidence_suites(
     limit: int = Query(default=50, ge=1, le=200),
     dataset_id: UUID | None = None,
     include_archived: bool = False,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -541,9 +544,10 @@ async def list_evidence_suites(
 @router.get("/suites/{suite_id}", response_model=EvidenceSuiteOut)
 async def get_evidence_suite(
     suite_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -570,9 +574,10 @@ async def get_evidence_suite_dashboard(
     include_archived_items: bool = False,
     top_n: int = Query(default=12, ge=1, le=50),
     heatmap_top_n: int = Query(default=8, ge=2, le=20),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Suite-level dashboard: status counts + slice coverage + throughput metrics.
@@ -654,9 +659,10 @@ async def list_evidence_suite_hardcase_candidates(
     max_candidates: int = Query(default=50, ge=0, le=200),
     max_rating: int = Query(default=2, ge=1, le=5),
     include_existing: bool = False,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Discover PII-safe "hardcase" candidates for an EvidenceSuite from:
@@ -810,9 +816,10 @@ async def list_evidence_suite_hardcase_candidates(
 async def patch_evidence_suite(
     suite_id: UUID,
     payload: EvidenceSuitePatchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -856,9 +863,10 @@ async def audit_evidence_suite_reference_sources_drift(
     include_details: bool = True,
     details_limit: int = Query(default=200, ge=0, le=2000),
     slice_top_n: int = Query(default=20, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -898,9 +906,10 @@ async def audit_dataset_reference_sources_drift(
     include_details: bool = True,
     details_limit: int = Query(default=200, ge=0, le=2000),
     slice_top_n: int = Query(default=20, ge=1, le=200),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -954,9 +963,10 @@ async def audit_dataset_reference_sources_drift(
 async def create_evidence_item(
     suite_id: UUID,
     payload: EvidenceItemCreateRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1015,9 +1025,10 @@ async def import_evidence_items(
     suite_id: UUID,
     file: UploadFile = File(...),
     max_items: int = Query(default=2000, ge=1, le=10_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Import QA/FAQ rows (CSV/JSONL) as draft EvidenceItems.
@@ -1110,9 +1121,10 @@ async def list_evidence_items(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     status: Optional[str] = None,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1143,9 +1155,10 @@ async def list_evidence_items(
 async def patch_evidence_item(
     item_id: UUID,
     payload: EvidenceItemPatchRequest,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1206,9 +1219,10 @@ async def patch_evidence_item(
 @router.post("/items/{item_id}/review", response_model=EvidenceItemOut)
 async def review_evidence_item(
     item_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1248,9 +1262,10 @@ async def review_evidence_item(
 @router.post("/items/{item_id}/approve", response_model=EvidenceItemOut)
 async def approve_evidence_item(
     item_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1290,9 +1305,10 @@ async def approve_evidence_item(
 @router.post("/items/{item_id}/archive", response_model=EvidenceItemOut)
 async def archive_evidence_item(
     item_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1332,9 +1348,10 @@ async def archive_evidence_item(
 @router.post("/suites/{suite_id}/sync-regression", response_model=EvidenceSuiteSyncRegressionResponse)
 async def sync_suite_to_regression_cases(
     suite_id: UUID,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1459,9 +1476,10 @@ async def sync_suite_to_regression_cases(
 async def export_evidence_suite(
     suite_id: UUID,
     include_archived_items: bool = False,
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -1538,9 +1556,10 @@ async def export_training_dataset(
     include_evidence: bool = Query(default=True),
     include_archived_evidence: bool = Query(default=False),
     max_rows_per_source: int = Query(default=2000, ge=1, le=10_000),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export a dataset-scoped training dataset assembled from feedback + evidence.
@@ -1614,9 +1633,10 @@ async def export_evidence_suite_ltr_training_bundle(
     suite_id: UUID,
     include_archived_items: bool = False,
     max_items: int = Query(default=2000, ge=1, le=10_000, description="Max items to include in export"),
-    tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db),
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Export a PII-minimized LTR training bundle from an Evidence Suite.

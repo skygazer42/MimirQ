@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 import pytest
 from fastapi import Depends, FastAPI, Request
@@ -70,7 +71,7 @@ def test_auth_dependency_calls_group_sync_when_enabled_and_throttled(monkeypatch
     app = FastAPI()
 
     @app.get("/state")
-    async def state_endpoint(request: Request, account_id: str = Depends(get_current_account_id)):  # noqa: B008
+    async def state_endpoint(request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
         return {"account_id": account_id, "tenant_id": str(getattr(request.state, "tenant_id", "") or "")}
 
     client = TestClient(app)
@@ -117,7 +118,7 @@ def test_auth_dependency_never_blocks_on_group_sync_failures(monkeypatch: pytest
     app = FastAPI()
 
     @app.get("/state")
-    async def state_endpoint(account_id: str = Depends(get_current_account_id)):  # noqa: B008
+    async def state_endpoint(*, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
         return {"account_id": account_id}
 
     client = TestClient(app)
