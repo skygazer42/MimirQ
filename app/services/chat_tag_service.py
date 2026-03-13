@@ -450,6 +450,7 @@ def build_chat_tag_context_docs(
                         "table_name": sql_table,
                         "table_aliases": [c.table_id, c.filename, str(c.sheet_name or "")],
                         "columns": c.columns,
+                        "row_count": int(c.row_count),
                         "sample_rows": c.sample_rows,
                     }
                 )

@@ -62,3 +62,19 @@ def test_plan_join_query_keeps_candidates_when_not_strict(monkeypatch: pytest.Mo
     candidates = planner.get("candidates") or []
     assert isinstance(candidates, list)
     assert len(candidates) >= 2
+
+
+def test_plan_join_query_raises_on_low_confidence_when_strict(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.services.table_tag_service import plan_join_query_for_tables
+
+    monkeypatch.setattr(settings, "TABLE_TAG_AMBIGUITY_STRICT_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.999, raising=False)
+
+    with pytest.raises(ValueError, match="low_confidence_join_plan"):
+        plan_join_query_for_tables(
+            question="按 region 统计订单金额前10",
+            tables=_ambiguous_tables(),
+            max_rows=10,
+        )

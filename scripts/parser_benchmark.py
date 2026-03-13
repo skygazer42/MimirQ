@@ -22,6 +22,7 @@ _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
 _LIST_ITEM_RE = re.compile(r"(?m)^\s*(?:[-*+]|[0-9]+\.)\s+\S+")
 _FENCE_RE = re.compile(r"(?m)^\s*```")
 _TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
+_STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
 
 
 def _iter_files(root: Path, *, exts: Iterable[str]) -> list[Path]:
@@ -180,6 +181,134 @@ def evaluate_strict_regressions(
     }
 
 
+def load_strict_profile(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
+    if not path.exists():
+        raise ValueError(f"strict_profile_not_found: {path}")
+    obj = json.loads(_read_text(path))
+    if not isinstance(obj, dict):
+        raise ValueError("strict_profile_invalid: expected JSON object")
+    schema = str(obj.get("schema") or "").strip()
+    if schema != _STRICT_PROFILE_SCHEMA_V1:
+        raise ValueError(f"strict_profile_invalid_schema: expected {_STRICT_PROFILE_SCHEMA_V1}, got {schema or '<empty>'}")
+    return obj
+
+
+def resolve_strict_thresholds(
+    *,
+    args: argparse.Namespace,
+    strict_profile: dict[str, Any] | None,
+) -> dict[str, float]:
+    profile = strict_profile if isinstance(strict_profile, dict) else {}
+    raw = profile.get("thresholds")
+    raw = raw if isinstance(raw, dict) else {}
+
+    def _pick(metric: str, cli_default: float) -> float:
+        v = raw.get(metric)
+        if v is None:
+            return float(cli_default)
+        try:
+            return abs(float(v))
+        except Exception:
+            return float(cli_default)
+
+    return {
+        "ok_rate": _pick("ok_rate", float(args.strict_max_ok_rate_drop)),
+        "parse_score_mean": _pick("parse_score_mean", float(args.strict_max_parse_score_drop)),
+        "golden_similarity_mean": _pick("golden_similarity_mean", float(args.strict_max_golden_similarity_drop)),
+        "golden_coverage_ratio_mean": _pick("golden_coverage_ratio_mean", float(args.strict_max_golden_coverage_drop)),
+    }
+
+
+def build_regression_severity_summary(
+    *,
+    current_summary: dict[str, Any],
+    baseline_summary: dict[str, Any],
+    max_drop_by_metric: dict[str, float],
+    severity_bands: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    bands_raw = severity_bands if isinstance(severity_bands, dict) else {}
+
+    def _band(name: str, default: float) -> float:
+        try:
+            return max(0.0, float(bands_raw.get(name, default)))
+        except Exception:
+            return float(default)
+
+    critical_at = _band("critical", 3.0)
+    high_at = _band("high", 1.5)
+    medium_at = _band("medium", 1.0)
+    low_at = _band("low", 0.5)
+    # Keep monotonic thresholds.
+    critical_at = max(critical_at, high_at, medium_at, low_at)
+    high_at = max(high_at, medium_at, low_at)
+    medium_at = max(medium_at, low_at)
+
+    items: list[dict[str, Any]] = []
+    levels = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+
+    for backend, after in (current_summary or {}).items():
+        if not isinstance(after, dict):
+            continue
+        before = baseline_summary.get(backend)
+        if not isinstance(before, dict):
+            continue
+        for metric, max_drop in (max_drop_by_metric or {}).items():
+            try:
+                allowed = abs(float(max_drop))
+            except Exception:
+                continue
+            if allowed <= 0:
+                continue
+            b_raw = before.get(metric)
+            a_raw = after.get(metric)
+            if b_raw is None or a_raw is None:
+                continue
+            try:
+                b = float(b_raw)
+                a = float(a_raw)
+            except Exception:
+                continue
+            delta = float(a - b)
+            if delta >= 0.0:
+                continue
+            ratio = abs(delta) / allowed
+
+            level = None
+            if ratio >= critical_at:
+                level = "critical"
+            elif ratio >= high_at:
+                level = "high"
+            elif ratio >= medium_at:
+                level = "medium"
+            elif ratio >= low_at:
+                level = "low"
+            if level is None:
+                continue
+
+            levels[level] = int(levels.get(level, 0) or 0) + 1
+            items.append(
+                {
+                    "backend": str(backend),
+                    "metric": str(metric),
+                    "before": b,
+                    "after": a,
+                    "delta": round(delta, 6),
+                    "max_drop": round(float(allowed), 6),
+                    "ratio": round(float(ratio), 6),
+                    "level": str(level),
+                }
+            )
+
+    items.sort(key=lambda row: (-float(row.get("ratio") or 0.0), str(row.get("backend") or ""), str(row.get("metric") or "")))
+    return {
+        "schema": "mimirq.parser_benchmark_regression_severity.v1",
+        "levels": {k: int(levels.get(k, 0) or 0) for k in ("critical", "high", "medium", "low")},
+        "items": items[:200],
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Parser benchmark harness (golden set optional).")
     ap.add_argument("--input-dir", required=True, help="Directory containing input files (and optional golden markdown files).")
@@ -215,6 +344,14 @@ def main() -> int:
         default=0.05,
         help="Allowed maximum drop for summary.<backend>.golden_coverage_ratio_mean under --strict.",
     )
+    ap.add_argument(
+        "--strict-profile",
+        default="",
+        help=(
+            "Optional strict profile JSON (schema: mimirq.parser_benchmark_strict_profile.v1). "
+            "When set, threshold values are loaded from profile.thresholds."
+        ),
+    )
     ap.add_argument("--max-files", type=int, default=50, help="Max number of files/cases to run.")
     ap.add_argument(
         "--backends",
@@ -230,6 +367,9 @@ def main() -> int:
 
     manifest_path = Path(str(args.manifest)).resolve() if str(args.manifest or "").strip() else None
     baseline_path = Path(str(args.baseline)).resolve() if str(args.baseline or "").strip() else None
+    strict_profile_path = Path(str(args.strict_profile)).resolve() if str(args.strict_profile or "").strip() else None
+    strict_profile = load_strict_profile(strict_profile_path) if strict_profile_path else {}
+    strict_thresholds = resolve_strict_thresholds(args=args, strict_profile=strict_profile)
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -253,6 +393,7 @@ def main() -> int:
         "input_dir": str(input_dir),
         "manifest": str(manifest_path) if manifest_path else None,
         "baseline": str(baseline_path) if baseline_path else None,
+        "strict_profile": str(strict_profile_path) if strict_profile_path else None,
         "backends": backends,
         "cases": [],
         "summary": {},
@@ -408,6 +549,13 @@ def main() -> int:
             "baseline": str(baseline_path),
             "by_backend": diffs,
         }
+        severity_bands = strict_profile.get("severity_bands") if isinstance(strict_profile, dict) else {}
+        report["regression_severity"] = build_regression_severity_summary(
+            current_summary=summary,
+            baseline_summary=baseline_summary,
+            max_drop_by_metric=strict_thresholds,
+            severity_bands=(severity_bands if isinstance(severity_bands, dict) else None),
+        )
     elif bool(args.strict):
         report["strict_gate"] = {
             "enabled": True,
@@ -430,21 +578,11 @@ def main() -> int:
         strict_result = evaluate_strict_regressions(
             current_summary=summary,
             baseline_summary=baseline_summary,
-            max_drop_by_metric={
-                "ok_rate": float(args.strict_max_ok_rate_drop),
-                "parse_score_mean": float(args.strict_max_parse_score_drop),
-                "golden_similarity_mean": float(args.strict_max_golden_similarity_drop),
-                "golden_coverage_ratio_mean": float(args.strict_max_golden_coverage_drop),
-            },
+            max_drop_by_metric=strict_thresholds,
         )
         report["strict_gate"] = {
             "enabled": True,
-            "thresholds": {
-                "ok_rate": float(args.strict_max_ok_rate_drop),
-                "parse_score_mean": float(args.strict_max_parse_score_drop),
-                "golden_similarity_mean": float(args.strict_max_golden_similarity_drop),
-                "golden_coverage_ratio_mean": float(args.strict_max_golden_coverage_drop),
-            },
+            "thresholds": dict(strict_thresholds or {}),
             "passed": bool(strict_result.get("passed")),
             "failures": list(strict_result.get("failures") or []),
             "by_backend": dict(strict_result.get("by_backend") or {}),

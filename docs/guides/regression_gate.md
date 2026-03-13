@@ -127,6 +127,24 @@ python scripts/regression_gate.py \
 另见（更聚焦 Evidence API 的检索门禁说明）：
 - `docs/guides/evidence_retrieval_gate.md`
 
+## Answer-level deterministic gate（补充）
+
+当你已经有回归 run summary（或其他 summary artifact），并希望对答案侧关键指标做 deterministic 检查，可使用：
+
+- 脚本：`scripts/answer_quality_gate.py`
+- 阈值：`ci/answer_quality_thresholds.v1.json`
+
+示例：
+
+```bash
+python scripts/answer_quality_gate.py \
+  --input artifacts/answer_quality.summary.json \
+  --thresholds ci/answer_quality_thresholds.v1.json \
+  --out artifacts/answer_quality.gate.json
+```
+
+该 gate 支持 `min/max` 阈值，并可对缺失指标设置 `required=false`，适合在 retrieval-only CI 路径先做轻量答案质量契约检查。
+
 ## 阈值文件 v2（支持切片 gate）
 
 当你需要对某些 slice 单独设更严格/更宽松的阈值（例如：`file_type=pdf`、`quality=high`），推荐使用结构化阈值文件：

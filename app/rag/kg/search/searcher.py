@@ -45,6 +45,7 @@ class KGSearcher:
         metrics_enabled = bool(getattr(settings, "KG_SEARCH_METRICS_ENABLED", False))
         doc_count = len(config.document_ids or [])
         query_chars = len(config.query or "")
+        query_mode = str(getattr(config, "query_mode", "") or "").strip().lower() or "global"
         t_total = time.perf_counter()
 
         # recall
@@ -59,6 +60,7 @@ class KGSearcher:
                     "tenant_id": str(config.tenant_id) if config.tenant_id else None,
                     "doc_count": int(doc_count),
                     "query_chars": int(query_chars),
+                    "query_mode": str(query_mode),
                     "key_final": int(len(recall_result.key_final or [])),
                     "event_ids": int(len(recall_result.event_ids or [])),
                     "clues": int(len(recall_result.clues or [])),
@@ -80,6 +82,7 @@ class KGSearcher:
                     "event": "kg.search.expand",
                     "tenant_id": str(config.tenant_id) if config.tenant_id else None,
                     "doc_count": int(doc_count),
+                    "query_mode": str(query_mode),
                     "expand_enabled": bool(getattr(config.expand, "enabled", True)),
                     "max_hops": int(getattr(config.expand, "max_hops", 0) or 0),
                     "entities_per_hop": int(getattr(config.expand, "entities_per_hop", 0) or 0),
@@ -111,6 +114,13 @@ class KGSearcher:
         stats = dict(rerank_result.stats or {})
         stats.setdefault("candidates", int(len(event_ids_total)))
         stats.setdefault("clues_returned", int(len(combined_clues)))
+        stats.setdefault("query_mode", str(query_mode))
+        stats.setdefault(
+            "query_mode_reason_codes",
+            [str(x) for x in list(getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()][:8],
+        )
+        if getattr(config, "query_mode_confidence", None) is not None:
+            stats.setdefault("query_mode_confidence", str(getattr(config, "query_mode_confidence") or ""))
         if getattr(recall_result, "relation_debug", None):
             stats.setdefault("relation_expansion", getattr(recall_result, "relation_debug", {}) or {})
         stats.setdefault(
@@ -130,6 +140,7 @@ class KGSearcher:
                     "event": "kg.search.rerank",
                     "tenant_id": str(config.tenant_id) if config.tenant_id else None,
                     "doc_count": int(doc_count),
+                    "query_mode": str(query_mode),
                     "strategy": str(config.rerank.strategy),
                     "candidates_total": int(len(event_ids_total)),
                     "returned": int(len(rerank_result.items or [])),
@@ -143,6 +154,7 @@ class KGSearcher:
                     "tenant_id": str(config.tenant_id) if config.tenant_id else None,
                     "doc_count": int(doc_count),
                     "query_chars": int(query_chars),
+                    "query_mode": str(query_mode),
                     "strategy": str(config.rerank.strategy),
                     "returned": int(len(rerank_result.items or [])),
                     "elapsed_sec": round(float(total_elapsed), 3),
@@ -155,7 +167,14 @@ class KGSearcher:
                 "entities": list(expand_result.key_final or []),
                 "clues": combined_clues,
                 "stats": stats,
-                "query": {"original": config.query},
+                "query": {
+                    "original": config.query,
+                    "mode": str(query_mode),
+                    "mode_reason_codes": [
+                        str(x) for x in list(getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()
+                    ][:8],
+                    "mode_confidence": (str(getattr(config, "query_mode_confidence") or "").strip() or None),
+                },
             }
 
         return {

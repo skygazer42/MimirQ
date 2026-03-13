@@ -40,3 +40,40 @@ def test_build_evidence_capsule_contains_hashes_and_contract_fields() -> None:
     ok, reason = validate_evidence_capsule(capsule)
     assert ok is True
     assert reason == "ok"
+
+
+def test_validate_evidence_capsule_strict_detects_tampered_payload() -> None:
+    from app.rag.core.evidence_capsule_builder import build_evidence_capsule, validate_evidence_capsule
+
+    capsule = build_evidence_capsule(
+        query_for_retrieval="q",
+        citations=[{"document_id": "d1", "chunk_id": "c1"}],
+        metrics={"retrieval_mode": "hybrid"},
+        retrieval_trace=None,
+    )
+    capsule["query_for_retrieval"] = "tampered"
+    ok, reason = validate_evidence_capsule(capsule, strict=True, verify_signature=False)
+    assert ok is False
+    assert reason == "capsule_hash_mismatch"
+
+
+def test_validate_evidence_capsule_signature_roundtrip() -> None:
+    from app.rag.core.evidence_capsule_builder import (
+        build_evidence_capsule,
+        sign_evidence_capsule,
+        verify_evidence_capsule_signature,
+    )
+
+    capsule = build_evidence_capsule(
+        query_for_retrieval="q",
+        citations=[{"document_id": "d1", "chunk_id": "c1"}],
+        metrics={"retrieval_mode": "hybrid"},
+        retrieval_trace=None,
+    )
+    sig = sign_evidence_capsule(capsule, secret="test-secret", key_id="k1")
+    assert isinstance(sig, dict)
+    capsule["signature"] = sig
+
+    ok, reason = verify_evidence_capsule_signature(capsule, secret="test-secret")
+    assert ok is True
+    assert reason == "ok"

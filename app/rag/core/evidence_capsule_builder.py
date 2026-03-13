@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from app.rag.core.hashing import stable_json_hash
+from app.rag.core.hashing import stable_json_hash, stable_json_hmac
 
 EVIDENCE_CAPSULE_SCHEMA_V1 = "mimirq.evidence_capsule.v1"
+EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1 = "mimirq.evidence_capsule_signature.v1"
 
 
 def _coerce_float(value: Any) -> float | None:
@@ -64,8 +65,24 @@ def _sanitize_citation(citation: dict[str, Any]) -> dict[str, Any]:
         if value is None:
             continue
         out[key] = value
+    if "evidence_anchor_hash" not in out:
+        anchor_payload = {
+            "document_id": out.get("document_id"),
+            "chunk_id": out.get("chunk_id"),
+            "page_number": out.get("page_number"),
+            "chunk_index": out.get("chunk_index"),
+            "start_char": out.get("start_char"),
+            "end_char": out.get("end_char"),
+            "table_id": out.get("table_id"),
+            "row_source_table": out.get("row_source_table"),
+            "row_source_sync_token": out.get("row_source_sync_token"),
+            "row_source_pk_hashes": out.get("row_source_pk_hashes"),
+        }
+        out["evidence_anchor_hash"] = stable_json_hash(anchor_payload, length=16)
     if "citation_hash" not in out:
-        out["citation_hash"] = stable_json_hash(out, length=16)
+        payload = dict(out)
+        payload.pop("citation_hash", None)
+        out["citation_hash"] = stable_json_hash(payload, length=16)
     return out
 
 
@@ -126,6 +143,73 @@ def _capsule_payload_without_hash(
     }
 
 
+def recompute_capsule_hash(capsule: dict[str, Any]) -> str:
+    payload = dict(capsule or {})
+    payload.pop("capsule_hash", None)
+    payload.pop("signature", None)
+    return stable_json_hash(payload, length=24)
+
+
+def _signing_secret_from_settings() -> str:
+    try:
+        from app.core.config import settings  # noqa: WPS433
+
+        return str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def sign_evidence_capsule(
+    capsule: dict[str, Any],
+    *,
+    secret: str,
+    key_id: str = "default",
+) -> dict[str, Any] | None:
+    sec = str(secret or "").strip()
+    if not sec:
+        return None
+    kid = str(key_id or "default").strip() or "default"
+    payload = dict(capsule or {})
+    payload.pop("signature", None)
+    value = stable_json_hmac(payload, secret=sec, length=48)
+    if not value:
+        return None
+    return {
+        "schema": EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1,
+        "alg": "hmac_sha256",
+        "key_id": kid,
+        "value": value,
+    }
+
+
+def verify_evidence_capsule_signature(
+    capsule: dict[str, Any],
+    *,
+    secret: str | None = None,
+) -> tuple[bool, str]:
+    sig = capsule.get("signature")
+    if not isinstance(sig, dict):
+        return False, "signature_missing"
+    if str(sig.get("schema") or "") != EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1:
+        return False, "invalid_signature_schema"
+    if str(sig.get("alg") or "").strip().lower() != "hmac_sha256":
+        return False, "unsupported_signature_alg"
+    value = str(sig.get("value") or "").strip()
+    if not value:
+        return False, "signature_value_missing"
+
+    sec = str(secret or "").strip() or _signing_secret_from_settings()
+    if not sec:
+        return False, "signature_secret_missing"
+
+    payload = dict(capsule or {})
+    payload.pop("signature", None)
+    expected = stable_json_hmac(payload, secret=sec, length=len(value))
+    if expected != value:
+        return False, "signature_mismatch"
+    return True, "ok"
+
+
 def build_evidence_capsule(
     *,
     query_for_retrieval: str,
@@ -145,23 +229,91 @@ def build_evidence_capsule(
     )
     capsule_hash = stable_json_hash(payload, length=24)
     payload["capsule_hash"] = capsule_hash
+    try:
+        from app.core.config import settings  # noqa: WPS433
+
+        if bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False)):
+            secret = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
+            key_id = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", "default") or "default").strip() or "default"
+            sig = sign_evidence_capsule(payload, secret=secret, key_id=key_id)
+            if isinstance(sig, dict):
+                payload["signature"] = sig
+    except Exception:
+        pass
     return payload
 
 
-def validate_evidence_capsule(capsule: dict[str, Any]) -> tuple[bool, str]:
+def validate_evidence_capsule(
+    capsule: dict[str, Any],
+    *,
+    strict: bool | None = None,
+    verify_signature: bool | None = None,
+) -> tuple[bool, str]:
     if not isinstance(capsule, dict):
         return False, "capsule_not_object"
     if str(capsule.get("schema") or "") != EVIDENCE_CAPSULE_SCHEMA_V1:
         return False, "invalid_schema"
-    if not str(capsule.get("capsule_hash") or "").strip():
+    capsule_hash = str(capsule.get("capsule_hash") or "").strip()
+    if not capsule_hash:
         return False, "missing_capsule_hash"
-    if not isinstance(capsule.get("citations"), list):
+    citations = capsule.get("citations")
+    if not isinstance(citations, list):
         return False, "citations_not_list"
+
+    if strict is None or verify_signature is None:
+        try:
+            from app.core.config import settings  # noqa: WPS433
+
+            if strict is None:
+                strict = bool(getattr(settings, "EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED", True))
+            if verify_signature is None:
+                verify_signature = bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False))
+        except Exception:
+            if strict is None:
+                strict = False
+            if verify_signature is None:
+                verify_signature = False
+
+    if bool(strict):
+        recomputed = recompute_capsule_hash(capsule)
+        if recomputed != capsule_hash:
+            return False, "capsule_hash_mismatch"
+
+        actual_hashes: list[str] = []
+        for row in citations:
+            if not isinstance(row, dict):
+                continue
+            anchor_hash = str(row.get("evidence_anchor_hash") or "").strip()
+            if not anchor_hash:
+                return False, "missing_evidence_anchor_hash"
+            actual = str(row.get("citation_hash") or "").strip()
+            if not actual:
+                return False, "missing_citation_hash"
+            rec = dict(row)
+            rec.pop("citation_hash", None)
+            expected = stable_json_hash(rec, length=len(actual))
+            if expected != actual:
+                return False, "citation_hash_mismatch"
+            actual_hashes.append(actual)
+
+        declared_hashes = [str(v).strip() for v in list(capsule.get("citation_hashes") or []) if str(v).strip()]
+        if declared_hashes and declared_hashes != actual_hashes:
+            return False, "citation_hashes_mismatch"
+
+    if bool(verify_signature):
+        sig_ok, sig_reason = verify_evidence_capsule_signature(capsule)
+        if not sig_ok:
+            return False, sig_reason
+
     return True, "ok"
 
 
 __all__ = [
     "EVIDENCE_CAPSULE_SCHEMA_V1",
+    "EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1",
     "build_evidence_capsule",
+    "recompute_capsule_hash",
+    "sign_evidence_capsule",
+    "verify_evidence_capsule_signature",
     "validate_evidence_capsule",
 ]

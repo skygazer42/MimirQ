@@ -162,3 +162,12 @@ strict 触发后标准动作：
 - `retained_document_ids`
 
 This enables PR-time review of whether parse-risk tail is shrinking after remediation.
+
+Parser benchmark strict gate 也建议与 parse-risk 诊断一起看：
+
+- 基线：`ci/parser_benchmark_baseline.v1.json`
+- strict profile：`ci/parser_strict_profile.v1.json`
+- 当前产物：`artifacts/parser_benchmark.current.json`
+- diff 产物：`artifacts/parser_benchmark.diff.json`
+
+`parser_benchmark.current.json` 在带 baseline 时会输出 `regression_severity`，可快速判断 parser 回归是否已进入 `critical/high` 区间，再决定是否阻断发布。

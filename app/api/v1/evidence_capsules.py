@@ -40,6 +40,12 @@ class EvidenceCapsuleGetResponse(BaseModel):
     capsule: dict[str, Any]
 
 
+class EvidenceCapsuleVerifyResponse(BaseModel):
+    capsule_id: str | None = None
+    valid: bool
+    reason: str
+
+
 def _store_dir() -> Path:
     root = Path(str(getattr(settings, "EVIDENCE_CAPSULE_STORE_DIR", "./runs/evidence_capsules") or "./runs/evidence_capsules"))
     return root.resolve()
@@ -69,7 +75,15 @@ def persist_evidence_capsule(
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    ok, reason = validate_evidence_capsule(body.capsule)
+    strict_validation = bool(getattr(settings, "EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED", True))
+    verify_signature = bool(getattr(settings, "EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST", False))
+    verify_hash_on_persist = bool(getattr(settings, "EVIDENCE_CAPSULE_VERIFY_HASH_ON_PERSIST", True))
+    strict = bool(strict_validation or verify_hash_on_persist)
+    ok, reason = validate_evidence_capsule(
+        body.capsule,
+        strict=strict,
+        verify_signature=verify_signature,
+    )
     if not ok:
         raise HTTPException(status_code=400, detail=f"invalid_capsule:{reason}")
 
@@ -79,7 +93,8 @@ def persist_evidence_capsule(
     path.parent.mkdir(parents=True, exist_ok=True)
 
     existed = path.exists()
-    if existed and not bool(body.overwrite):
+    allow_overwrite = bool(getattr(settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", False))
+    if existed and (not bool(body.overwrite) or not allow_overwrite):
         raise HTTPException(status_code=409, detail="capsule_exists")
 
     payload = dict(body.capsule)
@@ -114,4 +129,22 @@ def get_evidence_capsule(
         capsule_id=capsule_id,
         capsule_hash=str(capsule.get("capsule_hash") or ""),
         capsule=capsule,
+    )
+
+
+@router.post("/capsules/verify", response_model=EvidenceCapsuleVerifyResponse)
+def verify_evidence_capsule_payload(
+    body: EvidenceCapsulePersistRequest,
+    tenant_id=Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    strict = bool(getattr(settings, "EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED", True))
+    require_sig = bool(getattr(settings, "EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST", False))
+    ok, reason = validate_evidence_capsule(body.capsule, strict=strict, verify_signature=require_sig)
+    return EvidenceCapsuleVerifyResponse(
+        capsule_id=(str(body.capsule_id or "").strip() or None),
+        valid=bool(ok),
+        reason=str(reason),
     )

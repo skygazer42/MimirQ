@@ -107,6 +107,8 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     # Lock the stable top-level sections.
     for key in (
         "contract_diagnostics",
+        "adaptive_router",
+        "contextual_followup",
         "hard_fallback",
         "rewrite",
         "expansions",
@@ -139,3 +141,9 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     assert isinstance(must_recall, dict)
     assert "status" in must_recall
     assert "second_pass" in must_recall
+
+    contextual = trace.get("contextual_followup") or {}
+    assert isinstance(contextual, dict)
+    assert "enabled" in contextual
+    assert "attempted" in contextual
+    assert "used" in contextual

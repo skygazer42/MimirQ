@@ -105,3 +105,61 @@ def test_orchestrator_secondary_pass_recovers_partial_miss(monkeypatch: pytest.M
     assert bool(second_pass.get("attempted")) is True
     assert bool(second_pass.get("used")) is True
     assert isinstance(second_pass.get("diff"), dict)
+
+
+def test_orchestrator_contextual_followup_adds_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "keyword", raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", 20, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", 3, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", 3, raising=False)
+    monkeypatch.setattr(settings, "KG_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "KG_CHAT_ENABLED", False, raising=False)
+
+    retriever = _ModeRetriever(
+        docs_by_mode={
+            "vector": [_mk_tag_doc(table_id="sales")],
+            "keyword": [_mk_tag_doc(table_id="inventory")],
+        },
+        mode="vector",
+    )
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+
+    out = orch_mod.run_retrieval(
+        {
+            "question": "q",
+            "history": [],
+            "tenant_id": str(uuid.uuid4()),
+            "account_id": "u",
+            "dataset_id": None,
+            "document_ids": [str(uuid.uuid4())],
+            "top_k": 5,
+            "retrieval_mode": "vector",
+            "metrics": {},
+        }
+    )
+
+    metrics = out.get("metrics") or {}
+    assert bool(metrics.get("contextual_followup_attempted")) is True
+    assert bool(metrics.get("contextual_followup_used")) is True
+    assert str(metrics.get("contextual_followup_mode") or "") == "keyword"
+    assert int(metrics.get("contextual_followup_added_docs") or 0) >= 1
+    assert int(metrics.get("contextual_followup_added_citations") or 0) >= 1
+
+    citations = out.get("citations") or []
+    assert len([c for c in citations if isinstance(c, dict)]) >= 2
+
+    trace = out.get("retrieval_trace") or {}
+    follow = trace.get("contextual_followup") if isinstance(trace, dict) else {}
+    follow = follow if isinstance(follow, dict) else {}
+    assert bool(follow.get("attempted")) is True
+    assert bool(follow.get("used")) is True

@@ -696,6 +696,15 @@ class Settings(BaseSettings):
     RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED: bool = True
     RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE: str = "keyword"  # hybrid | vector | keyword | mmr
     RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K: int = 80
+    # Contextual follow-up pass (deterministic):
+    # build one bounded query from already retrieved docs, then run a second retrieval pass.
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED: bool = False
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE: str = "keyword"  # hybrid | vector | keyword | mmr
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K: int = 40
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS: int = 4
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS: int = 4
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS: int = 4
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS: int = 500
     # Emit immutable provenance capsule for retrieval responses (PII-safe, replay-friendly).
     RAG_EVIDENCE_CAPSULE_ENABLED: bool = True
     # Deterministic hard fallback (opt-in):
@@ -830,6 +839,9 @@ class Settings(BaseSettings):
     # Optional: route retrieval presets/profiles by query intent (faq/howto/api/log).
     # Deterministic and PII-safe by design; disabled by default to avoid behavior surprises.
     RAG_INTENT_ROUTER_ENABLED: bool = False
+    # Optional: apply adaptive routing overrides from a versioned policy artifact.
+    RAG_ADAPTIVE_ROUTER_ENABLED: bool = False
+    RAG_ADAPTIVE_ROUTER_POLICY_PATH: str = "ci/adaptive_router_policy.v1.json"
     # Optional: include adjacent chunks around top hits to improve continuity (0 disables).
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).
@@ -1021,6 +1033,15 @@ class Settings(BaseSettings):
     TABLE_TAG_AMBIGUITY_SCORE_GAP: float = 0.03
     TABLE_TAG_AMBIGUITY_STRICT_ENABLED: bool = True
     TABLE_TAG_PLANNER_MISMATCH_STRICT: bool = False
+    # TAG planner cost model (join candidate ranking).
+    TABLE_TAG_COST_MODEL_ENABLED: bool = True
+    TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT: float = 0.08
+    TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT: float = 0.12
+    TABLE_TAG_COST_FANOUT_RATIO_ALERT: float = 20.0
+    TABLE_TAG_COST_SELECTIVITY_MIN: float = 0.2
+    # Low-confidence join plan guard.
+    TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD: float = 0.55
+    TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED: bool = False
     # NL->SQL / TAG answer generation (optional; requires LLM credentials).
     TABLE_NL2SQL_ENABLED: bool = False
     # Deterministic fallback for NL->SQL:
@@ -1049,6 +1070,17 @@ class Settings(BaseSettings):
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
     EVIDENCE_CAPSULE_STORE_DIR: str = "./runs/evidence_capsules"
     EVIDENCE_CAPSULE_PERSIST_ENABLED: bool = True
+    EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED: bool = True
+    EVIDENCE_CAPSULE_VERIFY_HASH_ON_PERSIST: bool = True
+    EVIDENCE_CAPSULE_ALLOW_OVERWRITE: bool = False
+    EVIDENCE_CAPSULE_SIGNING_ENABLED: bool = False
+    EVIDENCE_CAPSULE_SIGNING_SECRET: str = ""
+    EVIDENCE_CAPSULE_SIGNING_KEY_ID: str = "default"
+    EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST: bool = False
+    RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_ENABLED: bool = True
+    RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX: int = 12
+    RETRIEVAL_MUST_RECALL_AUTO_INFER_FROM_METADATA_FILTER: bool = True
+    RETRIEVAL_MUST_RECALL_AUTO_REQUIRED_ANCHOR_FIELDS_ENABLED: bool = True
     # When false (default), omit raw question/query/snippets from metrics logs to reduce PII leakage.
     METRICS_LOG_INCLUDE_TEXT: bool = False
 
@@ -1373,6 +1405,13 @@ class Settings(BaseSettings):
     KG_SEARCH_CACHE_ENABLED: bool = False
     KG_SEARCH_CACHE_TTL_SEC: int = 30
     KG_SEARCH_CACHE_MAX_ENTRIES: int = 256
+    # KG query-mode routing (no GraphRAG dependency): auto -> local/global/drift.
+    KG_SEARCH_QUERY_MODE_DEFAULT: str = "auto"  # auto | local | global | drift
+    KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED: bool = True
+    KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS: int = 40
+    KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS: int = 120
+    KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS: int = 140
+    KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS: float = 0.05
     # Entity resolution (Wave15): merge/split actions may optionally update KG entity vectors.
     #
     # Why off by default:
@@ -1844,6 +1883,22 @@ class Settings(BaseSettings):
             raise ValueError("KG_SEARCH_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0) < 0:
             raise ValueError("KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
+        kg_query_mode_default = str(getattr(self, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto").strip().lower()
+        if kg_query_mode_default not in {"auto", "local", "global", "drift"}:
+            raise ValueError("KG_SEARCH_QUERY_MODE_DEFAULT must be one of: auto, local, global, drift")
+        if self.KG_SEARCH_QUERY_MODE_DEFAULT != kg_query_mode_default:
+            self.KG_SEARCH_QUERY_MODE_DEFAULT = kg_query_mode_default
+        if int(getattr(self, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS", 0) or 0) < 1:
+            raise ValueError("KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS must be >= 1")
+        if int(getattr(self, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 0) or 0) < 1:
+            raise ValueError("KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS must be >= 1")
+        if int(getattr(self, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 0) or 0) < 1:
+            raise ValueError("KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS must be >= 1")
+        local_entity_weight_bonus = float(getattr(self, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", 0.05) or 0.05)
+        if not (0.0 <= local_entity_weight_bonus <= 1.0):
+            raise ValueError("KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS must be between 0 and 1")
+        if self.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS != local_entity_weight_bonus:
+            self.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS = local_entity_weight_bonus
         if int(getattr(self, "VECTOR_WRITE_BATCH_SIZE", 0) or 0) < 1:
             raise ValueError("VECTOR_WRITE_BATCH_SIZE must be >= 1")
         if int(getattr(self, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0) < 0:
@@ -1864,6 +1919,49 @@ class Settings(BaseSettings):
             raise ValueError("TABLE_TAG_AMBIGUITY_SCORE_GAP must be between 0 and 1")
         if self.TABLE_TAG_AMBIGUITY_SCORE_GAP != tag_ambiguity_gap:
             self.TABLE_TAG_AMBIGUITY_SCORE_GAP = tag_ambiguity_gap
+        tag_cost_fanout_weight = float(getattr(self, "TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT", 0.08) or 0.08)
+        if not (0.0 <= tag_cost_fanout_weight <= 1.0):
+            raise ValueError("TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT must be between 0 and 1")
+        if self.TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT != tag_cost_fanout_weight:
+            self.TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT = tag_cost_fanout_weight
+        tag_cost_selectivity_weight = float(
+            getattr(self, "TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT", 0.12) or 0.12
+        )
+        if not (0.0 <= tag_cost_selectivity_weight <= 1.0):
+            raise ValueError("TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT must be between 0 and 1")
+        if self.TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT != tag_cost_selectivity_weight:
+            self.TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT = tag_cost_selectivity_weight
+        tag_fanout_ratio_alert = float(getattr(self, "TABLE_TAG_COST_FANOUT_RATIO_ALERT", 20.0) or 20.0)
+        if tag_fanout_ratio_alert < 1.0:
+            raise ValueError("TABLE_TAG_COST_FANOUT_RATIO_ALERT must be >= 1")
+        if self.TABLE_TAG_COST_FANOUT_RATIO_ALERT != tag_fanout_ratio_alert:
+            self.TABLE_TAG_COST_FANOUT_RATIO_ALERT = tag_fanout_ratio_alert
+        tag_selectivity_min = float(getattr(self, "TABLE_TAG_COST_SELECTIVITY_MIN", 0.2) or 0.2)
+        if not (0.0 <= tag_selectivity_min <= 1.0):
+            raise ValueError("TABLE_TAG_COST_SELECTIVITY_MIN must be between 0 and 1")
+        if self.TABLE_TAG_COST_SELECTIVITY_MIN != tag_selectivity_min:
+            self.TABLE_TAG_COST_SELECTIVITY_MIN = tag_selectivity_min
+        tag_low_conf = float(getattr(self, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55)
+        if not (0.0 <= tag_low_conf <= 1.0):
+            raise ValueError("TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")
+        if self.TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD != tag_low_conf:
+            self.TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD = tag_low_conf
+        if int(getattr(self, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX", 0) or 0) < 1:
+            raise ValueError("RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX must be >= 1")
+
+        signing_key_id = str(getattr(self, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", "default") or "default").strip()
+        if not signing_key_id:
+            raise ValueError("EVIDENCE_CAPSULE_SIGNING_KEY_ID must be non-empty")
+        if any(ch.isspace() for ch in signing_key_id):
+            raise ValueError("EVIDENCE_CAPSULE_SIGNING_KEY_ID must not contain whitespace")
+        if self.EVIDENCE_CAPSULE_SIGNING_KEY_ID != signing_key_id:
+            self.EVIDENCE_CAPSULE_SIGNING_KEY_ID = signing_key_id
+
+        if bool(getattr(self, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False)):
+            signing_secret = str(getattr(self, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
+            if not signing_secret:
+                raise ValueError("EVIDENCE_CAPSULE_SIGNING_SECRET must be non-empty when signing is enabled")
+
         index_strictness = str(getattr(self, "INDEX_CONSISTENCY_STRICTNESS", "off") or "off").strip().lower()
         valid_index_strictness = {"off", "warn", "strict"}
         if index_strictness not in valid_index_strictness:
@@ -1995,6 +2093,26 @@ class Settings(BaseSettings):
             self.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE = must_recall_second_pass_mode
         if int(getattr(self, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K", 0) or 0) < 1:
             raise ValueError("RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K must be >= 1")
+        contextual_followup_mode = str(
+            getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "keyword") or "keyword"
+        ).strip().lower()
+        if contextual_followup_mode not in valid_retrieval_modes:
+            raise ValueError(
+                "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE "
+                f"({contextual_followup_mode}) must be one of {valid_retrieval_modes}"
+            )
+        if self.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE != contextual_followup_mode:
+            self.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE = contextual_followup_mode
+        if int(getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", 0) or 0) < 1:
+            raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K must be >= 1")
+        if int(getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", 0) or 0) < 1:
+            raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS must be >= 1")
+        if int(getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS must be >= 0")
+        if int(getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS", 0) or 0) < 2:
+            raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS must be >= 2")
+        if int(getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", 0) or 0) < 32:
+            raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS must be >= 32")
 
         low_quality = float(getattr(self, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
         if low_quality < 0.0 or low_quality > 1.0:

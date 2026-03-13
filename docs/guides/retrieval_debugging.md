@@ -258,6 +258,38 @@ python scripts/replay_index_drift.py \
 - `retrieval_trace.contract_diagnostics.must_recall`
 - `query_debug.retrieval_contract.must_recall`
 
+---
+
+## 8) Adaptive Router 策略发布与回滚（G4）
+
+Adaptive Router 是 intent_router 之后的一层策略覆盖器，用来从离线评测产物生成轻量路由规则，不依赖 GraphRAG。
+
+开关与策略：
+
+- `RAG_ADAPTIVE_ROUTER_ENABLED=true|false`
+- `RAG_ADAPTIVE_ROUTER_POLICY_PATH=ci/adaptive_router_policy.v1.json`
+- 请求级覆盖：`adaptive_router=true` + `adaptive_router_policy={...}`
+
+CI 产物生成：
+
+```bash
+python scripts/generate_adaptive_router_policy.py \
+  --benchmark-report artifacts/sample_retrieval_bench.json \
+  --out artifacts/adaptive_router_policy.v1.json
+```
+
+上线前检查：
+
+- `query_debug.adaptive_router`
+- `metrics.adaptive_router`
+- `retrieval_trace.adaptive_router`
+
+回滚策略（最小动作优先）：
+
+1. 先关闭开关：`RAG_ADAPTIVE_ROUTER_ENABLED=false`
+2. 若需要保留开关，回退策略文件到上一版（Git revert 或替换 `RAG_ADAPTIVE_ROUTER_POLICY_PATH`）
+3. 观察 1-2 个关键 query 的 `adaptive_router.used` 与 `matched_rule_ids` 是否符合预期
+
 关键语义：
 
 - `must_recall_strict` 不只是“空召回重试”，还会处理 **partial-miss**（有 citations 但缺关键 source key / anchor）。
@@ -270,7 +302,7 @@ python scripts/replay_index_drift.py \
 2. 再核对 request 里 `must_recall_expected_source_keys` 是否过窄或拼写不一致。
 3. 对 TAG/DB rows 场景，检查 `CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH` 与 `CHAT_TAG_DBROWS_SQL_FIRST_ENABLED` 是否按预期开启。
 
-## 8) Evidence Capsule（有据可查）
+## 9) Evidence Capsule（有据可查）
 
 `/api/v1/rag/evidence/retrieve` 现在可返回 `evidence_capsule`（`mimirq.evidence_capsule.v1`），用于不可变回放与审计归档：
 
@@ -287,3 +319,58 @@ python scripts/replay_from_evidence_capsule.py \
   --capsule runs/evidence_capsules/<capsule_id>.json \
   --out runs/evidence_replay.json
 ```
+
+---
+
+## 10) KG Query-Mode Routing 排障（G7）
+
+KG search 已加入 deterministic query-mode 路由（`local|global|drift|auto`），不依赖 GraphRAG。
+
+关键配置：
+
+- `KG_SEARCH_QUERY_MODE_DEFAULT=auto|local|global|drift`
+- `KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED=true|false`
+- `KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS`
+- `KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS`
+- `KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS`
+
+最小排障路径：
+
+1. 看 `query_debug` 或 `kg_search` 返回里的 `query_mode.resolved`。
+2. 看 `query_mode.reason_codes` 是否与 query 形态一致（如 `drift_pattern/global_pattern/local_pattern`）。
+3. 看 `stats.query_mode*` 与 `kg.search.*` metrics 是否一致，确认不是缓存或路径分支导致。
+4. 若线上需要稳定行为，临时强制 `query_mode=local|global|drift`，避免 `auto` 分类波动。
+
+---
+
+## 11) Contextual Follow-up Pass 排障（G8）
+
+Contextual follow-up 是 orchestrator 中的一个可选二次召回通道：
+- 从第一轮已命中的 docs 提取高信号 term。
+- 组装一条 bounded follow-up query。
+- 按独立 mode/top-k 再跑一次检索并并入候选。
+
+关键配置：
+
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED`
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE=hybrid|vector|keyword|mmr`
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K`
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS`
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS`
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS`
+
+看哪些字段：
+
+- `metrics.contextual_followup_*`
+- `query_debug.contextual_followup`
+- `retrieval_trace.contextual_followup`
+- `retrieval_trace.retrieval.per_query[*].kind=contextual_followup`
+
+常见现象与处理：
+
+- `enabled=true` 但 `attempted=false`
+  - 通常是首轮 docs 太少或没有提取到新 terms（`reason_codes` 会给出原因）。
+- `attempted=true` 但 `used=false`
+  - 二次检索没有带来去重后的新增候选，检查 `mode/top_k` 与 metadata 过滤范围。
+- `added_docs>0` 但 `added_citations` 低
+  - 可能被后续过滤（去重、evidence span strict、must-recall contract）裁掉，继续看 `retrieval_contract` 相关字段。

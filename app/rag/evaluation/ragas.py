@@ -228,9 +228,19 @@ def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str
 
     out = _build_retrieval_metrics_summary(metas)
 
-    # Answer-level deterministic gate signals (best-effort, offline):
-    # - faithfulness_det: claim support ratio vs retrieved_contexts
-    # - refusal_correctness: compares expected_refusal vs abstain_triggered (only on labeled cases)
+    out.update(_build_answer_quality_metrics_summary(metas))
+
+    return out
+
+
+def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Compute deterministic answer-quality summary metrics from regression item metadata.
+
+    These are lightweight/no-LLM and designed to feed answer_quality_gate artifacts.
+    """
+    out: Dict[str, Any] = {}
+
     def _mean_float(key: str) -> Optional[float]:
         vals: list[float] = []
         for m in metas:

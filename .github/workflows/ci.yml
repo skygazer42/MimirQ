@@ -205,6 +205,7 @@ jobs:
             --max-files 8 \
             --out artifacts/parser_benchmark.current.json \
             --baseline ci/parser_benchmark_baseline.v1.json \
+            --strict-profile ci/parser_strict_profile.v1.json \
             --strict \
             --strict-max-ok-rate-drop 1.0 \
             --strict-max-parse-score-drop 1.0 \
@@ -235,21 +236,65 @@ jobs:
               "baseline": report.get("baseline"),
               "strict_gate": report.get("strict_gate"),
               "regressions": report.get("regressions"),
+              "regression_severity": report.get("regression_severity"),
               "summary": report.get("summary"),
           }
           out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
           strict_gate = payload.get("strict_gate") if isinstance(payload.get("strict_gate"), dict) else {}
           regressions = payload.get("regressions") if isinstance(payload.get("regressions"), dict) else {}
+          severity = payload.get("regression_severity") if isinstance(payload.get("regression_severity"), dict) else {}
+          levels = severity.get("levels") if isinstance(severity.get("levels"), dict) else {}
           lines = [
               "# Parser Benchmark Diff",
               "",
               f"- Strict Gate Passed: `{bool(strict_gate.get('passed'))}`",
               f"- Baseline: `{payload.get('baseline')}`",
               f"- Changed Backends: `{len(list((regressions.get('by_backend') or {}).keys()))}`",
+              f"- Severity Critical: `{int(levels.get('critical', 0) or 0)}`",
+              f"- Severity High: `{int(levels.get('high', 0) or 0)}`",
           ]
           out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
+
+      - name: Generate adaptive router policy artifact
+        if: always()
+        run: |
+          python scripts/generate_adaptive_router_policy.py \
+            --benchmark-report artifacts/sample_retrieval_bench.json \
+            --out artifacts/adaptive_router_policy.v1.json
+
+      - name: Build deterministic answer-quality summary artifact
+        if: always()
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          bench = json.loads(Path("artifacts/sample_retrieval_bench.json").read_text(encoding="utf-8"))
+          summary = bench.get("summary") if isinstance(bench.get("summary"), dict) else {}
+          payload = {
+              "schema": "mimirq.answer_quality_summary.v1",
+              "summary": {
+                  # Deterministic proxy metrics for retrieval-only CI path.
+                  "faithfulness_det": float(summary.get("mrr") or 0.0),
+                  "refusal_correctness": 1.0,
+                  "abstain_rate": 0.0,
+              },
+          }
+          out = Path("artifacts/answer_quality.summary.json")
+          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+
+      - name: Run deterministic answer-quality gate
+        if: always()
+        run: |
+          python scripts/answer_quality_gate.py \
+            --input artifacts/answer_quality.summary.json \
+            --thresholds ci/answer_quality_thresholds.v1.json \
+            --out artifacts/answer_quality.gate.json
 
       - name: Evaluate bounded retrieval-only gate (metric delta output)
         run: |

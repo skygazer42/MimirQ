@@ -4,7 +4,7 @@ KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
 
 import threading
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 from app.core.config import settings
@@ -14,6 +14,7 @@ from app.models.document import DocumentChunk
 from app.rag.core.hashing import stable_hash
 from app.rag.kg.engine import KGEngine
 from app.rag.kg.search.cache import build_kg_search_cache_key, kg_search_cache
+from app.rag.kg.search.query_mode import classify_kg_query_mode, normalize_kg_query_mode
 from app.types.indexing import IndexingOptions
 
 _engine: KGEngine | None = None
@@ -142,7 +143,28 @@ async def kg_search(
     document_ids: Optional[List[UUID]] = None,
     dataset_id: Optional[UUID] = None,
     account_id: Optional[str] = None,
+    query_mode: Optional[str] = None,
 ) -> Dict:
+    default_mode = str(getattr(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto")
+    requested_mode = normalize_kg_query_mode(query_mode, default=default_mode)
+    classifier_enabled = bool(getattr(settings, "KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED", True))
+    mode_diag: dict[str, Any]
+    if requested_mode == "auto" and classifier_enabled:
+        mode_diag = classify_kg_query_mode(
+            query=str(query or ""),
+            document_ids=list(document_ids or []),
+            dataset_id=dataset_id,
+            default_mode="auto",
+        )
+    else:
+        mode_diag = {
+            "mode": normalize_kg_query_mode(requested_mode, default="global"),
+            "confidence": ("forced" if requested_mode != "auto" else "disabled"),
+            "reason_codes": (["query_mode_classifier_disabled"] if requested_mode == "auto" and not classifier_enabled else ["query_mode_requested"]),
+        }
+    resolved_mode = normalize_kg_query_mode(mode_diag.get("mode"), default="global")
+    mode_diag["mode"] = resolved_mode
+
     cache_enabled = bool(getattr(settings, "KG_SEARCH_CACHE_ENABLED", False))
     ttl_sec = int(getattr(settings, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0)
     max_entries = int(getattr(settings, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0)
@@ -183,6 +205,7 @@ async def kg_search(
                         "KG_SEARCH_MAX_RERANK_CANDIDATES": int(
                             getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
                         ),
+                        "KG_SEARCH_QUERY_MODE": str(resolved_mode),
                     },
                 )
                 cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)
@@ -196,7 +219,23 @@ async def kg_search(
         document_ids=document_ids,
         dataset_id=dataset_id,
         account_id=account_id,
+        query_mode=resolved_mode,
+        query_mode_reason_codes=list(mode_diag.get("reason_codes") or []),
+        query_mode_confidence=str(mode_diag.get("confidence") or ""),
     )
+    if isinstance(result, dict):
+        result["query_mode"] = {
+            "requested": str(requested_mode),
+            "resolved": str(resolved_mode),
+            "confidence": str(mode_diag.get("confidence") or ""),
+            "reason_codes": [str(x) for x in list(mode_diag.get("reason_codes") or []) if str(x).strip()][:8],
+        }
+        stats = result.get("stats")
+        if isinstance(stats, dict):
+            stats["query_mode"] = str(resolved_mode)
+            stats["query_mode_confidence"] = str(mode_diag.get("confidence") or "")
+            stats["query_mode_reason_codes"] = [str(x) for x in list(mode_diag.get("reason_codes") or []) if str(x).strip()][:8]
+            result["stats"] = stats
     if cache_key is not None and isinstance(result, dict):
         kg_search_cache.set(cache_key, dict(result), ttl_sec=ttl_sec, max_entries=max_entries)
     return result

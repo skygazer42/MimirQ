@@ -68,3 +68,5 @@ def test_plan_join_query_for_tables_emits_bounded_join_sql() -> None:
     assert str(planner.get("strategy") or "") == "deterministic_join"
     joins = list(planner.get("joins") or [])
     assert len(joins) == 1
+    assert "selected_score" in planner
+    assert "low_confidence" in planner

@@ -69,6 +69,9 @@ class KGEngine:
         document_ids: Optional[List[UUID]] = None,
         dataset_id: Optional[UUID] = None,
         account_id: Optional[str] = None,
+        query_mode: Optional[str] = None,
+        query_mode_reason_codes: Optional[List[str]] = None,
+        query_mode_confidence: Optional[str] = None,
     ) -> Dict:
         config = SearchConfig(
             query=query,
@@ -76,5 +79,8 @@ class KGEngine:
             document_ids=document_ids,
             dataset_id=dataset_id,
             account_id=account_id,
+            query_mode=(str(query_mode or "auto")),
+            query_mode_reason_codes=[str(x) for x in list(query_mode_reason_codes or []) if str(x).strip()][:8],
+            query_mode_confidence=(str(query_mode_confidence or "").strip() or None),
         )
         return await self.searcher.search(config)
