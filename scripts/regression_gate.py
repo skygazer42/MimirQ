@@ -347,6 +347,53 @@ def summarize_channel_attribution(items: list[dict[str, Any]] | None) -> dict[st
     }
 
 
+def summarize_multihop_diagnostics(items: list[dict[str, Any]] | None) -> dict[str, Any]:
+    path_scores: list[float] = []
+    order_scores: list[float] = []
+    hit_flags: list[float] = []
+    cases_with_expectation = 0
+    for item in list(items or []):
+        if not isinstance(item, dict):
+            continue
+        meta = item.get("meta")
+        meta = meta if isinstance(meta, dict) else {}
+
+        evidence_steps = meta.get("evidence_chain_steps")
+        try:
+            evidence_steps_n = int(evidence_steps or 0)
+        except Exception:
+            evidence_steps_n = 0
+        if evidence_steps_n <= 0:
+            continue
+
+        cases_with_expectation += 1
+
+        try:
+            p = float(meta.get("multihop_path_completeness"))
+            path_scores.append(p)
+        except Exception:
+            pass
+        try:
+            o = float(meta.get("multihop_order_consistency"))
+            order_scores.append(o)
+        except Exception:
+            pass
+        if meta.get("multihop_chain_hit") is not None:
+            hit_flags.append(1.0 if bool(meta.get("multihop_chain_hit")) else 0.0)
+
+    def _mean(values: list[float]) -> float | None:
+        if not values:
+            return None
+        return round(float(sum(values)) / float(len(values)), 4)
+
+    return {
+        "cases_with_expectation": int(cases_with_expectation),
+        "path_completeness": _mean(path_scores),
+        "order_consistency": _mean(order_scores),
+        "chain_hit_rate": _mean(hit_flags),
+    }
+
+
 def build_regression_gate_report(
     *,
     dataset_id: str,
@@ -386,6 +433,7 @@ def build_regression_gate_report(
         "run_status": str(run.get("status") or ""),
         "error_message": str(run.get("error_message") or "") or None,
         "channel_attribution": summarize_channel_attribution(items),
+        "multihop": summarize_multihop_diagnostics(items),
         "run_params": dict(run_payload or {}),
     }
 
@@ -395,6 +443,7 @@ def render_regression_gate_markdown(report: dict[str, Any]) -> str:
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     attribution = payload.get("channel_attribution") if isinstance(payload.get("channel_attribution"), dict) else {}
     totals = attribution.get("totals") if isinstance(attribution.get("totals"), dict) else {}
+    multihop = payload.get("multihop") if isinstance(payload.get("multihop"), dict) else {}
     failures = [str(x) for x in (payload.get("failures") or []) if str(x or "").strip()]
 
     lines = [
@@ -441,6 +490,19 @@ def render_regression_gate_markdown(report: dict[str, Any]) -> str:
             "",
         ]
     )
+
+    if int(multihop.get("cases_with_expectation") or 0) > 0:
+        lines.extend(
+            [
+                "## Multi-hop Diagnostics",
+                "",
+                f"- Cases with expectation: `{int(multihop.get('cases_with_expectation') or 0)}`",
+                f"- Path completeness: `{multihop.get('path_completeness')}`",
+                f"- Order consistency: `{multihop.get('order_consistency')}`",
+                f"- Chain hit rate: `{multihop.get('chain_hit_rate')}`",
+                "",
+            ]
+        )
 
     if failures:
         lines.extend(["## Failures", ""])
@@ -776,7 +838,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--gen-metrics",
-        default="retrieval_recall,retrieval_hit_at_20,retrieval_mrr,retrieval_ndcg_at_20,abstain_rate",
+        default="retrieval_recall,retrieval_hit_at_20,retrieval_mrr,retrieval_ndcg_at_20,multihop_path_completeness,multihop_order_consistency,multihop_chain_hit_rate,abstain_rate",
         help="Comma-separated top-level metrics to generate thresholds for (default: %(default)s)",
     )
     p.add_argument(
@@ -786,7 +848,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--gen-slice-metrics",
-        default="retrieval_recall,retrieval_hit_at_20,abstain_rate",
+        default="retrieval_recall,retrieval_hit_at_20,multihop_path_completeness,multihop_order_consistency,abstain_rate",
         help="Comma-separated slice metrics to generate thresholds for (default: %(default)s)",
     )
     p.add_argument("--gen-rel-drop", type=float, default=0.05, help="Relative slack (default: %(default)s)")

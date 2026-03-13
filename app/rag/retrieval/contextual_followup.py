@@ -114,10 +114,28 @@ def _iter_meta_values(raw: Any) -> Iterable[str]:
     return []
 
 
+def _dedupe_terms(values: list[str], *, max_items: int) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        term = str(raw or "").strip()
+        if not term:
+            continue
+        sig = _sig(term)
+        if not sig or sig in seen:
+            continue
+        seen.add(sig)
+        out.append(term)
+        if len(out) >= max(1, int(max_items or 1)):
+            break
+    return out
+
+
 def build_contextual_followup_query(
     *,
     query: str,
     docs: list[Document] | None,
+    evidence_gap: dict[str, Any] | None = None,
     max_docs: int = 4,
     max_terms: int = 4,
     min_term_chars: int = 4,
@@ -171,6 +189,23 @@ def build_contextual_followup_query(
         }
 
     query_terms = {_sig(t) for t in _extract_terms(base, min_chars=min_chars, max_chars=max_chars or 64)}
+    gap_reason_codes: list[str] = []
+    gap_terms_raw: list[str] = []
+    if isinstance(evidence_gap, dict):
+        missing_source_keys = [
+            str(v) for v in list(evidence_gap.get("missing_source_keys") or []) if str(v).strip()
+        ][:20]
+        if missing_source_keys:
+            for key in missing_source_keys:
+                gap_terms_raw.extend(_extract_terms(key, min_chars=min_chars, max_chars=max_chars or 64))
+            gap_reason_codes.append("gap_missing_source_keys")
+        if int(evidence_gap.get("anchor_missing_any") or 0) > 0:
+            gap_reason_codes.append("gap_missing_anchor_fields")
+
+    gap_terms = _dedupe_terms(
+        [t for t in gap_terms_raw if _sig(t) not in query_terms],
+        max_items=max_terms_n,
+    )
     score_by_sig: dict[str, float] = {}
     term_by_sig: dict[str, str] = {}
     considered = 0
@@ -214,9 +249,15 @@ def build_contextual_followup_query(
         ((sig, float(score_by_sig.get(sig, 0.0) or 0.0), str(term_by_sig.get(sig) or sig)) for sig in score_by_sig),
         key=lambda x: (-x[1], x[2]),
     )
-    selected_terms: list[str] = []
+    selected_terms: list[str] = list(gap_terms)
+    selected_sigs: set[str] = {_sig(v) for v in selected_terms if _sig(v)}
     for _sig_v, _score_v, term in ranked:
+        sig = _sig(term)
+        if sig in selected_sigs:
+            continue
         selected_terms.append(term)
+        if sig:
+            selected_sigs.add(sig)
         if len(selected_terms) >= max_terms_n:
             break
 
@@ -225,7 +266,9 @@ def build_contextual_followup_query(
         followup = followup[:max_query_chars_n].rstrip()
 
     used = bool(followup and followup != base and selected_terms)
-    reason_codes = ["selected_terms"] if used else ["followup_equals_base"]
+    reason_codes = list(gap_reason_codes)
+    reason_codes.append("selected_terms" if used else "followup_equals_base")
+    reason_codes = _dedupe_terms(reason_codes, max_items=8)
 
     return {
         "query": followup if followup else base,
@@ -238,4 +281,3 @@ def build_contextual_followup_query(
 
 
 __all__ = ["build_contextual_followup_query"]
-

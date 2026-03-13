@@ -18,6 +18,8 @@ def _coerce_bundle_item(raw: Any) -> dict[str, Any]:
         "expected_answer": getattr(raw, "expected_answer", None),
         "tags": getattr(raw, "tags", None),
         "reference_sources": getattr(raw, "reference_sources", None),
+        "reasoning_hops": getattr(raw, "reasoning_hops", None),
+        "evidence_chain": getattr(raw, "evidence_chain", None),
     }
 
 
@@ -45,6 +47,18 @@ def export_case_bundle(cases: Sequence[Any], dataset_id: UUID) -> dict[str, Any]
                 "reference_sources": list(getattr(case, "reference_sources", []) or []),
             }
         )
+        extra = getattr(case, "extra", None)
+        extra = extra if isinstance(extra, dict) else {}
+        reasoning_hops = extra.get("reasoning_hops")
+        if isinstance(reasoning_hops, list):
+            hops = [str(x) for x in reasoning_hops if str(x or "").strip()]
+            if hops:
+                items[-1]["reasoning_hops"] = hops[:20]
+        evidence_chain = extra.get("evidence_chain")
+        if isinstance(evidence_chain, list):
+            chain = [x for x in evidence_chain if isinstance(x, dict)]
+            if chain:
+                items[-1]["evidence_chain"] = chain[:20]
 
     # Stable ordering is useful for diffs/reviews.
     items.sort(key=lambda it: (it.get("question") or ""))

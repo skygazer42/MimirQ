@@ -28,6 +28,7 @@ import numpy as np
 
 _INDEX_SCHEMA_V1 = "mimirq.colbert_ann_index.v1"
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}|[\u4e00-\u9fff]{2,}")
+VALID_COLBERT_PROVIDERS = frozenset({"deterministic", "hf"})
 
 
 def _stable_key(text: str) -> str:
@@ -241,6 +242,90 @@ def build_colbert_provider_config(
         "device": str(device or "cpu"),
         "batch_size": int(batch_size or 0),
         "max_length": int(max_length or 0),
+    }
+
+
+def resolve_colbert_ann_provider_capability(
+    *,
+    colbert_enabled: bool,
+    requested_provider: str | None,
+    model_name: str | None,
+    device: str | None,
+    docs_count: int,
+    max_docs: int,
+) -> dict[str, Any]:
+    """
+    Resolve ColBERT ANN provider readiness and bounded fallback metadata.
+
+    Contract:
+    - deterministic provider is always ready
+    - invalid/unsupported providers fall back to deterministic
+    - HF provider requires model_name + optional dependency checks
+    - oversized corpus is gated before index build to keep memory bounded
+    """
+    requested_raw = str(requested_provider or "").strip().lower()
+    requested_norm = requested_raw or "deterministic"
+    provider_supported = requested_norm in VALID_COLBERT_PROVIDERS
+    effective_provider = requested_norm if provider_supported else "deterministic"
+    status = "ready"
+    reason = "none"
+    ready = True
+
+    resolved_model_name = str(model_name or "").strip()
+    resolved_device = str(device or "cpu").strip().lower() or "cpu"
+
+    if not bool(colbert_enabled):
+        status = "disabled"
+        reason = "colbert_disabled"
+        ready = False
+    elif int(max_docs or 0) > 0 and int(docs_count or 0) > int(max_docs or 0):
+        status = "fallback"
+        reason = "too_many_docs"
+        ready = False
+    elif not provider_supported:
+        status = "fallback"
+        reason = "provider_invalid"
+        effective_provider = "deterministic"
+        ready = True
+    elif effective_provider == "hf":
+        if not resolved_model_name:
+            status = "fallback"
+            reason = "hf_model_missing"
+            effective_provider = "deterministic"
+            ready = True
+        elif resolved_device not in {"cpu", "cuda", "auto"}:
+            status = "fallback"
+            reason = "invalid_device"
+            effective_provider = "deterministic"
+            ready = True
+        else:
+            try:
+                import torch  # noqa: PLC0415
+                import transformers  # noqa: F401, PLC0415
+            except Exception:
+                status = "fallback"
+                reason = "dependency_missing"
+                effective_provider = "deterministic"
+                ready = True
+            else:
+                if resolved_device == "cuda" and not bool(torch.cuda.is_available()):
+                    status = "fallback"
+                    reason = "cuda_unavailable"
+                    effective_provider = "deterministic"
+                    ready = True
+
+    return {
+        "requested_provider": requested_raw,
+        "requested_provider_normalized": requested_norm,
+        "effective_provider": effective_provider,
+        "provider_supported": bool(provider_supported),
+        "status": status,
+        "reason": reason,
+        "ready": bool(ready),
+        "model_name_configured": bool(resolved_model_name),
+        "device": resolved_device,
+        "docs_count": int(max(0, int(docs_count or 0))),
+        "max_docs": int(max(0, int(max_docs or 0))),
     }
 
 

@@ -96,6 +96,12 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
             "document_ids": [str(doc_id)],
             "top_k": 5,
             "retrieval_mode": "vector",
+            "parse_repair_actions": {
+                "run_id": "parse-repair-001",
+                "actions": [
+                    {"document_id": str(doc_id), "action": "reparse_document", "status": "scheduled", "priority": "high"}
+                ],
+            },
             "metrics": {},
         }
     )
@@ -109,6 +115,7 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
         "contract_diagnostics",
         "adaptive_router",
         "contextual_followup",
+        "iterative_pass",
         "hard_fallback",
         "rewrite",
         "expansions",
@@ -118,6 +125,7 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
         "abstain",
         "citations",
         "parse_quality",
+        "parse_repair_actions",
     ):
         assert key in trace
 
@@ -141,6 +149,24 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     assert isinstance(must_recall, dict)
     assert "status" in must_recall
     assert "second_pass" in must_recall
+    proof = must_recall.get("proof") or {}
+    assert isinstance(proof, dict)
+    assert proof.get("schema") == "mimirq.must_recall_proof.v1"
+    ledger = proof.get("obligation_ledger") or {}
+    assert isinstance(ledger, dict)
+    assert ledger.get("schema") == "mimirq.recall_obligation_ledger.v1"
+
+    metrics = out.get("metrics") or {}
+    assert isinstance(metrics.get("must_recall_proof"), dict)
+
+    qd = out.get("query_debug") or {}
+    assert isinstance((qd.get("parse_repair_actions") if isinstance(qd, dict) else {}), dict)
+    rc = (qd.get("retrieval_contract") if isinstance(qd, dict) else {}) or {}
+    assert isinstance((rc.get("must_recall_proof") if isinstance(rc, dict) else {}), dict)
+
+    repair = trace.get("parse_repair_actions") or {}
+    assert repair.get("actions_total") == 1
+    assert repair.get("run_id") == "parse-repair-001"
 
     contextual = trace.get("contextual_followup") or {}
     assert isinstance(contextual, dict)

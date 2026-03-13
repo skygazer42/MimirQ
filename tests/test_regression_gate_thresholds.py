@@ -106,6 +106,26 @@ def test_check_thresholds_enforces_slice_thresholds() -> None:
     assert any("slice[file_type=pdf]" in str(msg) for msg in (failures or []))
 
 
+def test_check_thresholds_supports_multihop_metrics() -> None:
+    mod = _load_module()
+
+    thresholds = mod.normalize_thresholds(  # type: ignore[attr-defined]
+        {
+            "multihop_path_completeness": {"min": 0.7},
+            "multihop_order_consistency": {"min": 0.6},
+        }
+    )
+    ok, failures = mod.check_thresholds(  # type: ignore[attr-defined]
+        summary={
+            "multihop_path_completeness": 0.8,
+            "multihop_order_consistency": 0.5,
+        },
+        thresholds=thresholds,
+    )
+    assert ok is False
+    assert any("multihop_order_consistency" in str(msg) for msg in (failures or []))
+
+
 def test_generate_thresholds_from_summary_includes_top_and_slice_bounds() -> None:
     mod = _load_module()
 

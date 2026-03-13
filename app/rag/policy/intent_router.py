@@ -17,6 +17,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.core.text import normalize_retrieval_mode
+from app.rag.policy.intent_router_model import (
+    load_intent_router_model,
+    normalize_intent_router_model,
+    predict_learned_router_hint,
+)
 
 _INTENT_ROUTER_POLICY_SCHEMA_V1 = "mimirq.intent_router_policy.v1"
 _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1 = "mimirq.adaptive_router_policy.v1"
@@ -316,6 +321,9 @@ def route_retrieval_preset(
     enable_multi_query: Optional[bool],
     enable_query_alias_expansion: Optional[bool],
     intent_router_policy: Optional[Dict[str, Any]] = None,
+    learned_router_model: Optional[Dict[str, Any]] = None,
+    learned_router_model_path: Optional[str] = None,
+    learned_router_confidence_min: float = 0.0,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Return (overrides, meta) for intent-based retrieval routing.
@@ -364,6 +372,44 @@ def route_retrieval_preset(
         for key, value in dict(rule.get("overrides") or {}).items():
             overrides[str(key)] = value
 
+    learned_meta: Dict[str, Any] = {
+        "enabled": False,
+        "used": False,
+        "rule_id": None,
+        "confidence": 0.0,
+        "confidence_gate": round(float(max(0.0, learned_router_confidence_min)), 6),
+        "applied_overrides": [],
+        "skipped_reason": None,
+    }
+    learned_model = normalize_intent_router_model(learned_router_model)
+    if learned_model is None and str(learned_router_model_path or "").strip():
+        learned_model = load_intent_router_model(learned_router_model_path)
+    if learned_model is not None:
+        learned_meta["enabled"] = True
+        hint = predict_learned_router_hint(query=query, model=learned_model)
+        confidence = float(hint.get("confidence") or 0.0)
+        confidence = min(1.0, max(0.0, confidence))
+        learned_meta["confidence"] = round(confidence, 6)
+        learned_meta["rule_id"] = str(hint.get("rule_id") or "")[:40] or None
+        hint_overrides = _sanitize_policy_overrides(hint.get("overrides"))
+        gate = float(learned_meta.get("confidence_gate") or 0.0)
+        if confidence < gate:
+            learned_meta["skipped_reason"] = "confidence_below_gate"
+        elif not hint_overrides:
+            learned_meta["skipped_reason"] = "no_overrides"
+        else:
+            applied: list[str] = []
+            for key, value in hint_overrides.items():
+                # Deterministic fallback always wins: learned hints only fill missing knobs.
+                if key in overrides:
+                    continue
+                overrides[str(key)] = value
+                applied.append(str(key))
+            learned_meta["applied_overrides"] = sorted(applied)
+            learned_meta["used"] = bool(applied)
+            if not applied:
+                learned_meta["skipped_reason"] = "conflict_with_deterministic"
+
     # Apply top_k/threshold contract when we changed (or already had) a supported profile.
     profile_effective = str(overrides.get("retrieval_profile") or profile_norm or "").strip().lower()
     if profile_effective in {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}:
@@ -385,6 +431,7 @@ def route_retrieval_preset(
         "reasons": reasons,
         "policy_used": bool(policy_rule_ids),
         "policy_rule_ids": policy_rule_ids,
+        "learned_router": learned_meta,
         "overrides": sorted(list(overrides.keys())),
     }
     return overrides, meta

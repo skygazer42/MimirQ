@@ -263,7 +263,58 @@ curl -X POST http://localhost:8000/api/v1/ltr/models/rollback
 5. 观察在线窗口指标
 6. 命中 rollback trigger 时回滚到 previous active model
 
-## 7) 仍然存在的差距（需要额外工程）
+## 7) 全自动学习闭环（Nightly → Canary → Rollback）
+
+Wave F 将 LTR 流程补齐为可审计、可回放的自动化闭环。推荐把下面 5 个步骤接成 nightly cron：
+
+1. **nightly hard negatives**
+```bash
+python scripts/mine_hard_negatives_nightly.py \
+  --feedback ./artifacts/feedback_export.json \
+  --traces ./artifacts/retrieval_trace_export.jsonl \
+  --out ./artifacts/hard_negatives.nightly.jsonl \
+  --out-manifest ./artifacts/hard_negatives.nightly.manifest.json
+```
+
+2. **nightly training cycle**
+```bash
+python scripts/run_ltr_nightly_cycle.py \
+  --cases ./artifacts/regression_cases.json \
+  --feedback ./artifacts/feedback_export.json \
+  --traces ./artifacts/retrieval_trace_export.jsonl \
+  --out-dir ./artifacts/ltr_nightly
+```
+
+3. **canary activation（受限比例）**
+```python
+from app.services.ltr_model_registry import apply_canary_activation
+
+apply_canary_activation(
+    model_id="<candidate_model_id>",
+    actor_id="nightly-bot",
+    canary_ratio=0.1,   # 受 min/max 边界校验
+)
+```
+
+4. **online degradation monitor + rollback daemon**
+```bash
+python scripts/ltr_online_rollback_daemon.py \
+  --windows-file ./artifacts/ltr_online_windows.json \
+  --metric-key delta.mrr \
+  --max-allowed-delta -0.02 \
+  --min-consecutive-windows 3 \
+  --apply-rollback \
+  --out ./artifacts/ltr_online_rollback.report.json
+```
+
+5. **release evidence**
+- nightly 结果最少保留以下 manifest/report：
+- `hard_negatives.nightly.manifest.json`
+- `ltr_nightly_cycle.manifest.json`
+- `ltr_online_rollback.report.json`
+- 这 3 份文件可用于回答“candidate 从哪里来、何时 canary、为何回滚/未回滚”。
+
+## 8) 仍然存在的差距（需要额外工程）
 
 训练脚本默认支持 **按 query 分组** 的 ranking objective（例如 `rank:pairwise` / `rank:ndcg`），并提供
 hard negative（near-miss）采样能力。

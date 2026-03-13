@@ -705,6 +705,8 @@ class Settings(BaseSettings):
     RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS: int = 4
     RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS: int = 4
     RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS: int = 500
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS: int = 1
+    RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS: float = 500.0
     # Emit immutable provenance capsule for retrieval responses (PII-safe, replay-friendly).
     RAG_EVIDENCE_CAPSULE_ENABLED: bool = True
     # Deterministic hard fallback (opt-in):
@@ -813,6 +815,15 @@ class Settings(BaseSettings):
     COLBERT_RERANK_MAX_LENGTH: int = 256
     # Used only by deterministic provider.
     COLBERT_RERANK_EMBED_DIM: int = 64
+    # Provider readiness guard for ColBERT reranker.
+    # strict=false: fallback to deterministic provider on readiness/warmup failure.
+    # strict=true: raise an error when requested provider is not ready.
+    COLBERT_RERANK_HEALTHCHECK_STRICT: bool = False
+    # Optional one-time warmup probe for model-backed providers.
+    COLBERT_RERANK_WARMUP_ENABLED: bool = False
+    # Optional: load fusion channel budget policy (generated from offline ablations).
+    # When configured, orchestrator can auto-apply budgeted_rrf channel quotas.
+    RAG_CHANNEL_BUDGET_POLICY_PATH: str = ""
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
@@ -839,6 +850,10 @@ class Settings(BaseSettings):
     # Optional: route retrieval presets/profiles by query intent (faq/howto/api/log).
     # Deterministic and PII-safe by design; disabled by default to avoid behavior surprises.
     RAG_INTENT_ROUTER_ENABLED: bool = False
+    # Optional learned-assist intent router model (JSON artifact).
+    # Deterministic fallback always remains active; learned hints are confidence-gated.
+    RAG_INTENT_ROUTER_MODEL_PATH: str = ""
+    RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN: float = 0.7
     # Optional: apply adaptive routing overrides from a versioned policy artifact.
     RAG_ADAPTIVE_ROUTER_ENABLED: bool = False
     RAG_ADAPTIVE_ROUTER_POLICY_PATH: str = "ci/adaptive_router_policy.v1.json"
@@ -2113,6 +2128,25 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS must be >= 2")
         if int(getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", 0) or 0) < 32:
             raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS must be >= 32")
+        if int(getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", 0) or 0) < 1:
+            raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS must be >= 1")
+        contextual_followup_latency_budget_ms = float(
+            getattr(self, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS", 500.0) or 500.0
+        )
+        if contextual_followup_latency_budget_ms < 0.0:
+            raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS must be >= 0")
+        if self.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS != contextual_followup_latency_budget_ms:
+            self.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS = contextual_followup_latency_budget_ms
+        intent_router_model_confidence_min = float(
+            getattr(self, "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", 0.7) or 0.7
+        )
+        if not (0.0 <= intent_router_model_confidence_min <= 1.0):
+            raise ValueError("RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN must be between 0 and 1")
+        if self.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN != intent_router_model_confidence_min:
+            self.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN = intent_router_model_confidence_min
+        intent_router_model_path = str(getattr(self, "RAG_INTENT_ROUTER_MODEL_PATH", "") or "").strip()
+        if self.RAG_INTENT_ROUTER_MODEL_PATH != intent_router_model_path:
+            self.RAG_INTENT_ROUTER_MODEL_PATH = intent_router_model_path
 
         low_quality = float(getattr(self, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
         if low_quality < 0.0 or low_quality > 1.0:
@@ -2180,6 +2214,14 @@ class Settings(BaseSettings):
                 )
             if self.SPARSE_SPLADE_MODEL_NAME != splade_model_name:
                 self.SPARSE_SPLADE_MODEL_NAME = splade_model_name
+
+        colbert_rerank_provider = str(
+            getattr(self, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"
+        ).strip().lower()
+        if colbert_rerank_provider not in {"deterministic", "hf"}:
+            raise ValueError("COLBERT_RERANK_PROVIDER must be one of: deterministic, hf")
+        if self.COLBERT_RERANK_PROVIDER != colbert_rerank_provider:
+            self.COLBERT_RERANK_PROVIDER = colbert_rerank_provider
 
         # Validate checkpoint backend
         valid_checkpoint_backends = {"memory", "sqlite"}

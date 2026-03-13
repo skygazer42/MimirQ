@@ -81,3 +81,30 @@ def test_contextual_followup_builder_respects_max_terms_and_dedupes() -> None:
     assert len(set(terms)) == 2
     assert "inventory" not in terms
 
+
+def test_contextual_followup_builder_prioritizes_gap_terms() -> None:
+    from app.rag.retrieval.contextual_followup import build_contextual_followup_query
+
+    docs = [
+        Document(
+            page_content="sales table contains monthly totals.",
+            id="a",
+            metadata={"table_id": "sales"},
+        )
+    ]
+
+    out = build_contextual_followup_query(
+        query="monthly totals",
+        docs=docs,
+        evidence_gap={"missing_source_keys": ["inventory_ledger"], "anchor_missing_any": 1},
+        max_docs=1,
+        max_terms=3,
+        min_term_chars=3,
+    )
+
+    assert bool(out.get("used")) is True
+    reasons = [str(v) for v in list(out.get("reason_codes") or [])]
+    assert "gap_missing_source_keys" in reasons
+    assert "gap_missing_anchor_fields" in reasons
+    terms = [str(v) for v in list(out.get("selected_terms") or [])]
+    assert any("inventory" in t.lower() for t in terms)

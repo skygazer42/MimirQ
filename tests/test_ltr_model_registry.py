@@ -77,3 +77,30 @@ def test_ltr_model_registry_register_activate_and_rollback(tmp_path, monkeypatch
     ids = {m.model_id for m in list_models()}
     assert ids == {sha1, sha2}
 
+
+def test_ltr_model_registry_canary_activation_records_ratio(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.rag.reranker.ltr import LTRFeatureSpec
+    from app.services.ltr_model_registry import apply_canary_activation, register_model
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(settings, "LTR_MODEL_PATH", "", raising=False)
+    monkeypatch.setattr(settings, "LTR_MODEL_MANIFEST_PATH", "", raising=False)
+    monkeypatch.setattr(settings, "LTR_FEATURE_SPEC_VERSION", 1, raising=False)
+
+    model_bytes = b"model-canary"
+    sha = __import__("hashlib").sha256(model_bytes).hexdigest()
+    spec = LTRFeatureSpec.v1()
+    manifest = _manifest_bytes(model_sha256=sha, feature_schema=spec.schema, feature_names=list(spec.feature_names))
+    reg = register_model(model_bytes=model_bytes, manifest_bytes=manifest, actor_id="u-canary")
+
+    active = apply_canary_activation(
+        model_id=reg.model_id,
+        actor_id="u-canary",
+        canary_ratio=0.2,
+    )
+    assert active.get("current_model_id") == reg.model_id
+    canary = active.get("canary") if isinstance(active.get("canary"), dict) else {}
+    assert canary.get("enabled") is True
+    assert float(canary.get("ratio") or 0.0) == 0.2
+    assert settings.LTR_MODEL_PATH

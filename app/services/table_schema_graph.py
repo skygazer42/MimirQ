@@ -507,8 +507,188 @@ def score_join_plan_candidates(
     }
 
 
+def score_multi_join_plan_candidates(
+    *,
+    tables: list[dict[str, Any]],
+    top_n: int,
+    ambiguity_score_gap: float,
+    max_states: int = 24,
+) -> dict[str, Any]:
+    """
+    Beam-search style multi-join planner scoring (bounded states).
+
+    Returns candidate join paths for 2+ tables. This is deterministic and bounded.
+    """
+    graph = build_table_schema_graph(tables=tables)
+    edges = [e for e in list(graph.get("edges") or []) if isinstance(e, dict)]
+    if not edges:
+        return {
+            "graph": graph,
+            "candidates": [],
+            "selected": None,
+            "ambiguous": False,
+            "ambiguity_gap": None,
+            "states_explored": 0,
+            "max_states": max(4, int(max_states or 4)),
+        }
+
+    # Reuse pairwise scoring signal as atomic edge scores.
+    base = score_join_plan_candidates(
+        tables=tables,
+        top_n=max(12, len(edges)),
+        ambiguity_score_gap=ambiguity_score_gap,
+    )
+    edge_candidates = [c for c in list(base.get("candidates") or []) if isinstance(c, dict)]
+    if not edge_candidates:
+        return {
+            "graph": graph,
+            "candidates": [],
+            "selected": None,
+            "ambiguous": False,
+            "ambiguity_gap": None,
+            "states_explored": 0,
+            "max_states": max(4, int(max_states or 4)),
+        }
+
+    beam_limit = max(4, int(max_states or 4))
+    table_names = [str(t.get("table_name") or "").strip() for t in list(tables or []) if isinstance(t, dict)]
+    target_tables = len([t for t in table_names if t])
+
+    # Seed states with each pairwise candidate.
+    states: list[dict[str, Any]] = []
+    for c in edge_candidates:
+        join = c.get("join") if isinstance(c.get("join"), dict) else {}
+        left_table = str(join.get("left_table") or "").strip()
+        right_table = str(join.get("right_table") or "").strip()
+        if not left_table or not right_table:
+            continue
+        tables_set = {left_table, right_table}
+        states.append(
+            {
+                "joins": [join],
+                "join_ids": [str(c.get("candidate_id") or "").strip()],
+                "tables": tables_set,
+                "score_sum": float(c.get("score") or 0.0),
+                "confidence_sum": float(c.get("confidence") or 0.0),
+                "penalty_sum": float(c.get("penalty_score") or 0.0),
+            }
+        )
+
+    def _state_score(state: dict[str, Any]) -> float:
+        joins_n = max(1, int(len(list(state.get("joins") or []))))
+        avg_score = float(state.get("score_sum") or 0.0) / float(joins_n)
+        # Mild preference for wider table coverage.
+        coverage_bonus = 0.01 * float(len(set(state.get("tables") or set())))
+        return round(avg_score + coverage_bonus, 6)
+
+    def _state_sort_key(state: dict[str, Any]) -> tuple[Any, ...]:
+        join_ids = [str(v) for v in list(state.get("join_ids") or []) if str(v).strip()]
+        return (
+            -_state_score(state),
+            -int(len(set(state.get("tables") or set()))),
+            ",".join(sorted(join_ids)),
+        )
+
+    states.sort(key=_state_sort_key)
+    states = states[:beam_limit]
+    states_explored = int(len(states))
+
+    max_hops = max(1, min(int(target_tables) - 1 if target_tables > 1 else 1, int(beam_limit)))
+    for _depth in range(2, max_hops + 1):
+        expanded: list[dict[str, Any]] = []
+        for state in states:
+            current_tables = set(state.get("tables") or set())
+            current_join_ids = set(str(v) for v in list(state.get("join_ids") or []) if str(v).strip())
+            for c in edge_candidates:
+                cid = str(c.get("candidate_id") or "").strip()
+                if not cid or cid in current_join_ids:
+                    continue
+                join = c.get("join") if isinstance(c.get("join"), dict) else {}
+                left_table = str(join.get("left_table") or "").strip()
+                right_table = str(join.get("right_table") or "").strip()
+                if not left_table or not right_table:
+                    continue
+                candidate_tables = {left_table, right_table}
+                # Must connect to the current path and add at least one new table.
+                if not (candidate_tables & current_tables):
+                    continue
+                if candidate_tables.issubset(current_tables):
+                    continue
+
+                new_state = {
+                    "joins": list(state.get("joins") or []) + [join],
+                    "join_ids": list(state.get("join_ids") or []) + [cid],
+                    "tables": set(current_tables | candidate_tables),
+                    "score_sum": float(state.get("score_sum") or 0.0) + float(c.get("score") or 0.0),
+                    "confidence_sum": float(state.get("confidence_sum") or 0.0) + float(c.get("confidence") or 0.0),
+                    "penalty_sum": float(state.get("penalty_sum") or 0.0) + float(c.get("penalty_score") or 0.0),
+                }
+                expanded.append(new_state)
+
+        if not expanded:
+            break
+        expanded.sort(key=_state_sort_key)
+        states = expanded[:beam_limit]
+        states_explored += len(expanded)
+
+    candidates: list[dict[str, Any]] = []
+    for st in states:
+        joins = [j for j in list(st.get("joins") or []) if isinstance(j, dict)]
+        if not joins:
+            continue
+        join_ids = [str(v) for v in list(st.get("join_ids") or []) if str(v).strip()]
+        if not join_ids:
+            continue
+        joins_n = max(1, len(joins))
+        score_avg = float(st.get("score_sum") or 0.0) / float(joins_n)
+        confidence_avg = float(st.get("confidence_sum") or 0.0) / float(joins_n)
+        penalty_avg = float(st.get("penalty_sum") or 0.0) / float(joins_n)
+        selected_tables = sorted(str(v) for v in set(st.get("tables") or set()) if str(v).strip())
+        candidates.append(
+            {
+                "candidate_id": stable_hash("->".join(sorted(join_ids)), length=16),
+                "score": round(float(score_avg), 6),
+                "confidence": round(float(confidence_avg), 6),
+                "penalty_score": round(float(penalty_avg), 6),
+                "joins": joins,
+                "selected_tables": selected_tables,
+                "hop_count": int(len(joins)),
+            }
+        )
+
+    candidates.sort(
+        key=lambda c: (
+            -float(c.get("score") or 0.0),
+            -int(len(list(c.get("selected_tables") or []))),
+            str(c.get("candidate_id") or ""),
+        )
+    )
+    n = max(1, int(top_n or 1))
+    candidates = candidates[:n]
+    selected = candidates[0] if candidates else None
+
+    gap = None
+    ambiguous = False
+    if len(candidates) >= 2:
+        s0 = float(candidates[0].get("score") or 0.0)
+        s1 = float(candidates[1].get("score") or 0.0)
+        gap = round(float(s0 - s1), 6)
+        ambiguous = gap <= max(0.0, float(ambiguity_score_gap or 0.0))
+
+    return {
+        "graph": graph,
+        "candidates": candidates,
+        "selected": selected,
+        "ambiguous": bool(ambiguous),
+        "ambiguity_gap": gap,
+        "states_explored": int(states_explored),
+        "max_states": int(beam_limit),
+    }
+
+
 __all__ = [
     "build_table_schema_graph",
     "infer_schema_relationships_for_tables",
+    "score_multi_join_plan_candidates",
     "score_join_plan_candidates",
 ]

@@ -43,6 +43,36 @@ def test_sparse_index_store_requires_matching_corpus_fingerprint(tmp_path: Path)
     assert miss is None
 
 
+def test_sparse_index_store_requires_matching_version_token(tmp_path: Path) -> None:
+    store = SparseIndexStore(base_dir=str(tmp_path))
+    provider_config = {"provider": "deterministic", "synonyms_raw": "kubernetes:k8s"}
+
+    store.save(
+        cache_key="scope-b",
+        provider_config=provider_config,
+        corpus_fingerprint="fp-b",
+        vectors={"chunk-b": SparseVector(weights={"k8s": 1.0})},
+        version_token="token-v1",
+    )
+
+    hit = store.load(
+        cache_key="scope-b",
+        provider_config=provider_config,
+        expected_fingerprint="fp-b",
+        expected_version_token="token-v1",
+    )
+    miss = store.load(
+        cache_key="scope-b",
+        provider_config=provider_config,
+        expected_fingerprint="fp-b",
+        expected_version_token="token-v2",
+    )
+
+    assert hit is not None
+    assert "chunk-b" in hit
+    assert miss is None
+
+
 def test_sparse_retrieval_reuses_persisted_index_without_full_rebuild(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

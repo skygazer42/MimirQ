@@ -67,3 +67,27 @@ def test_export_endpoint_is_registered():
 
     text = Path("app/api/v1/evaluations.py").read_text(encoding="utf-8")
     assert '@router.get("/ragas/regression/cases/export"' in text
+
+
+def test_export_case_bundle_includes_multihop_fields_when_present():
+    mod = _import_bundle_module()
+
+    dataset_id = uuid4()
+    case = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        dataset_id=dataset_id,
+        question="multi-hop q",
+        expected_answer=None,
+        tags=[],
+        reference_sources=[{"document_id": str(uuid4()), "chunk_id": str(uuid4())}],
+        extra={
+            "reasoning_hops": ["h1", "h2"],
+            "evidence_chain": [{"document_id": str(uuid4()), "chunk_id": str(uuid4())}],
+        },
+    )
+
+    bundle = mod.export_case_bundle([case], dataset_id)
+    item = bundle["items"][0]
+    assert item["reasoning_hops"] == ["h1", "h2"]
+    assert isinstance(item["evidence_chain"], list) and len(item["evidence_chain"]) == 1

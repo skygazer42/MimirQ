@@ -463,6 +463,43 @@ def rollback_active_model(*, actor_id: str | None) -> dict[str, Any]:
         return next_active
 
 
+def apply_canary_activation(
+    *,
+    model_id: str,
+    actor_id: str | None,
+    canary_ratio: float,
+    min_ratio: float = 0.01,
+    max_ratio: float = 0.5,
+) -> dict[str, Any]:
+    """
+    Activate a model with bounded canary metadata.
+
+    Notes:
+    - Activation semantics remain the same as `activate_model`.
+    - This helper only adds deterministic canary metadata into active.json.
+    - Runtime traffic splitting is executed by callers/routers using this metadata.
+    """
+    ratio = float(canary_ratio)
+    low = max(0.0, float(min_ratio))
+    high = min(1.0, max(float(max_ratio), low))
+    if ratio < low or ratio > high:
+        raise ValueError(f"canary_ratio_out_of_bounds:{ratio} not in [{low}, {high}]")
+
+    with _LOCK:
+        active = activate_model(model_id=model_id, actor_id=actor_id)
+        canary = {
+            "enabled": True,
+            "ratio": round(float(ratio), 6),
+            "min_ratio": round(float(low), 6),
+            "max_ratio": round(float(high), 6),
+            "applied_at": _now_utc_iso(),
+            "applied_by": (str(actor_id) if actor_id else None),
+        }
+        active["canary"] = canary
+        _save_active(active)
+        return active
+
+
 def resolve_active_model_paths() -> Tuple[str | None, str | None, int | None, str | None]:
     """
     Resolve (model_path, manifest_path, feature_spec_version, model_id) from active.json.
@@ -550,6 +587,7 @@ def evaluate_online_rollback_trigger(
 __all__ = [
     "LTRRegisteredModel",
     "activate_model",
+    "apply_canary_activation",
     "evaluate_online_rollback_trigger",
     "list_models",
     "register_model",

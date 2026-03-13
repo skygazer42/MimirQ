@@ -58,3 +58,15 @@ def test_infer_required_anchor_fields_adds_row_level_fields_for_row_intent() -> 
     assert "document_id" in fields
     assert "row_source_pk_hashes" in fields
     assert bool(out.get("applied")) is True
+
+
+def test_infer_expected_source_keys_includes_scope_document_ids() -> None:
+    out = infer_expected_source_keys(
+        query="请仅使用我限定的文档范围",
+        scope={"document_ids": ["doc-1", "doc-2"]},
+        max_keys=8,
+    )
+    keys = list(out.get("expected_source_keys") or [])
+    assert "doc-1" in keys
+    assert "doc-2" in keys
+    assert "scope" in list(out.get("reason_codes") or [])

@@ -16,7 +16,7 @@ import hashlib
 import re
 import threading
 import time
-from typing import Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 import numpy as np
 
@@ -203,6 +203,130 @@ def get_token_embedder(
         return inst
 
 
+def check_colbert_provider_readiness(
+    *,
+    provider_name: str,
+    model_name: str = "",
+    device: str = "cpu",
+) -> dict[str, Any]:
+    provider = str(provider_name or "").strip().lower() or "deterministic"
+    if provider not in {"deterministic", "hf"}:
+        provider = "deterministic"
+    if provider == "deterministic":
+        return {
+            "provider": provider,
+            "ready": True,
+            "reason": "none",
+            "dependency_ok": True,
+            "model_name": "",
+            "device": "cpu",
+        }
+
+    resolved_model = str(model_name or "").strip()
+    resolved_device = str(device or "cpu").strip().lower() or "cpu"
+    if not resolved_model:
+        return {
+            "provider": provider,
+            "ready": False,
+            "reason": "model_name_missing",
+            "dependency_ok": False,
+            "model_name": resolved_model,
+            "device": resolved_device,
+        }
+    if resolved_device not in {"cpu", "cuda", "auto"}:
+        return {
+            "provider": provider,
+            "ready": False,
+            "reason": "invalid_device",
+            "dependency_ok": False,
+            "model_name": resolved_model,
+            "device": resolved_device,
+        }
+
+    try:
+        import torch  # noqa: PLC0415
+        import transformers  # noqa: F401, PLC0415
+    except Exception:
+        return {
+            "provider": provider,
+            "ready": False,
+            "reason": "dependency_missing",
+            "dependency_ok": False,
+            "model_name": resolved_model,
+            "device": resolved_device,
+        }
+
+    if resolved_device == "cuda" and not bool(torch.cuda.is_available()):
+        return {
+            "provider": provider,
+            "ready": False,
+            "reason": "cuda_unavailable",
+            "dependency_ok": True,
+            "model_name": resolved_model,
+            "device": resolved_device,
+        }
+
+    return {
+        "provider": provider,
+        "ready": True,
+        "reason": "none",
+        "dependency_ok": True,
+        "model_name": resolved_model,
+        "device": resolved_device,
+    }
+
+
+def warmup_colbert_embedder(
+    *,
+    provider_name: str,
+    model_name: str = "",
+    device: str = "cpu",
+    batch_size: int = 16,
+    max_length: int = 256,
+    deterministic_dim: int = 16,
+) -> dict[str, Any]:
+    provider = str(provider_name or "").strip().lower() or "deterministic"
+    if provider not in {"deterministic", "hf"}:
+        provider = "deterministic"
+    if provider != "hf":
+        return {"ok": True, "reason": "skipped_non_hf", "provider": provider}
+
+    try:
+        embedder = get_token_embedder(
+            provider_name=provider,
+            model_name=model_name,
+            device=device,
+            batch_size=batch_size,
+            max_length=max_length,
+            deterministic_dim=deterministic_dim,
+        )
+        out = embedder.encode(["warmup_probe"])
+        rows = int(out.shape[0]) if isinstance(out, np.ndarray) and out.ndim == 2 else 0
+        cols = int(out.shape[1]) if isinstance(out, np.ndarray) and out.ndim == 2 else 0
+        if rows <= 0 or cols <= 0:
+            return {
+                "ok": False,
+                "reason": "empty_embedding",
+                "provider": provider,
+                "rows": rows,
+                "dim": cols,
+            }
+        return {
+            "ok": True,
+            "reason": "none",
+            "provider": provider,
+            "rows": rows,
+            "dim": cols,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "reason": "warmup_exception",
+            "provider": provider,
+            "error": f"{exc.__class__.__name__}:{str(exc)[:160]}",
+        }
+
+
 def _l2_normalize(x: np.ndarray) -> np.ndarray:
     if x.size == 0:
         return x
@@ -246,6 +370,8 @@ class ColBERTReranker(BaseReranker):
         max_length: int = 256,
         deterministic_dim: int = 16,
         embedder: TokenEmbedder | None = None,
+        provider_health: dict[str, Any] | None = None,
+        warmup_status: dict[str, Any] | None = None,
     ) -> None:
         provider = str(provider_name or "").strip().lower() or "deterministic"
         if provider not in {"deterministic", "hf"}:
@@ -257,6 +383,8 @@ class ColBERTReranker(BaseReranker):
         self.batch_size = max(1, int(batch_size or 0))
         self.max_length = max(8, int(max_length or 0))
         self.deterministic_dim = max(2, int(deterministic_dim or 0))
+        self.provider_health = dict(provider_health or {})
+        self.warmup_status = dict(warmup_status or {})
         self._embedder = embedder or get_token_embedder(
             provider_name=self.provider_name,
             model_name=self.model_name,

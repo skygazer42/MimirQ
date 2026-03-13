@@ -13,6 +13,9 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "validate_queryset_health_policy.py" in text
     assert "ci/parser_strict_profile.v1.json" in text
     assert "generate_adaptive_router_policy.py" in text
+    assert "generate_channel_budget_policy.py" in text
+    assert "export_intent_router_training.py" in text
+    assert "generate_intent_router_model.py" in text
     assert "answer_quality_gate.py" in text
     assert "ci/answer_quality_thresholds.v1.json" in text
     assert "ci/queryset_health_snapshot_baseline.v1.json" in text
@@ -34,8 +37,12 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "artifacts/sample_retrieval_bench.colbert.json" in text
     assert "artifacts/sample_retrieval_bench.sparse.json" in text
     assert "artifacts/adaptive_router_policy.v1.json" in text
+    assert "artifacts/channel_budget_policy.v1.json" in text
+    assert "artifacts/intent_router_training.v1.json" in text
+    assert "artifacts/intent_router_model.v1.json" in text
     assert "artifacts/answer_quality.summary.json" in text
     assert "artifacts/answer_quality.gate.json" in text
+    assert "artifacts/multihop_diagnostics.summary.json" in text
     assert "ci_retrieval_only_bounded_gate_colbert" in text
     assert "ci_retrieval_only_bounded_gate_sparse" in text
     assert "ci_retrieval_only_bounded_gate_hybrid" in text

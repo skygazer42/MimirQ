@@ -41,6 +41,7 @@ Use the section below in each release (or in `Unreleased` during development):
 - Must-recall + provenance gate: `artifacts/must_recall_provenance_gate.report.json`
 - Parser benchmark diff: `artifacts/parser_benchmark.diff.json`
 - Contextual follow-up diagnostics (if enabled): `artifacts/retrieval_trace.contextual_followup.json`
+- Iterative pass diagnostics (if enabled): `artifacts/retrieval_trace.iterative_pass.json`
 
 #### Thresholds
 
@@ -61,6 +62,7 @@ Before publishing retrieval-quality notes:
 5. If hybrid or ColBERT behavior changed, include the bounded artifact outcome and whether rollout criteria still passed.
 6. If must-recall/provenance claims are made, attach capsule/gate artifacts.
 7. If contextual follow-up is enabled, include its used-rate and average added citations.
+8. If iterative pass is enabled, include hop distribution (`hops_attempted/hops_used`) and latency budget.
 
 ---
 

@@ -45,6 +45,9 @@ Interpretation:
 - `metrics.parse_risk_score`
 - `metrics.parse_risk_reason`
 - `metrics.parse_risk_hardcase_eligible`
+- `metrics.parse_repair_actions`
+- `metrics.parse_repair_actions_enabled`
+- `metrics.parse_repair_actions_run_id`
 - `metrics.parse_quality_gate_profile`
 - `metrics.parse_quality_gate_violation`
 - `metrics.parse_quality_gate_blocked`
@@ -67,6 +70,7 @@ The stable trace now includes:
 - `retrieval_trace.parse_quality`
 - `retrieval_trace.parse_risk`
 - `retrieval_trace.parse_quality_gate`
+- `retrieval_trace.parse_repair_actions`
 
 This mirrors the metrics payload and is safe for offline analysis / replay pipelines.
 
@@ -137,6 +141,42 @@ python scripts/plan_parse_quality_reparse.py \
   - `parse_risk_level` moves from `high/medium` to `low/healthy`
   - `parse_quality_low_ratio` drops
   - CI diff artifact shows parse-risk-tail contraction (`parse_risk_tail_drift`)
+
+## Auto-Healing Pipeline
+
+建议把 parse-risk remediation 升级成自动闭环：
+
+1. 生成 repair 调度计划
+```bash
+python scripts/schedule_parse_repair.py \
+  --input artifacts/queryset_health.snapshot.json \
+  --input artifacts/queryset_health.diff.json \
+  --max-docs 100 \
+  --min-risk-score 0.4 \
+  --out artifacts/parse_repair.schedule.json
+```
+
+2. 选择 parser 策略
+- 使用 `app/services/parser_strategy_policy.py` 的 `recommend_parser_strategy(...)`
+- 输入文档画像（mime/page_count/table_density/image_ratio/ocr_ratio）
+- 输出稳定策略（例如 `pdf_ocr_layout` / `pdf_text_fast` / `spreadsheet_structured`）
+
+3. 重解析后跑收敛 gate
+```bash
+python scripts/verify_parse_repair_gate.py \
+  --baseline artifacts/queryset_health.snapshot.baseline.json \
+  --current artifacts/queryset_health.snapshot.current.json \
+  --min-shrinkage 0.2 \
+  --max-added-tail 0 \
+  --out artifacts/parse_repair_gate.report.json
+```
+
+4. 将 repair 行为写回检索诊断
+- 在 retrieval state 中附加 `parse_repair_actions`（或 `parse_repair_schedule`）
+- Orchestrator 会自动归一化并写入：
+- `metrics.parse_repair_actions`
+- `query_debug.parse_repair_actions`
+- `retrieval_trace.parse_repair_actions`
 
 ## Strict Gate Playbook (Task 30)
 

@@ -272,6 +272,77 @@ def _finalize_reference_sources(
     return out
 
 
+def _normalize_reasoning_hops(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        out.append(text[:300])
+        if len(out) >= 20:
+            break
+    return out
+
+
+def _normalize_evidence_chain(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if item is None:
+            continue
+        if hasattr(item, "model_dump"):
+            item = item.model_dump(mode="json")
+        if not isinstance(item, dict):
+            continue
+        doc_id = str(item.get("document_id") or "").strip()
+        chunk_id = str(item.get("chunk_id") or "").strip()
+        if not doc_id or not chunk_id:
+            continue
+        payload: dict[str, Any] = {"document_id": doc_id, "chunk_id": chunk_id}
+        if item.get("chunk_index") is not None:
+            try:
+                payload["chunk_index"] = int(item.get("chunk_index"))
+            except Exception:
+                pass
+        if item.get("label") is not None:
+            payload["label"] = str(item.get("label"))[:100]
+        out.append(payload)
+        if len(out) >= 20:
+            break
+    return out
+
+
+def _merge_regression_case_extra(
+    *,
+    base_extra: Any,
+    reasoning_hops: Any,
+    evidence_chain: Any,
+) -> dict[str, Any]:
+    extra = dict(base_extra) if isinstance(base_extra, dict) else {}
+    hops = _normalize_reasoning_hops(reasoning_hops)
+    chain = _normalize_evidence_chain(evidence_chain)
+    if hops:
+        extra["reasoning_hops"] = hops
+    else:
+        extra.pop("reasoning_hops", None)
+    if chain:
+        extra["evidence_chain"] = chain
+    else:
+        extra.pop("evidence_chain", None)
+    return extra
+
+
+def _attach_reasoning_fields(case_row: Any) -> Any:
+    extra = getattr(case_row, "extra", None)
+    extra = extra if isinstance(extra, dict) else {}
+    setattr(case_row, "reasoning_hops", _normalize_reasoning_hops(extra.get("reasoning_hops")))
+    setattr(case_row, "evidence_chain", _normalize_evidence_chain(extra.get("evidence_chain")))
+    return case_row
+
+
 @router.post("/ragas/runs", response_model=RagasRunSchema, status_code=201)
 async def create_ragas_run(
     request: RagasRunCreateRequest,
@@ -405,6 +476,11 @@ async def create_ragas_regression_case(
         dataset_id=request.dataset_id,
         reference_sources=request.reference_sources,
     )
+    merged_extra = _merge_regression_case_extra(
+        base_extra=request.extra,
+        reasoning_hops=request.reasoning_hops,
+        evidence_chain=request.evidence_chain,
+    )
 
     row = RagasRegressionCase(
         tenant_id=tenant_id,
@@ -420,13 +496,13 @@ async def create_ragas_regression_case(
         expected_answer=request.expected_answer,
         reference_sources=reference_sources,
         tags=request.tags,
-        extra=request.extra,
+        extra=merged_extra,
         created_by=account_id,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return row
+    return _attach_reasoning_fields(row)
 
 
 @router.patch("/ragas/regression/cases/{case_id}", response_model=RagasRegressionCaseOut)
@@ -461,8 +537,17 @@ async def patch_ragas_regression_case(
         row.expected_answer = request.expected_answer
     if "tags" in fields and request.tags is not None:
         row.tags = request.tags
-    if "extra" in fields and request.extra is not None:
-        row.extra = request.extra
+    if (
+        "extra" in fields
+        or "reasoning_hops" in fields
+        or "evidence_chain" in fields
+    ):
+        base_extra = request.extra if ("extra" in fields and request.extra is not None) else row.extra
+        row.extra = _merge_regression_case_extra(
+            base_extra=base_extra,
+            reasoning_hops=(request.reasoning_hops if "reasoning_hops" in fields else None),
+            evidence_chain=(request.evidence_chain if "evidence_chain" in fields else None),
+        )
     if "document_ids" in fields and request.document_ids is not None:
         if ds_id is None:
             raise HTTPException(status_code=400, detail="Cannot patch document_ids without dataset_id")
@@ -487,7 +572,7 @@ async def patch_ragas_regression_case(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return row
+    return _attach_reasoning_fields(row)
 
 
 @router.get("/ragas/regression/cases", response_model=RagasRegressionCaseList)
@@ -513,6 +598,7 @@ async def list_ragas_regression_cases(
         .limit(limit)
         .all()
     )
+    items = [_attach_reasoning_fields(x) for x in items]
     return {"total": total, "items": items}
 
 
@@ -594,6 +680,11 @@ async def import_ragas_regression_cases(
                 expected_answer=item.get("expected_answer"),
                 reference_sources=reference_sources,
                 tags=list(item.get("tags") or []),
+                extra=_merge_regression_case_extra(
+                    base_extra=None,
+                    reasoning_hops=item.get("reasoning_hops"),
+                    evidence_chain=item.get("evidence_chain"),
+                ),
                 created_by=account_id,
             )
             db.add(row)
@@ -623,6 +714,11 @@ async def import_ragas_regression_cases(
             row.expected_answer = item.get("expected_answer")
             row.tags = list(item.get("tags") or [])
             row.reference_sources = reference_sources
+            row.extra = _merge_regression_case_extra(
+                base_extra=row.extra,
+                reasoning_hops=item.get("reasoning_hops"),
+                evidence_chain=item.get("evidence_chain"),
+            )
             db.add(row)
             updated += 1
         except HTTPException as exc:

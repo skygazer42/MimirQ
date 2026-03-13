@@ -28,6 +28,22 @@ hybrid bounded fixture.
 
 All outputs are PII-safe by construction (numbers, hashes, low-cardinality labels).
 
+## LTR 自动学习闭环联动（Nightly/Canary/Rollback）
+
+当你启用 LTR 的自动化训练闭环时，release gate 建议一并消费以下工件，确保“上线模型有据可查”：
+
+- `artifacts/hard_negatives.nightly.manifest.json`
+- `artifacts/ltr_nightly_cycle.manifest.json`
+- `artifacts/ltr_online_rollback.report.json`
+
+推荐发布前检查：
+
+1. cycle manifest 中 candidate 训练 lineage 完整（cases/traces/hard-negatives 都有 hash）。
+2. canary 激活策略满足 registry 边界（`apply_canary_activation` 的 ratio 校验通过）。
+3. rollback daemon 最近窗口没有触发，或触发后已完成回滚并落盘报告。
+
+这部分不是替代 regression/SLO/cost gate，而是补齐 LTR 的“训练-激活-回滚”可审计闭环。
+
 ## CI Integration
 
 The GitHub Actions workflow runs:

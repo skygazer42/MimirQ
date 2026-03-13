@@ -321,6 +321,9 @@ def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> Dict[str, A
         "retrieval_hit_at_5": _mean_bool("retrieval_hit_at_5"),
         "retrieval_hit_at_10": _mean_bool("retrieval_hit_at_10"),
         "retrieval_hit_at_20": _mean_bool("retrieval_hit_at_20"),
+        "multihop_path_completeness": _mean(m.get("multihop_path_completeness") for m in metas),
+        "multihop_order_consistency": _mean(m.get("multihop_order_consistency") for m in metas),
+        "multihop_chain_hit_rate": _mean_bool("multihop_chain_hit"),
         "abstain_rate": _mean_bool("abstain_triggered"),
     }
 

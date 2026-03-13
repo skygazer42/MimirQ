@@ -330,3 +330,47 @@ def test_settings_accepts_retrieval_contextual_followup_toggles(
     assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS) == 6
     assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS) == 3
     assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS) == 420
+
+
+def test_settings_rejects_invalid_intent_router_model_confidence_min(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", "1.2")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_accepts_intent_router_model_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RAG_INTENT_ROUTER_MODEL_PATH", "artifacts/intent_router_model.v1.json")
+    monkeypatch.setenv("RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", "0.66")
+    cfg = Settings()
+    assert cfg.RAG_INTENT_ROUTER_MODEL_PATH == "artifacts/intent_router_model.v1.json"
+    assert abs(float(cfg.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN) - 0.66) <= 1e-9
+
+
+def test_settings_rejects_non_positive_retrieval_contextual_followup_max_hops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_accepts_retrieval_contextual_followup_iterative_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", "3")
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS", "1800")
+    cfg = Settings()
+    assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS) == 3
+    assert abs(float(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS) - 1800.0) <= 1e-9

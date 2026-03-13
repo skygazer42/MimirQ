@@ -467,6 +467,11 @@ def build_chat_tag_context_docs(
                 join_provenance = planner_diagnostics.get("joins")
                 if not isinstance(join_provenance, list):
                     join_provenance = []
+                join_plan_risk = (
+                    planner_diagnostics.get("join_plan_risk")
+                    if isinstance(planner_diagnostics.get("join_plan_risk"), dict)
+                    else None
+                )
                 sql_fingerprint = str(planner_diagnostics.get("sql_fingerprint") or "").strip() or fingerprint_sql(
                     join_sql, length=16
                 )
@@ -556,6 +561,7 @@ def build_chat_tag_context_docs(
                     "sql_generation_mode": "deterministic_join",
                     "schema_link": schema_link_diagnostics,
                     "planner": planner_diagnostics,
+                    "join_plan_risk": join_plan_risk,
                     "planner_execution_mismatch": planner_execution_mismatch,
                     "join_provenance": join_provenance,
                     "join_table_ids": [c.table_id for c in selected_candidates],
@@ -591,6 +597,11 @@ def build_chat_tag_context_docs(
                         "schema_link_reason": schema_link_diagnostics.get("reason"),
                         "schema_link_diagnostics": schema_link_diagnostics,
                         "planner_diagnostics": planner_diagnostics,
+                        "join_plan_risk": join_plan_risk,
+                        "join_plan_risk_fanout_explosive": bool((join_plan_risk or {}).get("fanout_explosive")),
+                        "join_plan_risk_selectivity_unknown": bool(
+                            (join_plan_risk or {}).get("selectivity_unknown")
+                        ),
                         "planner_execution_mismatch": planner_execution_mismatch,
                         "join_provenance": join_provenance,
                         "join_table_ids": [c.table_id for c in selected_candidates],
@@ -678,6 +689,11 @@ def build_chat_tag_context_docs(
             if isinstance(planner_diagnostics, dict):
                 planner_diagnostics = dict(planner_diagnostics)
                 planner_diagnostics.setdefault("sql_fingerprint", sql_fingerprint)
+            join_plan_risk = (
+                planner_diagnostics.get("join_plan_risk")
+                if isinstance(planner_diagnostics, dict) and isinstance(planner_diagnostics.get("join_plan_risk"), dict)
+                else None
+            )
 
             result = run_table_query(
                 tenant_id=tenant_id,
@@ -711,6 +727,7 @@ def build_chat_tag_context_docs(
                 "sql_generation_mode": sql_generation_mode,
                 "schema_link": schema_link_diagnostics,
                 "planner": planner_diagnostics,
+                "join_plan_risk": join_plan_risk,
                 "planner_execution_mismatch": planner_execution_mismatch,
                 "must_recall_source_key_match": bool(source_key_match),
                 "must_recall_expected_source_keys": expected_source_keys[:20],
@@ -785,6 +802,9 @@ def build_chat_tag_context_docs(
                         ),
                         "schema_link_diagnostics": schema_link_diagnostics,
                         "planner_diagnostics": planner_diagnostics,
+                        "join_plan_risk": join_plan_risk,
+                        "join_plan_risk_fanout_explosive": bool((join_plan_risk or {}).get("fanout_explosive")),
+                        "join_plan_risk_selectivity_unknown": bool((join_plan_risk or {}).get("selectivity_unknown")),
                         "planner_execution_mismatch": planner_execution_mismatch,
                         "must_recall_source_key_match": bool(source_key_match),
                         "must_recall_expected_source_keys": expected_source_keys[:20],

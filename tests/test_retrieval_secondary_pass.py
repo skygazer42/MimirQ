@@ -122,6 +122,8 @@ def test_orchestrator_contextual_followup_adds_candidates(monkeypatch: pytest.Mo
     monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", 20, raising=False)
     monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", 3, raising=False)
     monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", 3, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", 2, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS", 2000, raising=False)
     monkeypatch.setattr(settings, "KG_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "KG_CHAT_ENABLED", False, raising=False)
 
@@ -154,6 +156,8 @@ def test_orchestrator_contextual_followup_adds_candidates(monkeypatch: pytest.Mo
     assert str(metrics.get("contextual_followup_mode") or "") == "keyword"
     assert int(metrics.get("contextual_followup_added_docs") or 0) >= 1
     assert int(metrics.get("contextual_followup_added_citations") or 0) >= 1
+    assert int(metrics.get("iterative_pass_hops_attempted") or 0) >= 1
+    assert isinstance(metrics.get("iterative_pass_hops"), list)
 
     citations = out.get("citations") or []
     assert len([c for c in citations if isinstance(c, dict)]) >= 2
@@ -163,3 +167,6 @@ def test_orchestrator_contextual_followup_adds_candidates(monkeypatch: pytest.Mo
     follow = follow if isinstance(follow, dict) else {}
     assert bool(follow.get("attempted")) is True
     assert bool(follow.get("used")) is True
+    iterative = trace.get("iterative_pass") if isinstance(trace, dict) else {}
+    iterative = iterative if isinstance(iterative, dict) else {}
+    assert int(iterative.get("hops_attempted") or 0) >= 1
