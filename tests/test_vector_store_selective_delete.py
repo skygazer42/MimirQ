@@ -35,6 +35,11 @@ class _DummyEmbeddings:
 
 
 def test_chroma_vector_store_selective_delete_by_metadata_filter(monkeypatch):
+    try:
+        vector_factory._get_chroma_cls()
+    except Exception:
+        pytest.skip("Chroma optional deps not installed or broken")
+
     monkeypatch.setattr(
         # Keep unit tests hermetic: persistence is not required for correctness and can be
         # unsupported in some sandbox environments.
