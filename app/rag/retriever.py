@@ -283,7 +283,13 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
-    def _build_sparse_index(self, *, cache_key: str, docs: List[Document]) -> None:
+    def _build_sparse_index(
+        self,
+        *,
+        cache_key: str,
+        docs: List[Document],
+        version_token: str | None = None,
+    ) -> None:
         """
         Build (or rebuild) a sparse retrieval index for the current scope key.
 
@@ -369,7 +375,13 @@ class HybridRetriever(BaseRetriever):
                 try:
                     fp = self._sparse_corpus_fingerprint(docs)
                     store = SparseIndexStore(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or ""))
-                    store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=out)
+                    store.save(
+                        cache_key=cache_key,
+                        provider_config=provider_config,
+                        corpus_fingerprint=fp,
+                        vectors=out,
+                        version_token=str(version_token or "").strip(),
+                    )
                     save_outcome = "ok"
                 except Exception:
                     save_outcome = "error"
@@ -392,6 +404,7 @@ class HybridRetriever(BaseRetriever):
         cache_key: str,
         corpus_docs: List[Document],
         upsert_docs: List[Document],
+        version_token: str | None = None,
     ) -> None:
         """
         Incrementally update the sparse index for a scope key.
@@ -467,7 +480,12 @@ class HybridRetriever(BaseRetriever):
                         store = SparseIndexStore(
                             base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
                         )
-                        loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
+                        loaded = store.load(
+                            cache_key=cache_key,
+                            provider_config=provider_config,
+                            expected_fingerprint=fp,
+                            expected_version_token=str(version_token or "").strip(),
+                        )
                         if loaded:
                             sparse_vecs = loaded
                             load_outcome = "hit"
@@ -481,7 +499,11 @@ class HybridRetriever(BaseRetriever):
             # fall back to a full rebuild for correctness.
             if not sparse_vecs and corpus_docs and len(corpus_docs) > len(upsert_docs):
                 build_outcome = "skipped"
-                self._build_sparse_index(cache_key=cache_key, docs=corpus_docs)
+                self._build_sparse_index(
+                    cache_key=cache_key,
+                    docs=corpus_docs,
+                    version_token=str(version_token or "").strip(),
+                )
                 return
 
             def _coerce(v: Any) -> SparseVector:
@@ -526,7 +548,13 @@ class HybridRetriever(BaseRetriever):
                     store = SparseIndexStore(
                         base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
                     )
-                    store.save(cache_key=cache_key, provider_config=provider_config, corpus_fingerprint=fp, vectors=sparse_vecs)
+                    store.save(
+                        cache_key=cache_key,
+                        provider_config=provider_config,
+                        corpus_fingerprint=fp,
+                        vectors=sparse_vecs,
+                        version_token=str(version_token or "").strip(),
+                    )
                     save_outcome = "ok"
                 except Exception:
                     save_outcome = "error"
@@ -1342,7 +1370,15 @@ class HybridRetriever(BaseRetriever):
 
         sparse_rebuilt = False
         if bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)) and docs:
-            self._build_sparse_index(cache_key=cache_key, docs=docs)
+            sparse_version_token = self._resolve_candidate_cache_corpus_token(
+                tenant_id=tenant_id,
+                document_ids=None,
+            )
+            self._build_sparse_index(
+                cache_key=cache_key,
+                docs=docs,
+                version_token=sparse_version_token,
+            )
             sparse_rebuilt = bool(self._sparse_doc_vectors.get(cache_key))
 
         colbert_rebuilt = False
@@ -1417,10 +1453,15 @@ class HybridRetriever(BaseRetriever):
         if self._effective_sparse_enabled():
             try:
                 with self._get_sparse_build_lock(cache_key):
+                    sparse_version_token = self._resolve_candidate_cache_corpus_token(
+                        tenant_id=tenant_uuid,
+                        document_ids=None,
+                    )
                     self._upsert_sparse_index_incremental(
                         cache_key=cache_key,
                         corpus_docs=merged_docs,
                         upsert_docs=docs,
+                        version_token=sparse_version_token,
                     )
             except Exception as exc:
                 logger.warning("Sparse index update failed for scope %s: %s", cache_key, str(exc)[:200])
@@ -1732,13 +1773,39 @@ class HybridRetriever(BaseRetriever):
         if not docs:
             return []
 
-        # Resource guard: avoid accidentally building large in-memory ANN matrices.
-        # This is especially important for HF providers where dim is typically 768+.
+        from app.rag.retrieval.colbert_ann import (
+            ColbertAnnIndexStore,
+            build_colbert_provider_config,
+            get_dense_embedder,
+            resolve_colbert_ann_provider_capability,
+            topk_cosine_scores,
+        )
+
+        # Provider readiness gate with deterministic fallback diagnostics.
         try:
             max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
         except Exception:
             max_docs = 0
-        if max_docs > 0 and len(docs) > max_docs:
+        requested_provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        readiness = resolve_colbert_ann_provider_capability(
+            colbert_enabled=bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
+            requested_provider=requested_provider,
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            docs_count=int(len(docs or [])),
+            max_docs=int(max_docs),
+        )
+        try:
+            if isinstance(self._last_channel_metrics, dict):
+                box = self._last_channel_metrics.get("colbert_ann")
+                if not isinstance(box, dict):
+                    box = {}
+                    self._last_channel_metrics["colbert_ann"] = box
+                box["readiness"] = dict(readiness or {})
+        except Exception:
+            pass
+
+        if str(readiness.get("reason") or "") == "too_many_docs":
             try:
                 if isinstance(self._last_channel_metrics, dict):
                     box = self._last_channel_metrics.get("colbert_ann")
@@ -1746,7 +1813,7 @@ class HybridRetriever(BaseRetriever):
                         box = {}
                         self._last_channel_metrics["colbert_ann"] = box
                     box["skipped_reason"] = "too_many_docs"
-                    box["docs_n"] = int(len(docs))
+                    box["docs_n"] = int(len(docs or []))
                     box["max_docs"] = int(max_docs)
             except Exception:
                 pass
@@ -1757,14 +1824,19 @@ class HybridRetriever(BaseRetriever):
                 pass
             return []
 
-        from app.rag.retrieval.colbert_ann import (
-            ColbertAnnIndexStore,
-            build_colbert_provider_config,
-            get_dense_embedder,
-            topk_cosine_scores,
-        )
+        provider = str(readiness.get("effective_provider") or "deterministic").strip().lower() or "deterministic"
+        if not bool(readiness.get("ready", False)):
+            try:
+                if isinstance(self._last_channel_metrics, dict):
+                    box = self._last_channel_metrics.get("colbert_ann")
+                    if not isinstance(box, dict):
+                        box = {}
+                        self._last_channel_metrics["colbert_ann"] = box
+                    box["skipped_reason"] = "provider_unready"
+            except Exception:
+                pass
+            return []
 
-        provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
         provider_config = build_colbert_provider_config(
             provider=provider,
             model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
@@ -1932,6 +2004,10 @@ class HybridRetriever(BaseRetriever):
                 outcome = "skipped"
                 reason = "scope_empty"
                 return []
+            sparse_index_version_token = self._resolve_candidate_cache_corpus_token(
+                tenant_id=tenant_uuid,
+                document_ids=document_ids,
+            )
 
             from app.rag.retrieval.sparse import (
                 SparseIndexStore,
@@ -1965,7 +2041,12 @@ class HybridRetriever(BaseRetriever):
                         store = SparseIndexStore(
                             base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", "./data/sparse_indexes") or "")
                         )
-                        loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=fp)
+                        loaded = store.load(
+                            cache_key=cache_key,
+                            provider_config=provider_config,
+                            expected_fingerprint=fp,
+                            expected_version_token=str(sparse_index_version_token or "").strip(),
+                        )
                         if loaded:
                             sparse_vecs = loaded
                             self._sparse_doc_vectors[cache_key] = sparse_vecs
@@ -1983,7 +2064,11 @@ class HybridRetriever(BaseRetriever):
                     with self._get_sparse_build_lock(cache_key):
                         sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
                         if len(sparse_vecs) != len(docs):
-                            self._build_sparse_index(cache_key=cache_key, docs=docs)
+                            self._build_sparse_index(
+                                cache_key=cache_key,
+                                docs=docs,
+                                version_token=sparse_index_version_token,
+                            )
                             sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
                 except Exception:
                     had_index_build_error = True
@@ -2862,12 +2947,17 @@ class HybridRetriever(BaseRetriever):
             colbert_box = channel_metrics.get("colbert_ann")
             if not isinstance(colbert_box, dict):
                 colbert_box = {}
+            colbert_readiness = colbert_box.get("readiness") if isinstance(colbert_box.get("readiness"), dict) else {}
             colbert_box.update(
                 {
                     "enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
                     "used": bool(colbert_used),
                     "candidates": int(colbert_candidates or 0),
-                    "provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
+                    "provider": str(
+                        (colbert_readiness.get("effective_provider") if isinstance(colbert_readiness, dict) else None)
+                        or getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "")
+                        or ""
+                    ),
                 }
             )
             channel_metrics["colbert_ann"] = colbert_box

@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from app.rag.core.text import is_claim_supported, split_into_claims
+from app.rag.evaluation.multihop import score_multihop_citation_chain
 
 
 def _get(obj: Any, key: str, default: Any = None) -> Any:
@@ -311,6 +312,32 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     faithfulness_det = _deterministic_faithfulness(response, retrieved_contexts)
 
+    reasoning_hops_raw = _get(case, "reasoning_hops", None)
+    if not isinstance(reasoning_hops_raw, list):
+        reasoning_hops_raw = extra_d.get("reasoning_hops")
+    reasoning_hops = [
+        str(x) for x in list(reasoning_hops_raw or []) if str(x or "").strip()
+    ][:20]
+
+    evidence_chain_raw = _get(case, "evidence_chain", None)
+    if not isinstance(evidence_chain_raw, list):
+        evidence_chain_raw = extra_d.get("evidence_chain")
+    evidence_chain: list[dict[str, Any]] = []
+    for item_raw in list(evidence_chain_raw or []):
+        row = _coerce_dict(item_raw)
+        if not row:
+            continue
+        evidence_chain.append(row)
+        if len(evidence_chain) >= 20:
+            break
+
+    multihop = score_multihop_citation_chain(
+        evidence_chain=evidence_chain,
+        citations=[_coerce_dict(c) for c in list(citations or [])],
+        reasoning_hops=reasoning_hops,
+        top_k=20,
+    )
+
     meta = {
         "abstain_triggered": bool(item.get("abstain_triggered")) if "abstain_triggered" in item else None,
         "abstain_reason": item.get("abstain_reason"),
@@ -327,6 +354,12 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "retrieval_hit_at_20": hit_at_20,
         "faithfulness_det": faithfulness_det,
         "expected_refusal": expected_refusal,
+        "reasoning_hops_count": int(len(reasoning_hops)),
+        "evidence_chain_steps": int(len(evidence_chain)),
+        "multihop_enabled": bool(multihop.get("enabled")),
+        "multihop_path_completeness": multihop.get("path_completeness"),
+        "multihop_order_consistency": multihop.get("order_consistency"),
+        "multihop_chain_hit": multihop.get("chain_hit"),
     }
 
     # Per-item refusal correctness (only when expected_refusal is labeled).
@@ -384,6 +417,12 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
         "retrieval_hit_at_10": meta.get("retrieval_hit_at_10"),
         "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
+        "reasoning_hops_count": meta.get("reasoning_hops_count"),
+        "evidence_chain_steps": meta.get("evidence_chain_steps"),
+        "multihop_enabled": meta.get("multihop_enabled"),
+        "multihop_path_completeness": meta.get("multihop_path_completeness"),
+        "multihop_order_consistency": meta.get("multihop_order_consistency"),
+        "multihop_chain_hit": meta.get("multihop_chain_hit"),
         # Answer-level deterministic gate signals (best-effort; may be null in retrieval-only mode).
         "faithfulness_det": meta.get("faithfulness_det"),
         "expected_refusal": meta.get("expected_refusal"),

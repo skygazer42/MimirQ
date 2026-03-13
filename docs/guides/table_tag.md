@@ -242,3 +242,39 @@ Chat TAG 侧会执行两层保障：
 
 - `planner_execution_mismatch`（期望/实际 SQL 指纹与表集比对）
 - `TABLE_TAG_PLANNER_MISMATCH_STRICT=true` 时遇 mismatch 会直接失败，防止“规划说一套、执行跑另一套”。
+
+## 全局 JOIN 规划与风险契约（G4）
+
+在多表（>=3）场景下，规划器会在 pairwise 候选之外执行有界 beam-style 全局搜索，尽量选出覆盖更多表且代价可控的 join path。
+
+新增关键诊断字段（位于 `planner_diagnostics`）：
+
+- `strategy`：固定 `deterministic_join`（兼容上游消费）
+- `planner_mode`：`pairwise` / `beam`
+- `multi_candidates`：多跳候选路径（含 `joins`、`selected_tables`、`hop_count`）
+- `join_statistics_snapshot`：离线快照（`pairwise` + `multi` 候选、`ambiguous`、`ambiguity_gap`、`states_explored`）
+- `dry_run_cardinality`：执行前规模估计（`estimated_upper_rows`、`max_rows_budget`、`explosive`）
+- `join_plan_risk`：风险契约对象
+  - `fanout_explosive`：估计 fanout 过高或 dry-run 规模爆炸
+  - `selectivity_unknown`：join 键采样选择性不足，风险不可判定
+  - `reason_codes`：风险原因码集合（低基数字段）
+
+`join_plan_risk` 与 `dry_run_cardinality` 会同时透传到：
+
+- `/tables/{table_id}/ask` 的返回体（`planner_diagnostics` / `join_plan_risk`）
+- Chat TAG 注入 payload（`planner` / `join_plan_risk`）
+- Chat citation metadata（`join_plan_risk_fanout_explosive` / `join_plan_risk_selectivity_unknown`）
+
+建议线上巡检策略：
+
+- 若 `join_plan_risk.fanout_explosive=true`，优先缩小筛选条件或降级为单表路径。
+- 若 `selectivity_unknown=true`，优先补采样或补充键约束（避免“看似可 JOIN，实际扩大结果集”）。
+- 若 `planner_mode=beam` 且 `ambiguous=true`，在严格模式下直接阻断（`ambiguous_join_plan`），在非严格模式下记录候选并审计 top-2 gap。
+
+常见 fail reasons（用于告警归因）：
+
+- `no_join_relationship_found`
+- `invalid_join_relationship`
+- `ambiguous_join_plan`
+- `low_confidence_join_plan`
+- `planner_execution_mismatch`

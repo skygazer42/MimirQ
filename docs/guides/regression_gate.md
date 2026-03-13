@@ -21,6 +21,10 @@
 - 导入：`POST /api/v1/evaluations/ragas/regression/cases/import`（body 需要 `dataset_id` + `items[]`）
 
 > 导出的 bundle schema 为 `mimirq.regression_cases.v1`，包含 `dataset_id` 与 `items[]`。
+>
+> `items[]` 支持可选 multi-hop 字段：
+> - `reasoning_hops`（推理步骤，有序）
+> - `evidence_chain`（证据链，有序 `ReferenceSource`）
 
 ## CI Gate 脚本
 
@@ -99,6 +103,8 @@ python scripts/regression_gate.py \
   "faithfulness": 0.7,
   "response_relevancy": 0.7,
   "retrieval_recall": 0.3,
+  "multihop_path_completeness": 0.7,
+  "multihop_order_consistency": 0.6,
   "retrieval_hit_at_20": 1.0,
   "abstain_rate": 0.02
 }
@@ -114,6 +120,9 @@ python scripts/regression_gate.py \
 > - `retrieval_mrr`: [0,1]，MRR（证据第一次出现的平均倒数排名：`1/rank`，越高越好）
 > - `retrieval_ndcg_at_10`: [0,1]，NDCG@10（证据在 Top10 的排序质量，越高越好）
 > - `retrieval_ndcg_at_20`: [0,1]，NDCG@20（证据在 Top20 的排序质量，越高越好）
+> - `multihop_path_completeness`: [0,1]，multi-hop 证据链覆盖率
+> - `multihop_order_consistency`: [0,1]，multi-hop 证据链顺序一致性
+> - `multihop_chain_hit_rate`: [0,1]，multi-hop 全链路命中率
 > - `abstain_rate`: [0,1]，拒答率（`abstain_triggered` 的占比；可用于“严格可见证据模式”安全回归）
 > - `must_recall_pass_rate`: [0,1]，must-recall 合同通过率（含 partial-miss recovery）
 > - `parse_quality_alert_rate`: [0,1]，解析质量告警占比
@@ -250,6 +259,11 @@ python scripts/must_recall_provenance_gate.py \
   --must-recall-min 1.0 \
   --provenance-min 1.0 \
   --out artifacts/must_recall_provenance_gate.report.json
+
+# 6) must-recall proof 一致性审计（可选但推荐）
+python scripts/must_recall_proof_audit.py \
+  --input artifacts/run.detail.json \
+  --out artifacts/must_recall_proof_audit.report.json
 ```
 
 说明：
@@ -257,7 +271,13 @@ python scripts/must_recall_provenance_gate.py \
 - `must_recall_provenance_gate.py` 会同时检查：
   - `must_recall_pass_rate`
   - provenance 完整性（evidence capsule 存在且包含 capsule/citation hash）
+- `must_recall_proof_audit.py` 会检查 proof 对象一致性：
+  - proof schema 是否正确
+  - `passed` 与 `missing_source_keys/anchor_missing_any/obligation_ledger.missing_total` 是否一致
+  - `failed` 状态是否包含 fail reasons
 - 推荐把该 JSON 报告与 regression gate 报告一起上传为 CI artifact，作为发版审计依据。
+- bounded hybrid CI 还会生成 `artifacts/multihop_diagnostics.summary.json`，
+  用于审计 multi-hop 指标是否进入 artifact 链路。
 
 ## CI 集成（KG Search Gate in PR）
 

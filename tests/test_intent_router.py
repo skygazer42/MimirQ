@@ -104,6 +104,82 @@ def test_route_retrieval_preset_applies_policy_rule_without_leaking_patterns() -
     assert "compare" not in encoded
 
 
+def test_route_retrieval_preset_applies_learned_hint_when_confident() -> None:
+    from app.rag.policy.intent_router import route_retrieval_preset
+
+    model = {
+        "schema": "mimirq.intent_router_model.v1",
+        "version": 1,
+        "rules": [
+            {
+                "rule_id": "faq_boost",
+                "tokens": ["retrieval", "recall"],
+                "min_match": 1,
+                "confidence": 0.9,
+                "overrides": {"retrieval_profile": "recall50"},
+            }
+        ],
+    }
+
+    overrides, meta = route_retrieval_preset(
+        query="retrieve recall benchmark coverage",
+        retrieval_mode="hybrid",
+        retrieval_profile=None,
+        top_k=5,
+        score_threshold=0.7,
+        enable_reranker=True,
+        enable_weight_rerank=True,
+        enable_multi_query=False,
+        enable_query_alias_expansion=False,
+        learned_router_model=model,
+        learned_router_confidence_min=0.1,
+    )
+
+    assert overrides.get("retrieval_profile") == "recall50"
+    learned = meta.get("learned_router") or {}
+    assert learned.get("enabled") is True
+    assert learned.get("used") is True
+    assert float(learned.get("confidence") or 0.0) > 0.0
+
+
+def test_route_retrieval_preset_skips_low_confidence_learned_hint() -> None:
+    from app.rag.policy.intent_router import route_retrieval_preset
+
+    model = {
+        "schema": "mimirq.intent_router_model.v1",
+        "version": 1,
+        "rules": [
+            {
+                "rule_id": "weak_rule",
+                "tokens": ["retrieve", "insight", "coverage"],
+                "min_match": 1,
+                "confidence": 0.2,
+                "overrides": {"retrieval_profile": "recall50"},
+            }
+        ],
+    }
+
+    overrides, meta = route_retrieval_preset(
+        query="retrieve insight coverage",
+        retrieval_mode="hybrid",
+        retrieval_profile=None,
+        top_k=5,
+        score_threshold=0.7,
+        enable_reranker=True,
+        enable_weight_rerank=True,
+        enable_multi_query=False,
+        enable_query_alias_expansion=False,
+        learned_router_model=model,
+        learned_router_confidence_min=0.5,
+    )
+
+    assert "retrieval_profile" not in overrides
+    learned = meta.get("learned_router") or {}
+    assert learned.get("enabled") is True
+    assert learned.get("used") is False
+    assert learned.get("skipped_reason") == "confidence_below_gate"
+
+
 def test_adaptive_router_policy_normalization_and_routing() -> None:
     from app.rag.policy.intent_router import normalize_adaptive_router_policy, route_adaptive_retrieval_overrides
 
@@ -353,6 +429,75 @@ def test_orchestrator_applies_intent_router_policy(monkeypatch: pytest.MonkeyPat
     assert isinstance(intent_meta, dict)
     assert intent_meta.get("policy_used") is True
     assert intent_meta.get("policy_rule_ids") == ["comparison_rerank"]
+
+
+def test_orchestrator_applies_learned_intent_router_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retrieval.orchestrator as orch
+
+    captured_updates: List[Dict[str, Any]] = []
+
+    class _CapturingRetriever:
+        _last_debug_metrics: Dict[str, Any] = {}
+
+        def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
+            captured_updates.append(dict((kwargs or {}).get("update") or {}))
+            return self
+
+        def invoke(self, _q):  # noqa: ANN001
+            return []
+
+    class _FakeEngine:
+        def _annotate_docs_with_role(self, docs, _kind):  # noqa: ANN001
+            return docs
+
+        def fuse_docs_rrf(self, docs_by_query, rrf_k=60, meta_prefix="query_expansion"):  # noqa: ANN001, ARG002
+            out = []
+            for ds in docs_by_query or []:
+                out.extend(list(ds or []))
+            return out
+
+    monkeypatch.setattr(orch, "hybrid_retriever", _CapturingRetriever(), raising=True)
+    monkeypatch.setattr(orch, "get_rag_engine", lambda: _FakeEngine(), raising=True)
+
+    state = {
+        "question": "please compare retrieval recall quality",
+        "history": [],
+        "top_k": 5,
+        "score_threshold": 0.7,
+        "retrieval_mode": "hybrid",
+        "retrieval_profile": None,
+        "intent_router": True,
+        "intent_router_model_confidence_min": 0.1,
+        "intent_router_model": {
+            "schema": "mimirq.intent_router_model.v1",
+            "version": 1,
+            "rules": [
+                {
+                    "rule_id": "learned_recall50",
+                    "tokens": ["compare", "retrieval", "recall"],
+                    "min_match": 1,
+                    "confidence": 0.9,
+                    "overrides": {"retrieval_profile": "recall50"},
+                }
+            ],
+        },
+    }
+
+    out = orch.run_retrieval(state)
+
+    base_update = next(u for u in captured_updates if "k" in u)
+    assert int(base_update.get("k") or 0) >= 50
+    qd = out.get("query_debug") if isinstance(out, dict) else None
+    assert isinstance(qd, dict)
+    intent_meta = qd.get("intent_router")
+    assert isinstance(intent_meta, dict)
+    learned = intent_meta.get("learned_router")
+    learned = learned if isinstance(learned, dict) else {}
+    assert learned.get("used") is True
+
+    metrics = out.get("metrics") or {}
+    assert bool(metrics.get("intent_router_learned_used")) is True
+    assert float(metrics.get("intent_router_learned_confidence") or 0.0) > 0.0
 
 
 @pytest.mark.asyncio

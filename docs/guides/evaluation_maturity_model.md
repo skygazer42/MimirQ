@@ -33,6 +33,8 @@ Use this when you want **fast, cheap, deterministic** gating:
 
 - Evidence recall / hit rate (e.g. `retrieval_recall`, `retrieval_hit_at_k`)
 - Ranking quality (e.g. `retrieval_mrr`, `retrieval_ndcg_at_k`)
+- Multi-hop chain quality（当 case 提供 `reasoning_hops/evidence_chain`）：
+  `multihop_path_completeness`, `multihop_order_consistency`, `multihop_chain_hit_rate`
 - Empty/weak evidence rates (`abstain_rate` is a strong proxy when using strict grounding)
 - Latency (p50/p95) and error rate
 
@@ -48,6 +50,7 @@ Use this when retrieval is “good enough” and you need to validate the end-to
 - Relevance / usefulness (e.g. RAGAS `response_relevancy`)
 - Refusal correctness (when `visible_evidence_only` or guardrails are enabled)
 - Citation coverage / supported-claim ratio (best tracked as a metric and a diffable artifact)
+- Proof coverage / must-recall consistency（`must_recall_pass_rate` + proof audit）
 
 Note: answer-level evaluation is usually **less deterministic** (judge model variance, provider drift). Treat it as a *signal* unless you pin the judge model/prompt and budget it carefully.
 
@@ -109,6 +112,8 @@ Think of this as a ladder. You can adopt Levels 2–4 incrementally, per dataset
 - Gate on retrieval metrics only (no judge LLM required).
 - Store threshold files in-repo (or an immutable artifact store).
 - Always attach run JSON + diff artifacts to CI for debugging.
+- For multi-hop datasets, add explicit thresholds for chain coverage/order metrics.
+- Run proof-consistency audit artifact (`must_recall_proof_audit`) for release evidence.
 
 **MimirQ building blocks:**
 - CLI gate: `scripts/regression_gate.py` (run with `--metrics ""` for retrieval-only)
@@ -118,6 +123,7 @@ Think of this as a ladder. You can adopt Levels 2–4 incrementally, per dataset
 **Exit criteria:**
 - PRs cannot merge when the gate fails.
 - A failing gate produces actionable artifacts (summary + per-slice deltas).
+- Multi-hop/proof-capability datasets have dedicated gate thresholds, not only global recall metrics.
 
 ### Level 3 — Answer-level evaluation (scheduled, budgeted, diff-first)
 

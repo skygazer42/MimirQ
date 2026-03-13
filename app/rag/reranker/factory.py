@@ -163,7 +163,11 @@ def get_reranker(
 
     # Late-interaction reranker (ColBERT-style, local scaffold)
     elif provider in ("colbert", "late_interaction"):
-        from app.rag.reranker.colbert import ColBERTReranker
+        from app.rag.reranker.colbert import (
+            ColBERTReranker,
+            check_colbert_provider_readiness,
+            warmup_colbert_embedder,
+        )
 
         embedder = kwargs.get("embedder")
         provider_name = str(
@@ -186,27 +190,82 @@ def get_reranker(
             2,
             int(kwargs.get("deterministic_dim") or getattr(settings, "COLBERT_RERANK_EMBED_DIM", 64) or 64),
         )
+        strict_healthcheck = bool(
+            kwargs.get("healthcheck_strict")
+            if kwargs.get("healthcheck_strict") is not None
+            else getattr(settings, "COLBERT_RERANK_HEALTHCHECK_STRICT", False)
+        )
+        warmup_enabled = bool(
+            kwargs.get("warmup_enabled")
+            if kwargs.get("warmup_enabled") is not None
+            else getattr(settings, "COLBERT_RERANK_WARMUP_ENABLED", False)
+        )
+
+        provider_health = check_colbert_provider_readiness(
+            provider_name=provider_name,
+            model_name=resolved_model_name,
+            device=device,
+        )
+        warmup_status: dict[str, Any] = {}
+        effective_provider_name = provider_name
+        if provider_name == "hf" and not bool(provider_health.get("ready")):
+            if strict_healthcheck:
+                raise ValueError(
+                    f"colbert_provider_unready:{str(provider_health.get('reason') or 'unknown')}"
+                )
+            effective_provider_name = "deterministic"
+            provider_health = {
+                **dict(provider_health or {}),
+                "ready": False,
+                "reason": str(provider_health.get("reason") or "unready"),
+                "downgraded_to": "deterministic",
+            }
+
+        if warmup_enabled and effective_provider_name == "hf":
+            warmup_status = warmup_colbert_embedder(
+                provider_name=effective_provider_name,
+                model_name=resolved_model_name,
+                device=device,
+                batch_size=batch_size,
+                max_length=max_length,
+                deterministic_dim=deterministic_dim,
+            )
+            if not bool(warmup_status.get("ok")):
+                if strict_healthcheck:
+                    raise ValueError(
+                        f"colbert_provider_unready:{str(warmup_status.get('reason') or 'warmup_failed')}"
+                    )
+                effective_provider_name = "deterministic"
+                provider_health = {
+                    **dict(provider_health or {}),
+                    "ready": False,
+                    "reason": str(warmup_status.get("reason") or "warmup_failed"),
+                    "downgraded_to": "deterministic",
+                }
 
         if embedder is not None:
             return ColBERTReranker(
-                provider_name=provider_name,
+                provider_name=effective_provider_name,
                 model_name=resolved_model_name,
                 device=device,
                 batch_size=batch_size,
                 max_length=max_length,
                 deterministic_dim=deterministic_dim,
                 embedder=embedder,
+                provider_health=provider_health,
+                warmup_status=warmup_status,
             )
 
         cache_key = _local_cache_key(
             "colbert",
             [
-                provider_name,
+                effective_provider_name,
                 resolved_model_name,
                 device,
                 str(batch_size),
                 str(max_length),
                 str(deterministic_dim),
+                str(bool(warmup_enabled)),
             ],
         )
         with _local_reranker_lock:
@@ -214,12 +273,14 @@ def get_reranker(
             if cached is not None:
                 return cached
             inst = ColBERTReranker(
-                provider_name=provider_name,
+                provider_name=effective_provider_name,
                 model_name=resolved_model_name,
                 device=device,
                 batch_size=batch_size,
                 max_length=max_length,
                 deterministic_dim=deterministic_dim,
+                provider_health=provider_health,
+                warmup_status=warmup_status,
             )
             _local_reranker_cache[cache_key] = inst
             return inst

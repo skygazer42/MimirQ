@@ -46,7 +46,13 @@ def test_build_regression_gate_report_includes_channel_attribution() -> None:
                         {"vector_score": 0.9, "bm25_score": 0.0},
                         {"bm25_score": 0.5, "lexical_score": 0.4},
                         {"sparse_score": 0.3},
-                    ]
+                    ],
+                    "meta": {
+                        "evidence_chain_steps": 2,
+                        "multihop_path_completeness": 1.0,
+                        "multihop_order_consistency": 0.5,
+                        "multihop_chain_hit": True,
+                    },
                 }
             ],
         },
@@ -58,6 +64,8 @@ def test_build_regression_gate_report_includes_channel_attribution() -> None:
     assert report["channel_attribution"]["totals"]["lexical"] == 1
     assert report["channel_attribution"]["totals"]["sparse"] == 1
     assert report["channel_attribution"]["totals"]["multi"] == 1
+    assert report["multihop"]["cases_with_expectation"] == 1
+    assert report["multihop"]["path_completeness"] == 1.0
 
 
 def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
@@ -73,6 +81,12 @@ def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
             "thresholds_enabled": True,
             "summary": {"retrieval_recall": 0.2},
             "channel_attribution": {"totals": {"vector": 1, "bm25": 2, "lexical": 0, "sparse": 0, "multi": 0}},
+            "multihop": {
+                "cases_with_expectation": 2,
+                "path_completeness": 0.75,
+                "order_consistency": 0.6,
+                "chain_hit_rate": 0.5,
+            },
             "failures": ["retrieval_recall=0.2000 < min 0.3000"],
         }
     )
@@ -82,3 +96,4 @@ def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
     assert "| retrieval_recall | 0.2000 |" in markdown
     assert "| bm25 | 2 |" in markdown
     assert "retrieval_recall=0.2000 < min 0.3000" in markdown
+    assert "## Multi-hop Diagnostics" in markdown

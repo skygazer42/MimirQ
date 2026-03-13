@@ -61,6 +61,7 @@ from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
     infer_required_anchor_fields,
 )
+from app.rag.policy.recall_obligation import build_must_recall_proof
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.rerank_result_cache import (
@@ -74,6 +75,7 @@ from app.rag.reranker.factory import describe_reranker_provider, get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.contextual_followup import build_contextual_followup_query
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
+from app.rag.retrieval.evidence_gap import detect_evidence_gap
 from app.rag.retriever import hybrid_retriever
 from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
@@ -81,6 +83,8 @@ from app.services.hardcase_discovery_service import (
     build_parse_risk_hardcase_candidate,
     evaluate_parse_risk_auto_enqueue_policy,
 )
+
+_CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 
 
 def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
@@ -523,6 +527,78 @@ def _classify_parse_risk(
     }
 
 
+def _sanitize_parse_repair_actions(raw: Any) -> dict[str, Any] | None:
+    """
+    Normalize parse-repair action payloads into bounded diagnostics.
+
+    Expected input:
+    - list[{"document_id", "action", "status", "priority", ...}]
+    - {"actions":[...], "scheduler_run_id"/"run_id", "gate_passed", ...}
+    """
+    if raw is None:
+        return None
+
+    payload: dict[str, Any]
+    if isinstance(raw, list):
+        payload = {"actions": raw}
+    elif isinstance(raw, dict):
+        payload = dict(raw)
+    else:
+        return None
+
+    actions = payload.get("actions")
+    if not isinstance(actions, list):
+        actions = []
+
+    action_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    priority_counts: dict[str, int] = {}
+    docs_seen: set[str] = set()
+    for item in actions[:200]:
+        if not isinstance(item, dict):
+            continue
+        action = str(item.get("action") or "reparse_document").strip().lower() or "reparse_document"
+        status = str(item.get("status") or "scheduled").strip().lower() or "scheduled"
+        priority = str(item.get("priority") or "medium").strip().lower() or "medium"
+        action_counts[action] = int(action_counts.get(action, 0) + 1)
+        status_counts[status] = int(status_counts.get(status, 0) + 1)
+        priority_counts[priority] = int(priority_counts.get(priority, 0) + 1)
+        doc_id = str(item.get("document_id") or "").strip()
+        if doc_id:
+            docs_seen.add(doc_id)
+
+    if not action_counts and not status_counts and not priority_counts and not docs_seen:
+        return None
+
+    run_id = str(
+        payload.get("scheduler_run_id")
+        or payload.get("schedule_run_id")
+        or payload.get("run_id")
+        or ""
+    ).strip()
+    source = str(payload.get("source") or payload.get("schema") or "").strip()
+    gate_passed = payload.get("gate_passed")
+    if gate_passed is None:
+        gate_passed = payload.get("passed")
+
+    out: dict[str, Any] = {
+        "enabled": True,
+        "actions_total": int(sum(action_counts.values())),
+        "unique_documents": int(len(docs_seen)),
+        "action_counts": dict(sorted(action_counts.items(), key=lambda x: x[0])),
+        "status_counts": dict(sorted(status_counts.items(), key=lambda x: x[0])),
+        "priority_counts": dict(sorted(priority_counts.items(), key=lambda x: x[0])),
+        "high_priority_count": int(priority_counts.get("high", 0)),
+    }
+    if run_id:
+        out["run_id"] = run_id[:120]
+    if source:
+        out["source"] = source[:120]
+    if gate_passed is not None:
+        out["gate_passed"] = bool(gate_passed)
+    return out
+
+
 def _doc_key(doc: Document) -> str:
     meta = doc.metadata or {}
     doc_id = meta.get("document_id")
@@ -572,6 +648,110 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
         if len(out) >= 4:
             break
     return out
+
+
+def _coerce_channel_budgets(raw: Any) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    allowed = {"vector", "bm25", "lexical", "sparse"}
+    out: dict[str, int] = {}
+    for k, v in raw.items():
+        key = str(k or "").strip().lower()
+        if not key or key not in allowed:
+            continue
+        try:
+            iv = int(v) if v is not None else 0
+        except Exception:
+            continue
+        out[key] = max(0, int(iv))
+    return out
+
+
+def _coerce_channel_min_scores(raw: Any) -> dict[str, float]:
+    if not isinstance(raw, dict):
+        return {}
+    allowed = {"vector", "bm25", "lexical", "sparse"}
+    out: dict[str, float] = {}
+    for k, v in raw.items():
+        key = str(k or "").strip().lower()
+        if not key or key not in allowed:
+            continue
+        try:
+            fv = float(v) if v is not None else 0.0
+        except Exception:
+            continue
+        out[key] = max(0.0, min(1.0, float(fv)))
+    return out
+
+
+def resolve_channel_budget_policy_overrides(
+    *,
+    policy: dict[str, Any] | None,
+    retrieval_mode: str,
+    retrieval_profile: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    meta: dict[str, Any] = {"enabled": bool(isinstance(policy, dict)), "used": False}
+    if not isinstance(policy, dict):
+        meta["reason"] = "policy_missing"
+        return {}, meta
+
+    schema = str(policy.get("schema") or "").strip()
+    if schema and schema != _CHANNEL_BUDGET_POLICY_SCHEMA_V1:
+        meta["reason"] = "schema_mismatch"
+        meta["schema"] = schema
+        return {}, meta
+
+    profiles = policy.get("profiles") if isinstance(policy.get("profiles"), dict) else {}
+    if not profiles:
+        meta["reason"] = "profiles_missing"
+        return {}, meta
+
+    mode_norm = str(retrieval_mode or "").strip().lower() or "hybrid"
+    profile_norm = str(retrieval_profile or "").strip().lower()
+    selected_key = ""
+    for key in (profile_norm, mode_norm, "default"):
+        if not key:
+            continue
+        entry = profiles.get(key)
+        if isinstance(entry, dict):
+            selected_key = key
+            break
+    if not selected_key:
+        meta["reason"] = "profile_not_found"
+        meta["retrieval_mode"] = mode_norm
+        meta["retrieval_profile"] = profile_norm or None
+        return {}, meta
+
+    selected = profiles.get(selected_key) if isinstance(profiles.get(selected_key), dict) else {}
+    budgets = _coerce_channel_budgets((selected or {}).get("fusion_budgets"))
+    if not budgets:
+        meta["reason"] = "budgets_missing"
+        meta["selected_profile"] = selected_key
+        return {}, meta
+    min_scores = _coerce_channel_min_scores((selected or {}).get("fusion_min_scores"))
+    fusion_strategy = str(
+        (selected or {}).get("fusion_strategy") or policy.get("fusion_strategy") or "budgeted_rrf"
+    ).strip().lower() or "budgeted_rrf"
+
+    overrides: dict[str, Any] = {
+        "fusion_strategy": fusion_strategy,
+        "fusion_budgets": budgets,
+    }
+    if min_scores:
+        overrides["fusion_min_scores"] = min_scores
+
+    meta.update(
+        {
+            "used": True,
+            "reason": "applied",
+            "selected_profile": selected_key,
+            "retrieval_mode": mode_norm,
+            "retrieval_profile": profile_norm or None,
+            "budget_channels": sorted(budgets.keys()),
+            "policy_hash": stable_hash(json.dumps(policy, ensure_ascii=False, sort_keys=True), length=16),
+        }
+    )
+    return overrides, meta
 
 
 def _fetch_document_chunks_for_kg_injection(
@@ -722,6 +902,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     kg_result_cached: dict[str, Any] | None = None
     intent_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
     adaptive_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
+    channel_budget_policy_meta: Dict[str, Any] = {"enabled": False, "used": False}
 
     rewrite_enabled_req = state.get("enable_query_rewrite")
     rewrite_enabled = bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
@@ -823,9 +1004,20 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         auto_max_keys = max(1, int(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX", 12) or 12))
         allow_filter = bool(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_INFER_FROM_METADATA_FILTER", True))
         meta_filter = state.get("metadata_filter") if allow_filter else None
+        scope_payload: dict[str, Any] = {}
+        dataset_scope = str(state.get("dataset_id") or "").strip()
+        if dataset_scope:
+            scope_payload["dataset_id"] = dataset_scope
+        raw_doc_scope = state.get("document_ids")
+        if isinstance(raw_doc_scope, list):
+            scope_payload["document_ids"] = [str(v) for v in raw_doc_scope if str(v or "").strip()][:200]
+        raw_table_scope = state.get("table_ids")
+        if isinstance(raw_table_scope, list):
+            scope_payload["table_ids"] = [str(v) for v in raw_table_scope if str(v or "").strip()][:200]
         inferred = infer_expected_source_keys(
             query=query_for_retrieval,
             metadata_filter=(meta_filter if isinstance(meta_filter, dict) else None),
+            scope=(scope_payload if scope_payload else None),
             max_keys=auto_max_keys,
         )
         must_recall_auto_expected_source_keys = normalize_source_keys(list(inferred.get("expected_source_keys") or []))
@@ -940,6 +1132,22 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", 500) or 500)
         ),
     )
+    contextual_followup_max_hops = max(
+        1,
+        int(
+            state.get("contextual_followup_max_hops")
+            if state.get("contextual_followup_max_hops") is not None
+            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", 1) or 1)
+        ),
+    )
+    contextual_followup_latency_budget_ms = max(
+        0.0,
+        float(
+            state.get("contextual_followup_latency_budget_ms")
+            if state.get("contextual_followup_latency_budget_ms") is not None
+            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS", 500.0) or 500.0)
+        ),
+    )
 
     # Step 0.25: Deterministic intent router (optional).
     #
@@ -975,6 +1183,19 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                     state.get("enable_query_alias_expansion") if "enable_query_alias_expansion" in state else None
                 ),
                 intent_router_policy=(state.get("intent_router_policy") if "intent_router_policy" in state else None),
+                learned_router_model=(
+                    state.get("intent_router_model") if isinstance(state.get("intent_router_model"), dict) else None
+                ),
+                learned_router_model_path=(
+                    str(state.get("intent_router_model_path") or "").strip()
+                    if state.get("intent_router_model_path") is not None
+                    else str(getattr(settings, "RAG_INTENT_ROUTER_MODEL_PATH", "") or "").strip()
+                ),
+                learned_router_confidence_min=float(
+                    state.get("intent_router_model_confidence_min")
+                    if state.get("intent_router_model_confidence_min") is not None
+                    else (getattr(settings, "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", 0.7) or 0.7)
+                ),
             )
             for k, v in (overrides or {}).items():
                 state[k] = v
@@ -1060,6 +1281,41 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         ),
     )
     profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
+
+    explicit_fusion_budgets = state.get("fusion_budgets") if isinstance(state.get("fusion_budgets"), dict) else None
+    explicit_fusion_weights = state.get("fusion_weights") if isinstance(state.get("fusion_weights"), dict) else None
+    if explicit_fusion_budgets:
+        channel_budget_policy_meta = {"enabled": False, "used": False, "reason": "request_fusion_budgets_override"}
+    elif explicit_fusion_weights:
+        channel_budget_policy_meta = {"enabled": False, "used": False, "reason": "request_fusion_weights_override"}
+    else:
+        channel_budget_policy = state.get("channel_budget_policy")
+        if not isinstance(channel_budget_policy, dict):
+            policy_path = str(
+                state.get("channel_budget_policy_path")
+                or getattr(settings, "RAG_CHANNEL_BUDGET_POLICY_PATH", "")
+                or ""
+            ).strip()
+            if policy_path:
+                channel_budget_policy_meta = {"enabled": True, "used": False, "policy_path": policy_path}
+                try:
+                    policy_file = Path(policy_path)
+                    if policy_file.exists():
+                        channel_budget_policy = json.loads(policy_file.read_text(encoding="utf-8"))
+                    else:
+                        channel_budget_policy_meta["reason"] = "policy_file_missing"
+                except Exception as exc:  # noqa: BLE001
+                    channel_budget_policy = None
+                    channel_budget_policy_meta["reason"] = f"policy_file_error:{exc.__class__.__name__}"
+        if isinstance(channel_budget_policy, dict):
+            overrides, channel_budget_policy_meta = resolve_channel_budget_policy_overrides(
+                policy=channel_budget_policy,
+                retrieval_mode=str(profile_applied.get("retrieval_mode") or request_retrieval_mode),
+                retrieval_profile=(profile_norm or None),
+            )
+            if overrides:
+                for k, v in overrides.items():
+                    state[k] = v
     retriever_update: Dict[str, Any] = {
         "k": int(profile_applied.get("top_k") or settings.RETRIEVAL_TOP_K),
         "score_threshold": float(profile_applied.get("score_threshold") or 0.0),
@@ -2445,114 +2701,200 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     contextual_followup_selected_terms: list[str] = []
     contextual_followup_followup_query: str | None = None
     contextual_followup_query_hash: str | None = None
+    iterative_pass_reason_codes: list[str] = []
+    iterative_pass_hops: list[dict[str, Any]] = []
+    iterative_pass_gap: dict[str, Any] | None = None
 
-    # Deterministic contextual follow-up pass:
-    # build one bounded query from current docs and run one extra retrieval pass.
-    # This pass is optional and does not replace must-recall strict second-pass semantics.
+    # Deterministic iterative follow-up controller:
+    # - gap-aware follow-up query planning
+    # - bounded by max_hops + latency budget
+    # - does not replace must-recall strict second-pass semantics
     if bool(contextual_followup_enabled) and bool(docs):
-        spec = build_contextual_followup_query(
-            query=query_for_retrieval,
-            docs=list(docs or []),
-            max_docs=int(contextual_followup_max_docs),
-            max_terms=int(contextual_followup_max_terms),
-            min_term_chars=int(contextual_followup_min_term_chars),
-            max_query_chars=int(contextual_followup_max_query_chars),
-        )
-        if isinstance(spec, dict):
-            contextual_followup_reason_codes = [
-                str(v) for v in list(spec.get("reason_codes") or []) if str(v).strip()
-            ][:8]
-            contextual_followup_selected_terms = [
-                str(v) for v in list(spec.get("selected_terms") or []) if str(v).strip()
-            ][:10]
+        iterative_start = time.time()
+        for hop in range(1, int(contextual_followup_max_hops) + 1):
+            elapsed_ms = (time.time() - iterative_start) * 1000.0
+            if float(contextual_followup_latency_budget_ms) > 0.0 and elapsed_ms >= float(
+                contextual_followup_latency_budget_ms
+            ):
+                iterative_pass_reason_codes.append("latency_budget_exhausted")
+                break
+
+            citations_before_contextual = build_citations_from_docs(
+                docs,
+                retrieval_elapsed_sec=retrieval_elapsed,
+                retrieval_mode=request_retrieval_mode,
+                query=query_for_retrieval,
+            )
+            iterative_pass_gap = detect_evidence_gap(
+                citations=[c for c in citations_before_contextual if isinstance(c, dict)],
+                required_source_keys=(must_recall_expected_source_keys if must_recall_enabled else []),
+                required_anchor_fields=(must_recall_required_anchor_fields if must_recall_enabled else []),
+                min_citations=1,
+            )
+            hop_diag: dict[str, Any] = {
+                "hop": int(hop),
+                "attempted": False,
+                "used": False,
+                "query_hash": None,
+                "added_docs": 0,
+                "added_citations": 0,
+                "reason_codes": [],
+                "gap_before": dict(iterative_pass_gap or {}),
+                "gap_after": None,
+            }
+
+            spec = build_contextual_followup_query(
+                query=query_for_retrieval,
+                docs=list(docs or []),
+                evidence_gap=iterative_pass_gap,
+                max_docs=int(contextual_followup_max_docs),
+                max_terms=int(contextual_followup_max_terms),
+                min_term_chars=int(contextual_followup_min_term_chars),
+                max_query_chars=int(contextual_followup_max_query_chars),
+            )
+            if not isinstance(spec, dict):
+                hop_diag["reason_codes"] = ["planner_spec_invalid"]
+                iterative_pass_hops.append(hop_diag)
+                iterative_pass_reason_codes.append("planner_spec_invalid")
+                break
+
+            hop_reason_codes = [str(v) for v in list(spec.get("reason_codes") or []) if str(v).strip()][:8]
+            hop_diag["reason_codes"] = hop_reason_codes
+            for rc in hop_reason_codes:
+                if rc not in contextual_followup_reason_codes:
+                    contextual_followup_reason_codes.append(rc)
+                if rc not in iterative_pass_reason_codes:
+                    iterative_pass_reason_codes.append(rc)
+
+            for term in [str(v) for v in list(spec.get("selected_terms") or []) if str(v).strip()]:
+                if term not in contextual_followup_selected_terms:
+                    contextual_followup_selected_terms.append(term)
+                    if len(contextual_followup_selected_terms) >= 10:
+                        break
+
             q2 = str(spec.get("query") or "").strip()
             if q2:
                 contextual_followup_followup_query = q2
                 contextual_followup_query_hash = stable_hash(q2)
-            if bool(spec.get("used")) and q2:
-                contextual_followup_attempted = True
-                citations_before_contextual = build_citations_from_docs(
-                    docs,
-                    retrieval_elapsed_sec=retrieval_elapsed,
-                    retrieval_mode=request_retrieval_mode,
-                    query=query_for_retrieval,
-                )
-                t_cf = time.time()
-                cf_docs: list[Document] = []
-                cf_err: str | None = None
-                try:
-                    contextual_update = dict(retriever_update)
-                    contextual_update.update(
-                        {
-                            "retrieval_mode": str(contextual_followup_mode),
-                            "k": int(contextual_followup_top_k),
-                            "enable_reranker": False,
-                        }
-                    )
-                    contextual_retriever = hybrid_retriever.model_copy(update=contextual_update)
-                    cf_docs = contextual_retriever.invoke(q2) or []
-                    cf_docs = engine._annotate_docs_with_role(cf_docs, "contextual_followup")  # type: ignore[attr-defined]
-                    dbg = getattr(contextual_retriever, "_last_debug_metrics", None)
-                    contextual_followup_retriever_debug = _sanitize_retriever_debug(
-                        dbg if isinstance(dbg, dict) else None
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    cf_docs = []
-                    cf_err = str(exc)[:200]
+                hop_diag["query_hash"] = contextual_followup_query_hash
 
-                contextual_followup_elapsed = max(0.0, float(time.time() - t_cf))
-                retrieval_elapsed += float(contextual_followup_elapsed)
-                retrieval_per_query.append(
+            if not (bool(spec.get("used")) and q2):
+                hop_diag["reason_codes"] = hop_reason_codes or ["planner_not_used"]
+                iterative_pass_hops.append(hop_diag)
+                if "planner_not_used" not in iterative_pass_reason_codes:
+                    iterative_pass_reason_codes.append("planner_not_used")
+                break
+
+            contextual_followup_attempted = True
+            hop_diag["attempted"] = True
+
+            t_cf = time.time()
+            cf_docs: list[Document] = []
+            cf_err: str | None = None
+            try:
+                contextual_update = dict(retriever_update)
+                contextual_update.update(
                     {
-                        "kind": "contextual_followup",
-                        "query_chars": len(q2 or ""),
-                        "elapsed_sec": round(float(contextual_followup_elapsed), 3),
-                        "ok": cf_err is None,
-                        "retriever_debug": contextual_followup_retriever_debug,
+                        "retrieval_mode": str(contextual_followup_mode),
+                        "k": int(contextual_followup_top_k),
+                        "enable_reranker": False,
                     }
                 )
-                if cf_err:
-                    contextual_followup_error = cf_err
-                    retrieval_errors.append(f"contextual_followup:{cf_err[:160]}")
+                contextual_retriever = hybrid_retriever.model_copy(update=contextual_update)
+                cf_docs = contextual_retriever.invoke(q2) or []
+                cf_docs = engine._annotate_docs_with_role(cf_docs, "contextual_followup")  # type: ignore[attr-defined]
+                dbg = getattr(contextual_retriever, "_last_debug_metrics", None)
+                contextual_followup_retriever_debug = _sanitize_retriever_debug(
+                    dbg if isinstance(dbg, dict) else None
+                )
+            except Exception as exc:  # noqa: BLE001
+                cf_docs = []
+                cf_err = str(exc)[:200]
 
-                if cf_docs:
-                    merged_docs = list(docs or [])
-                    seen_keys: set[str] = set()
-                    for d in merged_docs:
-                        if d is None:
-                            continue
-                        try:
-                            seen_keys.add(_doc_key(d))
-                        except Exception:
-                            continue
+            hop_elapsed = max(0.0, float(time.time() - t_cf))
+            contextual_followup_elapsed += float(hop_elapsed)
+            retrieval_elapsed += float(hop_elapsed)
+            retrieval_per_query.append(
+                {
+                    "kind": "contextual_followup",
+                    "hop": int(hop),
+                    "query_chars": len(q2 or ""),
+                    "elapsed_sec": round(float(hop_elapsed), 3),
+                    "ok": cf_err is None,
+                    "retriever_debug": contextual_followup_retriever_debug,
+                }
+            )
+            if cf_err:
+                contextual_followup_error = cf_err
+                retrieval_errors.append(f"contextual_followup:{cf_err[:160]}")
 
-                    for d in cf_docs:
-                        if d is None:
-                            continue
-                        try:
-                            key = _doc_key(d)
-                        except Exception:
-                            key = None
-                        if key and key in seen_keys:
-                            continue
-                        if key:
-                            seen_keys.add(key)
-                        merged_docs.append(d)
-                        contextual_followup_added_docs += 1
+            hop_added_docs = 0
+            hop_added_citations = 0
+            if cf_docs:
+                merged_docs = list(docs or [])
+                seen_keys: set[str] = set()
+                for d in merged_docs:
+                    if d is None:
+                        continue
+                    try:
+                        seen_keys.add(_doc_key(d))
+                    except Exception:
+                        continue
 
-                    if contextual_followup_added_docs > 0:
-                        docs = merged_docs
-                        citations_after_contextual = build_citations_from_docs(
-                            docs,
-                            retrieval_elapsed_sec=retrieval_elapsed,
-                            retrieval_mode=request_retrieval_mode,
-                            query=query_for_retrieval,
-                        )
-                        contextual_followup_added_citations = max(
-                            0,
-                            int(len(citations_after_contextual) - len(citations_before_contextual)),
-                        )
-                        contextual_followup_used = True
+                for d in cf_docs:
+                    if d is None:
+                        continue
+                    try:
+                        key = _doc_key(d)
+                    except Exception:
+                        key = None
+                    if key and key in seen_keys:
+                        continue
+                    if key:
+                        seen_keys.add(key)
+                    merged_docs.append(d)
+                    hop_added_docs += 1
+
+                if hop_added_docs > 0:
+                    docs = merged_docs
+                    citations_after_contextual = build_citations_from_docs(
+                        docs,
+                        retrieval_elapsed_sec=retrieval_elapsed,
+                        retrieval_mode=request_retrieval_mode,
+                        query=query_for_retrieval,
+                    )
+                    hop_added_citations = max(
+                        0,
+                        int(len(citations_after_contextual) - len(citations_before_contextual)),
+                    )
+                    contextual_followup_added_docs += int(hop_added_docs)
+                    contextual_followup_added_citations += int(hop_added_citations)
+                    contextual_followup_used = True
+
+                    iterative_pass_gap = detect_evidence_gap(
+                        citations=[c for c in citations_after_contextual if isinstance(c, dict)],
+                        required_source_keys=(must_recall_expected_source_keys if must_recall_enabled else []),
+                        required_anchor_fields=(must_recall_required_anchor_fields if must_recall_enabled else []),
+                        min_citations=1,
+                    )
+                    hop_diag["gap_after"] = dict(iterative_pass_gap or {})
+                    if not bool((iterative_pass_gap or {}).get("has_gap")):
+                        if "gap_closed" not in iterative_pass_reason_codes:
+                            iterative_pass_reason_codes.append("gap_closed")
+                else:
+                    hop_diag["reason_codes"] = hop_reason_codes + ["no_new_docs"]
+                    if "no_new_docs" not in iterative_pass_reason_codes:
+                        iterative_pass_reason_codes.append("no_new_docs")
+
+            hop_diag["used"] = bool(hop_added_docs > 0)
+            hop_diag["added_docs"] = int(hop_added_docs)
+            hop_diag["added_citations"] = int(hop_added_citations)
+            iterative_pass_hops.append(hop_diag)
+
+            if not bool(hop_diag.get("used")):
+                break
+            if isinstance(hop_diag.get("gap_after"), dict) and not bool((hop_diag.get("gap_after") or {}).get("has_gap")):
+                break
 
     citations = build_citations_from_docs(
         docs,
@@ -2792,6 +3134,36 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         must_recall_status = "passed"
     else:
         must_recall_status = "failed"
+    must_recall_second_pass_payload = {
+        "enabled": bool(must_recall_second_pass_enabled),
+        "attempted": bool(must_recall_second_pass_attempted),
+        "used": bool(must_recall_second_pass_used),
+        "mode": str(must_recall_second_pass_mode),
+        "top_k": int(must_recall_second_pass_top_k),
+        "added_docs": int(must_recall_second_pass_added_docs),
+        "added_citations": int(must_recall_second_pass_added_citations),
+        "error": must_recall_second_pass_error,
+        "diff": (
+            dict(must_recall_second_pass_diff)
+            if isinstance(must_recall_second_pass_diff, dict)
+            else None
+        ),
+    }
+    must_recall_proof = build_must_recall_proof(
+        enabled=bool(must_recall_enabled),
+        status=str(must_recall_status),
+        passed=bool(must_recall_passed),
+        required_source_keys=must_recall_expected_source_keys,
+        required_anchor_fields=must_recall_required_anchor_fields,
+        source_eval=must_recall_source_eval,
+        anchor_eval=must_recall_anchor_eval,
+        fail_reasons=must_recall_fail_reasons,
+        second_pass=must_recall_second_pass_payload,
+        contract_fail_reason_taxonomy=str(
+            retrieval_contract_policy.get("contract_fail_reason_taxonomy")
+            or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
+        ),
+    )
 
     coverage = _coverage_proxy_from_citations(citations)
 
@@ -2841,6 +3213,12 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         hardcase_min_low_ratio=parse_risk_hardcase_min_low_ratio,
         hardcase_min_considered=parse_risk_hardcase_min_considered,
     )
+    parse_repair_actions_input = state.get("parse_repair_actions")
+    if parse_repair_actions_input is None:
+        alt = state.get("parse_repair_schedule")
+        if isinstance(alt, (dict, list)):
+            parse_repair_actions_input = alt
+    parse_repair_actions_meta = _sanitize_parse_repair_actions(parse_repair_actions_input)
 
     metrics = dict(state.get("metrics") or {})
     metrics["retrieval_elapsed_sec"] = round(retrieval_elapsed, 3)
@@ -2907,6 +3285,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["must_recall_second_pass_error"] = must_recall_second_pass_error
     if isinstance(must_recall_second_pass_diff, dict):
         metrics["must_recall_second_pass_diff"] = dict(must_recall_second_pass_diff)
+    metrics["must_recall_proof"] = dict(must_recall_proof)
     metrics["contextual_followup_enabled"] = bool(contextual_followup_enabled)
     metrics["contextual_followup_attempted"] = bool(contextual_followup_attempted)
     metrics["contextual_followup_used"] = bool(contextual_followup_used)
@@ -2922,12 +3301,43 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["contextual_followup_query_hash"] = contextual_followup_query_hash
     metrics["contextual_followup_elapsed_sec"] = round(float(contextual_followup_elapsed or 0.0), 3)
     metrics["contextual_followup_error"] = contextual_followup_error
+    metrics["iterative_pass_enabled"] = bool(contextual_followup_enabled)
+    metrics["iterative_pass_max_hops"] = int(contextual_followup_max_hops)
+    metrics["iterative_pass_latency_budget_ms"] = round(float(contextual_followup_latency_budget_ms), 3)
+    metrics["iterative_pass_hops_attempted"] = int(
+        len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
+    )
+    metrics["iterative_pass_hops_used"] = int(
+        len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
+    )
+    metrics["iterative_pass_reason_codes"] = list(iterative_pass_reason_codes or [])[:16]
+    metrics["iterative_pass_gap"] = (dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None)
+    metrics["iterative_pass_hops"] = [
+        h
+        for h in list(iterative_pass_hops or [])[:5]
+        if isinstance(h, dict)
+    ]
     metrics["intent_router_enabled"] = bool(intent_router_meta.get("enabled"))
     metrics["intent_router_used"] = bool(intent_router_meta.get("used"))
+    intent_router_learned_meta = (
+        dict(intent_router_meta.get("learned_router") or {})
+        if isinstance(intent_router_meta.get("learned_router"), dict)
+        else None
+    )
+    metrics["intent_router_learned"] = intent_router_learned_meta
+    metrics["intent_router_learned_used"] = bool((intent_router_learned_meta or {}).get("used"))
+    metrics["intent_router_learned_confidence"] = float((intent_router_learned_meta or {}).get("confidence") or 0.0)
+    metrics["intent_router_learned_confidence_gate"] = float(
+        (intent_router_learned_meta or {}).get("confidence_gate") or 0.0
+    )
+    metrics["intent_router_learned_rule_id"] = (intent_router_learned_meta or {}).get("rule_id")
     metrics["intent_router"] = intent_router_meta
     metrics["adaptive_router_enabled"] = bool(adaptive_router_meta.get("enabled"))
     metrics["adaptive_router_used"] = bool(adaptive_router_meta.get("used"))
     metrics["adaptive_router"] = adaptive_router_meta
+    metrics["channel_budget_policy_enabled"] = bool(channel_budget_policy_meta.get("enabled"))
+    metrics["channel_budget_policy_used"] = bool(channel_budget_policy_meta.get("used"))
+    metrics["channel_budget_policy"] = channel_budget_policy_meta
     metrics["retrieval_query_parallelism"] = retrieval_parallelism
     metrics["retrieval_query_count"] = len(retrieval_plan)
     metrics["retrieval_per_query"] = retrieval_per_query[:8]
@@ -3063,6 +3473,17 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["parse_risk_score"] = float(parse_risk.get("score") or 0.0)
     metrics["parse_risk_reason"] = str(parse_risk.get("reason") or "")
     metrics["parse_risk_hardcase_eligible"] = bool(parse_risk.get("hardcase_eligible"))
+    metrics["parse_repair_actions"] = (
+        dict(parse_repair_actions_meta)
+        if isinstance(parse_repair_actions_meta, dict)
+        else None
+    )
+    metrics["parse_repair_actions_enabled"] = bool(isinstance(parse_repair_actions_meta, dict))
+    metrics["parse_repair_actions_run_id"] = (
+        str(parse_repair_actions_meta.get("run_id") or "")
+        if isinstance(parse_repair_actions_meta, dict)
+        else ""
+    ) or None
 
     # Grounding guard: abstain when evidence is weak/empty.
     strict_visible = bool(
@@ -3239,6 +3660,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     )
     query_debug["intent_router"] = intent_router_meta
     query_debug["adaptive_router"] = adaptive_router_meta
+    query_debug["channel_budget_policy"] = channel_budget_policy_meta
     query_debug["contextual_followup"] = {
         "enabled": bool(contextual_followup_enabled),
         "attempted": bool(contextual_followup_attempted),
@@ -3251,6 +3673,20 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "selected_terms": list(contextual_followup_selected_terms or []),
         "query": (str(contextual_followup_followup_query)[:220] if contextual_followup_followup_query else None),
         "error": contextual_followup_error,
+    }
+    query_debug["iterative_pass"] = {
+        "enabled": bool(contextual_followup_enabled),
+        "max_hops": int(contextual_followup_max_hops),
+        "latency_budget_ms": round(float(contextual_followup_latency_budget_ms), 3),
+        "hops_attempted": int(
+            len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
+        ),
+        "hops_used": int(
+            len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
+        ),
+        "reason_codes": list(iterative_pass_reason_codes or [])[:16],
+        "gap": (dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None),
+        "hops": [h for h in list(iterative_pass_hops or [])[:5] if isinstance(h, dict)],
     }
     query_debug["parse_quality"] = {
         "considered": int((parse_quality_summary or {}).get("considered") or 0),
@@ -3265,6 +3701,11 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     query_debug["parse_risk_auto_enqueue"] = (
         dict(metrics.get("parse_risk_auto_enqueue_policy"))
         if isinstance(metrics.get("parse_risk_auto_enqueue_policy"), dict)
+        else None
+    )
+    query_debug["parse_repair_actions"] = (
+        dict(metrics.get("parse_repair_actions"))
+        if isinstance(metrics.get("parse_repair_actions"), dict)
         else None
     )
     query_debug["retrieval_contract"] = {
@@ -3295,21 +3736,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "contract_fail_reason_taxonomy": str(
             retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
         ),
-        "second_pass": {
-            "enabled": bool(must_recall_second_pass_enabled),
-            "attempted": bool(must_recall_second_pass_attempted),
-            "used": bool(must_recall_second_pass_used),
-            "mode": str(must_recall_second_pass_mode),
-            "top_k": int(must_recall_second_pass_top_k),
-            "added_docs": int(must_recall_second_pass_added_docs),
-            "added_citations": int(must_recall_second_pass_added_citations),
-            "error": must_recall_second_pass_error,
-            "diff": (
-                dict(must_recall_second_pass_diff)
-                if isinstance(must_recall_second_pass_diff, dict)
-                else None
-            ),
-        },
+        "second_pass": dict(must_recall_second_pass_payload),
+        "must_recall_proof": dict(must_recall_proof),
     }
     if empty_diag:
         query_debug["empty_retrieval"] = empty_diag
@@ -3415,25 +3843,13 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "anchor_missing_counts": dict(must_recall_anchor_eval.get("missing_counts") or {}),
                 "fail_reasons": list(must_recall_fail_reasons or [])[:12],
-                "second_pass": {
-                    "enabled": bool(must_recall_second_pass_enabled),
-                    "attempted": bool(must_recall_second_pass_attempted),
-                    "used": bool(must_recall_second_pass_used),
-                    "mode": str(must_recall_second_pass_mode),
-                    "top_k": int(must_recall_second_pass_top_k),
-                    "added_docs": int(must_recall_second_pass_added_docs),
-                    "added_citations": int(must_recall_second_pass_added_citations),
-                    "error": must_recall_second_pass_error,
-                    "diff": (
-                        dict(must_recall_second_pass_diff)
-                        if isinstance(must_recall_second_pass_diff, dict)
-                        else None
-                    ),
-                },
+                "second_pass": dict(must_recall_second_pass_payload),
+                "proof": dict(must_recall_proof),
             },
         },
         "intent_router": intent_router_meta,
         "adaptive_router": adaptive_router_meta,
+        "channel_budget_policy": channel_budget_policy_meta,
         "contextual_followup": {
             "enabled": bool(contextual_followup_enabled),
             "attempted": bool(contextual_followup_attempted),
@@ -3450,6 +3866,20 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "selected_terms": list(contextual_followup_selected_terms or [])[:10],
             "elapsed_sec": round(float(contextual_followup_elapsed or 0.0), 3),
             "error": contextual_followup_error,
+        },
+        "iterative_pass": {
+            "enabled": bool(contextual_followup_enabled),
+            "max_hops": int(contextual_followup_max_hops),
+            "latency_budget_ms": round(float(contextual_followup_latency_budget_ms), 3),
+            "hops_attempted": int(
+                len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
+            ),
+            "hops_used": int(
+                len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
+            ),
+            "reason_codes": list(iterative_pass_reason_codes or [])[:16],
+            "gap": (dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None),
+            "hops": [h for h in list(iterative_pass_hops or [])[:5] if isinstance(h, dict)],
         },
         "hard_fallback": {
             "enabled": bool(hard_fallback_enabled),
@@ -3610,6 +4040,11 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(metrics.get("parse_risk_auto_enqueue_policy"), dict)
             else None
         ),
+        "parse_repair_actions": (
+            dict(metrics.get("parse_repair_actions"))
+            if isinstance(metrics.get("parse_repair_actions"), dict)
+            else None
+        ),
         "hardcase_candidate": (metrics.get("hardcase_candidate") if isinstance(metrics.get("hardcase_candidate"), dict) else None),
     }
 
@@ -3666,6 +4101,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "retrieval_hard_fallback_mode": hard_fallback_mode,
             "retrieval_hard_fallback_top_k": int(hard_fallback_top_k),
             "adaptive_router": dict(adaptive_router_meta or {}),
+            "channel_budget_policy": dict(channel_budget_policy_meta or {}),
             "must_recall_enabled": bool(must_recall_enabled),
             "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
             "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
@@ -3679,6 +4115,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "contextual_followup_max_terms": int(contextual_followup_max_terms),
             "contextual_followup_min_term_chars": int(contextual_followup_min_term_chars),
             "contextual_followup_max_query_chars": int(contextual_followup_max_query_chars),
+            "contextual_followup_max_hops": int(contextual_followup_max_hops),
+            "contextual_followup_latency_budget_ms": round(float(contextual_followup_latency_budget_ms), 3),
             "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
             "rag_evidence_require_spans_enabled": bool(evidence_span_strict_enabled),
             "retrieval_parse_quality_low_threshold": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35),

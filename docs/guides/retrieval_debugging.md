@@ -255,8 +255,34 @@ python scripts/replay_index_drift.py \
 - `metrics.must_recall_fail_reasons`
 - `metrics.must_recall_missing_source_keys`
 - `metrics.must_recall_second_pass_*`
+- `metrics.must_recall_proof`
+- `metrics.iterative_pass_*`
 - `retrieval_trace.contract_diagnostics.must_recall`
+- `retrieval_trace.contract_diagnostics.must_recall.proof`
+- `retrieval_trace.iterative_pass`
 - `query_debug.retrieval_contract.must_recall`
+- `query_debug.retrieval_contract.must_recall_proof`
+- `query_debug.iterative_pass`
+
+proof 语义（`mimirq.must_recall_proof.v1`）：
+
+- `status/passed`：合同最终状态（含 second-pass 之后）。
+- `obligation_ledger`：`mimirq.recall_obligation_ledger.v1`，明确 required/matched/missing。
+- `contract_fail_reason_taxonomy`：fail reason 的稳定 taxonomy 版本。
+
+离线审计（推荐在 run detail artifact 上执行）：
+
+```bash
+python scripts/must_recall_proof_audit.py \
+  --input artifacts/run.detail.json \
+  --out artifacts/must_recall_proof_audit.report.json
+```
+
+Iterative pass rollout/回滚开关（默认安全）：
+
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS`（默认 `1`）
+- `RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS`（默认 `500`）
+- 需要快速回滚时，保留 `RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED=true` 也可仅把 `MAX_HOPS=1` 与较小 budget，避免多跳放大延迟。
 
 ---
 

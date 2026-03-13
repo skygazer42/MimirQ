@@ -29,10 +29,30 @@ def _collect_metadata_filter_source_keys(metadata_filter: Any) -> list[str]:
     return out
 
 
+def _collect_scope_source_keys(scope: Any) -> list[str]:
+    if not isinstance(scope, dict):
+        return []
+    out: list[str] = []
+    for key in ("source_keys", "table_ids", "document_ids"):
+        if key not in scope:
+            continue
+        raw = scope.get(key)
+        if isinstance(raw, (list, tuple, set)):
+            values = list(raw)
+        else:
+            values = [raw]
+        for val in values:
+            s = str(val or "").strip()
+            if s:
+                out.append(s)
+    return out
+
+
 def infer_expected_source_keys(
     *,
     query: str,
     metadata_filter: dict[str, Any] | None = None,
+    scope: dict[str, Any] | None = None,
     max_keys: int = 12,
 ) -> dict[str, Any]:
     q = str(query or "").strip()
@@ -61,6 +81,11 @@ def infer_expected_source_keys(
     if meta_hits:
         hints.extend(meta_hits)
         reasons.append("metadata_filter")
+
+    scope_hits = _collect_scope_source_keys(scope)
+    if scope_hits:
+        hints.extend(scope_hits)
+        reasons.append("scope")
 
     normalized = normalize_source_keys(hints)
     normalized = normalized[: max(1, int(max_keys or 1))]
@@ -106,4 +131,3 @@ __all__ = [
     "infer_expected_source_keys",
     "infer_required_anchor_fields",
 ]
-

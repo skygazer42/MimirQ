@@ -59,8 +59,14 @@ def evaluate_required_source_keys(
     if not expected:
         return {
             "required_source_keys": [],
+            "required_source_keys_count": 0,
             "present_source_keys": [],
+            "matched_source_keys": [],
+            "matched_by_required_source_key": {},
             "missing_source_keys": [],
+            "matched_source_keys_count": 0,
+            "missing_source_keys_count": 0,
+            "coverage_ratio": 1.0,
             "passed": True,
         }
 
@@ -76,15 +82,32 @@ def evaluate_required_source_keys(
             present.add(key)
 
     missing: list[str] = []
+    matched: list[str] = []
+    matched_by_required: dict[str, str] = {}
     for exp in expected:
-        if exp.casefold() not in present:
+        folded = exp.casefold()
+        if folded not in present:
             missing.append(exp)
+            continue
+        matched_display = display.get(folded) or exp
+        matched.append(matched_display)
+        matched_by_required[exp] = matched_display
 
     present_out = [display[k] for k in sorted(display.keys())[:200]]
+    required_n = int(len(expected))
+    missing_n = int(len(missing))
+    matched_n = max(0, required_n - missing_n)
+    coverage_ratio = float(matched_n / required_n) if required_n > 0 else 1.0
     return {
         "required_source_keys": expected,
+        "required_source_keys_count": required_n,
         "present_source_keys": present_out,
+        "matched_source_keys": matched[:200],
+        "matched_by_required_source_key": matched_by_required,
         "missing_source_keys": missing,
+        "matched_source_keys_count": matched_n,
+        "missing_source_keys_count": missing_n,
+        "coverage_ratio": round(coverage_ratio, 6),
         "passed": bool(len(missing) == 0),
     }
 

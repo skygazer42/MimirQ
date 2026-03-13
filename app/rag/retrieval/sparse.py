@@ -460,6 +460,7 @@ class SparseIndexStore:
         cache_key: str,
         provider_config: dict[str, Any],
         expected_fingerprint: str,
+        expected_version_token: str | None = None,
     ) -> dict[str, SparseVector] | None:
         path = self._index_path(cache_key=cache_key, provider_config=provider_config)
         if not path.exists():
@@ -474,6 +475,10 @@ class SparseIndexStore:
         if str(obj.get("schema") or "") != _INDEX_SCHEMA_V1:
             return None
         if str(obj.get("corpus_fingerprint") or "") != str(expected_fingerprint or ""):
+            return None
+        expected_token = str(expected_version_token or "").strip()
+        stored_token = str(obj.get("version_token") or "").strip()
+        if expected_token and stored_token != expected_token:
             return None
         vecs = obj.get("vectors")
         if not isinstance(vecs, dict):
@@ -492,6 +497,7 @@ class SparseIndexStore:
         provider_config: dict[str, Any],
         corpus_fingerprint: str,
         vectors: dict[str, SparseVector],
+        version_token: str | None = None,
     ) -> Path:
         path = self._index_path(cache_key=cache_key, provider_config=provider_config)
         try:
@@ -504,6 +510,7 @@ class SparseIndexStore:
             "provider": str(provider_config.get("provider") or ""),
             "provider_config": dict(provider_config),
             "corpus_fingerprint": str(corpus_fingerprint or ""),
+            "version_token": str(version_token or "").strip(),
             "doc_count": int(len(vectors or {})),
             "vectors": {k: (v.weights if isinstance(v, SparseVector) else _coerce_sparse_vector(v).weights) for k, v in (vectors or {}).items()},
         }

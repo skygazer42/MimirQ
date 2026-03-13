@@ -53,6 +53,14 @@ class RagasRegressionCaseCreateRequest(BaseModel):
         description="Human-verified evidence sources (required; at least 1). Each source must include document_id + chunk_id.",
     )
     tags: List[str] = Field(default_factory=list, description="Tags (optional)")
+    reasoning_hops: List[str] = Field(
+        default_factory=list,
+        description="Optional multi-hop reasoning steps (ordered).",
+    )
+    evidence_chain: List[ReferenceSource] = Field(
+        default_factory=list,
+        description="Optional multi-hop evidence chain (ordered reference sources).",
+    )
     extra: Dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
 
 
@@ -64,6 +72,8 @@ class RagasRegressionCasePatchRequest(BaseModel):
     expected_answer: Optional[str] = Field(default=None, description="Set to null to clear expected_answer")
     reference_sources: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
     tags: Optional[List[str]] = None
+    reasoning_hops: Optional[List[str]] = None
+    evidence_chain: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
     extra: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
@@ -80,6 +90,8 @@ class RagasRegressionCaseBundleItem(BaseModel):
     expected_answer: Optional[str] = None
     reference_sources: List[ReferenceSource] = Field(..., min_length=1)
     tags: List[str] = Field(default_factory=list)
+    reasoning_hops: List[str] = Field(default_factory=list)
+    evidence_chain: List[ReferenceSource] = Field(default_factory=list)
 
 
 class RagasRegressionCaseImportRequest(BaseModel):
@@ -130,6 +142,8 @@ class RagasRegressionCaseOut(OrmModel):
     expected_answer: Optional[str] = None
     reference_sources: List[ReferenceSource] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
+    reasoning_hops: List[str] = Field(default_factory=list)
+    evidence_chain: List[ReferenceSource] = Field(default_factory=list)
     extra: Dict[str, Any] = Field(default_factory=dict)
     created_by: Optional[str] = None
     created_at: datetime
@@ -310,6 +324,7 @@ class RagasRegressionItemSchema(OrmModel):
     retrieved_contexts: Optional[List[str]] = None
     citations: List[Dict[str, Any]] = Field(default_factory=list)
     scores: Dict[str, Any] = Field(default_factory=dict)
+    meta: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 

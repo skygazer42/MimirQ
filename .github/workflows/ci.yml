@@ -264,6 +264,30 @@ jobs:
             --benchmark-report artifacts/sample_retrieval_bench.json \
             --out artifacts/adaptive_router_policy.v1.json
 
+      - name: Generate channel budget policy artifact
+        if: always()
+        run: |
+          python scripts/generate_channel_budget_policy.py \
+            --benchmark-report artifacts/sample_retrieval_bench.json \
+            --hybrid-report artifacts/sample_retrieval_bench.hybrid.json \
+            --sparse-report artifacts/sample_retrieval_bench.sparse.json \
+            --colbert-report artifacts/sample_retrieval_bench.colbert.json \
+            --out artifacts/channel_budget_policy.v1.json
+
+      - name: Export intent router training artifact
+        if: always()
+        run: |
+          python scripts/export_intent_router_training.py \
+            --input artifacts/sample_retrieval_bench.json \
+            --out artifacts/intent_router_training.v1.json
+
+      - name: Generate intent router model artifact
+        if: always()
+        run: |
+          python scripts/generate_intent_router_model.py \
+            --input artifacts/intent_router_training.v1.json \
+            --out artifacts/intent_router_model.v1.json
+
       - name: Build deterministic answer-quality summary artifact
         if: always()
         run: |
@@ -295,6 +319,32 @@ jobs:
             --input artifacts/answer_quality.summary.json \
             --thresholds ci/answer_quality_thresholds.v1.json \
             --out artifacts/answer_quality.gate.json
+
+      - name: Build multi-hop diagnostics summary artifact
+        if: always()
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          bench_path = Path("artifacts/sample_retrieval_bench.hybrid.json")
+          report = json.loads(bench_path.read_text(encoding="utf-8")) if bench_path.exists() else {}
+          summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+
+          payload = {
+              "schema": "mimirq.multihop_diagnostics_summary.v1",
+              "source": str(bench_path),
+              "summary": {
+                  "multihop_path_completeness": summary.get("multihop_path_completeness"),
+                  "multihop_order_consistency": summary.get("multihop_order_consistency"),
+                  "multihop_chain_hit_rate": summary.get("multihop_chain_hit_rate"),
+              },
+          }
+          out = Path("artifacts/multihop_diagnostics.summary.json")
+          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
 
       - name: Evaluate bounded retrieval-only gate (metric delta output)
         run: |
@@ -709,6 +759,13 @@ jobs:
             artifacts/queryset_health.cron.json
             artifacts/queryset_health.cron.hybrid.json
             artifacts/queryset_health.cron.sparse.json
+            artifacts/adaptive_router_policy.v1.json
+            artifacts/channel_budget_policy.v1.json
+            artifacts/intent_router_training.v1.json
+            artifacts/intent_router_model.v1.json
+            artifacts/answer_quality.summary.json
+            artifacts/answer_quality.gate.json
+            artifacts/multihop_diagnostics.summary.json
             ci/parser_benchmark_baseline.v1.json
             ci/queryset_health_snapshot_baseline.v1.json
             ci/queryset_health_snapshot_hybrid_baseline.v1.json

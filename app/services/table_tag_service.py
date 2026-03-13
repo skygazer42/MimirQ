@@ -20,8 +20,10 @@ from app.services.table_schema_graph import (
     infer_schema_relationships_for_tables as infer_schema_relationships_from_graph,
 )
 from app.services.table_schema_graph import (
+    score_multi_join_plan_candidates,
     score_join_plan_candidates,
 )
+from app.services.table_join_stats import build_join_statistics_snapshot
 from app.services.table_sql_fingerprint import fingerprint_sql
 
 _FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
@@ -493,6 +495,87 @@ def _pick_join_metric_column(question: str, tables: list[dict[str, Any]]) -> tup
     return None, None
 
 
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return int(default)
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _build_join_plan_risk_contract(
+    *,
+    selected_candidate: dict[str, Any] | None,
+    dry_run_cardinality: dict[str, Any] | None,
+) -> dict[str, Any]:
+    candidate = selected_candidate if isinstance(selected_candidate, dict) else {}
+    cost_signals = candidate.get("cost_signals") if isinstance(candidate.get("cost_signals"), dict) else {}
+    fanout_ratio = _to_float(cost_signals.get("fanout_ratio"), 0.0)
+    left_sel = cost_signals.get("left_selectivity")
+    right_sel = cost_signals.get("right_selectivity")
+    selectivity_unknown = left_sel is None or right_sel is None
+    fanout_explosive = bool(fanout_ratio >= 20.0 or bool((dry_run_cardinality or {}).get("explosive")))
+
+    reason_codes: list[str] = []
+    if fanout_explosive:
+        reason_codes.append("fanout_explosive")
+    if selectivity_unknown:
+        reason_codes.append("selectivity_unknown")
+
+    return {
+        "schema": "mimirq.tag_join_plan_risk.v1",
+        "fanout_explosive": bool(fanout_explosive),
+        "selectivity_unknown": bool(selectivity_unknown),
+        "reason_codes": reason_codes,
+    }
+
+
+def _dry_run_join_cardinality(
+    *,
+    selected_candidate: dict[str, Any] | None,
+    max_rows: int,
+) -> dict[str, Any]:
+    candidate = selected_candidate if isinstance(selected_candidate, dict) else {}
+    join = candidate.get("join") if isinstance(candidate.get("join"), dict) else {}
+    left_rows = max(0, _to_int(join.get("left_row_count"), 0))
+    right_rows = max(0, _to_int(join.get("right_row_count"), 0))
+    cost_signals = candidate.get("cost_signals") if isinstance(candidate.get("cost_signals"), dict) else {}
+    fanout_ratio = _to_float(cost_signals.get("fanout_ratio"), 1.0)
+    left_sel = cost_signals.get("left_selectivity")
+    right_sel = cost_signals.get("right_selectivity")
+    left_sel_v = _to_float(left_sel, -1.0)
+    right_sel_v = _to_float(right_sel, -1.0)
+    selectivity_known = left_sel_v >= 0.0 and right_sel_v >= 0.0
+    min_sel = min(left_sel_v, right_sel_v) if selectivity_known else 0.1
+    min_sel = min(1.0, max(0.001, float(min_sel)))
+
+    base_rows = max(left_rows, right_rows, int(max_rows or 1))
+    estimated_upper_rows = int(max(1.0, float(base_rows) * max(1.0, fanout_ratio) / float(min_sel)))
+    explosive = bool(estimated_upper_rows > int(max(1, int(max_rows or 1))) * 10)
+
+    return {
+        "schema": "mimirq.tag_join_cardinality_dryrun.v1",
+        "left_row_count": int(left_rows),
+        "right_row_count": int(right_rows),
+        "fanout_ratio": round(float(fanout_ratio), 6),
+        "left_selectivity": (round(float(left_sel_v), 6) if left_sel_v >= 0.0 else None),
+        "right_selectivity": (round(float(right_sel_v), 6) if right_sel_v >= 0.0 else None),
+        "estimated_upper_rows": int(estimated_upper_rows),
+        "max_rows_budget": int(max(1, int(max_rows or 1))),
+        "explosive": bool(explosive),
+    }
+
+
 def plan_join_query_for_tables(
     *,
     question: str,
@@ -542,13 +625,43 @@ def plan_join_query_for_tables(
         top_n=top_n,
         ambiguity_score_gap=ambiguity_gap,
     )
+    max_join_tables = max(2, int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4))
+    multi_plan_candidates = score_multi_join_plan_candidates(
+        tables=valid_tables,
+        top_n=top_n,
+        ambiguity_score_gap=ambiguity_gap,
+        max_states=max(8, max_join_tables * 8),
+    )
     candidate_rows = [c for c in list(plan_candidates.get("candidates") or []) if isinstance(c, dict)]
+    multi_candidate_rows = [
+        c for c in list(multi_plan_candidates.get("candidates") or []) if isinstance(c, dict)
+    ]
     if not candidate_rows:
         raise ValueError("no_join_relationship_found")
-    if bool(plan_candidates.get("ambiguous")) and strict_ambiguity:
-        raise ValueError("ambiguous_join_plan")
+    selected_candidate = (
+        plan_candidates.get("selected") if isinstance(plan_candidates.get("selected"), dict) else candidate_rows[0]
+    )
+    selected_from_multi = False
+    if len(valid_tables) > 2 and multi_candidate_rows:
+        multi_selected = (
+            multi_plan_candidates.get("selected")
+            if isinstance(multi_plan_candidates.get("selected"), dict)
+            else multi_candidate_rows[0]
+        )
+        if isinstance(multi_selected, dict):
+            multi_tables = [str(v) for v in list(multi_selected.get("selected_tables") or []) if str(v).strip()]
+            pair_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
+            multi_score = float(multi_selected.get("score") or 0.0)
+            if len(multi_tables) >= 3 and multi_score >= (pair_score * 0.9):
+                selected_candidate = multi_selected
+                selected_from_multi = True
 
-    selected_candidate = plan_candidates.get("selected") if isinstance(plan_candidates.get("selected"), dict) else candidate_rows[0]
+    if strict_ambiguity:
+        if selected_from_multi and bool(multi_plan_candidates.get("ambiguous")):
+            raise ValueError("ambiguous_join_plan")
+        if (not selected_from_multi) and bool(plan_candidates.get("ambiguous")):
+            raise ValueError("ambiguous_join_plan")
+
     selected_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
     low_confidence_threshold = float(
         getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55
@@ -558,15 +671,35 @@ def plan_join_query_for_tables(
     low_confidence_strict = bool(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED", False))
     if low_confidence and low_confidence_strict:
         raise ValueError("low_confidence_join_plan")
-    selected_join = selected_candidate.get("join") if isinstance(selected_candidate, dict) else {}
+    selected_join = selected_candidate.get("join") if isinstance(selected_candidate, dict) else None
+    if not isinstance(selected_join, dict):
+        joins_path = selected_candidate.get("joins") if isinstance(selected_candidate, dict) else None
+        joins_path = [j for j in list(joins_path or []) if isinstance(j, dict)]
+        selected_join = joins_path[0] if joins_path else {}
     if not isinstance(selected_join, dict):
         selected_join = {}
 
     relationships: list[dict[str, Any]] = []
+    if isinstance(selected_candidate, dict) and isinstance(selected_candidate.get("joins"), list):
+        relationships = [j for j in list(selected_candidate.get("joins") or []) if isinstance(j, dict)]
     for c in candidate_rows:
         join = c.get("join") if isinstance(c, dict) else None
         if isinstance(join, dict):
             relationships.append(join)
+    dedupe_keys: set[str] = set()
+    unique_relationships: list[dict[str, Any]] = []
+    for rel in relationships:
+        key = (
+            f"{str(rel.get('left_table') or '').strip()}."
+            f"{str(rel.get('left_column') or '').strip()}->"
+            f"{str(rel.get('right_table') or '').strip()}."
+            f"{str(rel.get('right_column') or '').strip()}"
+        )
+        if key in dedupe_keys:
+            continue
+        dedupe_keys.add(key)
+        unique_relationships.append(rel)
+    relationships = unique_relationships
 
     rel = selected_join
     left_table = str(rel.get("left_table") or "").strip()
@@ -577,7 +710,13 @@ def plan_join_query_for_tables(
         raise ValueError("invalid_join_relationship")
 
     table_map = {str(t.get("table_name") or ""): t for t in valid_tables}
-    selected_tables = [left_table, right_table]
+    selected_tables = [
+        str(v)
+        for v in list((selected_candidate or {}).get("selected_tables") or [left_table, right_table])
+        if str(v).strip()
+    ]
+    if not selected_tables:
+        selected_tables = [left_table, right_table]
 
     alias_map = {left_table: "t0", right_table: "t1"}
     left_alias = alias_map[left_table]
@@ -691,21 +830,49 @@ def plan_join_query_for_tables(
         order_by = None
 
     sql_fingerprint = fingerprint_sql(sql, length=16)
+    dry_run_cardinality = _dry_run_join_cardinality(
+        selected_candidate=(selected_candidate if isinstance(selected_candidate, dict) else None),
+        max_rows=max_rows_i,
+    )
+    join_plan_risk = _build_join_plan_risk_contract(
+        selected_candidate=(selected_candidate if isinstance(selected_candidate, dict) else None),
+        dry_run_cardinality=dry_run_cardinality,
+    )
+    join_statistics_snapshot = build_join_statistics_snapshot(
+        tables=valid_tables,
+        top_n=top_n,
+        ambiguity_score_gap=ambiguity_gap,
+        max_states=max(8, max_join_tables * 8),
+    )
     planner = {
+        # Keep strategy stable for downstream compatibility; expose beam usage via mode.
         "strategy": "deterministic_join",
+        "planner_mode": ("beam" if selected_from_multi else "pairwise"),
         "reason": reason,
-        "joins": relationships[:1],
+        "joins": relationships[: max(1, int(max_join_tables) - 1)],
         "selected_tables": selected_tables,
         "candidates": candidate_rows[:top_n],
+        "multi_candidates": multi_candidate_rows[:top_n],
         "selected_candidate_id": str((selected_candidate or {}).get("candidate_id") or ""),
         "selected_score": round(float(selected_score), 6),
-        "ambiguous": bool(plan_candidates.get("ambiguous")),
-        "ambiguity_gap": plan_candidates.get("ambiguity_gap"),
+        "ambiguous": (
+            bool(multi_plan_candidates.get("ambiguous"))
+            if selected_from_multi
+            else bool(plan_candidates.get("ambiguous"))
+        ),
+        "ambiguity_gap": (
+            multi_plan_candidates.get("ambiguity_gap")
+            if selected_from_multi
+            else plan_candidates.get("ambiguity_gap")
+        ),
         "strict_ambiguity": bool(strict_ambiguity),
         "low_confidence": bool(low_confidence),
         "low_confidence_threshold": round(float(low_confidence_threshold), 6),
         "strict_low_confidence": bool(low_confidence_strict),
         "fail_reason": ("low_confidence_join_plan" if low_confidence else None),
+        "join_plan_risk": join_plan_risk,
+        "dry_run_cardinality": dry_run_cardinality,
+        "join_statistics_snapshot": join_statistics_snapshot,
         "aggregation": aggregation,
         "aggregation_column": aggregation_column,
         "group_by": (
