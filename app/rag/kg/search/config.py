@@ -70,6 +70,10 @@ class SearchConfig(KGBaseModel):
     vector_recall_enabled: Optional[bool] = None
     # Graph embeddings (node2vec-like) recall override. Useful for diagnostics ablations.
     graph_embeddings_enabled: Optional[bool] = None
+    # Query-mode routing: auto | local | global | drift.
+    query_mode: str = "auto"
+    query_mode_reason_codes: List[str] = []
+    query_mode_confidence: Optional[str] = None
     # When false, filter Skill-like entities from recall/expand (useful for ablations).
     include_skill_entities: bool = True
     recall: RecallConfig = RecallConfig()

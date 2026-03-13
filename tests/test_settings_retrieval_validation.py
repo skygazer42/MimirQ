@@ -246,3 +246,87 @@ def test_settings_accepts_index_consistency_toggles(
     assert cfg.INDEX_CONSISTENCY_STRICTNESS == "strict"
     assert cfg.INDEX_CONSISTENCY_PATCH_CHUNK_STRICT is True
     assert cfg.INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS is True
+
+
+def test_settings_rejects_capsule_signing_without_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("EVIDENCE_CAPSULE_SIGNING_ENABLED", "true")
+    monkeypatch.setenv("EVIDENCE_CAPSULE_SIGNING_SECRET", "")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_non_positive_must_recall_auto_source_keys_max(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_invalid_table_tag_cost_fanout_penalty_weight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT", "1.2")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_invalid_table_tag_low_confidence_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", "-0.1")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_invalid_retrieval_contextual_followup_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "invalid")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_non_positive_retrieval_contextual_followup_top_k(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_accepts_retrieval_contextual_followup_toggles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED", "true")
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "hybrid")
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", "18")
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", "5")
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", "6")
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS", "3")
+    monkeypatch.setenv("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", "420")
+
+    cfg = Settings()
+    assert cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED is True
+    assert cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE == "hybrid"
+    assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K) == 18
+    assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS) == 5
+    assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS) == 6
+    assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS) == 3
+    assert int(cfg.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS) == 420

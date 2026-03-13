@@ -1,0 +1,15 @@
+{
+  "schema": "mimirq.parser_benchmark_strict_profile.v1",
+  "thresholds": {
+    "ok_rate": 1.0,
+    "parse_score_mean": 1.0,
+    "golden_similarity_mean": 1.0,
+    "golden_coverage_ratio_mean": 1.0
+  },
+  "severity_bands": {
+    "critical": 3.0,
+    "high": 1.5,
+    "medium": 1.0,
+    "low": 0.5
+  }
+}

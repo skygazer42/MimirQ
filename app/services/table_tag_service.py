@@ -515,11 +515,19 @@ def plan_join_query_for_tables(
         cols = raw.get("columns")
         if not tname or not isinstance(cols, list):
             continue
+        try:
+            row_count = int(raw.get("row_count") or 0)
+        except Exception:
+            row_count = 0
+        sample_rows_raw = raw.get("sample_rows")
+        sample_rows = [r for r in sample_rows_raw if isinstance(r, dict)] if isinstance(sample_rows_raw, list) else []
         valid_tables.append(
             {
                 "table_name": tname,
                 "table_aliases": [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()],
                 "columns": [c for c in cols if isinstance(c, dict)],
+                "row_count": max(0, int(row_count)),
+                "sample_rows": sample_rows[:50],
             }
         )
 
@@ -541,6 +549,15 @@ def plan_join_query_for_tables(
         raise ValueError("ambiguous_join_plan")
 
     selected_candidate = plan_candidates.get("selected") if isinstance(plan_candidates.get("selected"), dict) else candidate_rows[0]
+    selected_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
+    low_confidence_threshold = float(
+        getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55
+    )
+    low_confidence_threshold = min(1.0, max(0.0, float(low_confidence_threshold)))
+    low_confidence = float(selected_score) < float(low_confidence_threshold)
+    low_confidence_strict = bool(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED", False))
+    if low_confidence and low_confidence_strict:
+        raise ValueError("low_confidence_join_plan")
     selected_join = selected_candidate.get("join") if isinstance(selected_candidate, dict) else {}
     if not isinstance(selected_join, dict):
         selected_join = {}
@@ -680,9 +697,15 @@ def plan_join_query_for_tables(
         "joins": relationships[:1],
         "selected_tables": selected_tables,
         "candidates": candidate_rows[:top_n],
+        "selected_candidate_id": str((selected_candidate or {}).get("candidate_id") or ""),
+        "selected_score": round(float(selected_score), 6),
         "ambiguous": bool(plan_candidates.get("ambiguous")),
         "ambiguity_gap": plan_candidates.get("ambiguity_gap"),
         "strict_ambiguity": bool(strict_ambiguity),
+        "low_confidence": bool(low_confidence),
+        "low_confidence_threshold": round(float(low_confidence_threshold), 6),
+        "strict_low_confidence": bool(low_confidence_strict),
+        "fail_reason": ("low_confidence_join_plan" if low_confidence else None),
         "aggregation": aggregation,
         "aggregation_column": aggregation_column,
         "group_by": (

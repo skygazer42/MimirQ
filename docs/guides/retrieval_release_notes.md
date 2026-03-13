@@ -26,6 +26,7 @@ Use the section below in each release (or in `Unreleased` during development):
 | ndcg@10 | 0.0000 | 0.0000 | +0.0000 |
 | must_recall_pass_rate | 0.0000 | 0.0000 | +0.0000 |
 | provenance_integrity_rate | 0.0000 | 0.0000 | +0.0000 |
+| contextual_followup_used_rate | 0.0000 | 0.0000 | +0.0000 |
 | p95 latency (ms) | 0.0 | 0.0 | +0.0 |
 
 #### Artifacts
@@ -39,6 +40,7 @@ Use the section below in each release (or in `Unreleased` during development):
 - Queryset diff reports: `artifacts/queryset_health.diff.json`, `artifacts/queryset_health.diff.hybrid.json`
 - Must-recall + provenance gate: `artifacts/must_recall_provenance_gate.report.json`
 - Parser benchmark diff: `artifacts/parser_benchmark.diff.json`
+- Contextual follow-up diagnostics (if enabled): `artifacts/retrieval_trace.contextual_followup.json`
 
 #### Thresholds
 
@@ -58,6 +60,7 @@ Before publishing retrieval-quality notes:
 4. Include one sentence on ranking-impact root cause (retrieval/fusion/rerank/cache).
 5. If hybrid or ColBERT behavior changed, include the bounded artifact outcome and whether rollout criteria still passed.
 6. If must-recall/provenance claims are made, attach capsule/gate artifacts.
+7. If contextual follow-up is enabled, include its used-rate and average added citations.
 
 ---
 

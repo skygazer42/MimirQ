@@ -104,6 +104,111 @@ def test_route_retrieval_preset_applies_policy_rule_without_leaking_patterns() -
     assert "compare" not in encoded
 
 
+def test_adaptive_router_policy_normalization_and_routing() -> None:
+    from app.rag.policy.intent_router import normalize_adaptive_router_policy, route_adaptive_retrieval_overrides
+
+    policy = {
+        "schema": "mimirq.adaptive_router_policy.v1",
+        "rules": [
+            {
+                "rule_id": "faq_recall_boost",
+                "when": {
+                    "intent_in": ["faq"],
+                    "query_len_bucket_in": ["short", "medium", "long"],
+                    "has_quotes": True,
+                },
+                "overrides": {
+                    "retrieval_profile": "recall50",
+                    "top_k": 50,
+                },
+            }
+        ],
+    }
+    normalized = normalize_adaptive_router_policy(policy)
+    assert isinstance(normalized, dict)
+    assert normalized.get("schema") == "mimirq.adaptive_router_policy.v1"
+    rules = list(normalized.get("rules") or [])
+    assert len(rules) == 1
+
+    overrides, meta = route_adaptive_retrieval_overrides(
+        query='What is "retrieval recall"?',
+        retrieval_mode="hybrid",
+        intent_meta={"intent": "faq"},
+        adaptive_router_policy=normalized,
+    )
+    assert overrides.get("retrieval_profile") == "recall50"
+    assert overrides.get("top_k") == 50
+    assert meta.get("enabled") is True
+    assert meta.get("used") is True
+    assert meta.get("matched_rule_ids") == ["faq_recall_boost"]
+
+
+def test_orchestrator_applies_adaptive_router_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retrieval.orchestrator as orch
+
+    captured_updates: List[Dict[str, Any]] = []
+
+    class _CapturingRetriever:
+        _last_debug_metrics: Dict[str, Any] = {}
+
+        def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
+            captured_updates.append(dict((kwargs or {}).get("update") or {}))
+            return self
+
+        def invoke(self, _q):  # noqa: ANN001
+            return []
+
+    class _FakeEngine:
+        def _annotate_docs_with_role(self, docs, _kind):  # noqa: ANN001
+            return docs
+
+        def fuse_docs_rrf(self, docs_by_query, rrf_k=60, meta_prefix="query_expansion"):  # noqa: ANN001, ARG002
+            out = []
+            for ds in docs_by_query or []:
+                out.extend(list(ds or []))
+            return out
+
+    monkeypatch.setattr(orch, "hybrid_retriever", _CapturingRetriever(), raising=True)
+    monkeypatch.setattr(orch, "get_rag_engine", lambda: _FakeEngine(), raising=True)
+
+    state = {
+        "question": 'What is "retrieval recall in RAG systems with provenance checks"?',
+        "history": [],
+        "top_k": 5,
+        "score_threshold": 0.7,
+        "retrieval_mode": "hybrid",
+        "retrieval_profile": None,
+        "adaptive_router": True,
+        "adaptive_router_policy": {
+            "schema": "mimirq.adaptive_router_policy.v1",
+            "rules": [
+                {
+                    "rule_id": "faq_recall_boost",
+                    "when": {
+                        "intent_in": ["faq"],
+                        "query_len_bucket_in": ["short", "medium", "long"],
+                        "has_quotes": True,
+                    },
+                    "overrides": {
+                        "retrieval_profile": "recall50",
+                        "top_k": 50,
+                    },
+                }
+            ],
+        },
+    }
+
+    out = orch.run_retrieval(state)
+    base_update = next(u for u in captured_updates if "k" in u)
+    assert base_update.get("k") == 50
+    assert bool((out.get("metrics") or {}).get("adaptive_router_used")) is True
+    qd = out.get("query_debug") if isinstance(out, dict) else None
+    assert isinstance(qd, dict)
+    adaptive_meta = qd.get("adaptive_router")
+    assert isinstance(adaptive_meta, dict)
+    assert adaptive_meta.get("used") is True
+
+
 def test_orchestrator_applies_intent_router_to_log_queries(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Integration test: orchestrator.run_retrieval should apply intent routing when enabled.

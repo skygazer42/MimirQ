@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from app.core.config import settings
+
+_ALLOWED_MODES = {"auto", "local", "global", "drift"}
+
+_DRIFT_RE = re.compile(
+    r"(?i)\b(drift|delta|change|changed|trend|versus|vs\.?|compared to|year over year|month over month)\b"
+    r"|漂移|变化|趋势|同比|环比|较上期|对比"
+)
+_GLOBAL_RE = re.compile(
+    r"(?i)\b(overall|global|across|all\b|aggregate|distribution|summary|overview)\b"
+    r"|总体|全局|全部|整体|汇总|总览|概览"
+)
+_LOCAL_RE = re.compile(
+    r"(?i)\b(this row|that row|which row|exact|id\s*=|primary key|pk\b)\b"
+    r"|哪一行|具体|主键|这一条|这条记录"
+)
+_QUOTED_RE = re.compile(r"[\"“”'‘’`]{1}[^\"“”'‘’`]{2,160}[\"“”'‘’`]{1}")
+
+
+def normalize_kg_query_mode(mode: Any, *, default: str = "auto") -> str:
+    raw = str(mode or "").strip().lower()
+    if raw in _ALLOWED_MODES:
+        return raw
+    return str(default or "auto").strip().lower() if str(default or "auto").strip().lower() in _ALLOWED_MODES else "auto"
+
+
+def classify_kg_query_mode(
+    *,
+    query: str,
+    document_ids: list[Any] | None = None,
+    dataset_id: Any = None,
+    default_mode: str = "auto",
+) -> dict[str, Any]:
+    default_norm = normalize_kg_query_mode(default_mode, default="auto")
+    if default_norm != "auto":
+        return {
+            "mode": default_norm,
+            "confidence": "forced",
+            "reason_codes": ["default_mode_forced"],
+        }
+
+    q = str(query or "").strip()
+    q_fold = q.casefold()
+    reasons: list[str] = []
+
+    if _DRIFT_RE.search(q):
+        reasons.append("drift_pattern")
+        return {"mode": "drift", "confidence": "high", "reason_codes": reasons}
+
+    has_local = bool(_LOCAL_RE.search(q))
+    if has_local:
+        reasons.append("local_pattern")
+
+    if _QUOTED_RE.search(q):
+        reasons.append("quoted_term")
+        has_local = True
+
+    if _GLOBAL_RE.search(q):
+        reasons.append("global_pattern")
+        # Global wins unless local is explicit and strong.
+        if not has_local:
+            return {"mode": "global", "confidence": "medium", "reason_codes": reasons}
+
+    doc_count = len(list(document_ids or []))
+    if doc_count == 1 and ("id=" in q_fold or "主键" in q or "row" in q_fold):
+        reasons.append("single_doc_row_focus")
+        return {"mode": "local", "confidence": "high", "reason_codes": reasons}
+
+    if has_local:
+        return {"mode": "local", "confidence": "medium", "reason_codes": reasons}
+
+    if dataset_id is not None and doc_count == 0:
+        reasons.append("dataset_scope_no_doc_ids")
+        return {"mode": "global", "confidence": "low", "reason_codes": reasons}
+
+    reasons.append("fallback_global")
+    return {"mode": "global", "confidence": "low", "reason_codes": reasons}
+
+
+def build_mode_aware_recall_overrides(
+    *,
+    mode: str,
+    max_events: int,
+    max_entities: int,
+    final_entity_count: int,
+    entity_weight_threshold: float,
+) -> dict[str, Any]:
+    mode_norm = normalize_kg_query_mode(mode, default="global")
+
+    max_events_out = max(1, int(max_events or 1))
+    max_entities_out = max(1, int(max_entities or 1))
+    final_entity_count_out = max(1, int(final_entity_count or 1))
+    entity_weight_threshold_out = min(1.0, max(0.0, float(entity_weight_threshold or 0.0)))
+    reason_codes: list[str] = []
+
+    if mode_norm == "local":
+        max_events_out = min(
+            int(max_events_out),
+            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS", 40) or 40)),
+        )
+        final_entity_count_out = min(final_entity_count_out, 20)
+        bonus = float(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", 0.05) or 0.05)
+        entity_weight_threshold_out = min(1.0, entity_weight_threshold_out + max(0.0, bonus))
+        reason_codes.append("local_focus_budget")
+    elif mode_norm == "global":
+        max_events_out = max(
+            int(max_events_out),
+            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 120) or 120)),
+        )
+        max_entities_out = max(max_entities_out, 40)
+        final_entity_count_out = max(final_entity_count_out, 25)
+        reason_codes.append("global_coverage_budget")
+    elif mode_norm == "drift":
+        max_events_out = max(
+            int(max_events_out),
+            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 140) or 140)),
+        )
+        max_entities_out = max(max_entities_out, 45)
+        final_entity_count_out = max(final_entity_count_out, 30)
+        reason_codes.append("drift_expanded_budget")
+
+    return {
+        "mode": mode_norm,
+        "max_events": int(max_events_out),
+        "max_entities": int(max_entities_out),
+        "final_entity_count": int(final_entity_count_out),
+        "entity_weight_threshold": round(float(entity_weight_threshold_out), 6),
+        "reason_codes": reason_codes,
+    }
+
+
+__all__ = [
+    "build_mode_aware_recall_overrides",
+    "classify_kg_query_mode",
+    "normalize_kg_query_mode",
+]

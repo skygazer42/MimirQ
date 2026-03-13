@@ -59,6 +59,46 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
 - `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束；支持 `pipeline_hash` 可选参数）。
 - `DELETE /kg/documents/{document_id}`：删除文档对应 KG 事件（可选清理孤立实体）。
 
+## KG Query-Mode Routing（local / global / drift）
+
+Wave E 在现有 `kg_search` 管线上加入了 **query-mode routing**（不依赖 GraphRAG）：
+
+- `local`：偏向“定位具体记录/局部关系”，收紧事件预算，提升实体权重阈值。
+- `global`：偏向“全局汇总/分布/总体趋势”，扩大覆盖预算。
+- `drift`：偏向“变化/对比/同比环比”，进一步扩大覆盖预算，减少漏召回。
+- `auto`：默认模式，按 query 形态做 deterministic 分类。
+
+### 关键配置
+
+- `KG_SEARCH_QUERY_MODE_DEFAULT=auto|local|global|drift`
+- `KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED=true|false`
+- `KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS=40`
+- `KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS=120`
+- `KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS=140`
+- `KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS=0.05`
+
+### 运行时观测
+
+`POST /kg/search` 返回中会带上模式决策信息：
+
+- `query_mode.requested`
+- `query_mode.resolved`
+- `query_mode.confidence`
+- `query_mode.reason_codes`
+
+`stats` 与 metrics 中也会同步输出：
+
+- `stats.query_mode`
+- `stats.query_mode_confidence`
+- `stats.query_mode_reason_codes`
+- `kg.search.*` 事件中的 `query_mode`
+
+排障建议：
+
+1. 先看 `query_mode.resolved` 是否符合预期。
+2. 若不符合，检查 `reason_codes`（例如 `drift_pattern/global_pattern/local_pattern`）。
+3. 若需要强制固定行为，显式传 `query_mode=local|global|drift` 或关闭 classifier。
+
 ## Entity Resolution（实体消歧 / 合并拆分 / 可撤销）
 
 Wave15 引入一套 **tenant-scoped** 的实体消歧（Entity Resolution）机制，用于治理“同名多实体 / 同义词碎片化 / 误抽取实体”等问题。

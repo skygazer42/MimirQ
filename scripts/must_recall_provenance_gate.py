@@ -54,10 +54,19 @@ def _compute_must_recall_pass_rate(run: dict[str, Any]) -> tuple[float | None, i
     return float(passed) / float(total), int(passed), int(total)
 
 
-def _capsule_is_valid(capsule: dict[str, Any]) -> bool:
+def _capsule_is_valid(
+    capsule: dict[str, Any],
+    *,
+    strict_integrity: bool,
+    require_signature: bool,
+) -> bool:
     from app.rag.core.evidence_capsule_builder import validate_evidence_capsule
 
-    ok, _reason = validate_evidence_capsule(capsule)
+    ok, _reason = validate_evidence_capsule(
+        capsule,
+        strict=bool(strict_integrity),
+        verify_signature=bool(require_signature),
+    )
     if not ok:
         return False
     if not str(capsule.get("capsule_hash") or "").strip():
@@ -73,7 +82,12 @@ def _capsule_is_valid(capsule: dict[str, Any]) -> bool:
     return True
 
 
-def _compute_provenance_integrity_rate(run: dict[str, Any]) -> tuple[float | None, int, int]:
+def _compute_provenance_integrity_rate(
+    run: dict[str, Any],
+    *,
+    strict_integrity: bool,
+    require_signature: bool,
+) -> tuple[float | None, int, int]:
     summary = run.get("summary") if isinstance(run.get("summary"), dict) else {}
     raw = summary.get("provenance_integrity_rate")
     if raw is not None:
@@ -98,7 +112,11 @@ def _compute_provenance_integrity_rate(run: dict[str, Any]) -> tuple[float | Non
         if not isinstance(capsule, dict):
             metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
             capsule = metrics.get("evidence_capsule")
-        if isinstance(capsule, dict) and _capsule_is_valid(capsule):
+        if isinstance(capsule, dict) and _capsule_is_valid(
+            capsule,
+            strict_integrity=bool(strict_integrity),
+            require_signature=bool(require_signature),
+        ):
             passed += 1
     if total <= 0:
         return None, 0, 0
@@ -110,10 +128,16 @@ def run_gate(
     run_json: Path,
     must_recall_min: float,
     provenance_min: float,
+    strict_integrity: bool = False,
+    require_signature: bool = False,
 ) -> dict[str, Any]:
     run = _load_json(run_json)
     must_recall_rate, must_recall_passed, total_cases = _compute_must_recall_pass_rate(run)
-    provenance_rate, provenance_passed, provenance_total = _compute_provenance_integrity_rate(run)
+    provenance_rate, provenance_passed, provenance_total = _compute_provenance_integrity_rate(
+        run,
+        strict_integrity=bool(strict_integrity),
+        require_signature=bool(require_signature),
+    )
 
     failures: list[str] = []
     if must_recall_rate is None:
@@ -131,6 +155,8 @@ def run_gate(
         "thresholds": {
             "must_recall_pass_rate_min": float(must_recall_min),
             "provenance_integrity_rate_min": float(provenance_min),
+            "strict_integrity": bool(strict_integrity),
+            "require_signature": bool(require_signature),
         },
         "summary": {
             "total_cases": int(total_cases or provenance_total),
@@ -149,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-json", required=True, help="Regression run detail JSON path")
     ap.add_argument("--must-recall-min", type=float, default=1.0, help="Minimum acceptable must_recall_pass_rate")
     ap.add_argument("--provenance-min", type=float, default=1.0, help="Minimum acceptable provenance_integrity_rate")
+    ap.add_argument("--strict-integrity", action="store_true", help="Require strict capsule hash/citation integrity")
+    ap.add_argument("--require-signature", action="store_true", help="Require signed evidence capsule")
     ap.add_argument("--out", default="", help="Optional output JSON path")
     ap.add_argument("--compact", action="store_true", help="Print compact JSON")
     args = ap.parse_args(argv)
@@ -158,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
             run_json=Path(str(args.run_json)).resolve(),
             must_recall_min=float(args.must_recall_min),
             provenance_min=float(args.provenance_min),
+            strict_integrity=bool(args.strict_integrity),
+            require_signature=bool(args.require_signature),
         )
     except Exception as exc:
         print(f"[must_recall_provenance_gate] ERROR: {exc}", file=sys.stderr)

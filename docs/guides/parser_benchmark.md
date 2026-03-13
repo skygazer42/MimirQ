@@ -84,6 +84,7 @@ python scripts/parser_benchmark.py \
   --max-files 8 \
   --out artifacts/parser_benchmark.current.json \
   --baseline ci/parser_benchmark_baseline.v1.json \
+  --strict-profile ci/parser_strict_profile.v1.json \
   --strict
 ```
 
@@ -94,4 +95,17 @@ Strict mode compares current `summary.<backend>` against baseline and fails when
 - `--strict-max-golden-similarity-drop`
 - `--strict-max-golden-coverage-drop`
 
+You can pin CI thresholds via strict profile JSON:
+
+- `--strict-profile ci/parser_strict_profile.v1.json`
+- schema: `mimirq.parser_benchmark_strict_profile.v1`
+- fields:
+  - `thresholds`: per-metric max drop
+  - `severity_bands`: ratios used to classify drift severity
+
 CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.json`) so reviewers can inspect what changed even when gate passes.
+
+`parser_benchmark` now also emits `regression_severity` (schema `mimirq.parser_benchmark_regression_severity.v1`) when baseline is provided, including:
+
+- `levels.critical/high/medium/low`
+- top regression items with `backend/metric/delta/max_drop/ratio`

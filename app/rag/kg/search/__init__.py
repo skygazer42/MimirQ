@@ -17,6 +17,9 @@ __all__ = [
     "ExpandSearcher",
     "ExpandResult",
     "Tracker",
+    "classify_kg_query_mode",
+    "normalize_kg_query_mode",
+    "build_mode_aware_recall_overrides",
 ]
 
 
@@ -67,5 +70,17 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
         from app.rag.kg.search.tracker import Tracker
 
         return Tracker
+    if name in {"classify_kg_query_mode", "normalize_kg_query_mode", "build_mode_aware_recall_overrides"}:
+        from app.rag.kg.search.query_mode import (
+            build_mode_aware_recall_overrides,
+            classify_kg_query_mode,
+            normalize_kg_query_mode,
+        )
+
+        return {
+            "classify_kg_query_mode": classify_kg_query_mode,
+            "normalize_kg_query_mode": normalize_kg_query_mode,
+            "build_mode_aware_recall_overrides": build_mode_aware_recall_overrides,
+        }[name]
 
     raise AttributeError(f"module 'app.kg.search' has no attribute {name!r}")

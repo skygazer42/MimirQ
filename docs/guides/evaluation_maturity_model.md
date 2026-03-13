@@ -51,6 +51,13 @@ Use this when retrieval is “good enough” and you need to validate the end-to
 
 Note: answer-level evaluation is usually **less deterministic** (judge model variance, provider drift). Treat it as a *signal* unless you pin the judge model/prompt and budget it carefully.
 
+For deterministic CI checks on answer-side summary metrics, MimirQ also provides:
+
+- `scripts/answer_quality_gate.py`
+- thresholds artifact: `ci/answer_quality_thresholds.v1.json`
+
+This gate is designed for summary-level checks (`faithfulness_det`, refusal correctness, abstain behavior) and can run without live judge-model calls.
+
 ### C) System / operations quality
 
 These often correlate with “quality regressions in practice”:

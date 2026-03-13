@@ -5,6 +5,7 @@ from app.rag.policy.must_recall import (
     evaluate_required_source_keys,
     normalize_source_keys,
 )
+from app.rag.policy.must_recall_auto import infer_expected_source_keys, infer_required_anchor_fields
 
 
 def test_normalize_source_keys_deduplicates_and_preserves_order() -> None:
@@ -32,3 +33,28 @@ def test_build_must_recall_fail_reasons_includes_secondary_pass_no_effect() -> N
     )
     assert "missing_required_source_keys" in reasons
     assert "secondary_pass_no_effect" in reasons
+
+
+def test_infer_expected_source_keys_from_query_and_metadata_filter() -> None:
+    out = infer_expected_source_keys(
+        query='统计 "inventory" 和 sales.orders 在 report.xlsx 的结果',
+        metadata_filter={"table_id": ["inventory"], "sheet_name": "Sheet1"},
+        max_keys=8,
+    )
+    keys = list(out.get("expected_source_keys") or [])
+    assert "inventory" in keys
+    assert any("sales.orders" == k for k in keys)
+    assert any("report.xlsx" == k for k in keys)
+    assert str(out.get("confidence") or "") in {"medium", "high"}
+
+
+def test_infer_required_anchor_fields_adds_row_level_fields_for_row_intent() -> None:
+    out = infer_required_anchor_fields(
+        query="请告诉我是数据库哪一行",
+        default_fields=["chunk_id", "document_id"],
+    )
+    fields = list(out.get("required_anchor_fields") or [])
+    assert "chunk_id" in fields
+    assert "document_id" in fields
+    assert "row_source_pk_hashes" in fields
+    assert bool(out.get("applied")) is True

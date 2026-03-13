@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
+from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 
 _NON_IDENT_RE = r"[^a-z0-9]+"
@@ -89,6 +91,45 @@ def _safe_col_names(columns: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def _safe_positive_int(value: Any) -> int | None:
+    try:
+        iv = int(value) if value is not None else None
+    except Exception:
+        return None
+    if iv is None or iv <= 0:
+        return None
+    return int(iv)
+
+
+def _sample_column_selectivity(*, rows: list[dict[str, Any]] | None, column_name: str) -> float | None:
+    col = str(column_name or "").strip()
+    if not col:
+        return None
+    sample = [r for r in list(rows or []) if isinstance(r, dict)][:50]
+    if not sample:
+        return None
+
+    values: list[str] = []
+    for row in sample:
+        if col not in row:
+            continue
+        raw = row.get(col)
+        if raw is None:
+            continue
+        s = str(raw).strip()
+        if not s:
+            continue
+        key = s.casefold() if s.isascii() else s
+        values.append(key)
+    if not values:
+        return None
+    uniq = len(set(values))
+    total = len(values)
+    if total <= 0:
+        return None
+    return min(1.0, max(0.0, float(uniq) / float(total)))
+
+
 def _edge_penalties(*, left_column: str, right_column: str, left_table: str, right_table: str) -> tuple[list[str], float]:
     penalties: list[str] = []
     total = 0.0
@@ -110,14 +151,78 @@ def _edge_penalties(*, left_column: str, right_column: str, left_table: str, rig
     return penalties, round(float(total), 6)
 
 
+def _cost_model_penalties(
+    *,
+    left_row_count: int | None,
+    right_row_count: int | None,
+    left_sample_rows: list[dict[str, Any]] | None,
+    right_sample_rows: list[dict[str, Any]] | None,
+    left_column: str,
+    right_column: str,
+) -> tuple[list[str], float, dict[str, Any]]:
+    if not bool(getattr(settings, "TABLE_TAG_COST_MODEL_ENABLED", True)):
+        return [], 0.0, {"enabled": False}
+
+    penalties: list[str] = []
+    total = 0.0
+    signals: dict[str, Any] = {"enabled": True}
+
+    # 1) Fanout risk: strongly imbalanced table sizes increase many-to-many join risk.
+    fanout_ratio: float | None = None
+    if left_row_count and right_row_count and left_row_count > 0 and right_row_count > 0:
+        fanout_ratio = float(max(left_row_count, right_row_count)) / float(min(left_row_count, right_row_count))
+        fanout_ratio = max(1.0, float(fanout_ratio))
+        signals["fanout_ratio"] = round(float(fanout_ratio), 6)
+        alert = float(getattr(settings, "TABLE_TAG_COST_FANOUT_RATIO_ALERT", 20.0) or 20.0)
+        alert = max(1.0, float(alert))
+        if fanout_ratio >= alert:
+            weight = float(getattr(settings, "TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT", 0.08) or 0.08)
+            over = (fanout_ratio / alert) - 1.0
+            penalty = min(0.45, max(0.0, float(over) * float(weight)))
+            if penalty > 0:
+                penalties.append("high_join_fanout")
+                total += penalty
+                signals["fanout_penalty"] = round(float(penalty), 6)
+
+    # 2) Selectivity risk: low distinctness in join keys implies broad join expansion.
+    left_sel = _sample_column_selectivity(rows=left_sample_rows, column_name=left_column)
+    right_sel = _sample_column_selectivity(rows=right_sample_rows, column_name=right_column)
+    if left_sel is not None:
+        signals["left_selectivity"] = round(float(left_sel), 6)
+    if right_sel is not None:
+        signals["right_selectivity"] = round(float(right_sel), 6)
+
+    selectivity_candidates = [v for v in (left_sel, right_sel) if v is not None]
+    if selectivity_candidates:
+        min_selectivity = min(float(v) for v in selectivity_candidates)
+        threshold = float(getattr(settings, "TABLE_TAG_COST_SELECTIVITY_MIN", 0.2) or 0.2)
+        threshold = min(1.0, max(0.0, float(threshold)))
+        signals["selectivity_threshold"] = round(float(threshold), 6)
+        if min_selectivity < threshold and threshold > 0.0:
+            weight = float(getattr(settings, "TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT", 0.12) or 0.12)
+            gap_ratio = (threshold - min_selectivity) / threshold
+            # Add mild log scaling so extreme low-selectivity joins are clearly penalized.
+            penalty = min(0.45, max(0.0, math.log1p(gap_ratio) * float(weight) * 2.0))
+            if penalty > 0:
+                penalties.append("low_join_selectivity")
+                total += penalty
+                signals["selectivity_penalty"] = round(float(penalty), 6)
+
+    return penalties, round(float(total), 6), signals
+
+
 def _pick_best_relationship_between(
     *,
     left_table: str,
     left_aliases: list[str] | None,
     left_columns: list[dict[str, Any]],
+    left_row_count: int | None,
+    left_sample_rows: list[dict[str, Any]] | None,
     right_table: str,
     right_aliases: list[str] | None,
     right_columns: list[dict[str, Any]],
+    right_row_count: int | None,
+    right_sample_rows: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
     left_col_names = _safe_col_names(left_columns)
     right_col_names = _safe_col_names(right_columns)
@@ -128,9 +233,65 @@ def _pick_best_relationship_between(
     right_bases = _alias_bases(right_table, right_aliases)
     best: dict[str, Any] | None = None
 
+    def _build_candidate(
+        *,
+        left_table_name: str,
+        left_column_name: str,
+        right_table_name: str,
+        right_column_name: str,
+        confidence: float,
+        reason: str,
+        left_rows: int | None,
+        right_rows: int | None,
+        left_samples: list[dict[str, Any]] | None,
+        right_samples: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        base_penalties, base_penalty_score = _edge_penalties(
+            left_column=left_column_name,
+            right_column=right_column_name,
+            left_table=left_table_name,
+            right_table=right_table_name,
+        )
+        cost_penalties, cost_penalty_score, cost_signals = _cost_model_penalties(
+            left_row_count=left_rows,
+            right_row_count=right_rows,
+            left_sample_rows=left_samples,
+            right_sample_rows=right_samples,
+            left_column=left_column_name,
+            right_column=right_column_name,
+        )
+        penalties = list(base_penalties)
+        for p in cost_penalties:
+            if p not in penalties:
+                penalties.append(p)
+        penalty_score = round(float(base_penalty_score) + float(cost_penalty_score), 6)
+        return {
+            "left_table": left_table_name,
+            "left_column": left_column_name,
+            "right_table": right_table_name,
+            "right_column": right_column_name,
+            "confidence": round(float(confidence), 6),
+            "reason": str(reason or "").strip(),
+            "penalties": penalties,
+            "penalty_score": penalty_score,
+            "base_penalty_score": round(float(base_penalty_score), 6),
+            "cost_penalty_score": round(float(cost_penalty_score), 6),
+            "cost_signals": dict(cost_signals or {}),
+            "left_row_count": left_rows,
+            "right_row_count": right_rows,
+        }
+
     def _update(candidate: dict[str, Any]) -> None:
         nonlocal best
-        if best is None or float(candidate.get("confidence") or 0.0) > float(best.get("confidence") or 0.0):
+        if best is None:
+            best = candidate
+            return
+        cand_score = float(candidate.get("confidence") or 0.0) - float(candidate.get("penalty_score") or 0.0)
+        best_score = float(best.get("confidence") or 0.0) - float(best.get("penalty_score") or 0.0)
+        if cand_score > best_score:
+            best = candidate
+            return
+        if cand_score == best_score and float(candidate.get("confidence") or 0.0) > float(best.get("confidence") or 0.0):
             best = candidate
 
     for l_raw in left_col_names:
@@ -141,23 +302,19 @@ def _pick_best_relationship_between(
                 continue
 
             if ln == rn and _is_likely_key_column(ln):
-                penalties, penalty_score = _edge_penalties(
-                    left_column=l_raw,
-                    right_column=r_raw,
-                    left_table=left_table,
-                    right_table=right_table,
-                )
                 _update(
-                    {
-                        "left_table": left_table,
-                        "left_column": l_raw,
-                        "right_table": right_table,
-                        "right_column": r_raw,
-                        "confidence": 0.96,
-                        "reason": "same_key_name",
-                        "penalties": penalties,
-                        "penalty_score": penalty_score,
-                    }
+                    _build_candidate(
+                        left_table_name=left_table,
+                        left_column_name=l_raw,
+                        right_table_name=right_table,
+                        right_column_name=r_raw,
+                        confidence=0.96,
+                        reason="same_key_name",
+                        left_rows=left_row_count,
+                        right_rows=right_row_count,
+                        left_samples=left_sample_rows,
+                        right_samples=right_sample_rows,
+                    )
                 )
                 continue
 
@@ -172,23 +329,19 @@ def _pick_best_relationship_between(
                     if base in right_bases:
                         conf = 0.95
                         reason = "fk_to_table_id"
-                    penalties, penalty_score = _edge_penalties(
-                        left_column=l_raw,
-                        right_column=r_raw,
-                        left_table=left_table,
-                        right_table=right_table,
-                    )
                     _update(
-                        {
-                            "left_table": left_table,
-                            "left_column": l_raw,
-                            "right_table": right_table,
-                            "right_column": r_raw,
-                            "confidence": conf,
-                            "reason": reason,
-                            "penalties": penalties,
-                            "penalty_score": penalty_score,
-                        }
+                        _build_candidate(
+                            left_table_name=left_table,
+                            left_column_name=l_raw,
+                            right_table_name=right_table,
+                            right_column_name=r_raw,
+                            confidence=conf,
+                            reason=reason,
+                            left_rows=left_row_count,
+                            right_rows=right_row_count,
+                            left_samples=left_sample_rows,
+                            right_samples=right_sample_rows,
+                        )
                     )
                     continue
 
@@ -200,23 +353,19 @@ def _pick_best_relationship_between(
                     if base in left_bases:
                         conf = 0.95
                         reason = "fk_to_table_id"
-                    penalties, penalty_score = _edge_penalties(
-                        left_column=r_raw,
-                        right_column=l_raw,
-                        left_table=right_table,
-                        right_table=left_table,
-                    )
                     _update(
-                        {
-                            "left_table": right_table,
-                            "left_column": r_raw,
-                            "right_table": left_table,
-                            "right_column": l_raw,
-                            "confidence": conf,
-                            "reason": reason,
-                            "penalties": penalties,
-                            "penalty_score": penalty_score,
-                        }
+                        _build_candidate(
+                            left_table_name=right_table,
+                            left_column_name=r_raw,
+                            right_table_name=left_table,
+                            right_column_name=l_raw,
+                            confidence=conf,
+                            reason=reason,
+                            left_rows=right_row_count,
+                            right_rows=left_row_count,
+                            left_samples=right_sample_rows,
+                            right_samples=left_sample_rows,
+                        )
                     )
                     continue
 
@@ -233,11 +382,16 @@ def build_table_schema_graph(*, tables: list[dict[str, Any]]) -> dict[str, Any]:
         if not tname or not isinstance(cols, list):
             continue
         aliases = [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()]
+        row_count = _safe_positive_int(raw.get("row_count"))
+        sample_rows_raw = raw.get("sample_rows")
+        sample_rows = [r for r in sample_rows_raw if isinstance(r, dict)] if isinstance(sample_rows_raw, list) else []
         normalized.append(
             {
                 "table_name": tname,
                 "table_aliases": aliases,
                 "columns": [c for c in cols if isinstance(c, dict)],
+                "row_count": row_count,
+                "sample_rows": sample_rows[:50],
             }
         )
 
@@ -250,16 +404,20 @@ def build_table_schema_graph(*, tables: list[dict[str, Any]]) -> dict[str, Any]:
                 left_table=str(left.get("table_name") or ""),
                 left_aliases=list(left.get("table_aliases") or []),
                 left_columns=list(left.get("columns") or []),
+                left_row_count=_safe_positive_int(left.get("row_count")),
+                left_sample_rows=list(left.get("sample_rows") or []),
                 right_table=str(right.get("table_name") or ""),
                 right_aliases=list(right.get("table_aliases") or []),
                 right_columns=list(right.get("columns") or []),
+                right_row_count=_safe_positive_int(right.get("row_count")),
+                right_sample_rows=list(right.get("sample_rows") or []),
             )
             if rel:
                 edges.append(rel)
 
     edges.sort(
         key=lambda r: (
-            -float(r.get("confidence") or 0.0),
+            -(float(r.get("confidence") or 0.0) - float(r.get("penalty_score") or 0.0)),
             float(r.get("penalty_score") or 0.0),
             str(r.get("left_table") or ""),
             str(r.get("right_table") or ""),
@@ -303,7 +461,10 @@ def score_join_plan_candidates(
                 "score": score,
                 "confidence": round(confidence, 6),
                 "penalty_score": round(penalty, 6),
+                "base_penalty_score": round(float(e.get("base_penalty_score") or 0.0), 6),
+                "cost_penalty_score": round(float(e.get("cost_penalty_score") or 0.0), 6),
                 "penalties": [str(v) for v in list(e.get("penalties") or []) if str(v).strip()][:8],
+                "cost_signals": dict(e.get("cost_signals") or {}),
                 "join": {
                     "left_table": left_table,
                     "left_column": left_col,
@@ -311,6 +472,8 @@ def score_join_plan_candidates(
                     "right_column": right_col,
                     "confidence": round(confidence, 6),
                     "reason": str(e.get("reason") or "").strip(),
+                    "left_row_count": _safe_positive_int(e.get("left_row_count")),
+                    "right_row_count": _safe_positive_int(e.get("right_row_count")),
                 },
                 "selected_tables": [left_table, right_table],
             }

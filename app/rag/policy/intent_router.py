@@ -19,6 +19,7 @@ from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.core.text import normalize_retrieval_mode
 
 _INTENT_ROUTER_POLICY_SCHEMA_V1 = "mimirq.intent_router_policy.v1"
+_ADAPTIVE_ROUTER_POLICY_SCHEMA_V1 = "mimirq.adaptive_router_policy.v1"
 
 _INTENT_LOG_RE = re.compile(
     r"(traceback|stack\s*trace|exception|segfault|panic|fatal|caused\s+by|"
@@ -387,3 +388,216 @@ def route_retrieval_preset(
         "overrides": sorted(list(overrides.keys())),
     }
     return overrides, meta
+
+
+def _normalize_bucket_terms(raw: Any, *, allowed: set[str], max_items: int = 8) -> List[str]:
+    if not isinstance(raw, list):
+        return []
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        s = str(item or "").strip().lower()
+        if not s or s not in allowed or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def normalize_adaptive_router_policy(policy: Any) -> Dict[str, Any] | None:
+    payload = policy if isinstance(policy, dict) else {}
+    schema = str(payload.get("schema") or "").strip()
+    if schema != _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1:
+        return None
+
+    rules_raw = payload.get("rules")
+    if not isinstance(rules_raw, list):
+        return None
+
+    rules: list[dict[str, Any]] = []
+    for item in rules_raw[:30]:
+        if not isinstance(item, dict):
+            continue
+        rule_id = str(item.get("rule_id") or "").strip()[:40]
+        if not rule_id:
+            continue
+        when = item.get("when")
+        when = when if isinstance(when, dict) else {}
+
+        intent_in = _normalize_bucket_terms(
+            when.get("intent_in"),
+            allowed={"log", "api", "howto", "faq", "general"},
+            max_items=8,
+        )
+        mode_in = _normalize_bucket_terms(
+            when.get("retrieval_mode_in"),
+            allowed={"auto", "hybrid", "vector", "keyword", "mmr"},
+            max_items=8,
+        )
+        len_bucket_in = _normalize_bucket_terms(
+            when.get("query_len_bucket_in"),
+            allowed={"short", "medium", "long"},
+            max_items=8,
+        )
+        contains_any = _normalize_match_terms(when.get("contains_any"), max_items=10)
+        has_quotes = _coerce_policy_bool(when.get("has_quotes"))
+        has_digits = _coerce_policy_bool(when.get("has_digits"))
+
+        conditions: dict[str, Any] = {}
+        if intent_in:
+            conditions["intent_in"] = intent_in
+        if mode_in:
+            conditions["retrieval_mode_in"] = mode_in
+        if len_bucket_in:
+            conditions["query_len_bucket_in"] = len_bucket_in
+        if contains_any:
+            conditions["contains_any"] = contains_any
+        if has_quotes is not None:
+            conditions["has_quotes"] = bool(has_quotes)
+        if has_digits is not None:
+            conditions["has_digits"] = bool(has_digits)
+        if not conditions:
+            continue
+
+        overrides = _sanitize_policy_overrides(item.get("overrides"))
+        if not overrides:
+            continue
+
+        rules.append(
+            {
+                "rule_id": rule_id,
+                "when": conditions,
+                "overrides": overrides,
+            }
+        )
+
+    if not rules:
+        return None
+
+    return {"schema": _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1, "rules": rules}
+
+
+def _query_len_bucket(query: str) -> str:
+    q = str(query or "")
+    n = len(q)
+    if n <= 40:
+        return "short"
+    if n <= 120:
+        return "medium"
+    return "long"
+
+
+def _adaptive_rule_matches(
+    *,
+    query: str,
+    intent: str,
+    retrieval_mode: str,
+    len_bucket: str,
+    rule: dict[str, Any],
+) -> bool:
+    when = rule.get("when")
+    when = when if isinstance(when, dict) else {}
+
+    intent_in = [str(v) for v in list(when.get("intent_in") or []) if str(v).strip()]
+    if intent_in and str(intent or "").strip().lower() not in {v.lower() for v in intent_in}:
+        return False
+
+    mode_in = [str(v) for v in list(when.get("retrieval_mode_in") or []) if str(v).strip()]
+    if mode_in and str(retrieval_mode or "").strip().lower() not in {v.lower() for v in mode_in}:
+        return False
+
+    bucket_in = [str(v) for v in list(when.get("query_len_bucket_in") or []) if str(v).strip()]
+    if bucket_in and str(len_bucket or "").strip().lower() not in {v.lower() for v in bucket_in}:
+        return False
+
+    contains_any = [str(v) for v in list(when.get("contains_any") or []) if str(v).strip()]
+    if contains_any:
+        q_fold = str(query or "").casefold()
+        if not any(str(token).casefold() in q_fold for token in contains_any):
+            return False
+
+    has_quotes = when.get("has_quotes")
+    if has_quotes is not None:
+        q = str(query or "")
+        query_has_quotes = any(ch in q for ch in ("'", '"', "“", "”", "‘", "’", "`"))
+        if bool(query_has_quotes) != bool(has_quotes):
+            return False
+
+    has_digits = when.get("has_digits")
+    if has_digits is not None:
+        query_has_digits = any(ch.isdigit() for ch in str(query or ""))
+        if bool(query_has_digits) != bool(has_digits):
+            return False
+
+    return True
+
+
+def route_adaptive_retrieval_overrides(
+    *,
+    query: str,
+    retrieval_mode: str,
+    intent_meta: Dict[str, Any] | None = None,
+    adaptive_router_policy: Dict[str, Any] | None = None,
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Evaluate optional adaptive routing policy and return (overrides, meta).
+
+    The policy uses only low-cardinality signals and never returns raw query text.
+    """
+    policy = normalize_adaptive_router_policy(adaptive_router_policy)
+    if policy is None:
+        return {}, {"enabled": False, "used": False}
+
+    intent = str(((intent_meta or {}).get("intent")) or "").strip().lower()
+    if not intent:
+        intent, _ = classify_query_intent(query)
+    mode_norm = normalize_retrieval_mode(retrieval_mode or "hybrid")
+    len_bucket = _query_len_bucket(query)
+
+    matched_rule_ids: list[str] = []
+    overrides: dict[str, Any] = {}
+    for rule in list(policy.get("rules") or []):
+        if not isinstance(rule, dict):
+            continue
+        if not _adaptive_rule_matches(
+            query=query,
+            intent=intent,
+            retrieval_mode=mode_norm,
+            len_bucket=len_bucket,
+            rule=rule,
+        ):
+            continue
+        rid = str(rule.get("rule_id") or "").strip()[:40]
+        if rid:
+            matched_rule_ids.append(rid)
+        for key, value in dict(rule.get("overrides") or {}).items():
+            overrides[str(key)] = value
+
+    meta = {
+        "enabled": True,
+        "used": bool(overrides),
+        "rule_count": int(len(list(policy.get("rules") or []))),
+        "matched_rule_ids": matched_rule_ids[:8],
+        "signals": {
+            "intent": str(intent or "general"),
+            "retrieval_mode": str(mode_norm or "hybrid"),
+            "query_len_bucket": str(len_bucket),
+            "has_quotes": bool(any(ch in str(query or "") for ch in ("'", '"', "“", "”", "‘", "’", "`"))),
+            "has_digits": bool(any(ch.isdigit() for ch in str(query or ""))),
+        },
+        "overrides": sorted(list(overrides.keys())),
+    }
+    return overrides, meta
+
+
+__all__ = [
+    "_ADAPTIVE_ROUTER_POLICY_SCHEMA_V1",
+    "_INTENT_ROUTER_POLICY_SCHEMA_V1",
+    "classify_query_intent",
+    "normalize_adaptive_router_policy",
+    "normalize_intent_router_policy",
+    "route_adaptive_retrieval_overrides",
+    "route_retrieval_preset",
+]

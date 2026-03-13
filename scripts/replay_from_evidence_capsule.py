@@ -19,27 +19,32 @@ def _load_json(path: Path) -> dict[str, Any]:
     return obj
 
 
-def _recompute_capsule_hash(capsule: dict[str, Any]) -> str:
-    from app.rag.core.hashing import stable_json_hash
-
-    payload = dict(capsule)
-    payload.pop("capsule_hash", None)
-    return stable_json_hash(payload, length=24)
-
-
-def run(*, capsule_path: Path) -> dict[str, Any]:
-    from app.rag.core.evidence_capsule_builder import EVIDENCE_CAPSULE_SCHEMA_V1, validate_evidence_capsule
+def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = False) -> dict[str, Any]:
+    from app.rag.core.evidence_capsule_builder import (
+        EVIDENCE_CAPSULE_SCHEMA_V1,
+        recompute_capsule_hash,
+        validate_evidence_capsule,
+        verify_evidence_capsule_signature,
+    )
 
     capsule = _load_json(capsule_path)
-    ok, reason = validate_evidence_capsule(capsule)
+    ok, reason = validate_evidence_capsule(
+        capsule,
+        strict=bool(strict),
+        verify_signature=bool(verify_signature),
+    )
     if not ok:
         raise ValueError(f"invalid_capsule:{reason}")
     if str(capsule.get("schema") or "") != EVIDENCE_CAPSULE_SCHEMA_V1:
         raise ValueError("unsupported_capsule_schema")
 
     expected_hash = str(capsule.get("capsule_hash") or "").strip()
-    actual_hash = _recompute_capsule_hash(capsule)
+    actual_hash = recompute_capsule_hash(capsule)
     hash_valid = bool(expected_hash and expected_hash == actual_hash)
+    signature_valid = None
+    signature_reason = ""
+    if verify_signature:
+        signature_valid, signature_reason = verify_evidence_capsule_signature(capsule)
 
     retrieval_summary = capsule.get("retrieval_summary") if isinstance(capsule.get("retrieval_summary"), dict) else {}
     retrieval_contract = capsule.get("retrieval_contract") if isinstance(capsule.get("retrieval_contract"), dict) else {}
@@ -61,6 +66,8 @@ def run(*, capsule_path: Path) -> dict[str, Any]:
         "capsule_hash": expected_hash,
         "capsule_hash_recomputed": actual_hash,
         "capsule_hash_valid": hash_valid,
+        "signature_valid": signature_valid,
+        "signature_reason": signature_reason or None,
         "replay_request": replay_request,
         "must_recall": {
             "status": str(must_recall.get("status") or ""),
@@ -81,10 +88,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--capsule", required=True, help="Path to evidence capsule JSON")
     ap.add_argument("--out", default="", help="Optional output path")
     ap.add_argument("--compact", action="store_true", help="Print compact JSON")
+    ap.add_argument("--no-strict", action="store_true", help="Disable strict integrity checks")
+    ap.add_argument("--verify-signature", action="store_true", help="Require signature verification")
     args = ap.parse_args(argv)
 
     try:
-        result = run(capsule_path=Path(str(args.capsule)).resolve())
+        result = run(
+            capsule_path=Path(str(args.capsule)).resolve(),
+            strict=not bool(args.no_strict),
+            verify_signature=bool(args.verify_signature),
+        )
     except Exception as exc:
         print(f"[replay_from_evidence_capsule] ERROR: {exc}", file=sys.stderr)
         return 1

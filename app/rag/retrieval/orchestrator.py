@@ -16,6 +16,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -49,12 +50,16 @@ from app.rag.core.text import (
 )
 from app.rag.engine import get_rag_engine
 from app.rag.kg.pipeline import kg_search
-from app.rag.policy.intent_router import route_retrieval_preset
+from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_retrieval_preset
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
     evaluate_required_source_keys,
     normalize_source_keys,
+)
+from app.rag.policy.must_recall_auto import (
+    infer_expected_source_keys,
+    infer_required_anchor_fields,
 )
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
@@ -67,6 +72,7 @@ from app.rag.rerank_result_cache import (
 )
 from app.rag.reranker.factory import describe_reranker_provider, get_reranker
 from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.contextual_followup import build_contextual_followup_query
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retriever import hybrid_retriever
 from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
@@ -715,6 +721,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
     kg_result_cached: dict[str, Any] | None = None
     intent_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
+    adaptive_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
 
     rewrite_enabled_req = state.get("enable_query_rewrite")
     rewrite_enabled = bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
@@ -791,19 +798,80 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     if contract_must_recall_strict:
         must_recall_enabled = True
 
+    explicit_expected_source_keys = state.get("must_recall_expected_source_keys") is not None
     raw_expected_source_keys = (
         state.get("must_recall_expected_source_keys")
-        if state.get("must_recall_expected_source_keys") is not None
+        if explicit_expected_source_keys
         else getattr(settings, "RETRIEVAL_MUST_RECALL_REQUIRED_SOURCE_KEYS", "")
     )
     must_recall_expected_source_keys = normalize_source_keys(raw_expected_source_keys)
+    must_recall_auto_expected_source_keys_enabled = bool(
+        state.get("must_recall_auto_expected_source_keys_enabled")
+        if state.get("must_recall_auto_expected_source_keys_enabled") is not None
+        else getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_ENABLED", True)
+    )
+    must_recall_auto_expected_source_keys: list[str] = []
+    must_recall_auto_expected_source_keys_reason_codes: list[str] = []
+    must_recall_auto_expected_source_keys_confidence = "none"
+    must_recall_auto_expected_source_keys_applied = False
+    if (
+        bool(must_recall_enabled)
+        and bool(must_recall_auto_expected_source_keys_enabled)
+        and not must_recall_expected_source_keys
+        and not explicit_expected_source_keys
+    ):
+        auto_max_keys = max(1, int(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX", 12) or 12))
+        allow_filter = bool(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_INFER_FROM_METADATA_FILTER", True))
+        meta_filter = state.get("metadata_filter") if allow_filter else None
+        inferred = infer_expected_source_keys(
+            query=query_for_retrieval,
+            metadata_filter=(meta_filter if isinstance(meta_filter, dict) else None),
+            max_keys=auto_max_keys,
+        )
+        must_recall_auto_expected_source_keys = normalize_source_keys(list(inferred.get("expected_source_keys") or []))
+        must_recall_auto_expected_source_keys_reason_codes = [
+            str(v) for v in list(inferred.get("reason_codes") or []) if str(v).strip()
+        ][:8]
+        must_recall_auto_expected_source_keys_confidence = str(inferred.get("confidence") or "none")
+        if must_recall_auto_expected_source_keys:
+            must_recall_expected_source_keys = must_recall_auto_expected_source_keys
+            must_recall_auto_expected_source_keys_applied = True
 
+    explicit_required_anchor_fields = state.get("must_recall_required_anchor_fields") is not None
     raw_required_anchor_fields = (
         state.get("must_recall_required_anchor_fields")
-        if state.get("must_recall_required_anchor_fields") is not None
+        if explicit_required_anchor_fields
         else getattr(settings, "RETRIEVAL_MUST_RECALL_REQUIRED_ANCHOR_FIELDS", "")
     )
     must_recall_required_anchor_fields = normalize_anchor_fields(raw_required_anchor_fields)
+    must_recall_auto_required_anchor_fields_enabled = bool(
+        state.get("must_recall_auto_required_anchor_fields_enabled")
+        if state.get("must_recall_auto_required_anchor_fields_enabled") is not None
+        else getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_REQUIRED_ANCHOR_FIELDS_ENABLED", True)
+    )
+    must_recall_auto_required_anchor_fields: list[str] = []
+    must_recall_auto_required_anchor_fields_reason_codes: list[str] = []
+    must_recall_auto_required_anchor_fields_applied = False
+    if bool(must_recall_enabled) and bool(must_recall_auto_required_anchor_fields_enabled):
+        inferred_anchor = infer_required_anchor_fields(
+            query=query_for_retrieval,
+            default_fields=(
+                must_recall_required_anchor_fields
+                if must_recall_required_anchor_fields
+                else list(DEFAULT_EVIDENCE_ANCHOR_FIELDS)
+            ),
+        )
+        must_recall_auto_required_anchor_fields = normalize_anchor_fields(
+            list(inferred_anchor.get("required_anchor_fields") or [])
+        )
+        must_recall_auto_required_anchor_fields_reason_codes = [
+            str(v) for v in list(inferred_anchor.get("reason_codes") or []) if str(v).strip()
+        ][:8]
+        if must_recall_auto_required_anchor_fields and (
+            bool(inferred_anchor.get("applied")) or not must_recall_required_anchor_fields or not explicit_required_anchor_fields
+        ):
+            must_recall_required_anchor_fields = must_recall_auto_required_anchor_fields
+            must_recall_auto_required_anchor_fields_applied = True
     if not must_recall_required_anchor_fields and must_recall_enabled:
         must_recall_required_anchor_fields = list(DEFAULT_EVIDENCE_ANCHOR_FIELDS)
 
@@ -817,6 +885,60 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     must_recall_second_pass_top_k = max(
         int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 1),
         int(getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K", 80) or 80),
+    )
+    valid_retrieval_modes = {"hybrid", "vector", "keyword", "mmr"}
+    contextual_followup_req = state.get("contextual_followup_enabled")
+    contextual_followup_enabled = (
+        bool(contextual_followup_req)
+        if contextual_followup_req is not None
+        else bool(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED", False))
+    )
+    contextual_followup_mode = str(
+        state.get("contextual_followup_mode")
+        if state.get("contextual_followup_mode") is not None
+        else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "keyword") or "keyword")
+    ).strip().lower() or "keyword"
+    if contextual_followup_mode not in valid_retrieval_modes:
+        contextual_followup_mode = "keyword"
+    contextual_followup_top_k = max(
+        int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 1),
+        int(
+            state.get("contextual_followup_top_k")
+            if state.get("contextual_followup_top_k") is not None
+            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", 40) or 40)
+        ),
+    )
+    contextual_followup_max_docs = max(
+        1,
+        int(
+            state.get("contextual_followup_max_docs")
+            if state.get("contextual_followup_max_docs") is not None
+            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", 4) or 4)
+        ),
+    )
+    contextual_followup_max_terms = max(
+        0,
+        int(
+            state.get("contextual_followup_max_terms")
+            if state.get("contextual_followup_max_terms") is not None
+            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", 4) or 4)
+        ),
+    )
+    contextual_followup_min_term_chars = max(
+        2,
+        int(
+            state.get("contextual_followup_min_term_chars")
+            if state.get("contextual_followup_min_term_chars") is not None
+            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS", 4) or 4)
+        ),
+    )
+    contextual_followup_max_query_chars = max(
+        32,
+        int(
+            state.get("contextual_followup_max_query_chars")
+            if state.get("contextual_followup_max_query_chars") is not None
+            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", 500) or 500)
+        ),
     )
 
     # Step 0.25: Deterministic intent router (optional).
@@ -861,6 +983,44 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 "enabled": True,
                 "used": False,
                 "error": f"intent_router_exception:{str(exc)[:160]}",
+            }
+
+    # Step 0.3: Adaptive retrieval router (optional, policy-driven).
+    #
+    # This layer lets operators rollout bounded routing overrides from offline artifacts
+    # without editing backend code. It is deterministic and uses only low-cardinality signals.
+    adaptive_router_req = state.get("adaptive_router")
+    adaptive_router_enabled = (
+        bool(adaptive_router_req)
+        if adaptive_router_req is not None
+        else bool(getattr(settings, "RAG_ADAPTIVE_ROUTER_ENABLED", False))
+    )
+    adaptive_router_meta = {"enabled": bool(adaptive_router_enabled), "used": False}
+    if bool(adaptive_router_enabled):
+        adaptive_policy = state.get("adaptive_router_policy")
+        if not isinstance(adaptive_policy, dict):
+            policy_path = str(getattr(settings, "RAG_ADAPTIVE_ROUTER_POLICY_PATH", "") or "").strip()
+            if policy_path:
+                try:
+                    p = Path(policy_path)
+                    if p.exists():
+                        adaptive_policy = json.loads(p.read_text(encoding="utf-8"))
+                except Exception:
+                    adaptive_policy = None
+        try:
+            adaptive_overrides, adaptive_router_meta = route_adaptive_retrieval_overrides(
+                query=query_for_retrieval,
+                retrieval_mode=str(state.get("retrieval_mode", "hybrid") or "hybrid"),
+                intent_meta=(intent_router_meta if isinstance(intent_router_meta, dict) else None),
+                adaptive_router_policy=(adaptive_policy if isinstance(adaptive_policy, dict) else None),
+            )
+            for k, v in (adaptive_overrides or {}).items():
+                state[k] = v
+        except Exception as exc:  # noqa: BLE001
+            adaptive_router_meta = {
+                "enabled": True,
+                "used": False,
+                "error": f"adaptive_router_exception:{str(exc)[:160]}",
             }
 
     effective_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
@@ -2274,6 +2434,125 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     hard_fallback_added_docs = 0
     hard_fallback_added_citations = 0
     hard_fallback_retriever_debug: Dict[str, Any] | None = None
+    contextual_followup_attempted = False
+    contextual_followup_used = False
+    contextual_followup_error: str | None = None
+    contextual_followup_elapsed = 0.0
+    contextual_followup_added_docs = 0
+    contextual_followup_added_citations = 0
+    contextual_followup_retriever_debug: Dict[str, Any] | None = None
+    contextual_followup_reason_codes: list[str] = []
+    contextual_followup_selected_terms: list[str] = []
+    contextual_followup_followup_query: str | None = None
+    contextual_followup_query_hash: str | None = None
+
+    # Deterministic contextual follow-up pass:
+    # build one bounded query from current docs and run one extra retrieval pass.
+    # This pass is optional and does not replace must-recall strict second-pass semantics.
+    if bool(contextual_followup_enabled) and bool(docs):
+        spec = build_contextual_followup_query(
+            query=query_for_retrieval,
+            docs=list(docs or []),
+            max_docs=int(contextual_followup_max_docs),
+            max_terms=int(contextual_followup_max_terms),
+            min_term_chars=int(contextual_followup_min_term_chars),
+            max_query_chars=int(contextual_followup_max_query_chars),
+        )
+        if isinstance(spec, dict):
+            contextual_followup_reason_codes = [
+                str(v) for v in list(spec.get("reason_codes") or []) if str(v).strip()
+            ][:8]
+            contextual_followup_selected_terms = [
+                str(v) for v in list(spec.get("selected_terms") or []) if str(v).strip()
+            ][:10]
+            q2 = str(spec.get("query") or "").strip()
+            if q2:
+                contextual_followup_followup_query = q2
+                contextual_followup_query_hash = stable_hash(q2)
+            if bool(spec.get("used")) and q2:
+                contextual_followup_attempted = True
+                citations_before_contextual = build_citations_from_docs(
+                    docs,
+                    retrieval_elapsed_sec=retrieval_elapsed,
+                    retrieval_mode=request_retrieval_mode,
+                    query=query_for_retrieval,
+                )
+                t_cf = time.time()
+                cf_docs: list[Document] = []
+                cf_err: str | None = None
+                try:
+                    contextual_update = dict(retriever_update)
+                    contextual_update.update(
+                        {
+                            "retrieval_mode": str(contextual_followup_mode),
+                            "k": int(contextual_followup_top_k),
+                            "enable_reranker": False,
+                        }
+                    )
+                    contextual_retriever = hybrid_retriever.model_copy(update=contextual_update)
+                    cf_docs = contextual_retriever.invoke(q2) or []
+                    cf_docs = engine._annotate_docs_with_role(cf_docs, "contextual_followup")  # type: ignore[attr-defined]
+                    dbg = getattr(contextual_retriever, "_last_debug_metrics", None)
+                    contextual_followup_retriever_debug = _sanitize_retriever_debug(
+                        dbg if isinstance(dbg, dict) else None
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    cf_docs = []
+                    cf_err = str(exc)[:200]
+
+                contextual_followup_elapsed = max(0.0, float(time.time() - t_cf))
+                retrieval_elapsed += float(contextual_followup_elapsed)
+                retrieval_per_query.append(
+                    {
+                        "kind": "contextual_followup",
+                        "query_chars": len(q2 or ""),
+                        "elapsed_sec": round(float(contextual_followup_elapsed), 3),
+                        "ok": cf_err is None,
+                        "retriever_debug": contextual_followup_retriever_debug,
+                    }
+                )
+                if cf_err:
+                    contextual_followup_error = cf_err
+                    retrieval_errors.append(f"contextual_followup:{cf_err[:160]}")
+
+                if cf_docs:
+                    merged_docs = list(docs or [])
+                    seen_keys: set[str] = set()
+                    for d in merged_docs:
+                        if d is None:
+                            continue
+                        try:
+                            seen_keys.add(_doc_key(d))
+                        except Exception:
+                            continue
+
+                    for d in cf_docs:
+                        if d is None:
+                            continue
+                        try:
+                            key = _doc_key(d)
+                        except Exception:
+                            key = None
+                        if key and key in seen_keys:
+                            continue
+                        if key:
+                            seen_keys.add(key)
+                        merged_docs.append(d)
+                        contextual_followup_added_docs += 1
+
+                    if contextual_followup_added_docs > 0:
+                        docs = merged_docs
+                        citations_after_contextual = build_citations_from_docs(
+                            docs,
+                            retrieval_elapsed_sec=retrieval_elapsed,
+                            retrieval_mode=request_retrieval_mode,
+                            query=query_for_retrieval,
+                        )
+                        contextual_followup_added_citations = max(
+                            0,
+                            int(len(citations_after_contextual) - len(citations_before_contextual)),
+                        )
+                        contextual_followup_used = True
 
     citations = build_citations_from_docs(
         docs,
@@ -2586,6 +2865,33 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     )
     metrics["must_recall_expected_source_keys"] = list(must_recall_expected_source_keys or [])
     metrics["must_recall_required_anchor_fields"] = list(must_recall_required_anchor_fields or [])
+    metrics["must_recall_auto_expected_source_keys_enabled"] = bool(
+        must_recall_auto_expected_source_keys_enabled
+    )
+    metrics["must_recall_auto_expected_source_keys_applied"] = bool(
+        must_recall_auto_expected_source_keys_applied
+    )
+    metrics["must_recall_auto_expected_source_keys"] = list(
+        must_recall_auto_expected_source_keys or []
+    )
+    metrics["must_recall_auto_expected_source_keys_reason_codes"] = list(
+        must_recall_auto_expected_source_keys_reason_codes or []
+    )
+    metrics["must_recall_auto_expected_source_keys_confidence"] = str(
+        must_recall_auto_expected_source_keys_confidence or "none"
+    )
+    metrics["must_recall_auto_required_anchor_fields_enabled"] = bool(
+        must_recall_auto_required_anchor_fields_enabled
+    )
+    metrics["must_recall_auto_required_anchor_fields_applied"] = bool(
+        must_recall_auto_required_anchor_fields_applied
+    )
+    metrics["must_recall_auto_required_anchor_fields"] = list(
+        must_recall_auto_required_anchor_fields or []
+    )
+    metrics["must_recall_auto_required_anchor_fields_reason_codes"] = list(
+        must_recall_auto_required_anchor_fields_reason_codes or []
+    )
     metrics["must_recall_status"] = str(must_recall_status)
     metrics["must_recall_passed"] = bool(must_recall_passed)
     metrics["must_recall_missing_source_keys"] = missing_source_keys[:40]
@@ -2601,9 +2907,27 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["must_recall_second_pass_error"] = must_recall_second_pass_error
     if isinstance(must_recall_second_pass_diff, dict):
         metrics["must_recall_second_pass_diff"] = dict(must_recall_second_pass_diff)
+    metrics["contextual_followup_enabled"] = bool(contextual_followup_enabled)
+    metrics["contextual_followup_attempted"] = bool(contextual_followup_attempted)
+    metrics["contextual_followup_used"] = bool(contextual_followup_used)
+    metrics["contextual_followup_mode"] = str(contextual_followup_mode)
+    metrics["contextual_followup_top_k"] = int(contextual_followup_top_k)
+    metrics["contextual_followup_max_docs"] = int(contextual_followup_max_docs)
+    metrics["contextual_followup_max_terms"] = int(contextual_followup_max_terms)
+    metrics["contextual_followup_min_term_chars"] = int(contextual_followup_min_term_chars)
+    metrics["contextual_followup_added_docs"] = int(contextual_followup_added_docs)
+    metrics["contextual_followup_added_citations"] = int(contextual_followup_added_citations)
+    metrics["contextual_followup_reason_codes"] = list(contextual_followup_reason_codes or [])
+    metrics["contextual_followup_selected_terms"] = list(contextual_followup_selected_terms or [])
+    metrics["contextual_followup_query_hash"] = contextual_followup_query_hash
+    metrics["contextual_followup_elapsed_sec"] = round(float(contextual_followup_elapsed or 0.0), 3)
+    metrics["contextual_followup_error"] = contextual_followup_error
     metrics["intent_router_enabled"] = bool(intent_router_meta.get("enabled"))
     metrics["intent_router_used"] = bool(intent_router_meta.get("used"))
     metrics["intent_router"] = intent_router_meta
+    metrics["adaptive_router_enabled"] = bool(adaptive_router_meta.get("enabled"))
+    metrics["adaptive_router_used"] = bool(adaptive_router_meta.get("used"))
+    metrics["adaptive_router"] = adaptive_router_meta
     metrics["retrieval_query_parallelism"] = retrieval_parallelism
     metrics["retrieval_query_count"] = len(retrieval_plan)
     metrics["retrieval_per_query"] = retrieval_per_query[:8]
@@ -2914,6 +3238,20 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
     )
     query_debug["intent_router"] = intent_router_meta
+    query_debug["adaptive_router"] = adaptive_router_meta
+    query_debug["contextual_followup"] = {
+        "enabled": bool(contextual_followup_enabled),
+        "attempted": bool(contextual_followup_attempted),
+        "used": bool(contextual_followup_used),
+        "mode": str(contextual_followup_mode),
+        "top_k": int(contextual_followup_top_k),
+        "added_docs": int(contextual_followup_added_docs),
+        "added_citations": int(contextual_followup_added_citations),
+        "reason_codes": list(contextual_followup_reason_codes or []),
+        "selected_terms": list(contextual_followup_selected_terms or []),
+        "query": (str(contextual_followup_followup_query)[:220] if contextual_followup_followup_query else None),
+        "error": contextual_followup_error,
+    }
     query_debug["parse_quality"] = {
         "considered": int((parse_quality_summary or {}).get("considered") or 0),
         "low_ratio": float((parse_quality_summary or {}).get("low_ratio") or 0.0),
@@ -2939,6 +3277,19 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
         "must_recall_missing_source_keys": list(missing_source_keys or [])[:20],
         "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
+        "must_recall_auto_expected_source_keys": {
+            "enabled": bool(must_recall_auto_expected_source_keys_enabled),
+            "applied": bool(must_recall_auto_expected_source_keys_applied),
+            "keys": list(must_recall_auto_expected_source_keys or []),
+            "reason_codes": list(must_recall_auto_expected_source_keys_reason_codes or []),
+            "confidence": str(must_recall_auto_expected_source_keys_confidence or "none"),
+        },
+        "must_recall_auto_required_anchor_fields": {
+            "enabled": bool(must_recall_auto_required_anchor_fields_enabled),
+            "applied": bool(must_recall_auto_required_anchor_fields_applied),
+            "fields": list(must_recall_auto_required_anchor_fields or []),
+            "reason_codes": list(must_recall_auto_required_anchor_fields_reason_codes or []),
+        },
         "must_recall_anchor_missing_counts": dict(must_recall_anchor_eval.get("missing_counts") or {}),
         "must_recall_fail_reasons": list(must_recall_fail_reasons or [])[:12],
         "contract_fail_reason_taxonomy": str(
@@ -3049,6 +3400,19 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 "expected_source_keys": list(must_recall_expected_source_keys or []),
                 "missing_source_keys": list(missing_source_keys or [])[:40],
                 "required_anchor_fields": list(must_recall_required_anchor_fields or []),
+                "auto_expected_source_keys": {
+                    "enabled": bool(must_recall_auto_expected_source_keys_enabled),
+                    "applied": bool(must_recall_auto_expected_source_keys_applied),
+                    "keys": list(must_recall_auto_expected_source_keys or []),
+                    "reason_codes": list(must_recall_auto_expected_source_keys_reason_codes or []),
+                    "confidence": str(must_recall_auto_expected_source_keys_confidence or "none"),
+                },
+                "auto_required_anchor_fields": {
+                    "enabled": bool(must_recall_auto_required_anchor_fields_enabled),
+                    "applied": bool(must_recall_auto_required_anchor_fields_applied),
+                    "fields": list(must_recall_auto_required_anchor_fields or []),
+                    "reason_codes": list(must_recall_auto_required_anchor_fields_reason_codes or []),
+                },
                 "anchor_missing_counts": dict(must_recall_anchor_eval.get("missing_counts") or {}),
                 "fail_reasons": list(must_recall_fail_reasons or [])[:12],
                 "second_pass": {
@@ -3069,6 +3433,24 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             },
         },
         "intent_router": intent_router_meta,
+        "adaptive_router": adaptive_router_meta,
+        "contextual_followup": {
+            "enabled": bool(contextual_followup_enabled),
+            "attempted": bool(contextual_followup_attempted),
+            "used": bool(contextual_followup_used),
+            "mode": str(contextual_followup_mode),
+            "top_k": int(contextual_followup_top_k),
+            "max_docs": int(contextual_followup_max_docs),
+            "max_terms": int(contextual_followup_max_terms),
+            "min_term_chars": int(contextual_followup_min_term_chars),
+            "query_hash": contextual_followup_query_hash,
+            "added_docs": int(contextual_followup_added_docs),
+            "added_citations": int(contextual_followup_added_citations),
+            "reason_codes": list(contextual_followup_reason_codes or []),
+            "selected_terms": list(contextual_followup_selected_terms or [])[:10],
+            "elapsed_sec": round(float(contextual_followup_elapsed or 0.0), 3),
+            "error": contextual_followup_error,
+        },
         "hard_fallback": {
             "enabled": bool(hard_fallback_enabled),
             "attempted": bool(hard_fallback_attempted),
@@ -3283,12 +3665,20 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "retrieval_hard_fallback_enabled": bool(hard_fallback_enabled),
             "retrieval_hard_fallback_mode": hard_fallback_mode,
             "retrieval_hard_fallback_top_k": int(hard_fallback_top_k),
+            "adaptive_router": dict(adaptive_router_meta or {}),
             "must_recall_enabled": bool(must_recall_enabled),
             "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
             "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
             "must_recall_second_pass_enabled": bool(must_recall_second_pass_enabled),
             "must_recall_second_pass_mode": str(must_recall_second_pass_mode),
             "must_recall_second_pass_top_k": int(must_recall_second_pass_top_k),
+            "contextual_followup_enabled": bool(contextual_followup_enabled),
+            "contextual_followup_mode": str(contextual_followup_mode),
+            "contextual_followup_top_k": int(contextual_followup_top_k),
+            "contextual_followup_max_docs": int(contextual_followup_max_docs),
+            "contextual_followup_max_terms": int(contextual_followup_max_terms),
+            "contextual_followup_min_term_chars": int(contextual_followup_min_term_chars),
+            "contextual_followup_max_query_chars": int(contextual_followup_max_query_chars),
             "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
             "rag_evidence_require_spans_enabled": bool(evidence_span_strict_enabled),
             "retrieval_parse_quality_low_threshold": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35),

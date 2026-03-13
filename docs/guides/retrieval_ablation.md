@@ -147,3 +147,21 @@ python scripts/retrieval_ablation.py \
 - 每次只改变 1-2 个维度，避免笛卡尔积爆炸。
 - Nightly 默认组合已经包含一个受限的 `hybrid_rerank` 变体，适合作为“真实 runtime 路径”的基线烟雾测试。
 - 如果你需要对比 KG/lexical/fusion 等更复杂的策略，建议先确认这些参数在回归 run API 中已支持（否则会被脚本提示为 ignored）。
+
+## 从消融产物生成 Adaptive Router 策略（G4）
+
+当你希望把离线评测信号转成线上路由覆盖规则，可以基于 benchmark 报告生成策略工件：
+
+```bash
+python scripts/generate_adaptive_router_policy.py \
+  --benchmark-report ./ablation_out/sample_retrieval_bench.json \
+  --out ./ablation_out/adaptive_router_policy.v1.json
+```
+
+输出 schema：`mimirq.adaptive_router_policy.v1`
+
+建议流程：
+
+1. 先在测试环境用 `adaptive_router_policy` 请求级注入验证规则命中。
+2. 再切到 `RAG_ADAPTIVE_ROUTER_ENABLED=true` + `RAG_ADAPTIVE_ROUTER_POLICY_PATH=...`。
+3. 如果线上指标恶化，优先关开关回滚，再排查具体 `matched_rule_ids`。

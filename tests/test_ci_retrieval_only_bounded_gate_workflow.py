@@ -11,6 +11,10 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "diff_queryset_health_snapshots.py" in text
     assert "ci/retrieval_thresholds.v2.json" in text
     assert "validate_queryset_health_policy.py" in text
+    assert "ci/parser_strict_profile.v1.json" in text
+    assert "generate_adaptive_router_policy.py" in text
+    assert "answer_quality_gate.py" in text
+    assert "ci/answer_quality_thresholds.v1.json" in text
     assert "ci/queryset_health_snapshot_baseline.v1.json" in text
     assert "ci/queryset_health_snapshot_hybrid_baseline.v1.json" in text
     assert "ci/queryset_health_snapshot_sparse_baseline.v1.json" in text
@@ -29,6 +33,9 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "artifacts/queryset_health.diff.sparse.md" in text
     assert "artifacts/sample_retrieval_bench.colbert.json" in text
     assert "artifacts/sample_retrieval_bench.sparse.json" in text
+    assert "artifacts/adaptive_router_policy.v1.json" in text
+    assert "artifacts/answer_quality.summary.json" in text
+    assert "artifacts/answer_quality.gate.json" in text
     assert "ci_retrieval_only_bounded_gate_colbert" in text
     assert "ci_retrieval_only_bounded_gate_sparse" in text
     assert "ci_retrieval_only_bounded_gate_hybrid" in text

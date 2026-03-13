@@ -9,6 +9,7 @@ from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.repository import AliasRepository, EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search import graph_embeddings as graph_embeddings_mod
 from app.rag.kg.search.config import SearchConfig
+from app.rag.kg.search.query_mode import build_mode_aware_recall_overrides, normalize_kg_query_mode
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
@@ -52,10 +53,23 @@ class RecallSearcher:
             alias_repo = AliasRepository(session)
             event_repo = EventRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
-            max_events = int(config.recall.max_events)
+            mode_norm = normalize_kg_query_mode(getattr(config, "query_mode", "auto"), default="global")
+            mode_overrides = build_mode_aware_recall_overrides(
+                mode=mode_norm,
+                max_events=int(config.recall.max_events),
+                max_entities=int(config.recall.max_entities),
+                final_entity_count=int(config.recall.final_entity_count),
+                entity_weight_threshold=float(config.recall.entity_weight_threshold),
+            )
+            max_events = int(mode_overrides.get("max_events") or config.recall.max_events)
             max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
             if max_candidates > 0:
                 max_events = min(max_events, max_candidates)
+            max_entities = int(mode_overrides.get("max_entities") or config.recall.max_entities)
+            final_entity_count = int(mode_overrides.get("final_entity_count") or config.recall.final_entity_count)
+            entity_weight_threshold = float(
+                mode_overrides.get("entity_weight_threshold") or config.recall.entity_weight_threshold
+            )
 
             # === Step0: alias-aware query expansion (lexical) ===
             alias_key_ids: set[str] = set()
@@ -64,7 +78,7 @@ class RecallSearcher:
                 alias_hits = alias_repo.match_aliases(
                     query=str(config.query or ""),
                     tenant_id=tenant_id,
-                    limit=max(0, int(config.recall.max_entities)),
+                    limit=max(0, int(max_entities)),
                 )
             except Exception:
                 alias_hits = []
@@ -381,7 +395,7 @@ class RecallSearcher:
                     raw_entities = filtered_entities
             key_query_related = [
                 e for e in raw_entities if e.get("similarity", 0.0) >= config.recall.entity_similarity_threshold
-            ][: config.recall.max_entities]
+            ][: max_entities]
 
             # clues
             for ent in key_query_related:
@@ -404,7 +418,13 @@ class RecallSearcher:
 
             # === Optional Step1.5: keys -> neighbor entities (relations) ===
             relation_neighbor_ids: List[str] = []
-            relation_debug: Dict[str, Any] = {"enabled": False}
+            relation_debug: Dict[str, Any] = {
+                "enabled": False,
+                "query_mode": str(mode_norm),
+                "query_mode_reason_codes": [
+                    str(x) for x in list(mode_overrides.get("reason_codes") or []) if str(x).strip()
+                ][:8],
+            }
             if config.relation_expansion_enabled is None:
                 relation_enabled = bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)) and bool(
                     getattr(settings, "KG_RELATION_ENABLED", False)
@@ -438,6 +458,10 @@ class RecallSearcher:
                     if tenant_uuid is not None:
                         relation_debug = {
                             "enabled": True,
+                            "query_mode": str(mode_norm),
+                            "query_mode_reason_codes": [
+                                str(x) for x in list(mode_overrides.get("reason_codes") or []) if str(x).strip()
+                            ][:8],
                             "min_confidence": float(min_confidence),
                             "max_edges": int(max_edges),
                             "max_neighbors": int(max_neighbors),
@@ -702,10 +726,10 @@ class RecallSearcher:
                     "weight": key_weights.get(e["entity_id"], 0.0),
                 }
                 for e in key_query_related
-                if key_weights.get(e["entity_id"], 0.0) >= config.recall.entity_weight_threshold
+                if key_weights.get(e["entity_id"], 0.0) >= entity_weight_threshold
             ]
             key_final.sort(key=lambda x: x.get("weight", 0.0), reverse=True)
-            key_final = key_final[: config.recall.final_entity_count]
+            key_final = key_final[: final_entity_count]
 
             return RecallResult(
                 query_vector=query_vec,
