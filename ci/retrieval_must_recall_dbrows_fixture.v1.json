@@ -1,0 +1,24 @@
+{
+  "schema": "mimirq.retrieval_must_recall_dbrows_fixture.v1",
+  "description": "Deterministic dbrows must-recall fixture for CI gate and offline replay.",
+  "cases": [
+    {
+      "id": "dbrows-users-source-key",
+      "question": "users 表里有谁",
+      "must_recall_expected_source_keys": [
+        "demo.users"
+      ],
+      "required_anchor_fields": [
+        "chunk_id",
+        "document_id",
+        "row_source_table",
+        "row_source_sync_token"
+      ],
+      "expected": {
+        "must_recall_status": "passed",
+        "row_source_table": "demo.users",
+        "row_source_sync_token": "tok-users-v1"
+      }
+    }
+  ]
+}

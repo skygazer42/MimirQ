@@ -88,6 +88,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
     assert "chunk_quality_metrics" in body
     assert "kg_stats" in body
     assert "latest_regression_run" in body
+    assert "must_recall_summary" in body
     assert body["folder_tree"]["total_documents"] == 3
 
 

@@ -21,11 +21,13 @@ Use the following settings to tune alert sensitivity:
 - `RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO` (default `0.5`)
 - `RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED` (default `3`)
 - `RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS` (default `100`)
+- `RETRIEVAL_PARSE_QUALITY_GATE_PROFILE` (default `warn`, supports `off|warn|strict`)
 
 Interpretation:
 
 - A candidate is considered "low parse quality" if `score < LOW_THRESHOLD`.
 - An alert is raised when `low_count / considered >= ALERT_RATIO`.
+- 当 `RETRIEVAL_PARSE_QUALITY_GATE_PROFILE=strict` 且出现 alert 时，会触发 gate block 并强制 abstain。
 
 ## Metrics Contract
 
@@ -43,6 +45,10 @@ Interpretation:
 - `metrics.parse_risk_score`
 - `metrics.parse_risk_reason`
 - `metrics.parse_risk_hardcase_eligible`
+- `metrics.parse_quality_gate_profile`
+- `metrics.parse_quality_gate_violation`
+- `metrics.parse_quality_gate_blocked`
+- `metrics.parse_quality_gate_reason`
 
 `metrics.parse_quality` payload includes:
 
@@ -60,6 +66,7 @@ The stable trace now includes:
 
 - `retrieval_trace.parse_quality`
 - `retrieval_trace.parse_risk`
+- `retrieval_trace.parse_quality_gate`
 
 This mirrors the metrics payload and is safe for offline analysis / replay pipelines.
 
@@ -130,6 +137,20 @@ python scripts/plan_parse_quality_reparse.py \
   - `parse_risk_level` moves from `high/medium` to `low/healthy`
   - `parse_quality_low_ratio` drops
   - CI diff artifact shows parse-risk-tail contraction (`parse_risk_tail_drift`)
+
+## Strict Gate Playbook (Task 30)
+
+建议 rollout 方式：
+
+1. 先 `warn`：观察 `parse_quality_alert_rate` / `parse_risk_high_rate` 的稳定区间。
+2. 再小流量 `strict`：仅对高价值数据集开启，验证拒答率变化是否可接受。
+3. 最后全量 `strict`：当重解析流程可在 SLA 内收敛，再扩大到主链路。
+
+strict 触发后标准动作：
+
+1. 记录 `retrieval_trace.parse_quality_gate` 与 `query_debug.retrieval_contract`。
+2. 启用或确认 parse-risk auto-enqueue 策略（优先高风险文档）。
+3. 重解析后重跑 regression gate，确认 must-recall + provenance 同步恢复。
 
 ## CI Artifact Notes
 

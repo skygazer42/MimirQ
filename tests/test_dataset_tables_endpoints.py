@@ -155,7 +155,20 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(
         mod,
         "run_table_query",
-        lambda **kwargs: {"sql": kwargs.get("sql") or "", "columns": ["a", "b"], "rows": [[1, 2]], "truncated": False},
+        lambda **kwargs: {
+            "sql": kwargs.get("sql") or "",
+            "columns": ["a", "b"],
+            "rows": [[1, 2]],
+            "truncated": False,
+            "planner_execution_mismatch": {
+                "mismatch": False,
+                "reasons": [],
+                "expected_sql_fingerprint": "fp1234abcd",
+                "actual_sql_fingerprint": "fp1234abcd",
+                "expected_tables": ["sheet_0"],
+                "actual_tables": ["sheet_0"],
+            },
+        },
         raising=True,
     )
 
@@ -178,6 +191,7 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
                     "matched_tables": ["sheet_0"],
                 },
                 "planner": {"strategy": "deterministic_heuristic", "reason": "projection"},
+                "sql_fingerprint": "fp1234abcd",
                 "join_provenance": [
                     {
                         "left_table": "sheet_0",
@@ -240,6 +254,8 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     assert float((ask_payload.get("schema_link_diagnostics") or {}).get("score") or 0.0) > 0.0
     assert str((ask_payload.get("planner_diagnostics") or {}).get("strategy") or "")
     assert isinstance(ask_payload.get("join_provenance"), list)
+    assert str(ask_payload.get("sql_fingerprint") or "") == "fp1234abcd"
+    assert bool((ask_payload.get("planner_execution_mismatch") or {}).get("mismatch")) is False
 
 
 def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001

@@ -115,6 +115,10 @@ python scripts/regression_gate.py \
 > - `retrieval_ndcg_at_10`: [0,1]，NDCG@10（证据在 Top10 的排序质量，越高越好）
 > - `retrieval_ndcg_at_20`: [0,1]，NDCG@20（证据在 Top20 的排序质量，越高越好）
 > - `abstain_rate`: [0,1]，拒答率（`abstain_triggered` 的占比；可用于“严格可见证据模式”安全回归）
+> - `must_recall_pass_rate`: [0,1]，must-recall 合同通过率（含 partial-miss recovery）
+> - `parse_quality_alert_rate`: [0,1]，解析质量告警占比
+> - `parse_quality_gate_block_rate`: [0,1]，strict parse gate 阻断占比
+> - `parse_risk_high_rate`: [0,1]，高 parse-risk 占比
 >
 > 注意：`thresholds.json` 支持两种写法：
 > - 简写：`"faithfulness": 0.7`（等价于 `{"min": 0.7}`）
@@ -221,7 +225,21 @@ python scripts/regression_gate.py \
   --retrieval-mode hybrid \
   --out-run-json artifacts/run.detail.json \
   --generate-thresholds-out artifacts/thresholds.generated.json
+
+# 5) 一体化门禁：must-recall + provenance capsule 完整性
+python scripts/must_recall_provenance_gate.py \
+  --run-json artifacts/run.detail.json \
+  --must-recall-min 1.0 \
+  --provenance-min 1.0 \
+  --out artifacts/must_recall_provenance_gate.report.json
 ```
+
+说明：
+
+- `must_recall_provenance_gate.py` 会同时检查：
+  - `must_recall_pass_rate`
+  - provenance 完整性（evidence capsule 存在且包含 capsule/citation hash）
+- 推荐把该 JSON 报告与 regression gate 报告一起上传为 CI artifact，作为发版审计依据。
 
 ## CI 集成（KG Search Gate in PR）
 

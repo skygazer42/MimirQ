@@ -61,3 +61,9 @@ def test_orchestrator_emits_hardcase_candidate_for_empty_evidence(monkeypatch) -
     assert hc.get("reason") in {"no_citations", "abstain"}
     assert isinstance(hc.get("dedupe_key"), str) and len(str(hc.get("dedupe_key") or "")) >= 16
 
+    query_debug = out.get("query_debug") or {}
+    contract_diag = query_debug.get("retrieval_contract") if isinstance(query_debug, dict) else {}
+    contract_diag = contract_diag if isinstance(contract_diag, dict) else {}
+    assert "mode" in contract_diag
+    assert "must_recall_status" in contract_diag
+    assert "contract_fail_reason_taxonomy" in contract_diag

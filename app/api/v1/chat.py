@@ -793,6 +793,9 @@ async def chat(
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
                     retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
+                    must_recall=effective_rag_config.must_recall,
+                    must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+                    must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -860,6 +863,7 @@ async def chat(
                             tenant_id=tenant_id,
                             document_ids=doc_ids_to_use,
                             question=request.message,
+                            must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
                         )
                         if tag_docs:
                             injected_docs.extend(tag_docs)
@@ -935,6 +939,9 @@ async def chat(
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
                     retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
+                    must_recall=effective_rag_config.must_recall,
+                    must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+                    must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -1684,6 +1691,9 @@ async def stream_chat(
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
                     retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
+                    must_recall=effective_rag_config.must_recall,
+                    must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+                    must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -1727,6 +1737,7 @@ async def stream_chat(
                         tenant_id=tenant_id,
                         document_ids=doc_ids_to_use,
                         question=request.message,
+                        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
                     )
                     state["tag_docs"] = tag_docs
                     state["tag_meta"] = tag_meta
@@ -1991,6 +2002,9 @@ async def stream_chat(
                     retrieval_mode=effective_rag_config.retrieval_mode,
                     retrieval_profile=effective_rag_config.retrieval_profile,
                     retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
+                    must_recall=effective_rag_config.must_recall,
+                    must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+                    must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
                     intent_router=effective_rag_config.intent_router,
                     intent_router_policy=effective_rag_config.intent_router_policy,
                     enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,

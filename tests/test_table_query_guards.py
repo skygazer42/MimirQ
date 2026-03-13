@@ -109,3 +109,47 @@ def test_table_query_join_allows_whitelisted_tables(monkeypatch) -> None:  # noq
         )
         assert got["columns"] == ["region", "amount"]
         assert got["rows"] == [["EU", 20], ["APAC", 10]]
+        mismatch = got.get("planner_execution_mismatch") or {}
+        assert mismatch.get("mismatch") is False
+
+
+def test_table_query_reports_planner_execution_mismatch(monkeypatch) -> None:  # noqa: ANN001
+    import pandas as pd  # type: ignore
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    with tempfile.TemporaryDirectory() as td:
+        monkeypatch.setattr(settings, "TABLE_STORE_DIR", str(Path(td) / "table_store"), raising=False)
+
+        xlsx_path = Path(td) / "demo.xlsx"
+        with pd.ExcelWriter(str(xlsx_path), engine="openpyxl") as writer:
+            pd.DataFrame({"user_id": [1, 2], "amount": [10, 20]}).to_excel(writer, sheet_name="orders", index=False)
+            pd.DataFrame({"id": [1, 2], "region": ["APAC", "EU"]}).to_excel(writer, sheet_name="users", index=False)
+
+        import_table_document(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            file_path=xlsx_path,
+            max_rows=100,
+            max_cols=100,
+            sample_rows=2,
+        )
+
+        table_id = f"doc:{document_id}:sheet:0"
+        got = run_table_query(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            table_id=table_id,
+            sql='SELECT * FROM "sheet_0" LIMIT 10',
+            max_rows=10,
+            max_cols=10,
+            max_bytes=100_000,
+            planner_diagnostics={"selected_tables": ["sheet_0"]},
+            expected_sql_fingerprint="deadbeefdeadbeef",
+        )
+        mismatch = got.get("planner_execution_mismatch") or {}
+        assert mismatch.get("mismatch") is True
+        assert "sql_fingerprint_mismatch" in list(mismatch.get("reasons") or [])

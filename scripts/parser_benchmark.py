@@ -118,12 +118,103 @@ def _load_cases(input_dir: Path, *, manifest_path: Optional[Path], max_files: in
     return cases
 
 
+def evaluate_strict_regressions(
+    *,
+    current_summary: dict[str, Any],
+    baseline_summary: dict[str, Any],
+    max_drop_by_metric: dict[str, float],
+) -> dict[str, Any]:
+    failures: list[str] = []
+    by_backend: dict[str, Any] = {}
+    metrics = [
+        str(m).strip()
+        for m in (max_drop_by_metric or {}).keys()
+        if str(m).strip()
+    ]
+    for backend, after in (current_summary or {}).items():
+        if not isinstance(after, dict):
+            continue
+        before = baseline_summary.get(backend)
+        if not isinstance(before, dict):
+            continue
+
+        backend_failures: list[dict[str, Any]] = []
+        for metric in metrics:
+            max_drop = max_drop_by_metric.get(metric)
+            try:
+                allowed_drop = abs(float(max_drop))
+            except Exception:
+                continue
+
+            b_raw = before.get(metric)
+            a_raw = after.get(metric)
+            if b_raw is None or a_raw is None:
+                continue
+            try:
+                b = float(b_raw)
+                a = float(a_raw)
+            except Exception:
+                continue
+            delta = float(a - b)
+            if delta < (0.0 - allowed_drop):
+                backend_failures.append(
+                    {
+                        "metric": metric,
+                        "before": b,
+                        "after": a,
+                        "delta": round(delta, 6),
+                        "max_drop": allowed_drop,
+                    }
+                )
+                failures.append(
+                    f"{backend}.{metric} regressed by {delta:.4f} (before={b:.4f}, after={a:.4f}, allowed_drop={allowed_drop:.4f})"
+                )
+
+        if backend_failures:
+            by_backend[str(backend)] = backend_failures
+
+    return {
+        "passed": bool(len(failures) == 0),
+        "failures": failures,
+        "by_backend": by_backend,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Parser benchmark harness (golden set optional).")
     ap.add_argument("--input-dir", required=True, help="Directory containing input files (and optional golden markdown files).")
     ap.add_argument("--manifest", default="", help="Optional JSON manifest describing cases + golden markdown paths.")
     ap.add_argument("--out", default="runs/parser_benchmark.json", help="Output JSON path.")
     ap.add_argument("--baseline", default="", help="Optional previous report JSON to diff against (adds report.regressions).")
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail with non-zero exit when baseline diff exceeds strict regression thresholds.",
+    )
+    ap.add_argument(
+        "--strict-max-ok-rate-drop",
+        type=float,
+        default=0.02,
+        help="Allowed maximum drop for summary.<backend>.ok_rate under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-parse-score-drop",
+        type=float,
+        default=0.03,
+        help="Allowed maximum drop for summary.<backend>.parse_score_mean under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-golden-similarity-drop",
+        type=float,
+        default=0.03,
+        help="Allowed maximum drop for summary.<backend>.golden_similarity_mean under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-golden-coverage-drop",
+        type=float,
+        default=0.05,
+        help="Allowed maximum drop for summary.<backend>.golden_coverage_ratio_mean under --strict.",
+    )
     ap.add_argument("--max-files", type=int, default=50, help="Max number of files/cases to run.")
     ap.add_argument(
         "--backends",
@@ -317,9 +408,55 @@ def main() -> int:
             "baseline": str(baseline_path),
             "by_backend": diffs,
         }
+    elif bool(args.strict):
+        report["strict_gate"] = {
+            "enabled": True,
+            "passed": False,
+            "reason": "baseline_required",
+            "failures": ["strict mode requires --baseline to exist"],
+        }
+        out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[parser-benchmark] wrote {out_path}")
+        print("[parser-benchmark] strict gate failed: baseline_required")
+        return 2
+
+    if bool(args.strict):
+        baseline_summary = (
+            (baseline_obj.get("summary") if isinstance(baseline_obj, dict) else {})
+            if baseline_path and baseline_path.exists()
+            else {}
+        )
+        baseline_summary = baseline_summary if isinstance(baseline_summary, dict) else {}
+        strict_result = evaluate_strict_regressions(
+            current_summary=summary,
+            baseline_summary=baseline_summary,
+            max_drop_by_metric={
+                "ok_rate": float(args.strict_max_ok_rate_drop),
+                "parse_score_mean": float(args.strict_max_parse_score_drop),
+                "golden_similarity_mean": float(args.strict_max_golden_similarity_drop),
+                "golden_coverage_ratio_mean": float(args.strict_max_golden_coverage_drop),
+            },
+        )
+        report["strict_gate"] = {
+            "enabled": True,
+            "thresholds": {
+                "ok_rate": float(args.strict_max_ok_rate_drop),
+                "parse_score_mean": float(args.strict_max_parse_score_drop),
+                "golden_similarity_mean": float(args.strict_max_golden_similarity_drop),
+                "golden_coverage_ratio_mean": float(args.strict_max_golden_coverage_drop),
+            },
+            "passed": bool(strict_result.get("passed")),
+            "failures": list(strict_result.get("failures") or []),
+            "by_backend": dict(strict_result.get("by_backend") or {}),
+        }
 
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[parser-benchmark] wrote {out_path}")
+    if bool(args.strict):
+        passed = bool(((report.get("strict_gate") or {}).get("passed")))
+        if not passed:
+            print("[parser-benchmark] strict gate failed")
+            return 2
     return 0
 
 

@@ -23,6 +23,7 @@ from uuid import UUID
 import pandas as pd  # type: ignore
 
 from app.core.config import settings
+from app.services.table_sql_fingerprint import fingerprint_sql
 from app.services.table_store import (
     format_table_id,
     parse_table_id,
@@ -1004,6 +1005,42 @@ def _extract_sql_table_refs(sql: str) -> list[str]:
     return refs
 
 
+def evaluate_planner_execution_mismatch(
+    *,
+    planner_diagnostics: dict[str, Any] | None,
+    expected_sql_fingerprint: str | None,
+    executed_sql: str,
+) -> dict[str, Any]:
+    planner = planner_diagnostics if isinstance(planner_diagnostics, dict) else {}
+    expected_fp = str(expected_sql_fingerprint or planner.get("sql_fingerprint") or "").strip()
+    actual_fp = fingerprint_sql(str(executed_sql or ""), length=16)
+    mismatch_reasons: list[str] = []
+
+    expected_tables = [
+        str(v).strip()
+        for v in list(planner.get("selected_tables") or [])
+        if str(v).strip()
+    ]
+    actual_tables = _extract_sql_table_refs(str(executed_sql or ""))
+
+    if expected_fp and actual_fp and expected_fp != actual_fp:
+        mismatch_reasons.append("sql_fingerprint_mismatch")
+    if expected_tables:
+        expected_set = set(expected_tables)
+        actual_set = set(actual_tables)
+        if actual_set and not actual_set.issubset(expected_set):
+            mismatch_reasons.append("sql_table_set_mismatch")
+
+    return {
+        "expected_sql_fingerprint": expected_fp or None,
+        "actual_sql_fingerprint": actual_fp or None,
+        "expected_tables": expected_tables,
+        "actual_tables": actual_tables,
+        "mismatch": bool(mismatch_reasons),
+        "reasons": mismatch_reasons[:8],
+    }
+
+
 def run_table_query(
     *,
     tenant_id: UUID,
@@ -1014,6 +1051,8 @@ def run_table_query(
     max_cols: int,
     max_bytes: int,
     allowed_sql_tables: list[str] | None = None,
+    planner_diagnostics: dict[str, Any] | None = None,
+    expected_sql_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     """
     Execute a SELECT-only query against a single table within a document store.
@@ -1137,7 +1176,18 @@ def run_table_query(
                 truncated = True
                 break
 
-        return {"columns": col_names, "rows": out_rows, "truncated": bool(truncated), "sql": normalized}
+        planner_mismatch = evaluate_planner_execution_mismatch(
+            planner_diagnostics=planner_diagnostics,
+            expected_sql_fingerprint=expected_sql_fingerprint,
+            executed_sql=normalized,
+        )
+        return {
+            "columns": col_names,
+            "rows": out_rows,
+            "truncated": bool(truncated),
+            "sql": normalized,
+            "planner_execution_mismatch": planner_mismatch,
+        }
     finally:
         try:
             conn.close()

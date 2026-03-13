@@ -19,3 +19,4 @@ Update it at the end of each wave commit.
 | Wave20 | planned | - | Visualization + explainability workbenches |
 | Wave21 | planned | - | Continuous evaluation + CI gates |
 | Wave22 | planned | - | Enterprise governance/security/compliance |
+| Wave23 | done | (this commit) | Must-recall/provenance gap closure: deterministic TAG planning, parse-quality hard gate wiring, evidence capsule + replay + one-shot CI gate |

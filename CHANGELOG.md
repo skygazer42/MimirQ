@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Chat-side default retrieval profile setting (`CHAT_DEFAULT_RETRIEVAL_PROFILE`) with omitted-knob apply semantics and explicit-knob override preservation.
 - TAG deterministic NL2SQL fallback path (`generate_sql_for_table_with_mode`) and no-key behavior for chat TAG.
 - Parse-quality retrieval diagnostics (`metrics.parse_quality`, `retrieval_trace.parse_quality`) and operator guide `docs/guides/parse_quality_retrieval_diagnostics.md`.
+- Must-recall strict diagnostics and partial-miss recovery signals in retrieval contract trace/query-debug.
+- Deterministic TAG planner upgrades: schema-graph candidate scoring, ambiguity controls, SQL fingerprint, and planner-vs-execution mismatch diagnostics.
+- Evidence capsule contract (`mimirq.evidence_capsule.v1`) with citation/anchor hash fields, persistence API, replay CLI, and one-shot must-recall+provenance gate script.
+- CI parser benchmark strict-gate diff artifacts and must-recall/provenance gate artifact wiring.
 
 ### Retrieval Quality
 
@@ -46,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Evidence citations now surface additional per-channel sparse scores (`lexical_score`, `sparse_score`) for debugging/training.
 - Retrieval profiles endpoint now exposes runtime `chat_default_profile` and `chat_default_effective`.
 - TAG citation payloads now include stable table traceability keys (`table_id`, `sheet_index`, `sheet_name`, `sql_generation_mode`) for tag hits.
+- RAG evidence retrieve response now optionally returns immutable `evidence_capsule` payload for replay/audit.
 
 ### Fixed
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 
 from langchain_core.documents import Document
 
@@ -175,3 +176,18 @@ def test_db_row_citation_traceability_fields() -> None:
     assert str(c0.get("row_source_table") or "") == "demo.users"
     assert str(c0.get("row_source_sync_token") or "") == "tok-users-v1"
     assert list(c0.get("row_source_pk_hashes") or []) == ["pkhash-1"]
+
+
+def test_dbrows_must_recall_fixture_contract_v1() -> None:
+    fixture_path = Path("ci/retrieval_must_recall_dbrows_fixture.v1.json")
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert str(payload.get("schema") or "") == "mimirq.retrieval_must_recall_dbrows_fixture.v1"
+    cases = payload.get("cases") if isinstance(payload.get("cases"), list) else []
+    assert len(cases) >= 1
+
+    c0 = cases[0]
+    assert str(c0.get("id") or "")
+    assert str(c0.get("question") or "")
+    assert list(c0.get("must_recall_expected_source_keys") or [])
+    expected = c0.get("expected") if isinstance(c0.get("expected"), dict) else {}
+    assert str(expected.get("must_recall_status") or "") in {"passed", "partial_miss_recovered", "failed"}

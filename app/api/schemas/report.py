@@ -90,6 +90,16 @@ class DatasetParseRiskSummaryOut(BaseModel):
     top_low_quality_documents: List[DatasetParseRiskDocumentOut] = Field(default_factory=list)
 
 
+class DatasetMustRecallSummaryOut(BaseModel):
+    """Best-effort must-recall summary counters derived from latest regression run summary."""
+
+    pass_rate: Optional[float] = None
+    cases_total: int = 0
+    cases_passed: int = 0
+    cases_failed: int = 0
+    status: str = "unavailable"
+
+
 class DatasetGovernanceAuditOut(BaseModel):
     """
     Dataset-level governance audit (best-effort).
@@ -236,6 +246,8 @@ class DatasetReportOut(BaseModel):
 
     # Optional: latest regression run summary for the dataset (best-effort).
     latest_regression_run: Optional[DatasetRegressionRunSummaryOut] = None
+    # Optional: must-recall counters summarized from latest regression run (best-effort).
+    must_recall_summary: Optional[DatasetMustRecallSummaryOut] = None
 
     # Optional: latest precheck summary snapshot for the dataset (best-effort).
     #

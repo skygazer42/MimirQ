@@ -572,6 +572,218 @@ def test_chat_tag_uses_deterministic_sql_when_llm_key_missing(monkeypatch):  # n
     assert "count" in str(payload.get("sql") or "").lower()
 
 
+def test_chat_tag_dbrows_sql_first_forces_deterministic_even_with_llm(monkeypatch):  # noqa: ANN001
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "inventory.sqlite"
+            self.file_type = "dbrows"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "source_ext": ".dbrows",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "demo.inventory",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "sku", "dtype": "text"}, {"name": "qty", "dtype": "int"}],
+                            "sample_rows": [],
+                        }
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test-key", raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_DBROWS_SQL_FIRST_ENABLED", True, raising=False)
+
+    import app.services.chat_tag_service as mod
+
+    monkeypatch.setattr(
+        mod,
+        "generate_sql_for_table",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("LLM SQL path should not be used for dbrows sql-first")),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mod,
+        "generate_sql_for_table_with_metadata",
+        lambda **_kwargs: (
+            'SELECT "sku","qty" FROM "sheet_0" LIMIT 10',
+            "deterministic",
+            {"schema_link": {"score": 0.8, "strategy": "column_overlap"}, "planner": {"strategy": "deterministic_heuristic"}},
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mod,
+        "run_table_query",
+        lambda **kwargs: {"sql": kwargs.get("sql"), "columns": ["sku", "qty"], "rows": [["A1", 2]], "truncated": False},
+        raising=True,
+    )
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="inventory 表里数量",
+    )
+    assert meta["enabled"] is True
+    assert meta["used"] is True
+    assert len(docs) == 1
+
+    payload = json.loads(docs[0].page_content)
+    assert payload.get("sql_generation_mode") == "deterministic"
+    assert str(payload.get("table_id") or "") == table_id
+
+
+def test_chat_tag_must_recall_source_keys_filter_candidates(monkeypatch):  # noqa: ANN001
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_sales = f"doc:{doc_id}:sheet:0"
+    table_inventory = f"doc:{doc_id}:sheet:1"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "mixed.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_sales,
+                            "sheet_index": 0,
+                            "sheet_name": "sales",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}],
+                            "sample_rows": [],
+                        },
+                        {
+                            "table_id": table_inventory,
+                            "sheet_index": 1,
+                            "sheet_name": "inventory",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "qty", "dtype": "int"}],
+                            "sample_rows": [],
+                        },
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MAX_TABLES", 1, raising=False)
+
+    import app.services.chat_tag_service as mod
+
+    chosen: dict[str, str] = {}
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT COUNT(*) AS n FROM "sheet_0" LIMIT 1', raising=True)
+
+    def _fake_run_table_query(**kwargs):  # noqa: ANN001
+        chosen["table_id"] = str(kwargs.get("table_id") or "")
+        return {"sql": kwargs.get("sql"), "columns": ["n"], "rows": [[10]], "truncated": False}
+
+    monkeypatch.setattr(mod, "run_table_query", _fake_run_table_query, raising=True)
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="统计 inventory",
+        must_recall_expected_source_keys=["inventory"],
+    )
+    assert meta.get("must_recall_source_key_match_applied") is True
+    assert meta.get("must_recall_source_key_match_candidates_before") == 2
+    assert meta.get("must_recall_source_key_match_candidates_after") == 1
+    assert len(docs) == 1
+    assert chosen.get("table_id") == table_inventory
+
+
+def test_chat_tag_must_recall_source_keys_miss_returns_empty(monkeypatch):  # noqa: ANN001
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    table_id = f"doc:{doc_id}:sheet:0"
+
+    class _Doc:
+        def __init__(self) -> None:
+            self.id = doc_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.filename = "sales.xlsx"
+            self.file_type = "xlsx"
+            self.status = "completed"
+            self.doc_metadata = {
+                "table_store": {
+                    "version": "1",
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "sheet_index": 0,
+                            "sheet_name": "sales",
+                            "row_count": 10,
+                            "col_count": 2,
+                            "truncated": False,
+                            "columns": [{"name": "amount", "dtype": "int"}],
+                            "sample_rows": [],
+                        }
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(settings, "CHAT_TAG_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+
+    docs, meta = build_chat_tag_context_docs(
+        _FakeDB([_Doc()]),
+        tenant_id=tenant_id,
+        document_ids=[doc_id],
+        question="统计 sales",
+        must_recall_expected_source_keys=["inventory"],
+    )
+    assert docs == []
+    assert str(meta.get("reason") or "") == "must_recall_source_key_miss"
+    assert int(meta.get("must_recall_source_key_match_candidates_after") or 0) == 0
+
+
 def test_chat_tag_selection_tie_break_is_deterministic(monkeypatch):  # noqa: ANN001
     from app.services.chat_tag_service import build_chat_tag_context_docs
 
@@ -794,6 +1006,7 @@ def test_chat_tag_builds_multitable_join_payload(monkeypatch):  # noqa: ANN001
             "columns": ["region", "total"],
             "rows": [["APAC", 100.0]],
             "truncated": False,
+            "planner_execution_mismatch": {"mismatch": False, "reasons": []},
         },
         raising=True,
     )
@@ -816,7 +1029,10 @@ def test_chat_tag_builds_multitable_join_payload(monkeypatch):  # noqa: ANN001
     assert len(join_prov) == 1
     assert str((join_prov[0] or {}).get("left_table") or "").startswith("sheet_")
     assert str((join_prov[0] or {}).get("right_table") or "").startswith("sheet_")
+    assert str(payload.get("sql_fingerprint") or "")
+    assert bool((payload.get("planner_execution_mismatch") or {}).get("mismatch")) is False
 
     md = docs[0].metadata
     assert isinstance(md.get("join_provenance"), list)
     assert list(md.get("join_table_ids") or []) == [table_orders, table_users]
+    assert str(md.get("sql_fingerprint") or "")

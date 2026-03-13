@@ -166,4 +166,6 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
     # SLO: deterministic small corpus should be perfect.
     assert summary["retrieval_hit_at_20"] == 1.0
     assert summary["retrieval_recall"] == 1.0
-
+    assert summary["must_recall_pass_rate"] == 1.0
+    assert summary["must_recall_cases_total"] == 3
+    assert summary["must_recall_cases_failed"] == 0

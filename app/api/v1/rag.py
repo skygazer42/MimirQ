@@ -241,6 +241,9 @@ async def retrieve_preview(
         retrieval_mode=effective_rag_config.retrieval_mode,
         retrieval_profile=effective_rag_config.retrieval_profile,
         retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
+        must_recall=effective_rag_config.must_recall,
+        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+        must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
         intent_router=effective_rag_config.intent_router,
         intent_router_policy=effective_rag_config.intent_router_policy,
         enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -426,6 +429,8 @@ class EvidenceRetrieveResponse(BaseModel):
     abstain_reason: Optional[str] = None
     # Stable, versioned trace for downstream provenance parsing (separate from metrics/query_debug).
     retrieval_trace: Optional[Dict[str, Any]] = None
+    # Immutable replay capsule (best-effort, optional).
+    evidence_capsule: Optional[Dict[str, Any]] = None
     # Optional: debug payload for query normalization/expansion (best-effort).
     query_debug: Optional[Dict[str, Any]] = None
 
@@ -534,6 +539,10 @@ async def retrieve_evidence(
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
         retrieval_profile=effective_rag_config.retrieval_profile,
+        retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
+        must_recall=effective_rag_config.must_recall,
+        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+        must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
         intent_router=effective_rag_config.intent_router,
         intent_router_policy=effective_rag_config.intent_router_policy,
         enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
@@ -818,6 +827,27 @@ async def retrieve_evidence(
     except Exception:
         retrieval_trace_payload = None
 
+    evidence_capsule: dict[str, Any] | None = None
+    try:
+        if bool(getattr(settings, "RAG_EVIDENCE_CAPSULE_ENABLED", True)):
+            from app.rag.core.evidence_capsule_builder import build_evidence_capsule
+
+            evidence_capsule = build_evidence_capsule(
+                query_for_retrieval=query_for_retrieval,
+                citations=[c for c in citations if isinstance(c, dict)],
+                metrics=metrics,
+                retrieval_trace=retrieval_trace_payload,
+                query_debug=query_debug if isinstance(query_debug, dict) else None,
+                request_context={
+                    "tenant_id": str(tenant_id),
+                    "dataset_id": str(scope_dataset_id) if scope_dataset_id else None,
+                    "document_ids": [str(d) for d in scope_document_ids[:200]],
+                    "selected_pass": str(selected_pass),
+                },
+            )
+    except Exception:
+        evidence_capsule = None
+
     return EvidenceRetrieveResponse(
         query_for_retrieval=query_for_retrieval,
         citations=citations,
@@ -826,6 +856,7 @@ async def retrieve_evidence(
         abstain_triggered=abstain_triggered,
         abstain_reason=abstain_reason,
         retrieval_trace=retrieval_trace_payload,
+        evidence_capsule=evidence_capsule,
         query_debug=query_debug,
     )
 
@@ -954,6 +985,10 @@ async def prompt_preview(
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
         retrieval_profile=effective_rag_config.retrieval_profile,
+        retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
+        must_recall=effective_rag_config.must_recall,
+        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+        must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
         intent_router=effective_rag_config.intent_router,
         intent_router_policy=effective_rag_config.intent_router_policy,
         enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,

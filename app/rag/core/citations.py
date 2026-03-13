@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.rag.core.hashing import stable_json_hash
 
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
@@ -724,6 +725,22 @@ def build_citations_from_docs(
         if img_url:
             citation["img_url"] = img_url
         citation["has_image"] = bool(has_image)
+
+        anchor_payload = {
+            "document_id": citation.get("document_id"),
+            "chunk_id": citation.get("chunk_id"),
+            "page_number": citation.get("page_number"),
+            "chunk_index": citation.get("chunk_index"),
+            "start_char": citation.get("start_char"),
+            "end_char": citation.get("end_char"),
+            "retrieval_role": citation.get("retrieval_role"),
+            "table_id": citation.get("table_id"),
+            "row_source_table": citation.get("row_source_table"),
+            "row_source_sync_token": citation.get("row_source_sync_token"),
+            "row_source_pk_hashes": citation.get("row_source_pk_hashes"),
+        }
+        citation["evidence_anchor_hash"] = stable_json_hash(anchor_payload, length=16)
+        citation["citation_hash"] = stable_json_hash(citation, length=16)
 
         citations.append(citation)
     return citations

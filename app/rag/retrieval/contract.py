@@ -9,6 +9,8 @@ _MODE_ALIASES = {
     "default": "",
     "deterministic": "deterministic_recall",
     "deterministic_recall": "deterministic_recall",
+    "must_recall": "must_recall_strict",
+    "must_recall_strict": "must_recall_strict",
     "strict": "evidence_strict",
     "strict_visible": "evidence_strict",
     "evidence_strict": "evidence_strict",
@@ -16,7 +18,13 @@ _MODE_ALIASES = {
     "audit_trace": "audit_trace",
 }
 
-VALID_RETRIEVAL_CONTRACT_MODES = {"", "deterministic_recall", "evidence_strict", "audit_trace"}
+VALID_RETRIEVAL_CONTRACT_MODES = {
+    "",
+    "deterministic_recall",
+    "must_recall_strict",
+    "evidence_strict",
+    "audit_trace",
+}
 
 
 def normalize_retrieval_contract_mode(value: Any) -> str:
@@ -38,7 +46,8 @@ def resolve_retrieval_contract_policy(
     if normalized_mode not in VALID_RETRIEVAL_CONTRACT_MODES:
         normalized_mode = ""
 
-    deterministic_recall = normalized_mode == "deterministic_recall"
+    deterministic_recall = normalized_mode in {"deterministic_recall", "must_recall_strict"}
+    must_recall_strict = normalized_mode == "must_recall_strict"
     evidence_strict = normalized_mode == "evidence_strict"
 
     hard_fallback_enabled = bool(hard_fallback_enabled_setting)
@@ -50,17 +59,21 @@ def resolve_retrieval_contract_policy(
         hard_fallback_top_k = max(hard_fallback_top_k, int(requested_top_k or 0), 20)
 
     force_visible_evidence_only = bool(visible_evidence_only_setting or evidence_strict)
-    require_evidence_spans = bool(evidence_span_strict_setting or evidence_strict)
+    require_evidence_spans = bool(evidence_span_strict_setting or evidence_strict or must_recall_strict)
 
     return {
         "mode": normalized_mode or "",
         "deterministic_recall": bool(deterministic_recall),
+        "must_recall_strict": bool(must_recall_strict),
         "hard_fallback_enabled": bool(hard_fallback_enabled),
         "hard_fallback_mode": hard_fallback_mode,
         "hard_fallback_top_k": int(hard_fallback_top_k),
         "force_visible_evidence_only": bool(force_visible_evidence_only),
         "require_evidence_spans": bool(require_evidence_spans),
         "claim_check_required": bool(force_visible_evidence_only),
+        "enable_partial_miss_second_pass": bool(must_recall_strict),
+        "must_recall_required_source_key_match": bool(must_recall_strict),
+        "contract_fail_reason_taxonomy": "mimirq.contract_fail_reason.v1",
     }
 
 
@@ -69,4 +82,3 @@ __all__ = [
     "normalize_retrieval_contract_mode",
     "resolve_retrieval_contract_policy",
 ]
-

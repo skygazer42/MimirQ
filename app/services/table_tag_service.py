@@ -16,6 +16,13 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
+from app.services.table_schema_graph import (
+    infer_schema_relationships_for_tables as infer_schema_relationships_from_graph,
+)
+from app.services.table_schema_graph import (
+    score_join_plan_candidates,
+)
+from app.services.table_sql_fingerprint import fingerprint_sql
 
 _FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 _SCHEMA_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
@@ -432,49 +439,7 @@ def infer_schema_relationships_for_tables(*, tables: list[dict[str, Any]]) -> li
 
     Output is intentionally compact and deterministic to keep traces auditable.
     """
-    normalized: list[dict[str, Any]] = []
-    for raw in tables or []:
-        if not isinstance(raw, dict):
-            continue
-        tname = str(raw.get("table_name") or "").strip()
-        cols = raw.get("columns")
-        if not tname or not isinstance(cols, list):
-            continue
-        normalized.append(
-            {
-                "table_name": tname,
-                "table_aliases": [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()],
-                "columns": [c for c in cols if isinstance(c, dict)],
-            }
-        )
-
-    rels: list[dict[str, Any]] = []
-    for i in range(len(normalized)):
-        for j in range(i + 1, len(normalized)):
-            left = normalized[i]
-            right = normalized[j]
-            rel = _pick_best_relationship_between(
-                left_table=str(left.get("table_name") or ""),
-                left_aliases=list(left.get("table_aliases") or []),
-                left_columns=list(left.get("columns") or []),
-                right_table=str(right.get("table_name") or ""),
-                right_aliases=list(right.get("table_aliases") or []),
-                right_columns=list(right.get("columns") or []),
-            )
-            if not rel:
-                continue
-            rels.append(rel)
-
-    rels.sort(
-        key=lambda r: (
-            -float(r.get("confidence") or 0.0),
-            str(r.get("left_table") or ""),
-            str(r.get("right_table") or ""),
-            str(r.get("left_column") or ""),
-            str(r.get("right_column") or ""),
-        )
-    )
-    return rels
+    return infer_schema_relationships_from_graph(tables=tables)
 
 
 def _pick_join_group_column(question: str, tables: list[dict[str, Any]]) -> tuple[str | None, str | None]:
@@ -561,11 +526,32 @@ def plan_join_query_for_tables(
     if len(valid_tables) < 2:
         raise ValueError("at least two tables are required for join planning")
 
-    relationships = infer_schema_relationships_for_tables(tables=valid_tables)
-    if not relationships:
+    top_n = max(1, int(getattr(settings, "TABLE_TAG_PLAN_CANDIDATES_TOP_N", 3) or 3))
+    ambiguity_gap = float(getattr(settings, "TABLE_TAG_AMBIGUITY_SCORE_GAP", 0.03) or 0.03)
+    strict_ambiguity = bool(getattr(settings, "TABLE_TAG_AMBIGUITY_STRICT_ENABLED", True))
+    plan_candidates = score_join_plan_candidates(
+        tables=valid_tables,
+        top_n=top_n,
+        ambiguity_score_gap=ambiguity_gap,
+    )
+    candidate_rows = [c for c in list(plan_candidates.get("candidates") or []) if isinstance(c, dict)]
+    if not candidate_rows:
         raise ValueError("no_join_relationship_found")
+    if bool(plan_candidates.get("ambiguous")) and strict_ambiguity:
+        raise ValueError("ambiguous_join_plan")
 
-    rel = relationships[0]
+    selected_candidate = plan_candidates.get("selected") if isinstance(plan_candidates.get("selected"), dict) else candidate_rows[0]
+    selected_join = selected_candidate.get("join") if isinstance(selected_candidate, dict) else {}
+    if not isinstance(selected_join, dict):
+        selected_join = {}
+
+    relationships: list[dict[str, Any]] = []
+    for c in candidate_rows:
+        join = c.get("join") if isinstance(c, dict) else None
+        if isinstance(join, dict):
+            relationships.append(join)
+
+    rel = selected_join
     left_table = str(rel.get("left_table") or "").strip()
     right_table = str(rel.get("right_table") or "").strip()
     left_column = str(rel.get("left_column") or "").strip()
@@ -687,11 +673,16 @@ def plan_join_query_for_tables(
         aggregation_column = None
         order_by = None
 
+    sql_fingerprint = fingerprint_sql(sql, length=16)
     planner = {
         "strategy": "deterministic_join",
         "reason": reason,
         "joins": relationships[:1],
         "selected_tables": selected_tables,
+        "candidates": candidate_rows[:top_n],
+        "ambiguous": bool(plan_candidates.get("ambiguous")),
+        "ambiguity_gap": plan_candidates.get("ambiguity_gap"),
+        "strict_ambiguity": bool(strict_ambiguity),
         "aggregation": aggregation,
         "aggregation_column": aggregation_column,
         "group_by": (
@@ -704,6 +695,7 @@ def plan_join_query_for_tables(
         ),
         "order_by": order_by,
         "limit": int(limit),
+        "sql_fingerprint": sql_fingerprint,
     }
     return {"sql": sql, "planner": planner}
 
@@ -1117,9 +1109,12 @@ def generate_sql_for_table_with_metadata(
             max_rows=max_rows,
             sample_rows=sample_rows,
         )
+        planner = dict(planner)
+        planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
         return sql, "deterministic", {
             "schema_link": schema_link,
             "planner": planner,
+            "sql_fingerprint": planner.get("sql_fingerprint"),
             "schema_link_score": schema_link.get("score"),
             "schema_link_strategy": schema_link.get("strategy"),
         }
@@ -1140,10 +1135,12 @@ def generate_sql_for_table_with_metadata(
                 "group_by": None,
                 "order_by": None,
                 "limit": int(max(1, int(max_rows or 1))),
+                "sql_fingerprint": fingerprint_sql(sql, length=16),
             }
             return sql, "llm", {
                 "schema_link": schema_link,
                 "planner": planner,
+                "sql_fingerprint": planner.get("sql_fingerprint"),
                 "schema_link_score": schema_link.get("score"),
                 "schema_link_strategy": schema_link.get("strategy"),
             }
@@ -1159,9 +1156,11 @@ def generate_sql_for_table_with_metadata(
             )
             planner = dict(planner)
             planner["reason"] = f"llm_failed_fallback:{exc.__class__.__name__}"
+            planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
             return sql, "deterministic", {
                 "schema_link": schema_link,
                 "planner": planner,
+                "sql_fingerprint": planner.get("sql_fingerprint"),
                 "schema_link_score": schema_link.get("score"),
                 "schema_link_strategy": schema_link.get("strategy"),
             }
@@ -1176,9 +1175,11 @@ def generate_sql_for_table_with_metadata(
         )
         planner = dict(planner)
         planner["reason"] = "no_llm_key_fallback"
+        planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
         return sql, "deterministic", {
             "schema_link": schema_link,
             "planner": planner,
+            "sql_fingerprint": planner.get("sql_fingerprint"),
             "schema_link_score": schema_link.get("score"),
             "schema_link_strategy": schema_link.get("strategy"),
         }

@@ -72,3 +72,26 @@ python scripts/parser_benchmark.py \
 ```
 
 This adds a `regressions` section to the output JSON (best-effort deltas per backend).
+
+## Strict Regression Gate
+
+To fail fast on parser regressions in CI, enable `--strict`:
+
+```bash
+python scripts/parser_benchmark.py \
+  --input-dir docs/guides \
+  --backends basic \
+  --max-files 8 \
+  --out artifacts/parser_benchmark.current.json \
+  --baseline ci/parser_benchmark_baseline.v1.json \
+  --strict
+```
+
+Strict mode compares current `summary.<backend>` against baseline and fails when drops exceed thresholds:
+
+- `--strict-max-ok-rate-drop`
+- `--strict-max-parse-score-drop`
+- `--strict-max-golden-similarity-drop`
+- `--strict-max-golden-coverage-drop`
+
+CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.json`) so reviewers can inspect what changed even when gate passes.

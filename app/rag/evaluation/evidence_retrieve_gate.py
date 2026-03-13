@@ -20,7 +20,12 @@ from typing import Any, Iterable
 from app.rag.evaluation.regression_sample_builder import build_regression_sample
 
 
-def compute_retrieval_item_meta(*, case: dict[str, Any], citations: list[dict[str, Any]]) -> dict[str, Any]:
+def compute_retrieval_item_meta(
+    *,
+    case: dict[str, Any],
+    citations: list[dict[str, Any]],
+    retrieval_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Compute retrieval-only metrics for a single case given retrieved citations.
 
@@ -43,7 +48,54 @@ def compute_retrieval_item_meta(*, case: dict[str, Any], citations: list[dict[st
             "abstain_reason": None,
         },
     )
-    return dict(meta or {})
+    out = dict(meta or {})
+    must_recall_passed = out.get("must_recall_passed")
+    if must_recall_passed is None:
+        rr = out.get("retrieval_recall")
+        try:
+            rr_float = float(rr) if rr is not None else None
+        except Exception:
+            rr_float = None
+        if rr_float is not None:
+            must_recall_passed = bool(rr_float >= 0.9999)
+        else:
+            must_recall_passed = None
+    out["must_recall_passed"] = must_recall_passed
+    out["must_recall_status"] = (
+        ("passed" if bool(must_recall_passed) else "failed")
+        if must_recall_passed is not None
+        else "unknown"
+    )
+    metrics = retrieval_metrics if isinstance(retrieval_metrics, dict) else {}
+    for key in (
+        "parse_quality_alert",
+        "parse_quality_low_ratio",
+        "parse_risk_level",
+        "parse_risk_score",
+        "parse_quality_gate_profile",
+        "parse_quality_gate_blocked",
+    ):
+        if key in metrics:
+            out[key] = metrics.get(key)
+
+    capsule = metrics.get("evidence_capsule")
+    provenance_integrity_passed: bool | None = None
+    if isinstance(capsule, dict):
+        has_capsule_hash = bool(str(capsule.get("capsule_hash") or "").strip())
+        cits = capsule.get("citations")
+        has_citation_hashes = True
+        if isinstance(cits, list):
+            for row in cits:
+                if not isinstance(row, dict):
+                    continue
+                if not str(row.get("citation_hash") or "").strip():
+                    has_citation_hashes = False
+                    break
+        else:
+            has_citation_hashes = False
+        provenance_integrity_passed = bool(has_capsule_hash and has_citation_hashes)
+    out["provenance_integrity_passed"] = provenance_integrity_passed
+    return out
 
 
 def _mean(values: Iterable[float | None]) -> float | None:
@@ -82,6 +134,70 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
             vals.append(1.0 if bool(v) else 0.0)
         return _mean(vals)
 
+    must_recall_values = []
+    for m in (items_meta or []):
+        if not isinstance(m, dict):
+            continue
+        v = m.get("must_recall_passed")
+        if v is None:
+            continue
+        must_recall_values.append(1 if bool(v) else 0)
+    must_recall_cases_total = int(len(must_recall_values))
+    must_recall_cases_passed = int(sum(must_recall_values))
+    must_recall_cases_failed = int(max(0, must_recall_cases_total - must_recall_cases_passed))
+    must_recall_pass_rate = (
+        float(must_recall_cases_passed) / float(must_recall_cases_total)
+        if must_recall_cases_total > 0
+        else None
+    )
+
+    parse_alert_values = []
+    parse_gate_block_values = []
+    parse_risk_levels: list[str] = []
+    parse_risk_scores: list[float] = []
+    for m in (items_meta or []):
+        if not isinstance(m, dict):
+            continue
+        if m.get("parse_quality_alert") is not None:
+            parse_alert_values.append(1 if bool(m.get("parse_quality_alert")) else 0)
+        if m.get("parse_quality_gate_blocked") is not None:
+            parse_gate_block_values.append(1 if bool(m.get("parse_quality_gate_blocked")) else 0)
+        lvl = str(m.get("parse_risk_level") or "").strip().lower()
+        if lvl:
+            parse_risk_levels.append(lvl)
+        raw_score = m.get("parse_risk_score")
+        try:
+            if raw_score is not None:
+                parse_risk_scores.append(float(raw_score))
+        except Exception:
+            pass
+    parse_cases_total = int(len(parse_risk_levels))
+    parse_risk_high_cases = int(sum(1 for lvl in parse_risk_levels if lvl == "high"))
+    parse_risk_medium_cases = int(sum(1 for lvl in parse_risk_levels if lvl == "medium"))
+    parse_risk_unknown_cases = int(sum(1 for lvl in parse_risk_levels if lvl == "unknown"))
+    parse_risk_high_rate = (
+        float(parse_risk_high_cases) / float(parse_cases_total)
+        if parse_cases_total > 0
+        else None
+    )
+
+    provenance_values = []
+    for m in (items_meta or []):
+        if not isinstance(m, dict):
+            continue
+        v = m.get("provenance_integrity_passed")
+        if v is None:
+            continue
+        provenance_values.append(1 if bool(v) else 0)
+    provenance_cases_total = int(len(provenance_values))
+    provenance_cases_passed = int(sum(provenance_values))
+    provenance_cases_failed = int(max(0, provenance_cases_total - provenance_cases_passed))
+    provenance_integrity_rate = (
+        float(provenance_cases_passed) / float(provenance_cases_total)
+        if provenance_cases_total > 0
+        else None
+    )
+
     return {
         "retrieval_recall": _mean(m.get("retrieval_recall") for m in (items_meta or []) if isinstance(m, dict)),
         "retrieval_mrr": _mean(m.get("retrieval_mrr") for m in (items_meta or []) if isinstance(m, dict)),
@@ -93,5 +209,20 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
         "retrieval_hit_at_10": _mean_bool("retrieval_hit_at_10"),
         "retrieval_hit_at_20": _mean_bool("retrieval_hit_at_20"),
         "abstain_rate": _mean_bool("abstain_triggered"),
+        "must_recall_pass_rate": must_recall_pass_rate,
+        "must_recall_cases_total": must_recall_cases_total,
+        "must_recall_cases_passed": must_recall_cases_passed,
+        "must_recall_cases_failed": must_recall_cases_failed,
+        "parse_quality_alert_rate": _mean(parse_alert_values),
+        "parse_quality_gate_block_rate": _mean(parse_gate_block_values),
+        "parse_risk_cases_total": parse_cases_total,
+        "parse_risk_high_cases": parse_risk_high_cases,
+        "parse_risk_medium_cases": parse_risk_medium_cases,
+        "parse_risk_unknown_cases": parse_risk_unknown_cases,
+        "parse_risk_high_rate": parse_risk_high_rate,
+        "parse_risk_score_mean": _mean(parse_risk_scores),
+        "provenance_integrity_rate": provenance_integrity_rate,
+        "provenance_cases_total": provenance_cases_total,
+        "provenance_cases_passed": provenance_cases_passed,
+        "provenance_cases_failed": provenance_cases_failed,
     }
-

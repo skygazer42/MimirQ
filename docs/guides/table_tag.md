@@ -206,3 +206,39 @@ Chat TAG 注入的 payload 与 citations 也会透出 schema-link 关键信息�
 可调参数（见 `.env.example`）：
 
 - `CHAT_TAG_MAX_TABLES / CHAT_TAG_MAX_DOC_IDS / CHAT_TAG_MAX_ROWS / CHAT_TAG_MAX_COLS / CHAT_TAG_MAX_BYTES`
+
+## Must-Recall 语义（G1）
+
+当问题属于“数据库必定存在答案”的场景，建议在请求侧显式声明 must-recall 约束：
+
+- `rag_config.must_recall=true`
+- `rag_config.retrieval_contract_mode=must_recall_strict`
+- `rag_config.must_recall_expected_source_keys=[...]`（例如 `table_id` / `sheet_name` / 文件名）
+
+Chat TAG 侧会执行两层保障：
+
+1. **候选表源键约束**：当 `CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH=true` 且请求提供了 `must_recall_expected_source_keys`，只有命中源键的候选表才会进入执行阶段。
+2. **DB rows SQL-first**：`dbrows` sidecar 资产在 `CHAT_TAG_DBROWS_SQL_FIRST_ENABLED=true` 时优先 deterministic SQL 路径，减少 LLM 生成漂移。
+
+若候选表全部被源键过滤掉，`meta.reason` 会返回 `must_recall_source_key_miss`，可作为显式 fail reason 进入上层检索合同诊断。
+
+## 多表规划规则（G3）
+
+多表规划从“单条启发式关系”升级为“schema graph + top-N candidate”：
+
+- `TABLE_TAG_PLAN_CANDIDATES_TOP_N`：保留的 join 候选数（按 score 排序）
+- `TABLE_TAG_AMBIGUITY_SCORE_GAP`：前两名候选分差阈值（越小越严格）
+- `TABLE_TAG_AMBIGUITY_STRICT_ENABLED`：
+  - `true`：候选歧义时直接拒绝 `ambiguous_join_plan`
+  - `false`：继续使用 top-1，但在 `planner_diagnostics` 暴露歧义信号
+
+每次规划会产出：
+
+- `planner_diagnostics.candidates`
+- `planner_diagnostics.ambiguous / ambiguity_gap`
+- `planner_diagnostics.sql_fingerprint`
+
+执行后会再输出：
+
+- `planner_execution_mismatch`（期望/实际 SQL 指纹与表集比对）
+- `TABLE_TAG_PLANNER_MISMATCH_STRICT=true` 时遇 mismatch 会直接失败，防止“规划说一套、执行跑另一套”。

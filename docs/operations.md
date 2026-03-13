@@ -193,3 +193,46 @@ python scripts/run_queryset_health_diagnostics.py \
 
 - 若 `trend.policy_changed=true`，先判断是否策略改动导致门禁变化，再判断检索质量是否真实退化。
 - 若 `trend.policy_changed=false` 且核心指标下降，则优先排查召回/重排链路回归。
+
+## 11) Must-Recall + Provenance 一体化门禁
+
+用于发版前同时验证：
+
+- must-recall 合同通过率
+- provenance（evidence capsule）完整性
+
+```bash
+python scripts/must_recall_provenance_gate.py \
+  --run-json artifacts/run.detail.json \
+  --must-recall-min 1.0 \
+  --provenance-min 1.0 \
+  --out artifacts/must_recall_provenance_gate.report.json
+```
+
+输出字段：
+
+- `summary.must_recall_pass_rate`
+- `summary.provenance_integrity_rate`
+- `passed` / `failures`
+
+## 12) Evidence Capsule 持久化与回放
+
+### 持久化 API
+
+- `POST /api/v1/evidence/capsules`
+- `GET /api/v1/evidence/capsules/{capsule_id}`
+
+配置：
+
+- `EVIDENCE_CAPSULE_PERSIST_ENABLED`
+- `EVIDENCE_CAPSULE_STORE_DIR`
+
+### 回放工具
+
+```bash
+python scripts/replay_from_evidence_capsule.py \
+  --capsule runs/evidence_capsules/<capsule_id>.json \
+  --out runs/evidence_replay.json
+```
+
+用于快速回答“这次回答为什么可追溯 / 现在还能否复现”。

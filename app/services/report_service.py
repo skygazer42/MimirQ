@@ -8,7 +8,7 @@ Goal:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -22,6 +22,7 @@ from app.api.schemas.report import (
     DatasetGovernanceAuditOut,
     DatasetGovernanceMetricsOut,
     DatasetKGStatsOut,
+    DatasetMustRecallSummaryOut,
     DatasetParseRiskDocumentOut,
     DatasetParseRiskSummaryOut,
     DatasetRegressionRunSummaryOut,
@@ -501,6 +502,64 @@ def _aggregate_parse_risk_summary(
     )
 
 
+def _aggregate_must_recall_summary(
+    *,
+    latest_regression_summary: dict[str, Any] | None,
+) -> DatasetMustRecallSummaryOut | None:
+    summary = latest_regression_summary if isinstance(latest_regression_summary, dict) else {}
+    if not summary:
+        return None
+
+    pass_rate_raw = summary.get("must_recall_pass_rate")
+    pass_rate: float | None = None
+    if pass_rate_raw is not None:
+        try:
+            pass_rate = min(1.0, max(0.0, float(pass_rate_raw)))
+        except Exception:
+            pass_rate = None
+
+    def _as_int(*keys: str) -> int | None:
+        for key in keys:
+            if key not in summary:
+                continue
+            try:
+                return max(0, int(summary.get(key) or 0))
+            except Exception:
+                continue
+        return None
+
+    total = _as_int("must_recall_cases_total", "retrieval_items_total", "items_total")
+    passed = _as_int("must_recall_cases_passed")
+    failed = _as_int("must_recall_cases_failed")
+
+    if total is None:
+        total = 0
+    if passed is None and pass_rate is not None and total > 0:
+        passed = int(round(float(pass_rate) * float(total)))
+    if passed is None:
+        passed = 0
+    passed = max(0, min(int(passed), int(total)))
+
+    if failed is None:
+        failed = max(0, int(total) - int(passed))
+    failed = max(0, min(int(failed), int(total)))
+
+    if pass_rate is None and total > 0:
+        pass_rate = float(passed) / float(total)
+
+    status = "unavailable"
+    if total > 0 and pass_rate is not None:
+        status = "degraded" if failed > 0 else "healthy"
+
+    return DatasetMustRecallSummaryOut(
+        pass_rate=(round(float(pass_rate), 6) if pass_rate is not None else None),
+        cases_total=int(total),
+        cases_passed=int(passed),
+        cases_failed=int(failed),
+        status=status,
+    )
+
+
 class ReportService:
     @staticmethod
     def build_dataset_report(
@@ -903,6 +962,7 @@ class ReportService:
 
         # Latest regression run summary (best-effort; retrieval-only runs are included).
         latest_regression_run: DatasetRegressionRunSummaryOut | None = None
+        must_recall_summary: DatasetMustRecallSummaryOut | None = None
         try:
             from app.models.evaluation import RagasRegressionRun
 
@@ -913,19 +973,24 @@ class ReportService:
                 .first()
             )
             if row is not None:
+                row_summary = dict(getattr(row, "summary", None) or {})
                 latest_regression_run = DatasetRegressionRunSummaryOut(
                     run_id=row.id,
                     status=str(getattr(row, "status", "") or ""),
                     metrics=list(getattr(row, "metrics", None) or []),
                     params=dict(getattr(row, "params", None) or {}),
-                    summary=dict(getattr(row, "summary", None) or {}),
+                    summary=row_summary,
                     error_message=getattr(row, "error_message", None),
                     created_at=getattr(row, "created_at", None),
                     started_at=getattr(row, "started_at", None),
                     finished_at=getattr(row, "finished_at", None),
                 )
+                must_recall_summary = _aggregate_must_recall_summary(
+                    latest_regression_summary=row_summary,
+                )
         except Exception:
             latest_regression_run = None
+            must_recall_summary = None
 
         # Governance metrics aggregated from document metadata (best-effort).
         governance_metrics: DatasetGovernanceMetricsOut | None = None
@@ -1032,5 +1097,6 @@ class ReportService:
             parse_risk_summary=parse_risk_summary,
             kg_stats=kg_stats,
             latest_regression_run=latest_regression_run,
+            must_recall_summary=must_recall_summary,
             precheck_summary=precheck_summary,
         )

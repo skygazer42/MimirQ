@@ -28,6 +28,11 @@ from app.core.utils import parse_csv
 from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
+from app.rag.core.evidence_expectations import (
+    DEFAULT_EVIDENCE_ANCHOR_FIELDS,
+    evaluate_evidence_anchor_expectations,
+    normalize_anchor_fields,
+)
 from app.rag.core.hashing import stable_hash
 from app.rag.core.query_rewrite_strategy import (
     build_query_rewrite_strategy_spec,
@@ -45,6 +50,12 @@ from app.rag.core.text import (
 from app.rag.engine import get_rag_engine
 from app.rag.kg.pipeline import kg_search
 from app.rag.policy.intent_router import route_retrieval_preset
+from app.rag.policy.must_recall import (
+    MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
+    build_must_recall_fail_reasons,
+    evaluate_required_source_keys,
+    normalize_source_keys,
+)
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.rerank_result_cache import (
@@ -60,7 +71,10 @@ from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retriever import hybrid_retriever
 from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
-from app.services.hardcase_discovery_service import build_parse_risk_hardcase_candidate
+from app.services.hardcase_discovery_service import (
+    build_parse_risk_hardcase_candidate,
+    evaluate_parse_risk_auto_enqueue_policy,
+)
 
 
 def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
@@ -767,6 +781,43 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     )
     retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
     contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
+    contract_must_recall_strict = bool(retrieval_contract_policy.get("must_recall_strict"))
+
+    must_recall_requested = state.get("must_recall")
+    if must_recall_requested is None:
+        must_recall_enabled = bool(getattr(settings, "RETRIEVAL_MUST_RECALL_DEFAULT_ENABLED", False))
+    else:
+        must_recall_enabled = bool(must_recall_requested)
+    if contract_must_recall_strict:
+        must_recall_enabled = True
+
+    raw_expected_source_keys = (
+        state.get("must_recall_expected_source_keys")
+        if state.get("must_recall_expected_source_keys") is not None
+        else getattr(settings, "RETRIEVAL_MUST_RECALL_REQUIRED_SOURCE_KEYS", "")
+    )
+    must_recall_expected_source_keys = normalize_source_keys(raw_expected_source_keys)
+
+    raw_required_anchor_fields = (
+        state.get("must_recall_required_anchor_fields")
+        if state.get("must_recall_required_anchor_fields") is not None
+        else getattr(settings, "RETRIEVAL_MUST_RECALL_REQUIRED_ANCHOR_FIELDS", "")
+    )
+    must_recall_required_anchor_fields = normalize_anchor_fields(raw_required_anchor_fields)
+    if not must_recall_required_anchor_fields and must_recall_enabled:
+        must_recall_required_anchor_fields = list(DEFAULT_EVIDENCE_ANCHOR_FIELDS)
+
+    must_recall_second_pass_enabled = bool(
+        bool(retrieval_contract_policy.get("enable_partial_miss_second_pass"))
+        and bool(getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED", True))
+    )
+    must_recall_second_pass_mode = str(
+        getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE", "keyword") or "keyword"
+    ).strip().lower() or "keyword"
+    must_recall_second_pass_top_k = max(
+        int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 1),
+        int(getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K", 80) or 80),
+    )
 
     # Step 0.25: Deterministic intent router (optional).
     #
@@ -2330,6 +2381,139 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             filtered_citations.append(item)
         citations = filtered_citations
 
+    # Must-recall contract checks:
+    # 1) required source keys are represented in citations
+    # 2) required evidence anchor fields exist
+    must_recall_source_eval = evaluate_required_source_keys(
+        citations=[c for c in citations if isinstance(c, dict)],
+        required_source_keys=must_recall_expected_source_keys,
+    )
+    must_recall_anchor_eval = evaluate_evidence_anchor_expectations(
+        citations=[c for c in citations if isinstance(c, dict)],
+        required_fields=must_recall_required_anchor_fields,
+    )
+    initial_missing_source_keys = list(must_recall_source_eval.get("missing_source_keys") or [])
+    initial_anchor_missing_any = int(must_recall_anchor_eval.get("missing_any") or 0)
+    partial_miss_detected = bool(
+        must_recall_enabled
+        and (
+            bool(initial_missing_source_keys)
+            or int(initial_anchor_missing_any or 0) > 0
+        )
+    )
+
+    must_recall_second_pass_attempted = False
+    must_recall_second_pass_used = False
+    must_recall_second_pass_error: str | None = None
+    must_recall_second_pass_added_docs = 0
+    must_recall_second_pass_added_citations = 0
+    must_recall_second_pass_diff: dict[str, Any] | None = None
+
+    if partial_miss_detected and must_recall_second_pass_enabled:
+        must_recall_second_pass_attempted = True
+        before_doc_keys: set[str] = set()
+        for d in docs or []:
+            if d is None:
+                continue
+            try:
+                before_doc_keys.add(_doc_key(d))
+            except Exception:
+                continue
+        citations_before = list(citations or [])
+
+        fb_docs: list[Document] = []
+        try:
+            second_pass_update = dict(retriever_update)
+            second_pass_update.update(
+                {
+                    "retrieval_mode": must_recall_second_pass_mode,
+                    "k": int(must_recall_second_pass_top_k),
+                    "enable_reranker": False,
+                }
+            )
+            second_pass_retriever = hybrid_retriever.model_copy(update=second_pass_update)
+            fb_docs = second_pass_retriever.invoke(query_for_retrieval) or []
+            fb_docs = engine._annotate_docs_with_role(fb_docs, "must_recall_second_pass")  # type: ignore[attr-defined]
+        except Exception as exc:  # noqa: BLE001
+            fb_docs = []
+            must_recall_second_pass_error = str(exc)[:200]
+
+        if fb_docs:
+            merged_docs = list(docs or [])
+            seen_keys = set(before_doc_keys)
+            for d in fb_docs:
+                if d is None:
+                    continue
+                try:
+                    key = _doc_key(d)
+                except Exception:
+                    key = None
+                if key and key in seen_keys:
+                    continue
+                if key:
+                    seen_keys.add(key)
+                merged_docs.append(d)
+                must_recall_second_pass_added_docs += 1
+            docs = merged_docs
+
+            citations_after = build_citations_from_docs(
+                docs,
+                retrieval_elapsed_sec=retrieval_elapsed,
+                retrieval_mode=request_retrieval_mode,
+                query=query_for_retrieval,
+            )
+            must_recall_second_pass_added_citations = max(0, int(len(citations_after) - len(citations_before)))
+            citations = citations_after
+
+            after_source_eval = evaluate_required_source_keys(
+                citations=[c for c in citations if isinstance(c, dict)],
+                required_source_keys=must_recall_expected_source_keys,
+            )
+            after_anchor_eval = evaluate_evidence_anchor_expectations(
+                citations=[c for c in citations if isinstance(c, dict)],
+                required_fields=must_recall_required_anchor_fields,
+            )
+            after_missing_source_keys = list(after_source_eval.get("missing_source_keys") or [])
+            after_anchor_missing_any = int(after_anchor_eval.get("missing_any") or 0)
+
+            must_recall_second_pass_used = bool(
+                not after_missing_source_keys and int(after_anchor_missing_any) <= 0
+            )
+            must_recall_second_pass_diff = {
+                "before_missing_source_keys": initial_missing_source_keys,
+                "after_missing_source_keys": after_missing_source_keys,
+                "before_anchor_missing_any": int(initial_anchor_missing_any),
+                "after_anchor_missing_any": int(after_anchor_missing_any),
+                "before_citations": int(len(citations_before)),
+                "after_citations": int(len(citations)),
+                "added_docs": int(must_recall_second_pass_added_docs),
+                "added_citations": int(must_recall_second_pass_added_citations),
+            }
+
+            must_recall_source_eval = after_source_eval
+            must_recall_anchor_eval = after_anchor_eval
+
+    missing_source_keys = list(must_recall_source_eval.get("missing_source_keys") or [])
+    anchor_missing_any = int(must_recall_anchor_eval.get("missing_any") or 0)
+    must_recall_passed = bool(
+        (not must_recall_enabled) or (not missing_source_keys and int(anchor_missing_any or 0) <= 0)
+    )
+    must_recall_fail_reasons = build_must_recall_fail_reasons(
+        citations_count=len(citations or []),
+        missing_source_keys=missing_source_keys,
+        anchor_missing_any=anchor_missing_any,
+        second_pass_attempted=must_recall_second_pass_attempted,
+        second_pass_used=must_recall_second_pass_used,
+    )
+    if not must_recall_enabled:
+        must_recall_status = "disabled"
+    elif must_recall_passed and must_recall_second_pass_attempted:
+        must_recall_status = "partial_miss_recovered"
+    elif must_recall_passed:
+        must_recall_status = "passed"
+    else:
+        must_recall_status = "failed"
+
     coverage = _coverage_proxy_from_citations(citations)
 
     try:
@@ -2349,6 +2533,14 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         low_threshold=parse_quality_low_threshold,
         alert_ratio=parse_quality_alert_ratio,
     )
+    parse_quality_gate_profile = str(
+        getattr(settings, "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE", "warn") or "warn"
+    ).strip().lower() or "warn"
+    if parse_quality_gate_profile not in {"off", "warn", "strict"}:
+        parse_quality_gate_profile = "warn"
+    parse_quality_gate_violation = bool((parse_quality_summary or {}).get("alert"))
+    parse_quality_gate_blocked = bool(parse_quality_gate_profile == "strict" and parse_quality_gate_violation)
+    parse_quality_gate_reason = "parse_quality_alert" if parse_quality_gate_violation else None
     try:
         parse_risk_hardcase_min_low_ratio = float(
             getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5
@@ -2383,6 +2575,32 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["retrieval_contract_mode"] = retrieval_contract_mode or None
     metrics["retrieval_contract_policy"] = dict(retrieval_contract_policy or {})
     metrics["retrieval_contract_deterministic_recall"] = bool(contract_deterministic_recall)
+    metrics["retrieval_contract_must_recall_strict"] = bool(contract_must_recall_strict)
+    metrics["contract_fail_reason_taxonomy"] = str(
+        retrieval_contract_policy.get("contract_fail_reason_taxonomy")
+        or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
+    )
+    metrics["must_recall_enabled"] = bool(must_recall_enabled)
+    metrics["must_recall_requested"] = (
+        bool(must_recall_requested) if must_recall_requested is not None else None
+    )
+    metrics["must_recall_expected_source_keys"] = list(must_recall_expected_source_keys or [])
+    metrics["must_recall_required_anchor_fields"] = list(must_recall_required_anchor_fields or [])
+    metrics["must_recall_status"] = str(must_recall_status)
+    metrics["must_recall_passed"] = bool(must_recall_passed)
+    metrics["must_recall_missing_source_keys"] = missing_source_keys[:40]
+    metrics["must_recall_anchor_missing_counts"] = dict(must_recall_anchor_eval.get("missing_counts") or {})
+    metrics["must_recall_fail_reasons"] = must_recall_fail_reasons[:12]
+    metrics["must_recall_second_pass_enabled"] = bool(must_recall_second_pass_enabled)
+    metrics["must_recall_second_pass_attempted"] = bool(must_recall_second_pass_attempted)
+    metrics["must_recall_second_pass_used"] = bool(must_recall_second_pass_used)
+    metrics["must_recall_second_pass_mode"] = str(must_recall_second_pass_mode)
+    metrics["must_recall_second_pass_top_k"] = int(must_recall_second_pass_top_k)
+    metrics["must_recall_second_pass_added_docs"] = int(must_recall_second_pass_added_docs)
+    metrics["must_recall_second_pass_added_citations"] = int(must_recall_second_pass_added_citations)
+    metrics["must_recall_second_pass_error"] = must_recall_second_pass_error
+    if isinstance(must_recall_second_pass_diff, dict):
+        metrics["must_recall_second_pass_diff"] = dict(must_recall_second_pass_diff)
     metrics["intent_router_enabled"] = bool(intent_router_meta.get("enabled"))
     metrics["intent_router_used"] = bool(intent_router_meta.get("used"))
     metrics["intent_router"] = intent_router_meta
@@ -2512,6 +2730,10 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     metrics["parse_quality_low_ratio"] = float((parse_quality_summary or {}).get("low_ratio") or 0.0)
     metrics["parse_quality_considered"] = int((parse_quality_summary or {}).get("considered") or 0)
     metrics["parse_quality_recommendation"] = (parse_quality_summary or {}).get("recommendation")
+    metrics["parse_quality_gate_profile"] = str(parse_quality_gate_profile)
+    metrics["parse_quality_gate_violation"] = bool(parse_quality_gate_violation)
+    metrics["parse_quality_gate_blocked"] = bool(parse_quality_gate_blocked)
+    metrics["parse_quality_gate_reason"] = parse_quality_gate_reason
     metrics["parse_risk"] = dict(parse_risk or {})
     metrics["parse_risk_level"] = str(parse_risk.get("level") or "unknown")
     metrics["parse_risk_score"] = float(parse_risk.get("score") or 0.0)
@@ -2542,6 +2764,16 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         elif min_top_rel > 0 and top_rel < min_top_rel:
             abstain_triggered = True
             abstain_reason = "top_relevance_lt_min"
+    if parse_quality_gate_blocked:
+        abstain_enabled = True
+        if not abstain_triggered:
+            abstain_triggered = True
+            abstain_reason = "parse_quality_gate_strict"
+    if bool(must_recall_enabled) and not bool(must_recall_passed):
+        abstain_enabled = True
+        if not abstain_triggered:
+            abstain_triggered = True
+            abstain_reason = "must_recall_failed"
 
     metrics["abstain_enabled"] = bool(abstain_enabled)
     metrics["abstain_triggered"] = bool(abstain_triggered)
@@ -2573,10 +2805,31 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "dedupe_key": stable_hash(json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True), length=32),
             "ts_ms": int(time.time() * 1000),
         }
+    parse_risk_auto_enqueue_levels = {
+        str(x).strip().lower()
+        for x in parse_csv(str(getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS", "high,medium") or "high,medium"))
+        if str(x).strip()
+    }
+    if not parse_risk_auto_enqueue_levels:
+        parse_risk_auto_enqueue_levels = {"high", "medium"}
+    try:
+        parse_risk_auto_enqueue_min_score = float(
+            getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE", 0.0) or 0.0
+        )
+    except Exception:
+        parse_risk_auto_enqueue_min_score = 0.0
+    parse_risk_auto_enqueue_min_score = min(1.0, max(0.0, float(parse_risk_auto_enqueue_min_score)))
+    parse_risk_auto_enqueue_policy = evaluate_parse_risk_auto_enqueue_policy(
+        parse_risk=parse_risk,
+        enabled=bool(getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED", False)),
+        allowed_levels=parse_risk_auto_enqueue_levels,
+        min_score=parse_risk_auto_enqueue_min_score,
+    )
+    metrics["parse_risk_auto_enqueue_policy"] = dict(parse_risk_auto_enqueue_policy or {})
+
     if (
         not isinstance(metrics.get("hardcase_candidate"), dict)
-        and bool(getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED", False))
-        and bool(parse_risk.get("hardcase_eligible"))
+        and bool(parse_risk_auto_enqueue_policy.get("enqueue"))
     ):
         parse_risk_candidate = build_parse_risk_hardcase_candidate(
             query_hash=stable_hash(query_for_retrieval),
@@ -2666,6 +2919,46 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "low_ratio": float((parse_quality_summary or {}).get("low_ratio") or 0.0),
         "alert": bool((parse_quality_summary or {}).get("alert")),
         "recommendation": (parse_quality_summary or {}).get("recommendation"),
+        "gate_profile": str(parse_quality_gate_profile),
+        "gate_violation": bool(parse_quality_gate_violation),
+        "gate_blocked": bool(parse_quality_gate_blocked),
+        "gate_reason": parse_quality_gate_reason,
+    }
+    query_debug["parse_risk_auto_enqueue"] = (
+        dict(metrics.get("parse_risk_auto_enqueue_policy"))
+        if isinstance(metrics.get("parse_risk_auto_enqueue_policy"), dict)
+        else None
+    )
+    query_debug["retrieval_contract"] = {
+        "mode": retrieval_contract_mode or None,
+        "deterministic_recall": bool(contract_deterministic_recall),
+        "must_recall_strict": bool(contract_must_recall_strict),
+        "must_recall_enabled": bool(must_recall_enabled),
+        "must_recall_status": str(must_recall_status),
+        "must_recall_passed": bool(must_recall_passed),
+        "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
+        "must_recall_missing_source_keys": list(missing_source_keys or [])[:20],
+        "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
+        "must_recall_anchor_missing_counts": dict(must_recall_anchor_eval.get("missing_counts") or {}),
+        "must_recall_fail_reasons": list(must_recall_fail_reasons or [])[:12],
+        "contract_fail_reason_taxonomy": str(
+            retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
+        ),
+        "second_pass": {
+            "enabled": bool(must_recall_second_pass_enabled),
+            "attempted": bool(must_recall_second_pass_attempted),
+            "used": bool(must_recall_second_pass_used),
+            "mode": str(must_recall_second_pass_mode),
+            "top_k": int(must_recall_second_pass_top_k),
+            "added_docs": int(must_recall_second_pass_added_docs),
+            "added_citations": int(must_recall_second_pass_added_citations),
+            "error": must_recall_second_pass_error,
+            "diff": (
+                dict(must_recall_second_pass_diff)
+                if isinstance(must_recall_second_pass_diff, dict)
+                else None
+            ),
+        },
     }
     if empty_diag:
         query_debug["empty_retrieval"] = empty_diag
@@ -2745,6 +3038,36 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "retrieval_contract_mode": retrieval_contract_mode or None,
         "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
         "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),
+        "contract_diagnostics": {
+            "contract_fail_reason_taxonomy": str(
+                retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
+            ),
+            "must_recall": {
+                "enabled": bool(must_recall_enabled),
+                "status": str(must_recall_status),
+                "passed": bool(must_recall_passed),
+                "expected_source_keys": list(must_recall_expected_source_keys or []),
+                "missing_source_keys": list(missing_source_keys or [])[:40],
+                "required_anchor_fields": list(must_recall_required_anchor_fields or []),
+                "anchor_missing_counts": dict(must_recall_anchor_eval.get("missing_counts") or {}),
+                "fail_reasons": list(must_recall_fail_reasons or [])[:12],
+                "second_pass": {
+                    "enabled": bool(must_recall_second_pass_enabled),
+                    "attempted": bool(must_recall_second_pass_attempted),
+                    "used": bool(must_recall_second_pass_used),
+                    "mode": str(must_recall_second_pass_mode),
+                    "top_k": int(must_recall_second_pass_top_k),
+                    "added_docs": int(must_recall_second_pass_added_docs),
+                    "added_citations": int(must_recall_second_pass_added_citations),
+                    "error": must_recall_second_pass_error,
+                    "diff": (
+                        dict(must_recall_second_pass_diff)
+                        if isinstance(must_recall_second_pass_diff, dict)
+                        else None
+                    ),
+                },
+            },
+        },
         "intent_router": intent_router_meta,
         "hard_fallback": {
             "enabled": bool(hard_fallback_enabled),
@@ -2893,7 +3216,18 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "chunk_quality": chunk_quality_summary,
         },
         "parse_quality": dict(parse_quality_summary or {}),
+        "parse_quality_gate": {
+            "profile": str(parse_quality_gate_profile),
+            "violation": bool(parse_quality_gate_violation),
+            "blocked": bool(parse_quality_gate_blocked),
+            "reason": parse_quality_gate_reason,
+        },
         "parse_risk": dict(parse_risk or {}),
+        "parse_risk_auto_enqueue_policy": (
+            dict(metrics.get("parse_risk_auto_enqueue_policy"))
+            if isinstance(metrics.get("parse_risk_auto_enqueue_policy"), dict)
+            else None
+        ),
         "hardcase_candidate": (metrics.get("hardcase_candidate") if isinstance(metrics.get("hardcase_candidate"), dict) else None),
     }
 
@@ -2949,10 +3283,17 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             "retrieval_hard_fallback_enabled": bool(hard_fallback_enabled),
             "retrieval_hard_fallback_mode": hard_fallback_mode,
             "retrieval_hard_fallback_top_k": int(hard_fallback_top_k),
+            "must_recall_enabled": bool(must_recall_enabled),
+            "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
+            "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
+            "must_recall_second_pass_enabled": bool(must_recall_second_pass_enabled),
+            "must_recall_second_pass_mode": str(must_recall_second_pass_mode),
+            "must_recall_second_pass_top_k": int(must_recall_second_pass_top_k),
             "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
             "rag_evidence_require_spans_enabled": bool(evidence_span_strict_enabled),
             "retrieval_parse_quality_low_threshold": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35),
             "retrieval_parse_quality_alert_ratio": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5),
+            "retrieval_parse_quality_gate_profile": str(parse_quality_gate_profile),
             "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
             "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
