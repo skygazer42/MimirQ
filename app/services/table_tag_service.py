@@ -21,6 +21,24 @@ _FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 _SCHEMA_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
 _QUOTED_LITERAL_RE = re.compile(r"[\"“”'‘’]([^\"“”'‘’]{1,80})[\"“”'‘’]")
 _NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
+_NON_IDENT_RE = re.compile(r"[^a-z0-9]+")
+_TABLE_PICK_SUM_INTENT_RE = re.compile(r"(?i)\b(sum|total|amount|gmv|revenue)\b|合计|总和|求和|金额|销售额")
+_TABLE_PICK_COUNT_INTENT_RE = re.compile(r"(?i)\b(count|how many)\b|多少|几条|几行|总数|数量")
+_GENERIC_NON_KEY_COLUMNS = {
+    "name",
+    "title",
+    "type",
+    "status",
+    "state",
+    "value",
+    "amount",
+    "price",
+    "date",
+    "time",
+    "timestamp",
+    "region",
+    "category",
+}
 
 
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
@@ -250,6 +268,444 @@ def score_schema_link_diagnostics(
         "strategy": strategy,
         "reason": reason,
     }
+
+
+def _normalize_ident(value: str) -> str:
+    raw = str(value or "").strip().casefold()
+    if not raw:
+        return ""
+    return _NON_IDENT_RE.sub("_", raw).strip("_")
+
+
+def _singularize(token: str) -> str:
+    t = str(token or "").strip()
+    if not t:
+        return ""
+    if t.endswith("ies") and len(t) > 3:
+        return t[:-3] + "y"
+    if t.endswith("ses") and len(t) > 3:
+        return t[:-2]
+    if t.endswith("s") and len(t) > 3 and not t.endswith("ss"):
+        return t[:-1]
+    return t
+
+
+def _alias_bases(table_name: str, aliases: list[str] | None) -> set[str]:
+    out: set[str] = set()
+    for raw in [table_name, *list(aliases or [])]:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        # Remove extensions and schema prefixes.
+        s = s.split(".")[0] if s.count(".") == 1 and s.lower().endswith((".csv", ".xls", ".xlsx")) else s
+        s = s.split(".")[-1]
+        norm = _normalize_ident(s)
+        if not norm:
+            continue
+        parts = [p for p in norm.split("_") if p]
+        for p in parts:
+            out.add(p)
+            out.add(_singularize(p))
+        out.add(norm)
+        out.add(_singularize(norm))
+    return {v for v in out if v}
+
+
+def _is_likely_key_column(col_name: str) -> bool:
+    n = _normalize_ident(col_name)
+    if not n:
+        return False
+    if n in {"id", "uuid"}:
+        return True
+    if n.endswith("_id"):
+        return True
+    if n.startswith("id_"):
+        return True
+    return False
+
+
+def _pick_best_relationship_between(
+    *,
+    left_table: str,
+    left_aliases: list[str] | None,
+    left_columns: list[dict[str, Any]],
+    right_table: str,
+    right_aliases: list[str] | None,
+    right_columns: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    left_col_names = [
+        str(c.get("name") or "").strip()
+        for c in (left_columns or [])
+        if isinstance(c, dict) and str(c.get("name") or "").strip()
+    ]
+    right_col_names = [
+        str(c.get("name") or "").strip()
+        for c in (right_columns or [])
+        if isinstance(c, dict) and str(c.get("name") or "").strip()
+    ]
+    if not left_col_names or not right_col_names:
+        return None
+
+    left_bases = _alias_bases(left_table, left_aliases)
+    right_bases = _alias_bases(right_table, right_aliases)
+
+    best: dict[str, Any] | None = None
+
+    def _update(candidate: dict[str, Any]) -> None:
+        nonlocal best
+        if best is None or float(candidate.get("confidence") or 0.0) > float(best.get("confidence") or 0.0):
+            best = candidate
+
+    for l_raw in left_col_names:
+        for r_raw in right_col_names:
+            ln = _normalize_ident(l_raw)
+            rn = _normalize_ident(r_raw)
+            if not ln or not rn:
+                continue
+
+            # 1) Exact key column overlap (id / order_id / user_id, etc.).
+            if ln == rn and _is_likely_key_column(ln):
+                _update(
+                    {
+                        "left_table": left_table,
+                        "left_column": l_raw,
+                        "right_table": right_table,
+                        "right_column": r_raw,
+                        "confidence": 0.96,
+                        "reason": "same_key_name",
+                    }
+                )
+                continue
+
+            # Ignore generic non-key overlaps (status/name/type/etc.).
+            if ln == rn and ln in _GENERIC_NON_KEY_COLUMNS:
+                continue
+
+            # 2) FK -> id pattern (left fk points to right table).
+            if ln.endswith("_id"):
+                base = ln[: -len("_id")]
+                if base and rn in {"id", f"{base}_id"}:
+                    conf = 0.90
+                    reason = "fk_to_id"
+                    if base in right_bases:
+                        conf = 0.95
+                        reason = "fk_to_table_id"
+                    _update(
+                        {
+                            "left_table": left_table,
+                            "left_column": l_raw,
+                            "right_table": right_table,
+                            "right_column": r_raw,
+                            "confidence": conf,
+                            "reason": reason,
+                        }
+                    )
+                    continue
+
+            # 3) FK -> id pattern in reverse orientation (right fk points to left table).
+            if rn.endswith("_id"):
+                base = rn[: -len("_id")]
+                if base and ln in {"id", f"{base}_id"}:
+                    conf = 0.90
+                    reason = "fk_to_id"
+                    if base in left_bases:
+                        conf = 0.95
+                        reason = "fk_to_table_id"
+                    _update(
+                        {
+                            "left_table": right_table,
+                            "left_column": r_raw,
+                            "right_table": left_table,
+                            "right_column": l_raw,
+                            "confidence": conf,
+                            "reason": reason,
+                        }
+                    )
+                    continue
+
+    return best
+
+
+def infer_schema_relationships_for_tables(*, tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Best-effort relationship inference for multi-table TAG planning.
+
+    Output is intentionally compact and deterministic to keep traces auditable.
+    """
+    normalized: list[dict[str, Any]] = []
+    for raw in tables or []:
+        if not isinstance(raw, dict):
+            continue
+        tname = str(raw.get("table_name") or "").strip()
+        cols = raw.get("columns")
+        if not tname or not isinstance(cols, list):
+            continue
+        normalized.append(
+            {
+                "table_name": tname,
+                "table_aliases": [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()],
+                "columns": [c for c in cols if isinstance(c, dict)],
+            }
+        )
+
+    rels: list[dict[str, Any]] = []
+    for i in range(len(normalized)):
+        for j in range(i + 1, len(normalized)):
+            left = normalized[i]
+            right = normalized[j]
+            rel = _pick_best_relationship_between(
+                left_table=str(left.get("table_name") or ""),
+                left_aliases=list(left.get("table_aliases") or []),
+                left_columns=list(left.get("columns") or []),
+                right_table=str(right.get("table_name") or ""),
+                right_aliases=list(right.get("table_aliases") or []),
+                right_columns=list(right.get("columns") or []),
+            )
+            if not rel:
+                continue
+            rels.append(rel)
+
+    rels.sort(
+        key=lambda r: (
+            -float(r.get("confidence") or 0.0),
+            str(r.get("left_table") or ""),
+            str(r.get("right_table") or ""),
+            str(r.get("left_column") or ""),
+            str(r.get("right_column") or ""),
+        )
+    )
+    return rels
+
+
+def _pick_join_group_column(question: str, tables: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    q = str(question or "")
+    if not q:
+        return None, None
+    for t in tables:
+        tname = str(t.get("table_name") or "").strip()
+        for c in (t.get("columns") or []):
+            if not isinstance(c, dict):
+                continue
+            cname = str(c.get("name") or "").strip()
+            if not cname:
+                continue
+            dtype = str(c.get("dtype") or "").lower()
+            if any(k in dtype for k in ("int", "float", "double", "decimal", "number", "numeric", "real")):
+                continue
+            if _match_text(q, cname):
+                return tname, cname
+    return None, None
+
+
+def _pick_join_metric_column(question: str, tables: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    q = str(question or "")
+    # Prefer explicitly mentioned numeric columns first.
+    for t in tables:
+        tname = str(t.get("table_name") or "").strip()
+        for c in (t.get("columns") or []):
+            if not isinstance(c, dict):
+                continue
+            cname = str(c.get("name") or "").strip()
+            if not cname:
+                continue
+            dtype = str(c.get("dtype") or "").lower()
+            if not any(k in dtype for k in ("int", "float", "double", "decimal", "number", "numeric", "real")):
+                continue
+            if _match_text(q, cname):
+                return tname, cname
+    # Fallback: first numeric column.
+    for t in tables:
+        tname = str(t.get("table_name") or "").strip()
+        for c in (t.get("columns") or []):
+            if not isinstance(c, dict):
+                continue
+            cname = str(c.get("name") or "").strip()
+            if not cname:
+                continue
+            dtype = str(c.get("dtype") or "").lower()
+            if any(k in dtype for k in ("int", "float", "double", "decimal", "number", "numeric", "real")):
+                return tname, cname
+    return None, None
+
+
+def plan_join_query_for_tables(
+    *,
+    question: str,
+    tables: list[dict[str, Any]],
+    max_rows: int,
+) -> dict[str, Any]:
+    """
+    Deterministic bounded JOIN planner for multi-table TAG.
+
+    Returns: {"sql": "...", "planner": {...}}.
+    """
+    max_rows_i = max(1, int(max_rows or 1))
+    limit = min(max_rows_i, _extract_question_limit(question, default_limit=min(max_rows_i, 20)))
+
+    valid_tables: list[dict[str, Any]] = []
+    for raw in tables or []:
+        if not isinstance(raw, dict):
+            continue
+        tname = str(raw.get("table_name") or "").strip()
+        cols = raw.get("columns")
+        if not tname or not isinstance(cols, list):
+            continue
+        valid_tables.append(
+            {
+                "table_name": tname,
+                "table_aliases": [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()],
+                "columns": [c for c in cols if isinstance(c, dict)],
+            }
+        )
+
+    if len(valid_tables) < 2:
+        raise ValueError("at least two tables are required for join planning")
+
+    relationships = infer_schema_relationships_for_tables(tables=valid_tables)
+    if not relationships:
+        raise ValueError("no_join_relationship_found")
+
+    rel = relationships[0]
+    left_table = str(rel.get("left_table") or "").strip()
+    right_table = str(rel.get("right_table") or "").strip()
+    left_column = str(rel.get("left_column") or "").strip()
+    right_column = str(rel.get("right_column") or "").strip()
+    if not left_table or not right_table or not left_column or not right_column:
+        raise ValueError("invalid_join_relationship")
+
+    table_map = {str(t.get("table_name") or ""): t for t in valid_tables}
+    selected_tables = [left_table, right_table]
+
+    alias_map = {left_table: "t0", right_table: "t1"}
+    left_alias = alias_map[left_table]
+    right_alias = alias_map[right_table]
+
+    group_table, group_col = _pick_join_group_column(question, [table_map[left_table], table_map[right_table]])
+    metric_table, metric_col = _pick_join_metric_column(question, [table_map[left_table], table_map[right_table]])
+
+    q_fold = str(question or "").casefold()
+    is_count = bool(_TABLE_PICK_COUNT_INTENT_RE.search(question or ""))
+    is_sum = bool(_TABLE_PICK_SUM_INTENT_RE.search(question or ""))
+    is_avg = any(k in q_fold for k in ("avg", "average", "均值", "平均"))
+    is_min = any(k in q_fold for k in (" min", "minimum", "最小"))
+    is_max = any(k in q_fold for k in (" max", "maximum", "最大"))
+
+    sql = (
+        f"SELECT {right_alias}.{_quote_ident(group_col or right_column)} AS {_quote_ident(group_col or right_column)} "
+        f"FROM {_quote_ident(left_table)} AS {left_alias} "
+        f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+        f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+        f"LIMIT {int(limit)}"
+    )
+    reason = "join_projection"
+    aggregation: str | None = None
+    aggregation_column: str | None = None
+    order_by: dict[str, Any] | None = None
+
+    if metric_table and metric_col:
+        metric_expr = f"{alias_map.get(metric_table, left_alias)}.{_quote_ident(metric_col)}"
+        aggregation_column = metric_col
+        if is_sum or (group_col is not None and "金额" in str(question or "")):
+            aggregation = "sum"
+            if group_table and group_col:
+                group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
+                sql = (
+                    f"SELECT {group_expr} AS {_quote_ident(group_col)}, SUM({metric_expr}) AS total "
+                    f"FROM {_quote_ident(left_table)} AS {left_alias} "
+                    f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+                    f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+                    f"GROUP BY {group_expr} ORDER BY total DESC LIMIT {int(limit)}"
+                )
+                reason = "join_aggregation_group"
+                order_by = {"column": "total", "direction": "desc"}
+            else:
+                sql = (
+                    f"SELECT SUM({metric_expr}) AS total "
+                    f"FROM {_quote_ident(left_table)} AS {left_alias} "
+                    f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+                    f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+                    "LIMIT 1"
+                )
+                reason = "join_aggregation"
+                order_by = None
+        elif is_avg:
+            aggregation = "avg"
+        elif is_min:
+            aggregation = "min"
+        elif is_max:
+            aggregation = "max"
+
+    if aggregation in {"avg", "min", "max"} and metric_table and metric_col:
+        metric_expr = f"{alias_map.get(metric_table, left_alias)}.{_quote_ident(metric_col)}"
+        agg_sql = aggregation.upper()
+        alias_name = "value"
+        if group_table and group_col:
+            group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
+            sql = (
+                f"SELECT {group_expr} AS {_quote_ident(group_col)}, {agg_sql}({metric_expr}) AS {alias_name} "
+                f"FROM {_quote_ident(left_table)} AS {left_alias} "
+                f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+                f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+                f"GROUP BY {group_expr} ORDER BY {alias_name} DESC LIMIT {int(limit)}"
+            )
+            reason = "join_aggregation_group"
+            order_by = {"column": alias_name, "direction": "desc"}
+        else:
+            sql = (
+                f"SELECT {agg_sql}({metric_expr}) AS {alias_name} "
+                f"FROM {_quote_ident(left_table)} AS {left_alias} "
+                f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+                f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+                "LIMIT 1"
+            )
+            reason = "join_aggregation"
+            order_by = None
+
+    if is_count and group_table and group_col:
+        group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
+        sql = (
+            f"SELECT {group_expr} AS {_quote_ident(group_col)}, COUNT(*) AS count "
+            f"FROM {_quote_ident(left_table)} AS {left_alias} "
+            f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+            f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+            f"GROUP BY {group_expr} ORDER BY count DESC LIMIT {int(limit)}"
+        )
+        reason = "join_count_group"
+        aggregation = "count"
+        aggregation_column = None
+        order_by = {"column": "count", "direction": "desc"}
+    elif is_count:
+        sql = (
+            "SELECT COUNT(*) AS count "
+            f"FROM {_quote_ident(left_table)} AS {left_alias} "
+            f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+            f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+            "LIMIT 1"
+        )
+        reason = "join_count"
+        aggregation = "count"
+        aggregation_column = None
+        order_by = None
+
+    planner = {
+        "strategy": "deterministic_join",
+        "reason": reason,
+        "joins": relationships[:1],
+        "selected_tables": selected_tables,
+        "aggregation": aggregation,
+        "aggregation_column": aggregation_column,
+        "group_by": (
+            {
+                "table": str(group_table),
+                "column": str(group_col),
+            }
+            if group_table and group_col
+            else None
+        ),
+        "order_by": order_by,
+        "limit": int(limit),
+    }
+    return {"sql": sql, "planner": planner}
 
 
 def _extract_question_limit(question: str, *, default_limit: int) -> int:

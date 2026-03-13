@@ -26,7 +26,10 @@ from pathlib import Path
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
-from app.rag.evaluation.hard_negative_mining import mine_hard_negatives_for_case_from_trace
+from app.rag.evaluation.hard_negative_mining import (
+    merge_hard_negative_records,
+    mine_hard_negatives_for_case_from_trace,
+)
 
 
 def _load_json(path: Path) -> Any:
@@ -95,10 +98,73 @@ def _iter_trace_records(path: Path, *, max_records: int = 0) -> Iterator[dict[st
             emitted += 1
 
 
+def _iter_feedback_event_rows(path: Path, *, max_records: int = 0) -> Iterator[dict[str, Any]]:
+    """
+    Yield parsed feedback/training export rows from JSONL (best-effort).
+
+    Supported row shapes:
+    - mimirq.training_export_row.v1 (feedback source rows)
+    - lightweight custom rows containing {question, reference_sources, trace_snapshot}
+    """
+    with path.open("r", encoding="utf-8", errors="replace") as f:
+        emitted = 0
+        for line in f:
+            if max_records and emitted >= int(max_records):
+                break
+            line = (line or "").strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            yield obj
+            emitted += 1
+
+
+def _feedback_row_to_trace_record(row: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    if not isinstance(row, dict):
+        return None
+    question = str(row.get("question") or row.get("query") or "").strip()
+    if not question:
+        return None
+    trace = row.get("trace_snapshot")
+    if not isinstance(trace, dict):
+        extra = row.get("extra")
+        if isinstance(extra, dict):
+            trace = extra.get("retrieval_trace")
+    if not isinstance(trace, dict):
+        return None
+
+    record = dict(trace)
+    qh = str(record.get("question_hash") or record.get("query_hash") or row.get("question_hash") or "").strip()
+    if not qh:
+        qh = stable_hash(question, length=16)
+    record.setdefault("question_hash", qh)
+    record.setdefault("event", "rag_trace")
+
+    if not isinstance(record.get("citations"), list):
+        citations = row.get("citations")
+        if isinstance(citations, list):
+            record["citations"] = citations
+
+    return qh, record
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Mine PII-safe hard negatives from rag_trace bundles.")
     p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
     p.add_argument("--traces", required=True, help="Path to metrics JSONL containing rag_trace events")
+    p.add_argument(
+        "--feedback-events",
+        default="",
+        help=(
+            "Optional JSONL with feedback/training rows (e.g. mimirq.training_export_row.v1) "
+            "that include trace_snapshot citations; mined negatives are merged with trace JSONL results."
+        ),
+    )
     p.add_argument("--out", required=True, help="Write mined hard negatives JSONL to this path")
 
     p.add_argument("--retrieval-config-hash", default="", help="Only use trace records matching this retrieval_config_hash (optional)")
@@ -112,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
 
     cases_path = Path(args.cases)
     traces_path = Path(args.traces)
+    feedback_events_path = Path(str(args.feedback_events)) if str(args.feedback_events or "").strip() else None
     out_path = Path(args.out)
 
     if not cases_path.exists():
@@ -119,6 +186,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if not traces_path.exists():
         print(f"[hard-negatives] ERROR: traces file not found: {traces_path}", file=sys.stderr)
+        return 2
+    if feedback_events_path is not None and not feedback_events_path.exists():
+        print(f"[hard-negatives] ERROR: feedback events file not found: {feedback_events_path}", file=sys.stderr)
         return 2
 
     try:
@@ -147,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     # Index traces by question_hash (preferred) or query_hash.
     want_cfg = str(args.retrieval_config_hash or "").strip() or None
     want_tenant = str(args.tenant_id or "").strip() or None
-    trace_by_hash: dict[str, dict[str, Any]] = {}
+    traces_by_hash: dict[str, list[dict[str, Any]]] = {}
     matched_traces = 0
     traces_total = 0
     for rec in _iter_trace_records(traces_path, max_records=int(args.max_traces or 0)):
@@ -170,30 +240,80 @@ def main(argv: list[str] | None = None) -> int:
             if cfg != want_cfg:
                 continue
 
-        # Prefer the latest record (keep overwriting).
-        trace_by_hash[qh] = rec
+        traces_by_hash.setdefault(qh, []).append(rec)
         matched_traces += 1
+
+    feedback_total = 0
+    feedback_matched = 0
+    if feedback_events_path is not None:
+        for row in _iter_feedback_event_rows(feedback_events_path, max_records=int(args.max_traces or 0)):
+            feedback_total += 1
+            transformed = _feedback_row_to_trace_record(row)
+            if transformed is None:
+                continue
+            qh, rec = transformed
+            if not qh or qh not in target_hashes:
+                continue
+
+            if want_tenant:
+                tenant_candidates = [
+                    rec.get("tenant_id"),
+                    row.get("tenant_id"),
+                    (row.get("source_metadata") or {}).get("tenant_id") if isinstance(row.get("source_metadata"), dict) else None,
+                ]
+                tenant_hit = False
+                for raw_tenant in tenant_candidates:
+                    if str(raw_tenant or "").strip() == want_tenant:
+                        tenant_hit = True
+                        break
+                if not tenant_hit:
+                    continue
+
+            if want_cfg:
+                cfg = ""
+                retrieval = rec.get("retrieval")
+                if isinstance(retrieval, dict):
+                    cfg = str(retrieval.get("retrieval_config_hash") or "").strip()
+                if not cfg:
+                    cfg = str(rec.get("retrieval_config_hash") or "").strip()
+                if cfg != want_cfg:
+                    continue
+
+            traces_by_hash.setdefault(qh, []).append(rec)
+            feedback_matched += 1
 
     rows: list[dict[str, Any]] = []
     used = 0
     skipped = 0
     for qh, case in target_hashes.items():
-        trace = trace_by_hash.get(qh)
-        if trace is None:
+        trace_records = traces_by_hash.get(qh) or []
+        if not trace_records:
             skipped += 1
             continue
-        rec = mine_hard_negatives_for_case_from_trace(
-            case=case,
-            trace_record=trace,
-            query_hash=qh,
-            max_hard_negatives=int(args.max_hard_negatives or 0),
-            max_negatives_per_document=int(args.max_negatives_per_document or 0),
+
+        mined_rows: list[dict[str, Any]] = []
+        for trace in trace_records:
+            rec = mine_hard_negatives_for_case_from_trace(
+                case=case,
+                trace_record=trace,
+                query_hash=qh,
+                max_hard_negatives=int(args.max_hard_negatives or 0),
+                max_negatives_per_document=int(args.max_negatives_per_document or 0),
+            )
+            hard = rec.get("hard_negatives") or []
+            if isinstance(hard, list) and hard:
+                mined_rows.append(rec)
+
+        if not mined_rows:
+            skipped += 1
+            continue
+
+        rows.append(
+            merge_hard_negative_records(
+                records=mined_rows,
+                max_hard_negatives=int(args.max_hard_negatives or 0),
+            )
         )
-        hard = rec.get("hard_negatives") or []
-        if not isinstance(hard, list) or not hard:
-            skipped += 1
-            continue
-        rows.append(rec)
         used += 1
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -208,6 +328,8 @@ def main(argv: list[str] | None = None) -> int:
         f" cases_skipped={skipped}"
         f" traces_total={traces_total}"
         f" traces_matched={matched_traces}"
+        f" feedback_events_total={feedback_total}"
+        f" feedback_events_matched={feedback_matched}"
         f" out={out_path}",
         file=sys.stderr,
     )

@@ -86,6 +86,30 @@ def _read_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _as_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _extract_metric_value(window: dict[str, Any], metric_key: str) -> float | None:
+    key = str(metric_key or "").strip()
+    if not key:
+        return None
+    if key in window:
+        return _as_float(window.get(key))
+
+    cur: Any = window
+    for part in [p for p in key.split(".") if p]:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return _as_float(cur)
+
+
 def _write_json(path: Path, obj: dict[str, Any]) -> None:
     _atomic_write_text(path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
 
@@ -464,9 +488,69 @@ def resolve_active_model_paths() -> Tuple[str | None, str | None, int | None, st
     return str(mp), str(man_p), int(spec_version), mid
 
 
+def evaluate_online_rollback_trigger(
+    *,
+    windows: list[dict[str, Any]] | None,
+    metric_key: str = "delta.mrr",
+    max_allowed_delta: float = -0.02,
+    min_consecutive_windows: int = 3,
+) -> dict[str, Any]:
+    """
+    Evaluate whether online degradation windows should trigger rollback.
+
+    Rules:
+    - Use the trailing consecutive degraded windows (latest-first from list tail).
+    - A window is degraded when metric_value <= max_allowed_delta.
+    - Trigger when trailing degraded windows >= min_consecutive_windows.
+    """
+    rows = [w for w in list(windows or []) if isinstance(w, dict)]
+    required = max(1, int(min_consecutive_windows or 1))
+    threshold = float(max_allowed_delta)
+    key = str(metric_key or "").strip() or "delta.mrr"
+    reasons: list[str] = []
+
+    degraded_total = 0
+    trailing_consecutive = 0
+    for row in rows:
+        value = _extract_metric_value(row, key)
+        if value is not None and value <= threshold:
+            degraded_total += 1
+
+    for row in reversed(rows):
+        value = _extract_metric_value(row, key)
+        if value is None:
+            break
+        if value <= threshold:
+            trailing_consecutive += 1
+            continue
+        break
+
+    if len(rows) < required:
+        reasons.append(f"insufficient windows: have={len(rows)} need={required}")
+    if trailing_consecutive < required:
+        reasons.append(
+            "consecutive degradation below threshold not met: "
+            f"have={trailing_consecutive} need={required}"
+        )
+
+    triggered = len(rows) >= required and trailing_consecutive >= required
+    return {
+        "schema": "mimirq.ltr_online_rollback_trigger.v1",
+        "metric_key": key,
+        "max_allowed_delta": round(float(threshold), 4),
+        "min_consecutive_windows": int(required),
+        "windows_evaluated": int(len(rows)),
+        "degraded_windows_total": int(degraded_total),
+        "degraded_consecutive": int(trailing_consecutive),
+        "triggered": bool(triggered),
+        "reasons": reasons,
+    }
+
+
 __all__ = [
     "LTRRegisteredModel",
     "activate_model",
+    "evaluate_online_rollback_trigger",
     "list_models",
     "register_model",
     "resolve_active_model_paths",

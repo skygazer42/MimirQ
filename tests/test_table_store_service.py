@@ -181,3 +181,56 @@ def test_table_store_import_docx_tables(monkeypatch):  # noqa: ANN001
             conn.close()
 
         assert rows == [("A", "1")]
+
+
+def test_table_store_import_db_row_snapshots(monkeypatch):  # noqa: ANN001
+    from app.core.config import settings
+    from app.services.table_store_service import import_db_row_snapshots, run_table_query
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    with tempfile.TemporaryDirectory() as td:
+        monkeypatch.setattr(settings, "TABLE_STORE_DIR", str(Path(td) / "table_store"), raising=False)
+
+        assets = import_db_row_snapshots(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            snapshots=[
+                {
+                    "sheet_name": "demo.users",
+                    "source_table": "demo.users",
+                    "source_sync_token": "tok-users-v1",
+                    "columns": ["id", "name"],
+                    "rows": [
+                        {"id": 1, "name": "alice", "__row_pk_hash": "pkhash-1"},
+                        {"id": 2, "name": "bob", "__row_pk_hash": "pkhash-2"},
+                    ],
+                }
+            ],
+            max_tables=10,
+            max_rows_per_table=10,
+            max_cols=10,
+            sample_rows=2,
+        )
+
+        assert len(assets) == 1
+        assert assets[0].sheet_name == "demo.users"
+        col_names = [str(c.get("name") or "") for c in assets[0].columns]
+        assert "id" in col_names
+        assert "name" in col_names
+        assert "__row_pk_hash" in col_names
+
+        got = run_table_query(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            table_id=assets[0].table_id,
+            sql='SELECT "id","name","__row_pk_hash" FROM "sheet_0" ORDER BY "id" ASC',
+            max_rows=10,
+            max_cols=10,
+            max_bytes=100_000,
+        )
+        assert got["columns"] == ["id", "name", "__row_pk_hash"]
+        assert got["rows"] == [[1, "alice", "pkhash-1"], [2, "bob", "pkhash-2"]]

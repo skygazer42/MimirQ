@@ -467,3 +467,193 @@ def run_catalog_sync(
         "profiles_written": int(profiles_written),
         "entitlement_hash": str(ent_hash or ""),
     }
+
+
+def _jsonify_row_value(v: Any) -> Any:
+    if v is None:
+        return None
+    if isinstance(v, (str, int, float, bool)):
+        return v
+    try:
+        if hasattr(v, "item"):
+            return v.item()
+    except Exception:  # noqa: BLE001
+        pass
+    return str(v)
+
+
+def _row_hash(row: Dict[str, Any], *, exclude_keys: Sequence[str] | None = None) -> str:
+    excluded = {str(k) for k in (exclude_keys or [])}
+    payload: Dict[str, Any] = {}
+    for k in sorted(row.keys()):
+        if str(k) in excluded:
+            continue
+        payload[str(k)] = _jsonify_row_value(row.get(k))
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
+
+
+def _snapshot_token(*, source_table: str, rows: Sequence[Dict[str, Any]]) -> str:
+    payload = {
+        "source_table": str(source_table or ""),
+        "pk_hashes": [str(r.get("__row_pk_hash") or "") for r in rows if isinstance(r, dict)],
+    }
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
+
+
+def _quote_mysql_ident(name: str) -> str:
+    return f"`{str(name or '').replace('`', '``')}`"
+
+
+def _quote_sqlserver_ident(name: str) -> str:
+    return f"[{str(name or '').replace(']', ']]')}]"
+
+
+def extract_row_snapshots(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    connector_id: str,
+    config: Dict[str, Any],
+    max_tables: int,
+    max_rows_per_table: int,
+    max_cols: int,
+) -> List[Dict[str, Any]]:
+    """
+    Extract bounded per-table row snapshots for TAG sidecar recall.
+
+    The output is connector-agnostic and intentionally small:
+      [{"source_table","sheet_name","source_sync_token","source_pk_hash_col","columns","rows"}, ...]
+    """
+    cid = str(connector_id or "").strip()
+    max_tables_i = max(0, int(max_tables or 0))
+    max_rows_i = max(0, int(max_rows_per_table or 0))
+    max_cols_i = max(0, int(max_cols or 0))
+    if max_tables_i <= 0 or max_rows_i <= 0 or max_cols_i <= 0:
+        return []
+
+    out: List[Dict[str, Any]] = []
+    if cid == "mysql_catalog":
+        tables = _introspect_mysql(tenant_id=tenant_id, dataset_id=dataset_id, config=dict(config or {}))
+        with _connect_mysql(dict(config or {})) as conn:
+            from sqlalchemy import text  # noqa: WPS433
+
+            for t in tables:
+                if len(out) >= max_tables_i:
+                    break
+                if not isinstance(t, dict):
+                    continue
+                table_name = str(t.get("table_name") or "").strip()
+                if not table_name:
+                    continue
+                db_name = str(t.get("db_name") or config.get("database") or "").strip()
+                source_table = f"{db_name}.{table_name}" if db_name else table_name
+                sql = f"SELECT * FROM {_quote_mysql_ident(table_name)} LIMIT {max_rows_i}"
+                try:
+                    rows_raw = conn.execute(text(sql)).mappings().all()
+                except Exception:  # noqa: BLE001
+                    continue
+                rows: List[Dict[str, Any]] = []
+                cols: List[str] = []
+                if rows_raw:
+                    cols = [str(k) for k in list(rows_raw[0].keys())[:max_cols_i]]
+                if not cols:
+                    cols_raw = t.get("columns")
+                    if isinstance(cols_raw, list):
+                        for c in cols_raw:
+                            if isinstance(c, dict):
+                                n = str(c.get("name") or "").strip()
+                                if n:
+                                    cols.append(n)
+                            else:
+                                n = str(c or "").strip()
+                                if n:
+                                    cols.append(n)
+                            if len(cols) >= max_cols_i:
+                                break
+                for row in rows_raw:
+                    if len(rows) >= max_rows_i:
+                        break
+                    rec: Dict[str, Any] = {}
+                    for col in cols:
+                        rec[col] = _jsonify_row_value(row.get(col))
+                    rec["__row_pk_hash"] = _row_hash(rec, exclude_keys=["__row_pk_hash"])
+                    rows.append(rec)
+
+                out.append(
+                    {
+                        "source_table": source_table,
+                        "sheet_name": source_table,
+                        "source_sync_token": _snapshot_token(source_table=source_table, rows=rows),
+                        "source_pk_hash_col": "__row_pk_hash",
+                        "columns": cols + (["__row_pk_hash"] if "__row_pk_hash" not in cols else []),
+                        "rows": rows,
+                    }
+                )
+
+    elif cid == "sqlserver_catalog":
+        tables = _introspect_sqlserver(tenant_id=tenant_id, dataset_id=dataset_id, config=dict(config or {}))
+        with _connect_sqlserver(dict(config or {})) as conn:
+            from sqlalchemy import text  # noqa: WPS433
+
+            for t in tables:
+                if len(out) >= max_tables_i:
+                    break
+                if not isinstance(t, dict):
+                    continue
+                schema_name = str(t.get("schema_name") or "").strip()
+                table_name = str(t.get("table_name") or "").strip()
+                if not table_name:
+                    continue
+                db_name = str(t.get("db_name") or config.get("database") or "").strip()
+                source_table = f"{db_name}.{schema_name}.{table_name}" if schema_name else f"{db_name}.{table_name}"
+                table_ref = (
+                    f"{_quote_sqlserver_ident(schema_name)}.{_quote_sqlserver_ident(table_name)}"
+                    if schema_name
+                    else _quote_sqlserver_ident(table_name)
+                )
+                sql = f"SELECT TOP ({max_rows_i}) * FROM {table_ref}"
+                try:
+                    rows_raw = conn.execute(text(sql)).mappings().all()
+                except Exception:  # noqa: BLE001
+                    continue
+                rows: List[Dict[str, Any]] = []
+                cols: List[str] = []
+                if rows_raw:
+                    cols = [str(k) for k in list(rows_raw[0].keys())[:max_cols_i]]
+                if not cols:
+                    cols_raw = t.get("columns")
+                    if isinstance(cols_raw, list):
+                        for c in cols_raw:
+                            if isinstance(c, dict):
+                                n = str(c.get("name") or "").strip()
+                                if n:
+                                    cols.append(n)
+                            else:
+                                n = str(c or "").strip()
+                                if n:
+                                    cols.append(n)
+                            if len(cols) >= max_cols_i:
+                                break
+                for row in rows_raw:
+                    if len(rows) >= max_rows_i:
+                        break
+                    rec: Dict[str, Any] = {}
+                    for col in cols:
+                        rec[col] = _jsonify_row_value(row.get(col))
+                    rec["__row_pk_hash"] = _row_hash(rec, exclude_keys=["__row_pk_hash"])
+                    rows.append(rec)
+
+                out.append(
+                    {
+                        "source_table": source_table,
+                        "sheet_name": source_table,
+                        "source_sync_token": _snapshot_token(source_table=source_table, rows=rows),
+                        "source_pk_hash_col": "__row_pk_hash",
+                        "columns": cols + (["__row_pk_hash"] if "__row_pk_hash" not in cols else []),
+                        "rows": rows,
+                    }
+                )
+
+    return out

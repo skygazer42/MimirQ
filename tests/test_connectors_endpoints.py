@@ -630,7 +630,17 @@ def test_connectors_accept_mysql_catalog_config(monkeypatch):  # noqa: ANN001
         json={
             "connector_id": "mysql_catalog",
             "dataset_id": str(dataset_id),
-            "config": {"host": "localhost", "port": 3306, "database": "demo", "username": "svc", "password": "secret"},
+            "config": {
+                "host": "localhost",
+                "port": 3306,
+                "database": "demo",
+                "username": "svc",
+                "password": "secret",
+                "row_sync_enabled": True,
+                "row_sync_max_tables": 12,
+                "row_sync_max_rows_per_table": 20,
+                "row_sync_max_cols": 16,
+            },
         },
     )
     assert res.status_code == 201, res.text
@@ -639,6 +649,10 @@ def test_connectors_accept_mysql_catalog_config(monkeypatch):  # noqa: ANN001
     assert body.get("dataset_id") == str(dataset_id)
     # Connector config secrets must be redacted in API responses.
     assert (body.get("config") or {}).get("password") == "<redacted>"
+    assert (body.get("config") or {}).get("row_sync_enabled") is True
+    assert (body.get("config") or {}).get("row_sync_max_tables") == 12
+    assert (body.get("config") or {}).get("row_sync_max_rows_per_table") == 20
+    assert (body.get("config") or {}).get("row_sync_max_cols") == 16
 
 
 def test_connectors_accept_sqlserver_catalog_config(monkeypatch):  # noqa: ANN001
@@ -675,7 +689,17 @@ def test_connectors_accept_sqlserver_catalog_config(monkeypatch):  # noqa: ANN00
         json={
             "connector_id": "sqlserver_catalog",
             "dataset_id": str(dataset_id),
-            "config": {"host": "localhost", "port": 1433, "database": "demo", "username": "svc", "password": "secret"},
+            "config": {
+                "host": "localhost",
+                "port": 1433,
+                "database": "demo",
+                "username": "svc",
+                "password": "secret",
+                "row_sync_enabled": True,
+                "row_sync_max_tables": 8,
+                "row_sync_max_rows_per_table": 15,
+                "row_sync_max_cols": 10,
+            },
         },
     )
     assert res.status_code == 201, res.text
@@ -683,6 +707,10 @@ def test_connectors_accept_sqlserver_catalog_config(monkeypatch):  # noqa: ANN00
     assert body.get("connector_id") == "sqlserver_catalog"
     assert body.get("dataset_id") == str(dataset_id)
     assert (body.get("config") or {}).get("password") == "<redacted>"
+    assert (body.get("config") or {}).get("row_sync_enabled") is True
+    assert (body.get("config") or {}).get("row_sync_max_tables") == 8
+    assert (body.get("config") or {}).get("row_sync_max_rows_per_table") == 15
+    assert (body.get("config") or {}).get("row_sync_max_cols") == 10
 
 
 def test_connectors_runs_list_includes_acl_summary(monkeypatch):  # noqa: ANN001

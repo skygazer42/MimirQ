@@ -451,6 +451,13 @@ class MySQLCatalogConnectorConfig(BaseModel):
     include_tables: List[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
     max_tables: int = Field(default=200, ge=1, le=2000)
     profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
+    row_sync_enabled: bool = Field(
+        default=False,
+        description="If true, ingest bounded row snapshots into a TAG sidecar document for deterministic row recall.",
+    )
+    row_sync_max_tables: int = Field(default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default.")
+    row_sync_max_rows_per_table: int = Field(default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default.")
+    row_sync_max_cols: int = Field(default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default.")
 
     @model_validator(mode="after")
     def _normalize(self) -> "MySQLCatalogConnectorConfig":
@@ -480,6 +487,13 @@ class SQLServerCatalogConnectorConfig(BaseModel):
     include_tables: List[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
     max_tables: int = Field(default=200, ge=1, le=2000)
     profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
+    row_sync_enabled: bool = Field(
+        default=False,
+        description="If true, ingest bounded row snapshots into a TAG sidecar document for deterministic row recall.",
+    )
+    row_sync_max_tables: int = Field(default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default.")
+    row_sync_max_rows_per_table: int = Field(default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default.")
+    row_sync_max_cols: int = Field(default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default.")
 
     @model_validator(mode="after")
     def _normalize(self) -> "SQLServerCatalogConnectorConfig":

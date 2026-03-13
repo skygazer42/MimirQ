@@ -88,12 +88,18 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
         name="SQLServer Catalog 导入",
         description="从 SQLServer 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
         supports_incremental=True,
+        supports_resume=True,
+        supports_full_reconcile=True,
+        state_keys=("total_tables", "source_manifest"),
     ),
     "mysql_catalog": ConnectorDefinition(
         connector_id="mysql_catalog",
         name="MySQL Catalog 导入",
         description="从 MySQL 同步 schema/table/column 目录与安全画像（仅聚合统计；不外发原始行）",
         supports_incremental=True,
+        supports_resume=True,
+        supports_full_reconcile=True,
+        state_keys=("total_tables", "source_manifest"),
     ),
 }
 

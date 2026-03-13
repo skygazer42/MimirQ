@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import hashlib
 import html
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -234,14 +235,287 @@ def _apply_connector_identity_metadata(
     doc.doc_metadata = meta0
 
 
-def _web_crawl_source_manifest(urls: list[str]) -> dict[str, str]:
+def _web_crawl_content_fingerprint(
+    *,
+    url: str,
+    crawl_sync_token: str | None = None,
+    etag: str | None = None,
+    last_modified: str | None = None,
+    body_sha256: str | None = None,
+) -> str:
+    """
+    Build a stable content-aware token for web crawl incremental manifests.
+
+    Priority:
+    1) crawler-provided sync token (already content-derived)
+    2) etag / last-modified / body hash tuple
+    3) url hash fallback
+    """
+    token = str(crawl_sync_token or "").strip()
+    if token:
+        return token[:1000]
+
+    parts: list[str] = []
+    etag_s = str(etag or "").strip()
+    if etag_s:
+        parts.append(f"etag:{etag_s[:500]}")
+    lm_s = str(last_modified or "").strip()
+    if lm_s:
+        parts.append(f"last_modified:{lm_s[:100]}")
+    body_s = str(body_sha256 or "").strip().lower()
+    if body_s and re.fullmatch(r"[a-f0-9]{64}", body_s):
+        parts.append(f"body_sha256:{body_s}")
+    if parts:
+        return "|".join(parts)
+
+    return f"url_sha256:{hashlib.sha256(str(url or '').encode('utf-8', 'ignore')).hexdigest()}"
+
+
+def _web_crawl_token_is_content_aware(token: str | None) -> bool:
+    raw = str(token or "").strip()
+    if not raw:
+        return False
+    markers = ("etag:", "last_modified:", "body_sha256:", "url_sha256:", "content_type:")
+    return any(m in raw for m in markers)
+
+
+def _web_crawl_manifest_token_changed(*, existing_token: str | None, discovered_token: str | None) -> bool:
+    existing = str(existing_token or "").strip()
+    discovered = str(discovered_token or "").strip()
+    if not existing:
+        return True
+    if not discovered:
+        return False
+    if existing == discovered:
+        return False
+    # Backward compatibility: legacy manifests used opaque URL hashes without explicit markers.
+    # Treat them as presence-only for one migration run.
+    if not _web_crawl_token_is_content_aware(existing):
+        return False
+    # If this run only has a weak URL-hash fallback token, avoid false-positive "changed" decisions.
+    if discovered.startswith("url_sha256:") and not existing.startswith("url_sha256:"):
+        return False
+    return True
+
+
+def _web_crawl_extract_token_part(token: str | None, *, key: str) -> str | None:
+    raw = str(token or "").strip()
+    k = str(key or "").strip()
+    if not raw or not k:
+        return None
+    pat = re.compile(rf"(?:^|\|){re.escape(k)}:([^|]+)")
+    m = pat.search(raw)
+    if not m:
+        return None
+    out = str(m.group(1) or "").strip()
+    return out or None
+
+
+def _web_crawl_build_doc_sync_token(*, source_url: str, doc: Any, crawl_token: str | None = None) -> str:
+    meta = dict(getattr(doc, "doc_metadata", None) or {})
+    etag = str(meta.get("source_etag") or "").strip() or None
+    last_modified = str(meta.get("source_last_modified_raw") or meta.get("source_last_modified_at") or "").strip() or None
+    body_sha = str(meta.get("file_sha256") or "").strip().lower() or None
+    if not body_sha:
+        body_sha = _web_crawl_extract_token_part(crawl_token, key="body_sha256")
+
+    token = _web_crawl_content_fingerprint(
+        url=source_url,
+        etag=etag,
+        last_modified=last_modified,
+        body_sha256=body_sha,
+    )
+
+    if token.startswith("url_sha256:") and _web_crawl_token_is_content_aware(crawl_token):
+        token = str(crawl_token or "").strip() or token
+
+    # Preserve crawler content_type marker when available.
+    ct = _web_crawl_extract_token_part(crawl_token, key="content_type")
+    if ct and "content_type:" not in token:
+        token = f"content_type:{ct}|{token}"
+
+    return token
+
+
+def _web_crawl_source_manifest(urls: list[str], *, sync_tokens: dict[str, str] | None = None) -> dict[str, str]:
     out: dict[str, str] = {}
+    token_map = sync_tokens if isinstance(sync_tokens, dict) else {}
     for raw in urls or []:
         url = str(raw or "").strip()
         if not url or url in out:
             continue
-        out[url] = hashlib.sha256(url.encode("utf-8", "ignore")).hexdigest()
+        out[url] = _web_crawl_content_fingerprint(
+            url=url,
+            crawl_sync_token=str(token_map.get(url) or "").strip() or None,
+        )
     return out
+
+
+def _db_row_sidecar_file_path(*, dataset_id: UUID, connector_id: str) -> str:
+    return f"virtual://db_catalog/rows/{str(dataset_id)}/{str(connector_id or '').strip()}"
+
+
+def _db_row_sidecar_filename(*, dataset_id: UUID, connector_id: str) -> str:
+    ds = str(dataset_id)
+    cid = str(connector_id or "").strip() or "db_catalog"
+    return f"db_rows_{cid}_{ds}.sqlite"
+
+
+def _build_db_row_source_manifest(snapshots: list[dict[str, Any]]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for snap in snapshots or []:
+        if not isinstance(snap, dict):
+            continue
+        source_table = str(snap.get("source_table") or "").strip()
+        sync_token = str(snap.get("source_sync_token") or "").strip()
+        if not source_table or not sync_token:
+            continue
+        out[source_table] = sync_token
+    return dict(sorted(out.items(), key=lambda kv: kv[0]))
+
+
+def _upsert_db_row_sidecar_document(
+    *,
+    db: Session,
+    run: ConnectorRun,
+    connector_id: str,
+    requested_by: str,
+    snapshots: list[dict[str, Any]],
+    max_tables: int,
+    max_rows_per_table: int,
+    max_cols: int,
+) -> dict[str, Any] | None:
+    if run.dataset_id is None:
+        return None
+    if not snapshots:
+        return None
+
+    from app.services.table_store_service import import_db_row_snapshots
+
+    now = _now()
+    file_path = _db_row_sidecar_file_path(dataset_id=run.dataset_id, connector_id=connector_id)
+    filename = _db_row_sidecar_filename(dataset_id=run.dataset_id, connector_id=connector_id)
+
+    doc = (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == run.tenant_id,
+            DBDocument.dataset_id == run.dataset_id,
+            DBDocument.file_path == file_path,
+        )
+        .first()
+    )
+    if doc is None:
+        doc = DBDocument(
+            tenant_id=run.tenant_id,
+            dataset_id=run.dataset_id,
+            filename=filename,
+            file_type="dbrows",
+            file_size=0,
+            file_path=file_path,
+            owner_id=(requested_by or None),
+            access_mode="inherit",
+            status="completed",
+            processing_progress=100,
+            current_stage="completed",
+            error_message=None,
+            chunk_count=0,
+            total_characters=0,
+            doc_metadata={},
+            processed_at=now,
+        )
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+
+    assets = import_db_row_snapshots(
+        tenant_id=run.tenant_id,
+        dataset_id=run.dataset_id,
+        document_id=doc.id,
+        snapshots=snapshots,
+        max_tables=max_tables,
+        max_rows_per_table=max_rows_per_table,
+        max_cols=max_cols,
+        sample_rows=int(getattr(settings, "TABLE_STORE_SAMPLE_ROWS", 20) or 20),
+    )
+
+    tables_payload: list[dict[str, Any]] = []
+    for a in assets:
+        tables_payload.append(
+            {
+                "table_id": str(getattr(a, "table_id", "")),
+                "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
+                "sheet_name": getattr(a, "sheet_name", None),
+                "row_count": int(getattr(a, "row_count", 0) or 0),
+                "col_count": int(getattr(a, "col_count", 0) or 0),
+                "truncated": bool(getattr(a, "truncated", False)),
+                "columns": list(getattr(a, "columns", None) or []),
+                "sample_rows": list(getattr(a, "sample_rows", None) or []),
+                "row_source_table": getattr(a, "row_source_table", None),
+                "row_source_sync_token": getattr(a, "row_source_sync_token", None),
+                "row_source_pk_hash_col": getattr(a, "row_source_pk_hash_col", None),
+            }
+        )
+
+    meta = dict(getattr(doc, "doc_metadata", None) or {})
+    meta["table_store"] = {
+        "version": "1",
+        "source_ext": ".dbrows",
+        "imported_at": now.isoformat(),
+        "tables": tables_payload,
+    }
+    doc.filename = filename
+    doc.file_type = "dbrows"
+    doc.file_path = file_path
+    doc.status = "completed"
+    doc.processing_progress = 100
+    doc.current_stage = "completed"
+    doc.error_message = None
+    doc.chunk_count = 0
+    doc.total_characters = 0
+    doc.processed_at = now
+    doc.doc_metadata = meta
+    _apply_connector_identity_metadata(
+        doc=doc,
+        run=run,
+        connector_id=connector_id,
+        source_ref=f"db_catalog_rows:{connector_id}",
+        source_id=f"{connector_id}:{run.dataset_id}",
+        extra={"doc_kind": "db_row_sidecar"},
+    )
+    try:
+        doc.file_size = int(len(json.dumps(meta, ensure_ascii=False)))
+    except Exception:
+        doc.file_size = 0
+    db.commit()
+    db.refresh(doc)
+
+    linked = (
+        db.query(ConnectorRunDocument)
+        .filter(
+            ConnectorRunDocument.tenant_id == run.tenant_id,
+            ConnectorRunDocument.run_id == run.id,
+            ConnectorRunDocument.document_id == doc.id,
+        )
+        .first()
+    )
+    if linked is None:
+        db.add(
+            ConnectorRunDocument(
+                tenant_id=run.tenant_id,
+                run_id=run.id,
+                document_id=doc.id,
+                source_ref=f"db_catalog_rows:{connector_id}",
+                status="created",
+            )
+        )
+        db.commit()
+
+    return {
+        "document_id": str(doc.id),
+        "tables": int(len(assets)),
+        "source_manifest_count": int(len(_build_db_row_source_manifest(snapshots))),
+    }
 
 
 def _unknown_tenant_groups(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> list[str]:
@@ -1139,6 +1413,50 @@ async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by
                 # Best-effort only: catalog sync success should not depend on indexing infra.
                 stats["schema_doc_error"] = _safe_error_str(exc)
 
+            # Optional: bounded row snapshots for TAG recall.
+            try:
+                row_sync_global = bool(getattr(settings, "DB_CATALOG_ROW_SYNC_ENABLED", False))
+                row_sync_local = bool(cfg.get("row_sync_enabled"))
+                row_sync_enabled = bool(row_sync_global and row_sync_local)
+                stats["row_sync_enabled"] = bool(row_sync_enabled)
+                if row_sync_enabled:
+                    from app.connectors.db.catalog_runner import extract_row_snapshots
+
+                    max_tables = int(cfg.get("row_sync_max_tables") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_TABLES", 20) or 20)
+                    max_rows = int(
+                        cfg.get("row_sync_max_rows_per_table")
+                        or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", 50)
+                        or 50
+                    )
+                    max_cols = int(cfg.get("row_sync_max_cols") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_COLS", 50) or 50)
+                    snapshots = extract_row_snapshots(
+                        tenant_id=tenant_id,
+                        dataset_id=run.dataset_id,
+                        connector_id=connector_id,
+                        config=dict(cfg or {}),
+                        max_tables=max_tables,
+                        max_rows_per_table=max_rows,
+                        max_cols=max_cols,
+                    )
+                    source_manifest = _build_db_row_source_manifest(snapshots)
+                    stats["total_tables"] = int(len(snapshots))
+                    stats["source_manifest"] = source_manifest
+
+                    sidecar = _upsert_db_row_sidecar_document(
+                        db=db,
+                        run=run,
+                        connector_id=connector_id,
+                        requested_by=requested_by,
+                        snapshots=snapshots,
+                        max_tables=max_tables,
+                        max_rows_per_table=max_rows,
+                        max_cols=max_cols,
+                    )
+                    if isinstance(sidecar, dict):
+                        stats["row_sidecar"] = sidecar
+            except Exception as exc:  # noqa: BLE001
+                stats["row_sync_error"] = _safe_error_str(exc)
+
         stats.update({"result": dict(result or {})})
         # Best-effort audit log (do not block connector execution).
         try:
@@ -1178,6 +1496,8 @@ async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by
         run.status = "completed"
         run.finished_at = _now()
         db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
     except Exception as exc:  # noqa: BLE001
         # Best-effort: avoid raising from background tasks (keep request path stable).
         with contextlib.suppress(Exception):
@@ -1218,6 +1538,8 @@ async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by
                 run.finished_at = _now()
                 run.error_message = _safe_error_str(exc)
                 db.commit()
+                with contextlib.suppress(Exception):
+                    _sync_connector_config_from_run(db, run=run)
             db.rollback()
     finally:
         db.close()
@@ -1873,16 +2195,35 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         created_doc_ids: list[UUID] = []
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
         existing_manifest = normalize_source_manifest(state.get("source_manifest"))
-        discovered_manifest = _web_crawl_source_manifest([str(url or "").strip() for url in (crawl.urls or []) if str(url or "").strip()])
+        crawl_sync_tokens = getattr(crawl, "sync_tokens", None)
+        crawl_sync_tokens = crawl_sync_tokens if isinstance(crawl_sync_tokens, dict) else {}
+        discovered_manifest = _web_crawl_source_manifest(
+            [str(url or "").strip() for url in (crawl.urls or []) if str(url or "").strip()],
+            sync_tokens={str(k): str(v) for k, v in crawl_sync_tokens.items()},
+        )
         discovered_urls = list(discovered_manifest.keys())
         resume_cursor_raw = get_resume_cursor(state)
         is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
         effective_mode = "incremental" if existing_manifest else "full"
-        delta_urls = [url for url in discovered_urls if url not in existing_manifest]
+        delta_urls = [
+            url
+            for url in discovered_urls
+            if (
+                url not in existing_manifest
+                or _web_crawl_manifest_token_changed(
+                    existing_token=existing_manifest.get(url),
+                    discovered_token=discovered_manifest.get(url),
+                )
+            )
+        ]
         removed_urls = sorted(set(existing_manifest) - set(discovered_manifest)) if effective_mode == "incremental" else []
         resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
         crawl_urls, cursor_in = slice_items_from_cursor(delta_urls, cursor=resume_cursor)
-        source_manifest_state = {url: token for url, token in existing_manifest.items() if url in discovered_manifest}
+        source_manifest_state = {
+            url: str(discovered_manifest.get(url) or token)
+            for url, token in existing_manifest.items()
+            if url in discovered_manifest
+        }
         skipped_unchanged = max(0, int(len(discovered_urls) - len(delta_urls)))
         processed_visible = skipped_unchanged + cursor_in
         removed_urls_reconciled = 0
@@ -1928,6 +2269,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 break
 
             succeeded = False
+            ingested_doc = None
             try:
                 body = UrlUploadRequest(
                     url=url,
@@ -1946,6 +2288,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                     account_id=requested_by,
                     db=db,
                 )
+                ingested_doc = doc
 
                 _apply_document_access_from_config(
                     db,
@@ -1988,7 +2331,15 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
                 processed = cursor_in + idx + 1
                 processed_visible = skipped_unchanged + processed
                 if succeeded and url and url in discovered_manifest:
-                    source_manifest_state[url] = discovered_manifest[url]
+                    token = str(discovered_manifest.get(url) or "").strip()
+                    if ingested_doc is not None:
+                        with contextlib.suppress(Exception):
+                            token = _web_crawl_build_doc_sync_token(
+                                source_url=url,
+                                doc=ingested_doc,
+                                crawl_token=token,
+                            )
+                    source_manifest_state[url] = token or discovered_manifest[url]
                 stats = dict(run.stats or {})
                 stats.update(
                     {

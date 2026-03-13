@@ -297,6 +297,120 @@ async def test_execute_web_crawl_run_incremental_skips_unchanged_urls(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_execute_web_crawl_run_incremental_replays_changed_content_same_url(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="web_crawl",
+        config={
+            "start_urls": ["https://example.com/docs"],
+            "max_pages": 4,
+            "_state": {
+                "source_manifest": {
+                    "https://example.com/docs/a": "content_type:text/html|body_sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "https://example.com/docs/b": "content_type:text/html|body_sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                }
+            },
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    crawl = types.SimpleNamespace(
+        urls=[
+            "https://example.com/docs/a",
+            "https://example.com/docs/b",
+            "https://example.com/docs/c",
+        ],
+        sync_tokens={
+            "https://example.com/docs/a": "content_type:text/html|body_sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "https://example.com/docs/b": "content_type:text/html|body_sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "https://example.com/docs/c": "content_type:text/html|body_sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        },
+        visited=3,
+        queued=3,
+        errors=[],
+    )
+
+    async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        return crawl
+
+    ingested_urls: list[str] = []
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        ingested_urls.append(str(getattr(body, "url", "")))
+        return _DummyDoc()
+
+    monkeypatch.setattr(connectors, "crawl_site", _fake_crawl_site, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_web_crawl_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    assert ingested_urls == ["https://example.com/docs/a", "https://example.com/docs/c"]
+    assert (run.stats or {}).get("mode") == "incremental"
+    assert int((run.stats or {}).get("delta_urls") or 0) == 2
+    assert int((run.stats or {}).get("skipped_unchanged") or 0) == 1
+    assert (run.stats or {}).get("source_manifest") == {
+        "https://example.com/docs/a": "content_type:text/html|body_sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "https://example.com/docs/b": "content_type:text/html|body_sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "https://example.com/docs/c": "content_type:text/html|body_sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_web_crawl_run_manifest_token_prefers_etag_last_modified_and_body_hash(monkeypatch):  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run, run_id, tenant_id = _make_run(
+        connector_id="web_crawl",
+        config={
+            "start_urls": ["https://example.com/docs"],
+            "max_pages": 4,
+            "_state": {"source_manifest": {}},
+        },
+    )
+    dummy_db = _DummyDB(run)
+    monkeypatch.setattr(connectors, "SessionLocal", lambda: dummy_db, raising=True)
+    monkeypatch.setattr(connectors, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+
+    crawl = types.SimpleNamespace(
+        urls=["https://example.com/docs/a"],
+        sync_tokens={
+            "https://example.com/docs/a": "content_type:text/html|body_sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        visited=1,
+        queued=1,
+        errors=[],
+    )
+
+    async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        return crawl
+
+    class _MetaDoc(_DummyDoc):
+        def __init__(self) -> None:
+            super().__init__()
+            self.doc_metadata = {
+                "source_etag": "etag-123",
+                "source_last_modified_raw": "Wed, 12 Mar 2026 00:00:00 GMT",
+            }
+
+    async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        assert str(getattr(body, "url", "")) == "https://example.com/docs/a"
+        return _MetaDoc()
+
+    monkeypatch.setattr(connectors, "crawl_site", _fake_crawl_site, raising=True)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=True)
+
+    await connectors._execute_web_crawl_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+
+    token = str(((run.stats or {}).get("source_manifest") or {}).get("https://example.com/docs/a") or "")
+    assert "etag:etag-123" in token
+    assert "last_modified:Wed, 12 Mar 2026 00:00:00 GMT" in token
+    assert "body_sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in token
+
+
+@pytest.mark.asyncio
 async def test_execute_web_crawl_run_incremental_prunes_removed_urls_and_soft_disables_documents(monkeypatch):  # noqa: ANN001
     connectors = _import_connectors_with_lightweight_stubs()
 

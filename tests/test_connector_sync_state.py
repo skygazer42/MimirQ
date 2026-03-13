@@ -59,6 +59,17 @@ def test_slice_items_from_cursor_returns_tail_and_normalized_cursor() -> None:
             },
         ),
         ("confluence_space", {"last_modified": "2026-02-14T00:00:00.000Z"}, {"last_modified": "2026-02-14T00:00:00.000Z"}),
+        (
+            "mysql_catalog",
+            {
+                "total_tables": 2,
+                "source_manifest": {"demo.users": "tok-users", "demo.orders": "tok-orders"},
+            },
+            {
+                "total_tables": 2,
+                "source_manifest": {"demo.orders": "tok-orders", "demo.users": "tok-users"},
+            },
+        ),
     ],
 )
 def test_build_persisted_state_uses_connector_policy(

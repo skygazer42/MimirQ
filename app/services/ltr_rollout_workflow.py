@@ -27,6 +27,14 @@ _DEFAULT_LTR_ROLLOUT_GATE_THRESHOLDS: dict[str, Any] = {
         "candidate.cases_used": {"min": 1.0},
     },
 }
+_DEFAULT_LTR_ROLLOUT_GATE_POLICY_PROFILE: dict[str, Any] = {
+    "schema": "mimirq.ltr_rollout_gate_policy_profile.v1",
+    "levels": {
+        "pass": {"max_failed_checks": 0, "canary_ratio": 0.2},
+        "warn": {"max_failed_checks": 1, "canary_ratio": 0.05},
+        "block": {"max_failed_checks": 9999, "canary_ratio": 0.0},
+    },
+}
 
 
 def _safe_uuid_text(value: Any) -> str | None:
@@ -56,6 +64,20 @@ def _safe_int(value: Any, *, min_value: int | None = None) -> int | None:
     except Exception:
         return None
     if min_value is not None and out < min_value:
+        return None
+    return out
+
+
+def _safe_float(value: Any, *, min_value: float | None = None, max_value: float | None = None) -> float | None:
+    try:
+        if value is None:
+            return None
+        out = float(value)
+    except Exception:
+        return None
+    if min_value is not None and out < min_value:
+        return None
+    if max_value is not None and out > max_value:
         return None
     return out
 
@@ -315,9 +337,85 @@ def normalize_ltr_rollout_gate_thresholds(raw: Any | None) -> dict[str, Any]:
             bounds = _normalize_gate_bound(value)
             if bounds:
                 metrics[str(key)] = bounds
+
+    raw_policy = payload.get("policy_profile")
+    policy_profile = normalize_ltr_rollout_gate_policy_profile(raw_policy)
     return {
         "schema": "mimirq.ltr_rollout_gate_thresholds.v1",
         "metrics": metrics,
+        "policy_profile": policy_profile,
+    }
+
+
+def normalize_ltr_rollout_gate_policy_profile(raw: Any | None) -> dict[str, Any]:
+    payload = raw if isinstance(raw, dict) else {}
+    levels_payload = payload.get("levels") if isinstance(payload.get("levels"), dict) else payload
+
+    levels: dict[str, dict[str, Any]] = {}
+    for level in ("pass", "warn", "block"):
+        cur = levels_payload.get(level) if isinstance(levels_payload, dict) else None
+        base = (
+            _DEFAULT_LTR_ROLLOUT_GATE_POLICY_PROFILE.get("levels", {}).get(level)
+            if isinstance(_DEFAULT_LTR_ROLLOUT_GATE_POLICY_PROFILE.get("levels"), dict)
+            else {}
+        )
+        source = cur if isinstance(cur, dict) else {}
+        max_failed = _safe_int(source.get("max_failed_checks"), min_value=0)
+        if max_failed is None:
+            max_failed = _safe_int((base or {}).get("max_failed_checks"), min_value=0) or 0
+        canary_ratio = _safe_float(source.get("canary_ratio"), min_value=0.0, max_value=1.0)
+        if canary_ratio is None:
+            canary_ratio = _safe_float((base or {}).get("canary_ratio"), min_value=0.0, max_value=1.0) or 0.0
+        levels[level] = {
+            "max_failed_checks": int(max_failed),
+            "canary_ratio": round(float(canary_ratio), 4),
+        }
+
+    # Ensure monotonic boundaries: pass <= warn <= block.
+    pass_max = int(levels["pass"]["max_failed_checks"])
+    warn_max = int(levels["warn"]["max_failed_checks"])
+    block_max = int(levels["block"]["max_failed_checks"])
+    if warn_max < pass_max:
+        warn_max = pass_max
+    if block_max < warn_max:
+        block_max = warn_max
+    levels["warn"]["max_failed_checks"] = int(warn_max)
+    levels["block"]["max_failed_checks"] = int(block_max)
+
+    return {
+        "schema": "mimirq.ltr_rollout_gate_policy_profile.v1",
+        "levels": levels,
+    }
+
+
+def _evaluate_gate_policy_decision(*, failed_checks: int, policy_profile: dict[str, Any]) -> dict[str, Any]:
+    levels = policy_profile.get("levels") if isinstance(policy_profile.get("levels"), dict) else {}
+    pass_cfg = levels.get("pass") if isinstance(levels.get("pass"), dict) else {}
+    warn_cfg = levels.get("warn") if isinstance(levels.get("warn"), dict) else {}
+    block_cfg = levels.get("block") if isinstance(levels.get("block"), dict) else {}
+
+    pass_max = _safe_int(pass_cfg.get("max_failed_checks"), min_value=0)
+    warn_max = _safe_int(warn_cfg.get("max_failed_checks"), min_value=0)
+    if pass_max is None:
+        pass_max = 0
+    if warn_max is None:
+        warn_max = max(pass_max, 1)
+
+    if failed_checks <= pass_max:
+        level = "pass"
+        ratio = _safe_float(pass_cfg.get("canary_ratio"), min_value=0.0, max_value=1.0) or 0.0
+    elif failed_checks <= warn_max:
+        level = "warn"
+        ratio = _safe_float(warn_cfg.get("canary_ratio"), min_value=0.0, max_value=1.0) or 0.0
+    else:
+        level = "block"
+        ratio = _safe_float(block_cfg.get("canary_ratio"), min_value=0.0, max_value=1.0) or 0.0
+
+    return {
+        "schema": "mimirq.ltr_rollout_gate_decision.v1",
+        "level": level,
+        "failed_checks": int(max(0, int(failed_checks or 0))),
+        "canary_ratio": round(float(ratio), 4),
     }
 
 
@@ -397,14 +495,18 @@ def evaluate_ltr_rollout_gate(
         "passed": int(len(checks) - failed),
         "failed": int(failed),
     }
+    policy_profile = normalized.get("policy_profile") if isinstance(normalized.get("policy_profile"), dict) else {}
+    decision = _evaluate_gate_policy_decision(failed_checks=int(failed), policy_profile=policy_profile)
+    gate_passed = str(decision.get("level") or "").strip().lower() == "pass"
 
     return {
         "schema": "mimirq.ltr_rollout_gate_result.v1",
         "generated_at": generated_at or _now_utc_iso(),
-        "passed": failed == 0,
+        "passed": bool(gate_passed),
         "summary": summary,
         "reasons": reasons,
         "checks": checks,
+        "decision": decision,
         "thresholds": normalized,
     }
 
@@ -463,6 +565,53 @@ def build_rollout_comparison(
     }
 
 
+def build_ltr_rollout_activation_plan(
+    *,
+    gate: dict[str, Any],
+    candidate_model_id: str | None,
+    actor_id: str | None = None,
+    canary_on_pass: bool = False,
+    canary_ratio: float | None = None,
+) -> dict[str, Any]:
+    if not bool(canary_on_pass):
+        return {"performed": False, "status": "manual_review_required"}
+
+    level = str(((gate.get("decision") or {}).get("level") if isinstance(gate, dict) else "") or "").strip().lower()
+    if level != "pass":
+        return {
+            "performed": False,
+            "status": "blocked_by_gate",
+            "mode": "canary",
+            "gate_level": level or "unknown",
+            "canary_ratio": 0.0,
+        }
+
+    cid = str(candidate_model_id or "").strip()
+    if not cid:
+        return {
+            "performed": False,
+            "status": "missing_candidate_model_id",
+            "mode": "canary",
+            "gate_level": "pass",
+            "canary_ratio": 0.0,
+        }
+
+    ratio = _safe_float(canary_ratio, min_value=0.0, max_value=1.0)
+    if ratio is None:
+        ratio = _safe_float((gate.get("decision") or {}).get("canary_ratio"), min_value=0.0, max_value=1.0)
+    if ratio is None:
+        ratio = 0.0
+
+    return {
+        "performed": True,
+        "status": "canary_activation_ready",
+        "mode": "canary",
+        "candidate_model_id": cid,
+        "canary_ratio": round(float(ratio), 4),
+        "actor_id": (str(actor_id) if str(actor_id or "").strip() else None),
+    }
+
+
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -474,10 +623,12 @@ def sha256_file(path: Path) -> str:
 
 __all__ = [
     "FeedbackCaseMaterialization",
+    "build_ltr_rollout_activation_plan",
     "build_rollout_comparison",
     "build_rollout_regression_bundle",
     "evaluate_ltr_rollout_gate",
     "materialize_feedback_case",
+    "normalize_ltr_rollout_gate_policy_profile",
     "normalize_ltr_rollout_gate_thresholds",
     "normalize_reference_sources",
     "sha256_file",

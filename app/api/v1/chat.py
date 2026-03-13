@@ -65,7 +65,11 @@ from app.services.prompt_defaults import merge_prompt_defaults_with_dataset
 from app.services.quota_service import check_chat_assistant_token_quota
 from app.services.rag_config_template_apply import apply_rag_config_patch
 from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
-from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
+from app.services.rag_config_template_resolver import (
+    build_adaptive_routing_reward_writeback,
+    build_rag_config_patch_hash,
+    resolve_rag_config_template,
+)
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.rag_trace_service import list_rag_traces
 
@@ -687,6 +691,17 @@ async def chat(
                 }
                 if rag_config_template_resolver_debug:
                     rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
+                    strategy = str(rag_config_template_resolver_debug.get("strategy") or "").strip().lower()
+                    if strategy == "adaptive_epsilon_greedy":
+                        rag_config_template_meta["reward_writeback"] = build_adaptive_routing_reward_writeback(
+                            experiment_key=(getattr(chosen, "ab_experiment_key", None) or effective_rag_config_ab_experiment_key),
+                            variant=getattr(chosen, "ab_variant", None),
+                            strategy=rag_config_template_resolver_debug.get("strategy"),
+                            decision=rag_config_template_resolver_debug.get("decision"),
+                            request_id=str(request_id),
+                            template_id=str(chosen.id),
+                            template_key=getattr(chosen, "template_key", None),
+                        )
 
                 # Analytics only; never fail chat due to counter updates.
                 try:
@@ -1417,6 +1432,17 @@ async def stream_chat(
                     }
                     if rag_config_template_resolver_debug:
                         rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
+                        strategy = str(rag_config_template_resolver_debug.get("strategy") or "").strip().lower()
+                        if strategy == "adaptive_epsilon_greedy":
+                            rag_config_template_meta["reward_writeback"] = build_adaptive_routing_reward_writeback(
+                                experiment_key=(getattr(chosen, "ab_experiment_key", None) or effective_rag_config_ab_experiment_key),
+                                variant=getattr(chosen, "ab_variant", None),
+                                strategy=rag_config_template_resolver_debug.get("strategy"),
+                                decision=rag_config_template_resolver_debug.get("decision"),
+                                request_id=str(request_id),
+                                template_id=str(chosen.id),
+                                template_key=getattr(chosen, "template_key", None),
+                            )
 
                     # Analytics only; never fail chat due to counter updates.
                     try:

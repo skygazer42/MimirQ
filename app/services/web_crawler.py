@@ -10,9 +10,10 @@ Design goals:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import re
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -30,6 +31,20 @@ from app.rag.preprocessing.html_canonical import extract_canonical_url, normaliz
 
 _DISALLOWED_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "file:")
 logger = get_logger("services.web_crawler")
+
+
+def _build_page_sync_token(*, url: str, text: str | None, content_type: str | None) -> str:
+    """
+    Best-effort content fingerprint used by connector incremental manifests.
+    """
+    ct = str(content_type or "").split(";", 1)[0].strip().lower()
+    body = str(text or "")
+    if body:
+        digest = hashlib.sha256(body.encode("utf-8", "ignore")).hexdigest()
+        if ct:
+            return f"content_type:{ct}|body_sha256:{digest}"
+        return f"body_sha256:{digest}"
+    return f"url_sha256:{hashlib.sha256(str(url or '').encode('utf-8', 'ignore')).hexdigest()}"
 
 
 def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list[str]:
@@ -370,6 +385,7 @@ class WebCrawlResult:
     visited: int
     queued: int
     errors: List[Dict[str, Any]]
+    sync_tokens: Dict[str, str] = field(default_factory=dict)
 
 
 async def crawl_site(
@@ -573,6 +589,7 @@ async def crawl_site(
     visited: set[str] = set()
     out: List[str] = []
     out_keys: set[str] = set()
+    sync_tokens: Dict[str, str] = {}
     errors: List[Dict[str, Any]] = []
     degraded_seen: set[tuple[str, str]] = set()
 
@@ -647,6 +664,11 @@ async def crawl_site(
         if out_key and out_key not in out_keys:
             out_keys.add(out_key)
             out.append(out_url)
+            sync_tokens[out_url] = _build_page_sync_token(
+                url=out_url,
+                text=(text or None),
+                content_type=(content_type or None),
+            )
 
         if depth >= int(max_depth):
             continue
@@ -696,7 +718,7 @@ async def crawl_site(
                     continue
             q.append((link, depth + 1))
 
-    return WebCrawlResult(urls=out, visited=len(visited), queued=len(q), errors=errors)
+    return WebCrawlResult(urls=out, visited=len(visited), queued=len(q), errors=errors, sync_tokens=sync_tokens)
 
 
 __all__ = ["WebCrawlResult", "crawl_site"]

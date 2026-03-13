@@ -48,6 +48,36 @@ def _extract_reference_chunk_ids(case: dict[str, Any]) -> set[str]:
     return out
 
 
+def _dedupe_chunk_rows(
+    rows: list[dict[str, Any]],
+    *,
+    max_hard_negatives: int = 10,
+) -> tuple[list[dict[str, Any]], int]:
+    cap = max(0, int(max_hard_negatives or 0))
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    dropped = 0
+    for row in list(rows or []):
+        if not isinstance(row, dict):
+            continue
+        cid = _safe_str(row.get("chunk_id"), max_len=200)
+        if not cid:
+            continue
+        if cid in seen:
+            dropped += 1
+            continue
+        seen.add(cid)
+        payload = {
+            "chunk_id": cid,
+            "document_id": _safe_str(row.get("document_id"), max_len=200),
+            "rank": _coerce_nonneg_int(row.get("rank")),
+        }
+        out.append(payload)
+        if cap > 0 and len(out) >= cap:
+            break
+    return out, dropped
+
+
 def _trace_retrieval_config_hash(trace_record: dict[str, Any]) -> str | None:
     retrieval = trace_record.get("retrieval")
     if isinstance(retrieval, dict):
@@ -171,6 +201,94 @@ def mine_hard_negatives_for_case_from_trace(
     return out
 
 
+def merge_hard_negative_records(
+    *,
+    records: list[dict[str, Any]] | None,
+    max_hard_negatives: int = 10,
+) -> dict[str, Any]:
+    """
+    Merge multiple mined hard-negative records for the same query hash.
+
+    Deterministic:
+    - preserve source order
+    - dedupe by chunk_id
+    - bound output by max_hard_negatives
+    """
+    rows = [r for r in list(records or []) if isinstance(r, dict)]
+    if not rows:
+        return {
+            "schema": HARD_NEGATIVES_SCHEMA_V1,
+            "query_hash": "",
+            "retrieval_config_hash": None,
+            "hard_negatives": [],
+            "stats": {"sources_merged": 0, "hard_negatives_selected": 0, "dedup_dropped": 0},
+        }
+
+    query_hash = ""
+    retrieval_config_hash: str | None = None
+    positives: list[dict[str, Any]] = []
+    hard_rows: list[dict[str, Any]] = []
+    stats_sum: dict[str, int] = {
+        "citations_total": 0,
+        "candidates_before_first_positive": 0,
+        "hard_negatives_selected": 0,
+        "dedup_dropped": 0,
+    }
+
+    for row in rows:
+        if not query_hash:
+            query_hash = _safe_str(row.get("query_hash"), max_len=64) or ""
+        if retrieval_config_hash is None:
+            retrieval_config_hash = _safe_str(row.get("retrieval_config_hash"), max_len=128)
+
+        hard = row.get("hard_negatives")
+        if isinstance(hard, list):
+            hard_rows.extend([x for x in hard if isinstance(x, dict)])
+
+        pos = row.get("positives")
+        if isinstance(pos, list):
+            for p in pos:
+                if not isinstance(p, dict):
+                    continue
+                cid = _safe_str(p.get("chunk_id"), max_len=200)
+                rank = _coerce_nonneg_int(p.get("rank"))
+                if cid and rank > 0:
+                    positives.append({"chunk_id": cid, "rank": rank})
+
+        rec_stats = row.get("stats")
+        if isinstance(rec_stats, dict):
+            for key in stats_sum:
+                stats_sum[key] += _coerce_nonneg_int(rec_stats.get(key))
+
+    hard_merged, dedup_extra = _dedupe_chunk_rows(hard_rows, max_hard_negatives=max_hard_negatives)
+    stats_sum["dedup_dropped"] += int(dedup_extra)
+    stats_sum["hard_negatives_selected"] = int(len(hard_merged))
+    stats_sum["sources_merged"] = int(len(rows))
+
+    # Keep at most 5 unique positives for debugging parity.
+    pos_seen: set[str] = set()
+    pos_out: list[dict[str, Any]] = []
+    for p in positives:
+        cid = str(p.get("chunk_id") or "")
+        if not cid or cid in pos_seen:
+            continue
+        pos_seen.add(cid)
+        pos_out.append({"chunk_id": cid, "rank": _coerce_nonneg_int(p.get("rank"))})
+        if len(pos_out) >= 5:
+            break
+
+    out: dict[str, Any] = {
+        "schema": HARD_NEGATIVES_SCHEMA_V1,
+        "query_hash": query_hash,
+        "retrieval_config_hash": retrieval_config_hash,
+        "hard_negatives": hard_merged,
+        "stats": stats_sum,
+    }
+    if pos_out:
+        out["positives"] = pos_out
+    return out
+
+
 def load_hard_negatives_jsonl(path: str | Path) -> dict[str, list[str]]:
     """
     Load a hard-negative JSONL file into a lookup:
@@ -229,6 +347,6 @@ def load_hard_negatives_jsonl(path: str | Path) -> dict[str, list[str]]:
 __all__ = [
     "HARD_NEGATIVES_SCHEMA_V1",
     "load_hard_negatives_jsonl",
+    "merge_hard_negative_records",
     "mine_hard_negatives_for_case_from_trace",
 ]
-

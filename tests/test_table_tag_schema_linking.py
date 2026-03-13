@@ -37,3 +37,34 @@ def test_score_schema_link_diagnostics_returns_none_strategy_when_no_overlap() -
     assert list(diag.get("matched_values") or []) == []
     assert list(diag.get("matched_tables") or []) == []
     assert str(diag.get("strategy") or "") == "none"
+
+
+def test_plan_join_query_for_tables_emits_bounded_join_sql() -> None:
+    from app.services.table_tag_service import plan_join_query_for_tables
+
+    plan = plan_join_query_for_tables(
+        question="按 region 统计订单金额前10",
+        tables=[
+            {
+                "table_name": "sheet_0",
+                "table_aliases": ["orders"],
+                "columns": [{"name": "user_id", "dtype": "int"}, {"name": "amount", "dtype": "float"}],
+                "sample_rows": [{"user_id": 1, "amount": 100.0}],
+            },
+            {
+                "table_name": "sheet_1",
+                "table_aliases": ["users"],
+                "columns": [{"name": "id", "dtype": "int"}, {"name": "region", "dtype": "text"}],
+                "sample_rows": [{"id": 1, "region": "APAC"}],
+            },
+        ],
+        max_rows=10,
+    )
+
+    sql = str(plan.get("sql") or "")
+    assert "JOIN" in sql.upper()
+    assert "LIMIT 10" in sql.upper()
+    planner = plan.get("planner") or {}
+    assert str(planner.get("strategy") or "") == "deterministic_join"
+    joins = list(planner.get("joins") or [])
+    assert len(joins) == 1

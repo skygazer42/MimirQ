@@ -56,6 +56,33 @@ def build_rag_config_patch_hash(patch: Any) -> str:
     return stable_hash(payload, length=16)
 
 
+def build_adaptive_routing_reward_writeback(
+    *,
+    experiment_key: str | None,
+    variant: str | None,
+    strategy: str | None,
+    decision: str | None,
+    request_id: str | None,
+    template_id: str | None = None,
+    template_key: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": "mimirq.rag_config_reward_writeback.v1",
+        "experiment_key": str(experiment_key or "").strip()[:120] or "unknown",
+        "variant": str(variant or "").strip()[:80] or "unknown",
+        "strategy": str(strategy or "").strip()[:80] or "adaptive_epsilon_greedy",
+        "decision": str(decision or "").strip()[:40] or "unknown",
+        "request_id": str(request_id or "").strip()[:128],
+    }
+    tid = str(template_id or "").strip()
+    if tid:
+        payload["template_id"] = tid[:80]
+    tkey = str(template_key or "").strip()
+    if tkey:
+        payload["template_key"] = tkey[:120]
+    return payload
+
+
 def _as_float(value: Any) -> float | None:
     try:
         if value is None:
@@ -385,6 +412,7 @@ def resolve_rag_config_template(
 
 __all__ = [
     "aggregate_feedback_rewards",
+    "build_adaptive_routing_reward_writeback",
     "build_rag_config_patch_hash",
     "resolve_rag_config_template",
 ]

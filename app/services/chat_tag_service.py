@@ -33,6 +33,7 @@ from app.services.table_store_service import run_table_query
 from app.services.table_tag_service import (
     generate_sql_for_table,
     generate_sql_for_table_with_metadata,
+    plan_join_query_for_tables,
     score_schema_link_diagnostics,
 )
 
@@ -55,6 +56,9 @@ class _TableCandidate:
     col_count: int
     columns: list[dict[str, Any]]
     sample_rows: list[dict[str, Any]]
+    row_source_table: str | None
+    row_source_sync_token: str | None
+    row_source_pk_hash_col: str | None
     score: int
 
 
@@ -211,7 +215,7 @@ def build_chat_tag_context_docs(
             DBDocument.status == "completed",
             # DOCX can have embedded tables imported into the Table Store as a sidecar.
             # PDF can also emit parsed tables that we store in the Table Store (sidecar).
-            DBDocument.file_type.in_(["csv", "xls", "xlsx", "docx", "pdf"]),
+            DBDocument.file_type.in_(["csv", "xls", "xlsx", "docx", "pdf", "dbrows"]),
         )
     )
     raw_docs = q.all()
@@ -257,6 +261,9 @@ def build_chat_tag_context_docs(
             cols_list = [c for c in cols if isinstance(c, dict)] if isinstance(cols, list) else []
             samples = t.get("sample_rows")
             samples_list = [r for r in samples if isinstance(r, dict)] if isinstance(samples, list) else []
+            row_source_table = str(t.get("row_source_table") or "").strip() or None
+            row_source_sync_token = str(t.get("row_source_sync_token") or "").strip() or None
+            row_source_pk_hash_col = str(t.get("row_source_pk_hash_col") or "").strip() or None
 
             score = _score_candidate(
                 terms=terms,
@@ -277,6 +284,9 @@ def build_chat_tag_context_docs(
                     col_count=col_count,
                     columns=cols_list,
                     sample_rows=samples_list,
+                    row_source_table=row_source_table,
+                    row_source_sync_token=row_source_sync_token,
+                    row_source_pk_hash_col=row_source_pk_hash_col,
                     score=score,
                 )
             )
@@ -311,12 +321,26 @@ def build_chat_tag_context_docs(
 
     max_tables = int(getattr(settings, "CHAT_TAG_MAX_TABLES", 2) or 2)
     max_tables = max(0, min(max_tables, 5))
+    high_conf = [c for c in candidates if int(c.score) >= int(min_score)]
+    complex_query = bool(
+        re.search(r"(?i)\b(join|group\s+by|by|per|across|between)\b|按|分组|关联|维度|同比|环比", str(question or ""))
+    )
+    effective_max_tables = int(max_tables)
+    table_pick_policy = "default_cap"
+    if effective_max_tables > 1 and complex_query and len(candidates) >= 2 and intent:
+        effective_max_tables = min(effective_max_tables, 2)
+        table_pick_policy = "complexity_schema_link_multi_table"
+    elif not intent or len(high_conf) <= 1:
+        effective_max_tables = min(effective_max_tables, 1)
+        table_pick_policy = "single_table_low_complexity"
 
     candidates.sort(key=lambda c: (-int(c.score), -int(c.row_count), str(c.filename), str(c.table_id)))
-    picked = candidates[:max_tables] if max_tables > 0 else []
+    picked = candidates[:effective_max_tables] if effective_max_tables > 0 else []
     if not picked:
         meta["reason"] = "no_candidates_picked"
         return [], meta
+    meta["table_pick_policy"] = table_pick_policy
+    meta["effective_max_tables"] = int(effective_max_tables)
 
     # Query caps (bounded by server-level hard caps enforced by run_table_query as well).
     max_rows = int(getattr(settings, "CHAT_TAG_MAX_ROWS", 50) or 50)
@@ -328,6 +352,165 @@ def build_chat_tag_context_docs(
         max_cols = 30
     if max_bytes <= 10_000:
         max_bytes = 10_000
+
+    # Multi-table deterministic JOIN path (same document only).
+    if len(picked) >= 2:
+        same_doc = len({c.document_id for c in picked}) == 1
+        same_dataset = len({c.dataset_id for c in picked}) == 1
+        if same_doc and same_dataset:
+            join_inputs: list[dict[str, Any]] = []
+            by_sql_table: dict[str, _TableCandidate] = {}
+            for c in picked:
+                sql_table = f"sheet_{int(c.sheet_index)}"
+                by_sql_table[sql_table] = c
+                join_inputs.append(
+                    {
+                        "table_name": sql_table,
+                        "table_aliases": [c.table_id, c.filename, str(c.sheet_name or "")],
+                        "columns": c.columns,
+                        "sample_rows": c.sample_rows,
+                    }
+                )
+
+            try:
+                join_plan = plan_join_query_for_tables(
+                    question=str(question or ""),
+                    tables=join_inputs,
+                    max_rows=max_rows,
+                )
+                join_sql = str(join_plan.get("sql") or "").strip()
+                planner_diagnostics = join_plan.get("planner") if isinstance(join_plan, dict) else None
+                planner_diagnostics = planner_diagnostics if isinstance(planner_diagnostics, dict) else {}
+                join_provenance = planner_diagnostics.get("joins")
+                if not isinstance(join_provenance, list):
+                    join_provenance = []
+
+                selected_sql_tables = [
+                    str(t).strip()
+                    for t in list(planner_diagnostics.get("selected_tables") or [])
+                    if str(t).strip()
+                ]
+                if not selected_sql_tables:
+                    selected_sql_tables = list(by_sql_table.keys())[:2]
+                selected_candidates = [by_sql_table[t] for t in selected_sql_tables if t in by_sql_table]
+                if not selected_candidates:
+                    selected_candidates = list(picked[:2])
+                primary = selected_candidates[0]
+
+                # Merge schema-link signals from selected tables for explainability.
+                merged_cols: list[str] = []
+                merged_vals: list[str] = []
+                merged_tables: list[str] = []
+                score_values: list[float] = []
+                for c in selected_candidates:
+                    diag = score_schema_link_diagnostics(
+                        question=str(question or ""),
+                        sql_table=f"sheet_{int(c.sheet_index)}",
+                        columns=c.columns,
+                        sample_rows=c.sample_rows,
+                        table_aliases=[c.table_id, c.filename, str(c.sheet_name or "")],
+                    )
+                    for v in list(diag.get("matched_columns") or []):
+                        s = str(v or "").strip()
+                        if s and s not in merged_cols:
+                            merged_cols.append(s)
+                    for v in list(diag.get("matched_values") or []):
+                        s = str(v or "").strip()
+                        if s and s not in merged_vals:
+                            merged_vals.append(s)
+                    for v in list(diag.get("matched_tables") or []):
+                        s = str(v or "").strip()
+                        if s and s not in merged_tables:
+                            merged_tables.append(s)
+                    try:
+                        score_values.append(float(diag.get("score") or 0.0))
+                    except Exception:
+                        score_values.append(0.0)
+                schema_link_diagnostics = {
+                    "score": round(max(score_values) if score_values else 0.0, 3),
+                    "strategy": "multi_table_join",
+                    "reason": "joined_table_schema_overlap",
+                    "matched_columns": merged_cols[:20],
+                    "matched_values": merged_vals[:20],
+                    "matched_tables": merged_tables[:20],
+                }
+
+                result = run_table_query(
+                    tenant_id=tenant_id,
+                    dataset_id=primary.dataset_id,
+                    table_id=primary.table_id,
+                    sql=join_sql,
+                    max_rows=max_rows,
+                    max_cols=max_cols,
+                    max_bytes=max_bytes,
+                    allowed_sql_tables=selected_sql_tables,
+                )
+
+                payload = {
+                    "kind": "tag_table_store",
+                    "document": primary.filename,
+                    "table_id": primary.table_id,
+                    "sheet_index": int(primary.sheet_index),
+                    "sheet_name": primary.sheet_name,
+                    "row_count": int(primary.row_count),
+                    "col_count": int(primary.col_count),
+                    "sql": str(result.get("sql") or join_sql),
+                    "sql_generation_mode": "deterministic_join",
+                    "schema_link": schema_link_diagnostics,
+                    "planner": planner_diagnostics,
+                    "join_provenance": join_provenance,
+                    "join_table_ids": [c.table_id for c in selected_candidates],
+                    "join_sql_tables": selected_sql_tables,
+                    "columns": result.get("columns") if isinstance(result.get("columns"), list) else [],
+                    "rows": result.get("rows") if isinstance(result.get("rows"), list) else [],
+                    "truncated": bool(result.get("truncated")),
+                }
+                text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                if len(text) > 12_000:
+                    payload["rows"] = payload.get("rows", [])[:10]
+                    text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    if len(text) > 12_000:
+                        text = text[:12_000] + "..."
+
+                doc = Document(
+                    page_content=text,
+                    metadata={
+                        "document_id": primary.document_id,
+                        "source": primary.filename or "table",
+                        "retrieval_role": "tag",
+                        "chunk_strategy": "tag",
+                        "chunk_role": "tag_sql_result",
+                        "table_id": primary.table_id,
+                        "sheet_index": int(primary.sheet_index),
+                        "sheet_name": primary.sheet_name,
+                        "sql_generation_mode": "deterministic_join",
+                        "schema_link_score": schema_link_diagnostics.get("score"),
+                        "schema_link_strategy": schema_link_diagnostics.get("strategy"),
+                        "schema_link_reason": schema_link_diagnostics.get("reason"),
+                        "schema_link_diagnostics": schema_link_diagnostics,
+                        "planner_diagnostics": planner_diagnostics,
+                        "join_provenance": join_provenance,
+                        "join_table_ids": [c.table_id for c in selected_candidates],
+                        "join_sql_tables": selected_sql_tables,
+                        "score": 1.0,
+                        "retrieval_score": 1.0,
+                    },
+                    id=str(_tag_doc_uuid(primary.table_id)),
+                )
+                meta.update(
+                    {
+                        "used": True,
+                        "intent": bool(intent),
+                        "candidates": int(len(candidates)),
+                        "picked": int(len(selected_candidates)),
+                        "returned": 1,
+                        "multi_table": True,
+                        "errors": [],
+                    }
+                )
+                return [doc], meta
+            except Exception as exc:  # noqa: BLE001
+                meta["multi_table_error"] = str(exc)[:200]
 
     out_docs: list[Document] = []
     errors: list[str] = []
@@ -397,6 +580,32 @@ def build_chat_tag_context_docs(
                 "rows": result.get("rows") if isinstance(result.get("rows"), list) else [],
                 "truncated": bool(result.get("truncated")),
             }
+
+            if c.row_source_table or c.row_source_sync_token or c.row_source_pk_hash_col:
+                row_source: dict[str, Any] = {}
+                if c.row_source_table:
+                    row_source["table"] = c.row_source_table
+                if c.row_source_sync_token:
+                    row_source["sync_token"] = c.row_source_sync_token
+                pk_hash_col = str(c.row_source_pk_hash_col or "__row_pk_hash").strip() or "__row_pk_hash"
+                col_names = payload.get("columns") if isinstance(payload.get("columns"), list) else []
+                rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
+                if pk_hash_col in col_names and rows:
+                    idx_pk = col_names.index(pk_hash_col)
+                    pk_hashes: list[str] = []
+                    for row in rows:
+                        if not isinstance(row, list) or idx_pk >= len(row):
+                            continue
+                        val = str(row[idx_pk] or "").strip()
+                        if not val or val in pk_hashes:
+                            continue
+                        pk_hashes.append(val)
+                        if len(pk_hashes) >= 200:
+                            break
+                    if pk_hashes:
+                        row_source["pk_hashes"] = pk_hashes
+                if row_source:
+                    payload["row_source"] = row_source
             text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
             # Keep each injected context doc bounded.
             max_doc_chars = 12_000
@@ -437,6 +646,21 @@ def build_chat_tag_context_docs(
                         ),
                         "schema_link_diagnostics": schema_link_diagnostics,
                         "planner_diagnostics": planner_diagnostics,
+                        "row_source_table": (
+                            payload.get("row_source", {}).get("table")
+                            if isinstance(payload.get("row_source"), dict)
+                            else c.row_source_table
+                        ),
+                        "row_source_sync_token": (
+                            payload.get("row_source", {}).get("sync_token")
+                            if isinstance(payload.get("row_source"), dict)
+                            else c.row_source_sync_token
+                        ),
+                        "row_source_pk_hashes": (
+                            payload.get("row_source", {}).get("pk_hashes")
+                            if isinstance(payload.get("row_source"), dict)
+                            else None
+                        ),
                         # Treat as strong evidence for abstain guard (not comparable to vector scores).
                         "score": 1.0,
                         "retrieval_score": 1.0,
