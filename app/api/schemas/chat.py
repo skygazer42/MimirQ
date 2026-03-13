@@ -127,8 +127,14 @@ class ChatRAGConfig(BaseModel):
     # Optional retrieval contract override.
     # - None: use server default RETRIEVAL_CONTRACT_MODE
     # - "": disable contract for this request
-    # - deterministic_recall | evidence_strict | audit_trace
+    # - deterministic_recall | must_recall_strict | evidence_strict | audit_trace
     retrieval_contract_mode: Optional[str] = None
+    # Request-level must-recall switch. None = use server/runtime defaults.
+    must_recall: Optional[bool] = None
+    # Optional contract keys that must be represented by citations (e.g. table_id/source_table/doc_name).
+    must_recall_expected_source_keys: Optional[List[str]] = None
+    # Optional citation anchor fields that must be present for must-recall.
+    must_recall_required_anchor_fields: Optional[List[str]] = None
     # Optional intent router: when enabled, the system may override retrieval knobs based on
     # query intent (faq/howto/api/log). This is deterministic and PII-safe (no raw query in outputs).
     #
@@ -221,6 +227,34 @@ class ChatRAGConfig(BaseModel):
                 + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
             )
         return mode
+
+    @field_validator("must_recall_expected_source_keys", "must_recall_required_anchor_fields", mode="before")
+    @classmethod
+    def _normalize_optional_string_list(cls, v: Any) -> Optional[List[str]]:
+        if v is None:
+            return None
+        values: List[str] = []
+        if isinstance(v, str):
+            values = [p.strip() for p in v.split(",")]
+        elif isinstance(v, (list, tuple, set)):
+            values = [str(x).strip() for x in v]
+        else:
+            raise ValueError("must be a list of strings or a comma-separated string")
+
+        cleaned: List[str] = []
+        seen: set[str] = set()
+        for item in values:
+            s = str(item or "").strip()
+            if not s:
+                continue
+            key = s.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(s)
+            if len(cleaned) >= 80:
+                break
+        return cleaned or None
 
     @field_validator("fusion_strategy", mode="before")
     @classmethod

@@ -31,6 +31,7 @@ except ImportError:
     VALID_RETRIEVAL_CONTRACT_MODES = {
         "",
         "deterministic_recall",
+        "must_recall_strict",
         "evidence_strict",
         "audit_trace",
     }
@@ -41,6 +42,8 @@ except ImportError:
             return ""
         if raw in {"deterministic", "deterministic_recall"}:
             return "deterministic_recall"
+        if raw in {"must_recall", "must_recall_strict"}:
+            return "must_recall_strict"
         if raw in {"evidence", "evidence_strict", "strict"}:
             return "evidence_strict"
         if raw in {"audit", "audit_trace", "trace"}:
@@ -680,9 +683,21 @@ class Settings(BaseSettings):
     # Retrieval contract mode (opt-in behavior packs).
     # - "" (default): no contract override
     # - deterministic_recall: force deterministic fallback-first safeguards for empty evidence
+    # - must_recall_strict: deterministic fallback + partial-miss second pass + strict fail reasons
     # - evidence_strict: force span-level evidence gating + visible-evidence-only grounding
     # - audit_trace: reserved for high-verbosity retrieval tracing (no scoring behavior change)
     RETRIEVAL_CONTRACT_MODE: str = ""
+    # Must-recall contract controls (opt-in, additive).
+    RETRIEVAL_MUST_RECALL_DEFAULT_ENABLED: bool = False
+    # CSV of expected source keys (table_id/document/source aliases); empty means "no explicit source key contract".
+    RETRIEVAL_MUST_RECALL_REQUIRED_SOURCE_KEYS: str = ""
+    # CSV of citation keys that must exist when must-recall is enabled.
+    RETRIEVAL_MUST_RECALL_REQUIRED_ANCHOR_FIELDS: str = "chunk_id,document_id"
+    RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED: bool = True
+    RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE: str = "keyword"  # hybrid | vector | keyword | mmr
+    RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K: int = 80
+    # Emit immutable provenance capsule for retrieval responses (PII-safe, replay-friendly).
+    RAG_EVIDENCE_CAPSULE_ENABLED: bool = True
     # Deterministic hard fallback (opt-in):
     # when primary retrieval yields no citations, run one bounded fallback pass.
     RETRIEVAL_HARD_FALLBACK_ENABLED: bool = False
@@ -693,11 +708,18 @@ class Settings(BaseSettings):
     # Parse-quality retrieval diagnostics (operator-facing; no ranking change by default).
     RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD: float = 0.35
     RETRIEVAL_PARSE_QUALITY_ALERT_RATIO: float = 0.5
+    # Parse quality gate profile for retrieval responses:
+    # - off: no gate action
+    # - warn: annotate diagnostics only
+    # - strict: mark gate failure and force abstain
+    RETRIEVAL_PARSE_QUALITY_GATE_PROFILE: str = "warn"  # off | warn | strict
     # Parse-risk remediation policy (operator-facing, bounded, optional).
     # - when enabled, high parse-risk tails can emit hardcase candidates even if retrieval is non-empty.
     RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED: bool = False
     RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO: float = 0.5
     RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED: int = 3
+    RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS: str = "high,medium"
+    RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE: float = 0.0
     # Default upper-bound for parse-risk driven reparse planning CLI.
     RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS: int = 100
 
@@ -995,6 +1017,10 @@ class Settings(BaseSettings):
     # Multi-table TAG query controls.
     TABLE_QUERY_MAX_JOIN_TABLES: int = 4
     TABLE_QUERY_ALLOW_CROSS_JOIN: bool = False
+    TABLE_TAG_PLAN_CANDIDATES_TOP_N: int = 3
+    TABLE_TAG_AMBIGUITY_SCORE_GAP: float = 0.03
+    TABLE_TAG_AMBIGUITY_STRICT_ENABLED: bool = True
+    TABLE_TAG_PLANNER_MISMATCH_STRICT: bool = False
     # NL->SQL / TAG answer generation (optional; requires LLM credentials).
     TABLE_NL2SQL_ENABLED: bool = False
     # Deterministic fallback for NL->SQL:
@@ -1021,6 +1047,8 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
     ENABLE_METRICS_LOG: bool = False
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
+    EVIDENCE_CAPSULE_STORE_DIR: str = "./runs/evidence_capsules"
+    EVIDENCE_CAPSULE_PERSIST_ENABLED: bool = True
     # When false (default), omit raw question/query/snippets from metrics logs to reduce PII leakage.
     METRICS_LOG_INCLUDE_TEXT: bool = False
 
@@ -1389,6 +1417,10 @@ class Settings(BaseSettings):
     CHAT_TAG_MAX_COLS: int = 30
     CHAT_TAG_MAX_BYTES: int = 200_000
     CHAT_TAG_MIN_MATCH_SCORE: int = 1
+    # For dbrows/table-sidecar assets, prefer deterministic SQL synthesis (stronger reproducibility).
+    CHAT_TAG_DBROWS_SQL_FIRST_ENABLED: bool = True
+    # When must-recall is requested, enforce source-key matching in TAG selection.
+    CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH: bool = True
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
@@ -1825,6 +1857,13 @@ class Settings(BaseSettings):
             raise ValueError("DB_CATALOG_ROW_SYNC_MAX_COLS must be >= 1")
         if int(getattr(self, "TABLE_QUERY_MAX_JOIN_TABLES", 0) or 0) < 1:
             raise ValueError("TABLE_QUERY_MAX_JOIN_TABLES must be >= 1")
+        if int(getattr(self, "TABLE_TAG_PLAN_CANDIDATES_TOP_N", 0) or 0) < 1:
+            raise ValueError("TABLE_TAG_PLAN_CANDIDATES_TOP_N must be >= 1")
+        tag_ambiguity_gap = float(getattr(self, "TABLE_TAG_AMBIGUITY_SCORE_GAP", 0.03) or 0.03)
+        if not (0.0 <= tag_ambiguity_gap <= 1.0):
+            raise ValueError("TABLE_TAG_AMBIGUITY_SCORE_GAP must be between 0 and 1")
+        if self.TABLE_TAG_AMBIGUITY_SCORE_GAP != tag_ambiguity_gap:
+            self.TABLE_TAG_AMBIGUITY_SCORE_GAP = tag_ambiguity_gap
         index_strictness = str(getattr(self, "INDEX_CONSISTENCY_STRICTNESS", "off") or "off").strip().lower()
         valid_index_strictness = {"off", "warn", "strict"}
         if index_strictness not in valid_index_strictness:
@@ -1944,12 +1983,32 @@ class Settings(BaseSettings):
         if int(getattr(self, "RETRIEVAL_HARD_FALLBACK_TOP_K", 0) or 0) < 1:
             raise ValueError("RETRIEVAL_HARD_FALLBACK_TOP_K must be >= 1")
 
+        must_recall_second_pass_mode = str(
+            getattr(self, "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE", "keyword") or "keyword"
+        ).strip().lower()
+        if must_recall_second_pass_mode not in valid_retrieval_modes:
+            raise ValueError(
+                "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE "
+                f"({must_recall_second_pass_mode}) must be one of {valid_retrieval_modes}"
+            )
+        if self.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE != must_recall_second_pass_mode:
+            self.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE = must_recall_second_pass_mode
+        if int(getattr(self, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K", 0) or 0) < 1:
+            raise ValueError("RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K must be >= 1")
+
         low_quality = float(getattr(self, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
         if low_quality < 0.0 or low_quality > 1.0:
             raise ValueError("RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD must be between 0 and 1")
         alert_ratio = float(getattr(self, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
         if alert_ratio < 0.0 or alert_ratio > 1.0:
             raise ValueError("RETRIEVAL_PARSE_QUALITY_ALERT_RATIO must be between 0 and 1")
+        parse_quality_gate_profile = str(
+            getattr(self, "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE", "warn") or "warn"
+        ).strip().lower()
+        if parse_quality_gate_profile not in {"off", "warn", "strict"}:
+            raise ValueError("RETRIEVAL_PARSE_QUALITY_GATE_PROFILE must be one of: off, warn, strict")
+        if self.RETRIEVAL_PARSE_QUALITY_GATE_PROFILE != parse_quality_gate_profile:
+            self.RETRIEVAL_PARSE_QUALITY_GATE_PROFILE = parse_quality_gate_profile
         parse_risk_min_low_ratio = float(getattr(self, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5)
         if parse_risk_min_low_ratio < 0.0 or parse_risk_min_low_ratio > 1.0:
             raise ValueError("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO must be between 0 and 1")
@@ -1957,6 +2016,27 @@ class Settings(BaseSettings):
         parse_risk_min_considered = int(3 if raw_parse_risk_min_considered is None else raw_parse_risk_min_considered)
         if parse_risk_min_considered < 1:
             raise ValueError("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED must be >= 1")
+        parse_risk_auto_enqueue_levels = [
+            p.strip()
+            for p in str(
+                getattr(self, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS", "high,medium") or "high,medium"
+            ).split(",")
+        ]
+        allowed_levels = {str(x).strip().lower() for x in parse_risk_auto_enqueue_levels if str(x).strip()}
+        if not allowed_levels:
+            allowed_levels = {"high", "medium"}
+        if not allowed_levels.issubset({"high", "medium", "low", "unknown"}):
+            raise ValueError(
+                "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS must be a CSV subset of: high, medium, low, unknown"
+            )
+        self.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = ",".join(sorted(allowed_levels))
+        parse_risk_auto_enqueue_min_score = float(
+            getattr(self, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE", 0.0) or 0.0
+        )
+        if parse_risk_auto_enqueue_min_score < 0.0 or parse_risk_auto_enqueue_min_score > 1.0:
+            raise ValueError("RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE must be between 0 and 1")
+        if self.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE != parse_risk_auto_enqueue_min_score:
+            self.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE = parse_risk_auto_enqueue_min_score
         raw_parse_risk_reparse_max_docs = getattr(self, "RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS", 100)
         parse_risk_reparse_max_docs = int(100 if raw_parse_risk_reparse_max_docs is None else raw_parse_risk_reparse_max_docs)
         if parse_risk_reparse_max_docs < 1:

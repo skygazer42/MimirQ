@@ -409,9 +409,58 @@ def build_parse_risk_hardcase_candidate(
     }
 
 
+def evaluate_parse_risk_auto_enqueue_policy(
+    *,
+    parse_risk: Mapping[str, Any] | None,
+    enabled: bool,
+    allowed_levels: set[str] | list[str] | tuple[str, ...] | None,
+    min_score: float,
+) -> dict[str, Any]:
+    risk = parse_risk if isinstance(parse_risk, Mapping) else {}
+    level = str(risk.get("level") or "").strip().lower()
+    score: float
+    try:
+        score = float(risk.get("score") or 0.0)
+    except Exception:
+        score = 0.0
+
+    levels = {str(x).strip().lower() for x in (allowed_levels or []) if str(x).strip()}
+    if not levels:
+        levels = {"high", "medium"}
+
+    enqueue = bool(enabled)
+    reason = "disabled"
+    if not enabled:
+        enqueue = False
+        reason = "disabled"
+    elif not bool(risk.get("hardcase_eligible")):
+        enqueue = False
+        reason = "hardcase_not_eligible"
+    elif level not in levels:
+        enqueue = False
+        reason = "level_filtered"
+    elif float(score) < float(min_score):
+        enqueue = False
+        reason = "score_below_min"
+    else:
+        enqueue = True
+        reason = "eligible"
+
+    return {
+        "enabled": bool(enabled),
+        "enqueue": bool(enqueue),
+        "reason": reason,
+        "level": level or "unknown",
+        "score": round(float(score), 3),
+        "allowed_levels": sorted(levels),
+        "min_score": round(float(min_score), 3),
+    }
+
+
 __all__ = [
     "build_rag_trace_index_from_records",
     "build_parse_risk_hardcase_candidate",
+    "evaluate_parse_risk_auto_enqueue_policy",
     "plan_feedback_hardcase_candidates",
     "read_jsonl_tail",
 ]

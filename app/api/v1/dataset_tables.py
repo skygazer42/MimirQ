@@ -45,6 +45,7 @@ from app.services.lotus_bridge import lotus_available
 from app.services.lotus_bridge import sem_filter as lotus_sem_filter
 from app.services.rbac_service import TenantPermissions, role_allows
 from app.services.security_redaction import redact_sql_literals
+from app.services.table_sql_fingerprint import fingerprint_sql
 from app.services.table_store import parse_table_id, table_store_path
 from app.services.table_store_service import run_table_query
 from app.services.table_tag_service import (
@@ -719,6 +720,7 @@ def ask_dataset_table(
     schema_link_diagnostics: dict[str, Any] | None = None
     planner_diagnostics: dict[str, Any] | None = None
     join_provenance: list[dict[str, Any]] | None = None
+    sql_fingerprint: str | None = None
     try:
         sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
             question=str(body.question or ""),
@@ -735,10 +737,17 @@ def ask_dataset_table(
         joins = sql_meta.get("join_provenance") if isinstance(sql_meta, dict) else None
         if isinstance(joins, list):
             join_provenance = [j for j in joins if isinstance(j, dict)][:10]
+        sql_fingerprint = str(
+            (sql_meta.get("sql_fingerprint") if isinstance(sql_meta, dict) else None)
+            or (planner_diagnostics.get("sql_fingerprint") if isinstance(planner_diagnostics, dict) else None)
+            or ""
+        ).strip() or None
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
     if not sql.strip():
         raise HTTPException(status_code=400, detail="nl2sql_failed: empty sql")
+    if not sql_fingerprint:
+        sql_fingerprint = fingerprint_sql(sql, length=16) or None
 
     result = run_table_query(
         tenant_id=tenant_id,
@@ -748,7 +757,20 @@ def ask_dataset_table(
         max_rows=max_rows,
         max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
         max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
+        planner_diagnostics=planner_diagnostics,
+        expected_sql_fingerprint=sql_fingerprint,
     )
+    planner_execution_mismatch = (
+        result.get("planner_execution_mismatch")
+        if isinstance(result.get("planner_execution_mismatch"), dict)
+        else None
+    )
+    if (
+        bool(getattr(settings, "TABLE_TAG_PLANNER_MISMATCH_STRICT", False))
+        and planner_execution_mismatch
+        and bool(planner_execution_mismatch.get("mismatch"))
+    ):
+        raise HTTPException(status_code=409, detail="planner_execution_mismatch")
     if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
         raise HTTPException(
             status_code=400,
@@ -809,6 +831,8 @@ def ask_dataset_table(
         schema_link_diagnostics=schema_link_diagnostics,
         planner_diagnostics=planner_diagnostics,
         join_provenance=join_provenance,
+        sql_fingerprint=sql_fingerprint,
+        planner_execution_mismatch=planner_execution_mismatch,
     )
 
 

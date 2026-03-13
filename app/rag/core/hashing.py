@@ -9,6 +9,8 @@ Why:
 from __future__ import annotations
 
 import hashlib
+import json
+from typing import Any
 
 
 def stable_hash(text: str, *, length: int = 16) -> str:
@@ -29,5 +31,12 @@ def stable_hash(text: str, *, length: int = 16) -> str:
     return digest[:n]
 
 
-__all__ = ["stable_hash"]
+def stable_json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
+
+def stable_json_hash(value: Any, *, length: int = 16) -> str:
+    return stable_hash(stable_json_dumps(value), length=length)
+
+
+__all__ = ["stable_hash", "stable_json_dumps", "stable_json_hash"]

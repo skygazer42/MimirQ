@@ -196,6 +196,61 @@ jobs:
             --out artifacts/queryset_health.diff.sparse.json \
             --out-md artifacts/queryset_health.diff.sparse.md
 
+      - name: Run parser benchmark strict gate (docs slice)
+        run: |
+          mkdir -p artifacts
+          python scripts/parser_benchmark.py \
+            --input-dir docs/guides \
+            --backends basic \
+            --max-files 8 \
+            --out artifacts/parser_benchmark.current.json \
+            --baseline ci/parser_benchmark_baseline.v1.json \
+            --strict \
+            --strict-max-ok-rate-drop 1.0 \
+            --strict-max-parse-score-drop 1.0 \
+            --strict-max-golden-similarity-drop 1.0 \
+            --strict-max-golden-coverage-drop 1.0
+
+      - name: Build parser benchmark diff artifact
+        if: always()
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          report_path = Path("artifacts/parser_benchmark.current.json")
+          out_path = Path("artifacts/parser_benchmark.diff.json")
+          out_md = Path("artifacts/parser_benchmark.diff.md")
+
+          if not report_path.exists():
+              out_path.write_text(json.dumps({"missing_report": True}, ensure_ascii=False, indent=2), encoding="utf-8")
+              out_md.write_text("# Parser Benchmark Diff\n\nreport missing\n", encoding="utf-8")
+              raise SystemExit(0)
+
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          payload = {
+              "schema": "mimirq.parser_benchmark_diff.v1",
+              "baseline": report.get("baseline"),
+              "strict_gate": report.get("strict_gate"),
+              "regressions": report.get("regressions"),
+              "summary": report.get("summary"),
+          }
+          out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+          strict_gate = payload.get("strict_gate") if isinstance(payload.get("strict_gate"), dict) else {}
+          regressions = payload.get("regressions") if isinstance(payload.get("regressions"), dict) else {}
+          lines = [
+              "# Parser Benchmark Diff",
+              "",
+              f"- Strict Gate Passed: `{bool(strict_gate.get('passed'))}`",
+              f"- Baseline: `{payload.get('baseline')}`",
+              f"- Changed Backends: `{len(list((regressions.get('by_backend') or {}).keys()))}`",
+          ]
+          out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
       - name: Evaluate bounded retrieval-only gate (metric delta output)
         run: |
           python - <<'PY'
@@ -598,6 +653,9 @@ jobs:
             artifacts/queryset_health.diff.hybrid.md
             artifacts/queryset_health.diff.sparse.json
             artifacts/queryset_health.diff.sparse.md
+            artifacts/parser_benchmark.current.json
+            artifacts/parser_benchmark.diff.json
+            artifacts/parser_benchmark.diff.md
             artifacts/retrieval_profile.grounded_strict.contract.json
             artifacts/claim_verifier.contract.json
             artifacts/queryset_health.history.jsonl
@@ -606,6 +664,7 @@ jobs:
             artifacts/queryset_health.cron.json
             artifacts/queryset_health.cron.hybrid.json
             artifacts/queryset_health.cron.sparse.json
+            ci/parser_benchmark_baseline.v1.json
             ci/queryset_health_snapshot_baseline.v1.json
             ci/queryset_health_snapshot_hybrid_baseline.v1.json
             ci/queryset_health_snapshot_sparse_baseline.v1.json
@@ -724,6 +783,14 @@ jobs:
             --out-report-md artifacts/regression_gate.report.md \
             --generate-thresholds-out artifacts/thresholds.generated.json
 
+      - name: Must-recall + provenance gate
+        run: |
+          python scripts/must_recall_provenance_gate.py \
+            --run-json artifacts/run.detail.json \
+            --must-recall-min 1.0 \
+            --provenance-min 1.0 \
+            --out artifacts/must_recall_provenance_gate.report.json
+
       - name: Release gate (SLO + cost budgets)
         if: always()
         env:
@@ -782,6 +849,7 @@ jobs:
           name: retrieval-regression-gate
           path: |
             artifacts/**
+            artifacts/must_recall_provenance_gate.report.json
             ci/retrieval_regression_fixture.v1.json
             ci/retrieval_thresholds.v2.json
 

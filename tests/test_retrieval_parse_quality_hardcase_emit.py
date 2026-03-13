@@ -93,11 +93,13 @@ def test_orchestrator_emits_parse_risk_hardcase_candidate_when_enabled(monkeypat
     out = orch_mod.run_retrieval(_base_state())
     metrics = out.get("metrics") or {}
     hc = metrics.get("hardcase_candidate") or {}
+    policy = metrics.get("parse_risk_auto_enqueue_policy") or {}
 
     assert hc.get("schema") == "mimirq.hardcase_candidate.v1"
     assert hc.get("reason") == "parse_risk_tail"
     assert hc.get("parse_risk_level") in {"high", "medium"}
     assert isinstance(hc.get("dedupe_key"), str) and len(str(hc.get("dedupe_key") or "")) >= 16
+    assert bool(policy.get("enqueue")) is True
 
 
 def test_orchestrator_skips_parse_risk_hardcase_candidate_when_disabled(monkeypatch) -> None:  # noqa: ANN001
@@ -130,4 +132,6 @@ def test_orchestrator_skips_parse_risk_hardcase_candidate_when_disabled(monkeypa
 
     out = orch_mod.run_retrieval(_base_state())
     metrics = out.get("metrics") or {}
+    policy = metrics.get("parse_risk_auto_enqueue_policy") or {}
     assert metrics.get("hardcase_candidate") is None
+    assert bool(policy.get("enqueue")) is False

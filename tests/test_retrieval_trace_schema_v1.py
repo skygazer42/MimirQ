@@ -105,7 +105,18 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     assert trace.get("schema") == "mimirq.retrieval_trace_pass.v1"
 
     # Lock the stable top-level sections.
-    for key in ("hard_fallback", "rewrite", "expansions", "retrieval", "query_variant_fusion", "post_rerank", "abstain", "citations", "parse_quality"):
+    for key in (
+        "contract_diagnostics",
+        "hard_fallback",
+        "rewrite",
+        "expansions",
+        "retrieval",
+        "query_variant_fusion",
+        "post_rerank",
+        "abstain",
+        "citations",
+        "parse_quality",
+    ):
         assert key in trace
 
     # Retrieval trace is intentionally separate from query_debug: no raw question text.
@@ -121,3 +132,10 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     # Diversity caps should be preserved (PII-safe; numeric only).
     div = dbg.get("diversity") or {}
     assert div.get("max_chunks_per_page") == 1
+
+    contract_diag = trace.get("contract_diagnostics") or {}
+    assert isinstance(contract_diag, dict)
+    must_recall = contract_diag.get("must_recall") or {}
+    assert isinstance(must_recall, dict)
+    assert "status" in must_recall
+    assert "second_pass" in must_recall

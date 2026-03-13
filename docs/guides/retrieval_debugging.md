@@ -243,3 +243,47 @@ python scripts/replay_index_drift.py \
 ```
 
 手动 resolve 只适用于“你已经通过别的运维动作修好，并确认不需要再重放”的情况；否则优先保留 open 状态。
+
+---
+
+## 7) Must-Recall / Partial-Miss 合同排障（G1 + G2）
+
+当你关心“数据明明在库里，为什么没被召回”，优先看这组字段：
+
+- `metrics.must_recall_enabled`
+- `metrics.must_recall_status`：`disabled|passed|partial_miss_recovered|failed`
+- `metrics.must_recall_fail_reasons`
+- `metrics.must_recall_missing_source_keys`
+- `metrics.must_recall_second_pass_*`
+- `retrieval_trace.contract_diagnostics.must_recall`
+- `query_debug.retrieval_contract.must_recall`
+
+关键语义：
+
+- `must_recall_strict` 不只是“空召回重试”，还会处理 **partial-miss**（有 citations 但缺关键 source key / anchor）。
+- second-pass 成功补齐时，状态会变为 `partial_miss_recovered`。
+- strict 模式下仍未补齐时，系统会触发 `abstain_reason=must_recall_failed`，避免“看似回答了但证据不完整”。
+
+推荐排障顺序：
+
+1. 先看 `must_recall_fail_reasons`（`missing_required_source_keys` / `missing_required_anchor_fields` / `secondary_pass_no_effect`）。
+2. 再核对 request 里 `must_recall_expected_source_keys` 是否过窄或拼写不一致。
+3. 对 TAG/DB rows 场景，检查 `CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH` 与 `CHAT_TAG_DBROWS_SQL_FIRST_ENABLED` 是否按预期开启。
+
+## 8) Evidence Capsule（有据可查）
+
+`/api/v1/rag/evidence/retrieve` 现在可返回 `evidence_capsule`（`mimirq.evidence_capsule.v1`），用于不可变回放与审计归档：
+
+- capsule 包含 must-recall 合同状态、retrieval 合同策略、解析质量风险、citation hash 集合、retrieval trace。
+- 每个 citation 包含 `citation_hash` 和 `evidence_anchor_hash`，便于后续 diff / replay。
+- capsule 根对象包含 `capsule_hash`，用于完整性校验。
+
+相关工具：
+
+- 持久化 API：`POST /api/v1/evidence/capsules` / `GET /api/v1/evidence/capsules/{capsule_id}`
+- 回放 CLI：
+```bash
+python scripts/replay_from_evidence_capsule.py \
+  --capsule runs/evidence_capsules/<capsule_id>.json \
+  --out runs/evidence_replay.json
+```

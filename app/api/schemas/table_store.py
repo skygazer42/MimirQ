@@ -55,14 +55,52 @@ class TableAskRequest(BaseModel):
     max_rows: Optional[int] = Field(default=None, ge=1, le=5000)
 
 
+class PlannerJoinProvenanceOut(BaseModel):
+    left_table: str
+    left_column: str
+    right_table: str
+    right_column: str
+    confidence: Optional[float] = None
+    reason: Optional[str] = None
+
+
+class PlannerCandidateOut(BaseModel):
+    candidate_id: Optional[str] = None
+    score: Optional[float] = None
+    confidence: Optional[float] = None
+    penalty_score: Optional[float] = None
+    penalties: List[str] = Field(default_factory=list)
+    join: Optional[PlannerJoinProvenanceOut] = None
+    selected_tables: List[str] = Field(default_factory=list)
+
+
+class PlannerDiagnosticsOut(BaseModel):
+    strategy: Optional[str] = None
+    reason: Optional[str] = None
+    joins: List[PlannerJoinProvenanceOut] = Field(default_factory=list)
+    selected_tables: List[str] = Field(default_factory=list)
+    candidates: List[PlannerCandidateOut] = Field(default_factory=list)
+    ambiguous: Optional[bool] = None
+    ambiguity_gap: Optional[float] = None
+    strict_ambiguity: Optional[bool] = None
+    aggregation: Optional[str] = None
+    aggregation_column: Optional[str] = None
+    group_by: Optional[dict[str, Any]] = None
+    order_by: Optional[dict[str, Any]] = None
+    limit: Optional[int] = None
+    sql_fingerprint: Optional[str] = None
+
+
 class TableAskResponse(BaseModel):
     answer: str
     sql: Optional[str] = None
     data: Optional[TableQueryResponse] = None
     sql_generation_mode: Optional[str] = Field(default=None, max_length=40)
     schema_link_diagnostics: Optional[dict[str, Any]] = None
-    planner_diagnostics: Optional[dict[str, Any]] = None
-    join_provenance: Optional[List[dict[str, Any]]] = None
+    planner_diagnostics: Optional[PlannerDiagnosticsOut] = None
+    join_provenance: Optional[List[PlannerJoinProvenanceOut]] = None
+    sql_fingerprint: Optional[str] = Field(default=None, max_length=64)
+    planner_execution_mismatch: Optional[dict[str, Any]] = None
 
 
 class LotusSemFilterRequest(BaseModel):

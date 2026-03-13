@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.services.hardcase_discovery_service import (
     build_parse_risk_hardcase_candidate,
     build_rag_trace_index_from_records,
+    evaluate_parse_risk_auto_enqueue_policy,
     plan_feedback_hardcase_candidates,
 )
 
@@ -139,3 +140,23 @@ def test_build_parse_risk_hardcase_candidate_emits_only_for_actionable_levels() 
         ts_ms=456,
     )
     assert c2 is None
+
+
+def test_evaluate_parse_risk_auto_enqueue_policy_respects_level_and_score() -> None:
+    out = evaluate_parse_risk_auto_enqueue_policy(
+        parse_risk={"level": "high", "score": 0.82, "hardcase_eligible": True},
+        enabled=True,
+        allowed_levels={"high", "medium"},
+        min_score=0.5,
+    )
+    assert out["enqueue"] is True
+    assert out["reason"] == "eligible"
+
+    out2 = evaluate_parse_risk_auto_enqueue_policy(
+        parse_risk={"level": "medium", "score": 0.3, "hardcase_eligible": True},
+        enabled=True,
+        allowed_levels={"high", "medium"},
+        min_score=0.5,
+    )
+    assert out2["enqueue"] is False
+    assert out2["reason"] == "score_below_min"

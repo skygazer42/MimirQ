@@ -453,6 +453,9 @@ Requirements:
         retrieval_mode: str = "hybrid",
         retrieval_profile: Optional[str] = None,
         retrieval_contract_mode: Optional[str] = None,
+        must_recall: Optional[bool] = None,
+        must_recall_expected_source_keys: Optional[List[str]] = None,
+        must_recall_required_anchor_fields: Optional[List[str]] = None,
         intent_router: Optional[bool] = None,
         intent_router_policy: Optional[Dict[str, Any]] = None,
         enable_query_alias_expansion: Optional[bool] = None,
@@ -466,6 +469,7 @@ Requirements:
         fusion_strategy: Optional[str] = None,
         fusion_budgets: Optional[Dict[str, int]] = None,
         fusion_min_scores: Optional[Dict[str, float]] = None,
+        fusion_weights: Optional[Dict[str, float]] = None,
         enable_weight_rerank: bool = True,
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
@@ -676,6 +680,8 @@ Requirements:
                 if retrieval_contract_mode is not None
                 else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
             )
+            if bool(must_recall) and not str(contract_req or "").strip():
+                contract_req = "must_recall_strict"
             retrieval_contract_policy = resolve_retrieval_contract_policy(
                 mode=contract_req,
                 requested_top_k=int(top_k or 0),
@@ -823,6 +829,8 @@ Requirements:
                 if retrieval_contract_mode is not None
                 else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
             )
+            if bool(must_recall) and not str(contract_req or "").strip():
+                contract_req = "must_recall_strict"
             retrieval_contract_policy = resolve_retrieval_contract_policy(
                 mode=contract_req,
                 requested_top_k=int(top_k or 0),
@@ -1163,6 +1171,7 @@ Requirements:
                 "fusion_strategy": str(fusion_strategy or "").strip().lower() or settings.RETRIEVAL_FUSION_STRATEGY,
                 "fusion_budgets": fusion_budgets,
                 "fusion_min_scores": fusion_min_scores,
+                "fusion_weights": fusion_weights,
                 "tenant_id": tenant_id,
                 "account_id": account_id,
                 "dataset_id": dataset_id,
@@ -1544,6 +1553,7 @@ Requirements:
                         tenant_id=tenant_id,
                         document_ids=list(document_ids or []),
                         question=question,
+                        must_recall_expected_source_keys=must_recall_expected_source_keys,
                     )
                 elif str(multimodal_modality or "text").strip().lower() != "table":
                     tag_meta = {"enabled": False, "used": False, "reason": f"skipped_modality:{multimodal_modality}"}
@@ -1981,6 +1991,7 @@ Requirements:
                         "fusion_strategy": str(fusion_strategy or "").strip().lower() or settings.RETRIEVAL_FUSION_STRATEGY,
                         "fusion_budgets": fusion_budgets,
                         "fusion_min_scores": fusion_min_scores,
+                        "fusion_weights": fusion_weights,
                         "enable_weight_rerank": bool(weight_rerank),
                         "vector_weight": float(vec_w or 0.0),
                         "keyword_weight": float(kw_w or 0.0),
@@ -1994,6 +2005,9 @@ Requirements:
                         "reranker_top_n": int(rerank_top_n) if rerank_top_n is not None else 0,
                         "visible_evidence_only": bool(visible_evidence_only),
                         "retrieval_contract_mode": retrieval_contract_mode_effective or None,
+                        "must_recall_requested": bool(must_recall),
+                        "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
+                        "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
                         "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
                         "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
                         "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
