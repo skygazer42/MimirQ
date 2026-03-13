@@ -51,6 +51,17 @@ def _get_chroma_cls():
     if _CHROMA_CLS is not None:
         return _CHROMA_CLS
     try:
+        # `Chroma` wrappers may import `chromadb` lazily at instance-construction time.
+        # Import it eagerly so optional-dependency problems are surfaced deterministically
+        # when callers probe backend availability.
+        import chromadb  # noqa: F401
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "Chroma vector backend requires optional dependencies. "
+            "Ensure `chromadb` is installed and importable, and install "
+            "`langchain-chroma` (preferred) or `langchain-community`."
+        ) from exc
+    try:
         # Prefer the dedicated package to avoid upstream deprecations.
         from langchain_chroma import Chroma  # type: ignore[import-not-found]
 
