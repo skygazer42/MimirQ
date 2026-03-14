@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import types
+import uuid
 from datetime import datetime, timezone
 
 from tests.test_confluence_connector_unit import _import_connectors_with_lightweight_stubs
@@ -731,3 +732,150 @@ def test_initialize_jira_project_run_stats_includes_cursor_and_related_limits() 
     assert stats["failed_urls"] == []
     assert stats["errors"] == []
     assert stats["error_groups"] == []
+
+
+def test_build_jira_issue_info_extracts_issue_identity_and_updated_timestamp() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    out = connectors._build_jira_issue_info(
+        base_url="https://example.atlassian.net",
+        issue={
+            "id": "10000",
+            "key": "PLAT-42",
+            "fields": {"updated": "2026-03-02T12:34:56.000+0000"},
+        },
+    )
+
+    assert out == {
+        "issue_id": "10000",
+        "issue_key": "PLAT-42",
+        "issue_url": "https://example.atlassian.net/browse/PLAT-42",
+        "updated": "2026-03-02T12:34:56.000+0000",
+    }
+
+
+def test_resolve_jira_issue_acl_maps_groups_and_records_delta(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+    import app.services.document_acl_provenance_service as provenance_service
+
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    mapped_group_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    def _fake_resolve_groups(*_a, **kwargs):  # noqa: ANN001
+        seen["external_ids"] = list(kwargs.get("external_ids") or [])
+        return {mapped_group_id}
+
+    monkeypatch.setattr(connectors, "_resolve_tenant_group_ids_by_external_id", _fake_resolve_groups, raising=True)
+
+    def _fake_delta(*_a, **kwargs):  # noqa: ANN001
+        seen["delta_kwargs"] = dict(kwargs)
+        return 2
+
+    monkeypatch.setattr(connectors, "_delta_sync_jira_documents_acl_by_issue_url", _fake_delta, raising=False)
+
+    def _fake_provenance(**kwargs):  # noqa: ANN001
+        seen["provenance_kwargs"] = dict(kwargs)
+        return {"schema": "test-provenance", "restricted": kwargs.get("restricted")}
+
+    monkeypatch.setattr(provenance_service, "build_document_acl_provenance", _fake_provenance, raising=True)
+
+    effective_access, acl_provenance, updated_existing = connectors._resolve_jira_issue_acl(
+        object(),
+        tenant_id=tenant_id,
+        run_id=run_id,
+        requested_by="tester",
+        run=types.SimpleNamespace(dataset_id=dataset_id),
+        issue={
+            "fields": {
+                "security": {"id": "10001"},
+                "comment": {"comments": [{"visibility": {"type": "role", "value": "Developers"}}]},
+            }
+        },
+        issue_info={"issue_url": "https://example.atlassian.net/browse/PLAT-42"},
+        settings_map={
+            "access": None,
+            "enable_source_acl": True,
+            "include_comments": True,
+            "max_comments_per_issue": 5,
+            "source_acl_mode": "inherit",
+            "source_acl_fallback_mode": "partial_members",
+            "base_url": "https://example.atlassian.net",
+            "project_key": "PLAT",
+        },
+    )
+
+    assert effective_access == {
+        "mode": "partial_members",
+        "partial_group_list": [str(mapped_group_id)],
+    }
+    assert acl_provenance == {"schema": "test-provenance", "restricted": True}
+    assert updated_existing == 2
+    assert set(seen.get("external_ids") or []) == {
+        "jira:policy:security-level/10001",
+        "jira:role:developers",
+    }
+    assert (seen.get("delta_kwargs") or {}).get("issue_url") == "https://example.atlassian.net/browse/PLAT-42"
+    assert (seen.get("provenance_kwargs") or {}).get("connector_id") == "jira_project"
+    assert (seen.get("provenance_kwargs") or {}).get("connector_run_id") == str(run_id)
+
+
+def test_persist_jira_project_progress_updates_stats_and_last_modified_ids() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    class _DummyDB:
+        def __init__(self) -> None:
+            self.commits = 0
+
+        def commit(self) -> None:
+            self.commits += 1
+
+    dummy_db = _DummyDB()
+    run = types.SimpleNamespace(stats={"keep": "me"})
+
+    connectors._persist_jira_project_progress(
+        dummy_db,
+        run=run,
+        progress={
+            "processed": 3,
+            "attachments_processed": 2,
+            "linked_artifacts_processed": 1,
+            "created": 5,
+            "attachments_created": 2,
+            "linked_artifacts_created": 1,
+            "failed": 1,
+            "skipped_boundary_duplicates": 1,
+            "created_doc_ids": ["doc-1", "doc-2"],
+            "delta_acl_docs_updated": 4,
+            "delta_acl_sources_updated": 2,
+            "removed_issues_reconciled": 1,
+            "removed_documents_disabled": 3,
+            "removed_attachment_documents_disabled": 1,
+            "removed_linked_artifact_documents_disabled": 2,
+            "last_modified_seen": "2026-03-02T12:34:56.000+0000",
+            "last_modified_ids_seen": {"10000", "10001"},
+        },
+    )
+
+    assert dummy_db.commits == 1
+    assert run.stats["keep"] == "me"
+    assert run.stats["processed_issues"] == 3
+    assert run.stats["processed_attachments"] == 2
+    assert run.stats["processed_linked_artifacts"] == 1
+    assert run.stats["cursor"] == 3
+    assert run.stats["created"] == 5
+    assert run.stats["created_attachments"] == 2
+    assert run.stats["created_linked_artifacts"] == 1
+    assert run.stats["failed"] == 1
+    assert run.stats["skipped_boundary_duplicates"] == 1
+    assert run.stats["document_ids"] == ["doc-1", "doc-2"]
+    assert run.stats["acl_delta_sync_updated_documents"] == 4
+    assert run.stats["acl_delta_sync_updated_sources"] == 2
+    assert run.stats["removed_issues_reconciled"] == 1
+    assert run.stats["removed_documents_disabled"] == 3
+    assert run.stats["removed_attachment_documents_disabled"] == 1
+    assert run.stats["removed_linked_artifact_documents_disabled"] == 2
+    assert run.stats["last_modified"] == "2026-03-02T12:34:56.000+0000"
+    assert run.stats["last_modified_ids"] == ["10000", "10001"]
