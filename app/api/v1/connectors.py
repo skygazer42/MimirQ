@@ -143,6 +143,19 @@ def _safe_error_str(exc: Exception) -> str:
     return msg
 
 
+def _connector_error_code_from_message(message: str, *, default: str, status_code: int | None = None) -> str:
+    lowered = str(message or "").strip().lower()
+    if "not allowed" in lowered or "private ip" in lowered or "ssrf" in lowered:
+        return "ssrf"
+    if "timeout" in lowered:
+        return "timeout"
+    if status_code == 413:
+        return "too_large"
+    if status_code == 400:
+        return "bad_request"
+    return default
+
+
 def _classify_connector_error(exc: Exception) -> tuple[str, str]:
     """
     Best-effort error classifier for connector runs.
@@ -150,69 +163,63 @@ def _classify_connector_error(exc: Exception) -> tuple[str, str]:
     The goal is to group similar failures for UI/operator visibility; it is not used for control flow.
     """
     if isinstance(exc, HTTPException):
+        status_code = getattr(exc, "status_code", 0)
         detail = str(getattr(exc, "detail", "") or "").strip()
-        msg = (detail or f"HTTP {getattr(exc, 'status_code', 0)}").replace("\r", " ").replace("\n", " ").strip()
+        msg = (detail or f"HTTP {status_code}").replace("\r", " ").replace("\n", " ").strip()
         msg = msg[:200] if len(msg) > 200 else msg
-        code = f"http_{getattr(exc, 'status_code', 0)}"
-        lowered = msg.lower()
-        if "not allowed" in lowered or "private ip" in lowered or "ssrf" in lowered:
-            code = "ssrf"
-        elif "timeout" in lowered:
-            code = "timeout"
-        elif getattr(exc, "status_code", None) == 413:
-            code = "too_large"
-        elif getattr(exc, "status_code", None) == 400:
-            code = "bad_request"
+        code = _connector_error_code_from_message(msg, default=f"http_{status_code}", status_code=status_code)
         return code, msg
 
     if isinstance(exc, (asyncio.TimeoutError, httpx.TimeoutException)):
         return "timeout", _safe_error_str(exc) or "timeout"
 
     msg = _safe_error_str(exc)
-    lowered = msg.lower()
-    if "timeout" in lowered:
-        return "timeout", msg
-    if "not allowed" in lowered or "private ip" in lowered or "ssrf" in lowered:
-        return "ssrf", msg
-    return "error", msg
+    return _connector_error_code_from_message(msg, default="error"), msg
+
+
+def _append_unique_limited(items: list[str], value: str, *, limit: int | None = None) -> None:
+    if not value or value in items:
+        return
+    if limit is not None and len(items) >= limit:
+        return
+    items.append(value)
+
+
+def _stats_list(stats: dict, key: str) -> list[Any]:
+    items = stats.get(key)
+    return items if isinstance(items, list) else []
+
+
+def _get_or_create_error_group(groups: list[Any], *, key: str, code: str, msg: str) -> dict[str, Any]:
+    for item in groups:
+        if isinstance(item, dict) and str(item.get("key") or "") == key:
+            return item
+    group = {"key": key, "code": code, "error": msg, "count": 0, "sample_urls": []}
+    groups.append(group)
+    return group
 
 
 def _append_connector_error(stats: dict, *, url: str, exc: Exception) -> dict:
     code, msg = _classify_connector_error(exc)
 
     # Sample errors (bounded) for UI quick display.
-    errs = stats.get("errors")
-    if not isinstance(errs, list):
-        errs = []
+    errs = _stats_list(stats, "errors")
     if len(errs) < 20:
         errs.append({"url": url, "code": code, "error": msg})
     stats["errors"] = errs
 
-    failed_urls = stats.get("failed_urls")
-    if not isinstance(failed_urls, list):
-        failed_urls = []
-    if url and url not in failed_urls:
-        failed_urls.append(url)
+    failed_urls = _stats_list(stats, "failed_urls")
+    _append_unique_limited(failed_urls, url)
     stats["failed_urls"] = failed_urls
 
-    groups = stats.get("error_groups")
-    if not isinstance(groups, list):
-        groups = []
+    groups = _stats_list(stats, "error_groups")
     key = f"{code}:{msg}"
-    group = None
-    for it in groups:
-        if isinstance(it, dict) and str(it.get("key") or "") == key:
-            group = it
-            break
-    if group is None:
-        group = {"key": key, "code": code, "error": msg, "count": 0, "sample_urls": []}
-        groups.append(group)
+    group = _get_or_create_error_group(groups, key=key, code=code, msg=msg)
     group["count"] = int(group.get("count", 0) or 0) + 1
     sample_urls = group.get("sample_urls")
     if not isinstance(sample_urls, list):
         sample_urls = []
-    if url and url not in sample_urls and len(sample_urls) < 3:
-        sample_urls.append(url)
+    _append_unique_limited(sample_urls, url, limit=3)
     group["sample_urls"] = sample_urls
     stats["error_groups"] = groups
 
@@ -801,6 +808,57 @@ def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
     )
 
 
+def _schedule_elapsed_seconds(*, now: datetime, last_run_at: datetime | None) -> float:
+    if last_run_at is None:
+        # Never ran -> due.
+        return 10**18
+    try:
+        return (now - last_run_at).total_seconds()
+    except Exception:
+        return 10**18
+
+
+def _schedule_interval_seconds(schedule: str) -> int | None:
+    s = str(schedule or "").strip().lower()
+    if not s:
+        return None
+
+    fixed_intervals = {
+        "@hourly": 60 * 60,
+        "@daily": 60 * 60 * 24,
+        "@weekly": 60 * 60 * 24 * 7,
+        "@monthly": 60 * 60 * 24 * 30,
+    }
+    if s in fixed_intervals:
+        return fixed_intervals[s]
+
+    parts = s.split()
+    if len(parts) != 5:
+        return None
+
+    minute, hour, day, month, dow = parts
+
+    def _parse_positive_int(raw: str) -> int | None:
+        try:
+            return max(1, int(raw))
+        except Exception:
+            return None
+
+    if minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and dow == "*":
+        n = _parse_positive_int(minute[2:])
+        return None if n is None else 60 * n
+
+    if minute == "0" and hour.startswith("*/") and day == "*" and month == "*" and dow == "*":
+        n = _parse_positive_int(hour[2:])
+        return None if n is None else 60 * 60 * n
+
+    if minute == "0" and hour == "0" and day.startswith("*/") and month == "*" and dow == "*":
+        n = _parse_positive_int(day[2:])
+        return None if n is None else 60 * 60 * 24 * n
+
+    return None
+
+
 def _schedule_due(*, schedule: str, now: datetime, last_run_at: datetime | None) -> bool:
     """
     Best-effort cron-like evaluator for the scheduled tick hook.
@@ -813,61 +871,10 @@ def _schedule_due(*, schedule: str, now: datetime, last_run_at: datetime | None)
 
     Unknown formats are treated as not-due.
     """
-    s = str(schedule or "").strip().lower()
-    if not s:
+    interval_sec = _schedule_interval_seconds(schedule)
+    if interval_sec is None:
         return False
-
-    def _elapsed_sec() -> float:
-        if last_run_at is None:
-            # Never ran -> due.
-            return 10**18
-        try:
-            return (now - last_run_at).total_seconds()
-        except Exception:
-            return 10**18
-
-    if s in {"@hourly"}:
-        return _elapsed_sec() >= 60 * 60
-    if s in {"@daily"}:
-        return _elapsed_sec() >= 60 * 60 * 24
-    if s in {"@weekly"}:
-        return _elapsed_sec() >= 60 * 60 * 24 * 7
-    if s in {"@monthly"}:
-        # Best-effort: treat month as 30 days.
-        return _elapsed_sec() >= 60 * 60 * 24 * 30
-
-    parts = s.split()
-    if len(parts) == 5:
-        minute, hour, day, month, dow = parts
-
-        # Every N minutes.
-        if minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and dow == "*":
-            raw = minute[2:]
-            try:
-                n = max(1, int(raw))
-            except Exception:
-                return False
-            return _elapsed_sec() >= 60 * n
-
-        # Every N hours (at minute 0).
-        if minute == "0" and hour.startswith("*/") and day == "*" and month == "*" and dow == "*":
-            raw = hour[2:]
-            try:
-                n = max(1, int(raw))
-            except Exception:
-                return False
-            return _elapsed_sec() >= 60 * 60 * n
-
-        # Every N days (at 00:00).
-        if minute == "0" and hour == "0" and day.startswith("*/") and month == "*" and dow == "*":
-            raw = day[2:]
-            try:
-                n = max(1, int(raw))
-            except Exception:
-                return False
-            return _elapsed_sec() >= 60 * 60 * 24 * n
-
-    return False
+    return _schedule_elapsed_seconds(now=now, last_run_at=last_run_at) >= interval_sec
 
 
 def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
@@ -1816,24 +1823,29 @@ def _build_auth_headers(cfg: dict) -> dict[str, str]:
     auth = cfg.get("auth") if isinstance(cfg.get("auth"), dict) else None
     if not isinstance(auth, dict):
         return {}
-    t = str(auth.get("type") or "none").strip().lower()
-    if t == "cookie":
+    auth_type = str(auth.get("type") or "none").strip().lower()
+    if auth_type == "cookie":
         cookie = str(auth.get("cookie") or "").strip()
         return {"Cookie": cookie} if cookie else {}
-    if t == "bearer":
+    if auth_type == "bearer":
         token = str(auth.get("token") or "").strip()
         return {"Authorization": f"Bearer {token}"} if token else {}
-    if t == "basic":
-        import base64
-
+    if auth_type == "basic":
         username = str(auth.get("username") or "").strip()
         password = str(auth.get("password") or "").strip()
-        if not username or not password:
-            return {}
-        raw = f"{username}:{password}".encode("utf-8", "ignore")
-        b64 = base64.b64encode(raw).decode("ascii")
-        return {"Authorization": f"Basic {b64}"}
+        return _build_basic_auth_header(username, password)
     return {}
+
+
+def _build_basic_auth_header(username: str, password: str) -> dict[str, str]:
+    if not username or not password:
+        return {}
+
+    import base64
+
+    raw = f"{username}:{password}".encode("utf-8", "ignore")
+    b64 = base64.b64encode(raw).decode("ascii")
+    return {"Authorization": f"Basic {b64}"}
 
 
 _DRIVE_FILE_ID_FROM_PATH_RE = re.compile(r"/file/d/([^/]+)")
