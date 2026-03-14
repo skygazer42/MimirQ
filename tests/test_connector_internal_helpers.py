@@ -80,3 +80,51 @@ def test_build_basic_auth_header_requires_both_credentials() -> None:
         "Authorization": f"Basic {expected}"
     }
     assert connectors._build_basic_auth_header("bot@example.com", "") == {}
+
+
+def test_build_retry_failed_run_config_supports_url_batch_and_web_crawl() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    connector_id, cfg = connectors._build_retry_failed_run_config(
+        connector_id="url_batch",
+        base_cfg={"urls": ["https://example.com/a"], "parser_backend": "auto"},
+        failed_urls=["https://example.com/b"],
+    )
+    assert connector_id == "url_batch"
+    assert cfg == {"urls": ["https://example.com/b"], "parser_backend": "auto"}
+
+    connector_id, cfg = connectors._build_retry_failed_run_config(
+        connector_id="web_crawl",
+        base_cfg={
+            "start_urls": ["https://example.com/docs"],
+            "filename": "crawl.json",
+            "user_agent": "bot",
+            "auth": {"type": "bearer", "token": "x"},
+            "parser_backend": "auto",
+            "chunk_strategy": "langchain_recursive",
+            "pipeline": {"ocr": True},
+            "access": {"mode": "inherit"},
+            "max_pages": 10,
+        },
+        failed_urls=["https://example.com/a", "https://example.com/b"],
+    )
+    assert connector_id == "url_batch"
+    assert cfg == {
+        "urls": ["https://example.com/a", "https://example.com/b"],
+        "filename": "crawl.json",
+        "user_agent": "bot",
+        "auth": {"type": "bearer", "token": "x"},
+        "parser_backend": "auto",
+        "chunk_strategy": "langchain_recursive",
+        "pipeline": {"ocr": True},
+        "access": {"mode": "inherit"},
+    }
+
+
+def test_connector_run_has_abortable_task_requires_queue_and_string_task_id() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._connector_run_has_abortable_task(task_queue_enabled=False, task_id="job-1") is False
+    assert connectors._connector_run_has_abortable_task(task_queue_enabled=True, task_id=None) is False
+    assert connectors._connector_run_has_abortable_task(task_queue_enabled=True, task_id=123) is False
+    assert connectors._connector_run_has_abortable_task(task_queue_enabled=True, task_id="job-1") is True

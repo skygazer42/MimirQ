@@ -245,3 +245,89 @@ def test_connector_run_resume_sets_task_id_when_queue_enabled(monkeypatch):  # n
     body = res.json()
     assert body.get("task_id") == "job-789"
 
+
+def test_connector_run_cancel_aborts_task_when_queue_enabled(monkeypatch):  # noqa: ANN001
+    import app.api.v1.connectors as connectors_module
+    from app.core.config import settings
+    from app.models.connector import ConnectorRun
+
+    monkeypatch.setattr(settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+
+    class _DummyRun:
+        def __init__(self) -> None:
+            self.id = run_id
+            self.tenant_id = tenant_id
+            self.dataset_id = dataset_id
+            self.connector_id = "url_batch"
+            self.requested_by = "test-account"
+            self.status = "running"
+            self.config = {"urls": ["https://example.com/a.txt"]}
+            self.stats = {}
+            self.error_message = None
+            self.task_id = "job-cancel-1"
+            self.created_at = datetime.now(timezone.utc)
+            self.started_at = datetime.now(timezone.utc)
+            self.finished_at = None
+            self.documents = []
+
+    dummy_run = _DummyRun()
+
+    class _DummyQuery:
+        def __init__(self, model):  # noqa: ANN001
+            self.model = model
+
+        def filter(self, *_a, **_k):  # noqa: ANN001
+            return self
+
+        def first(self):  # noqa: ANN001
+            if self.model is ConnectorRun:
+                return dummy_run
+            return None
+
+    class _DB(_DummyDB):
+        def query(self, model):  # noqa: ANN001
+            return _DummyQuery(model)
+
+    aborted: dict[str, object] = {}
+
+    class _FakeJob:
+        def __init__(self, job_id, q, _queue_name):  # noqa: ANN001
+            aborted["job_id"] = job_id
+            aborted["queue"] = q
+            aborted["queue_name"] = _queue_name
+
+        async def abort(self, timeout):  # noqa: ANN001, ANN202
+            aborted["timeout"] = timeout
+
+    async def _fake_get_queue_or_none():  # noqa: ANN202
+        return object()
+
+    monkeypatch.setattr(connectors_module, "_load_arq_job_class", lambda: _FakeJob, raising=True)
+    monkeypatch.setattr(connectors_module, "_get_queue_or_none", _fake_get_queue_or_none, raising=True)
+
+    dummy_db = _DB()
+
+    def _override_get_tenant_id() -> uuid.UUID:
+        return tenant_id
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db(dummy_db)
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.include_router(connectors_module.router, prefix="/api/v1/connectors")
+    client = TestClient(app)
+
+    res = client.post(f"/api/v1/connectors/runs/{run_id}/cancel")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("status") == "cancelled"
+    assert aborted["job_id"] == "job-cancel-1"
+    assert aborted["queue_name"] == "mimirq"
+    assert aborted["timeout"] == 0.2
