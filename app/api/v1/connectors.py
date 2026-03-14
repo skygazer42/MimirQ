@@ -929,7 +929,7 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
     db.commit()
 
 
-@router.get("", response_model=list[ConnectorInfo])
+@router.get("", response_model=list[ConnectorInfo], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_connectors() -> list[ConnectorInfo]:
     """List available connectors from the shared registry."""
     return [
@@ -1244,7 +1244,7 @@ async def _check_db_connectivity_best_effort(*, connector_id: str, cfg: Any) -> 
     return {}, []
 
 
-@router.post("/validate", response_model=ConnectorValidateResponse)
+@router.post("/validate", response_model=ConnectorValidateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def validate_connector_config(
     payload: ConnectorValidateRequest,
     *,
@@ -7080,7 +7080,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         db.close()
 
 
-@router.post("/runs", response_model=ConnectorRunOut, status_code=201)
+@router.post("/runs", response_model=ConnectorRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
     background_tasks: BackgroundTasks,
@@ -7201,7 +7201,7 @@ async def create_connector_run(
     return _run_out(run)
 
 
-@router.get("/runs", response_model=ConnectorRunListResponse)
+@router.get("/runs", response_model=ConnectorRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_connector_runs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
@@ -7252,7 +7252,7 @@ def list_connector_runs(
     return {"total": total, "items": [_run_out(r, acl_summary=summaries.get(r.id)) for r in runs]}
 
 
-@router.get("/runs/{run_id}", response_model=ConnectorRunOut)
+@router.get("/runs/{run_id}", response_model=ConnectorRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_connector_run(
     run_id: UUID,
     *,
@@ -7306,7 +7306,7 @@ def _extract_failed_urls(stats: dict) -> list[str]:
     return out
 
 
-@router.post("/runs/{run_id}/retry-failed", response_model=ConnectorRunOut, status_code=201)
+@router.post("/runs/{run_id}/retry-failed", response_model=ConnectorRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def retry_failed_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
@@ -7385,7 +7385,7 @@ async def retry_failed_connector_run(
     return _run_out(new_run)
 
 
-@router.post("/runs/{run_id}/resume", response_model=ConnectorRunOut, status_code=201)
+@router.post("/runs/{run_id}/resume", response_model=ConnectorRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def resume_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
@@ -7500,7 +7500,7 @@ async def resume_connector_run(
     return _run_out(new_run)
 
 
-@router.post("/runs/{run_id}/cancel", response_model=ConnectorRunOut)
+@router.post("/runs/{run_id}/cancel", response_model=ConnectorRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def cancel_connector_run(
     run_id: UUID,
     *,
@@ -7546,7 +7546,7 @@ async def cancel_connector_run(
     return _run_out(run)
 
 
-@router.get("/configs", response_model=ConnectorConfigListResponse)
+@router.get("/configs", response_model=ConnectorConfigListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_connector_configs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
@@ -7599,7 +7599,7 @@ def list_connector_configs(
     return {"total": total, "items": [_config_out(c) for c in items]}
 
 
-@router.post("/configs", response_model=ConnectorConfigOut, status_code=201)
+@router.post("/configs", response_model=ConnectorConfigOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_connector_config(
     payload: ConnectorConfigCreateRequest,
     *,
@@ -7630,7 +7630,7 @@ def create_connector_config(
     return _config_out(cfg)
 
 
-@router.put("/configs/{config_id}", response_model=ConnectorConfigOut)
+@router.put("/configs/{config_id}", response_model=ConnectorConfigOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def update_connector_config(
     config_id: UUID,
     payload: ConnectorConfigUpdateRequest,
@@ -7669,7 +7669,7 @@ def update_connector_config(
     return _config_out(cfg)
 
 
-@router.delete("/configs/{config_id}", status_code=204)
+@router.delete("/configs/{config_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_connector_config(
     config_id: UUID,
     *,
@@ -7696,7 +7696,7 @@ def delete_connector_config(
     return Response(status_code=204)
 
 
-@router.post("/configs/{config_id}/run", response_model=ConnectorRunOut, status_code=201)
+@router.post("/configs/{config_id}/run", response_model=ConnectorRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def run_connector_config(
     config_id: UUID,
     background_tasks: BackgroundTasks,
@@ -7770,7 +7770,7 @@ async def run_connector_config(
     return _run_out(run)
 
 
-@router.post("/configs/{config_id}/reconcile")
+@router.post("/configs/{config_id}/reconcile", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def reconcile_connector_config(
     config_id: UUID,
     apply: bool = Query(default=False, description="Apply the reconcile plan; default is dry-run"),
@@ -7852,7 +7852,7 @@ def reconcile_connector_config(
     return report
 
 
-@router.post("/scheduled/tick")
+@router.post("/scheduled/tick", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def scheduled_tick(
     background_tasks: BackgroundTasks,
     *,

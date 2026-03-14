@@ -337,7 +337,7 @@ def _unified_diff_text(before: str, after: str, *, max_lines: int) -> tuple[str 
     return "\n".join(diff_lines), False
 
 
-@router.get("/capabilities", response_model=PipelineCapabilitiesResponse)
+@router.get("/capabilities", response_model=PipelineCapabilitiesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_pipeline_capabilities(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -677,7 +677,7 @@ async def get_pipeline_capabilities(
     )
 
 
-@router.get("/governance-profiles", response_model=GovernanceProfileListResponse)
+@router.get("/governance-profiles", response_model=GovernanceProfileListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_governance_profiles(
     q: str | None = None,
     include_builtin: bool = True,
@@ -732,7 +732,7 @@ async def list_governance_profiles(
     return GovernanceProfileListResponse(total=(builtin_count + total_custom), items=items)
 
 
-@router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201)
+@router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_governance_profile(
     body: GovernanceProfileCreate,
     *,
@@ -781,7 +781,7 @@ async def create_governance_profile(
     return _profile_out_from_row(row)
 
 
-@router.get("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
+@router.get("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_governance_profile(
     profile_ref: str,
     *,
@@ -793,7 +793,7 @@ async def get_governance_profile(
     return _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
 
 
-@router.get("/governance-profiles/{profile_ref}/resolved", response_model=GovernanceProfileResolvedResponse)
+@router.get("/governance-profiles/{profile_ref}/resolved", response_model=GovernanceProfileResolvedResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_governance_profile_resolved(
     profile_ref: str,
     *,
@@ -813,7 +813,7 @@ async def get_governance_profile_resolved(
     return GovernanceProfileResolvedResponse(profile=resolved.profile, chain=resolved.chain, effective=resolved.effective)
 
 
-@router.patch("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
+@router.patch("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def update_governance_profile(
     profile_ref: str,
     body: GovernanceProfileUpdate,
@@ -863,7 +863,7 @@ async def update_governance_profile(
     return _profile_out_from_row(row)
 
 
-@router.delete("/governance-profiles/{profile_ref}", status_code=204)
+@router.delete("/governance-profiles/{profile_ref}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_governance_profile(
     profile_ref: str,
     *,
@@ -892,7 +892,7 @@ async def delete_governance_profile(
     return None
 
 
-@router.post("/governance-profiles/import", response_model=GovernanceProfileImportResponse)
+@router.post("/governance-profiles/import", response_model=GovernanceProfileImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def import_governance_profiles(
     file: UploadFile = File(...),
     overwrite: bool = Form(default=False),
@@ -1002,7 +1002,7 @@ async def import_governance_profiles(
     return GovernanceProfileImportResponse(created=created, updated=updated, items=out_items)
 
 
-@router.get("/governance-profiles/{profile_ref}/export")
+@router.get("/governance-profiles/{profile_ref}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_governance_profile(
     profile_ref: str,
     *,
@@ -1032,7 +1032,7 @@ async def export_governance_profile(
     )
 
 
-@router.get("/governance-profiles/{profile_ref}/export-ingestion-policy")
+@router.get("/governance-profiles/{profile_ref}/export-ingestion-policy", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_governance_profile_ingestion_policy(
     profile_ref: str,
     *,
@@ -1073,7 +1073,7 @@ async def export_governance_profile_ingestion_policy(
     )
 
 
-@router.post("/parse-preview", response_model=ParsePreviewResponse)
+@router.post("/parse-preview", response_model=ParsePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def parse_preview(
     request: Request,
     file: UploadFile = File(...),
@@ -1127,7 +1127,7 @@ async def parse_preview(
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-@router.post("/ingestion-preview", response_model=IngestionPreviewResponse)
+@router.post("/ingestion-preview", response_model=IngestionPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def ingestion_preview(
     request: Request,
     file: UploadFile = File(...),
@@ -1359,7 +1359,7 @@ async def ingestion_preview(
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-@router.post("/chunk-preview", response_model=PipelineChunkPreviewResponse)
+@router.post("/chunk-preview", response_model=PipelineChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def chunk_preview(
     body: PipelineChunkPreviewRequest,
     *,
@@ -1375,7 +1375,7 @@ async def chunk_preview(
     return PipelineChunkPreviewResponse(**chunks)
 
 
-@router.post("/clean-preview", response_model=CleanPreviewResponse)
+@router.post("/clean-preview", response_model=CleanPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def clean_preview(
     body: CleanPreviewRequest,
     *,
@@ -1769,7 +1769,7 @@ async def clean_preview(
     )
 
 
-@router.post("/learn-common-lines", response_model=GovernanceCommonLinesLearnResponse)
+@router.post("/learn-common-lines", response_model=GovernanceCommonLinesLearnResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def learn_common_lines(
     body: GovernanceCommonLinesLearnRequest,
     *,
@@ -1828,7 +1828,7 @@ async def learn_common_lines(
     )
 
 
-@router.post("/governance-analyze", response_model=GovernanceAnalyzeResponse)
+@router.post("/governance-analyze", response_model=GovernanceAnalyzeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def governance_analyze(
     body: GovernanceAnalyzeRequest,
     *,
@@ -1898,7 +1898,7 @@ async def governance_analyze(
     )
 
 
-@router.get("/clean-rules", response_model=CleanRulesResponse)
+@router.get("/clean-rules", response_model=CleanRulesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_clean_rules(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1914,7 +1914,7 @@ async def list_clean_rules(
     )
 
 
-@router.post("/extract-keywords", response_model=KeywordExtractResponse)
+@router.post("/extract-keywords", response_model=KeywordExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def extract_keywords(
     body: KeywordExtractRequest,
     *,
@@ -1953,7 +1953,7 @@ async def extract_keywords(
         raise HTTPException(status_code=500, detail=f"Keyword extraction failed: {str(exc)}") from exc
 
 
-@router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse)
+@router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def llm_clean_preview(
     body: LLMCleanPreviewRequest,
     *,
@@ -2075,7 +2075,7 @@ async def llm_clean_preview(
 
 
 
-@router.post("/upload-zip-with-images", response_model=ZipWithImagesResponse)
+@router.post("/upload-zip-with-images", response_model=ZipWithImagesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_zip_with_images(
     file: UploadFile = File(...),
     dataset_id: str = Form(...),
