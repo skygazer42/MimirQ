@@ -422,7 +422,7 @@ class RecallSearcher:
                 "enabled": False,
                 "query_mode": str(mode_norm),
                 "query_mode_reason_codes": [
-                    str(x) for x in list(mode_overrides.get("reason_codes") or []) if str(x).strip()
+                    str(x) for x in (mode_overrides.get("reason_codes") or []) if str(x).strip()
                 ][:8],
             }
             if config.relation_expansion_enabled is None:
@@ -460,7 +460,7 @@ class RecallSearcher:
                             "enabled": True,
                             "query_mode": str(mode_norm),
                             "query_mode_reason_codes": [
-                                str(x) for x in list(mode_overrides.get("reason_codes") or []) if str(x).strip()
+                                str(x) for x in (mode_overrides.get("reason_codes") or []) if str(x).strip()
                             ][:8],
                             "min_confidence": float(min_confidence),
                             "max_edges": int(max_edges),

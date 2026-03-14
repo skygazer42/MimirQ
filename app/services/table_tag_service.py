@@ -634,7 +634,7 @@ def plan_join_query_for_tables(
     )
     candidate_rows = [c for c in list(plan_candidates.get("candidates") or []) if isinstance(c, dict)]
     multi_candidate_rows = [
-        c for c in list(multi_plan_candidates.get("candidates") or []) if isinstance(c, dict)
+        c for c in (multi_plan_candidates.get("candidates") or []) if isinstance(c, dict)
     ]
     if not candidate_rows:
         raise ValueError("no_join_relationship_found")
@@ -649,7 +649,7 @@ def plan_join_query_for_tables(
             else multi_candidate_rows[0]
         )
         if isinstance(multi_selected, dict):
-            multi_tables = [str(v) for v in list(multi_selected.get("selected_tables") or []) if str(v).strip()]
+            multi_tables = [str(v) for v in (multi_selected.get("selected_tables") or []) if str(v).strip()]
             pair_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
             multi_score = float(multi_selected.get("score") or 0.0)
             if len(multi_tables) >= 3 and multi_score >= (pair_score * 0.9):
@@ -674,14 +674,14 @@ def plan_join_query_for_tables(
     selected_join = selected_candidate.get("join") if isinstance(selected_candidate, dict) else None
     if not isinstance(selected_join, dict):
         joins_path = selected_candidate.get("joins") if isinstance(selected_candidate, dict) else None
-        joins_path = [j for j in list(joins_path or []) if isinstance(j, dict)]
+        joins_path = [j for j in (joins_path or []) if isinstance(j, dict)]
         selected_join = joins_path[0] if joins_path else {}
     if not isinstance(selected_join, dict):
         selected_join = {}
 
     relationships: list[dict[str, Any]] = []
     if isinstance(selected_candidate, dict) and isinstance(selected_candidate.get("joins"), list):
-        relationships = [j for j in list(selected_candidate.get("joins") or []) if isinstance(j, dict)]
+        relationships = [j for j in (selected_candidate.get("joins") or []) if isinstance(j, dict)]
     for c in candidate_rows:
         join = c.get("join") if isinstance(c, dict) else None
         if isinstance(join, dict):
@@ -712,7 +712,7 @@ def plan_join_query_for_tables(
     table_map = {str(t.get("table_name") or ""): t for t in valid_tables}
     selected_tables = [
         str(v)
-        for v in list((selected_candidate or {}).get("selected_tables") or [left_table, right_table])
+        for v in ((selected_candidate or {}).get("selected_tables") or [left_table, right_table])
         if str(v).strip()
     ]
     if not selected_tables:

@@ -20,7 +20,7 @@ def _coerce_dict(value: Any) -> dict[str, Any]:
 def _extract_chain_ids(evidence_chain: Any) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for item in list(evidence_chain or []):
+    for item in (evidence_chain or []):
         row = _coerce_dict(item)
         cid = str(row.get("chunk_id") or "").strip()
         if not cid:
@@ -36,7 +36,7 @@ def _extract_citation_rank_map(citations: Any, *, top_k: int = 20) -> dict[str, 
     rows: dict[str, int] = {}
     k = max(1, int(top_k or 1))
     rank = 0
-    for item in list(citations or []):
+    for item in (citations or []):
         row = _coerce_dict(item)
         cid = str(row.get("chunk_id") or "").strip()
         if not cid:
@@ -66,7 +66,7 @@ def score_multihop_citation_chain(
     """
     expected_chain = _extract_chain_ids(evidence_chain)
     rank_map = _extract_citation_rank_map(citations, top_k=top_k)
-    hop_count = len([str(x) for x in list(reasoning_hops or []) if str(x or "").strip()])
+    hop_count = len([str(x) for x in (reasoning_hops or []) if str(x or "").strip()])
 
     if not expected_chain:
         return {

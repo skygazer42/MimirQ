@@ -169,10 +169,10 @@ def predict_learned_router_hint(
         }
 
     best: tuple[float, dict[str, Any] | None, int] = (0.0, None, 0)
-    for rule in list(mdl.get("rules") or []):
+    for rule in (mdl.get("rules") or []):
         if not isinstance(rule, dict):
             continue
-        toks = [str(v) for v in list(rule.get("tokens") or []) if str(v).strip()]
+        toks = [str(v) for v in (rule.get("tokens") or []) if str(v).strip()]
         if not toks:
             continue
         toks_norm = {t.casefold() if t.isascii() else t for t in toks}

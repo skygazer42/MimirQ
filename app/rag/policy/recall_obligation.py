@@ -140,7 +140,7 @@ def build_must_recall_proof(
     )
     source_eval_obj = source_eval if isinstance(source_eval, dict) else {}
     anchor_eval_obj = anchor_eval if isinstance(anchor_eval, dict) else {}
-    reasons = [str(v) for v in list(fail_reasons or []) if str(v).strip()][:16]
+    reasons = [str(v) for v in (fail_reasons or []) if str(v).strip()][:16]
     proof = {
         "schema": MUST_RECALL_PROOF_SCHEMA_V1,
         "enabled": bool(enabled),
@@ -150,7 +150,7 @@ def build_must_recall_proof(
         "required_source_keys": normalize_source_keys(list(required_source_keys or [])),
         "missing_source_keys": [
             str(v)
-            for v in list(source_eval_obj.get("missing_source_keys") or [])
+            for v in (source_eval_obj.get("missing_source_keys") or [])
             if str(v).strip()
         ][:100],
         "required_anchor_fields": normalize_source_keys(list(required_anchor_fields or [])),
@@ -173,4 +173,3 @@ __all__ = [
     "build_must_recall_proof",
     "build_recall_obligation_ledger",
 ]
-

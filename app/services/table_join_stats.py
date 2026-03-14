@@ -32,7 +32,7 @@ def build_join_statistics_snapshot(
         normalized_tables.append(
             {
                 "table_name": tname,
-                "table_aliases": [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()],
+                "table_aliases": [str(v) for v in (raw.get("table_aliases") or []) if str(v).strip()],
                 "columns": [c for c in cols if isinstance(c, dict)],
                 "row_count": max(0, int(row_count)),
                 "sample_rows": sample_rows[:50],
@@ -55,13 +55,13 @@ def build_join_statistics_snapshot(
         "schema": "mimirq.table_join_stats.v1",
         "tables_total": int(len(normalized_tables)),
         "pairwise": {
-            "candidates": [c for c in list(pairwise.get("candidates") or []) if isinstance(c, dict)],
+            "candidates": [c for c in (pairwise.get("candidates") or []) if isinstance(c, dict)],
             "selected": (pairwise.get("selected") if isinstance(pairwise.get("selected"), dict) else None),
             "ambiguous": bool(pairwise.get("ambiguous")),
             "ambiguity_gap": pairwise.get("ambiguity_gap"),
         },
         "multi": {
-            "candidates": [c for c in list(multi.get("candidates") or []) if isinstance(c, dict)],
+            "candidates": [c for c in (multi.get("candidates") or []) if isinstance(c, dict)],
             "selected": (multi.get("selected") if isinstance(multi.get("selected"), dict) else None),
             "ambiguous": bool(multi.get("ambiguous")),
             "ambiguity_gap": multi.get("ambiguity_gap"),
@@ -72,4 +72,3 @@ def build_join_statistics_snapshot(
 
 
 __all__ = ["build_join_statistics_snapshot"]
-

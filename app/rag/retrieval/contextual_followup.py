@@ -153,7 +153,7 @@ def build_contextual_followup_query(
             "docs_considered": 0,
         }
 
-    docs_list = [d for d in list(docs or []) if d is not None]
+    docs_list = [d for d in (docs or []) if d is not None]
     max_docs_n = max(0, int(max_docs or 0))
     max_terms_n = max(0, int(max_terms or 0))
     min_chars = max(2, int(min_term_chars or 0))
@@ -193,7 +193,7 @@ def build_contextual_followup_query(
     gap_terms_raw: list[str] = []
     if isinstance(evidence_gap, dict):
         missing_source_keys = [
-            str(v) for v in list(evidence_gap.get("missing_source_keys") or []) if str(v).strip()
+            str(v) for v in (evidence_gap.get("missing_source_keys") or []) if str(v).strip()
         ][:20]
         if missing_source_keys:
             for key in missing_source_keys:

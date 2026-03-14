@@ -117,7 +117,7 @@ class KGSearcher:
         stats.setdefault("query_mode", str(query_mode))
         stats.setdefault(
             "query_mode_reason_codes",
-            [str(x) for x in list(getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()][:8],
+            [str(x) for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()][:8],
         )
         if getattr(config, "query_mode_confidence", None) is not None:
             stats.setdefault("query_mode_confidence", str(getattr(config, "query_mode_confidence") or ""))
@@ -171,7 +171,7 @@ class KGSearcher:
                     "original": config.query,
                     "mode": str(query_mode),
                     "mode_reason_codes": [
-                        str(x) for x in list(getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()
+                        str(x) for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()
                     ][:8],
                     "mode_confidence": (str(getattr(config, "query_mode_confidence") or "").strip() or None),
                 },

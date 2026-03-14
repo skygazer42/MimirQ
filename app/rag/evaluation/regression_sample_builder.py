@@ -316,14 +316,14 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     if not isinstance(reasoning_hops_raw, list):
         reasoning_hops_raw = extra_d.get("reasoning_hops")
     reasoning_hops = [
-        str(x) for x in list(reasoning_hops_raw or []) if str(x or "").strip()
+        str(x) for x in (reasoning_hops_raw or []) if str(x or "").strip()
     ][:20]
 
     evidence_chain_raw = _get(case, "evidence_chain", None)
     if not isinstance(evidence_chain_raw, list):
         evidence_chain_raw = extra_d.get("evidence_chain")
     evidence_chain: list[dict[str, Any]] = []
-    for item_raw in list(evidence_chain_raw or []):
+    for item_raw in (evidence_chain_raw or []):
         row = _coerce_dict(item_raw)
         if not row:
             continue
@@ -333,7 +333,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     multihop = score_multihop_citation_chain(
         evidence_chain=evidence_chain,
-        citations=[_coerce_dict(c) for c in list(citations or [])],
+        citations=[_coerce_dict(c) for c in (citations or [])],
         reasoning_hops=reasoning_hops,
         top_k=20,
     )

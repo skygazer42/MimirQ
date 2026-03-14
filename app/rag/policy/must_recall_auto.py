@@ -106,7 +106,7 @@ def infer_required_anchor_fields(
     query: str,
     default_fields: list[str] | tuple[str, ...] | None,
 ) -> dict[str, Any]:
-    out = [str(v or "").strip().lower() for v in list(default_fields or []) if str(v or "").strip()]
+    out = [str(v or "").strip().lower() for v in (default_fields or []) if str(v or "").strip()]
     reasons: list[str] = []
     q = str(query or "")
     q_fold = q.casefold()
