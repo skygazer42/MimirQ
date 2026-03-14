@@ -168,16 +168,16 @@ def _dt_to_json(v: Any) -> str | None:
 
 @router.get("/logs", response_model=AuditLogListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_audit_logs(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
-    actor_id: Optional[str] = Query(default=None, max_length=255),
-    action: Optional[str] = Query(default=None, max_length=128),
-    resource_type: Optional[str] = Query(default=None, max_length=64),
-    resource_id: Optional[str] = Query(default=None, max_length=255),
-    request_id: Optional[str] = Query(default=None, max_length=128),
-    since: Optional[datetime] = Query(default=None),
-    until: Optional[datetime] = Query(default=None),
-    include_sensitive: bool = Query(default=False),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    actor_id: Annotated[Optional[str], Query(max_length=255)] = None,
+    action: Annotated[Optional[str], Query(max_length=128)] = None,
+    resource_type: Annotated[Optional[str], Query(max_length=64)] = None,
+    resource_id: Annotated[Optional[str], Query(max_length=255)] = None,
+    request_id: Annotated[Optional[str], Query(max_length=128)] = None,
+    since: Annotated[Optional[datetime], Query()] = None,
+    until: Annotated[Optional[datetime], Query()] = None,
+    include_sensitive: Annotated[bool, Query()] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -214,18 +214,20 @@ def list_audit_logs(
 
 @router.get("/logs/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_audit_logs(
-    limit: int = Query(default=1000, ge=1, le=10_000),
-    actor_id: Optional[str] = Query(default=None, max_length=255),
-    action: Optional[str] = Query(default=None, max_length=128),
-    resource_type: Optional[str] = Query(default=None, max_length=64),
-    resource_id: Optional[str] = Query(default=None, max_length=255),
-    request_id: Optional[str] = Query(default=None, max_length=128),
-    since: Optional[datetime] = Query(default=None),
-    until: Optional[datetime] = Query(default=None),
-    after_created_at: Optional[datetime] = Query(default=None, description="Cursor: last seen created_at"),
-    after_id: Optional[UUID] = Query(default=None, description="Cursor: last seen id (tie-breaker)"),
-    include_sensitive: bool = Query(default=False, description="Include sensitive detail keys (admin/auditor only)"),
-    gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON (Content-Encoding: gzip)"),
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    actor_id: Annotated[Optional[str], Query(max_length=255)] = None,
+    action: Annotated[Optional[str], Query(max_length=128)] = None,
+    resource_type: Annotated[Optional[str], Query(max_length=64)] = None,
+    resource_id: Annotated[Optional[str], Query(max_length=255)] = None,
+    request_id: Annotated[Optional[str], Query(max_length=128)] = None,
+    since: Annotated[Optional[datetime], Query()] = None,
+    until: Annotated[Optional[datetime], Query()] = None,
+    after_created_at: Annotated[Optional[datetime], Query(description='Cursor: last seen created_at')] = None,
+    after_id: Annotated[Optional[UUID], Query(description='Cursor: last seen id (tie-breaker)')] = None,
+    include_sensitive: Annotated[
+        bool, Query(description='Include sensitive detail keys (admin/auditor only)')
+    ] = False,
+    gzip: Annotated[bool, Query(description='Return gzip-compressed NDJSON (Content-Encoding: gzip)')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -296,9 +298,9 @@ def export_audit_logs(
 
 @router.post("/logs/purge", response_model=AuditLogPurgeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def purge_audit_logs(
-    retention_days: int = Query(default=90, ge=1, le=3650, description="Delete logs older than N days"),
-    max_delete: int = Query(default=100_000, ge=1, le=1_000_000, description="Max rows to delete in this call"),
-    dry_run: bool = Query(default=True, description="Plan only; do not delete rows"),
+    retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete logs older than N days')] = 90,
+    max_delete: Annotated[int, Query(ge=1, le=1000000, description='Max rows to delete in this call')] = 100_000,
+    dry_run: Annotated[bool, Query(description='Plan only; do not delete rows')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -516,15 +518,13 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
 
 @router.get("/access-graph/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_access_graph_ndjson(
-    limit: int = Query(default=1000, ge=1, le=10_000),
-    after_kind: str | None = Query(default=None, max_length=64, description="Cursor: last seen kind"),
-    after_created_at: datetime | None = Query(default=None, description="Cursor: last seen created_at"),
-    after_id: UUID | None = Query(default=None, description="Cursor: last seen id (tie-breaker)"),
-    include_sensitive: bool = Query(
-        default=False, description="Include raw user/group/dataset identifiers (admin/auditor only)"
-    ),
-    export_format: str = Query(default="ndjson", description="ndjson|json"),
-    gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip)"),
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    after_kind: Annotated[str | None, Query(max_length=64, description='Cursor: last seen kind')] = None,
+    after_created_at: Annotated[datetime | None, Query(description='Cursor: last seen created_at')] = None,
+    after_id: Annotated[UUID | None, Query(description='Cursor: last seen id (tie-breaker)')] = None,
+    include_sensitive: Annotated[bool, Query(description='Include raw user/group/dataset identifiers (admin/auditor only)')] = False,
+    export_format: Annotated[str, Query(description='ndjson|json')] = "ndjson",
+    gzip: Annotated[bool, Query(description='Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip)')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

@@ -574,10 +574,14 @@ def create_dataset(
 
 @router.get("/", response_model=DatasetListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_datasets(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=200),
-    category_id: UUID | None = Query(default=None, description="Optional: filter datasets by category (tree)"),
-    include_descendants: bool = Query(default=True, description="When filtering by category_id, include subtree"),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    category_id: Annotated[
+        UUID | None, Query(description='Optional: filter datasets by category (tree)')
+    ] = None,
+    include_descendants: Annotated[
+        bool, Query(description='When filtering by category_id, include subtree')
+    ] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1377,8 +1381,10 @@ def delete_dataset(
 @router.post("/{dataset_id}/purge", response_model=DatasetPurgeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def purge_dataset_documents(
     dataset_id: UUID,
-    max_delete: int = Query(default=1000, ge=1, le=10_000, description="Max documents to delete in this call"),
-    dry_run: bool = Query(default=True, description="Plan only; do not delete"),
+    max_delete: Annotated[
+        int, Query(ge=1, le=10000, description='Max documents to delete in this call')
+    ] = 1000,
+    dry_run: Annotated[bool, Query(description='Plan only; do not delete')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1686,8 +1692,8 @@ def put_dataset_ingestion_policy(
 @router.post("/{dataset_id}/ingestion-policy/import", response_model=IngestionPolicyImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def import_dataset_ingestion_policy(
     dataset_id: UUID,
-    file: UploadFile = File(...),
-    replace: bool = Form(default=True),
+    file: Annotated[UploadFile, File(...)],
+    replace: Annotated[bool, Form()] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1878,8 +1884,8 @@ def get_dataset_health(
 def list_dataset_profile_finding_documents(
     dataset_id: UUID,
     finding_key: str,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1902,12 +1908,12 @@ def list_dataset_profile_finding_documents(
 @router.get("/{dataset_id}/profile/buckets/documents", response_model=DatasetProfileDocumentListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_profile_bucket_documents(
     dataset_id: UUID,
-    dimension: str = Query(..., max_length=40),
-    bucket: str = Query(..., max_length=200),
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
-    include_preview: bool = Query(default=True),
-    preview_max_chars: int = Query(default=360, ge=80, le=2000),
+    dimension: Annotated[str, Query(..., max_length=40)],
+    bucket: Annotated[str, Query(..., max_length=200)],
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    include_preview: Annotated[bool, Query()] = True,
+    preview_max_chars: Annotated[int, Query(ge=80, le=2000)] = 360,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1996,8 +2002,8 @@ async def create_dataset_profile_scan_run(
 @router.get("/{dataset_id}/profile/scan-runs", response_model=DatasetProfileScanRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_profile_scan_runs(
     dataset_id: UUID,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2077,7 +2083,7 @@ def export_dataset_profile_summary(
 @router.get("/{dataset_id}/profile/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_profile_html_report(
     dataset_id: UUID,
-    redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
+    redact: Annotated[bool, Query(description='Whether to redact dataset name/id for sharing')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2270,12 +2276,16 @@ def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[st
 @router.get("/{dataset_id}/documents/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_documents_ndjson(
     dataset_id: UUID,
-    limit: int = Query(default=1000, ge=1, le=10_000),
-    after_created_at: datetime | None = Query(default=None, description="Cursor: last seen created_at"),
-    after_id: UUID | None = Query(default=None, description="Cursor: last seen id (tie-breaker)"),
-    include_sensitive: bool = Query(default=False, description="Include sensitive fields (admin-only)"),
-    export_format: str = Query(default="ndjson", description="ndjson|json"),
-    gzip: bool = Query(default=False, description="Return gzip-compressed NDJSON (Content-Encoding: gzip)"),
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    after_created_at: Annotated[
+        datetime | None, Query(description='Cursor: last seen created_at')
+    ] = None,
+    after_id: Annotated[UUID | None, Query(description='Cursor: last seen id (tie-breaker)')] = None,
+    include_sensitive: Annotated[bool, Query(description='Include sensitive fields (admin-only)')] = False,
+    export_format: Annotated[str, Query(description='ndjson|json')] = "ndjson",
+    gzip: Annotated[
+        bool, Query(description='Return gzip-compressed NDJSON (Content-Encoding: gzip)')
+    ] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2404,8 +2414,12 @@ def export_dataset_documents_ndjson(
 @router.get("/{dataset_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_bundle_zip(
     dataset_id: UUID,
-    limit: int = Query(default=2000, ge=1, le=10_000, description="Max documents to include in the bundle"),
-    include_sensitive: bool = Query(default=False, description="Include sensitive fields in documents metadata"),
+    limit: Annotated[
+        int, Query(ge=1, le=10000, description='Max documents to include in the bundle')
+    ] = 2000,
+    include_sensitive: Annotated[
+        bool, Query(description='Include sensitive fields in documents metadata')
+    ] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

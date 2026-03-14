@@ -403,8 +403,8 @@ async def create_ragas_run(
 
 @router.get("/ragas/runs", response_model=RagasRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_ragas_runs(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     conversation_id: UUID | None = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -590,8 +590,8 @@ async def patch_ragas_regression_case(
 
 @router.get("/ragas/regression/cases", response_model=RagasRegressionCaseList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_ragas_regression_cases(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     dataset_id: UUID | None = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1116,8 +1116,8 @@ async def create_ragas_regression_run(
 
 @router.get("/ragas/regression/runs", response_model=RagasRegressionRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_ragas_regression_runs(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1139,11 +1139,15 @@ async def list_ragas_regression_runs(
 
 @router.get("/ragas/regression/runs/leaderboard", response_model=RagasRegressionRunLeaderboardResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_ragas_regression_run_leaderboard(
-    dataset_id: UUID = Query(..., description="Dataset to scope runs (required)"),
-    metric_key: str = Query(default="retrieval_mrr", description="Metric key from run.summary"),
-    limit: int = Query(default=50, ge=1, le=200),
-    include_incomplete: bool = Query(default=False, description="Include pending/failed runs (default: false)"),
-    max_candidates: int = Query(default=500, ge=1, le=5000, description="Max runs to consider (recency window)"),
+    dataset_id: Annotated[UUID, Query(..., description="Dataset to scope runs (required)")],
+    metric_key: Annotated[str, Query(description='Metric key from run.summary')] = "retrieval_mrr",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    include_incomplete: Annotated[
+        bool, Query(description='Include pending/failed runs (default: false)')
+    ] = False,
+    max_candidates: Annotated[
+        int, Query(ge=1, le=5000, description='Max runs to consider (recency window)')
+    ] = 500,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1212,21 +1216,14 @@ async def get_ragas_regression_run(
 @router.get("/ragas/regression/runs/{run_id}/export-bundle", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_ragas_regression_run_bundle_api(
     run_id: UUID,
-    include_text: bool = Query(
-        default=False,
-        description="Include raw question/response (may include PII; default false)",
-    ),
-    include_contexts: bool = Query(
-        default=False,
-        description="Include retrieved_contexts (may include PII; requires include_text=true)",
-    ),
-    redact_ids: bool = Query(
-        default=True,
-        description="Redact internal ids (tenant/dataset/case/run) into stable hashes for sharing (default true)",
-    ),
-    max_items: int = Query(default=500, ge=1, le=5000, description="Max regression items to include"),
-    max_citations: int = Query(default=80, ge=0, le=500, description="Max citations per item (PII-safe allowlist)"),
-    download: bool = Query(default=True, description="Set Content-Disposition to download as a file"),
+    include_text: Annotated[bool, Query(description='Include raw question/response (may include PII; default false)')] = False,
+    include_contexts: Annotated[bool, Query(description='Include retrieved_contexts (may include PII; requires include_text=true)')] = False,
+    redact_ids: Annotated[bool, Query(description='Redact internal ids (tenant/dataset/case/run) into stable hashes for sharing (default true)')] = True,
+    max_items: Annotated[int, Query(ge=1, le=5000, description='Max regression items to include')] = 500,
+    max_citations: Annotated[
+        int, Query(ge=0, le=500, description='Max citations per item (PII-safe allowlist)')
+    ] = 80,
+    download: Annotated[bool, Query(description='Set Content-Disposition to download as a file')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1279,10 +1276,10 @@ async def export_ragas_regression_run_bundle_api(
 
 @router.post("/ragas/regression/runs/purge", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def purge_ragas_regression_runs(
-    retention_days: int = Query(default=90, ge=1, le=3650, description="Delete runs older than N days"),
-    max_delete: int = Query(default=200, ge=1, le=5000, description="Max runs to delete in this call"),
-    dry_run: bool = Query(default=True, description="Plan only; do not delete rows"),
-    dataset_id: UUID | None = Query(default=None, description="Optional dataset scope"),
+    retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete runs older than N days')] = 90,
+    max_delete: Annotated[int, Query(ge=1, le=5000, description='Max runs to delete in this call')] = 200,
+    dry_run: Annotated[bool, Query(description='Plan only; do not delete rows')] = True,
+    dataset_id: Annotated[UUID | None, Query(description='Optional dataset scope')] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1369,7 +1366,7 @@ def purge_ragas_regression_runs(
 @router.get("/ragas/regression/runs/{run_id}/diff", response_model=RagasRegressionRunDiffResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def diff_ragas_regression_runs(
     run_id: UUID,
-    base_run_id: UUID = Query(..., description="Base run id to compare against"),
+    base_run_id: Annotated[UUID, Query(..., description="Base run id to compare against")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1416,8 +1413,8 @@ async def diff_ragas_regression_runs(
 @router.get("/ragas/regression/runs/{run_id}/diff/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_ragas_regression_run_diff_html(
     run_id: UUID,
-    base_run_id: UUID = Query(..., description="Base run id to compare against"),
-    redact: bool = Query(default=True, description="Whether to redact run ids for sharing"),
+    base_run_id: Annotated[UUID, Query(..., description="Base run id to compare against")],
+    redact: Annotated[bool, Query(description='Whether to redact run ids for sharing')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1660,8 +1657,8 @@ async def run_kg_search_diagnostics(
 
 @router.get("/kg/search/diagnostics/runs", response_model=KGSearchDiagnosticsRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_kg_search_diagnostics_runs(
-    dataset_id: UUID = Query(..., description="Dataset ID (required)"),
-    limit: int = Query(20, ge=1, le=200, description="Max runs to return (default: 20)"),
+    dataset_id: Annotated[UUID, Query(..., description="Dataset ID (required)")],
+    limit: Annotated[int, Query(ge=1, le=200, description='Max runs to return (default: 20)')] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

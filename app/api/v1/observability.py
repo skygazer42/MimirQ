@@ -361,8 +361,8 @@ def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
 
 @router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_metrics_summary(
-    window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
-    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -376,10 +376,10 @@ def get_rag_metrics_summary(
 
 @router.get("/rag-metrics/query-analytics", response_model=RagQueryAnalyticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_query_analytics(
-    window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
-    slow_threshold_sec: float = Query(default=2.0, ge=0.0, le=120.0),
-    top_n: int = Query(default=20, ge=1, le=200),
-    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
+    slow_threshold_sec: Annotated[float, Query(ge=0.0, le=120.0)] = 2.0,
+    top_n: Annotated[int, Query(ge=1, le=200)] = 20,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -398,8 +398,8 @@ def get_rag_query_analytics(
 
 @router.get("/rag-metrics/tail", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_metrics_tail(
-    window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
-    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 24 * 60,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -434,8 +434,8 @@ def get_rag_metrics_tail(
 
 @router.get("/rag-metrics/cost-attribution", response_model=RagCostAttributionResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_cost_attribution(
-    window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
-    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -466,9 +466,9 @@ def get_deps_diagnostics_snapshot(
 
 @router.get("/rag-metrics/trace-bundle", response_model=RagTraceBundleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_trace_bundle(
-    request_id: str = Query(..., min_length=1, max_length=200, description="X-Request-ID to export"),
-    window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
-    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    request_id: Annotated[str, Query(..., min_length=1, max_length=200, description="X-Request-ID to export")],
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 24 * 60,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -488,10 +488,10 @@ def get_rag_trace_bundle(
 
 @router.get("/rag-metrics/trace-bundle/diff", response_model=RagTraceBundleDiffResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_trace_bundle_diff(
-    request_id_a: str = Query(..., min_length=1, max_length=200, description="X-Request-ID A to compare"),
-    request_id_b: str = Query(..., min_length=1, max_length=200, description="X-Request-ID B to compare"),
-    window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
-    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    request_id_a: Annotated[str, Query(..., min_length=1, max_length=200, description="X-Request-ID A to compare")],
+    request_id_b: Annotated[str, Query(..., min_length=1, max_length=200, description="X-Request-ID B to compare")],
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 24 * 60,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -578,7 +578,7 @@ def get_periodic_job_freshness(
 
 @router.get("/task-queue/snapshot", response_model=TaskQueueObservabilitySnapshotResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_task_queue_observability_snapshot(
-    force_refresh: bool = Query(default=False, description="Force refresh from broker (best-effort)"),
+    force_refresh: Annotated[bool, Query(description='Force refresh from broker (best-effort)')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -616,9 +616,9 @@ async def get_slo_snapshot(
 
 @router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_ingestion_dashboard_summary(
-    window_hours: int = Query(default=24, ge=1, le=30 * 24),
-    bucket_minutes: int = Query(default=60, ge=1, le=30 * 24 * 60),
-    dataset_id: UUID | None = Query(default=None, description="Optional dataset_id filter"),
+    window_hours: Annotated[int, Query(ge=1, le=30 * 24)] = 24,
+    bucket_minutes: Annotated[int, Query(ge=1, le=30 * 24 * 60)] = 60,
+    dataset_id: Annotated[UUID | None, Query(description='Optional dataset_id filter')] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -646,10 +646,10 @@ def get_ingestion_dashboard_summary(
 
 @router.get("/index-audit", response_model=IndexAuditResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_index_audit(
-    dataset_id: UUID = Query(..., description="Dataset id to audit (required)"),
-    max_check_ids: int = Query(default=5000, ge=0, le=50_000, description="Max DB vector_ids to existence-check"),
-    milvus_list_limit: int = Query(default=2000, ge=0, le=50_000, description="Max Milvus ids to sample for orphans"),
-    sample_limit: int = Query(default=20, ge=0, le=200, description="Max sample ids to return per category"),
+    dataset_id: Annotated[UUID, Query(..., description="Dataset id to audit (required)")],
+    max_check_ids: Annotated[int, Query(ge=0, le=50000, description='Max DB vector_ids to existence-check')] = 5000,
+    milvus_list_limit: Annotated[int, Query(ge=0, le=50000, description='Max Milvus ids to sample for orphans')] = 2000,
+    sample_limit: Annotated[int, Query(ge=0, le=200, description='Max sample ids to return per category')] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -680,9 +680,9 @@ def get_index_audit(
 
 @router.get("/index-drift", response_model=IndexDriftListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_index_drift(
-    dataset_id: UUID | None = Query(default=None, description="Optional dataset UUID filter"),
-    status: str = Query(default="open", description="open | resolved | all"),
-    limit: int = Query(default=100, ge=1, le=500),
+    dataset_id: Annotated[UUID | None, Query(description='Optional dataset UUID filter')] = None,
+    status: Annotated[str, Query(description='open | resolved | all')] = "open",
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
