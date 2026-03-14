@@ -196,6 +196,15 @@ def test_db_catalog_schema_diff_counts_extracts_nested_counts() -> None:
     }
 
 
+def test_nested_diff_count_returns_zero_for_missing_or_invalid_entries() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._nested_diff_count({}, "tables_added") == 0
+    assert connectors._nested_diff_count({"tables_added": {"count": "7"}}, "tables_added") == 7
+    assert connectors._nested_diff_count({"tables_added": {"count": None}}, "tables_added") == 0
+    assert connectors._nested_diff_count({"tables_added": []}, "tables_added") == 0
+
+
 def test_build_web_crawl_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
     connectors = _import_connectors_with_lightweight_stubs()
 
@@ -312,6 +321,26 @@ def test_build_url_batch_run_state_clamps_cursor_and_preserves_existing_document
     assert state["created_doc_ids"] == ["doc-9", "doc-10"]
     assert state["created"] == 2
     assert state["failed"] == 2
+
+
+def test_url_batch_processed_refs_and_document_ids_ignore_blank_values() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    documents = [
+        types.SimpleNamespace(source_ref="https://example.com/1", document_id="doc-1"),
+        types.SimpleNamespace(source_ref=" ", document_id=" "),
+        types.SimpleNamespace(source_ref="https://example.com/2", document_id="doc-2"),
+    ]
+
+    assert connectors._url_batch_processed_refs(documents) == {
+        "https://example.com/1",
+        "https://example.com/2",
+    }
+    assert connectors._url_batch_document_ids(stats={}, documents=documents) == ["doc-1", "doc-2"]
+    assert connectors._url_batch_document_ids(stats={"document_ids": ["doc-9", "doc-10"]}, documents=documents) == [
+        "doc-9",
+        "doc-10",
+    ]
 
 
 def test_build_github_repo_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
