@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import types
 
 from tests.test_confluence_connector_unit import _import_connectors_with_lightweight_stubs
 
@@ -237,3 +238,55 @@ def test_build_web_crawl_execution_plan_tracks_changed_and_removed_urls() -> Non
     assert plan["source_manifest_state"] == {
         "https://example.com/docs/a": "content_type:text/html|body_sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     }
+
+
+def test_build_url_batch_run_state_uses_run_documents_when_stats_lack_document_ids() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run = types.SimpleNamespace(
+        stats={"cursor": 1, "processed_urls": 1},
+        documents=[
+            types.SimpleNamespace(source_ref="https://example.com/1", document_id="doc-1"),
+            types.SimpleNamespace(source_ref="", document_id=""),
+        ],
+    )
+
+    state = connectors._build_url_batch_run_state(
+        run=run,
+        urls=["https://example.com/1", "https://example.com/2"],
+    )
+
+    assert state["processed_refs"] == {"https://example.com/1"}
+    assert state["cursor"] == 1
+    assert state["start_idx"] == 1
+    assert state["created_doc_ids"] == ["doc-1"]
+    assert state["created"] == 0
+    assert state["failed"] == 0
+    assert state["stats"]["total_urls"] == 2
+    assert state["stats"]["document_ids"] == ["doc-1"]
+
+
+def test_build_url_batch_run_state_clamps_cursor_and_preserves_existing_document_ids() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run = types.SimpleNamespace(
+        stats={
+            "cursor": 99,
+            "processed_urls": 3,
+            "created": "bad-value",
+            "failed": "2",
+            "document_ids": ["doc-9", "doc-10"],
+        },
+        documents=[types.SimpleNamespace(source_ref="https://example.com/1", document_id="doc-1")],
+    )
+
+    state = connectors._build_url_batch_run_state(
+        run=run,
+        urls=["https://example.com/1", "https://example.com/2"],
+    )
+
+    assert state["cursor"] == 99
+    assert state["start_idx"] == 2
+    assert state["created_doc_ids"] == ["doc-9", "doc-10"]
+    assert state["created"] == 2
+    assert state["failed"] == 2
