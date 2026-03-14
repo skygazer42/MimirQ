@@ -72,11 +72,11 @@ def _run_out(run: DBIngestionRun) -> IngestionRunOut:
 
 @router.get("/runs", response_model=IngestionRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_ingestion_runs(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
     dataset_id: UUID | None = None,
-    status: str | None = Query(default=None, max_length=32),
-    kind: str | None = Query(default=None, max_length=80),
+    status: Annotated[str | None, Query(max_length=32)] = None,
+    kind: Annotated[str | None, Query(max_length=80)] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

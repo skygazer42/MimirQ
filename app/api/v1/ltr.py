@@ -110,8 +110,8 @@ async def list_ltr_models(
 
 @router.post("/models/register", response_model=LTRModelRegisterResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def register_ltr_model(
-    model_file: UploadFile = File(..., description="XGBoost model bytes (JSON)"),
-    manifest_file: UploadFile = File(..., description="LTR manifest JSON (validated)"),
+    model_file: Annotated[UploadFile, File(..., description='XGBoost model bytes (JSON)')],
+    manifest_file: Annotated[UploadFile, File(..., description='LTR manifest JSON (validated)')],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

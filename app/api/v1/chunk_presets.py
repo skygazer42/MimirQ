@@ -177,10 +177,10 @@ def _dataset_uuid_from_payload(payload: dict[str, Any]) -> UUID | None:
 
 @router.get("", response_model=ChunkPresetListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_chunk_presets(
-    q: str | None = Query(default=None, max_length=200),
-    limit: int = Query(default=100, ge=1, le=200),
-    dataset_id: str | None = Query(default=None, max_length=64),
-    include_global: bool = Query(default=True),
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    dataset_id: Annotated[str | None, Query(max_length=64)] = None,
+    include_global: Annotated[bool, Query()] = True,
     *,
     db: Annotated[Session, Depends(get_db)],
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

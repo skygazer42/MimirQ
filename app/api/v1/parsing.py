@@ -330,8 +330,8 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
 
 @router.get("/documents", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_parsing_documents(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=200, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 200,
     status: Optional[str] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -362,8 +362,8 @@ async def list_parsing_documents(
 
 @router.post("/documents", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_parsing_document(
-    file: UploadFile = File(...),
-    parser_backend: str = Form(default="auto"),
+    file: Annotated[UploadFile, File(...)],
+    parser_backend: Annotated[str, Form()] = "auto",
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -447,7 +447,7 @@ async def parse_workspace_document(
     document_id: uuid.UUID,
     request: Request,
     parser_backend: Optional[str] = None,
-    image_caption_enabled: bool = Query(default=False),
+    image_caption_enabled: Annotated[bool, Query()] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

@@ -268,8 +268,8 @@ async def upsert_message_feedback(
 
 @router.get("/messages", response_model=MessageFeedbackList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_message_feedback(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     conversation_id: UUID | None = None,
     message_id: UUID | None = None,
     min_rating: int | None = None,
@@ -304,8 +304,8 @@ async def list_message_feedback(
 
 @router.get("/messages/enriched", response_model=MessageFeedbackEnrichedList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_message_feedback_enriched(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     conversation_id: UUID | None = None,
     message_id: UUID | None = None,
     min_rating: int | None = None,

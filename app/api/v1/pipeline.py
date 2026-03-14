@@ -894,8 +894,8 @@ async def delete_governance_profile(
 
 @router.post("/governance-profiles/import", response_model=GovernanceProfileImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def import_governance_profiles(
-    file: UploadFile = File(...),
-    overwrite: bool = Form(default=False),
+    file: Annotated[UploadFile, File(...)],
+    overwrite: Annotated[bool, Form()] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1076,8 +1076,8 @@ async def export_governance_profile_ingestion_policy(
 @router.post("/parse-preview", response_model=ParsePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def parse_preview(
     request: Request,
-    file: UploadFile = File(...),
-    parser_backend: str | None = Form(default=None),
+    file: Annotated[UploadFile, File(...)],
+    parser_backend: Annotated[str | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1130,11 +1130,11 @@ async def parse_preview(
 @router.post("/ingestion-preview", response_model=IngestionPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def ingestion_preview(
     request: Request,
-    file: UploadFile = File(...),
-    dataset_id: UUID = Form(...),
-    parser_backend: str | None = Form(default=None),
-    chunk_strategy: str | None = Form(default=None),
-    diff_max_lines: int = Form(default=2000),
+    file: Annotated[UploadFile, File(...)],
+    dataset_id: Annotated[UUID, Form(...)],
+    parser_backend: Annotated[str | None, Form()] = None,
+    chunk_strategy: Annotated[str | None, Form()] = None,
+    diff_max_lines: Annotated[int, Form()] = 2000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2077,9 +2077,9 @@ async def llm_clean_preview(
 
 @router.post("/upload-zip-with-images", response_model=ZipWithImagesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_zip_with_images(
-    file: UploadFile = File(...),
-    dataset_id: str = Form(...),
-    document_id: str | None = Form(default=None),
+    file: Annotated[UploadFile, File(...)],
+    dataset_id: Annotated[str, Form(...)],
+    document_id: Annotated[str | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

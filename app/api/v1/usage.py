@@ -263,9 +263,9 @@ def get_tenant_quota_summary(
 
 @router.get("/chat/tokens/summary", response_model=ChatTokenUsageSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_chat_token_usage_summary(
-    window_days: int = Query(default=1, ge=1, le=30),
-    since: Optional[datetime] = Query(default=None),
-    until: Optional[datetime] = Query(default=None),
+    window_days: Annotated[int, Query(ge=1, le=30)] = 1,
+    since: Annotated[Optional[datetime], Query()] = None,
+    until: Annotated[Optional[datetime], Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -331,9 +331,9 @@ def get_chat_token_usage_summary(
 
 @router.get("/chat/cost/summary", response_model=ChatCostUsageSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_chat_cost_usage_summary(
-    window_days: int = Query(default=1, ge=1, le=30),
-    since: Optional[datetime] = Query(default=None),
-    until: Optional[datetime] = Query(default=None),
+    window_days: Annotated[int, Query(ge=1, le=30)] = 1,
+    since: Annotated[Optional[datetime], Query()] = None,
+    until: Annotated[Optional[datetime], Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

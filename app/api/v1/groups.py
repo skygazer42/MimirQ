@@ -41,8 +41,8 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 @router.get("/", response_model=TenantGroupListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_groups(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=200, ge=1, le=1000),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -184,8 +184,8 @@ def delete_group(
 @router.get("/{group_id}/members", response_model=TenantGroupMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_group_members(
     group_id: UUID,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=500, ge=1, le=1000),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

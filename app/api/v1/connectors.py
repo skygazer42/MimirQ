@@ -7203,8 +7203,8 @@ async def create_connector_run(
 
 @router.get("/runs", response_model=ConnectorRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_connector_runs(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
     dataset_id: UUID | None = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -7548,8 +7548,8 @@ async def cancel_connector_run(
 
 @router.get("/configs", response_model=ConnectorConfigListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_connector_configs(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
     dataset_id: UUID | None = None,
     connector_id: str | None = None,
     enabled: bool | None = None,
@@ -7773,8 +7773,8 @@ async def run_connector_config(
 @router.post("/configs/{config_id}/reconcile", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def reconcile_connector_config(
     config_id: UUID,
-    apply: bool = Query(default=False, description="Apply the reconcile plan; default is dry-run"),
-    sample_limit: int = Query(default=20, ge=1, le=200),
+    apply: Annotated[bool, Query(description='Apply the reconcile plan; default is dry-run')] = False,
+    sample_limit: Annotated[int, Query(ge=1, le=200)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

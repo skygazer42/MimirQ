@@ -868,20 +868,27 @@ async def chat(
                     multimodal_meta["reasons"] = [f"router_exception:{str(exc)[:80]}"]
                     modality = "text"
 
-                # Table/TAG injection (only when the query looks tabular).
+                # TAG injection: keep behavior consistent with streaming graph path.
+                # We always attempt lightweight TAG context building and let the
+                # service decide whether data is available/usable.
                 try:
-                    if str(modality or "text").lower().strip() == "table":
-                        from app.services.chat_tag_service import build_chat_tag_context_docs
+                    import inspect
 
-                        tag_docs, tag_meta = build_chat_tag_context_docs(
-                            db,
-                            tenant_id=tenant_id,
-                            document_ids=doc_ids_to_use,
-                            question=request.message,
-                            must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+                    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+                    tag_kwargs: dict[str, Any] = {
+                        "tenant_id": tenant_id,
+                        "document_ids": doc_ids_to_use,
+                        "question": request.message,
+                    }
+                    if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
+                        tag_kwargs["must_recall_expected_source_keys"] = (
+                            effective_rag_config.must_recall_expected_source_keys
                         )
-                        if tag_docs:
-                            injected_docs.extend(tag_docs)
+
+                    tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
+                    if tag_docs:
+                        injected_docs.extend(tag_docs)
                 except Exception as exc:  # noqa: BLE001
                     tag_meta = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
 
@@ -1746,15 +1753,21 @@ async def stream_chat(
 
                 # Optional: Chat -> TAG injection for LangGraph path (streaming).
                 try:
+                    import inspect
+
                     from app.services.chat_tag_service import build_chat_tag_context_docs
 
-                    tag_docs, tag_meta = build_chat_tag_context_docs(
-                        db,
-                        tenant_id=tenant_id,
-                        document_ids=doc_ids_to_use,
-                        question=request.message,
-                        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
-                    )
+                    tag_kwargs: dict[str, Any] = {
+                        "tenant_id": tenant_id,
+                        "document_ids": doc_ids_to_use,
+                        "question": request.message,
+                    }
+                    if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
+                        tag_kwargs["must_recall_expected_source_keys"] = (
+                            effective_rag_config.must_recall_expected_source_keys
+                        )
+
+                    tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
                     state["tag_docs"] = tag_docs
                     state["tag_meta"] = tag_meta
                     if bool(tag_meta.get("enabled")):
@@ -2457,8 +2470,8 @@ async def update_conversation(
 @router.get("/conversations/{conversation_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_conversation(
     conversation_id: UUID,
-    fmt: str = Query(default="markdown", pattern="^(markdown|json)$"),
-    include_citations: bool = Query(default=True),
+    fmt: Annotated[str, Query(pattern='^(markdown|json)$')] = "markdown",
+    include_citations: Annotated[bool, Query()] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2571,8 +2584,8 @@ async def export_conversation(
 
 @router.get("/conversations", response_model=ConversationList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_conversations(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2688,8 +2701,8 @@ async def list_conversations(
 @router.get("/conversations/{conversation_id}/messages", response_model=ConversationDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_conversation_messages(
     conversation_id: UUID,
-    limit: Optional[int] = Query(default=None, ge=1, le=500),
-    before: Optional[UUID] = Query(default=None),
+    limit: Annotated[Optional[int], Query(ge=1, le=500)] = None,
+    before: Annotated[Optional[UUID], Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2768,9 +2781,9 @@ async def get_conversation_messages(
 @router.get("/conversations/{conversation_id}/rag-traces", response_model=RagTraceListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_conversation_rag_traces(
     conversation_id: UUID,
-    limit: int = Query(default=20, ge=1, le=200),
-    window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
-    max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2893,9 +2906,9 @@ def _checkpoint_values_to_json(values: dict | None) -> dict:
 @router.get("/conversations/{conversation_id}/checkpoints", response_model=CheckpointListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_conversation_checkpoints(
     conversation_id: UUID,
-    limit: int = Query(default=20, ge=1, le=200),
-    before: Optional[str] = Query(default=None),
-    include_values: bool = Query(default=False),
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    before: Annotated[Optional[str], Query()] = None,
+    include_values: Annotated[bool, Query()] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2942,7 +2955,7 @@ async def list_conversation_checkpoints(
 async def get_conversation_checkpoint(
     conversation_id: UUID,
     checkpoint_id: str,
-    include_values: bool = Query(default=True),
+    include_values: Annotated[bool, Query()] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
