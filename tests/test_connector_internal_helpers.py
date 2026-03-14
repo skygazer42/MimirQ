@@ -593,6 +593,37 @@ def test_build_confluence_space_run_settings_normalizes_config() -> None:
     assert settings_map["max_total_attachments"] == 2000
 
 
+def test_normalize_connector_sync_mode_and_effective_mode() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._normalize_connector_sync_mode("FULL") == "full"
+    assert connectors._normalize_connector_sync_mode("weird") == "auto"
+    assert connectors._resolve_connector_effective_mode(sync_mode="auto", cursor_last_modified="2026-03-01T00:00:00.000Z") == (
+        "incremental"
+    )
+    assert connectors._resolve_connector_effective_mode(sync_mode="auto", cursor_last_modified="") == "full"
+    assert connectors._resolve_connector_effective_mode(sync_mode="incremental", cursor_last_modified="") == "full"
+
+
+def test_confluence_source_acl_settings_disable_inherit_when_manual_access_override_exists() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    acl_settings = connectors._confluence_source_acl_settings(
+        {
+            "access": {"mode": "partial_members"},
+            "source_acl": {"mode": "inherit", "fallback_mode": "all_team_members"},
+        }
+    )
+
+    assert acl_settings == {
+        "access": {"mode": "partial_members"},
+        "source_acl_mode": "inherit",
+        "source_acl_fallback_mode": "all_team_members",
+        "has_manual_access_override": True,
+        "enable_source_acl": False,
+    }
+
+
 def test_build_confluence_space_search_cql_adds_incremental_boundary() -> None:
     connectors = _import_connectors_with_lightweight_stubs()
 
